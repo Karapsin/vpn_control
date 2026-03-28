@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
+import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.VlessProfile
 import kotlinx.coroutines.Dispatchers
@@ -40,19 +41,40 @@ class BenchmarkOrchestrator(
             Result.success(
                 withTimeout(settings.refreshTimeoutMillis) {
                     val state = storage.snapshot()
-                    require(state.profileUrl.isNotBlank()) { "Profile URL is empty" }
-
-                    storage.updateStatus("Downloading subscription")
-                    val body = downloadSubscription(state.profileUrl)
-                    val profiles = VlessParser.parseSubscription(body)
-                    require(profiles.isNotEmpty()) { "No profiles parsed from subscription" }
+                    val profiles = when (state.profileSourceMode) {
+                        ProfileSourceMode.SUBSCRIPTION -> {
+                            require(state.profileUrl.isNotBlank()) { "Profile URL is empty" }
+                            storage.updateStatus("Downloading subscription")
+                            val body = downloadSubscription(state.profileUrl)
+                            val parsed = VlessParser.parseSubscription(body)
+                            storage.updateCurrentLocations(parsed.map { it.rawLink })
+                            parsed
+                        }
+                        ProfileSourceMode.CURRENT_LOCATIONS -> {
+                            storage.updateStatus("Loading current locations")
+                            state.currentLocations.mapIndexed { index, stored ->
+                                runCatching { LocationConfigs.decodeStoredLocation(stored) }
+                                    .getOrElse { error("Invalid saved location #${index + 1}: ${it.message}") }
+                            }
+                        }
+                    }
+                    require(profiles.isNotEmpty()) {
+                        if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+                            "No profiles parsed from subscription"
+                        } else {
+                            "No saved locations available"
+                        }
+                    }
 
                     val dnsSettings = DnsSettings(
                         enabled = state.useCustomDns,
                         value = state.customDns,
                     )
 
-                    storage.updateStatus("Prefiltering ${profiles.size} profiles")
+                    storage.updateStatus(
+                        "Prefiltering ${profiles.size} " +
+                            if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) "subscription profiles" else "saved locations",
+                    )
                     val preflightResults = preflightProfiles(profiles)
                     val reachableProfiles = preflightResults
                         .filter { it.connectMillis != null }
@@ -99,17 +121,31 @@ class BenchmarkOrchestrator(
         }
     }
 
+    suspend fun syncSubscriptionLocations(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val state = storage.snapshot()
+            require(state.profileUrl.isNotBlank()) { "Profile URL is empty" }
+            val body = downloadSubscription(state.profileUrl)
+            val parsed = VlessParser.parseSubscription(body)
+            require(parsed.isNotEmpty()) { "No profiles parsed from subscription" }
+            storage.updateCurrentLocations(parsed.map { it.rawLink })
+            parsed.size
+        }
+    }
+
     suspend fun rehydrateSelection(state: PersistedState): Result<ProfileSelection> = withContext(Dispatchers.Default) {
         runCatching {
-            val rawLink = state.selectedProfileRawLink.ifBlank {
-                storage.lastProfileFile()
-                    .takeIf { it.exists() }
-                    ?.readText()
-                    ?.trim()
-                    .orEmpty()
+            val storedSelection = state.selectedProfileJson.ifBlank {
+                state.selectedProfileRawLink.ifBlank {
+                    storage.lastProfileFile()
+                        .takeIf { it.exists() }
+                        ?.readText()
+                        ?.trim()
+                        .orEmpty()
+                }
             }
-            val profile = if (rawLink.isNotBlank()) {
-                VlessParser.parseVlessLink(rawLink)
+            val profile = if (storedSelection.isNotBlank()) {
+                LocationConfigs.decodeStoredLocation(storedSelection)
             } else {
                 cachedProfile(state)
             }
@@ -137,6 +173,37 @@ class BenchmarkOrchestrator(
                 } else {
                     state.runtimeConfigJson
                 },
+            )
+        }
+    }
+
+    suspend fun selectionFromRawLink(
+        state: PersistedState,
+        rawLink: String,
+        detail: String,
+    ): Result<ProfileSelection> = withContext(Dispatchers.Default) {
+        runCatching {
+            val profile = LocationConfigs.parseLocationInput(rawLink)
+            val dnsSettings = DnsSettings(
+                enabled = state.useCustomDns,
+                value = state.customDns,
+            )
+            ProfileSelection(
+                profile = profile,
+                benchmark = ProfileBenchmark(
+                    profile = profile,
+                    googleStatus = "manual",
+                    chatgptStatus = "manual",
+                    googleTotal = null,
+                    chatgptTotal = null,
+                    score = 0.0,
+                    detail = detail,
+                ),
+                runtimeConfigJson = SingBoxConfigFactory.buildTunConfig(
+                    profile = profile,
+                    dns = dnsSettings,
+                    routingRules = state.routingRules,
+                ),
             )
         }
     }

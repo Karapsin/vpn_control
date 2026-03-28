@@ -2,6 +2,36 @@ package com.kardinal.vpncontrol.model
 
 import java.util.Locale
 
+enum class ProfileSourceMode {
+    SUBSCRIPTION,
+    CURRENT_LOCATIONS,
+}
+
+enum class SubscriptionRefreshPolicy(
+    val title: String,
+) {
+    OFF(title = "Off"),
+    EVERY_HOUR(title = "Every hour"),
+    CUSTOM(title = "Custom interval");
+
+    fun effectiveIntervalHours(customIntervalHours: Int): Long? {
+        return when (this) {
+            OFF -> null
+            EVERY_HOUR -> 1L
+            CUSTOM -> customIntervalHours.coerceAtLeast(1).toLong()
+        }
+    }
+
+    fun displayValue(customIntervalHours: Int): String {
+        return when (this) {
+            OFF -> title
+            EVERY_HOUR -> title
+            CUSTOM -> "Every ${customIntervalHours.coerceAtLeast(1)} hour" +
+                if (customIntervalHours.coerceAtLeast(1) == 1) "" else "s"
+        }
+    }
+}
+
 data class VlessProfile(
     val remarks: String,
     val uuid: String,
@@ -39,12 +69,17 @@ data class ProfileSelection(
 
 data class PersistedState(
     val profileUrl: String = "",
+    val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+    val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
+    val subscriptionRefreshCustomHours: Int = 3,
+    val currentLocations: List<String> = emptyList(),
     val customDns: String = "",
     val useCustomDns: Boolean = false,
     val routingRules: RoutingRules = RoutingRules(),
     val selectedProfileName: String = "",
     val selectedProfileServer: String = "",
     val selectedProfileRawLink: String = "",
+    val selectedProfileJson: String = "",
     val lastBenchmarkSummary: String = "",
     val runtimeConfigJson: String = "",
     val statusMessage: String = "Idle",
@@ -52,6 +87,7 @@ data class PersistedState(
 )
 
 data class RoutingRules(
+    val ignoreRules: Boolean = false,
     val proxyPackages: List<String> = emptyList(),
     val bypassPackages: List<String> = emptyList(),
     val nationalDomainSuffixes: List<String> = DEFAULT_NATIONAL_DOMAIN_SUFFIXES,

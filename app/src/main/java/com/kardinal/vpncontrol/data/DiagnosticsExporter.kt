@@ -72,8 +72,13 @@ class DiagnosticsExporter(
             appendLine()
             appendLine("[state]")
             appendLine("profile_url=${state.profileUrl}")
+            appendLine("profile_source_mode=${state.profileSourceMode}")
+            appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
+            appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
+            appendLine("current_locations_count=${state.currentLocations.size}")
             appendLine("custom_dns=${state.customDns}")
             appendLine("use_custom_dns=${state.useCustomDns}")
+            appendLine("ignore_rules=${state.routingRules.ignoreRules}")
             appendLine("proxy_packages=${state.routingRules.proxyPackages.joinToString(",")}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("national_domain_suffixes=${state.routingRules.nationalDomainSuffixes.joinToString(",")}")
@@ -87,6 +92,10 @@ class DiagnosticsExporter(
             appendSection(
                 "selected_profile_link",
                 safeRead(RuntimeFiles.selectedProfileFile(context)).ifBlank { state.selectedProfileRawLink },
+            )
+            appendSection(
+                "current_locations",
+                state.currentLocations.joinToString(separator = "\n").ifBlank { "<empty>" },
             )
             appendSection(
                 "runtime_sing_box_json",

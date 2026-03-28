@@ -5,10 +5,14 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.VlessProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -21,8 +25,13 @@ private val Context.dataStore by preferencesDataStore(name = "vpn_control")
 class ProfileStorage(private val context: Context) {
     private object Keys {
         val profileUrl = stringPreferencesKey("profile_url")
+        val profileSourceMode = stringPreferencesKey("profile_source_mode")
+        val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
+        val subscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
+        val currentLocations = stringPreferencesKey("current_locations")
         val customDns = stringPreferencesKey("custom_dns")
         val useCustomDns = booleanPreferencesKey("use_custom_dns")
+        val ignoreRules = booleanPreferencesKey("ignore_rules")
         val proxyPackages = stringPreferencesKey("proxy_packages")
         val bypassPackages = stringPreferencesKey("bypass_packages")
         val nationalDomainSuffixes = stringPreferencesKey("national_domain_suffixes")
@@ -30,6 +39,7 @@ class ProfileStorage(private val context: Context) {
         val selectedProfileName = stringPreferencesKey("selected_profile_name")
         val selectedProfileServer = stringPreferencesKey("selected_profile_server")
         val selectedProfileRawLink = stringPreferencesKey("selected_profile_raw_link")
+        val selectedProfileJson = stringPreferencesKey("selected_profile_json")
         val lastBenchmarkSummary = stringPreferencesKey("last_benchmark_summary")
         val runtimeConfigJson = stringPreferencesKey("runtime_config_json")
         val statusMessage = stringPreferencesKey("status_message")
@@ -52,15 +62,64 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
+    suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.profileSourceMode] = mode.name
+        }
+        DiagnosticsLogger.append(context, "Profile source mode updated: $mode")
+    }
+
+    suspend fun updateSubscriptionRefreshPolicy(policy: SubscriptionRefreshPolicy, customHours: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.subscriptionRefreshPolicy] = policy.name
+            prefs[Keys.subscriptionRefreshCustomHours] = customHours.coerceAtLeast(1)
+        }
+        DiagnosticsLogger.append(
+            context,
+            "Subscription refresh policy updated: policy=$policy customHours=${customHours.coerceAtLeast(1)}",
+        )
+    }
+
+    suspend fun updateCurrentLocations(rawLinks: List<String>) {
+        val normalized = rawLinks
+            .mapNotNull { raw ->
+                raw.trim()
+                    .takeIf { it.isNotBlank() }
+                    ?.let { LocationConfigs.encodeStoredLocation(LocationConfigs.parseLocationInput(it)) }
+            }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.currentLocations] = encodeList(normalized)
+            val selectedStored = prefs[Keys.selectedProfileJson]
+                ?: prefs[Keys.selectedProfileRawLink]?.takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching {
+                        LocationConfigs.encodeStoredLocation(LocationConfigs.parseLocationInput(raw))
+                    }.getOrNull()
+                }
+            selectedStored
+                ?.takeIf { it.isNotBlank() && it !in normalized }
+                ?.let {
+                    prefs.remove(Keys.selectedProfileName)
+                    prefs.remove(Keys.selectedProfileServer)
+                    prefs.remove(Keys.selectedProfileRawLink)
+                    prefs.remove(Keys.selectedProfileJson)
+                    prefs.remove(Keys.lastBenchmarkSummary)
+                    prefs.remove(Keys.runtimeConfigJson)
+                }
+        }
+        DiagnosticsLogger.append(context, "Current locations updated: count=${normalized.size}")
+    }
+
     suspend fun updateDns(dns: String, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.customDns] = dns
             prefs[Keys.useCustomDns] = enabled
         }
+        DiagnosticsLogger.append(context, "Custom DNS updated: enabled=$enabled value=$dns")
     }
 
     suspend fun updateRoutingRules(rules: RoutingRules) {
         context.dataStore.edit { prefs ->
+            prefs[Keys.ignoreRules] = rules.ignoreRules
             prefs[Keys.proxyPackages] = encodeList(rules.proxyPackages)
             prefs[Keys.bypassPackages] = encodeList(rules.bypassPackages)
             prefs[Keys.nationalDomainSuffixes] = encodeList(rules.nationalDomainSuffixes)
@@ -68,28 +127,23 @@ class ProfileStorage(private val context: Context) {
         }
         DiagnosticsLogger.append(
             context,
-            "Routing rules updated: proxy=${rules.proxyPackages.size} direct=${rules.bypassPackages.size} " +
+            "Routing rules updated: ignore=${rules.ignoreRules} proxy=${rules.proxyPackages.size} direct=${rules.bypassPackages.size} " +
                 "national=${rules.nationalDomainSuffixes.size} domains=${rules.directDomainSuffixes.size}",
         )
     }
 
-    suspend fun updateSelection(
-        name: String,
-        server: String,
-        rawLink: String,
-        summary: String,
-        runtimeConfigJson: String,
-    ) {
+    suspend fun updateSelection(profile: VlessProfile, summary: String, runtimeConfigJson: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.selectedProfileName] = name
-            prefs[Keys.selectedProfileServer] = server
-            prefs[Keys.selectedProfileRawLink] = rawLink
+            prefs[Keys.selectedProfileName] = profile.remarks
+            prefs[Keys.selectedProfileServer] = profile.server
+            prefs[Keys.selectedProfileRawLink] = profile.rawLink
+            prefs[Keys.selectedProfileJson] = LocationConfigs.encodeStoredLocation(profile)
             prefs[Keys.lastBenchmarkSummary] = summary
             prefs[Keys.runtimeConfigJson] = runtimeConfigJson
         }
         DiagnosticsLogger.append(
             context,
-            "Selected profile updated: name=$name server=$server summary=$summary",
+            "Selected profile updated: name=${profile.remarks} server=${profile.server} summary=$summary",
         )
     }
 
@@ -115,11 +169,22 @@ class ProfileStorage(private val context: Context) {
 
     private fun mapState(preferences: Preferences): PersistedState {
         val rawPreferences = preferences.asMap()
+        val refreshSettings = decodeSubscriptionRefreshSettings(
+            rawPolicy = preferences[Keys.subscriptionRefreshPolicy],
+            customHours = preferences[Keys.subscriptionRefreshCustomHours] ?: 3,
+        )
         return PersistedState(
             profileUrl = preferences[Keys.profileUrl].orEmpty(),
+            profileSourceMode = preferences[Keys.profileSourceMode]
+                ?.let { raw -> runCatching { ProfileSourceMode.valueOf(raw) }.getOrNull() }
+                ?: ProfileSourceMode.SUBSCRIPTION,
+            subscriptionRefreshPolicy = refreshSettings.first,
+            subscriptionRefreshCustomHours = refreshSettings.second,
+            currentLocations = decodeList(preferences[Keys.currentLocations]),
             customDns = preferences[Keys.customDns].orEmpty(),
             useCustomDns = preferences[Keys.useCustomDns] ?: false,
             routingRules = RoutingRules(
+                ignoreRules = preferences[Keys.ignoreRules] ?: false,
                 proxyPackages = RoutingRules.normalizePackageNames(
                     decodeList(preferences[Keys.proxyPackages]),
                 ),
@@ -144,6 +209,7 @@ class ProfileStorage(private val context: Context) {
             selectedProfileName = preferences[Keys.selectedProfileName].orEmpty(),
             selectedProfileServer = preferences[Keys.selectedProfileServer].orEmpty(),
             selectedProfileRawLink = preferences[Keys.selectedProfileRawLink].orEmpty(),
+            selectedProfileJson = preferences[Keys.selectedProfileJson].orEmpty(),
             lastBenchmarkSummary = preferences[Keys.lastBenchmarkSummary].orEmpty(),
             runtimeConfigJson = preferences[Keys.runtimeConfigJson].orEmpty(),
             statusMessage = preferences[Keys.statusMessage] ?: "Idle",
@@ -161,4 +227,23 @@ class ProfileStorage(private val context: Context) {
     }
 
     private fun encodeList(values: List<String>): String = values.joinToString(separator = "\n")
+
+    private fun decodeSubscriptionRefreshSettings(
+        rawPolicy: String?,
+        customHours: Int,
+    ): Pair<SubscriptionRefreshPolicy, Int> {
+        val normalizedHours = customHours.coerceAtLeast(1)
+        return when (rawPolicy) {
+            null, SubscriptionRefreshPolicy.OFF.name -> SubscriptionRefreshPolicy.OFF to normalizedHours
+            SubscriptionRefreshPolicy.EVERY_HOUR.name, "EVERY_1_HOUR" ->
+                SubscriptionRefreshPolicy.EVERY_HOUR to 1
+            SubscriptionRefreshPolicy.CUSTOM.name ->
+                SubscriptionRefreshPolicy.CUSTOM to normalizedHours
+            "EVERY_3_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 3
+            "EVERY_6_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 6
+            "EVERY_12_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 12
+            "EVERY_24_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 24
+            else -> SubscriptionRefreshPolicy.OFF to normalizedHours
+        }
+    }
 }

@@ -12,25 +12,27 @@ data class DnsSettings(
 
 object SingBoxConfigFactory {
     private const val DEFAULT_DNS_SERVER = "1.1.1.1"
+    private val LOCAL_DIRECT_CIDRS = listOf(
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+    )
 
     fun buildTunConfig(
         profile: VlessProfile,
         dns: DnsSettings,
         routingRules: RoutingRules,
     ): String {
+        val customDnsEnabled = dns.enabled && dns.value.isNotBlank()
         val directCidrs = JSONArray(
-            listOf(
-                "127.0.0.0/8",
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "192.168.0.0/16",
-                "169.254.0.0/16",
-            ) + listOfNotNull(dns.value.takeIf { dns.enabled && it.isNotBlank() }?.let { "$it/32" }),
+            LOCAL_DIRECT_CIDRS + listOfNotNull(dns.value.takeIf { customDnsEnabled }?.let { "$it/32" }),
         )
 
-        val dnsServerTag = if (dns.enabled && dns.value.isNotBlank()) "custom-dns" else "remote-dns"
+        val dnsServerTag = if (customDnsEnabled) "custom-dns" else "remote-dns"
         val dnsServers = JSONArray().apply {
-            if (dns.enabled && dns.value.isNotBlank()) {
+            if (customDnsEnabled) {
                 put(
                     JSONObject()
                         .put("type", "udp")
@@ -71,7 +73,7 @@ object SingBoxConfigFactory {
                     .put("outbound", "direct"),
             )
 
-        if (directDomainSuffixes.isNotEmpty()) {
+        if (!routingRules.ignoreRules && directDomainSuffixes.isNotEmpty()) {
             routeRules.put(
                 JSONObject()
                     .put("domain_suffix", JSONArray(directDomainSuffixes))
@@ -90,9 +92,9 @@ object SingBoxConfigFactory {
             .put("strict_route", true)
             .put("stack", "system")
 
-        if (routingRules.proxyPackages.isNotEmpty()) {
+        if (!routingRules.ignoreRules && routingRules.proxyPackages.isNotEmpty()) {
             tunInbound.put("include_package", JSONArray(routingRules.proxyPackages))
-        } else if (routingRules.bypassPackages.isNotEmpty()) {
+        } else if (!routingRules.ignoreRules && routingRules.bypassPackages.isNotEmpty()) {
             tunInbound.put("exclude_package", JSONArray(routingRules.bypassPackages))
         }
 
@@ -138,6 +140,11 @@ object SingBoxConfigFactory {
 
     fun buildProxyValidationConfig(profile: VlessProfile, httpPort: Int, dns: DnsSettings): String {
         val dnsServer = dns.value.takeIf { dns.enabled && it.isNotBlank() } ?: "1.1.1.1"
+        val directCidrs = JSONArray(
+            LOCAL_DIRECT_CIDRS + listOfNotNull(
+                dns.value.takeIf { dns.enabled && it.isNotBlank() }?.let { "$it/32" },
+            ),
+        )
         val outbound = buildOutbound(profile)
         val inbounds = JSONArray().put(
             JSONObject()
@@ -174,6 +181,15 @@ object SingBoxConfigFactory {
             .put(
                 "route",
                 JSONObject()
+                    .put(
+                        "rules",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("ip_cidr", directCidrs)
+                                .put("action", "route")
+                                .put("outbound", "direct"),
+                        ),
+                    )
                     .put("default_domain_resolver", "validation-dns")
                     .put("final", "proxy"),
             )

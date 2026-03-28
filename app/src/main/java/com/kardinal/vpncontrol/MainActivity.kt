@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
         MainViewModel.factory(applicationContext)
     }
     private var pendingRoutingRulesExport: String? = null
+    private var pendingLocationsExport: String? = null
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -62,6 +63,44 @@ class MainActivity : ComponentActivity() {
             viewModel.postStatus(error.message ?: "Failed to import routing rules")
         }
     }
+    private val exportLocationsLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val content = pendingLocationsExport
+        pendingLocationsExport = null
+        if (uri == null || content == null) {
+            viewModel.postStatus("Locations export canceled")
+            return@registerForActivityResult
+        }
+
+        runCatching {
+            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                writer.write(content)
+            } ?: error("Could not open export destination")
+        }.onSuccess {
+            viewModel.postStatus("Locations exported")
+        }.onFailure { error ->
+            viewModel.postStatus(error.message ?: "Failed to export locations")
+        }
+    }
+    private val importLocationsLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            viewModel.postStatus("Locations import canceled")
+            return@registerForActivityResult
+        }
+
+        runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                reader.readText()
+            } ?: error("Could not open selected locations file")
+        }.onSuccess { raw ->
+            viewModel.importLocations(raw)
+        }.onFailure { error ->
+            viewModel.postStatus(error.message ?: "Failed to import locations")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,15 +110,38 @@ class MainActivity : ComponentActivity() {
             val state = viewModel.uiState.collectAsStateWithLifecycle()
             VpnControlApp(
                 state = state.value,
+                onNavigateBack = viewModel::navigateBack,
                 onToggleProfileDialog = viewModel::toggleProfileDialog,
                 onProfileChange = viewModel::onProfileDraftChanged,
+                onProfileSourceModeChange = viewModel::onProfileSourceModeDraftChanged,
                 onSaveProfile = viewModel::saveProfile,
                 onToggleDnsDialog = viewModel::toggleDnsDialog,
                 onDnsEnabledChange = viewModel::onCustomDnsEnabledChanged,
                 onDnsChange = viewModel::onDnsDraftChanged,
                 onSaveDns = viewModel::saveDns,
+                onToggleRefreshPolicyDialog = viewModel::toggleRefreshPolicyDialog,
+                onSubscriptionRefreshPolicyChange = viewModel::onSubscriptionRefreshPolicyDraftChanged,
+                onSubscriptionRefreshCustomHoursChange = viewModel::onSubscriptionRefreshCustomHoursDraftChanged,
+                onSaveSubscriptionRefreshPolicy = viewModel::saveSubscriptionRefreshPolicy,
+                onOpenMainTab = viewModel::openMainTab,
+                onOpenLocationsTab = viewModel::openLocationsTab,
                 onOpenRoutingRules = viewModel::openRoutingRules,
-                onCloseRoutingRules = viewModel::closeRoutingRules,
+                onShowAddLocation = viewModel::showAddLocationDialog,
+                onExportLocations = {
+                    val document = viewModel.buildLocationsExport()
+                    pendingLocationsExport = document.content
+                    exportLocationsLauncher.launch(document.fileName)
+                },
+                onImportLocations = {
+                    importLocationsLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                },
+                onEditLocation = viewModel::editLocation,
+                onDeleteLocation = viewModel::deleteLocation,
+                onSelectLocation = viewModel::selectLocation,
+                onCloseLocationDialog = viewModel::closeLocationDialog,
+                onLocationDraftChange = viewModel::onLocationDraftChanged,
+                onSaveLocation = viewModel::saveLocation,
+                onRoutingIgnoreRulesChange = viewModel::onRoutingIgnoreRulesDraftChanged,
                 onRoutingAppSearchChange = viewModel::onRoutingAppSearchChanged,
                 onToggleProxyRoutingApp = viewModel::toggleProxyRoutingApp,
                 onToggleDirectRoutingApp = viewModel::toggleDirectRoutingApp,
