@@ -123,6 +123,11 @@ class MainActivity : ComponentActivity() {
                 onSubscriptionRefreshPolicyChange = viewModel::onSubscriptionRefreshPolicyDraftChanged,
                 onSubscriptionRefreshCustomHoursChange = viewModel::onSubscriptionRefreshCustomHoursDraftChanged,
                 onSaveSubscriptionRefreshPolicy = viewModel::saveSubscriptionRefreshPolicy,
+                onToggleValidationSettingsDialog = viewModel::toggleValidationSettingsDialog,
+                onValidationGeneralUrlChange = viewModel::onValidationGeneralUrlDraftChanged,
+                onValidationChatGptUrlChange = viewModel::onValidationChatGptUrlDraftChanged,
+                onValidationCandidateCountChange = viewModel::onValidationCandidateCountDraftChanged,
+                onSaveValidationSettings = viewModel::saveValidationSettings,
                 onOpenMainTab = viewModel::openMainTab,
                 onOpenLocationsTab = viewModel::openLocationsTab,
                 onOpenRoutingRules = viewModel::openRoutingRules,
@@ -138,6 +143,14 @@ class MainActivity : ComponentActivity() {
                 onEditLocation = viewModel::editLocation,
                 onDeleteLocation = viewModel::deleteLocation,
                 onSelectLocation = viewModel::selectLocation,
+                onToggleSelectedLocationVpn = {
+                    val prepareIntent = VpnService.prepare(this)
+                    if (prepareIntent != null) {
+                        vpnPermissionLauncher.launch(prepareIntent)
+                    } else {
+                        viewModel.toggleVpn()
+                    }
+                },
                 onCloseLocationDialog = viewModel::closeLocationDialog,
                 onLocationDraftChange = viewModel::onLocationDraftChanged,
                 onSaveLocation = viewModel::saveLocation,

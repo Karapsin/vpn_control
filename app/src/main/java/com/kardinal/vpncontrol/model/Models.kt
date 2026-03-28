@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.model
 
+import java.net.URI
 import java.util.Locale
 
 enum class ProfileSourceMode {
@@ -72,7 +73,9 @@ data class PersistedState(
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshCustomHours: Int = 3,
+    val validationSettings: BenchmarkValidationSettings = BenchmarkValidationSettings(),
     val currentLocations: List<String> = emptyList(),
+    val locationBenchmarkDetails: Map<String, String> = emptyMap(),
     val customDns: String = "",
     val useCustomDns: Boolean = false,
     val routingRules: RoutingRules = RoutingRules(),
@@ -85,6 +88,49 @@ data class PersistedState(
     val statusMessage: String = "Idle",
     val isVpnRunning: Boolean = false,
 )
+
+data class BenchmarkValidationSettings(
+    val generalUrl: String = DEFAULT_GENERAL_URL,
+    val chatGptUrl: String = DEFAULT_CHATGPT_URL,
+    val candidateCount: Int = DEFAULT_CANDIDATE_COUNT,
+) {
+    fun normalized(): BenchmarkValidationSettings {
+        return copy(
+            generalUrl = normalizeUrl(generalUrl, DEFAULT_GENERAL_URL),
+            chatGptUrl = normalizeUrl(chatGptUrl, DEFAULT_CHATGPT_URL),
+            candidateCount = candidateCount.coerceAtLeast(1),
+        )
+    }
+
+    fun concurrency(): Int = normalized().candidateCount.coerceAtMost(5)
+
+    fun displaySummary(): String {
+        val normalized = normalized()
+        return "${normalized.generalUrl.displayHost()} • " +
+            "${normalized.chatGptUrl.displayHost()} • " +
+            "top ${normalized.candidateCount} • conc ${normalized.concurrency()}"
+    }
+
+    companion object {
+        const val DEFAULT_GENERAL_URL = "https://www.google.com/generate_204"
+        const val DEFAULT_CHATGPT_URL = "https://chatgpt.com/"
+        const val DEFAULT_CANDIDATE_COUNT = 3
+
+        private fun normalizeUrl(raw: String, fallback: String): String {
+            val trimmed = raw.trim()
+            if (trimmed.isBlank()) return fallback
+            return if (trimmed.contains("://")) trimmed else "https://$trimmed"
+        }
+
+        private fun String.displayHost(): String {
+            return runCatching { URI(this).host }
+                .getOrNull()
+                ?.removePrefix("www.")
+                ?.takeIf { it.isNotBlank() }
+                ?: this
+        }
+    }
+}
 
 data class RoutingRules(
     val ignoreRules: Boolean = false,
@@ -99,8 +145,8 @@ data class RoutingRules(
             .distinct()
 
     companion object {
-        val DEFAULT_NATIONAL_DOMAIN_SUFFIXES = listOf("ru", "su")
-        val DEFAULT_DIRECT_DOMAIN_SUFFIXES = listOf("miwifi.com")
+        val DEFAULT_NATIONAL_DOMAIN_SUFFIXES = emptyList<String>()
+        val DEFAULT_DIRECT_DOMAIN_SUFFIXES = emptyList<String>()
 
         fun normalizePackageNames(values: Iterable<String>): List<String> {
             return values

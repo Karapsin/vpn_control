@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
@@ -33,7 +34,6 @@ class BenchmarkOrchestrator(
     private val browserUserAgent =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    private val httpUrls = BenchmarkUrls()
     private val settings = ValidationSettings()
 
     suspend fun refreshBestProfile(): Result<ProfileSelection> = withContext(Dispatchers.IO) {
@@ -41,17 +41,22 @@ class BenchmarkOrchestrator(
             Result.success(
                 withTimeout(settings.refreshTimeoutMillis) {
                     val state = storage.snapshot()
+                    val validationSettings = state.validationSettings.normalized()
+                    val benchmarkUrls = BenchmarkUrls(
+                        google = validationSettings.generalUrl,
+                        chatgpt = validationSettings.chatGptUrl,
+                    )
                     val profiles = when (state.profileSourceMode) {
                         ProfileSourceMode.SUBSCRIPTION -> {
-                            require(state.profileUrl.isNotBlank()) { "Profile URL is empty" }
-                            storage.updateStatus("Downloading subscription")
+                            require(state.profileUrl.isNotBlank()) { "Subscription URL is empty" }
+                            storage.updateStatus("Downloading subscription...")
                             val body = downloadSubscription(state.profileUrl)
                             val parsed = VlessParser.parseSubscription(body)
                             storage.updateCurrentLocations(parsed.map { it.rawLink })
                             parsed
                         }
                         ProfileSourceMode.CURRENT_LOCATIONS -> {
-                            storage.updateStatus("Loading current locations")
+                            storage.updateStatus("Loading saved locations...")
                             state.currentLocations.mapIndexed { index, stored ->
                                 runCatching { LocationConfigs.decodeStoredLocation(stored) }
                                     .getOrElse { error("Invalid saved location #${index + 1}: ${it.message}") }
@@ -60,7 +65,7 @@ class BenchmarkOrchestrator(
                     }
                     require(profiles.isNotEmpty()) {
                         if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "No profiles parsed from subscription"
+                            "No locations were found in the subscription"
                         } else {
                             "No saved locations available"
                         }
@@ -72,24 +77,38 @@ class BenchmarkOrchestrator(
                     )
 
                     storage.updateStatus(
-                        "Prefiltering ${profiles.size} " +
-                            if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) "subscription profiles" else "saved locations",
+                        "Checking ${profiles.size} " +
+                            if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) "subscription locations..." else "saved locations...",
                     )
                     val preflightResults = preflightProfiles(profiles)
+                    val locationBenchmarkDetails = preflightResults.associate { result ->
+                        LocationConfigs.encodeStoredLocation(result.profile) to result.detail
+                    }.toMutableMap()
+                    storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
                     val reachableProfiles = preflightResults
                         .filter { it.connectMillis != null }
                         .sortedBy { it.connectMillis }
 
                     require(reachableProfiles.isNotEmpty()) {
                         val bestAttempt = preflightResults.minByOrNull { it.sortScore }
-                        "No reachable profile found; best attempt: ${bestAttempt?.detail ?: "no benchmark results"}"
+                        "No reachable location found. Best attempt: ${bestAttempt?.detail ?: "no benchmark results"}"
                     }
 
-                    val candidates = reachableProfiles.take(settings.validationTopN)
+                    val candidates = reachableProfiles.take(validationSettings.candidateCount)
                     storage.updateStatus(
-                        "Validating ${candidates.size} fastest profiles with sing-box",
+                        "Testing the top ${candidates.size} locations " +
+                            "(up to ${validationSettings.concurrency()} at once)...",
                     )
-                    val candidateBenchmarks = validateCandidates(candidates, dnsSettings)
+                    val candidateBenchmarks = validateCandidates(
+                        candidates = candidates,
+                        dnsSettings = dnsSettings,
+                        benchmarkUrls = benchmarkUrls,
+                        validationSettings = validationSettings,
+                    )
+                    candidateBenchmarks.forEach { benchmark ->
+                        locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
+                    }
+                    storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
                     val winner = candidateBenchmarks
                         .filter { it.googleStatus == "ok" && it.chatgptStatus == "ok" }
                         .minByOrNull { it.score }
@@ -97,8 +116,7 @@ class BenchmarkOrchestrator(
                             val bestAttempt = candidateBenchmarks.minByOrNull { it.score }
                             val detail = bestAttempt?.detail ?: "no benchmark results"
                             error(
-                                "No compatible profile found after validating ${candidates.size} " +
-                                    "of ${profiles.size} profiles; best attempt: $detail",
+                                "No working location found. Best attempt: $detail",
                             )
                         }
 
@@ -115,7 +133,7 @@ class BenchmarkOrchestrator(
                 },
             )
         } catch (_: TimeoutCancellationException) {
-            Result.failure(IOException("Refresh timed out after ${settings.refreshTimeoutMillis / 1000}s"))
+            Result.failure(IOException("Location search timed out after ${settings.refreshTimeoutMillis / 1000}s"))
         } catch (error: Throwable) {
             Result.failure(error)
         }
@@ -124,10 +142,10 @@ class BenchmarkOrchestrator(
     suspend fun syncSubscriptionLocations(): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val state = storage.snapshot()
-            require(state.profileUrl.isNotBlank()) { "Profile URL is empty" }
+            require(state.profileUrl.isNotBlank()) { "Subscription URL is empty" }
             val body = downloadSubscription(state.profileUrl)
             val parsed = VlessParser.parseSubscription(body)
-            require(parsed.isNotEmpty()) { "No profiles parsed from subscription" }
+            require(parsed.isNotEmpty()) { "No locations were found in the subscription" }
             storage.updateCurrentLocations(parsed.map { it.rawLink })
             parsed.size
         }
@@ -294,12 +312,14 @@ class BenchmarkOrchestrator(
     private suspend fun validateCandidates(
         candidates: List<PreflightResult>,
         dnsSettings: DnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        validationSettings: BenchmarkValidationSettings,
     ): List<ProfileBenchmark> = coroutineScope {
-        val semaphore = Semaphore(settings.validationConcurrency)
+        val semaphore = Semaphore(validationSettings.concurrency())
         candidates.mapIndexed { idx, candidate ->
             async(Dispatchers.IO) {
                 semaphore.withPermit {
-                    validateProfile(candidate, idx, dnsSettings)
+                    validateProfile(candidate, idx, dnsSettings, benchmarkUrls)
                 }
             }
         }.awaitAll()
@@ -309,6 +329,7 @@ class BenchmarkOrchestrator(
         candidate: PreflightResult,
         idx: Int,
         dnsSettings: DnsSettings,
+        benchmarkUrls: BenchmarkUrls,
     ): ProfileBenchmark = withContext(Dispatchers.IO) {
         val profile = candidate.profile
         val httpPort = settings.baseHttpPort + idx
@@ -327,8 +348,8 @@ class BenchmarkOrchestrator(
                     return@withTimeoutOrNull failedBenchmark(profile, candidate, "proxy_not_ready")
                 }
 
-                val googleResult = runProxyRuns(httpPort, httpUrls.google, settings.googleRuns)
-                val chatgptResult = runProxyRuns(httpPort, httpUrls.chatgpt, settings.chatgptRuns)
+                val googleResult = runProxyRuns(httpPort, benchmarkUrls.google, settings.googleRuns)
+                val chatgptResult = runProxyRuns(httpPort, benchmarkUrls.chatgpt, settings.chatgptRuns)
 
                 val googleMedian = medianOrNull(googleResult.totals)
                 val chatgptMedian = medianOrNull(chatgptResult.totals)
@@ -355,13 +376,13 @@ class BenchmarkOrchestrator(
                         append(profile.remarks)
                         append(": tcp=")
                         append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
-                        append(" google=")
+                        append(" primary=")
                         append(googleStatus)
-                        append(" codes=")
+                        append(" primary_codes=")
                         append(googleResult.codes.joinToString(","))
-                        append(" chatgpt=")
+                        append(" secondary=")
                         append(chatgptStatus)
-                        append(" codes=")
+                        append(" secondary_codes=")
                         append(chatgptResult.codes.joinToString(","))
                         append(" score=")
                         append(score)
@@ -486,14 +507,12 @@ class BenchmarkOrchestrator(
         val prefilterConcurrency: Int = 8,
         val prefilterConnectTimeoutMillis: Int = 1_500,
         val prefilterTimeoutMillis: Long = 2_000L,
-        val validationTopN: Int = 5,
-        val validationConcurrency: Int = 3,
         val googleRuns: Int = 1,
         val chatgptRuns: Int = 1,
         val connectTimeout: Int = 5,
-        val maxTime: Int = 8,
-        val portWaitMillis: Long = 4_000L,
-        val profileTimeoutMillis: Long = 18_000L,
+        val maxTime: Int = 5,
+        val portWaitMillis: Long = 2_000L,
+        val profileTimeoutMillis: Long = 10_000L,
         val refreshTimeoutMillis: Long = 60_000L,
     )
 

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
@@ -17,6 +18,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.io.File
 
@@ -28,7 +32,11 @@ class ProfileStorage(private val context: Context) {
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
         val subscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
+        val validationGeneralUrl = stringPreferencesKey("validation_general_url")
+        val validationChatGptUrl = stringPreferencesKey("validation_chatgpt_url")
+        val validationCandidateCount = intPreferencesKey("validation_candidate_count")
         val currentLocations = stringPreferencesKey("current_locations")
+        val locationBenchmarkDetails = stringPreferencesKey("location_benchmark_details")
         val customDns = stringPreferencesKey("custom_dns")
         val useCustomDns = booleanPreferencesKey("use_custom_dns")
         val ignoreRules = booleanPreferencesKey("ignore_rules")
@@ -80,6 +88,20 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
+    suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
+        val normalized = settings.normalized()
+        context.dataStore.edit { prefs ->
+            prefs[Keys.validationGeneralUrl] = normalized.generalUrl
+            prefs[Keys.validationChatGptUrl] = normalized.chatGptUrl
+            prefs[Keys.validationCandidateCount] = normalized.candidateCount
+        }
+        DiagnosticsLogger.append(
+            context,
+            "Validation settings updated: general=${normalized.generalUrl} chatgpt=${normalized.chatGptUrl} " +
+                "candidates=${normalized.candidateCount} concurrency=${normalized.concurrency()}",
+        )
+    }
+
     suspend fun updateCurrentLocations(rawLinks: List<String>) {
         val normalized = rawLinks
             .mapNotNull { raw ->
@@ -89,6 +111,9 @@ class ProfileStorage(private val context: Context) {
             }
         context.dataStore.edit { prefs ->
             prefs[Keys.currentLocations] = encodeList(normalized)
+            prefs[Keys.locationBenchmarkDetails] = encodeStringMap(
+                decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in normalized },
+            )
             val selectedStored = prefs[Keys.selectedProfileJson]
                 ?: prefs[Keys.selectedProfileRawLink]?.takeIf { it.isNotBlank() }?.let { raw ->
                     runCatching {
@@ -107,6 +132,13 @@ class ProfileStorage(private val context: Context) {
                 }
         }
         DiagnosticsLogger.append(context, "Current locations updated: count=${normalized.size}")
+    }
+
+    suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.locationBenchmarkDetails] = encodeStringMap(details)
+        }
+        DiagnosticsLogger.append(context, "Location benchmark details updated: count=${details.size}")
     }
 
     suspend fun updateDns(dns: String, enabled: Boolean) {
@@ -180,7 +212,16 @@ class ProfileStorage(private val context: Context) {
                 ?: ProfileSourceMode.SUBSCRIPTION,
             subscriptionRefreshPolicy = refreshSettings.first,
             subscriptionRefreshCustomHours = refreshSettings.second,
+            validationSettings = BenchmarkValidationSettings(
+                generalUrl = preferences[Keys.validationGeneralUrl]
+                    ?: BenchmarkValidationSettings.DEFAULT_GENERAL_URL,
+                chatGptUrl = preferences[Keys.validationChatGptUrl]
+                    ?: BenchmarkValidationSettings.DEFAULT_CHATGPT_URL,
+                candidateCount = preferences[Keys.validationCandidateCount]
+                    ?: BenchmarkValidationSettings.DEFAULT_CANDIDATE_COUNT,
+            ).normalized(),
             currentLocations = decodeList(preferences[Keys.currentLocations]),
+            locationBenchmarkDetails = decodeStringMap(preferences[Keys.locationBenchmarkDetails]),
             customDns = preferences[Keys.customDns].orEmpty(),
             useCustomDns = preferences[Keys.useCustomDns] ?: false,
             routingRules = RoutingRules(
@@ -227,6 +268,24 @@ class ProfileStorage(private val context: Context) {
     }
 
     private fun encodeList(values: List<String>): String = values.joinToString(separator = "\n")
+
+    private fun decodeStringMap(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            Json.decodeFromString(
+                MapSerializer(String.serializer(), String.serializer()),
+                raw,
+            )
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeStringMap(values: Map<String, String>): String {
+        if (values.isEmpty()) return ""
+        return Json.encodeToString(
+            MapSerializer(String.serializer(), String.serializer()),
+            values.filterValues { it.isNotBlank() }.toSortedMap(),
+        )
+    }
 
     private fun decodeSubscriptionRefreshSettings(
         rawPolicy: String?,

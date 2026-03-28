@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -34,6 +35,10 @@ class AppRepository(
     suspend fun updateSubscriptionRefreshPolicy(policy: SubscriptionRefreshPolicy, customHours: Int) {
         storage.updateSubscriptionRefreshPolicy(policy, customHours)
         subscriptionRefreshScheduler.sync(storage.snapshot())
+    }
+
+    suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
+        storage.updateValidationSettings(settings)
     }
 
     suspend fun syncSubscriptionRefreshScheduling() {

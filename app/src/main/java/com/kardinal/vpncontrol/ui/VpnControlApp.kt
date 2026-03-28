@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -92,6 +93,11 @@ fun VpnControlApp(
     onSubscriptionRefreshPolicyChange: (SubscriptionRefreshPolicy) -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
     onSaveSubscriptionRefreshPolicy: () -> Unit,
+    onToggleValidationSettingsDialog: () -> Unit,
+    onValidationGeneralUrlChange: (String) -> Unit,
+    onValidationChatGptUrlChange: (String) -> Unit,
+    onValidationCandidateCountChange: (String) -> Unit,
+    onSaveValidationSettings: () -> Unit,
     onOpenMainTab: () -> Unit,
     onOpenLocationsTab: () -> Unit,
     onOpenRoutingRules: () -> Unit,
@@ -101,6 +107,7 @@ fun VpnControlApp(
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
+    onToggleSelectedLocationVpn: () -> Unit,
     onCloseLocationDialog: () -> Unit,
     onLocationDraftChange: (String) -> Unit,
     onSaveLocation: () -> Unit,
@@ -124,6 +131,7 @@ fun VpnControlApp(
     val background = Brush.verticalGradient(
         colors = listOf(Color(0xFF08111F), Color(0xFF12304B), Color(0xFF3D6B59)),
     )
+    val showBlockingProgress = state.isRefreshing || state.isStartingVpn
 
     Box(
         modifier = Modifier
@@ -141,6 +149,11 @@ fun VpnControlApp(
             onToggleDnsDialog = onToggleDnsDialog,
             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
             onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
+            onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
+            onValidationGeneralUrlChange = onValidationGeneralUrlChange,
+            onValidationChatGptUrlChange = onValidationChatGptUrlChange,
+            onValidationCandidateCountChange = onValidationCandidateCountChange,
+            onSaveValidationSettings = onSaveValidationSettings,
             onToggleVpn = onToggleVpn,
             onRefresh = onRefresh,
             onExportDiagnostics = onExportDiagnostics,
@@ -150,6 +163,7 @@ fun VpnControlApp(
             onEditLocation = onEditLocation,
             onDeleteLocation = onDeleteLocation,
             onSelectLocation = onSelectLocation,
+            onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
             onIgnoreRulesChange = onRoutingIgnoreRulesChange,
             onAppSearchChange = onRoutingAppSearchChange,
             onToggleProxyApp = onToggleProxyRoutingApp,
@@ -166,16 +180,17 @@ fun VpnControlApp(
         )
     }
 
-    if (state.isRefreshing) {
+    if (showBlockingProgress) {
         BackHandler(enabled = true) {}
         RefreshProgressDialog(progressText = state.statusMessage)
     }
 
     BackHandler(
-        enabled = !state.isRefreshing && (
+        enabled = !showBlockingProgress && (
             state.showProfileDialog ||
             state.showDnsDialog ||
             state.showRefreshPolicyDialog ||
+            state.showValidationSettingsDialog ||
             state.showLocationDialog ||
             state.currentScreen != AppScreen.MAIN ||
             state.screenHistory.isNotEmpty()
@@ -185,6 +200,7 @@ fun VpnControlApp(
             state.showProfileDialog -> onToggleProfileDialog()
             state.showDnsDialog -> onToggleDnsDialog()
             state.showRefreshPolicyDialog -> onToggleRefreshPolicyDialog()
+            state.showValidationSettingsDialog -> onToggleValidationSettingsDialog()
             state.showLocationDialog -> onCloseLocationDialog()
             else -> onNavigateBack()
         }
@@ -193,7 +209,7 @@ fun VpnControlApp(
     if (state.showProfileDialog) {
         AlertDialog(
             onDismissRequest = onToggleProfileDialog,
-            title = { Text("Profile URL") },
+            title = { Text("Subscription URL") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -205,13 +221,13 @@ fun VpnControlApp(
                     )
                     SourceModeOption(
                         title = "Use Subscription",
-                        description = "Refresh downloads the current subscription and syncs locations from it.",
+                        description = "Finding the best location downloads the subscription and updates saved locations.",
                         selected = state.profileSourceModeDraft == ProfileSourceMode.SUBSCRIPTION,
                         onClick = { onProfileSourceModeChange(ProfileSourceMode.SUBSCRIPTION) },
                     )
                     SourceModeOption(
-                        title = "Use Current Locations",
-                        description = "Refresh benchmarks the editable locations from the Locations tab.",
+                        title = "Use Saved Locations",
+                        description = "Finding the best location tests the locations saved on the Locations tab.",
                         selected = state.profileSourceModeDraft == ProfileSourceMode.CURRENT_LOCATIONS,
                         onClick = { onProfileSourceModeChange(ProfileSourceMode.CURRENT_LOCATIONS) },
                     )
@@ -233,7 +249,9 @@ fun VpnControlApp(
     if (state.showDnsDialog) {
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
-            title = { Text("Custom DNS") },
+            title = { Text("Custom DNS", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -253,17 +271,18 @@ fun VpnControlApp(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("DNS IP address") },
                         enabled = state.useCustomDnsDraft,
+                        colors = routingTextFieldColors(),
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = onSaveDns) {
-                    Text("Save")
+                    Text("Save", color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -272,13 +291,13 @@ fun VpnControlApp(
     if (state.showRefreshPolicyDialog) {
         AlertDialog(
             onDismissRequest = onToggleRefreshPolicyDialog,
-            title = { Text("Subscription Refresh Policy", color = Color.White) },
+            title = { Text("Subscription Auto-Refresh", color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Applies only while Profile Source is set to Subscription. The app will periodically redownload the subscription URL and refresh the saved locations list.",
+                        text = "Works only when Profile Source is set to Subscription. The app will periodically redownload the subscription and update the saved locations list.",
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
                     )
@@ -290,7 +309,7 @@ fun VpnControlApp(
                         SourceModeOption(
                             title = policy.title,
                             description = when (policy) {
-                                SubscriptionRefreshPolicy.OFF -> "No background subscription sync."
+                                SubscriptionRefreshPolicy.OFF -> "Do not update the subscription in the background."
                                 SubscriptionRefreshPolicy.EVERY_HOUR -> "Update saved locations from the subscription every hour."
                                 SubscriptionRefreshPolicy.CUSTOM -> "Use a custom interval in hours."
                             },
@@ -324,11 +343,76 @@ fun VpnControlApp(
         )
     }
 
+    if (state.showValidationSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = onToggleValidationSettingsDialog,
+            title = { Text("Location Test Settings", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "The app uses these sites when testing locations. Concurrency matches the candidate count, up to 5.",
+                        color = Color(0xFFD3E3EE),
+                        fontSize = 13.sp,
+                    )
+                    OutlinedTextField(
+                        value = state.validationGeneralUrlDraft,
+                        onValueChange = onValidationGeneralUrlChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Primary test site") },
+                        placeholder = { Text("google.com or full URL") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.validationChatGptUrlDraft,
+                        onValueChange = onValidationChatGptUrlChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Secondary test site") },
+                        placeholder = { Text("chatgpt.com or full URL") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.validationCandidateCountDraft,
+                        onValueChange = onValidationCandidateCountChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Candidates to test") },
+                        placeholder = { Text("3") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    Text(
+                        text = "Current settings: ${state.validationSettings.displaySummary()}",
+                        color = Color(0xFF9ED6FF),
+                        fontSize = 12.sp,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onSaveValidationSettings) {
+                    Text("Save", color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onToggleValidationSettingsDialog) {
+                    Text("Cancel", color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
     if (state.showLocationDialog) {
         AlertDialog(
             onDismissRequest = onCloseLocationDialog,
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
             title = {
-                Text(if (state.editingLocationIndex == null) "Add Location" else "Edit Location")
+                Text(
+                    if (state.editingLocationIndex == null) "Add Location" else "Edit Location",
+                    color = Color.White,
+                )
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -337,23 +421,24 @@ fun VpnControlApp(
                         onValueChange = onLocationDraftChange,
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 5,
-                        label = { Text("VLESS link or JSON") },
+                        label = { Text("Location config (VLESS link or JSON)") },
+                        colors = routingTextFieldColors(),
                     )
                     Text(
-                        text = "Paste either a full vless:// link or a JSON object. The app validates and stores it as JSON.",
-                        color = Color(0xFF4D6070),
+                        text = "Paste a vless:// link or a JSON config. The app validates it and saves it as a location.",
+                        color = Color(0xFFD3E3EE),
                         fontSize = 12.sp,
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = onSaveLocation) {
-                    Text("Save")
+                    Text("Save", color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onCloseLocationDialog) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -412,6 +497,11 @@ private fun HomeTabsScreen(
     onToggleDnsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
+    onToggleValidationSettingsDialog: () -> Unit,
+    onValidationGeneralUrlChange: (String) -> Unit,
+    onValidationChatGptUrlChange: (String) -> Unit,
+    onValidationCandidateCountChange: (String) -> Unit,
+    onSaveValidationSettings: () -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -421,6 +511,7 @@ private fun HomeTabsScreen(
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
+    onToggleSelectedLocationVpn: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
     onAppSearchChange: (String) -> Unit,
     onToggleProxyApp: (String) -> Unit,
@@ -457,6 +548,11 @@ private fun HomeTabsScreen(
                     onToggleDnsDialog = onToggleDnsDialog,
                     onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                     onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
+                    onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
+                    onValidationGeneralUrlChange = onValidationGeneralUrlChange,
+                    onValidationChatGptUrlChange = onValidationChatGptUrlChange,
+                    onValidationCandidateCountChange = onValidationCandidateCountChange,
+                    onSaveValidationSettings = onSaveValidationSettings,
                     onToggleVpn = onToggleVpn,
                     onRefresh = onRefresh,
                     onExportDiagnostics = onExportDiagnostics,
@@ -469,6 +565,7 @@ private fun HomeTabsScreen(
                     onEditLocation = onEditLocation,
                     onDeleteLocation = onDeleteLocation,
                     onSelectLocation = onSelectLocation,
+                    onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
                 )
                 AppScreen.ROUTING_RULES -> RoutingRulesScreen(
                     state = state,
@@ -567,6 +664,11 @@ private fun MainScreen(
     onToggleDnsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
+    onToggleValidationSettingsDialog: () -> Unit,
+    onValidationGeneralUrlChange: (String) -> Unit,
+    onValidationChatGptUrlChange: (String) -> Unit,
+    onValidationCandidateCountChange: (String) -> Unit,
+    onSaveValidationSettings: () -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -618,7 +720,7 @@ private fun MainScreen(
                             onDismissRequest = { advancedMenuExpanded = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Set Custom DNS") },
+                                text = { Text("Custom DNS") },
                                 onClick = {
                                     advancedMenuExpanded = false
                                     onToggleDnsDialog()
@@ -627,7 +729,7 @@ private fun MainScreen(
                             DropdownMenuItem(
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text("Subscription Refresh Policy")
+                                        Text("Subscription Auto-Refresh")
                                         Text(
                                             state.subscriptionRefreshPolicy.displayValue(
                                                 state.subscriptionRefreshCustomHours,
@@ -642,14 +744,30 @@ private fun MainScreen(
                                     onToggleRefreshPolicyDialog()
                                 },
                             )
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Location Test Settings")
+                                        Text(
+                                            state.validationSettings.displaySummary(),
+                                            color = Color(0xFF4A6070),
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    advancedMenuExpanded = false
+                                    onToggleValidationSettingsDialog()
+                                },
+                            )
                         }
                     }
                 }
                 Text(
                     text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                        "Subscription mode is active. Refresh syncs locations from the subscription and selects the best one."
+                        "Subscription is active. Finding the best location updates saved locations from the subscription and selects the best one."
                     } else {
-                        "Current locations mode is active. Refresh selects the best saved location from the Locations tab."
+                        "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
                     },
                     color = Color(0xFFD3E3EE),
                 )
@@ -658,17 +776,17 @@ private fun MainScreen(
 
                 ActionButton(
                     label = if (state.isVpnRunning) "Stop VPN" else "Start VPN",
-                    sublabel = if (state.hasVpnPermission) "Toggle active tunnel" else "Requires VPN permission",
+                    sublabel = if (state.hasVpnPermission) "Connect or disconnect the VPN" else "VPN permission required",
                     onClick = onToggleVpn,
                     enabled = !state.isBusy,
                 )
                 ActionButton(
-                    label = "Refresh",
+                    label = "Find the best location",
                     sublabel = state.lastBenchmarkSummary.ifBlank {
                         if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "Select best location from subscription"
+                            "Find the best location from the subscription"
                         } else {
-                            "Select best location from saved locations"
+                            "Find the best location from saved locations"
                         }
                     },
                     onClick = onRefresh,
@@ -707,24 +825,30 @@ private fun LocationsScreen(
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
+    onToggleSelectedLocationVpn: () -> Unit,
 ) {
     val selectedLocation = selectedLocationReference(state)
-    val locations = state.currentLocations.mapIndexed { index, rawLink ->
-        val parsed = runCatching { LocationConfigs.decodeStoredLocation(rawLink) }.getOrNull()
-        SavedLocationRow(
-            index = index,
-            rawLink = rawLink,
-            name = parsed?.remarks ?: "Invalid location",
-            server = parsed?.server ?: "Unparseable VLESS link",
-            details = parsed?.let {
-                listOf(it.serverPort.toString(), it.network, it.sni)
-                    .filter { value -> value.isNotBlank() }
-                    .joinToString(" • ")
-            } ?: "Tap edit to fix this location",
-            isValid = parsed != null,
-            isSelected = rawLink == selectedLocation,
-        )
-    }
+    val locations = state.currentLocations
+        .mapIndexed { index, rawLink ->
+            val parsed = runCatching { LocationConfigs.decodeStoredLocation(rawLink) }.getOrNull()
+            SavedLocationRow(
+                index = index,
+                rawLink = rawLink,
+                name = parsed?.remarks ?: "Invalid location config",
+                server = parsed?.server ?: "Could not read this location",
+                details = parsed?.let {
+                    listOf(it.serverPort.toString(), it.network, it.sni)
+                        .filter { value -> value.isNotBlank() }
+                        .joinToString(" • ")
+                } ?: "Tap edit to fix this location",
+                benchmarkDetail = stripBenchmarkLocationPrefix(
+                    state.locationBenchmarkDetails[rawLink].orEmpty(),
+                ),
+                isValid = parsed != null,
+                isSelected = rawLink == selectedLocation,
+            )
+        }
+        .sortedWith(locationRowComparator())
     val selectedName = locations.firstOrNull { it.isSelected }?.name ?: state.selectedProfileName.takeIf { it.isNotBlank() }
 
     Scaffold(
@@ -754,9 +878,9 @@ private fun LocationsScreen(
                     Text("Locations", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
                         if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "Refresh is using the subscription. The list below is refreshed from it each time."
+                            "Location search uses the subscription. This list is updated from it each time."
                         } else {
-                            "Refresh is using the saved locations below. No subscription is required."
+                            "Location search uses the saved locations below. No subscription is required."
                         },
                         color = Color(0xFFD3E3EE),
                     )
@@ -803,7 +927,7 @@ private fun LocationsScreen(
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 ) {
-                    Text("Import JSON")
+                    Text("Import Locations")
                 }
                 OutlinedButton(
                     onClick = onExportLocations,
@@ -813,7 +937,7 @@ private fun LocationsScreen(
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 ) {
-                    Text("Export JSON")
+                    Text("Export Locations")
                 }
             }
 
@@ -831,7 +955,7 @@ private fun LocationsScreen(
                     ) {
                         Text(
                             text = if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                                "No locations cached yet. Run Refresh in subscription mode to pull them in, or add your own."
+                                "No locations cached yet. Find the best location in subscription mode to load them, or add your own."
                             } else {
                                 "No saved locations yet. Add one manually or switch back to subscription mode."
                             },
@@ -847,8 +971,15 @@ private fun LocationsScreen(
                         items(locations, key = { "${it.index}:${it.rawLink}" }) { location ->
                             LocationRowCard(
                                 location = location,
+                                isVpnRunning = state.isVpnRunning,
                                 enabled = !state.isBusy,
-                                onSelect = { onSelectLocation(location.index) },
+                                onPrimaryAction = {
+                                    if (location.isSelected) {
+                                        onToggleSelectedLocationVpn()
+                                    } else {
+                                        onSelectLocation(location.index)
+                                    }
+                                },
                                 onEdit = { onEditLocation(location.index) },
                                 onDelete = { onDeleteLocation(location.index) },
                             )
@@ -868,6 +999,7 @@ private fun ProfileSourceCard(
     onSaveProfile: () -> Unit,
 ) {
     val activeMode = state.profileSourceModeDraft
+    val useSubscription = activeMode == ProfileSourceMode.SUBSCRIPTION
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -882,32 +1014,56 @@ private fun ProfileSourceCard(
             Text("Profile Source", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                    "Subscription is active. Refresh downloads the current subscription and syncs locations from it."
+                    "Subscription is active. Finding the best location downloads the subscription and updates saved locations."
                 } else {
-                    "Current locations is active. Refresh benchmarks the saved locations from the Locations tab."
+                    "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
                 },
                 color = Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
-            SourceModeOption(
-                title = "Subscription",
-                description = "Use the subscription URL and keep locations synced from it.",
-                selected = activeMode == ProfileSourceMode.SUBSCRIPTION,
-                onClick = {
-                    onProfileSourceModeChange(ProfileSourceMode.SUBSCRIPTION)
-                    onSaveProfile()
-                },
-            )
-            SourceModeOption(
-                title = "Current Locations",
-                description = "Use the editable locations saved in the Locations tab.",
-                selected = activeMode == ProfileSourceMode.CURRENT_LOCATIONS,
-                onClick = {
-                    onProfileSourceModeChange(ProfileSourceMode.CURRENT_LOCATIONS)
-                    onSaveProfile()
-                },
-            )
-            if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = if (useSubscription) "Subscription" else "Saved Locations",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = if (useSubscription) {
+                                "Turn off to use the locations saved on the Locations tab."
+                            } else {
+                                "Turn on to use the subscription URL."
+                            },
+                            color = Color(0xFFD3E3EE),
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Switch(
+                        checked = useSubscription,
+                        onCheckedChange = { checked ->
+                            onProfileSourceModeChange(
+                                if (checked) ProfileSourceMode.SUBSCRIPTION else ProfileSourceMode.CURRENT_LOCATIONS,
+                            )
+                            onSaveProfile()
+                        },
+                    )
+                }
+            }
+            if (useSubscription) {
                 OutlinedTextField(
                     value = state.profileDraft,
                     onValueChange = onProfileChange,
@@ -985,7 +1141,7 @@ private fun RoutingRulesScreen(
                     shape = RoundedCornerShape(16.dp),
                     colors = darkButtonColors(),
                 ) {
-                    Text("Save")
+                    Text("Save Rules")
                 }
             }
             item {
@@ -1001,7 +1157,7 @@ private fun RoutingRulesScreen(
                         border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                         colors = darkOutlinedButtonColors(),
                     ) {
-                        Text("Import")
+                        Text("Import Rules")
                     }
                     OutlinedButton(
                         onClick = onExport,
@@ -1011,7 +1167,7 @@ private fun RoutingRulesScreen(
                         border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                         colors = darkOutlinedButtonColors(),
                     ) {
-                        Text("Export")
+                        Text("Export Rules")
                     }
                 }
             }
@@ -1024,7 +1180,7 @@ private fun RoutingRulesScreen(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Proxy/direct app rules and domain suffix rules live here. You can also temporarily ignore them and send normal app traffic through the VPN.",
+                        text = "Choose which apps use the VPN and which domains bypass it. You can also ignore all saved rules temporarily.",
                         color = Color(0xFFD3E3EE),
                         fontSize = 14.sp,
                     )
@@ -1043,7 +1199,7 @@ private fun RoutingRulesScreen(
                 AppSelectionSectionCard(
                     title = "Proxy Apps",
                     count = state.routingProxyPackagesDraft.size,
-                    description = "If this list is not empty, only these apps use the VPN. National and custom domain rules still go direct.",
+                    description = "Only these apps use the VPN. Domain bypass rules still apply.",
                     onSelectAll = onSelectAllProxyApps,
                     onClearAll = onClearAllProxyApps,
                     enableSelectAll = !state.installedAppsLoading && filteredApps.isNotEmpty(),
@@ -1063,16 +1219,16 @@ private fun RoutingRulesScreen(
             }
             item {
                 RuleTextField(
-                    title = "National Domains",
-                    description = "One per line. Example: ru",
+                    title = "Country-code Domains",
+                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: ru",
                     value = state.routingNationalDomainsDraft,
                     onValueChange = onNationalDomainsChange,
                 )
             }
             item {
                 RuleTextField(
-                    title = "Direct Domains",
-                    description = "One per line. Example: karapsin.com",
+                    title = "Bypass Domains",
+                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: magnit.com",
                     value = state.routingDirectDomainsDraft,
                     onValueChange = onDirectDomainsChange,
                 )
@@ -1109,7 +1265,7 @@ private fun RoutingRulesScreen(
                             colors = routingTextFieldColors(),
                         )
                         Text(
-                            text = "Tap Proxy or Direct on an app row. Proxy apps are shown first, then direct apps, then unassigned.",
+                            text = "Tap Proxy or Direct on an app row. Proxy apps are listed first, then direct apps, then unassigned apps.",
                             color = Color(0xFFD3E3EE),
                             fontSize = 12.sp,
                         )
@@ -1203,8 +1359,8 @@ private fun CompactSummaryCard(state: MainUiState) {
                 fontSize = 13.sp,
             )
             Text(
-                "${state.routingNationalDomainsDraft.countEntries()} national suffixes • " +
-                    "${state.routingDirectDomainsDraft.countEntries()} direct domains",
+                "${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
+                    "${state.routingDirectDomainsDraft.countEntries()} bypass domains",
                 color = Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
@@ -1425,7 +1581,7 @@ private fun AppAssignmentRow(
                 }
                 if (app.isSystemApp) {
                     Text(
-                        text = "sys",
+                        text = "System",
                         color = Color(0xFF9ED6FF),
                         fontSize = 11.sp,
                     )
@@ -1438,11 +1594,13 @@ private fun AppAssignmentRow(
 @Composable
 private fun LocationRowCard(
     location: SavedLocationRow,
+    isVpnRunning: Boolean,
     enabled: Boolean,
-    onSelect: () -> Unit,
+    onPrimaryAction: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val isSelectedAndRunning = location.isSelected && isVpnRunning
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1483,9 +1641,18 @@ private fun LocationRowCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (location.benchmarkDetail.isNotBlank()) {
+                    Text(
+                        text = location.benchmarkDetail,
+                        color = Color(0xFFD3E3EE),
+                        fontSize = 11.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (location.isSelected) {
                     Text(
-                        text = "Selected location",
+                        text = if (isVpnRunning) "In use" else "Selected",
                         color = Color(0xFFFFE0A3),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1497,7 +1664,7 @@ private fun LocationRowCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
             ) {
                 OutlinedButton(
-                    onClick = onSelect,
+                    onClick = onPrimaryAction,
                     enabled = enabled && location.isValid,
                     modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp),
@@ -1507,8 +1674,15 @@ private fun LocationRowCard(
                     ),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = if (location.isSelected) "Using this location" else "Use this location",
+                        imageVector = when {
+                            isSelectedAndRunning -> Icons.Filled.Stop
+                            else -> Icons.Filled.PlayArrow
+                        },
+                        contentDescription = when {
+                            isSelectedAndRunning -> "Stop VPN for this location"
+                            location.isSelected -> "Start VPN for this location"
+                            else -> "Select this location"
+                        },
                     )
                 }
                 OutlinedButton(
@@ -1602,9 +1776,9 @@ private fun routingSummary(state: MainUiState): String {
         append(" • ")
         append("${state.routingRules.bypassPackages.size} direct")
         append(" • ")
-        append("${state.routingRules.nationalDomainSuffixes.size} national suffixes")
+        append("${state.routingRules.nationalDomainSuffixes.size} country-code domains")
         append(" • ")
-        append("${state.routingRules.directDomainSuffixes.size} custom domains")
+        append("${state.routingRules.directDomainSuffixes.size} bypass domains")
     }
 }
 
@@ -1615,7 +1789,7 @@ private fun profileSourceSummary(state: MainUiState): String {
             "Use subscription • $suffix"
         }
         ProfileSourceMode.CURRENT_LOCATIONS -> {
-            "Use current locations • ${state.currentLocations.size} saved"
+            "Use saved locations • ${state.currentLocations.size} saved"
         }
     }
 }
@@ -1639,6 +1813,41 @@ private fun selectedLocationReference(state: MainUiState): String {
             }
             .orEmpty()
     }
+}
+
+private fun locationRowComparator(): Comparator<SavedLocationRow> {
+    return compareBy<SavedLocationRow> { locationBenchmarkRank(it.benchmarkDetail) }
+        .thenBy { parseBenchmarkScore(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
+        .thenBy { parseBenchmarkTimingMillis(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
+        .thenBy { it.name.lowercase(Locale.ROOT) }
+}
+
+private fun locationBenchmarkRank(detail: String): Int {
+    return when {
+        parseBenchmarkScore(detail) != null -> 0
+        parseBenchmarkTimingMillis(detail) != null -> 1
+        else -> 2
+    }
+}
+
+private fun parseBenchmarkScore(detail: String): Double? {
+    return Regex("""\bscore=([0-9]+(?:\.[0-9]+)?)""")
+        .find(detail)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toDoubleOrNull()
+}
+
+private fun parseBenchmarkTimingMillis(detail: String): Double? {
+    return Regex("""\btcp=([0-9]+(?:\.[0-9]+)?)ms""")
+        .find(detail)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toDoubleOrNull()
+}
+
+private fun stripBenchmarkLocationPrefix(detail: String): String {
+    return detail.substringAfter(": ", detail).trim()
 }
 
 @Composable
@@ -1681,6 +1890,7 @@ private data class SavedLocationRow(
     val name: String,
     val server: String,
     val details: String,
+    val benchmarkDetail: String,
     val isValid: Boolean,
     val isSelected: Boolean,
 )

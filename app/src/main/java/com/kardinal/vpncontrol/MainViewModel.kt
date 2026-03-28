@@ -15,6 +15,7 @@ import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
+import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -43,7 +44,12 @@ data class MainUiState(
     val subscriptionRefreshPolicyDraft: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshCustomHours: Int = 3,
     val subscriptionRefreshCustomHoursDraft: String = "3",
+    val validationSettings: BenchmarkValidationSettings = BenchmarkValidationSettings(),
+    val validationGeneralUrlDraft: String = BenchmarkValidationSettings.DEFAULT_GENERAL_URL,
+    val validationChatGptUrlDraft: String = BenchmarkValidationSettings.DEFAULT_CHATGPT_URL,
+    val validationCandidateCountDraft: String = BenchmarkValidationSettings.DEFAULT_CANDIDATE_COUNT.toString(),
     val currentLocations: List<String> = emptyList(),
+    val locationBenchmarkDetails: Map<String, String> = emptyMap(),
     val customDns: String = "",
     val customDnsDraft: String = "",
     val useCustomDns: Boolean = false,
@@ -61,6 +67,7 @@ data class MainUiState(
     val isVpnRunning: Boolean = false,
     val isBusy: Boolean = false,
     val isRefreshing: Boolean = false,
+    val isStartingVpn: Boolean = false,
     val selectedProfileName: String = "",
     val selectedProfileServer: String = "",
     val selectedProfileRawLink: String = "",
@@ -70,6 +77,7 @@ data class MainUiState(
     val showProfileDialog: Boolean = false,
     val showDnsDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
+    val showValidationSettingsDialog: Boolean = false,
     val showLocationDialog: Boolean = false,
     val locationDraft: String = "",
     val editingLocationIndex: Int? = null,
@@ -108,7 +116,24 @@ class MainViewModel(
                 } else {
                     persisted.subscriptionRefreshCustomHours.toString()
                 },
+                validationSettings = persisted.validationSettings,
+                validationGeneralUrlDraft = if (_uiState.value.showValidationSettingsDialog) {
+                    _uiState.value.validationGeneralUrlDraft
+                } else {
+                    persisted.validationSettings.generalUrl
+                },
+                validationChatGptUrlDraft = if (_uiState.value.showValidationSettingsDialog) {
+                    _uiState.value.validationChatGptUrlDraft
+                } else {
+                    persisted.validationSettings.chatGptUrl
+                },
+                validationCandidateCountDraft = if (_uiState.value.showValidationSettingsDialog) {
+                    _uiState.value.validationCandidateCountDraft
+                } else {
+                    persisted.validationSettings.candidateCount.toString()
+                },
                 currentLocations = persisted.currentLocations,
+                locationBenchmarkDetails = persisted.locationBenchmarkDetails,
                 customDns = persisted.customDns,
                 customDnsDraft = if (_uiState.value.showDnsDialog) _uiState.value.customDnsDraft else persisted.customDns,
                 useCustomDns = persisted.useCustomDns,
@@ -156,6 +181,16 @@ class MainViewModel(
             showRefreshPolicyDialog = !_uiState.value.showRefreshPolicyDialog,
             subscriptionRefreshPolicyDraft = _uiState.value.subscriptionRefreshPolicy,
             subscriptionRefreshCustomHoursDraft = _uiState.value.subscriptionRefreshCustomHours.toString(),
+        )
+    }
+
+    fun toggleValidationSettingsDialog() {
+        val current = _uiState.value.validationSettings
+        _uiState.value = _uiState.value.copy(
+            showValidationSettingsDialog = !_uiState.value.showValidationSettingsDialog,
+            validationGeneralUrlDraft = current.generalUrl,
+            validationChatGptUrlDraft = current.chatGptUrl,
+            validationCandidateCountDraft = current.candidateCount.toString(),
         )
     }
 
@@ -227,6 +262,20 @@ class MainViewModel(
     fun onSubscriptionRefreshCustomHoursDraftChanged(value: String) {
         _uiState.value = _uiState.value.copy(
             subscriptionRefreshCustomHoursDraft = value.filter { it.isDigit() }.take(3),
+        )
+    }
+
+    fun onValidationGeneralUrlDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(validationGeneralUrlDraft = value)
+    }
+
+    fun onValidationChatGptUrlDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(validationChatGptUrlDraft = value)
+    }
+
+    fun onValidationCandidateCountDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(
+            validationCandidateCountDraft = value.filter { it.isDigit() }.take(3),
         )
     }
 
@@ -352,7 +401,7 @@ class MainViewModel(
                 if (mode == ProfileSourceMode.SUBSCRIPTION) {
                     "Profile source set to subscription"
                 } else {
-                    "Profile source set to current locations"
+                    "Profile source set to saved locations"
                 },
             )
             _uiState.value = _uiState.value.copy(showProfileDialog = false)
@@ -375,9 +424,29 @@ class MainViewModel(
             }
             repository.updateSubscriptionRefreshPolicy(policy, resolvedHours)
             repository.updateStatus(
-                "Subscription refresh policy set to ${policy.displayValue(resolvedHours).lowercase()}",
+                "Subscription auto-refresh set to ${policy.displayValue(resolvedHours).lowercase()}",
             )
             _uiState.value = _uiState.value.copy(showRefreshPolicyDialog = false)
+        }
+    }
+
+    fun saveValidationSettings() {
+        val candidateCount = _uiState.value.validationCandidateCountDraft.toIntOrNull()
+        viewModelScope.launch {
+            if (candidateCount == null || candidateCount < 1) {
+                repository.updateStatus("Enter a candidate count of at least 1")
+                return@launch
+            }
+            val settings = BenchmarkValidationSettings(
+                generalUrl = _uiState.value.validationGeneralUrlDraft,
+                chatGptUrl = _uiState.value.validationChatGptUrlDraft,
+                candidateCount = candidateCount,
+            ).normalized()
+            repository.updateValidationSettings(settings)
+            repository.updateStatus(
+                "Validation settings saved: ${settings.displaySummary()}",
+            )
+            _uiState.value = _uiState.value.copy(showValidationSettingsDialog = false)
         }
     }
 
@@ -575,7 +644,7 @@ class MainViewModel(
             if (_uiState.value.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS &&
                 _uiState.value.currentLocations.isEmpty()
             ) {
-                repository.updateStatus("Add at least one location first")
+                repository.updateStatus("Add at least one saved location first")
                 return@launch
             }
             setBusy(true)
@@ -583,18 +652,18 @@ class MainViewModel(
             try {
                 repository.updateStatus(
                     if (_uiState.value.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                        "Refreshing subscription and selecting best location"
+                        "Finding the best location from the subscription..."
                     } else {
-                        "Selecting best location from current locations"
+                        "Finding the best location from saved locations..."
                     },
                 )
                 val result = repository.refreshBestProfile()
                 val message = result.fold(
                     onSuccess = { selection ->
-                        "Selected ${selection.profile.remarks}"
+                        "Best location selected: ${selection.profile.remarks}"
                     },
                     onFailure = { error ->
-                        error.message ?: "Refresh failed"
+                        error.message ?: "Location search failed"
                     },
                 )
                 repository.updateStatus(message)
@@ -626,23 +695,30 @@ class MainViewModel(
             }
 
             setBusy(true)
-            repository.updateStatus("Preparing VPN")
-
-            val selection = repository.ensureSelection()
-            if (selection.isFailure) {
-                repository.updateStatus(selection.exceptionOrNull()?.message ?: "Could not prepare VPN")
-                setBusy(false)
-                return@launch
-            }
-
-            val startResult = vpnManager.start(selection.getOrThrow())
-            repository.updateStatus(
-                startResult.fold(
-                    onSuccess = { "VPN started" },
-                    onFailure = { it.message ?: "Failed to start VPN" },
-                ),
+            _uiState.value = _uiState.value.copy(
+                isStartingVpn = true,
+                statusMessage = "Preparing VPN",
             )
-            setBusy(false)
+            try {
+                repository.updateStatus("Preparing VPN")
+
+                val selection = repository.ensureSelection()
+                if (selection.isFailure) {
+                    repository.updateStatus(selection.exceptionOrNull()?.message ?: "Could not prepare VPN")
+                    return@launch
+                }
+
+                val startResult = vpnManager.start(selection.getOrThrow())
+                repository.updateStatus(
+                    startResult.fold(
+                        onSuccess = { "VPN started" },
+                        onFailure = { it.message ?: "Failed to start VPN" },
+                    ),
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(isStartingVpn = false)
+                setBusy(false)
+            }
         }
     }
 
