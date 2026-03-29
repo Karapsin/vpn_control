@@ -139,6 +139,32 @@ object SingBoxConfigFactory {
     }
 
     fun buildProxyValidationConfig(profile: VlessProfile, httpPort: Int, dns: DnsSettings): String {
+        return buildValidationConfig(
+            profile = profile,
+            listenPort = httpPort,
+            dns = dns,
+            inboundType = "http",
+            inboundTag = "http-in",
+        )
+    }
+
+    fun buildSocksValidationConfig(profile: VlessProfile, socksPort: Int, dns: DnsSettings): String {
+        return buildValidationConfig(
+            profile = profile,
+            listenPort = socksPort,
+            dns = dns,
+            inboundType = "socks",
+            inboundTag = "socks-in",
+        )
+    }
+
+    private fun buildValidationConfig(
+        profile: VlessProfile,
+        listenPort: Int,
+        dns: DnsSettings,
+        inboundType: String,
+        inboundTag: String,
+    ): String {
         val dnsServer = dns.value.takeIf { dns.enabled && it.isNotBlank() } ?: "1.1.1.1"
         val directCidrs = JSONArray(
             LOCAL_DIRECT_CIDRS + listOfNotNull(
@@ -148,10 +174,10 @@ object SingBoxConfigFactory {
         val outbound = buildOutbound(profile)
         val inbounds = JSONArray().put(
             JSONObject()
-                .put("type", "http")
-                .put("tag", "http-in")
+                .put("type", inboundType)
+                .put("tag", inboundTag)
                 .put("listen", "127.0.0.1")
-                .put("listen_port", httpPort),
+                .put("listen_port", listenPort),
         )
         val outbounds = JSONArray()
             .put(outbound)

@@ -70,6 +70,8 @@ data class ProfileSelection(
 
 data class PersistedState(
     val profileUrl: String = "",
+    val profileHistory: List<String> = emptyList(),
+    val profileHistoryNames: Map<String, String> = emptyMap(),
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshCustomHours: Int = 3,

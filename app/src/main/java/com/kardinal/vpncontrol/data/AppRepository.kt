@@ -17,7 +17,10 @@ class AppRepository(
     val state: Flow<PersistedState> = storage.state
 
     suspend fun updateProfileSource(url: String, mode: ProfileSourceMode) {
-        storage.updateProfileUrl(url)
+        storage.updateProfileUrl(
+            url = url,
+            rememberInHistory = mode == ProfileSourceMode.SUBSCRIPTION && url.isNotBlank(),
+        )
         storage.updateProfileSourceMode(mode)
         subscriptionRefreshScheduler.sync(storage.snapshot())
     }
@@ -25,6 +28,14 @@ class AppRepository(
     suspend fun updateProfileUrl(url: String) {
         storage.updateProfileUrl(url)
         subscriptionRefreshScheduler.sync(storage.snapshot())
+    }
+
+    suspend fun deleteProfileHistoryEntry(url: String) {
+        storage.deleteProfileHistoryEntry(url)
+    }
+
+    suspend fun updateProfileHistoryName(url: String, name: String) {
+        storage.updateProfileHistoryName(url, name)
     }
 
     suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
@@ -88,7 +99,7 @@ class AppRepository(
         return refreshBestProfile()
     }
 
-    suspend fun syncSelectedLocation(rawLink: String, detail: String): Result<Unit> = runCatching {
+    suspend fun syncSelectedLocation(rawLink: String, detail: String): Result<ProfileSelection> = runCatching {
         val state = storage.snapshot()
         val selection = orchestrator.selectionFromRawLink(
             state = state,
@@ -96,7 +107,10 @@ class AppRepository(
             detail = detail,
         ).getOrThrow()
         syncSelection(selection)
+        selection
     }
+
+    suspend fun benchmarkLocation(rawLink: String) = orchestrator.benchmarkLocation(rawLink)
 
     suspend fun refreshBestProfile(): Result<ProfileSelection> {
         val result = orchestrator.refreshBestProfile()

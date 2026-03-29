@@ -71,7 +71,7 @@ class DiagnosticsExporter(
             appendLine("device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
             appendLine()
             appendLine("[state]")
-            appendLine("profile_url=${state.profileUrl}")
+            appendLine("profile_url=${RemoteSourceResolver.redactForDiagnostics(state.profileUrl)}")
             appendLine("profile_source_mode=${state.profileSourceMode}")
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")

@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import android.util.Base64
 import com.kardinal.vpncontrol.model.VlessProfile
+import java.net.URLEncoder
 import java.net.URLDecoder
 
 object VlessParser {
@@ -60,6 +61,42 @@ object VlessParser {
         )
     }
 
+    fun encodeVlessLink(profile: VlessProfile): String {
+        val query = buildList {
+            add("type" to profile.network.ifBlank { "tcp" })
+            profile.security.takeIf { it.isNotBlank() }?.let { add("security" to it) }
+            profile.flow.takeIf { it.isNotBlank() }?.let { add("flow" to it) }
+            profile.sni.takeIf { it.isNotBlank() }?.let { add("sni" to it) }
+            profile.fingerprint.takeIf { it.isNotBlank() && it != "chrome" }?.let { add("fp" to it) }
+            profile.publicKey.takeIf { it.isNotBlank() }?.let { add("pbk" to it) }
+            profile.shortId.takeIf { it.isNotBlank() }?.let { add("sid" to it) }
+            profile.path.takeIf { it.isNotBlank() }?.let { add("path" to it) }
+            profile.hostHeader.takeIf { it.isNotBlank() }?.let { add("host" to it) }
+            profile.serviceName.takeIf { it.isNotBlank() }?.let { add("serviceName" to it) }
+            profile.headerType.takeIf { it.isNotBlank() && it != "none" }?.let { add("headerType" to it) }
+        }.joinToString("&") { (key, value) ->
+            "${key.encodeUrlComponent()}=${value.encodeUrlComponent()}"
+        }
+
+        val fragment = profile.remarks.takeIf { it.isNotBlank() }?.encodeUrlComponent().orEmpty()
+        return buildString {
+            append("vless://")
+            append(profile.uuid.encodeUrlComponent())
+            append('@')
+            append(profile.server)
+            append(':')
+            append(profile.serverPort)
+            if (query.isNotBlank()) {
+                append('?')
+                append(query)
+            }
+            if (fragment.isNotBlank()) {
+                append('#')
+                append(fragment)
+            }
+        }
+    }
+
     private fun parseQuery(rawQuery: String): Map<String, String> {
         if (rawQuery.isBlank()) return emptyMap()
         return rawQuery.split("&")
@@ -83,6 +120,7 @@ object VlessParser {
     }
 
     private fun String.decodeUrlComponent(): String = URLDecoder.decode(this, Charsets.UTF_8.name())
+    private fun String.encodeUrlComponent(): String = URLEncoder.encode(this, Charsets.UTF_8.name())
 
     private fun splitOnce(value: String, delimiter: Char): Pair<String, String?> {
         val index = value.indexOf(delimiter)

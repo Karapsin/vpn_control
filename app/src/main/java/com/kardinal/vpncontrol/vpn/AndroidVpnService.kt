@@ -75,6 +75,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     private suspend fun startVpn() {
         try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
+            resetRuntimeSession()
             createNotificationChannel()
             showForegroundNotification("VPN starting")
             DefaultNetworkMonitor.start(this)
@@ -97,8 +98,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         }
     }
 
-    private suspend fun stopVpn(statusMessage: String?) {
-        DiagnosticsLogger.append(applicationContext, "AndroidVpnService.stopVpn invoked: ${statusMessage ?: "no status"}")
+    private fun resetRuntimeSession() {
         runCatching { boxService?.close() }
         boxService = null
 
@@ -106,6 +106,11 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         tunInterface = null
 
         DefaultNetworkMonitor.stop()
+    }
+
+    private suspend fun stopVpn(statusMessage: String?) {
+        DiagnosticsLogger.append(applicationContext, "AndroidVpnService.stopVpn invoked: ${statusMessage ?: "no status"}")
+        resetRuntimeSession()
         storage.updateVpnRunning(false)
         if (!statusMessage.isNullOrBlank()) {
             storage.updateStatus(statusMessage)

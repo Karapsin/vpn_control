@@ -28,10 +28,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -72,6 +74,8 @@ import androidx.compose.ui.window.DialogProperties
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.LocationConfigs
+import com.kardinal.vpncontrol.data.RemoteSourcePreview
+import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
@@ -85,6 +89,13 @@ fun VpnControlApp(
     onProfileChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
+    onClearProfileSource: () -> Unit,
+    onUseProfileHistoryEntry: (String) -> Unit,
+    onShowProfileHistoryRenameDialog: (String) -> Unit,
+    onDeleteProfileHistoryEntry: (String) -> Unit,
+    onCloseProfileHistoryRenameDialog: () -> Unit,
+    onProfileHistoryRenameDraftChange: (String) -> Unit,
+    onSaveProfileHistoryRename: () -> Unit,
     onToggleDnsDialog: () -> Unit,
     onDnsEnabledChange: (Boolean) -> Unit,
     onDnsChange: (String) -> Unit,
@@ -99,6 +110,7 @@ fun VpnControlApp(
     onValidationCandidateCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onOpenMainTab: () -> Unit,
+    onOpenProfileTab: () -> Unit,
     onOpenLocationsTab: () -> Unit,
     onOpenRoutingRules: () -> Unit,
     onShowAddLocation: () -> Unit,
@@ -106,6 +118,7 @@ fun VpnControlApp(
     onImportLocations: () -> Unit,
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
+    onBenchmarkLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onCloseLocationDialog: () -> Unit,
@@ -141,11 +154,16 @@ fun VpnControlApp(
         HomeTabsScreen(
             state = state,
             onOpenMainTab = onOpenMainTab,
+            onOpenProfileTab = onOpenProfileTab,
             onOpenLocationsTab = onOpenLocationsTab,
             onOpenRoutingRules = onOpenRoutingRules,
             onProfileChange = onProfileChange,
             onProfileSourceModeChange = onProfileSourceModeChange,
             onSaveProfile = onSaveProfile,
+            onClearProfileSource = onClearProfileSource,
+            onUseProfileHistoryEntry = onUseProfileHistoryEntry,
+            onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
+            onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
             onToggleDnsDialog = onToggleDnsDialog,
             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
             onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
@@ -162,6 +180,7 @@ fun VpnControlApp(
             onImportLocations = onImportLocations,
             onEditLocation = onEditLocation,
             onDeleteLocation = onDeleteLocation,
+            onBenchmarkLocation = onBenchmarkLocation,
             onSelectLocation = onSelectLocation,
             onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
             onIgnoreRulesChange = onRoutingIgnoreRulesChange,
@@ -188,6 +207,7 @@ fun VpnControlApp(
     BackHandler(
         enabled = !showBlockingProgress && (
             state.showProfileDialog ||
+            state.showProfileHistoryRenameDialog ||
             state.showDnsDialog ||
             state.showRefreshPolicyDialog ||
             state.showValidationSettingsDialog ||
@@ -198,12 +218,50 @@ fun VpnControlApp(
     ) {
         when {
             state.showProfileDialog -> onToggleProfileDialog()
+            state.showProfileHistoryRenameDialog -> onCloseProfileHistoryRenameDialog()
             state.showDnsDialog -> onToggleDnsDialog()
             state.showRefreshPolicyDialog -> onToggleRefreshPolicyDialog()
             state.showValidationSettingsDialog -> onToggleValidationSettingsDialog()
             state.showLocationDialog -> onCloseLocationDialog()
             else -> onNavigateBack()
         }
+    }
+
+    if (state.showProfileHistoryRenameDialog) {
+        AlertDialog(
+            onDismissRequest = onCloseProfileHistoryRenameDialog,
+            title = { Text("Subscription Name", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = state.profileHistoryRenameDraft,
+                        onValueChange = onProfileHistoryRenameDraftChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Name") },
+                        placeholder = { Text("My subscription") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    Text(
+                        text = "Leave it empty to use the detected name again.",
+                        color = Color(0xFFD3E3EE),
+                        fontSize = 12.sp,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onSaveProfileHistoryRename) {
+                    Text("Save", color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCloseProfileHistoryRenameDialog) {
+                    Text("Cancel", color = Color(0xFFD3E3EE))
+                }
+            },
+        )
     }
 
     if (state.showProfileDialog) {
@@ -217,11 +275,12 @@ fun VpnControlApp(
                         onValueChange = onProfileChange,
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3,
-                        label = { Text("Subscription URL") },
+                        label = { Text("Remote Source") },
+                        colors = routingTextFieldColors(),
                     )
                     SourceModeOption(
                         title = "Use Subscription",
-                        description = "Finding the best location downloads the subscription and updates saved locations.",
+                        description = "Finding the best location downloads locations from the remote source and updates saved locations.",
                         selected = state.profileSourceModeDraft == ProfileSourceMode.SUBSCRIPTION,
                         onClick = { onProfileSourceModeChange(ProfileSourceMode.SUBSCRIPTION) },
                     )
@@ -425,7 +484,7 @@ fun VpnControlApp(
                         colors = routingTextFieldColors(),
                     )
                     Text(
-                        text = "Paste a vless:// link or a JSON config. The app validates it and saves it as a location.",
+                        text = "Paste a vless:// link or a JSON config. Remote source links belong in Profile Source on the Profile tab.",
                         color = Color(0xFFD3E3EE),
                         fontSize = 12.sp,
                     )
@@ -489,11 +548,16 @@ private fun RefreshProgressDialog(progressText: String) {
 private fun HomeTabsScreen(
     state: MainUiState,
     onOpenMainTab: () -> Unit,
+    onOpenProfileTab: () -> Unit,
     onOpenLocationsTab: () -> Unit,
     onOpenRoutingRules: () -> Unit,
     onProfileChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
+    onClearProfileSource: () -> Unit,
+    onUseProfileHistoryEntry: (String) -> Unit,
+    onShowProfileHistoryRenameDialog: (String) -> Unit,
+    onDeleteProfileHistoryEntry: (String) -> Unit,
     onToggleDnsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
@@ -510,6 +574,7 @@ private fun HomeTabsScreen(
     onImportLocations: () -> Unit,
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
+    onBenchmarkLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
@@ -542,9 +607,6 @@ private fun HomeTabsScreen(
             when (state.currentScreen) {
                 AppScreen.MAIN -> MainScreen(
                     state = state,
-                    onProfileChange = onProfileChange,
-                    onProfileSourceModeChange = onProfileSourceModeChange,
-                    onSaveProfile = onSaveProfile,
                     onToggleDnsDialog = onToggleDnsDialog,
                     onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                     onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
@@ -557,6 +619,16 @@ private fun HomeTabsScreen(
                     onRefresh = onRefresh,
                     onExportDiagnostics = onExportDiagnostics,
                 )
+                AppScreen.PROFILE -> ProfileScreen(
+                    state = state,
+                    onProfileChange = onProfileChange,
+                    onProfileSourceModeChange = onProfileSourceModeChange,
+                    onSaveProfile = onSaveProfile,
+                    onClearProfileSource = onClearProfileSource,
+                    onUseProfileHistoryEntry = onUseProfileHistoryEntry,
+                    onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
+                    onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
+                )
                 AppScreen.LOCATIONS -> LocationsScreen(
                     state = state,
                     onShowAddLocation = onShowAddLocation,
@@ -564,6 +636,7 @@ private fun HomeTabsScreen(
                     onImportLocations = onImportLocations,
                     onEditLocation = onEditLocation,
                     onDeleteLocation = onDeleteLocation,
+                    onBenchmarkLocation = onBenchmarkLocation,
                     onSelectLocation = onSelectLocation,
                     onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
                 )
@@ -595,8 +668,9 @@ private fun HomeTabsScreen(
             TabRow(
                 selectedTabIndex = when (state.currentScreen) {
                     AppScreen.MAIN -> 0
-                    AppScreen.LOCATIONS -> 1
-                    AppScreen.ROUTING_RULES -> 2
+                    AppScreen.PROFILE -> 1
+                    AppScreen.LOCATIONS -> 2
+                    AppScreen.ROUTING_RULES -> 3
                 },
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = Color.Transparent,
@@ -609,6 +683,11 @@ private fun HomeTabsScreen(
                     text = { Text("Main") },
                 )
                 Tab(
+                    selected = state.currentScreen == AppScreen.PROFILE,
+                    onClick = onOpenProfileTab,
+                    text = { Text("Profile") },
+                )
+                Tab(
                     selected = state.currentScreen == AppScreen.LOCATIONS,
                     onClick = onOpenLocationsTab,
                     text = { Text("Locations") },
@@ -616,7 +695,7 @@ private fun HomeTabsScreen(
                 Tab(
                     selected = state.currentScreen == AppScreen.ROUTING_RULES,
                     onClick = onOpenRoutingRules,
-                    text = { Text("Routing Rules") },
+                    text = { Text("Rules") },
                 )
             }
         }
@@ -658,9 +737,6 @@ private fun SourceModeOption(
 @Composable
 private fun MainScreen(
     state: MainUiState,
-    onProfileChange: (String) -> Unit,
-    onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
-    onSaveProfile: () -> Unit,
     onToggleDnsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
@@ -715,7 +791,7 @@ private fun MainScreen(
                                 tint = Color.White,
                             )
                         }
-                        DropdownMenu(
+        DropdownMenu(
                             expanded = advancedMenuExpanded,
                             onDismissRequest = { advancedMenuExpanded = false },
                         ) {
@@ -765,7 +841,7 @@ private fun MainScreen(
                 }
                 Text(
                     text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                        "Subscription is active. Finding the best location updates saved locations from the subscription and selects the best one."
+                        "Subscription mode is active. Finding the best location downloads locations from the remote source and updates the saved list."
                     } else {
                         "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
                     },
@@ -792,12 +868,6 @@ private fun MainScreen(
                     onClick = onRefresh,
                     enabled = !state.isBusy,
                 )
-                ProfileSourceCard(
-                    state = state,
-                    onProfileChange = onProfileChange,
-                    onProfileSourceModeChange = onProfileSourceModeChange,
-                    onSaveProfile = onSaveProfile,
-                )
                 OutlinedButton(
                     onClick = onExportDiagnostics,
                     enabled = !state.isBusy,
@@ -817,6 +887,69 @@ private fun MainScreen(
 }
 
 @Composable
+private fun ProfileScreen(
+    state: MainUiState,
+    onProfileChange: (String) -> Unit,
+    onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
+    onSaveProfile: () -> Unit,
+    onClearProfileSource: () -> Unit,
+    onUseProfileHistoryEntry: (String) -> Unit,
+    onShowProfileHistoryRenameDialog: (String) -> Unit,
+    onDeleteProfileHistoryEntry: (String) -> Unit,
+) {
+    Scaffold(
+        containerColor = Color(0xFF141F2D),
+        contentColor = Color.White,
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+        ),
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(start = 20.dp, top = 24.dp, end = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("Profile", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Choose where the app gets locations from. Use a remote source in subscription mode, or work only with the saved list from the Locations tab.",
+                            color = Color(0xFFD3E3EE),
+                        )
+                    }
+                }
+                ProfileSourceCard(
+                    state = state,
+                    onProfileChange = onProfileChange,
+                    onProfileSourceModeChange = onProfileSourceModeChange,
+                    onSaveProfile = onSaveProfile,
+                    onClearProfileSource = onClearProfileSource,
+                    onUseProfileHistoryEntry = onUseProfileHistoryEntry,
+                    onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
+                    onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LocationsScreen(
     state: MainUiState,
     onShowAddLocation: () -> Unit,
@@ -824,10 +957,14 @@ private fun LocationsScreen(
     onImportLocations: () -> Unit,
     onEditLocation: (Int) -> Unit,
     onDeleteLocation: (Int) -> Unit,
+    onBenchmarkLocation: (Int) -> Unit,
     onSelectLocation: (Int) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
 ) {
     val selectedLocation = selectedLocationReference(state)
+    val gatewayBackedSubscription =
+        state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
+            RemoteSourceResolver.isGatewayBackedVpnImport(state.profileUrl)
     val locations = state.currentLocations
         .mapIndexed { index, rawLink ->
             val parsed = runCatching { LocationConfigs.decodeStoredLocation(rawLink) }.getOrNull()
@@ -848,7 +985,13 @@ private fun LocationsScreen(
                 isSelected = rawLink == selectedLocation,
             )
         }
-        .sortedWith(locationRowComparator())
+        .sortedWith(
+            if (gatewayBackedSubscription) {
+                amneziaLocationRowComparator()
+            } else {
+                locationRowComparator()
+            },
+        )
     val selectedName = locations.firstOrNull { it.isSelected }?.name ?: state.selectedProfileName.takeIf { it.isNotBlank() }
 
     Scaffold(
@@ -878,7 +1021,7 @@ private fun LocationsScreen(
                     Text("Locations", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
                         if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "Location search uses the subscription. This list is updated from it each time."
+                            "Location search uses the remote source saved on the Profile tab. This list is updated from it each time."
                         } else {
                             "Location search uses the saved locations below. No subscription is required."
                         },
@@ -980,6 +1123,7 @@ private fun LocationsScreen(
                                         onSelectLocation(location.index)
                                     }
                                 },
+                                onRefresh = { onBenchmarkLocation(location.index) },
                                 onEdit = { onEditLocation(location.index) },
                                 onDelete = { onDeleteLocation(location.index) },
                             )
@@ -997,9 +1141,20 @@ private fun ProfileSourceCard(
     onProfileChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
+    onClearProfileSource: () -> Unit,
+    onUseProfileHistoryEntry: (String) -> Unit,
+    onShowProfileHistoryRenameDialog: (String) -> Unit,
+    onDeleteProfileHistoryEntry: (String) -> Unit,
 ) {
     val activeMode = state.profileSourceModeDraft
     val useSubscription = activeMode == ProfileSourceMode.SUBSCRIPTION
+    val remoteSourcePreview = remember(useSubscription, state.profileDraft) {
+        if (useSubscription) {
+            RemoteSourceResolver.preview(state.profileDraft)
+        } else {
+            null
+        }
+    }
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -1014,7 +1169,7 @@ private fun ProfileSourceCard(
             Text("Profile Source", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                    "Subscription is active. Finding the best location downloads the subscription and updates saved locations."
+                    "Subscription mode is active. Finding the best location downloads locations from the remote source below and updates saved locations."
                 } else {
                     "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
                 },
@@ -1064,14 +1219,44 @@ private fun ProfileSourceCard(
                 }
             }
             if (useSubscription) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Remote Source",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    IconButton(
+                        onClick = onClearProfileSource,
+                        enabled = state.profileUrl.isNotBlank() || state.profileDraft.isNotBlank(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Clear,
+                            contentDescription = "Clear remote source",
+                            tint = Color.White,
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = state.profileDraft,
                     onValueChange = onProfileChange,
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    label = { Text("Subscription URL") },
+                    placeholder = { Text("Paste a subscription URL or import link") },
                     colors = routingTextFieldColors(),
                 )
+                Text(
+                    text = "Paste a subscription URL or a remote import link.",
+                    color = Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                )
+                remoteSourcePreview?.let { preview ->
+                    RemoteSourcePreviewCard(preview = preview)
+                }
                 Button(
                     onClick = onSaveProfile,
                     enabled = !state.isBusy,
@@ -1079,8 +1264,194 @@ private fun ProfileSourceCard(
                     shape = RoundedCornerShape(18.dp),
                     colors = darkButtonColors(),
                 ) {
-                    Text("Save Subscription")
+                    Text("Save Remote Source")
                 }
+                ProfileHistorySection(
+                    history = state.profileHistory,
+                    historyNames = state.profileHistoryNames,
+                    currentSource = state.profileUrl,
+                    onUseEntry = onUseProfileHistoryEntry,
+                    onRenameEntry = onShowProfileHistoryRenameDialog,
+                    onDeleteEntry = onDeleteProfileHistoryEntry,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileHistorySection(
+    history: List<String>,
+    historyNames: Map<String, String>,
+    currentSource: String,
+    onUseEntry: (String) -> Unit,
+    onRenameEntry: (String) -> Unit,
+    onDeleteEntry: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Subscriptions History",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        if (history.isEmpty()) {
+            Text(
+                text = "No previous remote sources yet.",
+                color = Color(0xFFD3E3EE),
+                fontSize = 13.sp,
+            )
+        } else {
+            history.forEach { source ->
+                val preview = RemoteSourceResolver.preview(source)
+                ProfileHistoryEntryCard(
+                    source = source,
+                    customName = historyNames[source].orEmpty(),
+                    preview = preview,
+                    isActive = source == currentSource,
+                    onUse = { onUseEntry(source) },
+                    onRename = { onRenameEntry(source) },
+                    onDelete = { onDeleteEntry(source) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileHistoryEntryCard(
+    source: String,
+    customName: String,
+    preview: RemoteSourcePreview?,
+    isActive: Boolean,
+    onUse: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val displayTitle = customName.ifBlank { preview?.title ?: "Saved source" }
+    val defaultTitle = preview?.title.orEmpty()
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) Color(0x334B7BE5) else Color(0x24141F2D),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onUse)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = preview?.kindLabel ?: "Remote source",
+                    color = if (isActive) Color(0xFFB7D3FF) else Color(0xFF9ED6FF),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = displayTitle,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (customName.isNotBlank() && defaultTitle.isNotBlank() && customName != defaultTitle) {
+                    Text(
+                        text = "Detected: $defaultTitle",
+                        color = Color(0xFF8EA8BA),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = preview?.detail ?: "Tap to use this source",
+                    color = Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = RemoteSourceResolver.redactForDiagnostics(source),
+                    color = Color(0xFF8EA8BA),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (isActive) {
+                    Text(
+                        text = "Current source",
+                        color = Color(0xFF7FE7B5),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                IconButton(onClick = onRename) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Rename history entry",
+                        tint = Color.White,
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete history entry",
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteSourcePreviewCard(preview: RemoteSourcePreview) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (preview.supported) Color(0x24141F2D) else Color(0x33A06A20),
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = preview.kindLabel,
+                color = if (preview.supported) Color(0xFF9ED6FF) else Color(0xFFFFD08A),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = preview.title,
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = preview.detail,
+                color = Color(0xFFD3E3EE),
+                fontSize = 12.sp,
+            )
+            preview.warning?.takeIf { it.isNotBlank() }?.let { warning ->
+                Text(
+                    text = warning,
+                    color = Color(0xFFFFE0A3),
+                    fontSize = 12.sp,
+                )
             }
         }
     }
@@ -1597,6 +1968,7 @@ private fun LocationRowCard(
     isVpnRunning: Boolean,
     enabled: Boolean,
     onPrimaryAction: () -> Unit,
+    onRefresh: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -1683,6 +2055,21 @@ private fun LocationRowCard(
                             location.isSelected -> "Start VPN for this location"
                             else -> "Select this location"
                         },
+                    )
+                }
+                OutlinedButton(
+                    onClick = onRefresh,
+                    enabled = enabled && location.isValid,
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color.White,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Recheck this location",
                     )
                 }
                 OutlinedButton(
@@ -1819,6 +2206,11 @@ private fun locationRowComparator(): Comparator<SavedLocationRow> {
     return compareBy<SavedLocationRow> { locationBenchmarkRank(it.benchmarkDetail) }
         .thenBy { parseBenchmarkScore(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
         .thenBy { parseBenchmarkTimingMillis(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
+        .thenBy { it.name.lowercase(Locale.ROOT) }
+}
+
+private fun amneziaLocationRowComparator(): Comparator<SavedLocationRow> {
+    return compareBy<SavedLocationRow> { parseBenchmarkTimingMillis(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
         .thenBy { it.name.lowercase(Locale.ROOT) }
 }
 

@@ -17,6 +17,9 @@ object LocationConfigs {
     fun parseLocationInput(raw: String): VlessProfile {
         val trimmed = raw.trim()
         require(trimmed.isNotBlank()) { "Location config is empty" }
+        require(!RemoteSourceResolver.looksLikeRemoteSourceLink(trimmed)) {
+            "This is a remote source link. Add it in Profile Source on the Profile tab."
+        }
         return if (trimmed.startsWith("vless://")) {
             VlessParser.parseVlessLink(trimmed)
         } else {

@@ -17,14 +17,16 @@ class SubscriptionRefreshScheduler(
         val workManager = WorkManager.getInstance(context)
         val intervalHours = state.subscriptionRefreshPolicy
             .effectiveIntervalHours(state.subscriptionRefreshCustomHours)
+        val gatewayBackedImport = RemoteSourceResolver.isGatewayBackedVpnImport(state.profileUrl)
         if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION ||
             state.profileUrl.isBlank() ||
-            intervalHours == null
+            intervalHours == null ||
+            gatewayBackedImport
         ) {
             workManager.cancelUniqueWork(WORK_NAME)
             DiagnosticsLogger.append(
                 context,
-                "Subscription refresh scheduling canceled: mode=${state.profileSourceMode} urlSet=${state.profileUrl.isNotBlank()} policy=${state.subscriptionRefreshPolicy}",
+                "Subscription refresh scheduling canceled: mode=${state.profileSourceMode} urlSet=${state.profileUrl.isNotBlank()} policy=${state.subscriptionRefreshPolicy} gatewayBackedImport=$gatewayBackedImport",
             )
             return
         }

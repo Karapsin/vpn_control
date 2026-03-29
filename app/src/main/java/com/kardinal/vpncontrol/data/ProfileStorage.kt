@@ -29,6 +29,8 @@ private val Context.dataStore by preferencesDataStore(name = "vpn_control")
 class ProfileStorage(private val context: Context) {
     private object Keys {
         val profileUrl = stringPreferencesKey("profile_url")
+        val profileHistory = stringPreferencesKey("profile_history")
+        val profileHistoryNames = stringPreferencesKey("profile_history_names")
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
         val subscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
@@ -64,10 +66,57 @@ class ProfileStorage(private val context: Context) {
         }
         .map(::mapState)
 
-    suspend fun updateProfileUrl(url: String) {
+    suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean = false) {
         context.dataStore.edit { prefs ->
             prefs[Keys.profileUrl] = url
+            if (rememberInHistory) {
+                val history = decodeList(prefs[Keys.profileHistory])
+                    .toMutableList()
+                    .apply {
+                        remove(url)
+                        add(0, url)
+                    }
+                val normalizedHistory = history.distinct()
+                prefs[Keys.profileHistory] = encodeList(normalizedHistory)
+                prefs[Keys.profileHistoryNames] = encodeStringMap(
+                    decodeStringMap(prefs[Keys.profileHistoryNames])
+                        .filterKeys { it in normalizedHistory.toSet() },
+                )
+            }
         }
+    }
+
+    suspend fun deleteProfileHistoryEntry(url: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.profileHistory] = encodeList(
+                decodeList(prefs[Keys.profileHistory]).filterNot { it == url },
+            )
+            prefs[Keys.profileHistoryNames] = encodeStringMap(
+                decodeStringMap(prefs[Keys.profileHistoryNames]).filterKeys { it != url },
+            )
+        }
+        DiagnosticsLogger.append(context, "Profile history entry deleted")
+    }
+
+    suspend fun updateProfileHistoryName(url: String, name: String) {
+        val normalizedName = name.trim()
+        context.dataStore.edit { prefs ->
+            val names = decodeStringMap(prefs[Keys.profileHistoryNames]).toMutableMap()
+            if (normalizedName.isBlank()) {
+                names.remove(url)
+            } else {
+                names[url] = normalizedName
+            }
+            prefs[Keys.profileHistoryNames] = encodeStringMap(names)
+        }
+        DiagnosticsLogger.append(
+            context,
+            if (normalizedName.isBlank()) {
+                "Profile history name cleared"
+            } else {
+                "Profile history name updated"
+            },
+        )
     }
 
     suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
@@ -207,6 +256,8 @@ class ProfileStorage(private val context: Context) {
         )
         return PersistedState(
             profileUrl = preferences[Keys.profileUrl].orEmpty(),
+            profileHistory = decodeList(preferences[Keys.profileHistory]),
+            profileHistoryNames = decodeStringMap(preferences[Keys.profileHistoryNames]),
             profileSourceMode = preferences[Keys.profileSourceMode]
                 ?.let { raw -> runCatching { ProfileSourceMode.valueOf(raw) }.getOrNull() }
                 ?: ProfileSourceMode.SUBSCRIPTION,

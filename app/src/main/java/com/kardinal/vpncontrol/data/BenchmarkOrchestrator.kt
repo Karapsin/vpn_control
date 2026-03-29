@@ -1,11 +1,15 @@
 package com.kardinal.vpncontrol.data
 
+import android.content.Context
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.vpn.LibboxValidationPlatform
+import io.nekohasekai.libbox.BoxService
+import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -20,12 +24,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.EOFException
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
 
 class BenchmarkOrchestrator(
     private val context: android.content.Context,
@@ -35,12 +41,16 @@ class BenchmarkOrchestrator(
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     private val settings = ValidationSettings()
+    private val httpStatusRegex = Regex("""HTTP\s+(\d{3})""")
 
     suspend fun refreshBestProfile(): Result<ProfileSelection> = withContext(Dispatchers.IO) {
         try {
             Result.success(
                 withTimeout(settings.refreshTimeoutMillis) {
                     val state = storage.snapshot()
+                    val gatewayBackedSubscription =
+                        state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
+                            RemoteSourceResolver.isGatewayBackedVpnImport(state.profileUrl)
                     val validationSettings = state.validationSettings.normalized()
                     val benchmarkUrls = BenchmarkUrls(
                         google = validationSettings.generalUrl,
@@ -48,19 +58,15 @@ class BenchmarkOrchestrator(
                     )
                     val profiles = when (state.profileSourceMode) {
                         ProfileSourceMode.SUBSCRIPTION -> {
-                            require(state.profileUrl.isNotBlank()) { "Subscription URL is empty" }
-                            storage.updateStatus("Downloading subscription...")
-                            val body = downloadSubscription(state.profileUrl)
-                            val parsed = VlessParser.parseSubscription(body)
+                            require(state.profileUrl.isNotBlank()) { "Remote source is empty" }
+                            storage.updateStatus("Resolving remote source...")
+                            val parsed = loadRemoteSourceLocations(state.profileUrl)
                             storage.updateCurrentLocations(parsed.map { it.rawLink })
                             parsed
                         }
                         ProfileSourceMode.CURRENT_LOCATIONS -> {
                             storage.updateStatus("Loading saved locations...")
-                            state.currentLocations.mapIndexed { index, stored ->
-                                runCatching { LocationConfigs.decodeStoredLocation(stored) }
-                                    .getOrElse { error("Invalid saved location #${index + 1}: ${it.message}") }
-                            }
+                            decodeStoredLocations(state.currentLocations)
                         }
                     }
                     require(profiles.isNotEmpty()) {
@@ -94,31 +100,66 @@ class BenchmarkOrchestrator(
                         "No reachable location found. Best attempt: ${bestAttempt?.detail ?: "no benchmark results"}"
                     }
 
-                    val candidates = reachableProfiles.take(validationSettings.candidateCount)
-                    storage.updateStatus(
-                        "Testing the top ${candidates.size} locations " +
-                            "(up to ${validationSettings.concurrency()} at once)...",
-                    )
-                    val candidateBenchmarks = validateCandidates(
-                        candidates = candidates,
-                        dnsSettings = dnsSettings,
-                        benchmarkUrls = benchmarkUrls,
-                        validationSettings = validationSettings,
-                    )
+                    val amneziaWinner: ProfileBenchmark?
+                    val candidateBenchmarks = if (gatewayBackedSubscription) {
+                        val candidates = reachableProfiles
+                        storage.updateStatus(
+                            "Checking TCP speed for ${candidates.size} Amnezia locations...",
+                        )
+                        amneziaWinner = candidates.firstOrNull()?.let { candidate ->
+                            ProfileBenchmark(
+                                profile = candidate.profile,
+                                googleStatus = "skipped",
+                                chatgptStatus = "skipped",
+                                googleTotal = null,
+                                chatgptTotal = null,
+                                score = candidate.connectMillis ?: Double.POSITIVE_INFINITY,
+                                detail = candidate.detail,
+                            )
+                        }
+                        emptyList()
+                    } else {
+                        amneziaWinner = null
+                        val candidates = reachableProfiles.take(validationSettings.candidateCount)
+                        storage.updateStatus(
+                            "Testing the top ${candidates.size} locations " +
+                                "(up to ${validationSettings.concurrency()} at once)...",
+                        )
+                        validateCandidates(
+                            candidates = candidates,
+                            dnsSettings = dnsSettings,
+                            benchmarkUrls = benchmarkUrls,
+                            validationSettings = validationSettings,
+                        )
+                    }
                     candidateBenchmarks.forEach { benchmark ->
                         locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
                     }
+                    var winner = if (gatewayBackedSubscription) {
+                        amneziaWinner
+                    } else {
+                        candidateBenchmarks
+                            .filter { it.googleStatus == "ok" && it.chatgptStatus == "ok" }
+                            .minByOrNull { it.score }
+                    }
                     storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
-                    val winner = candidateBenchmarks
-                        .filter { it.googleStatus == "ok" && it.chatgptStatus == "ok" }
-                        .minByOrNull { it.score }
-                        ?: run {
-                            val bestAttempt = candidateBenchmarks.minByOrNull { it.score }
-                            val detail = bestAttempt?.detail ?: "no benchmark results"
+                    winner = winner ?: run {
+                        val bestAttempt = if (gatewayBackedSubscription) {
+                            amneziaWinner?.detail
+                        } else {
+                            candidateBenchmarks.minByOrNull { it.score }?.detail
+                        }
+                        val detail = bestAttempt ?: "no benchmark results"
+                        if (gatewayBackedSubscription) {
+                            error(
+                                "No reachable Amnezia location found. Best attempt: $detail",
+                            )
+                        } else {
                             error(
                                 "No working location found. Best attempt: $detail",
                             )
                         }
+                    }
 
                     val runtimeConfig = SingBoxConfigFactory.buildTunConfig(
                         profile = winner.profile,
@@ -142,12 +183,63 @@ class BenchmarkOrchestrator(
     suspend fun syncSubscriptionLocations(): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val state = storage.snapshot()
-            require(state.profileUrl.isNotBlank()) { "Subscription URL is empty" }
-            val body = downloadSubscription(state.profileUrl)
-            val parsed = VlessParser.parseSubscription(body)
+            require(state.profileUrl.isNotBlank()) { "Remote source is empty" }
+            val parsed = loadRemoteSourceLocations(state.profileUrl)
             require(parsed.isNotEmpty()) { "No locations were found in the subscription" }
             storage.updateCurrentLocations(parsed.map { it.rawLink })
             parsed.size
+        }
+    }
+
+    suspend fun benchmarkLocation(rawLink: String): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
+        runCatching {
+            withTimeout(settings.refreshTimeoutMillis) {
+                val state = storage.snapshot()
+                val gatewayBackedSubscription =
+                    state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
+                        RemoteSourceResolver.isGatewayBackedVpnImport(state.profileUrl)
+                val validationSettings = state.validationSettings.normalized()
+                val benchmarkUrls = BenchmarkUrls(
+                    google = validationSettings.generalUrl,
+                    chatgpt = validationSettings.chatGptUrl,
+                )
+                val profile = LocationConfigs.decodeStoredLocation(rawLink)
+                val normalizedRawLink = LocationConfigs.encodeStoredLocation(profile)
+                val dnsSettings = DnsSettings(
+                    enabled = state.useCustomDns,
+                    value = state.customDns,
+                )
+
+                storage.updateStatus("Checking TCP speed for ${profile.remarks}...")
+                val preflight = preflightProfile(profile)
+                val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
+
+                val benchmark = if (preflight.connectMillis == null) {
+                    failedBenchmark(profile, preflight, "unreachable")
+                } else {
+                    storage.updateStatus("Testing ${profile.remarks}...")
+                    if (gatewayBackedSubscription) {
+                        validateProfileWithLibbox(
+                            candidate = preflight,
+                            idx = 0,
+                            dnsSettings = dnsSettings,
+                            benchmarkUrls = benchmarkUrls,
+                            secondaryOnly = false,
+                        )
+                    } else {
+                        validateProfile(
+                            candidate = preflight,
+                            idx = 0,
+                            dnsSettings = dnsSettings,
+                            benchmarkUrls = benchmarkUrls,
+                        )
+                    }
+                }
+
+                updatedDetails[normalizedRawLink] = benchmark.detail
+                storage.updateLocationBenchmarkDetails(updatedDetails)
+                benchmark
+            }
         }
     }
 
@@ -266,6 +358,39 @@ class BenchmarkOrchestrator(
             }
     }
 
+    private suspend fun loadRemoteSourceLocations(rawSource: String): List<VlessProfile> {
+        val resolved = RemoteSourceResolver.resolveForFetch(
+            context = context,
+            raw = rawSource,
+            onStatus = { storage.updateStatus(it) },
+        )
+        if (resolved.embeddedLocations.isNotEmpty()) {
+            return resolved.embeddedLocations
+        }
+        val fetchUrl = resolved.fetchUrl ?: error("Remote source did not produce any locations")
+        storage.updateStatus("Downloading remote source...")
+        val body = downloadSubscription(fetchUrl)
+        return runCatching {
+            VlessParser.parseSubscription(body)
+        }.getOrElse { error ->
+            val baseMessage = error.message ?: "Remote source format is not recognized as a VLESS link list"
+            if (resolved.preview.kindLabel.equals("Subscription URL", ignoreCase = true)) {
+                throw IllegalArgumentException(baseMessage, error)
+            }
+            throw IllegalArgumentException(
+                "${resolved.preview.kindLabel} resolved successfully, but the downloaded content is not a VLESS location list.",
+                error,
+            )
+        }
+    }
+
+    private fun decodeStoredLocations(storedLocations: List<String>): List<VlessProfile> {
+        return storedLocations.mapIndexed { index, stored ->
+            runCatching { LocationConfigs.decodeStoredLocation(stored) }
+                .getOrElse { error("Invalid saved location #${index + 1}: ${it.message}") }
+        }
+    }
+
     private suspend fun preflightProfiles(profiles: List<VlessProfile>): List<PreflightResult> = coroutineScope {
         val semaphore = Semaphore(settings.prefilterConcurrency)
         profiles.map { profile ->
@@ -320,6 +445,29 @@ class BenchmarkOrchestrator(
             async(Dispatchers.IO) {
                 semaphore.withPermit {
                     validateProfile(candidate, idx, dnsSettings, benchmarkUrls)
+                }
+            }
+        }.awaitAll()
+    }
+
+    private suspend fun validateCandidatesWithLibbox(
+        candidates: List<PreflightResult>,
+        dnsSettings: DnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        concurrencyLimit: Int,
+        secondaryOnly: Boolean,
+    ): List<ProfileBenchmark> = coroutineScope {
+        val semaphore = Semaphore(concurrencyLimit.coerceAtLeast(1))
+        candidates.mapIndexed { idx, candidate ->
+            async(Dispatchers.IO) {
+                semaphore.withPermit {
+                    validateProfileWithLibbox(
+                        candidate = candidate,
+                        idx = idx,
+                        dnsSettings = dnsSettings,
+                        benchmarkUrls = benchmarkUrls,
+                        secondaryOnly = secondaryOnly,
+                    )
                 }
             }
         }.awaitAll()
@@ -400,6 +548,117 @@ class BenchmarkOrchestrator(
         }
     }
 
+    private suspend fun validateProfileWithLibbox(
+        candidate: PreflightResult,
+        idx: Int,
+        dnsSettings: DnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        secondaryOnly: Boolean,
+    ): ProfileBenchmark = withContext(Dispatchers.IO) {
+        val profile = candidate.profile
+        val socksPort = settings.baseHttpPort + idx
+        val config = SingBoxConfigFactory.buildSocksValidationConfig(profile, socksPort, dnsSettings)
+        val platform = LibboxValidationPlatform(
+            context = context,
+            logPrefix = "validation[${profile.remarks}]",
+        )
+        var service: BoxService? = null
+
+        try {
+            val benchmark = withTimeoutOrNull(settings.profileTimeoutMillis) {
+                service = Libbox.newService(config, platform)
+                service?.start()
+
+                if (!waitForPort("127.0.0.1", socksPort, settings.portWaitMillis)) {
+                    return@withTimeoutOrNull failedBenchmark(profile, candidate, "socks_not_ready")
+                }
+
+                delay(150)
+
+                val primaryResult = if (secondaryOnly) {
+                    ProxyRunResult(codes = emptyList(), totals = emptyList())
+                } else {
+                    runLibboxRuns(socksPort, benchmarkUrls.google, settings.googleRuns)
+                }
+                val secondaryResult = runLibboxRuns(socksPort, benchmarkUrls.chatgpt, settings.chatgptRuns)
+
+                val primaryMedian = medianOrNull(primaryResult.totals)
+                val secondaryMedian = medianOrNull(secondaryResult.totals)
+                val primaryStatus = if (secondaryOnly) "skipped" else classifyCodes(primaryResult.codes, false)
+                val secondaryStatus = classifyCodes(secondaryResult.codes, true)
+                val statusPenalty = if (secondaryOnly) {
+                    when (secondaryStatus) {
+                        "ok" -> 0.0
+                        "partial" -> 100.0
+                        "blocked" -> 200.0
+                        else -> 1_000_000.0
+                    }
+                } else {
+                    when (primaryStatus to secondaryStatus) {
+                        "ok" to "ok" -> 0.0
+                        "ok" to "partial" -> 100.0
+                        "ok" to "blocked" -> 200.0
+                        else -> 1_000_000.0
+                    }
+                }
+                val score = statusPenalty +
+                    (candidate.connectMillis ?: 999_999.0) +
+                    (primaryMedian ?: 999_999.0) +
+                    (secondaryMedian ?: 999_999.0)
+
+                ProfileBenchmark(
+                    profile = profile,
+                    googleStatus = primaryStatus,
+                    chatgptStatus = secondaryStatus,
+                    googleTotal = primaryMedian,
+                    chatgptTotal = secondaryMedian,
+                    score = score,
+                    detail = buildString {
+                        append(profile.remarks)
+                        append(": tcp=")
+                        append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
+                        if (!secondaryOnly) {
+                            append(" primary=")
+                            append(primaryStatus)
+                            append(" primary_codes=")
+                            append(primaryResult.codes.joinToString(","))
+                        }
+                        append(" secondary=")
+                        append(secondaryStatus)
+                        append(" secondary_codes=")
+                        append(secondaryResult.codes.joinToString(","))
+                        append(" score=")
+                        append(score)
+                    },
+                )
+            }
+
+            benchmark ?: failedBenchmark(profile, candidate, "validation_timeout")
+        } catch (error: Throwable) {
+            DiagnosticsLogger.append(
+                context,
+                "Libbox validation failed for ${profile.remarks}",
+                error,
+            )
+            failedBenchmark(profile, candidate, error.message ?: "validation_error")
+        } finally {
+            runCatching { service?.close() }
+        }
+    }
+
+    private fun runLibboxRuns(socksPort: Int, url: String, runs: Int): ProxyRunResult {
+        val codes = mutableListOf<String>()
+        val totals = mutableListOf<Double>()
+
+        repeat(runs) {
+            val result = executeLibboxRequest(socksPort, url)
+            codes.add(result.code)
+            result.total?.let { totals.add(it) }
+        }
+
+        return ProxyRunResult(codes = codes, totals = totals)
+    }
+
     private fun createProxyConfig(profile: VlessProfile, httpPort: Int, dnsSettings: DnsSettings): File {
         val temp = File.createTempFile("vpn_proxy", ".json", context.cacheDir)
         temp.writeText(SingBoxConfigFactory.buildProxyValidationConfig(profile, httpPort, dnsSettings))
@@ -442,6 +701,50 @@ class BenchmarkOrchestrator(
             val duration = (System.nanoTime() - startedAt) / 1_000_000.0
             return ProxyCallResult(response.code.toString(), duration)
         }
+    }
+
+    private fun executeLibboxRequest(socksPort: Int, url: String): ProxyCallResult {
+        val client = OkHttpClient.Builder()
+            .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort)))
+            .connectTimeout(settings.connectTimeout.toLong(), TimeUnit.SECONDS)
+            .readTimeout(settings.maxTime.toLong(), TimeUnit.SECONDS)
+            .callTimeout(settings.maxTime.toLong(), TimeUnit.SECONDS)
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", browserUserAgent)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Cache-Control", "no-cache")
+            .header("Connection", "close")
+            .build()
+        val startedAt = System.nanoTime()
+        return try {
+            client.newCall(request).execute().use { response ->
+                val duration = (System.nanoTime() - startedAt) / 1_000_000.0
+                ProxyCallResult(response.code.toString(), duration)
+            }
+        } catch (error: Exception) {
+            val duration = (System.nanoTime() - startedAt) / 1_000_000.0
+            val code = parseHttpStatusCode(error.message)
+            if (code != null) {
+                ProxyCallResult(code, duration)
+            } else if (error is SSLHandshakeException || error.cause is EOFException) {
+                ProxyCallResult("299", duration)
+            } else {
+                DiagnosticsLogger.append(
+                    context,
+                    "Libbox validation request failed for $url via socks:$socksPort",
+                    error,
+                )
+                ProxyCallResult("000", null)
+            }
+        }
+    }
+
+    private fun parseHttpStatusCode(message: String?): String? {
+        if (message.isNullOrBlank()) return null
+        return httpStatusRegex.find(message)?.groupValues?.getOrNull(1)
     }
 
     private fun classifyCodes(codes: List<String>, treat403AsPartial: Boolean): String {
@@ -513,7 +816,7 @@ class BenchmarkOrchestrator(
         val maxTime: Int = 5,
         val portWaitMillis: Long = 2_000L,
         val profileTimeoutMillis: Long = 10_000L,
-        val refreshTimeoutMillis: Long = 60_000L,
+        val refreshTimeoutMillis: Long = 240_000L,
     )
 
     private data class ProxyRunResult(

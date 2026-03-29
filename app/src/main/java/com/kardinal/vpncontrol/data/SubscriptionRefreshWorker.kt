@@ -24,6 +24,13 @@ class SubscriptionRefreshWorker(
             )
             return Result.success()
         }
+        if (RemoteSourceResolver.isGatewayBackedVpnImport(state.profileUrl)) {
+            DiagnosticsLogger.append(
+                applicationContext,
+                "Background subscription sync skipped: Amnezia vpn:// imports are not auto-refreshed in the background",
+            )
+            return Result.success()
+        }
 
         val orchestrator = BenchmarkOrchestrator(applicationContext, storage)
         return orchestrator.syncSubscriptionLocations().fold(

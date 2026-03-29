@@ -26,34 +26,28 @@ object DefaultNetworkMonitor {
         if (connectivityManager != null) return
         val manager = context.getSystemService(ConnectivityManager::class.java)
         connectivityManager = manager
-        defaultNetwork = manager.activeNetwork
+        defaultNetwork = preferredNetwork(manager)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                update(network)
+                updatePreferred()
             }
 
             override fun onLost(network: Network) {
-                if (defaultNetwork == network) {
-                    update(connectivityManager?.activeNetwork)
-                }
+                updatePreferred()
             }
 
             override fun onCapabilitiesChanged(
                 network: Network,
                 networkCapabilities: android.net.NetworkCapabilities,
             ) {
-                if (defaultNetwork == network) {
-                    notifyListener(network)
-                }
+                updatePreferred()
             }
 
             override fun onLinkPropertiesChanged(
                 network: Network,
                 linkProperties: android.net.LinkProperties,
             ) {
-                if (defaultNetwork == network) {
-                    notifyListener(network)
-                }
+                updatePreferred()
             }
         }
         runCatching {
@@ -80,17 +74,24 @@ object DefaultNetworkMonitor {
     }
 
     fun requireNetwork(): Network {
-        return defaultNetwork ?: connectivityManager?.activeNetwork ?: error("android: no default network")
+        return defaultNetwork
+            ?: connectivityManager?.let(::preferredNetwork)
+            ?: error("android: no default network")
     }
 
     fun setListener(listener: InterfaceUpdateListener?) {
         this.listener = listener
-        notifyListener(defaultNetwork ?: connectivityManager?.activeNetwork)
+        notifyListener(defaultNetwork ?: connectivityManager?.let(::preferredNetwork))
     }
 
     private fun update(network: Network?) {
         defaultNetwork = network
         notifyListener(network)
+    }
+
+    private fun updatePreferred() {
+        val manager = connectivityManager ?: return
+        update(preferredNetwork(manager))
     }
 
     private fun notifyListener(network: Network?) {
@@ -110,6 +111,31 @@ object DefaultNetworkMonitor {
         val isConstrained =
             networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)?.not() ?: false
         listener.updateDefaultInterface(interfaceName, interfaceIndex, isExpensive, isConstrained)
+    }
+
+    private fun preferredNetwork(manager: ConnectivityManager): Network? {
+        val active = manager.activeNetwork
+        if (active != null && isUsableUnderlyingNetwork(manager, active)) {
+            return active
+        }
+        return manager.allNetworks.firstOrNull { network ->
+            isUsableUnderlyingNetwork(manager, network)
+        } ?: active
+    }
+
+    private fun isUsableUnderlyingNetwork(manager: ConnectivityManager, network: Network): Boolean {
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+            return false
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+            return false
+        }
+        val interfaceName = manager.getLinkProperties(network)?.interfaceName ?: return false
+        if (interfaceName == "vpn-control" || interfaceName.startsWith("tun")) {
+            return false
+        }
+        return true
     }
 
     private const val TAG = "DefaultNetworkMonitor"

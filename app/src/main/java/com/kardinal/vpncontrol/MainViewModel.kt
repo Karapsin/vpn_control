@@ -11,6 +11,7 @@ import com.kardinal.vpncontrol.data.InstalledAppsCatalog
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.ProfileStorage
+import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 
 enum class AppScreen {
     MAIN,
+    PROFILE,
     LOCATIONS,
     ROUTING_RULES,
 }
@@ -37,6 +39,8 @@ data class MainUiState(
     val currentScreen: AppScreen = AppScreen.MAIN,
     val screenHistory: List<AppScreen> = emptyList(),
     val profileUrl: String = "",
+    val profileHistory: List<String> = emptyList(),
+    val profileHistoryNames: Map<String, String> = emptyMap(),
     val profileDraft: String = "",
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     val profileSourceModeDraft: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
@@ -78,6 +82,9 @@ data class MainUiState(
     val showDnsDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
     val showValidationSettingsDialog: Boolean = false,
+    val showProfileHistoryRenameDialog: Boolean = false,
+    val profileHistoryRenameSource: String = "",
+    val profileHistoryRenameDraft: String = "",
     val showLocationDialog: Boolean = false,
     val locationDraft: String = "",
     val editingLocationIndex: Int? = null,
@@ -97,6 +104,8 @@ class MainViewModel(
         repository.state.onEach { persisted ->
             _uiState.value = _uiState.value.copy(
                 profileUrl = persisted.profileUrl,
+                profileHistory = persisted.profileHistory,
+                profileHistoryNames = persisted.profileHistoryNames,
                 profileDraft = if (_uiState.value.showProfileDialog) _uiState.value.profileDraft else persisted.profileUrl,
                 profileSourceMode = persisted.profileSourceMode,
                 profileSourceModeDraft = if (_uiState.value.showProfileDialog) {
@@ -216,6 +225,10 @@ class MainViewModel(
         navigateToScreen(AppScreen.MAIN)
     }
 
+    fun openProfileTab() {
+        navigateToScreen(AppScreen.PROFILE)
+    }
+
     fun openLocationsTab() {
         navigateToScreen(AppScreen.LOCATIONS)
     }
@@ -241,6 +254,31 @@ class MainViewModel(
 
     fun onProfileDraftChanged(value: String) {
         _uiState.value = _uiState.value.copy(profileDraft = value)
+    }
+
+    fun showProfileHistoryRenameDialog(source: String) {
+        val normalized = source.trim()
+        val currentName = _uiState.value.profileHistoryNames[normalized]
+            ?.takeIf { it.isNotBlank() }
+            ?: RemoteSourceResolver.preview(normalized)?.title
+            .orEmpty()
+        _uiState.value = _uiState.value.copy(
+            showProfileHistoryRenameDialog = true,
+            profileHistoryRenameSource = normalized,
+            profileHistoryRenameDraft = currentName,
+        )
+    }
+
+    fun closeProfileHistoryRenameDialog() {
+        _uiState.value = _uiState.value.copy(
+            showProfileHistoryRenameDialog = false,
+            profileHistoryRenameSource = "",
+            profileHistoryRenameDraft = "",
+        )
+    }
+
+    fun onProfileHistoryRenameDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(profileHistoryRenameDraft = value.take(80))
     }
 
     fun onProfileSourceModeDraftChanged(value: ProfileSourceMode) {
@@ -396,15 +434,57 @@ class MainViewModel(
         val value = _uiState.value.profileDraft.trim()
         val mode = _uiState.value.profileSourceModeDraft
         viewModelScope.launch {
-            repository.updateProfileSource(value, mode)
+            val result = saveProfileSource(value, mode)
+            if (result.isFailure) return@launch
+            _uiState.value = _uiState.value.copy(showProfileDialog = false)
+        }
+    }
+
+    fun clearProfileSource() {
+        _uiState.value = _uiState.value.copy(profileDraft = "")
+        viewModelScope.launch {
+            saveProfileSource("", ProfileSourceMode.SUBSCRIPTION)
+        }
+    }
+
+    fun useProfileHistoryEntry(source: String) {
+        val normalized = source.trim()
+        _uiState.value = _uiState.value.copy(
+            profileDraft = normalized,
+            profileSourceModeDraft = ProfileSourceMode.SUBSCRIPTION,
+        )
+        viewModelScope.launch {
+            saveProfileSource(normalized, ProfileSourceMode.SUBSCRIPTION)
+        }
+    }
+
+    fun deleteProfileHistoryEntry(source: String) {
+        viewModelScope.launch {
+            repository.deleteProfileHistoryEntry(source)
+            if (_uiState.value.profileHistoryRenameSource == source) {
+                closeProfileHistoryRenameDialog()
+            }
+            repository.updateStatus("History entry deleted")
+        }
+    }
+
+    fun saveProfileHistoryRename() {
+        val source = _uiState.value.profileHistoryRenameSource.trim()
+        if (source.isBlank()) {
+            closeProfileHistoryRenameDialog()
+            return
+        }
+        val normalizedName = _uiState.value.profileHistoryRenameDraft.trim()
+        viewModelScope.launch {
+            repository.updateProfileHistoryName(source, normalizedName)
             repository.updateStatus(
-                if (mode == ProfileSourceMode.SUBSCRIPTION) {
-                    "Profile source set to subscription"
+                if (normalizedName.isBlank()) {
+                    "Subscription name reset"
                 } else {
-                    "Profile source set to saved locations"
+                    "Subscription name saved"
                 },
             )
-            _uiState.value = _uiState.value.copy(showProfileDialog = false)
+            closeProfileHistoryRenameDialog()
         }
     }
 
@@ -470,10 +550,16 @@ class MainViewModel(
             }
             repository.updateCurrentLocations(nextLocations)
             if (replacedRawLink != null && replacedRawLink == selectedLocationReference()) {
-                repository.syncSelectedLocation(
+                val selectionResult = repository.syncSelectedLocation(
                     rawLink = normalized,
                     detail = "Selected location updated",
                 )
+                if (selectionResult.isSuccess) {
+                    reapplyVpnIfRunning(
+                        selection = selectionResult.getOrThrow(),
+                        statusMessage = "Applying updated selected location...",
+                    )
+                }
             }
             repository.updateStatus(
                 if (editIndex == null) {
@@ -503,18 +589,54 @@ class MainViewModel(
         }
     }
 
+    fun benchmarkLocation(index: Int) {
+        val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
+        viewModelScope.launch {
+            setBusy(true)
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            try {
+                val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
+                    .getOrDefault("Location")
+                repository.updateStatus("Checking $remarks...")
+                val result = repository.benchmarkLocation(rawLink)
+                repository.updateStatus(
+                    result.fold(
+                        onSuccess = { benchmark -> "Location checked: ${benchmark.profile.remarks}" },
+                        onFailure = { it.message ?: "Location check failed" },
+                    ),
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(isRefreshing = false)
+                setBusy(false)
+            }
+        }
+    }
+
     fun selectLocation(index: Int) {
         val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
         viewModelScope.launch {
             setBusy(true)
             val isSelected = rawLink == selectedLocationReference()
             val result = if (isSelected) {
-                Result.success(Unit)
+                Result.success("Selected location unchanged")
             } else {
-                repository.syncSelectedLocation(
+                val selectionResult = repository.syncSelectedLocation(
                     rawLink = rawLink,
                     detail = "Selected location manually",
                 )
+                if (selectionResult.isFailure) {
+                    Result.failure(selectionResult.exceptionOrNull() ?: IllegalStateException("Failed to select location"))
+                } else {
+                    val applyResult = reapplyVpnIfRunning(
+                        selection = selectionResult.getOrThrow(),
+                        statusMessage = "Applying selected location...",
+                    )
+                    if (applyResult.isFailure) {
+                        Result.failure(applyResult.exceptionOrNull() ?: IllegalStateException("Failed to apply selected location"))
+                    } else {
+                        Result.success("Selected location set")
+                    }
+                }
             }
             repository.updateStatus(
                 if (result.isSuccess) {
@@ -638,7 +760,7 @@ class MainViewModel(
             if (_uiState.value.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
                 _uiState.value.profileUrl.isBlank()
             ) {
-                repository.updateStatus("Set a subscription URL first")
+                repository.updateStatus("Set a remote source first")
                 return@launch
             }
             if (_uiState.value.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS &&
@@ -660,7 +782,15 @@ class MainViewModel(
                 val result = repository.refreshBestProfile()
                 val message = result.fold(
                     onSuccess = { selection ->
-                        "Best location selected: ${selection.profile.remarks}"
+                        val applyResult = reapplyVpnIfRunning(
+                            selection = selection,
+                            statusMessage = "Applying best location...",
+                        )
+                        if (applyResult.isSuccess) {
+                            "Best location selected: ${selection.profile.remarks}"
+                        } else {
+                            applyResult.exceptionOrNull()?.message ?: "Failed to apply the best location"
+                        }
                     },
                     onFailure = { error ->
                         error.message ?: "Location search failed"
@@ -760,6 +890,51 @@ class MainViewModel(
 
     private fun setBusy(value: Boolean) {
         _uiState.value = _uiState.value.copy(isBusy = value)
+    }
+
+    private suspend fun saveProfileSource(
+        value: String,
+        mode: ProfileSourceMode,
+    ): Result<Unit> {
+        if (mode == ProfileSourceMode.SUBSCRIPTION && value.isNotBlank()) {
+            val validation = RemoteSourceResolver.validateProfileSource(value)
+            if (validation.isFailure) {
+                repository.updateStatus(
+                    validation.exceptionOrNull()?.message ?: "Invalid remote source",
+                )
+                return Result.failure(
+                    validation.exceptionOrNull() ?: IllegalStateException("Invalid remote source"),
+                )
+            }
+        }
+        repository.updateProfileSource(value, mode)
+        repository.updateStatus(
+            if (mode == ProfileSourceMode.SUBSCRIPTION && value.isBlank()) {
+                "Remote source cleared"
+            } else if (mode == ProfileSourceMode.SUBSCRIPTION) {
+                "Remote source saved"
+            } else {
+                "Profile source set to saved locations"
+            },
+        )
+        return Result.success(Unit)
+    }
+
+    private suspend fun reapplyVpnIfRunning(
+        selection: com.kardinal.vpncontrol.model.ProfileSelection,
+        statusMessage: String,
+    ): Result<Unit> {
+        if (!_uiState.value.isVpnRunning) {
+            return Result.success(Unit)
+        }
+
+        _uiState.value = _uiState.value.copy(isStartingVpn = true)
+        return try {
+            repository.updateStatus(statusMessage)
+            vpnManager.start(selection)
+        } finally {
+            _uiState.value = _uiState.value.copy(isStartingVpn = false)
+        }
     }
 
     private fun selectedLocationReference(): String {
