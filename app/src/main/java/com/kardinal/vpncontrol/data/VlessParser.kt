@@ -37,10 +37,7 @@ object VlessParser {
         val authPair = splitOnce(beforeQuery, '@')
         val userInfo = authPair.first
         val hostPort = authPair.second ?: error("Missing user info")
-        val hostPair = splitOnce(hostPort, ':')
-        val host = hostPair.first
-        val portStr = hostPair.second
-        val port = portStr?.toIntOrNull() ?: 443
+        val (host, port) = parseHostPort(hostPort)
         return VlessProfile(
             remarks = if (fragmentDecoded.isNotBlank()) fragmentDecoded else host,
             uuid = userInfo.decodeUrlComponent(),
@@ -83,7 +80,7 @@ object VlessParser {
             append("vless://")
             append(profile.uuid.encodeUrlComponent())
             append('@')
-            append(profile.server)
+            append(formatHost(profile.server))
             append(':')
             append(profile.serverPort)
             if (query.isNotBlank()) {
@@ -117,6 +114,35 @@ object VlessParser {
         val padding = (4 - compact.length % 4) % 4
         val normalized = compact + "=".repeat(padding)
         return String(Base64.decode(normalized, Base64.DEFAULT), Charsets.UTF_8)
+    }
+
+    private fun parseHostPort(hostPort: String): Pair<String, Int> {
+        if (hostPort.startsWith("[")) {
+            val closingIndex = hostPort.indexOf(']')
+            require(closingIndex > 1) { "Invalid IPv6 host" }
+            val host = hostPort.substring(1, closingIndex)
+            val remainder = hostPort.substring(closingIndex + 1)
+            val port = remainder.removePrefix(":").takeIf { it.isNotBlank() }?.toIntOrNull() ?: 443
+            return host to port
+        }
+
+        val lastColon = hostPort.lastIndexOf(':')
+        val colonCount = hostPort.count { it == ':' }
+        return if (lastColon > 0 && colonCount == 1) {
+            val host = hostPort.substring(0, lastColon)
+            val port = hostPort.substring(lastColon + 1).toIntOrNull() ?: 443
+            host to port
+        } else {
+            hostPort to 443
+        }
+    }
+
+    private fun formatHost(host: String): String {
+        return if (host.contains(':') && !host.startsWith("[") && !host.endsWith("]")) {
+            "[$host]"
+        } else {
+            host
+        }
     }
 
     private fun String.decodeUrlComponent(): String = URLDecoder.decode(this, Charsets.UTF_8.name())

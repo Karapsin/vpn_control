@@ -2,45 +2,58 @@
 
 Android VPN controller built around `sing-box` / `libbox`, modeled after the desktop `vpn_cli` flow.
 
-The app now has 3 tabs:
+The app now has 4 tabs:
 
 1. `Main`
-2. `Locations`
-3. `Routing Rules`
+2. `Profile`
+3. `Locations`
+4. `Rules`
 
 It supports both subscription-based operation and manual location management.
 
 ## Main Features
 
 - Functional Android VPN tunnel using bundled native `sing-box` / `libbox`.
-- `Profile Source` modes:
-  - `Subscription`
-  - `Current Locations`
-- `Refresh` benchmarks available locations and selects the best one.
+- `Profile` tab:
+  - choose `Subscription` or `Saved Locations`
+  - paste a remote source
+  - clear the current source
+  - reuse, rename, or delete items from subscription history
+- `Find the best location` benchmarks available locations and selects the best one.
 - `Locations` tab:
   - add a location from either a `vless://...` link or JSON
   - edit / delete locations
   - mark one location as the current selected location via `Use`
+  - rerun benchmarks for one location via the refresh icon
   - import / export locations as JSON
-- `Routing Rules` tab:
+- `Rules` tab:
   - `Proxy Apps`
   - `Direct Apps`
-  - `National Domains`
-  - `Direct Domains`
+  - `Country-code Domains`
+  - `Bypass Domains`
   - `Ignore Rules`
   - import / export routing rules as JSON
 - Advanced settings menu on the main screen:
-  - `Set Custom DNS`
-  - `Subscription Refresh Policy`
+  - `Custom DNS`
+  - `Subscription Auto-Refresh`
+  - `Validation Settings`
 - Diagnostics export from the main screen.
 
 ## Selection Behavior
 
 - Tapping `Use` on the `Locations` tab sets that location as the current selected location.
 - `Start VPN` uses the current selected location if one is already selected.
-- `Refresh` benchmarks candidates and replaces the selected location with the new winner.
+- `Find the best location` benchmarks candidates and replaces the selected location with the new winner.
 - In `Subscription` mode, refresh downloads the subscription and syncs the `Locations` tab from it.
-- In `Current Locations` mode, refresh benchmarks only the saved locations already in the app.
+- In `Saved Locations` mode, refresh benchmarks only the locations already stored in the app.
+
+## Best-Location Logic
+
+- Standard VLESS subscriptions:
+  - all locations are prefiltered by TCP connect speed
+  - candidates are tested from fastest to slowest
+  - the first location where the secondary test site succeeds is selected
+- On the `Locations` tab, the per-location refresh action uses the same benchmark path as the main search for the current source type.
 
 ## Subscription Refresh Policy
 
@@ -65,7 +78,7 @@ Notes:
   - if this list is non-empty, only these apps use the VPN
 - `Direct Apps`:
   - these apps bypass the VPN
-- `National Domains` and `Direct Domains` have priority over app-based proxy routing
+- `Country-code Domains` and `Bypass Domains` have priority over app-based proxy routing
 - `Ignore Rules` disables custom routing rules and sends normal app traffic through the VPN
 
 ## Location Input Formats
@@ -76,6 +89,11 @@ The app accepts locations in two formats:
 - JSON location objects
 
 Locations are normalized and stored internally as structured JSON-compatible data.
+
+Remote source support:
+
+- supported: direct subscription URLs and `sing-box://import-remote-profile...` links that resolve to a VLESS list
+- not supported: `vpn://...` imports, including Amnezia Premium keys
 
 ## Diagnostics
 
@@ -119,10 +137,13 @@ The release build is configured to use the debug signing config so it can be ins
 - `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/AppRepository.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/BenchmarkOrchestrator.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/data/LocationConfigs.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/data/RemoteSourceResolver.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SingBoxConfigFactory.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshScheduler.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/data/VpnManager.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/ui/VpnControlApp.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt`
 

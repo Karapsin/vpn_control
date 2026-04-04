@@ -148,16 +148,6 @@ object SingBoxConfigFactory {
         )
     }
 
-    fun buildSocksValidationConfig(profile: VlessProfile, socksPort: Int, dns: DnsSettings): String {
-        return buildValidationConfig(
-            profile = profile,
-            listenPort = socksPort,
-            dns = dns,
-            inboundType = "socks",
-            inboundTag = "socks-in",
-        )
-    }
-
     private fun buildValidationConfig(
         profile: VlessProfile,
         listenPort: Int,

@@ -17,13 +17,15 @@ class MainActivity : ComponentActivity() {
     }
     private var pendingRoutingRulesExport: String? = null
     private var pendingLocationsExport: String? = null
+    private var pendingVpnPermissionAction: (() -> Unit)? = null
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         if (VpnService.prepare(this) == null) {
             viewModel.onVpnPermissionGranted()
-            viewModel.toggleVpn()
+            pendingVpnPermissionAction?.invoke()
         }
+        pendingVpnPermissionAction = null
     }
     private val exportRoutingRulesLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -111,11 +113,11 @@ class MainActivity : ComponentActivity() {
             VpnControlApp(
                 state = state.value,
                 onNavigateBack = viewModel::navigateBack,
-                onToggleProfileDialog = viewModel::toggleProfileDialog,
                 onProfileChange = viewModel::onProfileDraftChanged,
-                onProfileSourceModeChange = viewModel::onProfileSourceModeDraftChanged,
+                onProfileSourceModeChange = viewModel::setProfileSourceMode,
                 onSaveProfile = viewModel::saveProfile,
                 onClearProfileSource = viewModel::clearProfileSource,
+                onToggleAddSubscriptionEditor = viewModel::toggleAddSubscriptionEditor,
                 onUseProfileHistoryEntry = viewModel::useProfileHistoryEntry,
                 onShowProfileHistoryRenameDialog = viewModel::showProfileHistoryRenameDialog,
                 onDeleteProfileHistoryEntry = viewModel::deleteProfileHistoryEntry,
@@ -131,9 +133,10 @@ class MainActivity : ComponentActivity() {
                 onSubscriptionRefreshCustomHoursChange = viewModel::onSubscriptionRefreshCustomHoursDraftChanged,
                 onSaveSubscriptionRefreshPolicy = viewModel::saveSubscriptionRefreshPolicy,
                 onToggleValidationSettingsDialog = viewModel::toggleValidationSettingsDialog,
-                onValidationGeneralUrlChange = viewModel::onValidationGeneralUrlDraftChanged,
-                onValidationChatGptUrlChange = viewModel::onValidationChatGptUrlDraftChanged,
-                onValidationCandidateCountChange = viewModel::onValidationCandidateCountDraftChanged,
+                onValidationPrimaryUrlChange = viewModel::onValidationPrimaryUrlDraftChanged,
+                onValidationSecondaryUrlChange = viewModel::onValidationSecondaryUrlDraftChanged,
+                onValidationBatchSizeChange = viewModel::onValidationBatchSizeDraftChanged,
+                onValidationRetryCountChange = viewModel::onValidationRetryCountDraftChanged,
                 onSaveValidationSettings = viewModel::saveValidationSettings,
                 onOpenMainTab = viewModel::openMainTab,
                 onOpenProfileTab = viewModel::openProfileTab,
@@ -155,6 +158,7 @@ class MainActivity : ComponentActivity() {
                 onToggleSelectedLocationVpn = {
                     val prepareIntent = VpnService.prepare(this)
                     if (prepareIntent != null) {
+                        pendingVpnPermissionAction = { viewModel.toggleVpn() }
                         vpnPermissionLauncher.launch(prepareIntent)
                     } else {
                         viewModel.toggleVpn()
@@ -185,12 +189,22 @@ class MainActivity : ComponentActivity() {
                 onToggleVpn = {
                     val prepareIntent = VpnService.prepare(this)
                     if (prepareIntent != null) {
+                        pendingVpnPermissionAction = { viewModel.toggleVpn() }
                         vpnPermissionLauncher.launch(prepareIntent)
                     } else {
                         viewModel.toggleVpn()
                     }
                 },
-                onRefresh = viewModel::refresh,
+                onRefresh = {
+                    val prepareIntent = VpnService.prepare(this)
+                    if (prepareIntent != null) {
+                        pendingVpnPermissionAction = { viewModel.refresh() }
+                        vpnPermissionLauncher.launch(prepareIntent)
+                    } else {
+                        viewModel.refresh()
+                    }
+                },
+                onCancelBusyAction = viewModel::cancelActiveOperation,
                 onExportDiagnostics = viewModel::exportDiagnostics,
             )
         }

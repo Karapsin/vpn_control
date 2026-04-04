@@ -17,6 +17,9 @@ object LocationConfigs {
     fun parseLocationInput(raw: String): VlessProfile {
         val trimmed = raw.trim()
         require(trimmed.isNotBlank()) { "Location config is empty" }
+        require(!RemoteSourceResolver.isUnsupportedVpnImport(trimmed)) {
+            "vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually."
+        }
         require(!RemoteSourceResolver.looksLikeRemoteSourceLink(trimmed)) {
             "This is a remote source link. Add it in Profile Source on the Profile tab."
         }
@@ -34,6 +37,22 @@ object LocationConfigs {
             parseProfileJson(JSONObject(trimmed))
         } else {
             VlessParser.parseVlessLink(trimmed)
+        }
+    }
+
+    fun normalizeStoredReference(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return ""
+        return runCatching { encodeStoredLocation(parseLocationInput(trimmed)) }
+            .getOrDefault(trimmed)
+    }
+
+    fun selectedStoredReference(selectedProfileJson: String, selectedProfileRawLink: String): String {
+        return selectedProfileJson.ifBlank {
+            selectedProfileRawLink
+                .takeIf { it.isNotBlank() }
+                ?.let(::normalizeStoredReference)
+                .orEmpty()
         }
     }
 

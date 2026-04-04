@@ -1,8 +1,6 @@
 package com.kardinal.vpncontrol.data
 
 import io.nekohasekai.libbox.Libbox
-import android.content.Context
-import com.kardinal.vpncontrol.model.VlessProfile
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -21,20 +19,9 @@ data class RemoteSourcePreview(
 data class ResolvedRemoteSource(
     val preview: RemoteSourcePreview,
     val fetchUrl: String? = null,
-    val embeddedLocations: List<VlessProfile> = emptyList(),
 )
 
 object RemoteSourceResolver {
-    private val remoteKeys = listOf(
-        "url",
-        "remote_url",
-        "remoteUrl",
-        "subscription_url",
-        "subscriptionUrl",
-        "profile_url",
-        "profileUrl",
-    )
-
     fun preview(raw: String): RemoteSourcePreview? {
         return parse(raw.trim())?.preview
     }
@@ -49,11 +36,7 @@ object RemoteSourceResolver {
         }
     }
 
-    suspend fun resolveForFetch(
-        context: Context,
-        raw: String,
-        onStatus: suspend (String) -> Unit = {},
-    ): ResolvedRemoteSource {
+    fun resolveForFetch(raw: String): ResolvedRemoteSource {
         val trimmed = raw.trim()
         require(trimmed.isNotBlank()) { "Remote source is empty" }
         return when (val source = parse(trimmed)) {
@@ -65,23 +48,6 @@ object RemoteSourceResolver {
                 preview = source.preview,
                 fetchUrl = source.remoteUrl,
             )
-            is VpnImportSource -> {
-                when {
-                    source.remoteUrl != null -> ResolvedRemoteSource(
-                        preview = source.preview,
-                        fetchUrl = source.remoteUrl,
-                    )
-                    source.isGatewayCompatible -> ResolvedRemoteSource(
-                        preview = source.preview,
-                        embeddedLocations = AmneziaGatewayResolver.resolveLocations(
-                            context = context,
-                            source = source.toGatewayImport(),
-                            onStatus = onStatus,
-                        ),
-                    )
-                    else -> error(source.unsupportedMessage())
-                }
-            }
             is UnsupportedRemoteSource -> error(source.errorMessage)
             null -> error("Remote source must be an https:// URL or a supported import link")
         }
@@ -95,10 +61,8 @@ object RemoteSourceResolver {
             trimmed.startsWith("vpn://", ignoreCase = true)
     }
 
-    fun isGatewayBackedVpnImport(raw: String): Boolean {
-        return parse(raw.trim()).let { source ->
-            source is VpnImportSource && source.isGatewayCompatible && source.remoteUrl == null
-        }
+    fun isUnsupportedVpnImport(raw: String): Boolean {
+        return raw.trim().startsWith("vpn://", ignoreCase = true)
     }
 
     fun redactForDiagnostics(raw: String): String {
@@ -108,15 +72,6 @@ object RemoteSourceResolver {
             is DirectSubscriptionSource -> sanitizeUrl(source.url)
             is SingBoxRemoteImportSource -> {
                 "sing-box import: name=${source.name} host=${source.host} url=${sanitizeUrl(source.remoteUrl)}"
-            }
-            is VpnImportSource -> {
-                buildString {
-                    append("vpn import")
-                    source.name.takeIf { it.isNotBlank() }?.let { append(": name=$it") }
-                    source.protocol.takeIf { it.isNotBlank() }?.let { append(" protocol=$it") }
-                    source.serviceType.takeIf { it.isNotBlank() }?.let { append(" type=$it") }
-                    source.remoteUrl?.let { append(" url=${sanitizeUrl(it)}") } ?: append(" gateway=amnezia")
-                }
             }
             is UnsupportedRemoteSource -> {
                 buildString {
@@ -134,18 +89,42 @@ object RemoteSourceResolver {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return null
         return when {
-            trimmed.startsWith("http://", ignoreCase = true) ||
-                trimmed.startsWith("https://", ignoreCase = true) -> {
-                val host = trimmed.displayHost()
-                DirectSubscriptionSource(
-                    url = trimmed,
+            trimmed.startsWith("http://", ignoreCase = true) -> {
+                UnsupportedRemoteSource(
                     preview = RemoteSourcePreview(
                         kindLabel = "Subscription URL",
-                        title = host ?: trimmed,
-                        detail = "Direct remote source",
-                        supported = true,
+                        title = trimmed.displayHost() ?: trimmed,
+                        detail = "Insecure HTTP subscriptions are not supported",
+                        supported = false,
+                        warning = "Use an https:// subscription URL.",
                     ),
+                    errorMessage = "HTTP subscription URLs are not supported. Use https:// instead.",
                 )
+            }
+            trimmed.startsWith("https://", ignoreCase = true) -> {
+                val host = trimmed.displayHost()
+                if (host.isNullOrBlank()) {
+                    UnsupportedRemoteSource(
+                        preview = RemoteSourcePreview(
+                            kindLabel = "Subscription URL",
+                            title = "Unreadable subscription URL",
+                            detail = "The URL must include a valid HTTPS host",
+                            supported = false,
+                            warning = "Paste a valid https:// subscription URL.",
+                        ),
+                        errorMessage = "Remote source must be a valid https:// URL with a host.",
+                    )
+                } else {
+                    DirectSubscriptionSource(
+                        url = trimmed,
+                        preview = RemoteSourcePreview(
+                            kindLabel = "Subscription URL",
+                            title = host,
+                            detail = "Direct remote source",
+                            supported = true,
+                        ),
+                    )
+                }
             }
             trimmed.startsWith("sing-box://import-remote-profile", ignoreCase = true) -> {
                 runCatching {
@@ -153,21 +132,34 @@ object RemoteSourceResolver {
                     val name = parsed.name.ifBlank { parsed.host.ifBlank { "Remote profile" } }
                     val remoteUrl = parsed.url
                     val host = parsed.host.ifBlank { remoteUrl.displayHost().orEmpty() }
-                    SingBoxRemoteImportSource(
-                        name = name,
-                        remoteUrl = remoteUrl,
-                        host = host,
-                        preview = RemoteSourcePreview(
-                            kindLabel = "sing-box import link",
-                            title = name,
-                            detail = if (host.isNotBlank()) {
-                                "Fetches remote content from $host"
-                            } else {
-                                "Fetches remote content from the embedded URL"
-                            },
-                            supported = true,
-                        ),
-                    )
+                    if (!remoteUrl.startsWith("https://", ignoreCase = true) || host.isBlank()) {
+                        UnsupportedRemoteSource(
+                            preview = RemoteSourcePreview(
+                                kindLabel = "sing-box import link",
+                                title = name,
+                                detail = "Only valid HTTPS remote URLs are supported",
+                                supported = false,
+                                warning = "Use a sing-box import link that resolves to a valid https:// URL.",
+                            ),
+                            errorMessage = "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+                        )
+                    } else {
+                        SingBoxRemoteImportSource(
+                            name = name,
+                            remoteUrl = remoteUrl,
+                            host = host,
+                            preview = RemoteSourcePreview(
+                                kindLabel = "sing-box import link",
+                                title = name,
+                                detail = if (host.isNotBlank()) {
+                                    "Fetches remote content from $host"
+                                } else {
+                                    "Fetches remote content from the embedded URL"
+                                },
+                                supported = true,
+                            ),
+                        )
+                    }
                 }.getOrElse { error ->
                     UnsupportedRemoteSource(
                         preview = RemoteSourcePreview(
@@ -197,71 +189,28 @@ object RemoteSourceResolver {
             val protocol = apiConfig?.optString("service_protocol").orEmpty()
             val serviceType = apiConfig?.optString("service_type").orEmpty()
             val country = apiConfig?.optString("user_country_code").orEmpty()
-            val remoteUrl = extractRemoteUrl(payload)
-            val authData = payload.optJSONObject("auth_data")
             val detail = listOf(protocol, serviceType, country.uppercase(Locale.ROOT))
                 .filter { it.isNotBlank() }
                 .joinToString(" • ")
-                .ifBlank { "Provider import" }
-            val gatewayCompatible = authData != null && serviceType.isNotBlank()
+                .ifBlank { "Unsupported provider import" }
 
-            if (remoteUrl != null) {
-                val host = remoteUrl.displayHost().orEmpty()
-                VpnImportSource(
-                    name = name,
-                    protocol = protocol,
-                    serviceType = serviceType,
-                    userCountryCode = country,
-                    authData = authData,
-                    remoteUrl = remoteUrl,
-                    isGatewayCompatible = gatewayCompatible,
-                    preview = RemoteSourcePreview(
-                        kindLabel = "VPN import link",
-                        title = name,
-                        detail = if (host.isNotBlank()) {
-                            "$detail • fetches remote content from $host"
-                        } else {
-                            detail
-                        },
-                        supported = true,
-                    ),
-                )
-            } else if (gatewayCompatible) {
-                VpnImportSource(
-                    name = name,
-                    protocol = protocol,
-                    serviceType = serviceType,
-                    userCountryCode = country,
-                    authData = authData,
-                    remoteUrl = null,
-                    isGatewayCompatible = true,
-                    preview = RemoteSourcePreview(
-                        kindLabel = "VPN import link",
-                        title = name,
-                        detail = "$detail • resolves locations through Amnezia Gateway",
-                        supported = true,
-                        warning = "The app will fetch available VLESS locations from this provider import.",
-                    ),
-                )
-            } else {
-                UnsupportedRemoteSource(
-                    preview = RemoteSourcePreview(
-                        kindLabel = "VPN import link",
-                        title = name,
-                        detail = detail,
-                        supported = false,
-                        warning = "This import contains provider credentials or another unsupported format, not a VLESS location list.",
-                    ),
-                    errorMessage = buildString {
-                        append("This vpn:// import link is not supported here")
-                        if (protocol.isNotBlank() || serviceType.isNotBlank()) {
-                            append(": ")
-                            append(listOf(protocol, serviceType).filter { it.isNotBlank() }.joinToString(" / "))
-                        }
-                        append(". Use a normal subscription URL instead.")
-                    },
-                )
-            }
+            UnsupportedRemoteSource(
+                preview = RemoteSourcePreview(
+                    kindLabel = "VPN import link",
+                    title = name,
+                    detail = detail,
+                    supported = false,
+                    warning = "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
+                ),
+                errorMessage = buildString {
+                    append("vpn:// imports are not supported")
+                    if (protocol.isNotBlank() || serviceType.isNotBlank()) {
+                        append(": ")
+                        append(listOf(protocol, serviceType).filter { it.isNotBlank() }.joinToString(" / "))
+                    }
+                    append(". Use a normal subscription URL or add VLESS locations manually.")
+                },
+            )
         }.getOrElse {
             UnsupportedRemoteSource(
                 preview = RemoteSourcePreview(
@@ -269,9 +218,9 @@ object RemoteSourceResolver {
                     title = "Unreadable VPN import link",
                     detail = "The import payload could not be decoded",
                     supported = false,
-                    warning = "Use a normal subscription URL or another supported import link.",
+                    warning = "vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
                 ),
-                errorMessage = "Unreadable vpn:// import link",
+                errorMessage = "vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
             )
         }
     }
@@ -290,23 +239,6 @@ object RemoteSourceResolver {
         }.firstOrNull()
         require(!decodedText.isNullOrBlank()) { "Could not inflate vpn:// payload" }
         return JSONObject(decodedText)
-    }
-
-    private fun extractRemoteUrl(root: JSONObject): String? {
-        remoteKeys.forEach { key ->
-            root.optString(key).trim().takeIf { it.startsWithHttpScheme() }?.let { return it }
-        }
-        val nestedCandidates = listOfNotNull(
-            root.optJSONObject("api_config"),
-            root.optJSONObject("config"),
-            root.optJSONObject("profile"),
-        )
-        nestedCandidates.forEach { nested ->
-            remoteKeys.forEach { key ->
-                nested.optString(key).trim().takeIf { it.startsWithHttpScheme() }?.let { return it }
-            }
-        }
-        return null
     }
 
     private fun sanitizeUrl(raw: String): String {
@@ -339,10 +271,6 @@ object RemoteSourceResolver {
             ?.takeIf { it.isNotBlank() }
     }
 
-    private fun String.startsWithHttpScheme(): Boolean {
-        return startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
-    }
-
     private fun String.padBase64(): String {
         val padding = (4 - length % 4) % 4
         return this + "=".repeat(padding)
@@ -363,37 +291,6 @@ object RemoteSourceResolver {
         val host: String,
         override val preview: RemoteSourcePreview,
     ) : ParsedRemoteSource
-
-    private data class VpnImportSource(
-        val name: String,
-        val protocol: String,
-        val serviceType: String,
-        val userCountryCode: String,
-        val authData: JSONObject?,
-        val remoteUrl: String?,
-        val isGatewayCompatible: Boolean,
-        override val preview: RemoteSourcePreview,
-    ) : ParsedRemoteSource {
-        fun toGatewayImport(): AmneziaGatewayImport {
-            return AmneziaGatewayImport(
-                name = name,
-                serviceType = serviceType,
-                userCountryCode = userCountryCode,
-                authData = authData ?: error("Amnezia gateway auth data is missing"),
-            )
-        }
-
-        fun unsupportedMessage(): String {
-            return buildString {
-                append("This vpn:// import link is not supported here")
-                if (protocol.isNotBlank() || serviceType.isNotBlank()) {
-                    append(": ")
-                    append(listOf(protocol, serviceType).filter { it.isNotBlank() }.joinToString(" / "))
-                }
-                append(". Use a normal subscription URL instead.")
-            }
-        }
-    }
 
     private data class UnsupportedRemoteSource(
         override val preview: RemoteSourcePreview,

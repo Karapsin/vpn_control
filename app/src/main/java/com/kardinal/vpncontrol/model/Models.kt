@@ -54,10 +54,10 @@ data class VlessProfile(
 
 data class ProfileBenchmark(
     val profile: VlessProfile,
-    val googleStatus: String,
-    val chatgptStatus: String,
-    val googleTotal: Double?,
-    val chatgptTotal: Double?,
+    val primaryStatus: String,
+    val secondaryStatus: String,
+    val primaryTotal: Double?,
+    val secondaryTotal: Double?,
     val score: Double,
     val detail: String,
 )
@@ -85,6 +85,7 @@ data class PersistedState(
     val selectedProfileServer: String = "",
     val selectedProfileRawLink: String = "",
     val selectedProfileJson: String = "",
+    val selectedProfileSourceUrl: String = "",
     val lastBenchmarkSummary: String = "",
     val runtimeConfigJson: String = "",
     val statusMessage: String = "Idle",
@@ -92,36 +93,56 @@ data class PersistedState(
 )
 
 data class BenchmarkValidationSettings(
-    val generalUrl: String = DEFAULT_GENERAL_URL,
-    val chatGptUrl: String = DEFAULT_CHATGPT_URL,
-    val candidateCount: Int = DEFAULT_CANDIDATE_COUNT,
+    val primaryUrl: String = DEFAULT_PRIMARY_URL,
+    val secondaryUrl: String = DEFAULT_SECONDARY_URL,
+    val batchSize: Int = DEFAULT_BATCH_SIZE,
+    val retryCount: Int = DEFAULT_RETRY_COUNT,
 ) {
     fun normalized(): BenchmarkValidationSettings {
         return copy(
-            generalUrl = normalizeUrl(generalUrl, DEFAULT_GENERAL_URL),
-            chatGptUrl = normalizeUrl(chatGptUrl, DEFAULT_CHATGPT_URL),
-            candidateCount = candidateCount.coerceAtLeast(1),
+            primaryUrl = normalizeUrl(primaryUrl, DEFAULT_PRIMARY_URL),
+            secondaryUrl = normalizeUrl(secondaryUrl, DEFAULT_SECONDARY_URL),
+            batchSize = batchSize.coerceAtLeast(1),
+            retryCount = retryCount.coerceAtLeast(0),
         )
     }
 
-    fun concurrency(): Int = normalized().candidateCount.coerceAtMost(5)
-
     fun displaySummary(): String {
         val normalized = normalized()
-        return "${normalized.generalUrl.displayHost()} • " +
-            "${normalized.chatGptUrl.displayHost()} • " +
-            "top ${normalized.candidateCount} • conc ${normalized.concurrency()}"
+        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • retries ${normalized.retryCount}"
     }
 
     companion object {
-        const val DEFAULT_GENERAL_URL = "https://www.google.com/generate_204"
-        const val DEFAULT_CHATGPT_URL = "https://chatgpt.com/"
-        const val DEFAULT_CANDIDATE_COUNT = 3
+        const val DEFAULT_PRIMARY_URL = "https://www.google.com/generate_204"
+        const val DEFAULT_SECONDARY_URL = "https://chatgpt.com/"
+        const val DEFAULT_BATCH_SIZE = 3
+        const val DEFAULT_RETRY_COUNT = 1
 
         private fun normalizeUrl(raw: String, fallback: String): String {
             val trimmed = raw.trim()
             if (trimmed.isBlank()) return fallback
-            return if (trimmed.contains("://")) trimmed else "https://$trimmed"
+            val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+            val uri = runCatching { URI(withScheme) }.getOrNull() ?: return fallback
+            val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return fallback
+            if (scheme != "https" && scheme != "http") return fallback
+            val host = uri.host?.takeIf { it.isNotBlank() } ?: return fallback
+            return buildString {
+                append("https://")
+                append(host)
+                if (uri.port != -1) {
+                    append(':')
+                    append(uri.port)
+                }
+                uri.rawPath?.takeIf { it.isNotBlank() }?.let { append(it) }
+                uri.rawQuery?.let {
+                    append('?')
+                    append(it)
+                }
+                uri.rawFragment?.let {
+                    append('#')
+                    append(it)
+                }
+            }
         }
 
         private fun String.displayHost(): String {

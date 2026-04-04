@@ -75,10 +75,10 @@ class DiagnosticsExporter(
             appendLine("profile_source_mode=${state.profileSourceMode}")
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
-            appendLine("validation_general_url=${state.validationSettings.generalUrl}")
-            appendLine("validation_chatgpt_url=${state.validationSettings.chatGptUrl}")
-            appendLine("validation_candidate_count=${state.validationSettings.candidateCount}")
-            appendLine("validation_concurrency=${state.validationSettings.concurrency()}")
+            appendLine("validation_primary_url=${state.validationSettings.primaryUrl}")
+            appendLine("validation_secondary_url=${state.validationSettings.secondaryUrl}")
+            appendLine("validation_batch_size=${state.validationSettings.batchSize}")
+            appendLine("validation_retry_count=${state.validationSettings.retryCount}")
             appendLine("current_locations_count=${state.currentLocations.size}")
             appendLine("custom_dns=${state.customDns}")
             appendLine("use_custom_dns=${state.useCustomDns}")
@@ -95,7 +95,10 @@ class DiagnosticsExporter(
             appendLine()
             appendSection(
                 "selected_profile_link",
-                safeRead(RuntimeFiles.selectedProfileFile(context)).ifBlank { state.selectedProfileRawLink },
+                fileOrFallback(
+                    file = RuntimeFiles.selectedProfileFile(context),
+                    fallback = state.selectedProfileRawLink,
+                ),
             )
             appendSection(
                 "current_locations",
@@ -103,7 +106,10 @@ class DiagnosticsExporter(
             )
             appendSection(
                 "runtime_sing_box_json",
-                safeRead(RuntimeFiles.runtimeConfigFile(context)),
+                fileOrFallback(
+                    file = RuntimeFiles.runtimeConfigFile(context),
+                    fallback = state.runtimeConfigJson,
+                ),
             )
             appendSection(
                 "diagnostics_log",
@@ -118,6 +124,11 @@ class DiagnosticsExporter(
         } else {
             "<missing>"
         }
+    }
+
+    private fun fileOrFallback(file: File, fallback: String): String {
+        val content = safeRead(file)
+        return if (content == "<missing>") fallback else content
     }
 
     private fun StringBuilder.appendSection(name: String, content: String) {

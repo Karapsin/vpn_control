@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -27,6 +28,10 @@ import java.io.File
 private val Context.dataStore by preferencesDataStore(name = "vpn_control")
 
 class ProfileStorage(private val context: Context) {
+    data class CurrentLocationsUpdateResult(
+        val selectedMissing: Boolean,
+    )
+
     private object Keys {
         val profileUrl = stringPreferencesKey("profile_url")
         val profileHistory = stringPreferencesKey("profile_history")
@@ -34,9 +39,12 @@ class ProfileStorage(private val context: Context) {
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
         val subscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
-        val validationGeneralUrl = stringPreferencesKey("validation_general_url")
-        val validationChatGptUrl = stringPreferencesKey("validation_chatgpt_url")
-        val validationCandidateCount = intPreferencesKey("validation_candidate_count")
+        val validationPrimaryUrl = stringPreferencesKey("validation_primary_url")
+        val validationSecondaryUrl = stringPreferencesKey("validation_secondary_url")
+        val validationBatchSize = intPreferencesKey("validation_batch_size")
+        val validationRetryCount = intPreferencesKey("validation_retry_count")
+        val legacyValidationGeneralUrl = stringPreferencesKey("validation_general_url")
+        val legacyValidationChatGptUrl = stringPreferencesKey("validation_chatgpt_url")
         val currentLocations = stringPreferencesKey("current_locations")
         val locationBenchmarkDetails = stringPreferencesKey("location_benchmark_details")
         val customDns = stringPreferencesKey("custom_dns")
@@ -50,6 +58,7 @@ class ProfileStorage(private val context: Context) {
         val selectedProfileServer = stringPreferencesKey("selected_profile_server")
         val selectedProfileRawLink = stringPreferencesKey("selected_profile_raw_link")
         val selectedProfileJson = stringPreferencesKey("selected_profile_json")
+        val selectedProfileSourceUrl = stringPreferencesKey("selected_profile_source_url")
         val lastBenchmarkSummary = stringPreferencesKey("last_benchmark_summary")
         val runtimeConfigJson = stringPreferencesKey("runtime_config_json")
         val statusMessage = stringPreferencesKey("status_message")
@@ -140,47 +149,64 @@ class ProfileStorage(private val context: Context) {
     suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
         val normalized = settings.normalized()
         context.dataStore.edit { prefs ->
-            prefs[Keys.validationGeneralUrl] = normalized.generalUrl
-            prefs[Keys.validationChatGptUrl] = normalized.chatGptUrl
-            prefs[Keys.validationCandidateCount] = normalized.candidateCount
+            prefs[Keys.validationPrimaryUrl] = normalized.primaryUrl
+            prefs[Keys.validationSecondaryUrl] = normalized.secondaryUrl
+            prefs[Keys.validationBatchSize] = normalized.batchSize
+            prefs[Keys.validationRetryCount] = normalized.retryCount
+            prefs.remove(Keys.legacyValidationGeneralUrl)
+            prefs.remove(Keys.legacyValidationChatGptUrl)
         }
         DiagnosticsLogger.append(
             context,
-            "Validation settings updated: general=${normalized.generalUrl} chatgpt=${normalized.chatGptUrl} " +
-                "candidates=${normalized.candidateCount} concurrency=${normalized.concurrency()}",
+            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} retries=${normalized.retryCount}",
         )
     }
 
-    suspend fun updateCurrentLocations(rawLinks: List<String>) {
+    suspend fun updateCurrentLocations(rawLinks: List<String>): CurrentLocationsUpdateResult {
         val normalized = rawLinks
             .mapNotNull { raw ->
                 raw.trim()
                     .takeIf { it.isNotBlank() }
                     ?.let { LocationConfigs.encodeStoredLocation(LocationConfigs.parseLocationInput(it)) }
             }
+            .distinct()
+        var result = CurrentLocationsUpdateResult(
+            selectedMissing = false,
+        )
         context.dataStore.edit { prefs ->
             prefs[Keys.currentLocations] = encodeList(normalized)
             prefs[Keys.locationBenchmarkDetails] = encodeStringMap(
                 decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in normalized },
             )
-            val selectedStored = prefs[Keys.selectedProfileJson]
-                ?: prefs[Keys.selectedProfileRawLink]?.takeIf { it.isNotBlank() }?.let { raw ->
-                    runCatching {
-                        LocationConfigs.encodeStoredLocation(LocationConfigs.parseLocationInput(raw))
-                    }.getOrNull()
-                }
-            selectedStored
-                ?.takeIf { it.isNotBlank() && it !in normalized }
-                ?.let {
-                    prefs.remove(Keys.selectedProfileName)
-                    prefs.remove(Keys.selectedProfileServer)
-                    prefs.remove(Keys.selectedProfileRawLink)
-                    prefs.remove(Keys.selectedProfileJson)
-                    prefs.remove(Keys.lastBenchmarkSummary)
-                    prefs.remove(Keys.runtimeConfigJson)
-                }
+            val sourceMode = prefs[Keys.profileSourceMode]
+            val selectedStored = LocationConfigs.selectedStoredReference(
+                selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
+                selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
+            )
+            val selectedRelevantToCurrentList = when (sourceMode) {
+                ProfileSourceMode.SUBSCRIPTION.name ->
+                    prefs[Keys.selectedProfileSourceUrl].orEmpty().isNotBlank() &&
+                        prefs[Keys.selectedProfileSourceUrl].orEmpty() == prefs[Keys.profileUrl].orEmpty()
+                ProfileSourceMode.CURRENT_LOCATIONS.name -> true
+                else -> true
+            }
+            val selectedMissing =
+                selectedStored.isNotBlank() &&
+                    selectedRelevantToCurrentList &&
+                    selectedStored !in normalized
+            val shouldClearSelection = selectedMissing && (
+                sourceMode == ProfileSourceMode.SUBSCRIPTION.name ||
+                    !(prefs[Keys.isVpnRunning] ?: false)
+                )
+            if (shouldClearSelection) {
+                clearStoredSelection(prefs)
+            }
+            result = CurrentLocationsUpdateResult(
+                selectedMissing = selectedMissing,
+            )
         }
         DiagnosticsLogger.append(context, "Current locations updated: count=${normalized.size}")
+        return result
     }
 
     suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
@@ -201,8 +227,8 @@ class ProfileStorage(private val context: Context) {
     suspend fun updateRoutingRules(rules: RoutingRules) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
-            prefs[Keys.proxyPackages] = encodeList(rules.proxyPackages)
-            prefs[Keys.bypassPackages] = encodeList(rules.bypassPackages)
+            prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
+            prefs[Keys.bypassPackages] = encodeList(sanitizePackageNames(rules.bypassPackages))
             prefs[Keys.nationalDomainSuffixes] = encodeList(rules.nationalDomainSuffixes)
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
         }
@@ -213,12 +239,18 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
-    suspend fun updateSelection(profile: VlessProfile, summary: String, runtimeConfigJson: String) {
+    suspend fun updateSelection(
+        profile: VlessProfile,
+        summary: String,
+        runtimeConfigJson: String,
+        sourceUrl: String = "",
+    ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.selectedProfileName] = profile.remarks
             prefs[Keys.selectedProfileServer] = profile.server
             prefs[Keys.selectedProfileRawLink] = profile.rawLink
             prefs[Keys.selectedProfileJson] = LocationConfigs.encodeStoredLocation(profile)
+            prefs[Keys.selectedProfileSourceUrl] = sourceUrl
             prefs[Keys.lastBenchmarkSummary] = summary
             prefs[Keys.runtimeConfigJson] = runtimeConfigJson
         }
@@ -235,9 +267,70 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Status: $message")
     }
 
+    suspend fun clearSelection() {
+        context.dataStore.edit { prefs ->
+            clearStoredSelection(prefs)
+        }
+        DiagnosticsLogger.append(context, "Stored selection cleared")
+    }
+
+    suspend fun restoreSelection(
+        state: PersistedState,
+        restoreRuntimeArtifacts: Boolean = true,
+        sourceUrlOverride: String? = null,
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.selectedProfileName] = state.selectedProfileName
+            prefs[Keys.selectedProfileServer] = state.selectedProfileServer
+            prefs[Keys.selectedProfileRawLink] = state.selectedProfileRawLink
+            prefs[Keys.selectedProfileJson] = state.selectedProfileJson
+            prefs[Keys.selectedProfileSourceUrl] = sourceUrlOverride ?: state.selectedProfileSourceUrl
+            prefs[Keys.lastBenchmarkSummary] = state.lastBenchmarkSummary
+            prefs[Keys.runtimeConfigJson] = state.runtimeConfigJson
+        }
+        if (restoreRuntimeArtifacts) {
+            runCatching {
+                if (state.runtimeConfigJson.isBlank()) {
+                    runtimeConfigFile().delete()
+                } else {
+                    runtimeConfigFile().apply {
+                        parentFile?.mkdirs()
+                        writeText(state.runtimeConfigJson)
+                    }
+                }
+            }
+            runCatching {
+                if (state.selectedProfileRawLink.isBlank()) {
+                    lastProfileFile().delete()
+                } else {
+                    lastProfileFile().writeText(state.selectedProfileRawLink)
+                }
+            }
+        }
+        DiagnosticsLogger.append(context, "Stored selection restored")
+    }
+
     suspend fun updateVpnRunning(running: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.isVpnRunning] = running
+            if (!running) {
+                val selectedStored = LocationConfigs.selectedStoredReference(
+                    selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
+                    selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
+                )
+                val currentLocations = decodeList(prefs[Keys.currentLocations])
+                val shouldClearSelection = when (prefs[Keys.profileSourceMode]) {
+                    ProfileSourceMode.CURRENT_LOCATIONS.name ->
+                        !selectedStored.isNullOrBlank() && selectedStored !in currentLocations
+                    ProfileSourceMode.SUBSCRIPTION.name ->
+                        prefs[Keys.selectedProfileSourceUrl].orEmpty().isBlank() ||
+                            prefs[Keys.selectedProfileSourceUrl].orEmpty() != prefs[Keys.profileUrl].orEmpty()
+                    else -> false
+                }
+                if (shouldClearSelection) {
+                    clearStoredSelection(prefs)
+                }
+            }
         }
         DiagnosticsLogger.append(context, "VPN running flag: $running")
     }
@@ -264,12 +357,16 @@ class ProfileStorage(private val context: Context) {
             subscriptionRefreshPolicy = refreshSettings.first,
             subscriptionRefreshCustomHours = refreshSettings.second,
             validationSettings = BenchmarkValidationSettings(
-                generalUrl = preferences[Keys.validationGeneralUrl]
-                    ?: BenchmarkValidationSettings.DEFAULT_GENERAL_URL,
-                chatGptUrl = preferences[Keys.validationChatGptUrl]
-                    ?: BenchmarkValidationSettings.DEFAULT_CHATGPT_URL,
-                candidateCount = preferences[Keys.validationCandidateCount]
-                    ?: BenchmarkValidationSettings.DEFAULT_CANDIDATE_COUNT,
+                primaryUrl = preferences[Keys.validationPrimaryUrl]
+                    ?: preferences[Keys.legacyValidationGeneralUrl]
+                    ?: BenchmarkValidationSettings.DEFAULT_PRIMARY_URL,
+                secondaryUrl = preferences[Keys.validationSecondaryUrl]
+                    ?: preferences[Keys.legacyValidationChatGptUrl]
+                    ?: BenchmarkValidationSettings.DEFAULT_SECONDARY_URL,
+                batchSize = preferences[Keys.validationBatchSize]
+                    ?: BenchmarkValidationSettings.DEFAULT_BATCH_SIZE,
+                retryCount = preferences[Keys.validationRetryCount]
+                    ?: BenchmarkValidationSettings.DEFAULT_RETRY_COUNT,
             ).normalized(),
             currentLocations = decodeList(preferences[Keys.currentLocations]),
             locationBenchmarkDetails = decodeStringMap(preferences[Keys.locationBenchmarkDetails]),
@@ -277,10 +374,10 @@ class ProfileStorage(private val context: Context) {
             useCustomDns = preferences[Keys.useCustomDns] ?: false,
             routingRules = RoutingRules(
                 ignoreRules = preferences[Keys.ignoreRules] ?: false,
-                proxyPackages = RoutingRules.normalizePackageNames(
+                proxyPackages = sanitizePackageNames(
                     decodeList(preferences[Keys.proxyPackages]),
                 ),
-                bypassPackages = RoutingRules.normalizePackageNames(
+                bypassPackages = sanitizePackageNames(
                     decodeList(preferences[Keys.bypassPackages]),
                 ),
                 nationalDomainSuffixes = if (rawPreferences.containsKey(Keys.nationalDomainSuffixes)) {
@@ -302,6 +399,7 @@ class ProfileStorage(private val context: Context) {
             selectedProfileServer = preferences[Keys.selectedProfileServer].orEmpty(),
             selectedProfileRawLink = preferences[Keys.selectedProfileRawLink].orEmpty(),
             selectedProfileJson = preferences[Keys.selectedProfileJson].orEmpty(),
+            selectedProfileSourceUrl = preferences[Keys.selectedProfileSourceUrl].orEmpty(),
             lastBenchmarkSummary = preferences[Keys.lastBenchmarkSummary].orEmpty(),
             runtimeConfigJson = preferences[Keys.runtimeConfigJson].orEmpty(),
             statusMessage = preferences[Keys.statusMessage] ?: "Idle",
@@ -319,6 +417,11 @@ class ProfileStorage(private val context: Context) {
     }
 
     private fun encodeList(values: List<String>): String = values.joinToString(separator = "\n")
+
+    private fun sanitizePackageNames(values: Iterable<String>): List<String> {
+        return RoutingRules.normalizePackageNames(values)
+            .filterNot { it == context.packageName }
+    }
 
     private fun decodeStringMap(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()
@@ -355,5 +458,17 @@ class ProfileStorage(private val context: Context) {
             "EVERY_24_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 24
             else -> SubscriptionRefreshPolicy.OFF to normalizedHours
         }
+    }
+
+    private fun clearStoredSelection(prefs: MutablePreferences) {
+        prefs.remove(Keys.selectedProfileName)
+        prefs.remove(Keys.selectedProfileServer)
+        prefs.remove(Keys.selectedProfileRawLink)
+        prefs.remove(Keys.selectedProfileJson)
+        prefs.remove(Keys.selectedProfileSourceUrl)
+        prefs.remove(Keys.lastBenchmarkSummary)
+        prefs.remove(Keys.runtimeConfigJson)
+        runCatching { runtimeConfigFile().delete() }
+        runCatching { lastProfileFile().delete() }
     }
 }

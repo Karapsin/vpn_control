@@ -43,36 +43,51 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class AndroidVpnService : VpnService(), PlatformInterface {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val storage by lazy { ProfileStorage(applicationContext) }
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private val notifications by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
+    private val commandMutex = Mutex()
 
     private var tunInterface: ParcelFileDescriptor? = null
     private var boxService: BoxService? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> serviceScope.launch { stopVpn("VPN stopped") }
-            else -> serviceScope.launch { startVpn() }
+        serviceScope.launch {
+            commandMutex.withLock {
+                when (intent?.action) {
+                    ACTION_STOP -> stopVpn("VPN stopped", startId)
+                    else -> startVpn(startId)
+                }
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
-        runBlocking { stopVpn(null) }
+        runBlocking {
+            commandMutex.withLock {
+                stopVpn(null)
+            }
+        }
         serviceScope.cancel()
         super.onDestroy()
     }
 
     override fun onRevoke() {
-        runBlocking { stopVpn("VPN permission revoked") }
+        runBlocking {
+            commandMutex.withLock {
+                stopVpn("VPN permission revoked")
+            }
+        }
         super.onRevoke()
     }
 
-    private suspend fun startVpn() {
+    private suspend fun startVpn(startId: Int? = null) {
         try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
             resetRuntimeSession()
@@ -94,7 +109,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start VPN", error)
             DiagnosticsLogger.append(applicationContext, "Failed to start VPN", error)
-            stopVpn(error.message ?: "Failed to start VPN")
+            stopVpn(error.message ?: "Failed to start VPN", startId)
         }
     }
 
@@ -108,7 +123,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         DefaultNetworkMonitor.stop()
     }
 
-    private suspend fun stopVpn(statusMessage: String?) {
+    private suspend fun stopVpn(statusMessage: String?, startId: Int? = null) {
         DiagnosticsLogger.append(applicationContext, "AndroidVpnService.stopVpn invoked: ${statusMessage ?: "no status"}")
         resetRuntimeSession()
         storage.updateVpnRunning(false)
@@ -116,7 +131,11 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             storage.updateStatus(statusMessage)
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (startId != null) {
+            stopSelfResult(startId)
+        } else {
+            stopSelf()
+        }
     }
 
     override fun localDNSTransport(): LocalDNSTransport = LocalResolver
@@ -161,22 +180,58 @@ class AndroidVpnService : VpnService(), PlatformInterface {
                 addLegacyRoutes(builder, options)
             }
 
+            val includePackages = mutableListOf<String>()
             val includePackage = options.includePackage
             while (includePackage.hasNext()) {
-                try {
-                    builder.addAllowedApplication(includePackage.next())
-                } catch (error: NameNotFoundException) {
-                    Log.w(TAG, "Skipping unknown allowed package", error)
-                }
+                includePackages += includePackage.next()
             }
 
+            val excludePackages = linkedSetOf<String>()
             val excludePackage = options.excludePackage
             while (excludePackage.hasNext()) {
-                try {
-                    builder.addDisallowedApplication(excludePackage.next())
-                } catch (error: NameNotFoundException) {
-                    Log.w(TAG, "Skipping unknown disallowed package", error)
+                excludePackages += excludePackage.next()
+            }
+
+            val filteredIncludePackages = includePackages
+                .asSequence()
+                .filter { it != packageName }
+                .distinct()
+                .toList()
+
+            if (includePackages.isNotEmpty() && filteredIncludePackages.isEmpty()) {
+                error("android: allowed package list is empty after excluding $packageName")
+            }
+
+            if (filteredIncludePackages.isNotEmpty()) {
+                var allowedPackagesAdded = 0
+                filteredIncludePackages.forEach { pkg ->
+                    try {
+                        builder.addAllowedApplication(pkg)
+                        allowedPackagesAdded += 1
+                    } catch (error: NameNotFoundException) {
+                        Log.w(TAG, "Skipping unknown allowed package", error)
+                    }
                 }
+                if (allowedPackagesAdded == 0) {
+                    error("android: allowed package list does not contain any installed app after excluding $packageName")
+                }
+                DiagnosticsLogger.append(
+                    applicationContext,
+                    "VPN app traffic bypassed by omitting $packageName from allowed packages",
+                )
+            } else {
+                (linkedSetOf(packageName) + excludePackages)
+                    .forEach { pkg ->
+                        try {
+                            builder.addDisallowedApplication(pkg)
+                        } catch (error: NameNotFoundException) {
+                            Log.w(TAG, "Skipping unknown disallowed package", error)
+                        }
+                    }
+                DiagnosticsLogger.append(
+                    applicationContext,
+                    "VPN app traffic bypassed by disallowing $packageName",
+                )
             }
         }
 
