@@ -1,10 +1,12 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -29,6 +31,7 @@ class AppRepository(
 
     suspend fun deleteProfileHistoryEntry(url: String) {
         storage.deleteProfileHistoryEntry(url)
+        subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
     }
 
     suspend fun updateProfileHistoryName(url: String, name: String) {
@@ -40,6 +43,10 @@ class AppRepository(
         subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
     }
 
+    suspend fun updateAppMode(mode: AppMode) {
+        storage.updateAppMode(mode)
+    }
+
     suspend fun updateSubscriptionRefreshPolicy(policy: SubscriptionRefreshPolicy, customHours: Int) {
         storage.updateSubscriptionRefreshPolicy(policy, customHours)
         subscriptionRefreshScheduler.sync(storage.snapshot())
@@ -49,8 +56,55 @@ class AppRepository(
         storage.updateValidationSettings(settings)
     }
 
+    suspend fun updateSessionStatsEnabled(enabled: Boolean) {
+        storage.updateSessionStatsEnabled(enabled)
+    }
+
     suspend fun syncSubscriptionRefreshScheduling() {
         subscriptionRefreshScheduler.sync(storage.snapshot())
+    }
+
+    suspend fun refreshActiveSubscriptionCache(): Result<Unit> = runCatching {
+        val state = storage.snapshot()
+        val subscriptionId = state.activeSubscriptionId
+        val sourceUrl = state.profileUrl
+        require(subscriptionId.isNotBlank() && sourceUrl.isNotBlank()) { "No active subscription selected" }
+        val profiles = orchestrator.fetchSubscriptionLocations(sourceUrl).getOrThrow()
+        require(profiles.isNotEmpty()) { "No locations were found in the subscription" }
+        storage.updateSubscriptionCache(
+            subscriptionId = subscriptionId,
+            rawLinks = profiles.map { it.rawLink },
+        )
+    }
+        .map { }
+        .also { result ->
+            if (result.isFailure) {
+                val activeId = storage.snapshot().activeSubscriptionId
+                if (activeId.isNotBlank()) {
+                    storage.updateSubscriptionRefreshStatus(
+                        subscriptionId = activeId,
+                        status = result.exceptionOrNull()?.message ?: "Refresh failed",
+                    )
+                }
+            }
+        }
+
+    suspend fun refreshAllSubscriptionsCaches(): Result<Int> = runCatching {
+        val state = storage.snapshot()
+        var refreshed = 0
+        var lastFailure: Throwable? = null
+        state.subscriptions.forEach { subscription ->
+            val result = refreshSingleSubscription(subscription)
+            if (result.isSuccess) {
+                refreshed += 1
+            } else {
+                lastFailure = result.exceptionOrNull()
+            }
+        }
+        if (refreshed == 0 && lastFailure != null) {
+            throw lastFailure!!
+        }
+        refreshed
     }
 
     suspend fun updateCurrentLocations(rawLinks: List<String>) = storage.updateCurrentLocations(rawLinks)
@@ -132,6 +186,24 @@ class AppRepository(
     suspend fun persistSelection(selection: ProfileSelection, sourceUrlOverride: String? = null) {
         syncSelection(selection, sourceUrlOverride)
     }
+
+    private suspend fun refreshSingleSubscription(subscription: SubscriptionSource): Result<Unit> = runCatching {
+        val profiles = orchestrator.fetchSubscriptionLocations(subscription.url).getOrThrow()
+        require(profiles.isNotEmpty()) { "No locations were found in the subscription" }
+        storage.updateSubscriptionCache(
+            subscriptionId = subscription.id,
+            rawLinks = profiles.map { it.rawLink },
+        )
+    }
+        .map { }
+        .also { result ->
+            if (result.isFailure) {
+                storage.updateSubscriptionRefreshStatus(
+                    subscriptionId = subscription.id,
+                    status = result.exceptionOrNull()?.message ?: "Refresh failed",
+                )
+            }
+        }
 
     private suspend fun syncSelection(selection: ProfileSelection, sourceUrlOverride: String? = null) {
         val state = storage.snapshot()

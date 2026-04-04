@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import android.content.Context
 import android.content.Intent
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.vpn.AndroidVpnService
 import java.io.IOException
@@ -19,13 +20,19 @@ class VpnManager(
         rememberProfile: Boolean = true,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val initialStatus = storage.snapshot().statusMessage
+            val initialState = storage.snapshot()
+            val initialStatus = initialState.statusMessage
+            val appMode = initialState.appMode
             storage.runtimeConfigFile().apply {
                 parentFile?.mkdirs()
                 writeText(selection.runtimeConfigJson)
             }
-            if (rememberProfile && selection.profile.rawLink.isNotBlank()) {
-                storage.lastProfileFile().writeText(selection.profile.rawLink)
+            if (rememberProfile) {
+                if (selection.profile.rawLink.isNotBlank()) {
+                    storage.lastProfileFile().writeText(selection.profile.rawLink)
+                } else {
+                    storage.lastProfileFile().delete()
+                }
             }
             val intent = Intent(context, AndroidVpnService::class.java).apply {
                 action = AndroidVpnService.ACTION_START
@@ -34,16 +41,16 @@ class VpnManager(
                 context.startForegroundService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to dispatch VPN start",
+                    message = error.message ?: "Failed to dispatch ${modeLabel(appMode).lowercase()} start",
                     cause = error,
                     commandDispatched = false,
                 )
             }
             try {
-                waitForStart(initialStatus)
+                waitForStart(initialStatus, appMode)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to start VPN",
+                    message = error.message ?: "Failed to start connection",
                     cause = error,
                     commandDispatched = true,
                 )
@@ -53,7 +60,8 @@ class VpnManager(
 
     suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val initialStatus = storage.snapshot().statusMessage
+            val initialState = storage.snapshot()
+            val initialStatus = initialState.statusMessage
             val intent = Intent(context, AndroidVpnService::class.java).apply {
                 action = AndroidVpnService.ACTION_STOP
             }
@@ -61,7 +69,7 @@ class VpnManager(
                 context.startService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to dispatch VPN stop",
+                    message = error.message ?: "Failed to dispatch ${modeLabel(initialState.appMode).lowercase()} stop",
                     cause = error,
                     commandDispatched = false,
                 )
@@ -70,7 +78,7 @@ class VpnManager(
                 waitForStop(initialStatus)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to stop VPN",
+                    message = error.message ?: "Failed to stop ${modeLabel(initialState.appMode).lowercase()}",
                     cause = error,
                     commandDispatched = true,
                 )
@@ -79,10 +87,14 @@ class VpnManager(
     }
 
     private suspend fun waitForStart(initialStatus: String) {
+        waitForStart(initialStatus, storage.snapshot().appMode)
+    }
+
+    private suspend fun waitForStart(initialStatus: String, appMode: AppMode) {
         withTimeout(START_TIMEOUT_MILLIS) {
             while (true) {
                 val state = storage.snapshot()
-                if (state.isVpnRunning && state.statusMessage == STATUS_STARTED) {
+                if (state.isVpnRunning && state.statusMessage == startedStatus(appMode)) {
                     return@withTimeout
                 }
                 if (!state.isVpnRunning &&
@@ -112,10 +124,23 @@ class VpnManager(
     }
 
     private companion object {
-        const val STATUS_STARTED = "VPN started"
         const val POLL_INTERVAL_MILLIS = 100L
         const val START_TIMEOUT_MILLIS = 15_000L
         const val STOP_TIMEOUT_MILLIS = 10_000L
+
+        fun startedStatus(appMode: AppMode): String {
+            return when (appMode) {
+                AppMode.VPN -> "VPN started"
+                AppMode.PROXY_ONLY -> "Proxy started"
+            }
+        }
+
+        fun modeLabel(appMode: AppMode): String {
+            return when (appMode) {
+                AppMode.VPN -> "VPN"
+                AppMode.PROXY_ONLY -> "Proxy"
+            }
+        }
     }
 }
 

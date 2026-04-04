@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.ui
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -29,11 +30,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PlayArrow
@@ -67,6 +69,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,6 +80,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,10 +94,21 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.RemoteSourcePreview
 import com.kardinal.vpncontrol.data.RemoteSourceResolver
+import com.kardinal.vpncontrol.data.SingBoxConfigFactory
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.RoutingRuleSet
+import com.kardinal.vpncontrol.model.RoutingRuleSetAction
+import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
+import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.SubscriptionSource
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 fun VpnControlApp(
@@ -102,16 +119,21 @@ fun VpnControlApp(
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
+    onRefreshActiveSubscription: () -> Unit,
+    onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
     onDeleteProfileHistoryEntry: (String) -> Unit,
     onCloseProfileHistoryRenameDialog: () -> Unit,
     onProfileHistoryRenameDraftChange: (String) -> Unit,
     onSaveProfileHistoryRename: () -> Unit,
+    onCloseLocationMutationBlockedDialog: () -> Unit,
     onToggleDnsDialog: () -> Unit,
     onDnsEnabledChange: (Boolean) -> Unit,
     onDnsChange: (String) -> Unit,
     onSaveDns: () -> Unit,
+    onToggleUiSettingsDialog: () -> Unit,
+    onSessionStatsEnabledChange: (Boolean) -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshPolicyChange: (SubscriptionRefreshPolicy) -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
@@ -122,6 +144,8 @@ fun VpnControlApp(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleAppModeDialog: () -> Unit,
+    onAppModeChange: (AppMode) -> Unit,
     onOpenMainTab: () -> Unit,
     onOpenProfileTab: () -> Unit,
     onOpenLocationsTab: () -> Unit,
@@ -147,6 +171,17 @@ fun VpnControlApp(
     onClearAllDirectApps: () -> Unit,
     onRoutingNationalDomainsChange: (String) -> Unit,
     onRoutingDirectDomainsChange: (String) -> Unit,
+    onShowAddRuleSetDialog: () -> Unit,
+    onEditRuleSet: (String) -> Unit,
+    onDeleteRuleSet: (String) -> Unit,
+    onCloseRuleSetDialog: () -> Unit,
+    onRuleSetNameChange: (String) -> Unit,
+    onRuleSetSourceChange: (String) -> Unit,
+    onRuleSetSourceTypeChange: (RoutingRuleSetSourceType) -> Unit,
+    onRuleSetFormatChange: (RoutingRuleSetFormat) -> Unit,
+    onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
+    onRuleSetUpdateHoursChange: (String) -> Unit,
+    onSaveRuleSet: () -> Unit,
     onSaveRoutingRules: () -> Unit,
     onExportRoutingRules: () -> Unit,
     onImportRoutingRules: () -> Unit,
@@ -176,10 +211,13 @@ fun VpnControlApp(
             onSaveProfile = onSaveProfile,
             onClearProfileSource = onClearProfileSource,
             onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
+            onRefreshActiveSubscription = onRefreshActiveSubscription,
+            onRefreshAllSubscriptions = onRefreshAllSubscriptions,
             onUseProfileHistoryEntry = onUseProfileHistoryEntry,
             onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
             onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
             onToggleDnsDialog = onToggleDnsDialog,
+            onToggleUiSettingsDialog = onToggleUiSettingsDialog,
             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
             onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
@@ -188,6 +226,8 @@ fun VpnControlApp(
             onValidationBatchSizeChange = onValidationBatchSizeChange,
             onValidationRetryCountChange = onValidationRetryCountChange,
             onSaveValidationSettings = onSaveValidationSettings,
+            onToggleAppModeDialog = onToggleAppModeDialog,
+            onAppModeChange = onAppModeChange,
             onToggleVpn = onToggleVpn,
             onRefresh = onRefresh,
             onExportDiagnostics = onExportDiagnostics,
@@ -209,6 +249,17 @@ fun VpnControlApp(
             onClearAllDirectApps = onClearAllDirectApps,
             onNationalDomainsChange = onRoutingNationalDomainsChange,
             onDirectDomainsChange = onRoutingDirectDomainsChange,
+            onShowAddRuleSetDialog = onShowAddRuleSetDialog,
+            onEditRuleSet = onEditRuleSet,
+            onDeleteRuleSet = onDeleteRuleSet,
+            onCloseRuleSetDialog = onCloseRuleSetDialog,
+            onRuleSetNameChange = onRuleSetNameChange,
+            onRuleSetSourceChange = onRuleSetSourceChange,
+            onRuleSetSourceTypeChange = onRuleSetSourceTypeChange,
+            onRuleSetFormatChange = onRuleSetFormatChange,
+            onRuleSetActionChange = onRuleSetActionChange,
+            onRuleSetUpdateHoursChange = onRuleSetUpdateHoursChange,
+            onSaveRuleSet = onSaveRuleSet,
             onSaveRoutingRules = onSaveRoutingRules,
             onExportRoutingRules = onExportRoutingRules,
             onImportRoutingRules = onImportRoutingRules,
@@ -226,7 +277,10 @@ fun VpnControlApp(
     BackHandler(
         enabled = !showBlockingProgress && (
             state.showProfileHistoryRenameDialog ||
+            state.showLocationMutationBlockedDialog ||
             state.showDnsDialog ||
+            state.showUiSettingsDialog ||
+            state.showAppModeDialog ||
             state.showRefreshPolicyDialog ||
             state.showValidationSettingsDialog ||
             state.showLocationDialog ||
@@ -236,7 +290,10 @@ fun VpnControlApp(
     ) {
         when {
             state.showProfileHistoryRenameDialog -> onCloseProfileHistoryRenameDialog()
+            state.showLocationMutationBlockedDialog -> onCloseLocationMutationBlockedDialog()
             state.showDnsDialog -> onToggleDnsDialog()
+            state.showUiSettingsDialog -> onToggleUiSettingsDialog()
+            state.showAppModeDialog -> onToggleAppModeDialog()
             state.showRefreshPolicyDialog -> onToggleRefreshPolicyDialog()
             state.showValidationSettingsDialog -> onToggleValidationSettingsDialog()
             state.showLocationDialog -> onCloseLocationDialog()
@@ -281,6 +338,26 @@ fun VpnControlApp(
         )
     }
 
+    if (state.showLocationMutationBlockedDialog) {
+        AlertDialog(
+            onDismissRequest = onCloseLocationMutationBlockedDialog,
+            title = { Text("Read-only location", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Text(
+                    text = state.locationMutationBlockedMessage,
+                    color = Color(0xFFD3E3EE),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onCloseLocationMutationBlockedDialog) {
+                    Text("OK", color = Color(0xFF9ED6FF))
+                }
+            },
+        )
+    }
+
     if (state.showDnsDialog) {
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
@@ -318,6 +395,132 @@ fun VpnControlApp(
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
                     Text("Cancel", color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showUiSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = onToggleUiSettingsDialog,
+            title = { Text("UI Settings", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = "Session stats",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = "Show or hide the Session card on the Main tab.",
+                                    color = Color(0xFFD3E3EE),
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            Switch(
+                                checked = state.sessionStatsEnabled,
+                                onCheckedChange = onSessionStatsEnabledChange,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = onToggleUiSettingsDialog) {
+                    Text("Close", color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showAppModeDialog) {
+        AlertDialog(
+            onDismissRequest = onToggleAppModeDialog,
+            title = { Text("Proxy Mode Settings", color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Default mode is VPN. Turn on Proxy Only to run a local HTTP/SOCKS mixed proxy instead of Android VPN.",
+                        color = Color(0xFFD3E3EE),
+                        fontSize = 13.sp,
+                    )
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = if (state.appMode == AppMode.PROXY_ONLY) "Proxy Only" else "VPN",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = if (state.appMode == AppMode.PROXY_ONLY) {
+                                        "Local mixed proxy mode is enabled. Turn it off to use Android VPN mode."
+                                    } else {
+                                        "Android VPN mode is enabled. Turn on Proxy Only to expose a local mixed proxy instead."
+                                    },
+                                    color = Color(0xFFD3E3EE),
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            Switch(
+                                checked = state.appMode == AppMode.PROXY_ONLY,
+                                onCheckedChange = { enabled ->
+                                    onAppModeChange(
+                                        if (enabled) AppMode.PROXY_ONLY else AppMode.VPN,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    if (state.appMode == AppMode.PROXY_ONLY) {
+                        ProxyOnlyInfoCard(state)
+                    } else {
+                        Text(
+                            text = "VPN mode routes traffic through Android VpnService.",
+                            color = Color(0xFF9FB8C8),
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = onToggleAppModeDialog) {
+                    Text("Close", color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -387,7 +590,7 @@ fun VpnControlApp(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "The app uses these sites when testing locations. For VLESS subscriptions it checks the fastest locations in batches: top N first, then the next N, until the secondary site works.",
+                        text = "The app uses these sites when testing locations. In subscription mode it checks the fastest locations in batches: top N first, then the next N, until the secondary site works.",
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
                     )
@@ -447,7 +650,22 @@ fun VpnControlApp(
         )
     }
 
+    if (state.showRuleSetDialog) {
+        RuleSetEditorDialog(
+            state = state,
+            onDismiss = onCloseRuleSetDialog,
+            onNameChange = onRuleSetNameChange,
+            onSourceChange = onRuleSetSourceChange,
+            onSourceTypeChange = onRuleSetSourceTypeChange,
+            onFormatChange = onRuleSetFormatChange,
+            onActionChange = onRuleSetActionChange,
+            onUpdateHoursChange = onRuleSetUpdateHoursChange,
+            onSave = onSaveRuleSet,
+        )
+    }
+
     if (state.showLocationDialog) {
+        val clipboard = LocalClipboardManager.current
         AlertDialog(
             onDismissRequest = onCloseLocationDialog,
             containerColor = Color(0xFF141F2D),
@@ -460,16 +678,34 @@ fun VpnControlApp(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboard.getText()?.text
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { onLocationDraftChange(it) }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                        colors = darkOutlinedButtonColors(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ContentPaste,
+                            contentDescription = "Paste location config",
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text("Paste From Clipboard")
+                    }
                     OutlinedTextField(
                         value = state.locationDraft,
                         onValueChange = onLocationDraftChange,
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 5,
-                        label = { Text("Location config (VLESS link or JSON)") },
+                        label = { Text("Location config (proxy link or JSON)") },
                         colors = routingTextFieldColors(),
                     )
                     Text(
-                        text = "Paste a vless:// link or a JSON config. Remote source links belong in Profile Source on the Profile tab.",
+                        text = "Paste a vless://, trojan://, ss://, or vmess:// link, a stored location JSON object, or a full sing-box JSON config. Remote source links belong in Profile Source on the Profile tab.",
                         color = Color(0xFFD3E3EE),
                         fontSize = 12.sp,
                     )
@@ -540,6 +776,7 @@ private fun RefreshProgressDialog(
             }
         }
     }
+
 }
 
 @Composable
@@ -554,10 +791,13 @@ private fun HomeTabsScreen(
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
+    onRefreshActiveSubscription: () -> Unit,
+    onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
     onDeleteProfileHistoryEntry: (String) -> Unit,
     onToggleDnsDialog: () -> Unit,
+    onToggleUiSettingsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
@@ -566,6 +806,8 @@ private fun HomeTabsScreen(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleAppModeDialog: () -> Unit,
+    onAppModeChange: (AppMode) -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -587,6 +829,17 @@ private fun HomeTabsScreen(
     onClearAllDirectApps: () -> Unit,
     onNationalDomainsChange: (String) -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onShowAddRuleSetDialog: () -> Unit,
+    onEditRuleSet: (String) -> Unit,
+    onDeleteRuleSet: (String) -> Unit,
+    onCloseRuleSetDialog: () -> Unit,
+    onRuleSetNameChange: (String) -> Unit,
+    onRuleSetSourceChange: (String) -> Unit,
+    onRuleSetSourceTypeChange: (RoutingRuleSetSourceType) -> Unit,
+    onRuleSetFormatChange: (RoutingRuleSetFormat) -> Unit,
+    onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
+    onRuleSetUpdateHoursChange: (String) -> Unit,
+    onSaveRuleSet: () -> Unit,
     onSaveRoutingRules: () -> Unit,
     onExportRoutingRules: () -> Unit,
     onImportRoutingRules: () -> Unit,
@@ -608,6 +861,7 @@ private fun HomeTabsScreen(
                 AppScreen.MAIN -> MainScreen(
                     state = state,
                     onToggleDnsDialog = onToggleDnsDialog,
+                    onToggleUiSettingsDialog = onToggleUiSettingsDialog,
                     onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                     onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
                     onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
@@ -616,6 +870,7 @@ private fun HomeTabsScreen(
                     onValidationBatchSizeChange = onValidationBatchSizeChange,
                     onValidationRetryCountChange = onValidationRetryCountChange,
                     onSaveValidationSettings = onSaveValidationSettings,
+                    onToggleAppModeDialog = onToggleAppModeDialog,
                     onToggleVpn = onToggleVpn,
                     onRefresh = onRefresh,
                     onExportDiagnostics = onExportDiagnostics,
@@ -627,6 +882,8 @@ private fun HomeTabsScreen(
                     onSaveProfile = onSaveProfile,
                     onClearProfileSource = onClearProfileSource,
                     onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
+                    onRefreshActiveSubscription = onRefreshActiveSubscription,
+                    onRefreshAllSubscriptions = onRefreshAllSubscriptions,
                     onUseProfileHistoryEntry = onUseProfileHistoryEntry,
                     onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
                     onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
@@ -654,6 +911,17 @@ private fun HomeTabsScreen(
                     onClearAllDirectApps = onClearAllDirectApps,
                     onNationalDomainsChange = onNationalDomainsChange,
                     onDirectDomainsChange = onDirectDomainsChange,
+                    onShowAddRuleSetDialog = onShowAddRuleSetDialog,
+                    onEditRuleSet = onEditRuleSet,
+                    onDeleteRuleSet = onDeleteRuleSet,
+                    onCloseRuleSetDialog = onCloseRuleSetDialog,
+                    onRuleSetNameChange = onRuleSetNameChange,
+                    onRuleSetSourceChange = onRuleSetSourceChange,
+                    onRuleSetSourceTypeChange = onRuleSetSourceTypeChange,
+                    onRuleSetFormatChange = onRuleSetFormatChange,
+                    onRuleSetActionChange = onRuleSetActionChange,
+                    onRuleSetUpdateHoursChange = onRuleSetUpdateHoursChange,
+                    onSaveRuleSet = onSaveRuleSet,
                     onSave = onSaveRoutingRules,
                     onExport = onExportRoutingRules,
                     onImport = onImportRoutingRules,
@@ -760,6 +1028,7 @@ private fun SourceModeOption(
 private fun MainScreen(
     state: MainUiState,
     onToggleDnsDialog: () -> Unit,
+    onToggleUiSettingsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
@@ -768,6 +1037,7 @@ private fun MainScreen(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleAppModeDialog: () -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
     onExportDiagnostics: () -> Unit,
@@ -832,6 +1102,38 @@ private fun MainScreen(
                             DropdownMenuItem(
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("UI Settings")
+                                        Text(
+                                            if (state.sessionStatsEnabled) "Session stats on" else "Session stats off",
+                                            color = Color(0xFF4A6070),
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    advancedMenuExpanded = false
+                                    onToggleUiSettingsDialog()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("Proxy Mode Settings")
+                                        Text(
+                                            if (state.appMode == AppMode.VPN) "VPN mode" else "Proxy-only mode",
+                                            color = Color(0xFF4A6070),
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    advancedMenuExpanded = false
+                                    onToggleAppModeDialog()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text("Subscription Auto-Refresh")
                                         Text(
                                             state.subscriptionRefreshPolicy.displayValue(
@@ -879,11 +1181,26 @@ private fun MainScreen(
                 }
 
                 StatusCard(state)
+                if (state.sessionStatsEnabled) {
+                    SessionCard(state)
+                }
 
                 ActionButton(
                     icon = Icons.Filled.PowerSettingsNew,
-                    label = if (state.isVpnRunning) "Disconnect" else "Connect",
-                    sublabel = if (state.hasVpnPermission) "Connect or disconnect the VPN" else "VPN permission required",
+                    label = when {
+                        state.appMode == AppMode.PROXY_ONLY && state.isVpnRunning -> "Stop Proxy"
+                        state.appMode == AppMode.PROXY_ONLY -> "Start Proxy"
+                        state.isVpnRunning -> "Disconnect"
+                        else -> "Connect"
+                    },
+                    sublabel = when (state.appMode) {
+                        AppMode.VPN -> if (state.hasVpnPermission) {
+                            "Connect or disconnect the VPN"
+                        } else {
+                            "VPN permission required"
+                        }
+                        AppMode.PROXY_ONLY -> "Start or stop the local mixed proxy"
+                    },
                     onClick = onToggleVpn,
                     enabled = !state.isBusy,
                     colors = if (state.isVpnRunning) activeVpnButtonColors() else darkButtonColors(),
@@ -921,6 +1238,88 @@ private fun MainScreen(
 }
 
 @Composable
+private fun ProxyOnlyInfoCard(state: MainUiState) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val proxyAddress = "127.0.0.1:${SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT}"
+    val shareText = buildString {
+        appendLine("VPN Control local proxy")
+        appendLine("Mode: mixed HTTP/SOCKS")
+        appendLine("Address: $proxyAddress")
+    }
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Local Proxy", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Use this local mixed proxy in apps that support HTTP or SOCKS proxies.",
+                color = Color(0xFFD3E3EE),
+                fontSize = 13.sp,
+            )
+            Text(
+                text = proxyAddress,
+                color = Color(0xFF9ED6FF),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (state.isVpnRunning) {
+                    "Status: proxy is running on this address"
+                } else {
+                    "Status: proxy is stopped"
+                },
+                color = Color(0xFFD3E3EE),
+                fontSize = 12.sp,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(proxyAddress))
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                ) {
+                    Text("Copy Address")
+                }
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "VPN Control local proxy")
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                },
+                                "Share proxy address",
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                ) {
+                    Text("Share")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProfileScreen(
     state: MainUiState,
     onProfileChange: (String) -> Unit,
@@ -928,6 +1327,8 @@ private fun ProfileScreen(
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
+    onRefreshActiveSubscription: () -> Unit,
+    onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
     onDeleteProfileHistoryEntry: (String) -> Unit,
@@ -982,6 +1383,8 @@ private fun ProfileScreen(
                     onSaveProfile = onSaveProfile,
                     onClearProfileSource = onClearProfileSource,
                     onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
+                    onRefreshActiveSubscription = onRefreshActiveSubscription,
+                    onRefreshAllSubscriptions = onRefreshAllSubscriptions,
                     onUseProfileHistoryEntry = onUseProfileHistoryEntry,
                     onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
                     onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
@@ -1020,9 +1423,13 @@ private fun LocationsScreen(
                 name = parsed?.remarks?.let { formatLocationLabel(state.profileSourceMode, it) } ?: "Invalid location config",
                 server = parsed?.server ?: "Could not read this location",
                 details = parsed?.let {
-                    listOf(it.serverPort.toString(), it.network, it.sni)
-                        .filter { value -> value.isNotBlank() }
-                        .joinToString(" • ")
+                    if (it.protocol.name == "CUSTOM") {
+                        "Custom sing-box config"
+                    } else {
+                        listOf(it.protocol.name.lowercase(), it.serverPort.toString(), it.network, it.sni)
+                            .filter { value -> value.isNotBlank() }
+                            .joinToString(" • ")
+                    }
                 } ?: "Tap edit to fix this location",
                 benchmarkDetail = stripBenchmarkLocationPrefix(
                     state.locationBenchmarkDetails[rawLink].orEmpty(),
@@ -1034,6 +1441,7 @@ private fun LocationsScreen(
         .sortedWith(locationRowComparator())
     val selectedName = locations.firstOrNull { it.isSelected }?.name
         ?: state.selectedProfileName.takeIf { it.isNotBlank() }?.let { formatLocationLabel(state.profileSourceMode, it) }
+    val canMutateLocations = state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -1090,42 +1498,55 @@ private fun LocationsScreen(
                 SubscriptionMismatchWarningCard(state)
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Button(
-                    onClick = onShowAddLocation,
-                    enabled = !state.isBusy,
+            if (canMutateLocations) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("Add Location")
+                    Button(
+                        onClick = onShowAddLocation,
+                        enabled = !state.isBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                    ) {
+                        Text("Add Location")
+                    }
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onImportLocations,
-                    enabled = !state.isBusy,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("Import Locations")
+                    OutlinedButton(
+                        onClick = onImportLocations,
+                        enabled = !state.isBusy,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    ) {
+                        Text("Import Locations")
+                    }
+                    OutlinedButton(
+                        onClick = onExportLocations,
+                        enabled = !state.isBusy,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    ) {
+                        Text("Export Locations")
+                    }
                 }
+            } else {
                 OutlinedButton(
                     onClick = onExportLocations,
                     enabled = !state.isBusy,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 ) {
-                    Text("Export Locations")
+                    Text("Export Cached Locations")
                 }
             }
 
@@ -1159,6 +1580,7 @@ private fun LocationsScreen(
                         items(locations, key = { "${it.index}:${it.rawLink}" }) { location ->
                             LocationRowCard(
                                 location = location,
+                                appMode = state.appMode,
                                 isVpnRunning = state.isVpnRunning,
                                 enabled = !state.isBusy,
                                 onPrimaryAction = {
@@ -1178,6 +1600,7 @@ private fun LocationsScreen(
             }
         }
     }
+
 }
 
 @Composable
@@ -1188,12 +1611,15 @@ private fun ProfileSourceCard(
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
+    onRefreshActiveSubscription: () -> Unit,
+    onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
     onDeleteProfileHistoryEntry: (String) -> Unit,
 ) {
     val activeMode = state.profileSourceMode
     val useSubscription = activeMode == ProfileSourceMode.SUBSCRIPTION
+    val clipboard = LocalClipboardManager.current
     val remoteSourcePreview = remember(useSubscription, state.profileDraft) {
         if (useSubscription) {
             RemoteSourceResolver.preview(state.profileDraft)
@@ -1215,7 +1641,7 @@ private fun ProfileSourceCard(
             Text("Profile Source", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                    "Subscription mode is active. Finding the best location downloads locations from the remote source below and updates saved locations."
+                    "Subscription mode is active. Finding the best location uses the active subscription below and its cached locations."
                 } else {
                     "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
                 },
@@ -1264,11 +1690,14 @@ private fun ProfileSourceCard(
                 }
             }
             if (useSubscription) {
-                if (state.profileHistory.isNotEmpty()) {
+                if (state.subscriptions.isNotEmpty()) {
                     ProfileHistorySection(
-                        history = state.profileHistory,
+                        subscriptions = state.subscriptions,
                         historyNames = state.profileHistoryNames,
                         currentSource = state.profileUrl,
+                        onRefreshActive = onRefreshActiveSubscription,
+                        onRefreshAll = onRefreshAllSubscriptions,
+                        refreshEnabled = !state.isBusy,
                         onUseEntry = onUseProfileHistoryEntry,
                         onRenameEntry = onShowProfileHistoryRenameDialog,
                         onDeleteEntry = onDeleteProfileHistoryEntry,
@@ -1288,6 +1717,23 @@ private fun ProfileSourceCard(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             IconButton(
+                                onClick = {
+                                    clipboard.getText()?.text
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.let { onProfileChange(it) }
+                                },
+                                enabled = !state.isBusy,
+                                modifier = Modifier
+                                    .background(Color(0x223C7AE6), RoundedCornerShape(12.dp))
+                                    .size(44.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ContentPaste,
+                                    contentDescription = "Paste remote source",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(
                                 onClick = onClearProfileSource,
                                 enabled = !state.isBusy && (state.profileUrl.isNotBlank() || state.profileDraft.isNotBlank()),
                                 modifier = Modifier
@@ -1295,7 +1741,7 @@ private fun ProfileSourceCard(
                                     .size(44.dp),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.ClearAll,
+                                    imageVector = Icons.Filled.DeleteSweep,
                                     contentDescription = "Clear remote source",
                                     tint = Color.White,
                                 )
@@ -1348,6 +1794,7 @@ private fun ProfileSourceCard(
             }
         }
     }
+
 }
 
 @Composable
@@ -1411,24 +1858,54 @@ private fun AddSubscriptionLauncherCard(
 
 @Composable
 private fun ProfileHistorySection(
-    history: List<String>,
+    subscriptions: List<SubscriptionSource>,
     historyNames: Map<String, String>,
     currentSource: String,
+    onRefreshActive: () -> Unit,
+    onRefreshAll: () -> Unit,
+    refreshEnabled: Boolean,
     onUseEntry: (String) -> Unit,
     onRenameEntry: (String) -> Unit,
     onDeleteEntry: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "Subscriptions History",
+            text = "Subscriptions",
             color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
-        history.forEach { source ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onRefreshActive,
+                enabled = refreshEnabled,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                colors = darkOutlinedButtonColors(),
+            ) {
+                Text("Refresh Active")
+            }
+            OutlinedButton(
+                onClick = onRefreshAll,
+                enabled = refreshEnabled,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                colors = darkOutlinedButtonColors(),
+            ) {
+                Text("Refresh All")
+            }
+        }
+        subscriptions.forEach { subscription ->
+            val source = subscription.url
             val preview = RemoteSourceResolver.preview(source)
             ProfileHistoryEntryCard(
                 source = source,
+                subscription = subscription,
                 customName = historyNames[source].orEmpty(),
                 preview = preview,
                 isActive = source == currentSource,
@@ -1443,6 +1920,7 @@ private fun ProfileHistorySection(
 @Composable
 private fun ProfileHistoryEntryCard(
     source: String,
+    subscription: SubscriptionSource,
     customName: String,
     preview: RemoteSourcePreview?,
     isActive: Boolean,
@@ -1502,6 +1980,22 @@ private fun ProfileHistoryEntryCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
+                    text = "Cached locations: ${subscription.cachedLocations.size} • Last refresh: ${subscription.lastRefreshedAtEpochMillis.formatAsStatusTime()}",
+                    color = Color(0xFF9FB8C8),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                subscription.lastRefreshStatus.takeIf { it.isNotBlank() }?.let { status ->
+                    Text(
+                        text = status,
+                        color = Color(0xFFFFE0A3),
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
                     text = RemoteSourceResolver.redactForDiagnostics(source),
                     color = Color(0xFF8EA8BA),
                     fontSize = 11.sp,
@@ -1510,7 +2004,7 @@ private fun ProfileHistoryEntryCard(
                 )
                 if (isActive) {
                     Text(
-                        text = "Current source",
+                        text = "Active subscription",
                         color = Color(0xFF7FE7B5),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1592,6 +2086,17 @@ private fun RoutingRulesScreen(
     onClearAllDirectApps: () -> Unit,
     onNationalDomainsChange: (String) -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onShowAddRuleSetDialog: () -> Unit,
+    onEditRuleSet: (String) -> Unit,
+    onDeleteRuleSet: (String) -> Unit,
+    onCloseRuleSetDialog: () -> Unit,
+    onRuleSetNameChange: (String) -> Unit,
+    onRuleSetSourceChange: (String) -> Unit,
+    onRuleSetSourceTypeChange: (RoutingRuleSetSourceType) -> Unit,
+    onRuleSetFormatChange: (RoutingRuleSetFormat) -> Unit,
+    onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
+    onRuleSetUpdateHoursChange: (String) -> Unit,
+    onSaveRuleSet: () -> Unit,
     onSave: () -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
@@ -1673,7 +2178,11 @@ private fun RoutingRulesScreen(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Choose which apps use the VPN and which domains bypass it. You can also ignore all saved rules temporarily.",
+                        text = if (state.appMode == AppMode.VPN) {
+                            "Choose which apps use the VPN and which domains bypass it. You can also ignore all saved rules temporarily."
+                        } else {
+                            "Choose which domains go direct when using proxy-only mode. App assignments are still saved for VPN mode."
+                        },
                         color = Color(0xFFD3E3EE),
                         fontSize = 14.sp,
                     )
@@ -1682,17 +2191,35 @@ private fun RoutingRulesScreen(
             item {
                 CompactSummaryCard(state)
             }
+            if (state.appMode == AppMode.PROXY_ONLY) {
+                item {
+                    ProxyOnlyRulesNoteCard()
+                }
+            }
             item {
                 IgnoreRulesCard(
                     enabled = state.routingIgnoreRulesDraft,
+                    appMode = state.appMode,
                     onEnabledChange = onIgnoreRulesChange,
+                )
+            }
+            item {
+                RuleSetSectionCard(
+                    ruleSets = state.routingRuleSetsDraft,
+                    onAdd = onShowAddRuleSetDialog,
+                    onEdit = onEditRuleSet,
+                    onDelete = onDeleteRuleSet,
                 )
             }
             item {
                 AppSelectionSectionCard(
                     title = "Proxy Apps",
                     count = state.routingProxyPackagesDraft.size,
-                    description = "Only these apps use the VPN. Domain bypass rules still apply.",
+                    description = if (state.appMode == AppMode.VPN) {
+                        "Only these apps use the VPN. Domain bypass rules still apply."
+                    } else {
+                        "Saved for VPN mode only. Proxy-only mode does not support per-app routing."
+                    },
                     onSelectAll = onSelectAllProxyApps,
                     onClearAll = onClearAllProxyApps,
                     enableSelectAll = !state.installedAppsLoading && filteredApps.isNotEmpty(),
@@ -1703,7 +2230,11 @@ private fun RoutingRulesScreen(
                 AppSelectionSectionCard(
                     title = "Direct Apps",
                     count = state.routingBypassPackagesDraft.size,
-                    description = "These apps stay off the VPN. An app cannot be both direct and proxy.",
+                    description = if (state.appMode == AppMode.VPN) {
+                        "These apps stay off the VPN. An app cannot be both direct and proxy."
+                    } else {
+                        "Saved for VPN mode only. Proxy-only mode does not support per-app routing."
+                    },
                     onSelectAll = onSelectAllDirectApps,
                     onClearAll = onClearAllDirectApps,
                     enableSelectAll = !state.installedAppsLoading && filteredApps.isNotEmpty(),
@@ -1843,6 +2374,12 @@ private fun CompactSummaryCard(state: MainUiState) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
+                "${state.routingRuleSetsDraft.size} rule-sets • ${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
+                    "${state.routingDirectDomainsDraft.countEntries()} bypass domains",
+                color = Color(0xFFD3E3EE),
+                fontSize = 13.sp,
+            )
+            Text(
                 if (state.routingIgnoreRulesDraft) {
                     "Ignore rules is on. App/domain rules are saved but not applied."
                 } else {
@@ -1851,15 +2388,13 @@ private fun CompactSummaryCard(state: MainUiState) {
                 color = if (state.routingIgnoreRulesDraft) Color(0xFFFFE0A3) else Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
-            Text(
-                "${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
-                    "${state.routingDirectDomainsDraft.countEntries()} bypass domains",
-                color = Color(0xFFD3E3EE),
-                fontSize = 13.sp,
-            )
             if (state.isVpnRunning) {
                 Text(
-                    text = "Restart the VPN after saving or importing rules.",
+                    text = if (state.appMode == AppMode.VPN) {
+                        "Restart the VPN after saving or importing rules."
+                    } else {
+                        "Restart the local proxy after saving or importing rules."
+                    },
                     color = Color(0xFFFFE0A3),
                     fontSize = 12.sp,
                 )
@@ -1871,6 +2406,7 @@ private fun CompactSummaryCard(state: MainUiState) {
 @Composable
 private fun IgnoreRulesCard(
     enabled: Boolean,
+    appMode: AppMode,
     onEnabledChange: (Boolean) -> Unit,
 ) {
     Card(
@@ -1891,9 +2427,17 @@ private fun IgnoreRulesCard(
                 Text("Ignore Rules", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text(
                     if (enabled) {
-                        "User-defined app and domain rules are ignored. Normal app traffic goes through the VPN."
+                        if (appMode == AppMode.VPN) {
+                            "User-defined app and domain rules are ignored. Normal app traffic goes through the VPN."
+                        } else {
+                            "User-defined domain rules are ignored. Proxy-only mode sends all proxied traffic through the selected connection."
+                        }
                     } else {
-                        "User-defined app and domain rules are applied."
+                        if (appMode == AppMode.VPN) {
+                            "User-defined app and domain rules are applied."
+                        } else {
+                            "User-defined domain rules are applied. App assignments stay saved for VPN mode."
+                        }
                     },
                     color = Color(0xFFD3E3EE),
                     fontSize = 12.sp,
@@ -1961,6 +2505,280 @@ private fun AppSelectionSectionCard(
                     Text("Clear All")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RuleSetSectionCard(
+    ruleSets: List<RoutingRuleSet>,
+    onAdd: () -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Rule-Sets", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Attach inline or remote sing-box rule-sets and route matches to direct, proxy, or block.",
+                        color = Color(0xFFD3E3EE),
+                        fontSize = 12.sp,
+                    )
+                }
+                OutlinedButton(
+                    onClick = onAdd,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                    colors = darkOutlinedButtonColors(),
+                ) {
+                    Text("Add")
+                }
+            }
+            if (ruleSets.isEmpty()) {
+                Text(
+                    text = "No rule-sets added yet.",
+                    color = Color(0xFF9FB8C8),
+                    fontSize = 12.sp,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ruleSets.forEach { ruleSet ->
+                        RuleSetEntryCard(
+                            ruleSet = ruleSet,
+                            onEdit = { onEdit(ruleSet.id) },
+                            onDelete = { onDelete(ruleSet.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuleSetEntryCard(
+    ruleSet: RoutingRuleSet,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x1F203041)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = ruleSet.name,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "${ruleSet.sourceType.label()} • ${ruleSet.action.label()}${if (ruleSet.sourceType == RoutingRuleSetSourceType.REMOTE) " • ${ruleSet.format.label()} • ${ruleSet.updateIntervalHours}h" else ""}",
+                    color = Color(0xFF9ED6FF),
+                    fontSize = 12.sp,
+                )
+                Text(
+                    text = if (ruleSet.sourceType == RoutingRuleSetSourceType.REMOTE) ruleSet.source else "Inline rules",
+                    color = Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Edit rule-set",
+                        tint = Color.White,
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete rule-set",
+                        tint = Color(0xFFFFC4C4),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuleSetEditorDialog(
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onNameChange: (String) -> Unit,
+    onSourceChange: (String) -> Unit,
+    onSourceTypeChange: (RoutingRuleSetSourceType) -> Unit,
+    onFormatChange: (RoutingRuleSetFormat) -> Unit,
+    onActionChange: (RoutingRuleSetAction) -> Unit,
+    onUpdateHoursChange: (String) -> Unit,
+    onSave: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = if (state.editingRuleSetId.isBlank()) "Add Rule-Set" else "Edit Rule-Set",
+                color = Color.White,
+            )
+        },
+        containerColor = Color(0xFF141F2D),
+        textContentColor = Color.White,
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.routingRuleSetNameDraft,
+                    onValueChange = onNameChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name") },
+                    singleLine = true,
+                    colors = routingTextFieldColors(),
+                )
+                Text("Source", color = Color.White, fontWeight = FontWeight.SemiBold)
+                SourceModeOption(
+                    title = "Remote",
+                    description = "Download a rule-set from an HTTPS URL.",
+                    selected = state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE,
+                    onClick = { onSourceTypeChange(RoutingRuleSetSourceType.REMOTE) },
+                )
+                SourceModeOption(
+                    title = "Inline",
+                    description = "Paste a sing-box rules array or source-format JSON directly.",
+                    selected = state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.INLINE,
+                    onClick = { onSourceTypeChange(RoutingRuleSetSourceType.INLINE) },
+                )
+                Text("Action", color = Color.White, fontWeight = FontWeight.SemiBold)
+                RoutingRuleSetAction.entries.forEach { action ->
+                    SourceModeOption(
+                        title = action.label(),
+                        description = when (action) {
+                            RoutingRuleSetAction.DIRECT -> "Send matching traffic directly."
+                            RoutingRuleSetAction.PROXY -> "Send matching traffic through the selected proxy."
+                            RoutingRuleSetAction.BLOCK -> "Block matching traffic."
+                        },
+                        selected = state.routingRuleSetActionDraft == action,
+                        onClick = { onActionChange(action) },
+                    )
+                }
+                if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
+                    Text("Format", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    RoutingRuleSetFormat.entries.forEach { format ->
+                        SourceModeOption(
+                            title = format.label(),
+                            description = if (format == RoutingRuleSetFormat.SOURCE) {
+                                "Use a source-format JSON rule-set."
+                            } else {
+                                "Use a binary .srs rule-set."
+                            },
+                            selected = state.routingRuleSetFormatDraft == format,
+                            onClick = { onFormatChange(format) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = state.routingRuleSetSourceDraft,
+                    onValueChange = onSourceChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) 2 else 6,
+                    label = {
+                        Text(
+                            if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
+                                "Remote URL"
+                            } else {
+                                "Inline JSON"
+                            },
+                        )
+                    },
+                    placeholder = {
+                        Text(
+                            if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
+                                "https://example.com/ruleset.json"
+                            } else {
+                                "{\"version\":1,\"rules\":[...]}"
+                            },
+                        )
+                    },
+                    colors = routingTextFieldColors(),
+                )
+                if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
+                    OutlinedTextField(
+                        value = state.routingRuleSetUpdateHoursDraft,
+                        onValueChange = onUpdateHoursChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Update interval (hours)") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text("Save", color = Color(0xFF9ED6FF))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color(0xFFD3E3EE))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProxyOnlyRulesNoteCard() {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x332A3E12)),
+        border = BorderStroke(1.dp, Color(0xFFFFC857)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "Proxy-only mode",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Only domain rules apply in proxy-only mode. App assignments are kept for when you switch back to VPN mode.",
+                color = Color(0xFFFFF0CC),
+                fontSize = 12.sp,
+            )
         }
     }
 }
@@ -2087,12 +2905,13 @@ private fun AppAssignmentRow(
 @Composable
 private fun LocationRowCard(
     location: SavedLocationRow,
+    appMode: AppMode,
     isVpnRunning: Boolean,
     enabled: Boolean,
     onPrimaryAction: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
 ) {
     val isSelectedAndRunning = location.isSelected && isVpnRunning
     Card(
@@ -2173,8 +2992,8 @@ private fun LocationRowCard(
                             else -> Icons.Filled.PlayArrow
                         },
                         contentDescription = when {
-                            isSelectedAndRunning -> "Stop VPN for this location"
-                            location.isSelected -> "Start VPN for this location"
+                            isSelectedAndRunning -> "Stop ${connectionLabel(appMode)} for this location"
+                            location.isSelected -> "Start ${connectionLabel(appMode)} for this location"
                             else -> "Select this location"
                         },
                     )
@@ -2194,35 +3013,39 @@ private fun LocationRowCard(
                         contentDescription = "Recheck this location",
                     )
                 }
-                OutlinedButton(
-                    onClick = onEdit,
-                    enabled = enabled,
-                    modifier = Modifier.size(48.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color.White,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = "Edit location",
-                    )
+                if (onEdit != null) {
+                    OutlinedButton(
+                        onClick = onEdit,
+                        enabled = enabled,
+                        modifier = Modifier.size(48.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit location",
+                        )
+                    }
                 }
-                OutlinedButton(
-                    onClick = onDelete,
-                    enabled = enabled,
-                    modifier = Modifier.size(48.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFFFFC4C4),
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "Delete location",
-                    )
+                if (onDelete != null) {
+                    OutlinedButton(
+                        onClick = onDelete,
+                        enabled = enabled,
+                        modifier = Modifier.size(48.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFFFC4C4),
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete location",
+                        )
+                    }
                 }
             }
         }
@@ -2254,6 +3077,61 @@ private fun StatusCard(state: MainUiState) {
                 )
                 Text("Server: ${state.selectedProfileServer}", color = Color(0xFFD3E3EE))
             }
+        }
+    }
+}
+
+@Composable
+private fun SessionCard(state: MainUiState) {
+    val now by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = state.isVpnRunning,
+        key2 = state.sessionStartedAtEpochMillis,
+    ) {
+        value = System.currentTimeMillis()
+        if (state.isVpnRunning) {
+            while (true) {
+                delay(30_000L)
+                value = System.currentTimeMillis()
+            }
+        }
+    }
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Session", color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
+            Text(
+                text = if (state.isVpnRunning) {
+                    "Running for ${state.sessionStartedAtEpochMillis.elapsedLabel(now)}"
+                } else {
+                    "Stopped"
+                },
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Started: ${state.sessionStartedAtEpochMillis.formatAsStatusTime()}",
+                color = Color(0xFFD3E3EE),
+                fontSize = 12.sp,
+            )
+            Text(
+                text = "Stopped: ${state.sessionStoppedAtEpochMillis.formatAsStatusTime()}",
+                color = Color(0xFFD3E3EE),
+                fontSize = 12.sp,
+            )
+            Text(
+                text = "Successful starts: ${state.successfulStarts} • Successful stops: ${state.successfulStops}",
+                color = Color(0xFFD3E3EE),
+                fontSize = 12.sp,
+            )
         }
     }
 }
@@ -2326,8 +3204,28 @@ private fun formatLocationLabel(mode: ProfileSourceMode, name: String): String {
     val trimmed = name.trim()
     if (trimmed.isBlank()) return "none"
     return when (mode) {
-        ProfileSourceMode.SUBSCRIPTION -> "VLESS sub: $trimmed"
+        ProfileSourceMode.SUBSCRIPTION -> "Subscription: $trimmed"
         ProfileSourceMode.CURRENT_LOCATIONS -> "Saved location: $trimmed"
+    }
+}
+
+private fun Long.formatAsStatusTime(): String {
+    if (this <= 0L) return "never"
+    return runCatching {
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(this))
+    }.getOrDefault("unknown")
+}
+
+private fun Long.elapsedLabel(now: Long = System.currentTimeMillis()): String {
+    if (this <= 0L || now <= this) return "0m"
+    val totalMinutes = ((now - this) / 60_000L).coerceAtLeast(0L)
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m"
+        else -> "${minutes}m"
     }
 }
 
@@ -2392,16 +3290,51 @@ private fun ActionButton(
 
 private fun routingSummary(state: MainUiState): String {
     if (state.routingRules.ignoreRules) {
-        return "Ignored • all normal app traffic through VPN"
+        return if (state.appMode == AppMode.VPN) {
+            "Ignored • all normal app traffic through VPN"
+        } else {
+            "Ignored • all proxied traffic through the selected proxy outbound"
+        }
     }
     return buildString {
         append("${state.routingRules.proxyPackages.size} proxy")
         append(" • ")
         append("${state.routingRules.bypassPackages.size} direct")
         append(" • ")
+        append("${state.routingRules.ruleSets.size} rule-sets")
+        append(" • ")
         append("${state.routingRules.nationalDomainSuffixes.size} country-code domains")
         append(" • ")
         append("${state.routingRules.directDomainSuffixes.size} bypass domains")
+    }
+}
+
+private fun connectionLabel(appMode: AppMode): String {
+    return when (appMode) {
+        AppMode.VPN -> "VPN"
+        AppMode.PROXY_ONLY -> "proxy"
+    }
+}
+
+private fun RoutingRuleSetSourceType.label(): String {
+    return when (this) {
+        RoutingRuleSetSourceType.INLINE -> "Inline"
+        RoutingRuleSetSourceType.REMOTE -> "Remote"
+    }
+}
+
+private fun RoutingRuleSetFormat.label(): String {
+    return when (this) {
+        RoutingRuleSetFormat.SOURCE -> "Source"
+        RoutingRuleSetFormat.BINARY -> "Binary"
+    }
+}
+
+private fun RoutingRuleSetAction.label(): String {
+    return when (this) {
+        RoutingRuleSetAction.DIRECT -> "Direct"
+        RoutingRuleSetAction.PROXY -> "Proxy"
+        RoutingRuleSetAction.BLOCK -> "Block"
     }
 }
 

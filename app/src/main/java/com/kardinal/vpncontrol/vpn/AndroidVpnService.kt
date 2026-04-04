@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import com.kardinal.vpncontrol.data.DiagnosticsLogger
 import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RuntimeFiles
+import com.kardinal.vpncontrol.model.AppMode
 import io.nekohasekai.libbox.BoxService
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
@@ -60,7 +61,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         serviceScope.launch {
             commandMutex.withLock {
                 when (intent?.action) {
-                    ACTION_STOP -> stopVpn("VPN stopped", startId)
+                    ACTION_STOP -> stopVpn(stoppedText(currentAppMode()), startId)
                     else -> startVpn(startId)
                 }
             }
@@ -90,9 +91,10 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     private suspend fun startVpn(startId: Int? = null) {
         try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
+            val appMode = storage.snapshot().appMode
             resetRuntimeSession()
             createNotificationChannel()
-            showForegroundNotification("VPN starting")
+            showForegroundNotification(startingText(appMode))
             DefaultNetworkMonitor.start(this)
 
             val configFile = RuntimeFiles.runtimeConfigFile(this)
@@ -104,8 +106,8 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             boxService?.start()
 
             storage.updateVpnRunning(true)
-            storage.updateStatus("VPN started")
-            showForegroundNotification("VPN running")
+            storage.updateStatus(startedText(appMode))
+            showForegroundNotification(runningText(appMode))
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start VPN", error)
             DiagnosticsLogger.append(applicationContext, "Failed to start VPN", error)
@@ -431,11 +433,50 @@ class AndroidVpnService : VpnService(), PlatformInterface {
 
     private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("VPN Control")
+            .setContentTitle(notificationTitle(currentAppMode()))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setOngoing(true)
             .build()
+    }
+
+    private fun currentAppMode(): AppMode {
+        return runCatching { runBlocking { storage.snapshot().appMode } }.getOrDefault(AppMode.VPN)
+    }
+
+    private fun notificationTitle(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN Control"
+            AppMode.PROXY_ONLY -> "VPN Control Proxy"
+        }
+    }
+
+    private fun startingText(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN starting"
+            AppMode.PROXY_ONLY -> "Local proxy starting"
+        }
+    }
+
+    private fun runningText(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN running"
+            AppMode.PROXY_ONLY -> "Local proxy running"
+        }
+    }
+
+    private fun startedText(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN started"
+            AppMode.PROXY_ONLY -> "Proxy started"
+        }
+    }
+
+    private fun stoppedText(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN stopped"
+            AppMode.PROXY_ONLY -> "Proxy stopped"
+        }
     }
 
     private fun dumpFlags(networkInterface: NetworkInterface, hasInternet: Boolean): Int {

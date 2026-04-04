@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.ui.VpnControlApp
 
 class MainActivity : ComponentActivity() {
@@ -118,13 +119,18 @@ class MainActivity : ComponentActivity() {
                 onSaveProfile = viewModel::saveProfile,
                 onClearProfileSource = viewModel::clearProfileSource,
                 onToggleAddSubscriptionEditor = viewModel::toggleAddSubscriptionEditor,
+                onRefreshActiveSubscription = viewModel::refreshActiveSubscriptionCache,
+                onRefreshAllSubscriptions = viewModel::refreshAllSubscriptionsCaches,
                 onUseProfileHistoryEntry = viewModel::useProfileHistoryEntry,
                 onShowProfileHistoryRenameDialog = viewModel::showProfileHistoryRenameDialog,
                 onDeleteProfileHistoryEntry = viewModel::deleteProfileHistoryEntry,
                 onCloseProfileHistoryRenameDialog = viewModel::closeProfileHistoryRenameDialog,
                 onProfileHistoryRenameDraftChange = viewModel::onProfileHistoryRenameDraftChanged,
                 onSaveProfileHistoryRename = viewModel::saveProfileHistoryRename,
+                onCloseLocationMutationBlockedDialog = viewModel::closeLocationMutationBlockedDialog,
                 onToggleDnsDialog = viewModel::toggleDnsDialog,
+                onToggleUiSettingsDialog = viewModel::toggleUiSettingsDialog,
+                onSessionStatsEnabledChange = viewModel::setSessionStatsEnabled,
                 onDnsEnabledChange = viewModel::onCustomDnsEnabledChanged,
                 onDnsChange = viewModel::onDnsDraftChanged,
                 onSaveDns = viewModel::saveDns,
@@ -138,6 +144,8 @@ class MainActivity : ComponentActivity() {
                 onValidationBatchSizeChange = viewModel::onValidationBatchSizeDraftChanged,
                 onValidationRetryCountChange = viewModel::onValidationRetryCountDraftChanged,
                 onSaveValidationSettings = viewModel::saveValidationSettings,
+                onToggleAppModeDialog = viewModel::toggleAppModeDialog,
+                onAppModeChange = viewModel::setAppMode,
                 onOpenMainTab = viewModel::openMainTab,
                 onOpenProfileTab = viewModel::openProfileTab,
                 onOpenLocationsTab = viewModel::openLocationsTab,
@@ -156,10 +164,14 @@ class MainActivity : ComponentActivity() {
                 onBenchmarkLocation = viewModel::benchmarkLocation,
                 onSelectLocation = viewModel::selectLocation,
                 onToggleSelectedLocationVpn = {
-                    val prepareIntent = VpnService.prepare(this)
-                    if (prepareIntent != null) {
-                        pendingVpnPermissionAction = { viewModel.toggleVpn() }
-                        vpnPermissionLauncher.launch(prepareIntent)
+                    if (state.value.appMode == AppMode.VPN) {
+                        val prepareIntent = VpnService.prepare(this)
+                        if (prepareIntent != null) {
+                            pendingVpnPermissionAction = { viewModel.toggleVpn() }
+                            vpnPermissionLauncher.launch(prepareIntent)
+                        } else {
+                            viewModel.toggleVpn()
+                        }
                     } else {
                         viewModel.toggleVpn()
                     }
@@ -177,6 +189,17 @@ class MainActivity : ComponentActivity() {
                 onClearAllDirectApps = viewModel::clearAllVisibleDirectApps,
                 onRoutingNationalDomainsChange = viewModel::onRoutingNationalDomainsDraftChanged,
                 onRoutingDirectDomainsChange = viewModel::onRoutingDirectDomainsDraftChanged,
+                onShowAddRuleSetDialog = viewModel::showAddRuleSetDialog,
+                onEditRuleSet = viewModel::editRuleSet,
+                onDeleteRuleSet = viewModel::deleteRuleSet,
+                onCloseRuleSetDialog = viewModel::closeRuleSetDialog,
+                onRuleSetNameChange = viewModel::onRuleSetNameDraftChanged,
+                onRuleSetSourceChange = viewModel::onRuleSetSourceDraftChanged,
+                onRuleSetSourceTypeChange = viewModel::onRuleSetSourceTypeDraftChanged,
+                onRuleSetFormatChange = viewModel::onRuleSetFormatDraftChanged,
+                onRuleSetActionChange = viewModel::onRuleSetActionDraftChanged,
+                onRuleSetUpdateHoursChange = viewModel::onRuleSetUpdateHoursDraftChanged,
+                onSaveRuleSet = viewModel::saveRuleSet,
                 onSaveRoutingRules = viewModel::saveRoutingRules,
                 onExportRoutingRules = {
                     val document = viewModel.buildRoutingRulesExport()
@@ -187,19 +210,27 @@ class MainActivity : ComponentActivity() {
                     importRoutingRulesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                 },
                 onToggleVpn = {
-                    val prepareIntent = VpnService.prepare(this)
-                    if (prepareIntent != null) {
-                        pendingVpnPermissionAction = { viewModel.toggleVpn() }
-                        vpnPermissionLauncher.launch(prepareIntent)
+                    if (state.value.appMode == AppMode.VPN) {
+                        val prepareIntent = VpnService.prepare(this)
+                        if (prepareIntent != null) {
+                            pendingVpnPermissionAction = { viewModel.toggleVpn() }
+                            vpnPermissionLauncher.launch(prepareIntent)
+                        } else {
+                            viewModel.toggleVpn()
+                        }
                     } else {
                         viewModel.toggleVpn()
                     }
                 },
                 onRefresh = {
-                    val prepareIntent = VpnService.prepare(this)
-                    if (prepareIntent != null) {
-                        pendingVpnPermissionAction = { viewModel.refresh() }
-                        vpnPermissionLauncher.launch(prepareIntent)
+                    if (state.value.appMode == AppMode.VPN) {
+                        val prepareIntent = VpnService.prepare(this)
+                        if (prepareIntent != null) {
+                            pendingVpnPermissionAction = { viewModel.refresh() }
+                            vpnPermissionLauncher.launch(prepareIntent)
+                        } else {
+                            viewModel.refresh()
+                        }
                     } else {
                         viewModel.refresh()
                     }
@@ -208,12 +239,32 @@ class MainActivity : ComponentActivity() {
                 onExportDiagnostics = viewModel::exportDiagnostics,
             )
         }
+
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         if (VpnService.prepare(this) == null) {
             viewModel.onVpnPermissionGranted()
+        }
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent == null) return
+        val sharedText = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            else -> null
+        }?.trim().orEmpty()
+        if (sharedText.isNotBlank()) {
+            viewModel.handleIncomingSharedText(sharedText)
+            intent.removeExtra(Intent.EXTRA_TEXT)
         }
     }
 }

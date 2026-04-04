@@ -17,11 +17,19 @@ import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.RoutingRuleSet
+import com.kardinal.vpncontrol.model.RoutingRuleSetAction
+import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
+import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
+import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import java.net.URI
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -45,11 +53,13 @@ data class MainUiState(
     val currentScreen: AppScreen = AppScreen.MAIN,
     val screenHistory: List<AppScreen> = emptyList(),
     val profileUrl: String = "",
+    val subscriptions: List<SubscriptionSource> = emptyList(),
     val profileHistory: List<String> = emptyList(),
     val profileHistoryNames: Map<String, String> = emptyMap(),
     val profileDraft: String = "",
     val showAddSubscriptionEditor: Boolean = false,
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+    val appMode: AppMode = AppMode.VPN,
     val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshPolicyDraft: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshCustomHours: Int = 3,
@@ -71,6 +81,7 @@ data class MainUiState(
     val routingBypassPackagesDraft: Set<String> = emptySet(),
     val routingNationalDomainsDraft: String = "",
     val routingDirectDomainsDraft: String = "",
+    val routingRuleSetsDraft: List<RoutingRuleSet> = emptyList(),
     val routingAppSearch: String = "",
     val installedApps: List<InstalledApp> = emptyList(),
     val installedAppsLoaded: Boolean = false,
@@ -86,12 +97,29 @@ data class MainUiState(
     val selectedProfileSourceUrl: String = "",
     val lastBenchmarkSummary: String = "",
     val statusMessage: String = "Idle",
+    val sessionStatsEnabled: Boolean = false,
+    val sessionStartedAtEpochMillis: Long = 0L,
+    val sessionStoppedAtEpochMillis: Long = 0L,
+    val successfulStarts: Int = 0,
+    val successfulStops: Int = 0,
     val showDnsDialog: Boolean = false,
+    val showUiSettingsDialog: Boolean = false,
+    val showAppModeDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
     val showValidationSettingsDialog: Boolean = false,
     val showProfileHistoryRenameDialog: Boolean = false,
+    val showRuleSetDialog: Boolean = false,
+    val editingRuleSetId: String = "",
+    val routingRuleSetNameDraft: String = "",
+    val routingRuleSetSourceDraft: String = "",
+    val routingRuleSetSourceTypeDraft: RoutingRuleSetSourceType = RoutingRuleSetSourceType.REMOTE,
+    val routingRuleSetFormatDraft: RoutingRuleSetFormat = RoutingRuleSetFormat.SOURCE,
+    val routingRuleSetActionDraft: RoutingRuleSetAction = RoutingRuleSetAction.DIRECT,
+    val routingRuleSetUpdateHoursDraft: String = "24",
     val profileHistoryRenameSource: String = "",
     val profileHistoryRenameDraft: String = "",
+    val showLocationMutationBlockedDialog: Boolean = false,
+    val locationMutationBlockedMessage: String = "",
     val showLocationDialog: Boolean = false,
     val locationDraft: String = "",
     val editingLocationIndex: Int? = null,
@@ -134,6 +162,7 @@ class MainViewModel(
         repository.state.onEach { persisted ->
             _uiState.value = _uiState.value.copy(
                 profileUrl = persisted.profileUrl,
+                subscriptions = persisted.subscriptions,
                 profileHistory = persisted.profileHistory,
                 profileHistoryNames = persisted.profileHistoryNames,
                 profileDraft = if (_uiState.value.currentScreen == AppScreen.PROFILE) {
@@ -142,6 +171,7 @@ class MainViewModel(
                     persisted.profileUrl
                 },
                 profileSourceMode = persisted.profileSourceMode,
+                appMode = persisted.appMode,
                 subscriptionRefreshPolicy = persisted.subscriptionRefreshPolicy,
                 subscriptionRefreshPolicyDraft = if (_uiState.value.showRefreshPolicyDialog) {
                     _uiState.value.subscriptionRefreshPolicyDraft
@@ -187,6 +217,11 @@ class MainViewModel(
                 } else {
                     persisted.routingRules.ignoreRules
                 },
+                routingRuleSetsDraft = if (_uiState.value.currentScreen == AppScreen.ROUTING_RULES) {
+                    _uiState.value.routingRuleSetsDraft
+                } else {
+                    persisted.routingRules.ruleSets
+                },
                 selectedProfileName = persisted.selectedProfileName,
                 selectedProfileServer = persisted.selectedProfileServer,
                 selectedProfileRawLink = persisted.selectedProfileRawLink,
@@ -195,6 +230,11 @@ class MainViewModel(
                 lastBenchmarkSummary = persisted.lastBenchmarkSummary,
                 isVpnRunning = persisted.isVpnRunning,
                 statusMessage = persisted.statusMessage,
+                sessionStatsEnabled = persisted.sessionStatsEnabled,
+                sessionStartedAtEpochMillis = persisted.sessionStartedAtEpochMillis,
+                sessionStoppedAtEpochMillis = persisted.sessionStoppedAtEpochMillis,
+                successfulStarts = persisted.successfulStarts,
+                successfulStops = persisted.successfulStops,
                 screenHistory = _uiState.value.screenHistory,
             )
         }.launchIn(viewModelScope)
@@ -209,6 +249,28 @@ class MainViewModel(
             showDnsDialog = !_uiState.value.showDnsDialog,
             customDnsDraft = _uiState.value.customDns,
             useCustomDnsDraft = _uiState.value.useCustomDns,
+        )
+    }
+
+    fun toggleUiSettingsDialog() {
+        _uiState.value = _uiState.value.copy(
+            showUiSettingsDialog = !_uiState.value.showUiSettingsDialog,
+        )
+    }
+
+    fun setSessionStatsEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(sessionStatsEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateSessionStatsEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Session stats enabled" else "Session stats hidden",
+            )
+        }
+    }
+
+    fun toggleAppModeDialog() {
+        _uiState.value = _uiState.value.copy(
+            showAppModeDialog = !_uiState.value.showAppModeDialog,
         )
     }
 
@@ -239,7 +301,9 @@ class MainViewModel(
             routingBypassPackagesDraft = rules.bypassPackages.toSet(),
             routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
+            routingRuleSetsDraft = rules.ruleSets,
             routingAppSearch = "",
+            showRuleSetDialog = false,
         )
         ensureInstalledAppsLoaded()
         navigateToScreen(AppScreen.ROUTING_RULES)
@@ -338,6 +402,26 @@ class MainViewModel(
         }
     }
 
+    fun setAppMode(value: AppMode) {
+        if (_uiState.value.isVpnRunning) {
+            viewModelScope.launch {
+                repository.updateStatus("Disconnect first to change connection mode")
+            }
+            return
+        }
+        _uiState.value = _uiState.value.copy(appMode = value)
+        viewModelScope.launch {
+            repository.updateAppMode(value)
+            repository.updateStatus(
+                when (value) {
+                    AppMode.VPN -> "Connection mode set to VPN"
+                    AppMode.PROXY_ONLY -> "Connection mode set to proxy only"
+                },
+            )
+            _uiState.value = _uiState.value.copy(showAppModeDialog = false)
+        }
+    }
+
     fun onDnsDraftChanged(value: String) {
         _uiState.value = _uiState.value.copy(customDnsDraft = value)
     }
@@ -392,7 +476,114 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(routingDirectDomainsDraft = value)
     }
 
+    fun showAddRuleSetDialog() {
+        _uiState.value = _uiState.value.copy(
+            showRuleSetDialog = true,
+            editingRuleSetId = "",
+            routingRuleSetNameDraft = "",
+            routingRuleSetSourceDraft = "",
+            routingRuleSetSourceTypeDraft = RoutingRuleSetSourceType.REMOTE,
+            routingRuleSetFormatDraft = RoutingRuleSetFormat.SOURCE,
+            routingRuleSetActionDraft = RoutingRuleSetAction.DIRECT,
+            routingRuleSetUpdateHoursDraft = "24",
+        )
+    }
+
+    fun editRuleSet(id: String) {
+        val ruleSet = _uiState.value.routingRuleSetsDraft.firstOrNull { it.id == id } ?: return
+        _uiState.value = _uiState.value.copy(
+            showRuleSetDialog = true,
+            editingRuleSetId = ruleSet.id,
+            routingRuleSetNameDraft = ruleSet.name,
+            routingRuleSetSourceDraft = ruleSet.source,
+            routingRuleSetSourceTypeDraft = ruleSet.sourceType,
+            routingRuleSetFormatDraft = ruleSet.format,
+            routingRuleSetActionDraft = ruleSet.action,
+            routingRuleSetUpdateHoursDraft = ruleSet.updateIntervalHours.toString(),
+        )
+    }
+
+    fun closeRuleSetDialog() {
+        _uiState.value = _uiState.value.copy(
+            showRuleSetDialog = false,
+            editingRuleSetId = "",
+            routingRuleSetNameDraft = "",
+            routingRuleSetSourceDraft = "",
+            routingRuleSetSourceTypeDraft = RoutingRuleSetSourceType.REMOTE,
+            routingRuleSetFormatDraft = RoutingRuleSetFormat.SOURCE,
+            routingRuleSetActionDraft = RoutingRuleSetAction.DIRECT,
+            routingRuleSetUpdateHoursDraft = "24",
+        )
+    }
+
+    fun onRuleSetNameDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(routingRuleSetNameDraft = value.take(80))
+    }
+
+    fun onRuleSetSourceDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(routingRuleSetSourceDraft = value)
+    }
+
+    fun onRuleSetSourceTypeDraftChanged(value: RoutingRuleSetSourceType) {
+        _uiState.value = _uiState.value.copy(routingRuleSetSourceTypeDraft = value)
+    }
+
+    fun onRuleSetFormatDraftChanged(value: RoutingRuleSetFormat) {
+        _uiState.value = _uiState.value.copy(routingRuleSetFormatDraft = value)
+    }
+
+    fun onRuleSetActionDraftChanged(value: RoutingRuleSetAction) {
+        _uiState.value = _uiState.value.copy(routingRuleSetActionDraft = value)
+    }
+
+    fun onRuleSetUpdateHoursDraftChanged(value: String) {
+        _uiState.value = _uiState.value.copy(
+            routingRuleSetUpdateHoursDraft = value.filter { it.isDigit() }.take(4),
+        )
+    }
+
+    fun saveRuleSet() {
+        val draft = buildRuleSetDraft()
+        if (draft.isFailure) {
+            postStatus(draft.exceptionOrNull()?.message ?: "Invalid rule-set")
+            return
+        }
+        val saved = draft.getOrThrow()
+        val wasEditing = _uiState.value.editingRuleSetId.isNotBlank()
+        val existingId = _uiState.value.editingRuleSetId.takeIf { it.isNotBlank() } ?: saved.id
+        val updated = _uiState.value.routingRuleSetsDraft
+            .filterNot { it.id == existingId }
+            .plus(saved.copy(id = existingId))
+            .sortedBy { it.name.lowercase() }
+        _uiState.value = _uiState.value.copy(
+            routingRuleSetsDraft = updated,
+        )
+        closeRuleSetDialog()
+        postStatus(
+            if (wasEditing) {
+                "Rule-set updated"
+            } else {
+                "Rule-set added"
+            },
+        )
+    }
+
+    fun deleteRuleSet(id: String) {
+        val existing = _uiState.value.routingRuleSetsDraft
+        if (existing.none { it.id == id }) return
+        _uiState.value = _uiState.value.copy(
+            routingRuleSetsDraft = existing.filterNot { it.id == id },
+            showRuleSetDialog = if (_uiState.value.editingRuleSetId == id) false else _uiState.value.showRuleSetDialog,
+            editingRuleSetId = if (_uiState.value.editingRuleSetId == id) "" else _uiState.value.editingRuleSetId,
+        )
+        postStatus("Rule-set removed")
+    }
+
     fun showAddLocationDialog() {
+        if (_uiState.value.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
+            postStatus("Switch to Saved Locations to add locations manually")
+            return
+        }
         _uiState.value = _uiState.value.copy(
             showLocationDialog = true,
             locationDraft = "",
@@ -414,6 +605,20 @@ class MainViewModel(
             showLocationDialog = false,
             locationDraft = "",
             editingLocationIndex = null,
+        )
+    }
+
+    fun closeLocationMutationBlockedDialog() {
+        _uiState.value = _uiState.value.copy(
+            showLocationMutationBlockedDialog = false,
+            locationMutationBlockedMessage = "",
+        )
+    }
+
+    private fun showLocationMutationBlockedDialog(message: String) {
+        _uiState.value = _uiState.value.copy(
+            showLocationMutationBlockedDialog = true,
+            locationMutationBlockedMessage = message,
         )
     }
 
@@ -504,8 +709,84 @@ class MainViewModel(
 
     fun clearProfileSource() {
         _uiState.value = _uiState.value.copy(profileDraft = "")
+    }
+
+    fun refreshActiveSubscriptionCache() {
         viewModelScope.launch {
-            saveProfileSource("", ProfileSourceMode.SUBSCRIPTION)
+            if (_uiState.value.subscriptions.isEmpty()) {
+                repository.updateStatus("No subscriptions saved yet")
+                return@launch
+            }
+            setBusy(true)
+            try {
+                repository.updateStatus("Refreshing active subscription...")
+                val result = repository.refreshActiveSubscriptionCache()
+                repository.updateStatus(
+                    result.fold(
+                        onSuccess = { "Active subscription refreshed" },
+                        onFailure = { it.message ?: "Failed to refresh the active subscription" },
+                    ),
+                )
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
+    fun refreshAllSubscriptionsCaches() {
+        viewModelScope.launch {
+            if (_uiState.value.subscriptions.isEmpty()) {
+                repository.updateStatus("No subscriptions saved yet")
+                return@launch
+            }
+            setBusy(true)
+            try {
+                repository.updateStatus("Refreshing all subscriptions...")
+                val result = repository.refreshAllSubscriptionsCaches()
+                repository.updateStatus(
+                    result.fold(
+                        onSuccess = { count ->
+                            "Subscriptions refreshed: $count/${_uiState.value.subscriptions.size}"
+                        },
+                        onFailure = { it.message ?: "Failed to refresh subscriptions" },
+                    ),
+                )
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
+    fun handleIncomingSharedText(raw: String) {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            when {
+                RemoteSourceResolver.looksLikeRemoteSourceLink(trimmed) -> {
+                    repository.updateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION)
+                    navigateToScreen(AppScreen.PROFILE)
+                    _uiState.value = _uiState.value.copy(
+                        profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                        profileDraft = trimmed,
+                        showAddSubscriptionEditor = true,
+                    )
+                    repository.updateStatus("Subscription link received. Review and save it on the Profile tab.")
+                }
+                runCatching { LocationConfigs.parseLocationInput(trimmed) }.isSuccess -> {
+                    repository.updateProfileSourceMode(ProfileSourceMode.CURRENT_LOCATIONS)
+                    navigateToScreen(AppScreen.LOCATIONS)
+                    _uiState.value = _uiState.value.copy(
+                        profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+                        showLocationDialog = true,
+                        locationDraft = trimmed,
+                        editingLocationIndex = null,
+                    )
+                    repository.updateStatus("Location config received. Review and save it on the Locations tab.")
+                }
+                else -> {
+                    repository.updateStatus("Shared text is not a supported subscription or location config")
+                }
+            }
         }
     }
 
@@ -596,6 +877,14 @@ class MainViewModel(
     fun saveLocation() {
         val rawLink = _uiState.value.locationDraft.trim()
         viewModelScope.launch {
+            if (_uiState.value.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
+                _uiState.value.editingLocationIndex != null
+            ) {
+                showLocationMutationBlockedDialog(
+                    "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+                )
+                return@launch
+            }
             val parsed = runCatching { LocationConfigs.parseLocationInput(rawLink) }
             if (parsed.isFailure) {
                 repository.updateStatus(parsed.exceptionOrNull()?.message ?: "Invalid location config")
@@ -667,6 +956,12 @@ class MainViewModel(
     }
 
     fun deleteLocation(index: Int) {
+        if (_uiState.value.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+            showLocationMutationBlockedDialog(
+                "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+            )
+            return
+        }
         val nextLocations = _uiState.value.currentLocations.toMutableList()
         val removed = nextLocations.getOrNull(index) ?: return
         nextLocations.removeAt(index)
@@ -674,16 +969,15 @@ class MainViewModel(
             val previousState = repository.snapshot()
             val update = repository.updateCurrentLocations(nextLocations)
             val remarks = runCatching { LocationConfigs.decodeStoredLocation(removed).remarks }.getOrDefault("Location")
-            val removedSelected = update.selectedMissing &&
-                _uiState.value.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS
+            val removedSelected = update.selectedMissing
             if (removedSelected && _uiState.value.isVpnRunning) {
                 val stopResult = vpnManager.stop()
                 repository.updateStatus(
                     stopResult.fold(
-                        onSuccess = { "Selected location removed. VPN stopped: $remarks" },
+                        onSuccess = { "Selected location removed. ${stoppedConnectionLabel()}: $remarks" },
                         onFailure = {
                             repository.restoreSnapshot(previousState)
-                            it.message ?: "Location removal rolled back because the VPN could not be stopped"
+                            it.message ?: "Location removal rolled back because the ${connectionNoun()} could not be stopped"
                         },
                     ),
                 )
@@ -805,7 +1099,7 @@ class MainViewModel(
                 result.fold(
                     onSuccess = {
                         if (_uiState.value.isVpnRunning) {
-                            "Routing rules saved. Restart VPN to apply"
+                            "Routing rules saved. Restart ${connectionNoun()} to apply"
                         } else {
                             "Routing rules saved"
                         }
@@ -830,6 +1124,10 @@ class MainViewModel(
 
     fun importLocations(raw: String) {
         viewModelScope.launch {
+            if (_uiState.value.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
+                repository.updateStatus("Switch to Saved Locations to import locations")
+                return@launch
+            }
             setBusy(true)
             val parsed = runCatching { LocationConfigs.import(raw) }
             if (parsed.isFailure) {
@@ -845,10 +1143,10 @@ class MainViewModel(
                 val stopResult = vpnManager.stop()
                 repository.updateStatus(
                     stopResult.fold(
-                        onSuccess = { "Locations imported. Selected location is no longer available, VPN stopped" },
+                        onSuccess = { "Locations imported. Selected location is no longer available, ${stoppedConnectionLabel().lowercase()}" },
                         onFailure = {
                             repository.restoreSnapshot(previousState)
-                            it.message ?: "Locations import rolled back because the VPN could not be stopped"
+                            it.message ?: "Locations import rolled back because the ${connectionNoun()} could not be stopped"
                         },
                     ),
                 )
@@ -886,9 +1184,12 @@ class MainViewModel(
                             routingBypassPackagesDraft = rules.bypassPackages.toSet(),
                             routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
                             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
+                            routingRuleSetsDraft = rules.ruleSets,
+                            showRuleSetDialog = false,
+                            editingRuleSetId = "",
                         )
                         if (_uiState.value.isVpnRunning) {
-                            "Routing rules imported. Restart VPN to apply"
+                            "Routing rules imported. Restart ${connectionNoun()} to apply"
                         } else {
                             "Routing rules imported"
                         }
@@ -942,18 +1243,18 @@ class MainViewModel(
                         startAttempted = true
                         val applyResult = startAndPersistSelection(
                             selection = selection,
-                            statusMessage = "Starting VPN with the best location...",
+                            statusMessage = bestSelectionStartMessage(),
                         )
                         if (applyResult.isSuccess) {
-                            "Best location selected and VPN started: ${selection.profile.remarks}"
+                            "Best location selected and ${startedConnectionLabel().lowercase()}: ${selection.profile.remarks}"
                         } else if (applyResult.requiresLiveRollback) {
                             rollbackSelectionChange(
                                 previousState = previousState,
                                 baseMessage = selectionCommitFailureMessage(
                                     result = applyResult,
-                                    applyFailureFallback = "Failed to start VPN with the best location",
+                                    applyFailureFallback = "Failed to start ${connectionNoun()} with the best location",
                                     persistFailureWithoutApplyFallback = "Failed to save the best location",
-                                    persistFailureAfterApplyFallback = "Best location VPN started, but failed to save it",
+                                    persistFailureAfterApplyFallback = "Best location ${connectionNoun()} started, but failed to save it",
                                 ),
                             )
                         } else {
@@ -962,9 +1263,9 @@ class MainViewModel(
                             }
                             selectionCommitFailureMessage(
                                 result = applyResult,
-                                applyFailureFallback = "Failed to start VPN with the best location",
+                                applyFailureFallback = "Failed to start ${connectionNoun()} with the best location",
                                 persistFailureWithoutApplyFallback = "Failed to save the best location",
-                                persistFailureAfterApplyFallback = "Best location VPN started, but failed to save it",
+                                persistFailureAfterApplyFallback = "Best location ${connectionNoun()} started, but failed to save it",
                             )
                         }
                     },
@@ -985,7 +1286,7 @@ class MainViewModel(
                                     repository.restoreSnapshot(previousState)
                                     "Location search cancelled"
                                 },
-                                onFailure = { "Location search cancelled. ${it.message ?: "Failed to stop VPN."}" },
+                                onFailure = { "Location search cancelled. ${it.message ?: "Failed to stop ${connectionNoun()}."}" },
                             )
                         }
                         else -> "Location search cancelled"
@@ -1007,13 +1308,13 @@ class MainViewModel(
                     val result = vpnManager.stop()
                     repository.updateStatus(
                         result.fold(
-                            onSuccess = { "VPN stopped" },
-                            onFailure = { it.message ?: "Failed to stop VPN" },
+                            onSuccess = { stoppedConnectionLabel() },
+                            onFailure = { it.message ?: "Failed to stop ${connectionNoun()}" },
                         ),
                     )
                 } catch (_: CancellationException) {
                     withContext(NonCancellable) {
-                        repository.updateStatus("VPN stop cancelled")
+                        repository.updateStatus("${connectionDisplayName()} stop cancelled")
                     }
                 } finally {
                     setBusy(false)
@@ -1021,7 +1322,7 @@ class MainViewModel(
                 return@launchTrackedBusyOperation
             }
 
-            if (!_uiState.value.hasVpnPermission) {
+            if (_uiState.value.appMode == AppMode.VPN && !_uiState.value.hasVpnPermission) {
                 repository.updateStatus("Grant VPN permission and try again")
                 return@launchTrackedBusyOperation
             }
@@ -1030,27 +1331,27 @@ class MainViewModel(
             val previousState = repository.snapshot()
             var startAttempted = false
             try {
-                repository.updateStatus("Preparing VPN")
+                repository.updateStatus("Preparing ${connectionNoun()}")
 
                 val selection = repository.ensureSelection()
                 if (selection.isFailure) {
-                    repository.updateStatus(selection.exceptionOrNull()?.message ?: "Could not prepare VPN")
+                    repository.updateStatus(selection.exceptionOrNull()?.message ?: "Could not prepare ${connectionNoun()}")
                     return@launchTrackedBusyOperation
                 }
 
                 startAttempted = true
                 val applyResult = startAndPersistSelection(
                     selection = selection.getOrThrow(),
-                    statusMessage = "Starting VPN...",
+                    statusMessage = startingConnectionLabel(),
                 )
                 val message = if (applyResult.isSuccess) {
-                    "VPN started"
+                    startedConnectionLabel()
                 } else {
                     selectionCommitFailureMessage(
                         result = applyResult,
-                        applyFailureFallback = "Failed to start VPN",
+                        applyFailureFallback = "Failed to start ${connectionNoun()}",
                         persistFailureWithoutApplyFallback = "Failed to save the selected location",
-                        persistFailureAfterApplyFallback = "VPN started, but failed to save the selected location",
+                        persistFailureAfterApplyFallback = "${connectionDisplayName()} started, but failed to save the selected location",
                     ).let { failureMessage ->
                         if (applyResult.requiresLiveRollback) {
                             rollbackStartedVpnAfterPersistFailure(
@@ -1074,13 +1375,13 @@ class MainViewModel(
                             stopResult.fold(
                                 onSuccess = {
                                     repository.restoreSnapshot(previousState)
-                                    "VPN start cancelled"
+                                    "${connectionDisplayName()} start cancelled"
                                 },
-                                onFailure = { "VPN start cancelled. ${it.message ?: "Failed to stop VPN."}" },
+                                onFailure = { "${connectionDisplayName()} start cancelled. ${it.message ?: "Failed to stop ${connectionNoun()}."}" },
                             ),
                         )
                     } else {
-                        repository.updateStatus("VPN start cancelled")
+                        repository.updateStatus("${connectionDisplayName()} start cancelled")
                     }
                 }
             } finally {
@@ -1133,6 +1434,10 @@ class MainViewModel(
         value: String,
         mode: ProfileSourceMode,
     ): Result<Unit> {
+        if (mode == ProfileSourceMode.SUBSCRIPTION && value.isBlank()) {
+            repository.updateStatus("Paste a subscription URL or choose one from the list")
+            return Result.failure(IllegalStateException("Subscription URL is empty"))
+        }
         if (mode == ProfileSourceMode.SUBSCRIPTION && value.isNotBlank()) {
             val validation = RemoteSourceResolver.validateProfileSource(value)
             if (validation.isFailure) {
@@ -1146,10 +1451,8 @@ class MainViewModel(
         }
         repository.updateProfileSource(value, mode)
         repository.updateStatus(
-            if (mode == ProfileSourceMode.SUBSCRIPTION && value.isBlank()) {
-                "Remote source cleared"
-            } else if (mode == ProfileSourceMode.SUBSCRIPTION) {
-                "Remote source saved"
+            if (mode == ProfileSourceMode.SUBSCRIPTION) {
+                "Subscription saved"
             } else {
                 "Profile source set to saved locations"
             },
@@ -1289,19 +1592,19 @@ class MainViewModel(
             return restartResult.fold(
                 onSuccess = {
                     repository.restoreSnapshot(previousState, restoreRuntimeArtifacts = false)
-                    "$baseMessage Previous VPN location restored."
+                    "$baseMessage Previous ${connectionNoun()} location restored."
                 },
                 onFailure = { restartError ->
                     val stopResult = vpnManager.stop()
                     stopResult.fold(
                         onSuccess = {
                             repository.restoreSnapshot(previousState)
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous VPN location."} " +
-                                "VPN stopped to keep state consistent."
+                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${connectionNoun()} location."} " +
+                                "${stoppedConnectionLabel()} to keep state consistent."
                         },
                         onFailure = { stopError ->
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous VPN location."} " +
-                                "${stopError.message ?: "Failed to stop the current VPN session."}"
+                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${connectionNoun()} location."} " +
+                                "${stopError.message ?: "Failed to stop the current ${connectionNoun()} session."}"
                         },
                     )
                 },
@@ -1312,10 +1615,10 @@ class MainViewModel(
         return stopResult.fold(
             onSuccess = {
                 repository.restoreSnapshot(previousState)
-                "$baseMessage VPN stopped to keep state consistent."
+                "$baseMessage ${stoppedConnectionLabel()} to keep state consistent."
             },
             onFailure = { error ->
-                "$baseMessage ${error.message ?: "Failed to restore the previous VPN session."}"
+                "$baseMessage ${error.message ?: "Failed to restore the previous ${connectionNoun()} session."}"
             },
         )
     }
@@ -1329,12 +1632,54 @@ class MainViewModel(
         return stopResult.fold(
             onSuccess = {
                 repository.restoreSnapshot(previousState)
-                "$baseMessage VPN was stopped to keep state consistent."
+                "$baseMessage ${connectionDisplayName()} was stopped to keep state consistent."
             },
             onFailure = { stopError ->
-                "$baseMessage ${stopError.message ?: "VPN is still running and may not match the saved selection."}"
+                "$baseMessage ${stopError.message ?: "${connectionDisplayName()} is still running and may not match the saved selection."}"
             },
         )
+    }
+
+    private fun connectionNoun(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "VPN"
+            AppMode.PROXY_ONLY -> "proxy"
+        }
+    }
+
+    private fun connectionDisplayName(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "VPN"
+            AppMode.PROXY_ONLY -> "Proxy"
+        }
+    }
+
+    private fun startingConnectionLabel(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "Starting VPN..."
+            AppMode.PROXY_ONLY -> "Starting local proxy..."
+        }
+    }
+
+    private fun startedConnectionLabel(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "VPN started"
+            AppMode.PROXY_ONLY -> "Proxy started"
+        }
+    }
+
+    private fun stoppedConnectionLabel(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "VPN stopped"
+            AppMode.PROXY_ONLY -> "Proxy stopped"
+        }
+    }
+
+    private fun bestSelectionStartMessage(): String {
+        return when (_uiState.value.appMode) {
+            AppMode.VPN -> "Starting VPN with the best location..."
+            AppMode.PROXY_ONLY -> "Starting local proxy with the best location..."
+        }
     }
 
     private fun launchTrackedBusyOperation(block: suspend () -> Unit) {
@@ -1372,7 +1717,105 @@ class MainViewModel(
                 .filterNot { it in proxyPackages.toSet() },
             nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(_uiState.value.routingNationalDomainsDraft),
             directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(_uiState.value.routingDirectDomainsDraft),
+            ruleSets = sanitizeRuleSets(_uiState.value.routingRuleSetsDraft),
         )
+    }
+
+    private fun buildRuleSetDraft(): Result<RoutingRuleSet> = runCatching {
+        val name = _uiState.value.routingRuleSetNameDraft.trim()
+        require(name.isNotBlank()) { "Rule-set name is required" }
+        val sourceType = _uiState.value.routingRuleSetSourceTypeDraft
+        val source = _uiState.value.routingRuleSetSourceDraft.trim()
+        require(source.isNotBlank()) {
+            when (sourceType) {
+                RoutingRuleSetSourceType.INLINE -> "Inline rule-set content is required"
+                RoutingRuleSetSourceType.REMOTE -> "Remote rule-set URL is required"
+            }
+        }
+        when (sourceType) {
+            RoutingRuleSetSourceType.INLINE -> requireInlineRuleSet(source)
+            RoutingRuleSetSourceType.REMOTE -> requireRemoteRuleSetUrl(source)
+        }
+        RoutingRuleSet(
+            id = _uiState.value.editingRuleSetId.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
+            name = name,
+            sourceType = sourceType,
+            format = _uiState.value.routingRuleSetFormatDraft,
+            action = _uiState.value.routingRuleSetActionDraft,
+            source = if (sourceType == RoutingRuleSetSourceType.REMOTE) {
+                normalizeHttpsUrl(source)
+            } else {
+                source
+            },
+            updateIntervalHours = _uiState.value.routingRuleSetUpdateHoursDraft.toIntOrNull()?.coerceAtLeast(1) ?: 24,
+        ).normalized()
+    }
+
+    private fun sanitizeRuleSets(ruleSets: List<RoutingRuleSet>): List<RoutingRuleSet> {
+        return ruleSets
+            .mapNotNull { ruleSet ->
+                runCatching {
+                    when (ruleSet.sourceType) {
+                        RoutingRuleSetSourceType.INLINE -> requireInlineRuleSet(ruleSet.source)
+                        RoutingRuleSetSourceType.REMOTE -> requireRemoteRuleSetUrl(ruleSet.source)
+                    }
+                    ruleSet.normalized().copy(
+                        source = if (ruleSet.sourceType == RoutingRuleSetSourceType.REMOTE) {
+                            normalizeHttpsUrl(ruleSet.source)
+                        } else {
+                            ruleSet.source.trim()
+                        },
+                    )
+                }.getOrNull()
+            }
+            .distinctBy { it.id }
+            .sortedBy { it.name.lowercase() }
+    }
+
+    private fun requireRemoteRuleSetUrl(raw: String) {
+        val normalized = normalizeHttpsUrl(raw)
+        val uri = URI(normalized)
+        require(uri.scheme?.lowercase() == "https" && !uri.host.isNullOrBlank()) {
+            "Remote rule-set URL must be a valid HTTPS URL"
+        }
+    }
+
+    private fun normalizeHttpsUrl(raw: String): String {
+        val trimmed = raw.trim()
+        val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+        val uri = URI(withScheme)
+        require(uri.host?.isNotBlank() == true) { "Remote rule-set URL must include a host" }
+        require(uri.scheme.equals("https", ignoreCase = true)) { "Remote rule-set URL must use HTTPS" }
+        return buildString {
+            append("https://")
+            append(uri.host)
+            if (uri.port != -1) {
+                append(':')
+                append(uri.port)
+            }
+            uri.rawPath?.takeIf { it.isNotBlank() }?.let(::append)
+            uri.rawQuery?.let {
+                append('?')
+                append(it)
+            }
+            uri.rawFragment?.let {
+                append('#')
+                append(it)
+            }
+        }
+    }
+
+    private fun requireInlineRuleSet(raw: String) {
+        val trimmed = raw.trim()
+        require(trimmed.isNotBlank()) { "Inline rule-set content is required" }
+        val normalized = if (trimmed.startsWith("[")) {
+            org.json.JSONArray(trimmed)
+        } else {
+            val root = org.json.JSONObject(trimmed)
+            root.optJSONArray("rules")
+                ?: throw IllegalArgumentException("Inline rule-set JSON must be a rules array or an object with a rules field")
+        }
+        require(normalized.length() > 0) { "Inline rule-set must contain at least one rule" }
     }
 
     private fun sanitizeRoutingRules(rules: RoutingRules): RoutingRules {
@@ -1381,6 +1824,7 @@ class MainViewModel(
             proxyPackages = proxyPackages,
             bypassPackages = RoutingRules.normalizePackageNames(rules.bypassPackages)
                 .filterNot { it in proxyPackages.toSet() },
+            ruleSets = sanitizeRuleSets(rules.ruleSets),
         )
     }
 

@@ -72,7 +72,10 @@ class DiagnosticsExporter(
             appendLine()
             appendLine("[state]")
             appendLine("profile_url=${RemoteSourceResolver.redactForDiagnostics(state.profileUrl)}")
+            appendLine("subscriptions_count=${state.subscriptions.size}")
+            appendLine("active_subscription_id=${state.activeSubscriptionId}")
             appendLine("profile_source_mode=${state.profileSourceMode}")
+            appendLine("app_mode=${state.appMode}")
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
             appendLine("validation_primary_url=${state.validationSettings.primaryUrl}")
@@ -87,12 +90,34 @@ class DiagnosticsExporter(
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("national_domain_suffixes=${state.routingRules.nationalDomainSuffixes.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
+            appendLine("rule_sets_count=${state.routingRules.ruleSets.size}")
+            appendLine(
+                "rule_sets=${state.routingRules.ruleSets.joinToString(";") { "${it.name}:${it.sourceType}:${it.action}" }}",
+            )
             appendLine("selected_profile_name=${state.selectedProfileName}")
             appendLine("selected_profile_server=${state.selectedProfileServer}")
             appendLine("status_message=${state.statusMessage}")
             appendLine("is_vpn_running=${state.isVpnRunning}")
+            appendLine("session_started_at_epoch_millis=${state.sessionStartedAtEpochMillis}")
+            appendLine("session_stopped_at_epoch_millis=${state.sessionStoppedAtEpochMillis}")
+            appendLine("successful_starts=${state.successfulStarts}")
+            appendLine("successful_stops=${state.successfulStops}")
             appendLine("last_benchmark_summary=${state.lastBenchmarkSummary}")
+            appendLine("proxy_only_port=${SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT}")
             appendLine()
+            appendSection(
+                "subscriptions",
+                state.subscriptions.joinToString(separator = "\n") { subscription ->
+                    listOf(
+                        "id=${subscription.id}",
+                        "name=${subscription.customName.ifBlank { RemoteSourceResolver.preview(subscription.url)?.title ?: "Remote source" }}",
+                        "url=${RemoteSourceResolver.redactForDiagnostics(subscription.url)}",
+                        "cached=${subscription.cachedLocations.size}",
+                        "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
+                        "status=${subscription.lastRefreshStatus}",
+                    ).joinToString(" | ")
+                }.ifBlank { "<empty>" },
+            )
             appendSection(
                 "selected_profile_link",
                 fileOrFallback(

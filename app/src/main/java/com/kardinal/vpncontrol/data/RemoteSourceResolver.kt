@@ -200,7 +200,7 @@ object RemoteSourceResolver {
                     title = name,
                     detail = detail,
                     supported = false,
-                    warning = "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
+                    warning = "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
                 ),
                 errorMessage = buildString {
                     append("vpn:// imports are not supported")
@@ -208,7 +208,7 @@ object RemoteSourceResolver {
                         append(": ")
                         append(listOf(protocol, serviceType).filter { it.isNotBlank() }.joinToString(" / "))
                     }
-                    append(". Use a normal subscription URL or add VLESS locations manually.")
+                    append(". Use a normal subscription URL or add locations manually.")
                 },
             )
         }.getOrElse {
@@ -218,9 +218,9 @@ object RemoteSourceResolver {
                     title = "Unreadable VPN import link",
                     detail = "The import payload could not be decoded",
                     supported = false,
-                    warning = "vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
+                    warning = "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
                 ),
-                errorMessage = "vpn:// imports are not supported. Use a normal subscription URL or add VLESS locations manually.",
+                errorMessage = "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
             )
         }
     }

@@ -8,6 +8,7 @@ import androidx.work.WorkerParameters
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.AppMode
 import java.io.IOException
 import kotlinx.coroutines.delay
 
@@ -46,7 +47,7 @@ class SubscriptionRefreshWorker(
         return orchestrator.syncSubscriptionLocations().fold(
             onSuccess = { syncResult ->
                 if (syncResult.selectedMissing && state.isVpnRunning) {
-                    if (VpnService.prepare(applicationContext) != null) {
+                    if (state.appMode == AppMode.VPN && VpnService.prepare(applicationContext) != null) {
                         val stopMessage = stopVpnForBackgroundPermissionLoss(
                             previousState = state,
                             vpnManager = vpnManager,
@@ -75,11 +76,11 @@ class SubscriptionRefreshWorker(
                         )
                         if (switchResult.isSuccess) {
                             storage.updateStatus(
-                                "Subscription changed. Switched VPN to ${selection.profile.remarks}",
+                                "Subscription changed. Switched ${connectionLabel(state.appMode)} to ${selection.profile.remarks}",
                             )
                             DiagnosticsLogger.append(
                                 applicationContext,
-                                "Background subscription sync switched VPN to replacement location: ${selection.profile.remarks}",
+                                "Background subscription sync switched ${connectionLabel(state.appMode)} to replacement location: ${selection.profile.remarks}",
                             )
                             return@fold Result.success()
                         }
@@ -111,6 +112,12 @@ class SubscriptionRefreshWorker(
                 Result.success()
             },
             onFailure = { error ->
+                if (state.activeSubscriptionId.isNotBlank()) {
+                    storage.updateSubscriptionRefreshStatus(
+                        subscriptionId = state.activeSubscriptionId,
+                        status = error.message ?: "Background refresh failed",
+                    )
+                }
                 DiagnosticsLogger.append(
                     applicationContext,
                     "Background subscription sync failed: ${error.message ?: error::class.java.simpleName}",
@@ -153,11 +160,12 @@ class SubscriptionRefreshWorker(
         sourceUrl: String,
         vpnManager: VpnManager,
     ): kotlin.Result<Unit> {
-        storage.updateStatus("Starting VPN with the new best location...")
+        val appMode = storage.snapshot().appMode
+        storage.updateStatus("Starting ${connectionLabel(appMode)} with the new best location...")
         val startResult = vpnManager.start(selection)
         if (startResult.isFailure) {
             return kotlin.Result.failure(
-                startResult.exceptionOrNull() ?: IllegalStateException("Failed to start VPN with the new best location"),
+                startResult.exceptionOrNull() ?: IllegalStateException("Failed to start ${connectionLabel(appMode)} with the new best location"),
             )
         }
         val persistResult = runCatching {
@@ -188,7 +196,7 @@ class SubscriptionRefreshWorker(
                 restoreRuntimeArtifacts = true,
                 sourceUrlOverride = "",
             )
-            return "Previous VPN location kept as a fallback outside the current subscription."
+            return "Previous ${connectionLabel(previousState.appMode)} location kept as a fallback outside the current subscription."
         }
         val previousSelection = orchestrator.rehydrateSelection(previousState)
         if (previousSelection.isSuccess) {
@@ -199,17 +207,17 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = false,
                     sourceUrlOverride = "",
                 )
-                return "Previous VPN location kept as a fallback outside the current subscription."
+                return "Previous ${connectionLabel(previousState.appMode)} location kept as a fallback outside the current subscription."
             }
         }
         val stopResult = vpnManager.stop()
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                "VPN was stopped because a replacement location could not be activated."
+                "${connectionLabel(previousState.appMode).replaceFirstChar { it.uppercase() }} was stopped because a replacement location could not be activated."
             },
             onFailure = { error ->
-                "Failed to restore or stop VPN cleanly: ${error.message ?: "live VPN state may not match the saved state"}."
+                "Failed to restore or stop ${connectionLabel(previousState.appMode)} cleanly: ${error.message ?: "live state may not match the saved state"}."
             },
         )
     }
@@ -222,7 +230,7 @@ class SubscriptionRefreshWorker(
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                "VPN was stopped."
+                "${connectionLabel(previousState.appMode).replaceFirstChar { it.uppercase() }} was stopped."
             },
             onFailure = { error ->
                 storage.restoreSelection(
@@ -230,12 +238,19 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = true,
                     sourceUrlOverride = "",
                 )
-                "Failed to stop VPN cleanly: ${error.message ?: "the previous VPN location was kept as a fallback outside the current subscription"}."
+                "Failed to stop ${connectionLabel(previousState.appMode)} cleanly: ${error.message ?: "the previous location was kept as a fallback outside the current subscription"}."
             },
         )
     }
 
     private fun didDispatchVpnSwitchAttempt(error: Throwable): Boolean {
         return (error as? VpnCommandException)?.commandDispatched ?: true
+    }
+
+    private fun connectionLabel(appMode: AppMode): String {
+        return when (appMode) {
+            AppMode.VPN -> "VPN"
+            AppMode.PROXY_ONLY -> "proxy"
+        }
     }
 }

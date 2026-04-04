@@ -11,7 +11,7 @@ data class RoutingRulesExportDocument(
 )
 
 object RoutingRulesTransfer {
-    private const val FORMAT_VERSION = 2
+    private const val FORMAT_VERSION = 3
 
     fun export(rules: RoutingRules): RoutingRulesExportDocument {
         val fileName = "vpn-control-routing-rules-${Instant.now().toString().replace(':', '-')}.json"
@@ -26,7 +26,8 @@ object RoutingRulesTransfer {
                     .put("proxy_packages", JSONArray(rules.proxyPackages))
                     .put("bypass_packages", JSONArray(rules.bypassPackages))
                     .put("national_domain_suffixes", JSONArray(rules.nationalDomainSuffixes))
-                    .put("direct_domain_suffixes", JSONArray(rules.directDomainSuffixes)),
+                    .put("direct_domain_suffixes", JSONArray(rules.directDomainSuffixes))
+                    .put("rule_sets", JSONArray(RoutingRuleSetCodec.encode(rules.ruleSets).ifBlank { "[]" })),
             )
             .toString(2)
         return RoutingRulesExportDocument(fileName = fileName, content = content)
@@ -49,6 +50,7 @@ object RoutingRulesTransfer {
             directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(
                 readStringArray(rules, "direct_domain_suffixes").joinToString("\n"),
             ),
+            ruleSets = RoutingRuleSetCodec.decode(rules.optJSONArray("rule_sets")?.toString()),
         )
     }
 

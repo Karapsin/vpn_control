@@ -1,9 +1,11 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.VlessProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -89,6 +91,8 @@ class BenchmarkOrchestrator(
                             "No saved locations available"
                         }
                     }
+                    val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+                    val customProfiles = profiles.filter { it.protocol == ProxyProtocol.CUSTOM }
 
                     val dnsSettings = DnsSettings(
                         enabled = state.useCustomDns,
@@ -99,13 +103,25 @@ class BenchmarkOrchestrator(
                         "Checking ${profiles.size} " +
                             if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) "subscription locations..." else "saved locations...",
                     )
-                    val preflightResults = preflightProfiles(profiles)
+                    val preflightResults = preflightProfiles(benchmarkableProfiles)
                     val locationBenchmarkDetails = preflightResults.associate { result ->
                         LocationConfigs.encodeStoredLocation(result.profile) to result.detail
-                    }.toMutableMap()
+                    }.toMutableMap().apply {
+                        customProfiles.forEach { profile ->
+                            this[LocationConfigs.encodeStoredLocation(profile)] =
+                                "${profile.remarks}: custom_config_manual_only"
+                        }
+                    }
                     val reachableProfiles = preflightResults
                         .filter { it.connectMillis != null }
                         .sortedBy { it.connectMillis }
+
+                    if (benchmarkableProfiles.isEmpty()) {
+                        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION) {
+                            storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
+                        }
+                        error("Best location search does not support custom sing-box configs. Select one manually and connect.")
+                    }
 
                     if (reachableProfiles.isEmpty()) {
                         if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION) {
@@ -146,10 +162,10 @@ class BenchmarkOrchestrator(
                     }
                     storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
 
-                    val runtimeConfig = SingBoxConfigFactory.buildTunConfig(
+                    val runtimeConfig = buildRuntimeConfig(
                         profile = winner.profile,
-                        dns = dnsSettings,
-                        routingRules = state.routingRules,
+                        state = state,
+                        dnsSettings = dnsSettings,
                     )
                     ProfileSelection(
                         profile = winner.profile,
@@ -171,11 +187,18 @@ class BenchmarkOrchestrator(
             require(state.profileUrl.isNotBlank()) { "Remote source is empty" }
             val parsed = loadRemoteSourceLocations(state.profileUrl)
             require(parsed.isNotEmpty()) { "No locations were found in the subscription" }
-            val update = storage.updateCurrentLocations(parsed.map { it.rawLink })
+            val update = storage.updateSubscriptionCache(
+                subscriptionId = state.activeSubscriptionId,
+                rawLinks = parsed.map { it.rawLink },
+            )
             SubscriptionSyncResult(
                 selectedMissing = update.selectedMissing,
             )
         }
+    }
+
+    suspend fun fetchSubscriptionLocations(rawSource: String): Result<List<VlessProfile>> = withContext(Dispatchers.IO) {
+        runCatching { loadRemoteSourceLocations(rawSource) }
     }
 
     suspend fun benchmarkLocation(rawLink: String): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
@@ -193,6 +216,22 @@ class BenchmarkOrchestrator(
                     enabled = state.useCustomDns,
                     value = state.customDns,
                 )
+
+                if (profile.protocol == ProxyProtocol.CUSTOM) {
+                    val benchmark = ProfileBenchmark(
+                        profile = profile,
+                        primaryStatus = "manual",
+                        secondaryStatus = "manual",
+                        primaryTotal = null,
+                        secondaryTotal = null,
+                        score = Double.POSITIVE_INFINITY,
+                        detail = "${profile.remarks}: custom_config_manual_only",
+                    )
+                    val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
+                    updatedDetails[normalizedRawLink] = benchmark.detail
+                    storage.updateLocationBenchmarkDetails(updatedDetails)
+                    return@withTimeout benchmark
+                }
 
                 storage.updateStatus("Checking TCP speed for ${profile.remarks}...")
                 val preflight = preflightProfile(profile)
@@ -249,10 +288,10 @@ class BenchmarkOrchestrator(
                     detail = state.lastBenchmarkSummary.ifBlank { "Using cached selection" },
                 ),
                 runtimeConfigJson = if (profile.rawLink.isNotBlank()) {
-                    SingBoxConfigFactory.buildTunConfig(
+                    buildRuntimeConfig(
                         profile = profile,
-                        dns = dnsSettings,
-                        routingRules = state.routingRules,
+                        state = state,
+                        dnsSettings = dnsSettings,
                     )
                 } else {
                     state.runtimeConfigJson
@@ -283,10 +322,10 @@ class BenchmarkOrchestrator(
                     score = 0.0,
                     detail = detail,
                 ),
-                runtimeConfigJson = SingBoxConfigFactory.buildTunConfig(
+                runtimeConfigJson = buildRuntimeConfig(
                     profile = profile,
-                    dns = dnsSettings,
-                    routingRules = state.routingRules,
+                    state = state,
+                    dnsSettings = dnsSettings,
                 ),
             )
         }
@@ -315,6 +354,29 @@ class BenchmarkOrchestrator(
         )
     }
 
+    private fun buildRuntimeConfig(
+        profile: VlessProfile,
+        state: PersistedState,
+        dnsSettings: DnsSettings,
+    ): String {
+        if (profile.protocol == ProxyProtocol.CUSTOM) {
+            require(profile.customConfigJson.isNotBlank()) { "Custom config is empty" }
+            return profile.customConfigJson
+        }
+        return when (state.appMode) {
+            AppMode.VPN -> SingBoxConfigFactory.buildTunConfig(
+                profile = profile,
+                dns = dnsSettings,
+                routingRules = state.routingRules,
+            )
+            AppMode.PROXY_ONLY -> SingBoxConfigFactory.buildProxyOnlyConfig(
+                profile = profile,
+                dns = dnsSettings,
+                routingRules = state.routingRules,
+            )
+        }
+    }
+
     private fun downloadSubscription(url: String): String {
         val request = Request.Builder()
             .url(url)
@@ -338,14 +400,14 @@ class BenchmarkOrchestrator(
         storage.updateStatus("Downloading remote source...")
         val body = downloadSubscription(fetchUrl)
         return runCatching {
-            VlessParser.parseSubscription(body)
+            ProxyParser.parseSubscription(body)
         }.getOrElse { error ->
-            val baseMessage = error.message ?: "Remote source format is not recognized as a VLESS link list"
+            val baseMessage = error.message ?: "Remote source format is not recognized as a supported proxy link list"
             if (resolved.preview.kindLabel.equals("Subscription URL", ignoreCase = true)) {
                 throw IllegalArgumentException(baseMessage, error)
             }
             throw IllegalArgumentException(
-                "${resolved.preview.kindLabel} resolved successfully, but the downloaded content is not a VLESS location list.",
+                "${resolved.preview.kindLabel} resolved successfully, but the downloaded content is not a supported proxy location list.",
                 error,
             )
         }
