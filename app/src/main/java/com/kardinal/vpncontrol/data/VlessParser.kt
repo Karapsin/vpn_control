@@ -37,6 +37,7 @@ object ProxyParser {
             trimmed.startsWith("trojan://", ignoreCase = true) -> parseTrojanLink(trimmed)
             trimmed.startsWith("ss://", ignoreCase = true) -> parseShadowsocksLink(trimmed)
             trimmed.startsWith("vmess://", ignoreCase = true) -> parseVmessLink(trimmed)
+            trimmed.startsWith("socks://", ignoreCase = true) -> parseSocksLink(trimmed)
             else -> error("Unsupported location entry")
         }
     }
@@ -61,6 +62,7 @@ object ProxyParser {
             protocol = ProxyProtocol.VLESS,
             remarks = if (fragmentDecoded.isNotBlank()) fragmentDecoded else host,
             uuid = userInfo.decodeUrlComponent(),
+            username = "",
             server = host,
             serverPort = port,
             network = query["type"].orEmpty().ifBlank { "tcp" },
@@ -94,9 +96,7 @@ object ProxyParser {
         val password = authPair.first.decodeUrlComponent()
         val hostPort = authPair.second ?: error("Missing Trojan host")
         val (host, port) = parseHostPort(hostPort)
-        val security = query["security"].orEmpty().ifBlank {
-            if (query["sni"].orEmpty().isNotBlank()) "tls" else ""
-        }
+        val security = query["security"].orEmpty().ifBlank { "tls" }
         val path = query["path"].orEmpty()
         val serviceName = query["serviceName"].orEmpty().ifBlank {
             if (query["type"].orEmpty() == "grpc") path else ""
@@ -106,6 +106,7 @@ object ProxyParser {
             remarks = if (fragmentDecoded.isNotBlank()) fragmentDecoded else host,
             server = host,
             serverPort = port,
+            username = "",
             password = password,
             network = query["type"].orEmpty().ifBlank { "tcp" },
             flow = "",
@@ -156,6 +157,7 @@ object ProxyParser {
             remarks = if (fragmentDecoded.isNotBlank()) fragmentDecoded else host,
             server = host,
             serverPort = port,
+            username = "",
             password = password,
             method = method,
             network = "tcp",
@@ -189,10 +191,11 @@ object ProxyParser {
             server = host,
             serverPort = root.optString("port").toIntOrNull() ?: 443,
             uuid = root.optString("id").trim(),
+            username = "",
             network = network,
             flow = "",
             security = if (root.optString("tls").equals("tls", ignoreCase = true)) "tls" else "",
-            sni = root.optString("sni").ifBlank { host },
+            sni = root.optString("sni"),
             fingerprint = root.optString("fp").ifBlank { "chrome" },
             publicKey = "",
             shortId = "",
@@ -212,12 +215,67 @@ object ProxyParser {
         }
     }
 
+    fun parseSocksLink(link: String): ProxyProfile {
+        val trimmed = link.trim()
+        require(trimmed.startsWith("socks://", ignoreCase = true)) { "Unsupported SOCKS entry" }
+        val withoutScheme = removeScheme(trimmed, "socks://")
+        val fragmentPair = splitOnce(withoutScheme, '#')
+        val beforeFragment = fragmentPair.first
+        val fragmentDecoded = fragmentPair.second?.decodeUrlComponent().orEmpty()
+        val queryPair = splitOnce(beforeFragment, '?')
+        val beforeQuery = queryPair.first
+        val authPair = splitOnce(beforeQuery, '@')
+        val credentialsPart: String?
+        val hostPort: String
+        if (authPair.second != null) {
+            credentialsPart = authPair.first
+            hostPort = authPair.second!!
+        } else {
+            credentialsPart = null
+            hostPort = beforeQuery
+        }
+        val (host, port) = parseHostPort(hostPort)
+        val username: String
+        val password: String
+        if (!credentialsPart.isNullOrBlank()) {
+            val credentialPair = splitOnce(credentialsPart, ':')
+            username = credentialPair.first.decodeUrlComponent()
+            password = credentialPair.second?.decodeUrlComponent().orEmpty()
+        } else {
+            username = ""
+            password = ""
+        }
+        return ProxyProfile(
+            protocol = ProxyProtocol.SOCKS,
+            remarks = if (fragmentDecoded.isNotBlank()) fragmentDecoded else host,
+            server = host,
+            serverPort = port,
+            uuid = "",
+            username = username,
+            password = password,
+            method = "",
+            network = "tcp",
+            flow = "",
+            security = "",
+            sni = "",
+            fingerprint = "chrome",
+            publicKey = "",
+            shortId = "",
+            path = "",
+            hostHeader = "",
+            serviceName = "",
+            headerType = "none",
+            rawLink = trimmed,
+        )
+    }
+
     fun encodeProxyLink(profile: ProxyProfile): String {
         return when (profile.protocol) {
             ProxyProtocol.VLESS -> encodeVlessLink(profile)
             ProxyProtocol.TROJAN -> encodeTrojanLink(profile)
             ProxyProtocol.SHADOWSOCKS -> encodeShadowsocksLink(profile)
             ProxyProtocol.VMESS -> encodeVmessLink(profile)
+            ProxyProtocol.SOCKS -> encodeSocksLink(profile)
             ProxyProtocol.CUSTOM -> error("Custom configs do not have a proxy link representation")
         }
     }
@@ -336,6 +394,27 @@ object ProxyParser {
         return "vmess://$encoded"
     }
 
+    private fun encodeSocksLink(profile: ProxyProfile): String {
+        return buildString {
+            append("socks://")
+            if (profile.username.isNotBlank()) {
+                append(profile.username.encodeUrlComponent())
+                if (profile.password.isNotBlank()) {
+                    append(':')
+                    append(profile.password.encodeUrlComponent())
+                }
+                append('@')
+            }
+            append(formatHost(profile.server))
+            append(':')
+            append(profile.serverPort)
+            profile.remarks.takeIf { it.isNotBlank() }?.let {
+                append('#')
+                append(it.encodeUrlComponent())
+            }
+        }
+    }
+
     private fun parseQuery(rawQuery: String): Map<String, String> {
         if (rawQuery.isBlank()) return emptyMap()
         return rawQuery.split("&")
@@ -406,7 +485,8 @@ object ProxyParser {
         return normalized.startsWith("vless://") ||
             normalized.startsWith("trojan://") ||
             normalized.startsWith("ss://") ||
-            normalized.startsWith("vmess://")
+            normalized.startsWith("vmess://") ||
+            normalized.startsWith("socks://")
     }
 
     private fun removeScheme(value: String, scheme: String): String {

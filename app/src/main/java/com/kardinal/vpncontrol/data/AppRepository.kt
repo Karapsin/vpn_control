@@ -3,11 +3,15 @@ package com.kardinal.vpncontrol.data
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.activeSubscriptionUrls
+import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import com.kardinal.vpncontrol.model.sourceUrlForStoredLocation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -16,6 +20,21 @@ class AppRepository(
     private val orchestrator: BenchmarkOrchestrator,
     private val subscriptionRefreshScheduler: SubscriptionRefreshScheduler,
 ) {
+    data class SubscriptionRefreshFailure(
+        val subscriptionId: String,
+        val sourceUrl: String,
+        val displayName: String,
+        val message: String,
+    )
+
+    data class SubscriptionRefreshBatchResult(
+        val refreshedCount: Int,
+        val failedSubscriptions: List<SubscriptionRefreshFailure> = emptyList(),
+    ) {
+        val failedCount: Int get() = failedSubscriptions.size
+        val hasFailures: Boolean get() = failedSubscriptions.isNotEmpty()
+    }
+
     val state: Flow<PersistedState> = storage.state
 
     suspend fun snapshot(): PersistedState = storage.snapshot()
@@ -26,6 +45,11 @@ class AppRepository(
             rememberInHistory = mode == ProfileSourceMode.SUBSCRIPTION && url.isNotBlank(),
         )
         storage.updateProfileSourceMode(mode)
+        subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
+    }
+
+    suspend fun selectActiveSubscription(subscriptionId: String) {
+        storage.selectActiveSubscription(subscriptionId)
         subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
     }
 
@@ -47,8 +71,12 @@ class AppRepository(
         storage.updateAppMode(mode)
     }
 
-    suspend fun updateSubscriptionRefreshPolicy(policy: SubscriptionRefreshPolicy, customHours: Int) {
-        storage.updateSubscriptionRefreshPolicy(policy, customHours)
+    suspend fun updateSubscriptionRefreshPolicy(
+        policy: SubscriptionRefreshPolicy,
+        customHours: Double,
+        findBestAfterRefresh: Boolean,
+    ) {
+        storage.updateSubscriptionRefreshPolicy(policy, customHours, findBestAfterRefresh)
         subscriptionRefreshScheduler.sync(storage.snapshot())
     }
 
@@ -60,12 +88,41 @@ class AppRepository(
         storage.updateSessionStatsEnabled(enabled)
     }
 
+    suspend fun updateLiveTrafficStatsEnabled(enabled: Boolean) {
+        storage.updateLiveTrafficStatsEnabled(enabled)
+    }
+
+    suspend fun updateProfileTotalsEnabled(enabled: Boolean) {
+        storage.updateProfileTotalsEnabled(enabled)
+    }
+
+    suspend fun updateLatencyHistoryEnabled(enabled: Boolean) {
+        storage.updateLatencyHistoryEnabled(enabled)
+    }
+
+    suspend fun updateConnectionLogEnabled(enabled: Boolean) {
+        storage.updateConnectionLogEnabled(enabled)
+    }
+
+    suspend fun updateConnectionTestToolsEnabled(enabled: Boolean) {
+        storage.updateConnectionTestToolsEnabled(enabled)
+    }
+
+    suspend fun appendLatencyHistory(entry: LatencyHistoryEntry) {
+        storage.appendLatencyHistory(entry)
+    }
+
     suspend fun syncSubscriptionRefreshScheduling() {
         subscriptionRefreshScheduler.sync(storage.snapshot())
     }
 
-    suspend fun refreshActiveSubscriptionCache(): Result<Unit> = runCatching {
+    suspend fun refreshActiveSubscriptionCache(): Result<SubscriptionRefreshBatchResult> = runCatching {
         val state = storage.snapshot()
+        if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
+            val refreshed = refreshAllSubscriptionsCaches().getOrThrow()
+            require(refreshed.refreshedCount > 0) { "No subscriptions were refreshed" }
+            return@runCatching refreshed
+        }
         val subscriptionId = state.activeSubscriptionId
         val sourceUrl = state.profileUrl
         require(subscriptionId.isNotBlank() && sourceUrl.isNotBlank()) { "No active subscription selected" }
@@ -75,8 +132,8 @@ class AppRepository(
             subscriptionId = subscriptionId,
             rawLinks = profiles.map { it.rawLink },
         )
+        SubscriptionRefreshBatchResult(refreshedCount = 1)
     }
-        .map { }
         .also { result ->
             if (result.isFailure) {
                 val activeId = storage.snapshot().activeSubscriptionId
@@ -89,22 +146,32 @@ class AppRepository(
             }
         }
 
-    suspend fun refreshAllSubscriptionsCaches(): Result<Int> = runCatching {
+    suspend fun refreshAllSubscriptionsCaches(): Result<SubscriptionRefreshBatchResult> = runCatching {
         val state = storage.snapshot()
         var refreshed = 0
         var lastFailure: Throwable? = null
+        val failures = mutableListOf<SubscriptionRefreshFailure>()
         state.subscriptions.forEach { subscription ->
             val result = refreshSingleSubscription(subscription)
             if (result.isSuccess) {
                 refreshed += 1
             } else {
                 lastFailure = result.exceptionOrNull()
+                failures += SubscriptionRefreshFailure(
+                    subscriptionId = subscription.id,
+                    sourceUrl = subscription.url,
+                    displayName = subscriptionDisplayLabel(subscription),
+                    message = result.exceptionOrNull()?.message ?: "Refresh failed",
+                )
             }
         }
         if (refreshed == 0 && lastFailure != null) {
             throw lastFailure!!
         }
-        refreshed
+        SubscriptionRefreshBatchResult(
+            refreshedCount = refreshed,
+            failedSubscriptions = failures,
+        )
     }
 
     suspend fun updateCurrentLocations(rawLinks: List<String>) = storage.updateCurrentLocations(rawLinks)
@@ -148,10 +215,12 @@ class AppRepository(
                 state.selectedProfileRawLink.isNotBlank() ||
                 storage.lastProfileFile().exists()
         val selectedAllowed = when (state.profileSourceMode) {
-            ProfileSourceMode.SUBSCRIPTION ->
+            ProfileSourceMode.SUBSCRIPTION -> {
+                val activeUrls = activeSubscriptionUrls(state.activeSubscriptionId, state.subscriptions)
                 state.selectedProfileSourceUrl.isNotBlank() &&
-                    state.selectedProfileSourceUrl == state.profileUrl &&
+                    state.selectedProfileSourceUrl in activeUrls &&
                     (selectedStored.isBlank() || state.currentLocations.isEmpty() || selectedStored in state.currentLocations)
+            }
             ProfileSourceMode.CURRENT_LOCATIONS -> {
                 when {
                     state.selectedProfileJson.isNotBlank() -> state.selectedProfileJson in state.currentLocations
@@ -207,24 +276,75 @@ class AppRepository(
 
     private suspend fun syncSelection(selection: ProfileSelection, sourceUrlOverride: String? = null) {
         val state = storage.snapshot()
-        storage.updateSelection(
-            profile = selection.profile,
-            summary = selection.benchmark.detail,
-            runtimeConfigJson = selection.runtimeConfigJson,
-            sourceUrl = sourceUrlOverride ?: if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                state.profileUrl
+        val storedSelection = LocationConfigs.encodeStoredLocation(selection.profile)
+        val resolvedSourceUrl = sourceUrlOverride ?: selection.sourceUrl.ifBlank {
+            if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+                sourceUrlForStoredLocation(state.subscriptions, storedSelection)
+                    .ifBlank { state.profileUrl }
             } else {
                 ""
-            },
+            }
+        }
+        storage.updateSelection(
+            profile = selection.profile,
+            summary = selectionSummary(
+                state = state,
+                detail = selection.benchmark.detail,
+                sourceUrl = resolvedSourceUrl,
+            ),
+            runtimeConfigJson = selection.runtimeConfigJson,
+            sourceUrl = resolvedSourceUrl,
         )
+    }
+
+    private fun selectionSummary(
+        state: PersistedState,
+        detail: String,
+        sourceUrl: String,
+    ): String {
+        val normalizedSourceUrl = sourceUrl.trim()
+        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION || normalizedSourceUrl.isBlank()) {
+            return detail
+        }
+        val shouldShowSource =
+            isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions) ||
+                (state.profileUrl.isNotBlank() && normalizedSourceUrl != state.profileUrl)
+        if (!shouldShowSource) {
+            return detail
+        }
+        val sourceLabel = subscriptionDisplayLabel(state.subscriptions, normalizedSourceUrl) ?: return detail
+        return "$detail • Best from: $sourceLabel"
+    }
+
+    private fun subscriptionDisplayLabel(
+        subscriptions: List<SubscriptionSource>,
+        sourceUrl: String,
+    ): String? {
+        return subscriptions.firstOrNull { it.url == sourceUrl }?.let(::subscriptionDisplayLabel)
+    }
+
+    private fun subscriptionDisplayLabel(subscription: SubscriptionSource): String {
+        return subscription.customName.ifBlank {
+            RemoteSourceResolver.preview(subscription.url)?.title ?: "Remote source"
+        }
     }
 
     private fun shouldClearSelectionForSourceState(state: PersistedState): Boolean {
         if (state.selectedProfileName.isBlank()) return false
         return when (state.profileSourceMode) {
-            ProfileSourceMode.SUBSCRIPTION ->
-                state.selectedProfileSourceUrl.isBlank() ||
-                    state.selectedProfileSourceUrl != state.profileUrl
+            ProfileSourceMode.SUBSCRIPTION -> {
+                val activeUrls = activeSubscriptionUrls(state.activeSubscriptionId, state.subscriptions)
+                if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
+                    val selectedStored = LocationConfigs.selectedStoredReference(
+                        selectedProfileJson = state.selectedProfileJson,
+                        selectedProfileRawLink = state.selectedProfileRawLink,
+                    )
+                    selectedStored.isNotBlank() && selectedStored !in state.currentLocations
+                } else {
+                    state.selectedProfileSourceUrl.isBlank() ||
+                        state.selectedProfileSourceUrl !in activeUrls
+                }
+            }
             ProfileSourceMode.CURRENT_LOCATIONS -> {
                 val selectedStored = LocationConfigs.selectedStoredReference(
                     selectedProfileJson = state.selectedProfileJson,

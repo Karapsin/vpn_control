@@ -180,6 +180,7 @@ object LocationConfigs {
         val server = root.optString("server").trim()
         require(server.isNotBlank()) { "Location JSON is missing server" }
         val uuid = root.optString("uuid").trim()
+        val username = root.optString("username").trim()
         val password = root.optString("password").trim()
         val method = root.optString("method").trim()
 
@@ -194,6 +195,7 @@ object LocationConfigs {
                 require(method.isNotBlank()) { "Location JSON is missing method" }
                 require(password.isNotBlank()) { "Location JSON is missing password" }
             }
+            ProxyProtocol.SOCKS -> Unit
             ProxyProtocol.CUSTOM -> error("Custom configs must use custom JSON format")
         }
 
@@ -203,6 +205,7 @@ object LocationConfigs {
                 .ifBlank { root.optString("name") }
                 .ifBlank { server },
             uuid = uuid,
+            username = username,
             server = server,
             serverPort = root.optInt("server_port", root.optInt("serverPort", 443)),
             password = password,
@@ -246,6 +249,7 @@ object LocationConfigs {
             .put("protocol", profile.protocol.name.lowercase())
             .put("remarks", profile.remarks)
             .put("uuid", profile.uuid)
+            .put("username", profile.username)
             .put("server", profile.server)
             .put("server_port", profile.serverPort)
             .put("password", profile.password)
@@ -274,6 +278,7 @@ object LocationConfigs {
             "trojan" -> ProxyProtocol.TROJAN
             "shadowsocks", "ss" -> ProxyProtocol.SHADOWSOCKS
             "vmess" -> ProxyProtocol.VMESS
+            "socks", "socks5" -> ProxyProtocol.SOCKS
             "custom", "custom_config" -> ProxyProtocol.CUSTOM
             else -> error("Unsupported location protocol: $raw")
         }
@@ -284,7 +289,8 @@ object LocationConfigs {
         return normalized.startsWith("vless://") ||
             normalized.startsWith("trojan://") ||
             normalized.startsWith("ss://") ||
-            normalized.startsWith("vmess://")
+            normalized.startsWith("vmess://") ||
+            normalized.startsWith("socks://")
     }
 
     private fun looksLikeCustomConfig(root: JSONObject): Boolean {

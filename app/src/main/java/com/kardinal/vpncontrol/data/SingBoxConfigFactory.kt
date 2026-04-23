@@ -18,6 +18,7 @@ data class DnsSettings(
 object SingBoxConfigFactory {
     private const val DEFAULT_DNS_SERVER = "1.1.1.1"
     const val DEFAULT_PROXY_ONLY_PORT = 2080
+    const val NO_ASSIGNED_APPS_MARKER = "__vpncontrol_no_assigned_apps__"
     private val LOCAL_DIRECT_CIDRS = listOf(
         "127.0.0.0/8",
         "10.0.0.0/8",
@@ -101,10 +102,13 @@ object SingBoxConfigFactory {
             .put("strict_route", true)
             .put("stack", "system")
 
-        if (!routingRules.ignoreRules && routingRules.proxyPackages.isNotEmpty()) {
-            tunInbound.put("include_package", JSONArray(routingRules.proxyPackages))
-        } else if (!routingRules.ignoreRules && routingRules.bypassPackages.isNotEmpty()) {
-            tunInbound.put("exclude_package", JSONArray(routingRules.bypassPackages))
+        if (!routingRules.ignoreRules) {
+            tunInbound.put(
+                "include_package",
+                JSONArray(
+                    routingRules.proxyPackages.ifEmpty { listOf(NO_ASSIGNED_APPS_MARKER) },
+                ),
+            )
         }
 
         val route = JSONObject()
@@ -373,10 +377,27 @@ object SingBoxConfigFactory {
                 .put("security", profile.vmessSecurity.ifBlank { "auto" })
                 .put("alter_id", profile.alterId)
                 .put("packet_encoding", "xudp")
+            ProxyProtocol.SOCKS -> JSONObject()
+                .put("type", "socks")
+                .put("tag", "proxy")
+                .put("server", profile.server)
+                .put("server_port", profile.serverPort)
+                .put("version", "5")
+                .also {
+                    if (profile.username.isNotBlank()) {
+                        it.put("username", profile.username)
+                    }
+                    if (profile.password.isNotBlank()) {
+                        it.put("password", profile.password)
+                    }
+                }
             ProxyProtocol.CUSTOM -> error("Custom configs must be used as direct runtime JSON")
         }
 
-        if (profile.network.isNotBlank() && profile.protocol != ProxyProtocol.SHADOWSOCKS) {
+        if (profile.network.isNotBlank() &&
+            profile.protocol != ProxyProtocol.SHADOWSOCKS &&
+            profile.protocol != ProxyProtocol.SOCKS
+        ) {
             outbound.put("network", profile.network)
         } else if (profile.protocol == ProxyProtocol.SHADOWSOCKS && profile.network.isNotBlank() && profile.network != "tcp") {
             outbound.put("network", profile.network)
@@ -462,9 +483,9 @@ object SingBoxConfigFactory {
     private fun buildTls(profile: VlessProfile): JSONObject? {
         val shouldEnable = when (profile.protocol) {
             ProxyProtocol.VLESS -> profile.security.isNotBlank()
-            ProxyProtocol.TROJAN, ProxyProtocol.VMESS ->
-                profile.security.isNotBlank() || profile.sni.isNotBlank()
-            ProxyProtocol.SHADOWSOCKS -> false
+            ProxyProtocol.TROJAN -> true
+            ProxyProtocol.VMESS -> profile.security.isNotBlank()
+            ProxyProtocol.SHADOWSOCKS, ProxyProtocol.SOCKS -> false
             ProxyProtocol.CUSTOM -> false
         }
         if (!shouldEnable) return null

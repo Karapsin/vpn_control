@@ -7,6 +7,8 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import com.kardinal.vpncontrol.model.sourceUrlForStoredLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -43,9 +45,29 @@ class BenchmarkOrchestrator(
         val winner: ProfileBenchmark?,
     )
 
+    private data class SubscriptionSearchTarget(
+        val subscriptionId: String,
+        val sourceUrl: String,
+        val displayName: String,
+    )
+
+    private data class SearchEvaluation(
+        val locationBenchmarkDetails: MutableMap<String, String>,
+        val candidateBenchmarks: List<ProfileBenchmark>,
+        val winner: ProfileBenchmark?,
+        val fallback: ProfileBenchmark?,
+        val failureMessage: String?,
+    )
+
+    private data class DownloadedSubscription(
+        val body: String,
+        val contentType: String?,
+    )
+
     private val browserUserAgent =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    private val subscriptionUserAgent = "VPNControl/1.0 (Android)"
     private val settings = ValidationSettings()
     private val genericSecondaryBlockedMarkers = listOf(
         "not available in your country",
@@ -73,105 +95,133 @@ class BenchmarkOrchestrator(
                         primary = validationSettings.primaryUrl,
                         secondary = validationSettings.secondaryUrl,
                     )
-                    val profiles = when (state.profileSourceMode) {
-                        ProfileSourceMode.SUBSCRIPTION -> {
-                            require(state.profileUrl.isNotBlank()) { "Remote source is empty" }
-                            storage.updateStatus("Resolving remote source...")
-                            loadRemoteSourceLocations(state.profileUrl)
-                        }
-                        ProfileSourceMode.CURRENT_LOCATIONS -> {
-                            storage.updateStatus("Loading saved locations...")
-                            decodeStoredLocations(state.currentLocations)
-                        }
-                    }
-                    require(profiles.isNotEmpty()) {
-                        if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "No locations were found in the subscription"
-                        } else {
-                            "No saved locations available"
-                        }
-                    }
-                    val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
-                    val customProfiles = profiles.filter { it.protocol == ProxyProtocol.CUSTOM }
-
                     val dnsSettings = DnsSettings(
                         enabled = state.useCustomDns,
                         value = state.customDns,
                     )
+                    when (state.profileSourceMode) {
+                        ProfileSourceMode.SUBSCRIPTION -> {
+                            val searchTargets = subscriptionSearchTargets(state)
+                            require(searchTargets.isNotEmpty()) { "Remote source is empty" }
+                            val loadedProfilesById = linkedMapOf<String, List<VlessProfile>>()
+                            val benchmarkDetails = linkedMapOf<String, String>()
+                            val profileSourceTargets = linkedMapOf<String, SubscriptionSearchTarget>()
+                            val failureMessages = mutableListOf<String>()
+                            val allSubscriptionsMode =
+                                isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
 
-                    storage.updateStatus(
-                        "Checking ${profiles.size} " +
-                            if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) "subscription locations..." else "saved locations...",
-                    )
-                    val preflightResults = preflightProfiles(benchmarkableProfiles)
-                    val locationBenchmarkDetails = preflightResults.associate { result ->
-                        LocationConfigs.encodeStoredLocation(result.profile) to result.detail
-                    }.toMutableMap().apply {
-                        customProfiles.forEach { profile ->
-                            this[LocationConfigs.encodeStoredLocation(profile)] =
-                                "${profile.remarks}: custom_config_manual_only"
+                            for (target in searchTargets) {
+                                val sourceLabel = if (searchTargets.size == 1) {
+                                    "selected subscription"
+                                } else {
+                                    target.displayName
+                                }
+                                storage.updateStatus("Resolving $sourceLabel...")
+                                val profilesResult = runCatching { loadRemoteSourceLocations(target.sourceUrl) }
+                                if (profilesResult.isFailure) {
+                                    val error = profilesResult.exceptionOrNull()
+                                    failureMessages += error?.message ?: "Failed to load $sourceLabel"
+                                    continue
+                                }
+                                val profiles = profilesResult.getOrThrow()
+
+                                if (profiles.isEmpty()) {
+                                    val message = if (searchTargets.size == 1) {
+                                        "No locations were found in the selected subscription"
+                                    } else {
+                                        "No locations were found in $sourceLabel"
+                                    }
+                                    failureMessages += message
+                                    continue
+                                }
+
+                                loadedProfilesById[target.subscriptionId] = profiles
+                                profiles.forEach { profile ->
+                                    profileSourceTargets[LocationConfigs.encodeStoredLocation(profile)] = target
+                                }
+                            }
+
+                            val loadedProfiles = loadedProfilesById.values.flatten()
+                            require(loadedProfiles.isNotEmpty()) {
+                                failureMessages.lastOrNull()?.takeIf { it.isNotBlank() }
+                                    ?: "No locations were found in the selected subscription"
+                            }
+
+                            val evaluation = evaluateProfilesForSelection(
+                                profiles = loadedProfiles,
+                                validationSettings = validationSettings,
+                                dnsSettings = dnsSettings,
+                                benchmarkUrls = benchmarkUrls,
+                                sourceLabel = if (allSubscriptionsMode) {
+                                    "all subscriptions"
+                                } else {
+                                    "selected subscription"
+                                },
+                            )
+                            benchmarkDetails.putAll(evaluation.locationBenchmarkDetails)
+
+                            val selectedBenchmark = evaluation.winner ?: evaluation.fallback ?: run {
+                                error(
+                                    evaluation.failureMessage?.takeIf { it.isNotBlank() }
+                                        ?: failureMessages.lastOrNull()?.takeIf { it.isNotBlank() }
+                                        ?: "No location fully reached the secondary site",
+                                )
+                            }
+                            val selectedTarget = profileSourceTargets[
+                                LocationConfigs.encodeStoredLocation(selectedBenchmark.profile)
+                            ] ?: error("No subscription source was selected")
+
+                            loadedProfilesById.forEach { (subscriptionId, profiles) ->
+                                if (subscriptionId == state.activeSubscriptionId) {
+                                    storage.updateCurrentLocations(profiles.map { it.rawLink })
+                                } else {
+                                    storage.updateSubscriptionCache(subscriptionId, profiles.map { it.rawLink })
+                                }
+                            }
+                            storage.updateLocationBenchmarkDetails(benchmarkDetails)
+
+                            val runtimeConfig = buildRuntimeConfig(
+                                profile = selectedBenchmark.profile,
+                                state = state,
+                                dnsSettings = dnsSettings,
+                            )
+                            ProfileSelection(
+                                profile = selectedBenchmark.profile,
+                                benchmark = selectedBenchmark,
+                                runtimeConfigJson = runtimeConfig,
+                                sourceUrl = selectedTarget.sourceUrl,
+                            )
+                        }
+                        ProfileSourceMode.CURRENT_LOCATIONS -> {
+                            storage.updateStatus("Loading saved locations...")
+                            val profiles = decodeStoredLocations(state.currentLocations)
+                            require(profiles.isNotEmpty()) { "No saved locations available" }
+                            val evaluation = evaluateProfilesForSelection(
+                                profiles = profiles,
+                                validationSettings = validationSettings,
+                                dnsSettings = dnsSettings,
+                                benchmarkUrls = benchmarkUrls,
+                                sourceLabel = "saved locations",
+                            )
+                            val winner = evaluation.winner ?: evaluation.fallback ?: run {
+                                storage.updateLocationBenchmarkDetails(evaluation.locationBenchmarkDetails)
+                                error(evaluation.failureMessage ?: "No location fully reached the secondary site")
+                            }
+
+                            storage.updateLocationBenchmarkDetails(evaluation.locationBenchmarkDetails)
+
+                            val runtimeConfig = buildRuntimeConfig(
+                                profile = winner.profile,
+                                state = state,
+                                dnsSettings = dnsSettings,
+                            )
+                            ProfileSelection(
+                                profile = winner.profile,
+                                benchmark = winner,
+                                runtimeConfigJson = runtimeConfig,
+                            )
                         }
                     }
-                    val reachableProfiles = preflightResults
-                        .filter { it.connectMillis != null }
-                        .sortedBy { it.connectMillis }
-
-                    if (benchmarkableProfiles.isEmpty()) {
-                        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION) {
-                            storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
-                        }
-                        error("Best location search does not support custom sing-box configs. Select one manually and connect.")
-                    }
-
-                    if (reachableProfiles.isEmpty()) {
-                        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION) {
-                            storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
-                        }
-                        val bestAttempt = preflightResults.minByOrNull { it.sortScore }
-                        error("No reachable location found. Best attempt: ${bestAttempt?.detail ?: "no benchmark results"}")
-                    }
-
-                    storage.updateStatus(
-                        "Testing locations in batches from fastest to slowest until the secondary site works...",
-                    )
-                    val walk = validateInBatchesUntilSuccess(
-                        candidates = reachableProfiles,
-                        batchSize = validationSettings.batchSize,
-                        dnsSettings = dnsSettings,
-                        benchmarkUrls = benchmarkUrls,
-                    ) { benchmark ->
-                        benchmark.primaryStatus == "ok" && benchmark.secondaryStatus == "ok"
-                    }
-                    val candidateBenchmarks = walk.benchmarks
-                    candidateBenchmarks.forEach { benchmark ->
-                        locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
-                    }
-                    val winner = walk.winner ?: bestSecondaryFallback(candidateBenchmarks) ?: run {
-                        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION) {
-                            storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
-                        }
-                        val bestAttempt = candidateBenchmarks.minByOrNull { it.score }?.detail
-                        val detail = bestAttempt ?: "no benchmark results"
-                        error(
-                            "No location fully reached the secondary site. Best attempt: $detail",
-                        )
-                    }
-
-                    if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                        storage.updateCurrentLocations(profiles.map { it.rawLink })
-                    }
-                    storage.updateLocationBenchmarkDetails(locationBenchmarkDetails)
-
-                    val runtimeConfig = buildRuntimeConfig(
-                        profile = winner.profile,
-                        state = state,
-                        dnsSettings = dnsSettings,
-                    )
-                    ProfileSelection(
-                        profile = winner.profile,
-                        benchmark = winner,
-                        runtimeConfigJson = runtimeConfig,
-                    )
                 },
             )
         } catch (_: TimeoutCancellationException) {
@@ -184,15 +234,20 @@ class BenchmarkOrchestrator(
     suspend fun syncSubscriptionLocations(): Result<SubscriptionSyncResult> = withContext(Dispatchers.IO) {
         runCatching {
             val state = storage.snapshot()
-            require(state.profileUrl.isNotBlank()) { "Remote source is empty" }
-            val parsed = loadRemoteSourceLocations(state.profileUrl)
-            require(parsed.isNotEmpty()) { "No locations were found in the subscription" }
-            val update = storage.updateSubscriptionCache(
-                subscriptionId = state.activeSubscriptionId,
-                rawLinks = parsed.map { it.rawLink },
-            )
+            val targets = subscriptionSearchTargets(state)
+            require(targets.isNotEmpty()) { "Remote source is empty" }
+            var selectedMissing = false
+            targets.forEach { target ->
+                val parsed = loadRemoteSourceLocations(target.sourceUrl)
+                require(parsed.isNotEmpty()) { "No locations were found in ${target.displayName}" }
+                val update = storage.updateSubscriptionCache(
+                    subscriptionId = target.subscriptionId,
+                    rawLinks = parsed.map { it.rawLink },
+                )
+                selectedMissing = selectedMissing || update.selectedMissing
+            }
             SubscriptionSyncResult(
-                selectedMissing = update.selectedMissing,
+                selectedMissing = selectedMissing,
             )
         }
     }
@@ -296,6 +351,7 @@ class BenchmarkOrchestrator(
                 } else {
                     state.runtimeConfigJson
                 },
+                sourceUrl = state.selectedProfileSourceUrl,
             )
         }
     }
@@ -327,8 +383,118 @@ class BenchmarkOrchestrator(
                     state = state,
                     dnsSettings = dnsSettings,
                 ),
+                sourceUrl = if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+                    if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
+                        sourceUrlForStoredLocation(state.subscriptions, LocationConfigs.encodeStoredLocation(profile))
+                    } else {
+                        state.profileUrl
+                    }
+                } else {
+                    state.selectedProfileSourceUrl
+                },
             )
         }
+    }
+
+    private fun subscriptionSearchTargets(state: PersistedState): List<SubscriptionSearchTarget> {
+        return if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
+            state.subscriptions
+                .filter { it.url.isNotBlank() }
+                .map(::searchTargetForSubscription)
+        } else {
+            state.subscriptions
+                .firstOrNull { it.id == state.activeSubscriptionId && it.url.isNotBlank() }
+                ?.let(::searchTargetForSubscription)
+                ?.let(::listOf)
+                .orEmpty()
+        }
+    }
+
+    private fun searchTargetForSubscription(subscription: com.kardinal.vpncontrol.model.SubscriptionSource): SubscriptionSearchTarget {
+        return SubscriptionSearchTarget(
+            subscriptionId = subscription.id,
+            sourceUrl = subscription.url,
+            displayName = subscription.customName.ifBlank {
+                RemoteSourceResolver.preview(subscription.url)?.title ?: "subscription"
+            },
+        )
+    }
+
+    private suspend fun evaluateProfilesForSelection(
+        profiles: List<VlessProfile>,
+        validationSettings: com.kardinal.vpncontrol.model.BenchmarkValidationSettings,
+        dnsSettings: DnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        sourceLabel: String,
+    ): SearchEvaluation {
+        val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+        val customProfiles = profiles.filter { it.protocol == ProxyProtocol.CUSTOM }
+
+        storage.updateStatus("Checking ${profiles.size} $sourceLabel...")
+        val preflightResults = preflightProfiles(benchmarkableProfiles)
+        val locationBenchmarkDetails = preflightResults.associate { result ->
+            LocationConfigs.encodeStoredLocation(result.profile) to result.detail
+        }.toMutableMap().apply {
+            customProfiles.forEach { profile ->
+                this[LocationConfigs.encodeStoredLocation(profile)] =
+                    "${profile.remarks}: custom_config_manual_only"
+            }
+        }
+        val reachableProfiles = preflightResults
+            .filter { it.connectMillis != null }
+            .sortedBy { it.connectMillis }
+
+        if (benchmarkableProfiles.isEmpty()) {
+            return SearchEvaluation(
+                locationBenchmarkDetails = locationBenchmarkDetails,
+                candidateBenchmarks = emptyList(),
+                winner = null,
+                fallback = null,
+                failureMessage = "Best location search does not support custom sing-box configs. Select one manually and connect.",
+            )
+        }
+
+        if (reachableProfiles.isEmpty()) {
+            val bestAttempt = preflightResults.minByOrNull { it.sortScore }
+            return SearchEvaluation(
+                locationBenchmarkDetails = locationBenchmarkDetails,
+                candidateBenchmarks = emptyList(),
+                winner = null,
+                fallback = null,
+                failureMessage = "No reachable location found. Best attempt: ${bestAttempt?.detail ?: "no benchmark results"}",
+            )
+        }
+
+        storage.updateStatus(
+            "Testing locations in batches from fastest to slowest until the secondary site works...",
+        )
+        val walk = validateInBatchesUntilSuccess(
+            candidates = reachableProfiles,
+            batchSize = validationSettings.batchSize,
+            dnsSettings = dnsSettings,
+            benchmarkUrls = benchmarkUrls,
+        ) { benchmark ->
+            benchmark.primaryStatus == "ok" && benchmark.secondaryStatus == "ok"
+        }
+        val candidateBenchmarks = walk.benchmarks
+        candidateBenchmarks.forEach { benchmark ->
+            locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
+        }
+        val winner = walk.winner
+        val fallback = if (winner == null) bestSecondaryFallback(candidateBenchmarks) else null
+        val failureMessage = if (winner == null && fallback == null) {
+            val bestAttempt = candidateBenchmarks.minByOrNull { it.score }?.detail
+            "No location fully reached the secondary site. Best attempt: ${bestAttempt ?: "no benchmark results"}"
+        } else {
+            null
+        }
+        return SearchEvaluation(
+            locationBenchmarkDetails = locationBenchmarkDetails,
+            candidateBenchmarks = candidateBenchmarks,
+            winner = winner,
+            fallback = fallback,
+            failureMessage = failureMessage,
+        )
     }
 
     private fun cachedProfile(state: PersistedState): VlessProfile {
@@ -377,11 +543,11 @@ class BenchmarkOrchestrator(
         }
     }
 
-    private fun downloadSubscription(url: String): String {
+    private fun downloadSubscription(url: String): DownloadedSubscription {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", browserUserAgent)
-            .header("Accept", "*/*")
+            .header("User-Agent", subscriptionUserAgent)
+            .header("Accept", "text/plain, application/octet-stream, */*")
             .build()
         OkHttpClient.Builder()
             .callTimeout(settings.subscriptionMaxTime.toLong(), TimeUnit.SECONDS)
@@ -390,7 +556,10 @@ class BenchmarkOrchestrator(
             .execute()
             .use { response ->
                 if (!response.isSuccessful) throw IOException("Subscription fetch failed: HTTP ${response.code}")
-                return response.body?.string().orEmpty()
+                return DownloadedSubscription(
+                    body = response.body?.string().orEmpty(),
+                    contentType = response.header("Content-Type"),
+                )
             }
     }
 
@@ -398,18 +567,72 @@ class BenchmarkOrchestrator(
         val resolved = RemoteSourceResolver.resolveForFetch(rawSource)
         val fetchUrl = resolved.fetchUrl ?: error("Remote source did not produce any locations")
         storage.updateStatus("Downloading remote source...")
-        val body = downloadSubscription(fetchUrl)
+        val downloaded = downloadSubscription(fetchUrl)
+        detectSubscriptionPayloadError(
+            body = downloaded.body,
+            contentType = downloaded.contentType,
+        )?.let { error(it) }
         return runCatching {
-            ProxyParser.parseSubscription(body)
+            ProxyParser.parseSubscription(downloaded.body)
         }.getOrElse { error ->
-            val baseMessage = error.message ?: "Remote source format is not recognized as a supported proxy link list"
+            val baseMessage = invalidSubscriptionPayloadMessage(error)
             if (resolved.preview.kindLabel.equals("Subscription URL", ignoreCase = true)) {
                 throw IllegalArgumentException(baseMessage, error)
             }
             throw IllegalArgumentException(
-                "${resolved.preview.kindLabel} resolved successfully, but the downloaded content is not a supported proxy location list.",
+                "${resolved.preview.kindLabel} resolved successfully, but ${baseMessage.replaceFirstChar { it.lowercase(Locale.ROOT) }}",
                 error,
             )
+        }
+    }
+
+    private fun detectSubscriptionPayloadError(body: String, contentType: String?): String? {
+        val normalizedType = contentType
+            ?.substringBefore(';')
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+        val trimmed = body.trimStart()
+        val lowercase = trimmed.lowercase(Locale.ROOT)
+        val looksLikeHtml = trimmed.startsWith("<!doctype html", ignoreCase = true) ||
+            trimmed.startsWith("<html", ignoreCase = true)
+        val looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[")
+        val looksLikeChallenge = listOf(
+            "ddos-guard",
+            "captcha",
+            "enable javascript",
+            "just a moment",
+            "attention required",
+            "access denied",
+            "liberty vpn",
+        ).any { marker -> marker in lowercase }
+        return when {
+            trimmed.isBlank() ->
+                "Subscription endpoint returned an empty response"
+            normalizedType == "text/html" || looksLikeHtml ->
+                "Subscription endpoint returned an HTML page instead of a subscription payload"
+            looksLikeChallenge ->
+                "Subscription endpoint returned a challenge or website page instead of a subscription payload"
+            normalizedType.contains("json") && looksLikeJson ->
+                "Subscription endpoint returned JSON instead of a subscription payload"
+            else -> null
+        }
+    }
+
+    private fun invalidSubscriptionPayloadMessage(error: Throwable): String {
+        val detail = error.message?.trim().orEmpty()
+        if (detail.isBlank()) {
+            return "Subscription endpoint returned an invalid subscription payload"
+        }
+        val normalized = detail.lowercase(Locale.ROOT)
+        return when {
+            "base-64" in normalized ||
+                "subscription format" in normalized ||
+                "supported proxy link list" in normalized ||
+                "not recognized" in normalized ->
+                "Subscription endpoint returned an invalid subscription payload"
+            else ->
+                "Subscription endpoint returned an invalid subscription payload: $detail"
         }
     }
 

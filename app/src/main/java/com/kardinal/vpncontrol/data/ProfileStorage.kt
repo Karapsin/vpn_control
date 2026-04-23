@@ -1,9 +1,11 @@
 package com.kardinal.vpncontrol.data
 
 import android.content.Context
+import android.net.TrafficStats
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -13,11 +15,21 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
+import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.activeSubscriptionUrls
+import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
+import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
+import com.kardinal.vpncontrol.model.supportsAllSubscriptionsGroup
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -47,7 +59,9 @@ class ProfileStorage(private val context: Context) {
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val appMode = stringPreferencesKey("app_mode")
         val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
-        val subscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
+        val findBestAfterSubscriptionRefresh = booleanPreferencesKey("find_best_after_subscription_refresh")
+        val subscriptionRefreshCustomHours = doublePreferencesKey("subscription_refresh_custom_hours_v2")
+        val legacySubscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
         val validationPrimaryUrl = stringPreferencesKey("validation_primary_url")
         val validationSecondaryUrl = stringPreferencesKey("validation_secondary_url")
         val validationBatchSize = intPreferencesKey("validation_batch_size")
@@ -75,10 +89,20 @@ class ProfileStorage(private val context: Context) {
         val statusMessage = stringPreferencesKey("status_message")
         val isVpnRunning = booleanPreferencesKey("is_vpn_running")
         val sessionStatsEnabled = booleanPreferencesKey("session_stats_enabled")
+        val liveTrafficStatsEnabled = booleanPreferencesKey("live_traffic_stats_enabled")
+        val profileTotalsEnabled = booleanPreferencesKey("profile_totals_enabled")
+        val latencyHistoryEnabled = booleanPreferencesKey("latency_history_enabled")
+        val connectionLogEnabled = booleanPreferencesKey("connection_log_enabled")
+        val connectionTestToolsEnabled = booleanPreferencesKey("connection_test_tools_enabled")
         val sessionStartedAtEpochMillis = longPreferencesKey("session_started_at_epoch_millis")
         val sessionStoppedAtEpochMillis = longPreferencesKey("session_stopped_at_epoch_millis")
+        val sessionStartRxBytes = longPreferencesKey("session_start_rx_bytes")
+        val sessionStartTxBytes = longPreferencesKey("session_start_tx_bytes")
         val successfulStarts = intPreferencesKey("successful_starts")
         val successfulStops = intPreferencesKey("successful_stops")
+        val profileTrafficTotals = stringPreferencesKey("profile_traffic_totals")
+        val latencyHistory = stringPreferencesKey("latency_history")
+        val connectionLog = stringPreferencesKey("connection_log")
     }
 
     val state: Flow<PersistedState> = context.dataStore.data
@@ -138,7 +162,10 @@ class ProfileStorage(private val context: Context) {
                 },
             )
             val activeId = prefs[Keys.activeSubscriptionId].orEmpty()
-            if (activeId.isBlank() || subscriptions.none { it.id == activeId }) {
+            if (activeId == ALL_SUBSCRIPTIONS_ID && supportsAllSubscriptionsGroup(subscriptions)) {
+                prefs[Keys.activeSubscriptionId] = ALL_SUBSCRIPTIONS_ID
+                prefs[Keys.profileUrl] = ""
+            } else if (activeId.isBlank() || subscriptions.none { it.id == activeId }) {
                 val nextActive = subscriptions.firstOrNull()
                 if (nextActive == null) {
                     prefs.remove(Keys.activeSubscriptionId)
@@ -186,6 +213,33 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Profile source mode updated: $mode")
     }
 
+    suspend fun selectActiveSubscription(subscriptionId: String) {
+        context.dataStore.edit { prefs ->
+            val subscriptions = decodeSubscriptions(prefs)
+            when {
+                isAllSubscriptionsGroupActive(subscriptionId, subscriptions) -> {
+                    prefs[Keys.activeSubscriptionId] = ALL_SUBSCRIPTIONS_ID
+                    prefs[Keys.profileUrl] = ""
+                }
+                subscriptions.any { it.id == subscriptionId } -> {
+                    val target = subscriptions.first { it.id == subscriptionId }
+                    prefs[Keys.activeSubscriptionId] = target.id
+                    prefs[Keys.profileUrl] = target.url
+                }
+                subscriptions.isEmpty() -> {
+                    prefs.remove(Keys.activeSubscriptionId)
+                    prefs[Keys.profileUrl] = ""
+                }
+                else -> {
+                    val fallback = subscriptions.first()
+                    prefs[Keys.activeSubscriptionId] = fallback.id
+                    prefs[Keys.profileUrl] = fallback.url
+                }
+            }
+        }
+        DiagnosticsLogger.append(context, "Active subscription selected: $subscriptionId")
+    }
+
     suspend fun updateAppMode(mode: AppMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.appMode] = mode.name
@@ -193,14 +247,21 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "App mode updated: $mode")
     }
 
-    suspend fun updateSubscriptionRefreshPolicy(policy: SubscriptionRefreshPolicy, customHours: Int) {
+    suspend fun updateSubscriptionRefreshPolicy(
+        policy: SubscriptionRefreshPolicy,
+        customHours: Double,
+        findBestAfterRefresh: Boolean,
+    ) {
+        val normalizedHours = normalizeSubscriptionRefreshCustomHours(customHours)
         context.dataStore.edit { prefs ->
             prefs[Keys.subscriptionRefreshPolicy] = policy.name
-            prefs[Keys.subscriptionRefreshCustomHours] = customHours.coerceAtLeast(1)
+            prefs[Keys.findBestAfterSubscriptionRefresh] = findBestAfterRefresh
+            prefs[Keys.subscriptionRefreshCustomHours] = normalizedHours
+            prefs.remove(Keys.legacySubscriptionRefreshCustomHours)
         }
         DiagnosticsLogger.append(
             context,
-            "Subscription refresh policy updated: policy=$policy customHours=${customHours.coerceAtLeast(1)}",
+            "Subscription refresh policy updated: policy=$policy autoFind=$findBestAfterRefresh customHours=$normalizedHours",
         )
     }
 
@@ -230,16 +291,20 @@ class ProfileStorage(private val context: Context) {
             if (sourceMode == ProfileSourceMode.SUBSCRIPTION.name) {
                 val subscriptions = decodeSubscriptions(prefs).toMutableList()
                 val activeId = resolveActiveSubscriptionId(prefs, subscriptions)
-                val updatedSubscriptions = subscriptions.map { subscription ->
-                    if (subscription.id == activeId) {
-                        subscription.copy(
-                            cachedLocations = normalized,
-                            lastRefreshedAtEpochMillis = System.currentTimeMillis(),
-                            lastRefreshStatus = "Updated ${normalized.size} location" +
-                                if (normalized.size == 1) "" else "s",
-                        )
-                    } else {
-                        subscription
+                val updatedSubscriptions = if (isAllSubscriptionsGroupActive(activeId, subscriptions)) {
+                    subscriptions
+                } else {
+                    subscriptions.map { subscription ->
+                        if (subscription.id == activeId) {
+                            subscription.copy(
+                                cachedLocations = normalized,
+                                lastRefreshedAtEpochMillis = System.currentTimeMillis(),
+                                lastRefreshStatus = "Updated ${normalized.size} location" +
+                                    if (normalized.size == 1) "" else "s",
+                            )
+                        } else {
+                            subscription
+                        }
                     }
                 }
                 prefs[Keys.subscriptions] = encodeSubscriptions(updatedSubscriptions)
@@ -249,7 +314,11 @@ class ProfileStorage(private val context: Context) {
                         subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
                     },
                 )
-                prefs[Keys.profileUrl] = updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
+                prefs[Keys.profileUrl] = if (isAllSubscriptionsGroupActive(activeId, updatedSubscriptions)) {
+                    ""
+                } else {
+                    updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
+                }
             } else {
                 prefs[Keys.savedLocations] = encodeList(normalized)
                 prefs[Keys.currentLocations] = encodeList(normalized)
@@ -261,11 +330,14 @@ class ProfileStorage(private val context: Context) {
                 selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
                 selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
             )
-            val activeUrl = resolveActiveSubscriptionUrl(prefs)
+            val activeUrls = activeSubscriptionUrls(
+                activeSubscriptionId = resolveActiveSubscriptionId(prefs, decodeSubscriptions(prefs)),
+                subscriptions = decodeSubscriptions(prefs),
+            )
             val selectedRelevantToCurrentList = when (sourceMode) {
                 ProfileSourceMode.SUBSCRIPTION.name ->
                     prefs[Keys.selectedProfileSourceUrl].orEmpty().isNotBlank() &&
-                        prefs[Keys.selectedProfileSourceUrl].orEmpty() == activeUrl
+                        prefs[Keys.selectedProfileSourceUrl].orEmpty() in activeUrls
                 ProfileSourceMode.CURRENT_LOCATIONS.name -> true
                 else -> true
             }
@@ -322,24 +394,41 @@ class ProfileStorage(private val context: Context) {
                     subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
                 },
             )
-            prefs[Keys.profileUrl] = updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
+            prefs[Keys.profileUrl] = if (isAllSubscriptionsGroupActive(activeId, updatedSubscriptions)) {
+                ""
+            } else {
+                updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
+            }
 
-            if (isActiveSubscription && prefs[Keys.profileSourceMode] == ProfileSourceMode.SUBSCRIPTION.name) {
+            if (prefs[Keys.profileSourceMode] == ProfileSourceMode.SUBSCRIPTION.name &&
+                (isActiveSubscription || isAllSubscriptionsGroupActive(activeId, updatedSubscriptions))
+            ) {
+                val visibleLocations = if (isAllSubscriptionsGroupActive(activeId, updatedSubscriptions)) {
+                    mergedSubscriptionLocations(updatedSubscriptions)
+                } else {
+                    normalized
+                }
                 prefs[Keys.locationBenchmarkDetails] = encodeStringMap(
-                    decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in normalized },
+                    decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in visibleLocations },
                 )
                 val selectedStored = LocationConfigs.selectedStoredReference(
                     selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
                     selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
                 )
-                val activeUrl = resolveActiveSubscriptionUrl(prefs)
-                val selectedRelevantToCurrentList =
+                val activeUrls = activeSubscriptionUrls(
+                    activeSubscriptionId = activeId,
+                    subscriptions = updatedSubscriptions,
+                )
+                val selectedRelevantToCurrentList = if (isAllSubscriptionsGroupActive(activeId, updatedSubscriptions)) {
+                    selectedStored.isNotBlank()
+                } else {
                     prefs[Keys.selectedProfileSourceUrl].orEmpty().isNotBlank() &&
-                        prefs[Keys.selectedProfileSourceUrl].orEmpty() == activeUrl
+                        prefs[Keys.selectedProfileSourceUrl].orEmpty() in activeUrls
+                }
                 val selectedMissing =
                     selectedStored.isNotBlank() &&
                         selectedRelevantToCurrentList &&
-                        selectedStored !in normalized
+                        selectedStored !in visibleLocations
                 if (selectedMissing) {
                     clearStoredSelection(prefs)
                 }
@@ -399,14 +488,14 @@ class ProfileStorage(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
             prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
-            prefs[Keys.bypassPackages] = encodeList(sanitizePackageNames(rules.bypassPackages))
+            prefs[Keys.bypassPackages] = encodeList(emptyList())
             prefs[Keys.nationalDomainSuffixes] = encodeList(rules.nationalDomainSuffixes)
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
             prefs[Keys.ruleSets] = RoutingRuleSetCodec.encode(rules.ruleSets)
         }
         DiagnosticsLogger.append(
             context,
-            "Routing rules updated: ignore=${rules.ignoreRules} proxy=${rules.proxyPackages.size} direct=${rules.bypassPackages.size} " +
+            "Routing rules updated: ignore=${rules.ignoreRules} vpn_apps=${rules.proxyPackages.size} direct=0 " +
                 "national=${rules.nationalDomainSuffixes.size} domains=${rules.directDomainSuffixes.size} rulesets=${rules.ruleSets.size}",
         )
     }
@@ -435,6 +524,15 @@ class ProfileStorage(private val context: Context) {
     suspend fun updateStatus(message: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.statusMessage] = message
+            val updated = (
+                StatsCodec.decodeConnectionLog(prefs[Keys.connectionLog]) +
+                    ConnectionLogEntry(
+                        id = UUID.randomUUID().toString(),
+                        message = message,
+                        createdAtEpochMillis = System.currentTimeMillis(),
+                    )
+                ).takeLast(MAX_CONNECTION_LOG_ITEMS)
+            prefs[Keys.connectionLog] = StatsCodec.encodeConnectionLog(updated)
         }
         DiagnosticsLogger.append(context, "Status: $message")
     }
@@ -444,6 +542,50 @@ class ProfileStorage(private val context: Context) {
             prefs[Keys.sessionStatsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Session stats UI enabled: $enabled")
+    }
+
+    suspend fun updateLiveTrafficStatsEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.liveTrafficStatsEnabled] = enabled
+        }
+        DiagnosticsLogger.append(context, "Live traffic stats UI enabled: $enabled")
+    }
+
+    suspend fun updateProfileTotalsEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.profileTotalsEnabled] = enabled
+        }
+        DiagnosticsLogger.append(context, "Profile totals UI enabled: $enabled")
+    }
+
+    suspend fun updateLatencyHistoryEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.latencyHistoryEnabled] = enabled
+        }
+        DiagnosticsLogger.append(context, "Latency history UI enabled: $enabled")
+    }
+
+    suspend fun updateConnectionLogEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.connectionLogEnabled] = enabled
+        }
+        DiagnosticsLogger.append(context, "Connection log UI enabled: $enabled")
+    }
+
+    suspend fun updateConnectionTestToolsEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.connectionTestToolsEnabled] = enabled
+        }
+        DiagnosticsLogger.append(context, "Connection test tools UI enabled: $enabled")
+    }
+
+    suspend fun appendLatencyHistory(entry: LatencyHistoryEntry) {
+        context.dataStore.edit { prefs ->
+            if (!(prefs[Keys.latencyHistoryEnabled] ?: false)) return@edit
+            val updated = (StatsCodec.decodeLatencyHistory(prefs[Keys.latencyHistory]) + entry)
+                .takeLast(MAX_LATENCY_HISTORY_ITEMS)
+            prefs[Keys.latencyHistory] = StatsCodec.encodeLatencyHistory(updated)
+        }
     }
 
     suspend fun clearSelection() {
@@ -494,11 +636,15 @@ class ProfileStorage(private val context: Context) {
             val wasRunning = prefs[Keys.isVpnRunning] ?: false
             prefs[Keys.isVpnRunning] = running
             if (!wasRunning && running) {
+                val (rxBytes, txBytes) = currentUidTrafficBytes()
                 prefs[Keys.sessionStartedAtEpochMillis] = System.currentTimeMillis()
+                prefs[Keys.sessionStartRxBytes] = rxBytes
+                prefs[Keys.sessionStartTxBytes] = txBytes
                 prefs[Keys.successfulStarts] = (prefs[Keys.successfulStarts] ?: 0) + 1
             } else if (wasRunning && !running) {
                 prefs[Keys.sessionStoppedAtEpochMillis] = System.currentTimeMillis()
                 prefs[Keys.successfulStops] = (prefs[Keys.successfulStops] ?: 0) + 1
+                recordProfileTrafficTotals(prefs)
             }
             if (!running) {
                 val selectedStored = LocationConfigs.selectedStoredReference(
@@ -506,22 +652,35 @@ class ProfileStorage(private val context: Context) {
                     selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
                 )
                 val profileSourceMode = prefs[Keys.profileSourceMode]
-                val activeSubscriptionLocations = decodeSubscriptions(prefs)
-                    .firstOrNull { it.id == resolveActiveSubscriptionId(prefs, decodeSubscriptions(prefs)) }
-                    ?.cachedLocations
-                    .orEmpty()
+                val subscriptions = decodeSubscriptions(prefs)
+                val activeSubscriptionId = resolveActiveSubscriptionId(prefs, subscriptions)
+                val activeSubscriptionLocations = if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
+                    mergedSubscriptionLocations(subscriptions)
+                } else {
+                    subscriptions
+                        .firstOrNull { it.id == activeSubscriptionId }
+                        ?.cachedLocations
+                        .orEmpty()
+                }
+                val activeUrls = activeSubscriptionUrls(activeSubscriptionId, subscriptions)
                 val savedLocations = decodeList(prefs[Keys.savedLocations]).ifEmpty {
                     decodeList(prefs[Keys.currentLocations])
                 }
                 val shouldClearSelection = when (profileSourceMode) {
                     ProfileSourceMode.CURRENT_LOCATIONS.name ->
                         selectedStored.isNotBlank() && selectedStored !in savedLocations
-                    ProfileSourceMode.SUBSCRIPTION.name ->
-                        prefs[Keys.selectedProfileSourceUrl].orEmpty().isBlank() ||
-                            prefs[Keys.selectedProfileSourceUrl].orEmpty() != resolveActiveSubscriptionUrl(prefs) ||
-                            (selectedStored.isNotBlank() &&
-                                prefs[Keys.selectedProfileSourceUrl].orEmpty() == resolveActiveSubscriptionUrl(prefs) &&
-                                selectedStored !in activeSubscriptionLocations)
+                    ProfileSourceMode.SUBSCRIPTION.name -> {
+                        val selectedSource = prefs[Keys.selectedProfileSourceUrl].orEmpty()
+                        if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
+                            selectedStored.isNotBlank() && selectedStored !in activeSubscriptionLocations
+                        } else {
+                            selectedSource.isBlank() ||
+                                selectedSource !in activeUrls ||
+                                (selectedStored.isNotBlank() &&
+                                    selectedSource in activeUrls &&
+                                    selectedStored !in activeSubscriptionLocations)
+                        }
+                    }
                     else -> false
                 }
                 if (shouldClearSelection) {
@@ -542,8 +701,11 @@ class ProfileStorage(private val context: Context) {
         val rawPreferences = preferences.asMap()
         val refreshSettings = decodeSubscriptionRefreshSettings(
             rawPolicy = preferences[Keys.subscriptionRefreshPolicy],
-            customHours = preferences[Keys.subscriptionRefreshCustomHours] ?: 3,
+            customHours = preferences[Keys.subscriptionRefreshCustomHours]
+                ?: preferences[Keys.legacySubscriptionRefreshCustomHours]?.toDouble()
+                ?: DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS,
         )
+        val findBestAfterRefresh = preferences[Keys.findBestAfterSubscriptionRefresh] ?: true
         val profileSourceMode = preferences[Keys.profileSourceMode]
             ?.let { raw -> runCatching { ProfileSourceMode.valueOf(raw) }.getOrNull() }
             ?: ProfileSourceMode.SUBSCRIPTION
@@ -562,14 +724,22 @@ class ProfileStorage(private val context: Context) {
             }
         }
         val currentLocations = when (profileSourceMode) {
-            ProfileSourceMode.SUBSCRIPTION -> activeSubscription?.cachedLocations.orEmpty()
+            ProfileSourceMode.SUBSCRIPTION -> if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
+                mergedSubscriptionLocations(subscriptions)
+            } else {
+                activeSubscription?.cachedLocations.orEmpty()
+            }
             ProfileSourceMode.CURRENT_LOCATIONS -> savedLocations
         }
         val historyNames = subscriptions.associateNotNull { subscription ->
             subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
         }
         return PersistedState(
-            profileUrl = activeSubscription?.url.orEmpty(),
+            profileUrl = if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
+                ""
+            } else {
+                activeSubscription?.url.orEmpty()
+            },
             activeSubscriptionId = activeSubscriptionId,
             subscriptions = subscriptions,
             profileHistory = subscriptions.map { it.url },
@@ -577,6 +747,7 @@ class ProfileStorage(private val context: Context) {
             profileSourceMode = profileSourceMode,
             appMode = appMode,
             subscriptionRefreshPolicy = refreshSettings.first,
+            findBestAfterSubscriptionRefresh = findBestAfterRefresh,
             subscriptionRefreshCustomHours = refreshSettings.second,
             validationSettings = BenchmarkValidationSettings(
                 primaryUrl = preferences[Keys.validationPrimaryUrl]
@@ -600,9 +771,7 @@ class ProfileStorage(private val context: Context) {
                 proxyPackages = sanitizePackageNames(
                     decodeList(preferences[Keys.proxyPackages]),
                 ),
-                bypassPackages = sanitizePackageNames(
-                    decodeList(preferences[Keys.bypassPackages]),
-                ),
+                bypassPackages = emptyList(),
                 nationalDomainSuffixes = if (rawPreferences.containsKey(Keys.nationalDomainSuffixes)) {
                     RoutingRules.parseNationalDomainSuffixes(
                         encodeList(decodeList(preferences[Keys.nationalDomainSuffixes])),
@@ -629,10 +798,20 @@ class ProfileStorage(private val context: Context) {
             statusMessage = preferences[Keys.statusMessage] ?: "Idle",
             isVpnRunning = preferences[Keys.isVpnRunning] ?: false,
             sessionStatsEnabled = preferences[Keys.sessionStatsEnabled] ?: false,
+            liveTrafficStatsEnabled = preferences[Keys.liveTrafficStatsEnabled] ?: false,
+            profileTotalsEnabled = preferences[Keys.profileTotalsEnabled] ?: false,
+            latencyHistoryEnabled = preferences[Keys.latencyHistoryEnabled] ?: false,
+            connectionLogEnabled = preferences[Keys.connectionLogEnabled] ?: false,
+            connectionTestToolsEnabled = preferences[Keys.connectionTestToolsEnabled] ?: false,
             sessionStartedAtEpochMillis = preferences[Keys.sessionStartedAtEpochMillis] ?: 0L,
             sessionStoppedAtEpochMillis = preferences[Keys.sessionStoppedAtEpochMillis] ?: 0L,
+            sessionStartRxBytes = preferences[Keys.sessionStartRxBytes] ?: -1L,
+            sessionStartTxBytes = preferences[Keys.sessionStartTxBytes] ?: -1L,
             successfulStarts = preferences[Keys.successfulStarts] ?: 0,
             successfulStops = preferences[Keys.successfulStops] ?: 0,
+            profileTrafficTotals = StatsCodec.decodeProfileTrafficTotals(preferences[Keys.profileTrafficTotals]),
+            latencyHistory = StatsCodec.decodeLatencyHistory(preferences[Keys.latencyHistory]),
+            connectionLog = StatsCodec.decodeConnectionLog(preferences[Keys.connectionLog]),
         )
     }
 
@@ -682,19 +861,19 @@ class ProfileStorage(private val context: Context) {
 
     private fun decodeSubscriptionRefreshSettings(
         rawPolicy: String?,
-        customHours: Int,
-    ): Pair<SubscriptionRefreshPolicy, Int> {
-        val normalizedHours = customHours.coerceAtLeast(1)
+        customHours: Double,
+    ): Pair<SubscriptionRefreshPolicy, Double> {
+        val normalizedHours = normalizeSubscriptionRefreshCustomHours(customHours)
         return when (rawPolicy) {
             null, SubscriptionRefreshPolicy.OFF.name -> SubscriptionRefreshPolicy.OFF to normalizedHours
             SubscriptionRefreshPolicy.EVERY_HOUR.name, "EVERY_1_HOUR" ->
-                SubscriptionRefreshPolicy.EVERY_HOUR to 1
+                SubscriptionRefreshPolicy.EVERY_HOUR to 1.0
             SubscriptionRefreshPolicy.CUSTOM.name ->
                 SubscriptionRefreshPolicy.CUSTOM to normalizedHours
-            "EVERY_3_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 3
-            "EVERY_6_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 6
-            "EVERY_12_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 12
-            "EVERY_24_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 24
+            "EVERY_3_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 3.0
+            "EVERY_6_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 6.0
+            "EVERY_12_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 12.0
+            "EVERY_24_HOURS" -> SubscriptionRefreshPolicy.CUSTOM to 24.0
             else -> SubscriptionRefreshPolicy.OFF to normalizedHours
         }
     }
@@ -794,6 +973,9 @@ class ProfileStorage(private val context: Context) {
         subscriptions: List<SubscriptionSource>,
     ): String {
         val explicit = preferences[Keys.activeSubscriptionId].orEmpty()
+        if (explicit == ALL_SUBSCRIPTIONS_ID && supportsAllSubscriptionsGroup(subscriptions)) {
+            return explicit
+        }
         if (explicit.isNotBlank() && subscriptions.any { it.id == explicit }) {
             return explicit
         }
@@ -807,6 +989,9 @@ class ProfileStorage(private val context: Context) {
     private fun resolveActiveSubscriptionUrl(preferences: Preferences): String {
         val subscriptions = decodeSubscriptions(preferences)
         val activeId = resolveActiveSubscriptionId(preferences, subscriptions)
+        if (isAllSubscriptionsGroupActive(activeId, subscriptions)) {
+            return ""
+        }
         return subscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
     }
 
@@ -817,6 +1002,60 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
+    private fun currentUidTrafficBytes(): Pair<Long, Long> {
+        val uid = context.applicationInfo.uid
+        val rxBytes = TrafficStats.getUidRxBytes(uid).takeIf { it >= 0 } ?: -1L
+        val txBytes = TrafficStats.getUidTxBytes(uid).takeIf { it >= 0 } ?: -1L
+        return rxBytes to txBytes
+    }
+
+    private fun recordProfileTrafficTotals(prefs: MutablePreferences) {
+        val startRxBytes = prefs[Keys.sessionStartRxBytes] ?: -1L
+        val startTxBytes = prefs[Keys.sessionStartTxBytes] ?: -1L
+        if (startRxBytes < 0L || startTxBytes < 0L) return
+        val (currentRxBytes, currentTxBytes) = currentUidTrafficBytes()
+        if (currentRxBytes < 0L || currentTxBytes < 0L) return
+
+        val profileKey = LocationConfigs.selectedStoredReference(
+            selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
+            selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
+        ).ifBlank { return }
+
+        val rxDelta = (currentRxBytes - startRxBytes).coerceAtLeast(0L)
+        val txDelta = (currentTxBytes - startTxBytes).coerceAtLeast(0L)
+        val now = System.currentTimeMillis()
+        val currentTotals = StatsCodec.decodeProfileTrafficTotals(prefs[Keys.profileTrafficTotals]).toMutableList()
+        val existingIndex = currentTotals.indexOfFirst { it.profileKey == profileKey }
+        val updatedEntry = if (existingIndex >= 0) {
+            currentTotals[existingIndex].copy(
+                profileName = prefs[Keys.selectedProfileName].orEmpty().ifBlank { currentTotals[existingIndex].profileName },
+                sourceUrl = prefs[Keys.selectedProfileSourceUrl].orEmpty(),
+                rxBytes = currentTotals[existingIndex].rxBytes + rxDelta,
+                txBytes = currentTotals[existingIndex].txBytes + txDelta,
+                lastUpdatedAtEpochMillis = now,
+            )
+        } else {
+            ProfileTrafficTotal(
+                profileKey = profileKey,
+                profileName = prefs[Keys.selectedProfileName].orEmpty().ifBlank { "Selected profile" },
+                sourceUrl = prefs[Keys.selectedProfileSourceUrl].orEmpty(),
+                rxBytes = rxDelta,
+                txBytes = txDelta,
+                lastUpdatedAtEpochMillis = now,
+            )
+        }
+        if (existingIndex >= 0) {
+            currentTotals[existingIndex] = updatedEntry
+        } else {
+            currentTotals += updatedEntry
+        }
+        prefs[Keys.profileTrafficTotals] = StatsCodec.encodeProfileTrafficTotals(
+            currentTotals
+                .sortedByDescending { it.lastUpdatedAtEpochMillis }
+                .take(MAX_PROFILE_TOTALS_ITEMS),
+        )
+    }
+
     private fun clearStoredSelection(prefs: MutablePreferences) {
         prefs.remove(Keys.selectedProfileName)
         prefs.remove(Keys.selectedProfileServer)
@@ -825,7 +1064,15 @@ class ProfileStorage(private val context: Context) {
         prefs.remove(Keys.selectedProfileSourceUrl)
         prefs.remove(Keys.lastBenchmarkSummary)
         prefs.remove(Keys.runtimeConfigJson)
+        prefs.remove(Keys.sessionStartRxBytes)
+        prefs.remove(Keys.sessionStartTxBytes)
         runCatching { runtimeConfigFile().delete() }
         runCatching { lastProfileFile().delete() }
+    }
+
+    private companion object {
+        const val MAX_CONNECTION_LOG_ITEMS = 120
+        const val MAX_LATENCY_HISTORY_ITEMS = 50
+        const val MAX_PROFILE_TOTALS_ITEMS = 100
     }
 }

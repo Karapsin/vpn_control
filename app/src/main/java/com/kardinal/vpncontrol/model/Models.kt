@@ -2,6 +2,42 @@ package com.kardinal.vpncontrol.model
 
 import java.net.URI
 import java.util.Locale
+import kotlin.math.roundToInt
+
+const val ALL_SUBSCRIPTIONS_ID = "__all_subscriptions__"
+const val MIN_SUBSCRIPTION_REFRESH_MINUTES = 5
+const val DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS = 3.0
+
+fun normalizeSubscriptionRefreshCustomHours(hours: Double): Double {
+    val sanitized = if (hours.isFinite()) hours else DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
+    return maxOf(sanitized, MIN_SUBSCRIPTION_REFRESH_MINUTES / 60.0)
+}
+
+fun subscriptionRefreshIntervalMinutes(hours: Double): Int {
+    return maxOf(
+        (normalizeSubscriptionRefreshCustomHours(hours) * 60.0).roundToInt(),
+        MIN_SUBSCRIPTION_REFRESH_MINUTES,
+    )
+}
+
+fun formatSubscriptionRefreshHoursInput(hours: Double): String {
+    return String.format(Locale.US, "%.4f", normalizeSubscriptionRefreshCustomHours(hours))
+        .trimEnd('0')
+        .trimEnd('.')
+}
+
+private fun formatSubscriptionRefreshInterval(minutes: Int): String {
+    val normalizedMinutes = maxOf(minutes, MIN_SUBSCRIPTION_REFRESH_MINUTES)
+    val hours = normalizedMinutes / 60
+    val remainingMinutes = normalizedMinutes % 60
+    return when {
+        normalizedMinutes < 60 -> "Every $normalizedMinutes minute" +
+            if (normalizedMinutes == 1) "" else "s"
+        remainingMinutes == 0 -> "Every $hours hour" +
+            if (hours == 1) "" else "s"
+        else -> "Every ${hours} h ${remainingMinutes} min"
+    }
+}
 
 enum class ProfileSourceMode {
     SUBSCRIPTION,
@@ -18,6 +54,7 @@ enum class ProxyProtocol {
     TROJAN,
     SHADOWSOCKS,
     VMESS,
+    SOCKS,
     CUSTOM,
 }
 
@@ -44,20 +81,21 @@ enum class SubscriptionRefreshPolicy(
     EVERY_HOUR(title = "Every hour"),
     CUSTOM(title = "Custom interval");
 
-    fun effectiveIntervalHours(customIntervalHours: Int): Long? {
+    fun effectiveIntervalMinutes(customIntervalHours: Double): Long? {
         return when (this) {
             OFF -> null
-            EVERY_HOUR -> 1L
-            CUSTOM -> customIntervalHours.coerceAtLeast(1).toLong()
+            EVERY_HOUR -> 60L
+            CUSTOM -> subscriptionRefreshIntervalMinutes(customIntervalHours).toLong()
         }
     }
 
-    fun displayValue(customIntervalHours: Int): String {
+    fun displayValue(customIntervalHours: Double): String {
         return when (this) {
             OFF -> title
             EVERY_HOUR -> title
-            CUSTOM -> "Every ${customIntervalHours.coerceAtLeast(1)} hour" +
-                if (customIntervalHours.coerceAtLeast(1) == 1) "" else "s"
+            CUSTOM -> formatSubscriptionRefreshInterval(
+                subscriptionRefreshIntervalMinutes(customIntervalHours),
+            )
         }
     }
 }
@@ -68,6 +106,7 @@ data class ProxyProfile(
     val server: String,
     val serverPort: Int,
     val uuid: String = "",
+    val username: String = "",
     val password: String = "",
     val method: String = "",
     val network: String,
@@ -105,6 +144,7 @@ data class ProfileSelection(
     val profile: VlessProfile,
     val benchmark: ProfileBenchmark,
     val runtimeConfigJson: String,
+    val sourceUrl: String = "",
 )
 
 data class SubscriptionSource(
@@ -116,6 +156,32 @@ data class SubscriptionSource(
     val lastRefreshStatus: String = "",
 )
 
+data class ProfileTrafficTotal(
+    val profileKey: String,
+    val profileName: String,
+    val sourceUrl: String = "",
+    val rxBytes: Long = 0L,
+    val txBytes: Long = 0L,
+    val lastUpdatedAtEpochMillis: Long = 0L,
+)
+
+data class LatencyHistoryEntry(
+    val id: String,
+    val profileName: String,
+    val detail: String,
+    val primaryStatus: String,
+    val secondaryStatus: String,
+    val primaryTotalMs: Double? = null,
+    val secondaryTotalMs: Double? = null,
+    val createdAtEpochMillis: Long = 0L,
+)
+
+data class ConnectionLogEntry(
+    val id: String,
+    val message: String,
+    val createdAtEpochMillis: Long = 0L,
+)
+
 data class PersistedState(
     val profileUrl: String = "",
     val activeSubscriptionId: String = "",
@@ -125,7 +191,8 @@ data class PersistedState(
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     val appMode: AppMode = AppMode.VPN,
     val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
-    val subscriptionRefreshCustomHours: Int = 3,
+    val findBestAfterSubscriptionRefresh: Boolean = true,
+    val subscriptionRefreshCustomHours: Double = DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS,
     val validationSettings: BenchmarkValidationSettings = BenchmarkValidationSettings(),
     val savedLocations: List<String> = emptyList(),
     val currentLocations: List<String> = emptyList(),
@@ -143,10 +210,20 @@ data class PersistedState(
     val statusMessage: String = "Idle",
     val isVpnRunning: Boolean = false,
     val sessionStatsEnabled: Boolean = false,
+    val liveTrafficStatsEnabled: Boolean = false,
+    val profileTotalsEnabled: Boolean = false,
+    val latencyHistoryEnabled: Boolean = false,
+    val connectionLogEnabled: Boolean = false,
+    val connectionTestToolsEnabled: Boolean = false,
     val sessionStartedAtEpochMillis: Long = 0L,
     val sessionStoppedAtEpochMillis: Long = 0L,
+    val sessionStartRxBytes: Long = -1L,
+    val sessionStartTxBytes: Long = -1L,
     val successfulStarts: Int = 0,
     val successfulStops: Int = 0,
+    val profileTrafficTotals: List<ProfileTrafficTotal> = emptyList(),
+    val latencyHistory: List<LatencyHistoryEntry> = emptyList(),
+    val connectionLog: List<ConnectionLogEntry> = emptyList(),
 )
 
 data class BenchmarkValidationSettings(
@@ -211,6 +288,48 @@ data class BenchmarkValidationSettings(
         }
     }
 }
+
+fun supportsAllSubscriptionsGroup(subscriptions: List<SubscriptionSource>): Boolean =
+    subscriptions.size > 1
+
+fun isAllSubscriptionsGroupActive(
+    activeSubscriptionId: String,
+    subscriptions: List<SubscriptionSource>,
+): Boolean = activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && supportsAllSubscriptionsGroup(subscriptions)
+
+fun mergedSubscriptionLocations(subscriptions: List<SubscriptionSource>): List<String> =
+    buildList {
+        val seen = linkedSetOf<String>()
+        subscriptions.forEach { subscription ->
+            subscription.cachedLocations.forEach { rawLink ->
+                if (seen.add(rawLink)) {
+                    add(rawLink)
+                }
+            }
+        }
+    }
+
+fun activeSubscriptionUrls(
+    activeSubscriptionId: String,
+    subscriptions: List<SubscriptionSource>,
+): Set<String> = when {
+    isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions) ->
+        subscriptions.mapNotNull { it.url.takeIf(String::isNotBlank) }.toSet()
+    else ->
+        subscriptions.firstOrNull { it.id == activeSubscriptionId }
+            ?.url
+            ?.takeIf(String::isNotBlank)
+            ?.let(::setOf)
+            .orEmpty()
+}
+
+fun sourceUrlForStoredLocation(
+    subscriptions: List<SubscriptionSource>,
+    storedLocation: String,
+): String = subscriptions
+    .firstOrNull { storedLocation in it.cachedLocations }
+    ?.url
+    .orEmpty()
 
 data class RoutingRuleSet(
     val id: String,

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.PackageManager.NameNotFoundException
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
@@ -20,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import com.kardinal.vpncontrol.data.DiagnosticsLogger
 import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RuntimeFiles
+import com.kardinal.vpncontrol.data.SingBoxConfigFactory
 import com.kardinal.vpncontrol.model.AppMode
 import io.nekohasekai.libbox.BoxService
 import io.nekohasekai.libbox.InterfaceUpdateListener
@@ -196,11 +198,13 @@ class AndroidVpnService : VpnService(), PlatformInterface {
 
             val filteredIncludePackages = includePackages
                 .asSequence()
+                .filter { it != SingBoxConfigFactory.NO_ASSIGNED_APPS_MARKER }
                 .filter { it != packageName }
                 .distinct()
                 .toList()
+            val includeNoAssignedAppsMarker = includePackages.contains(SingBoxConfigFactory.NO_ASSIGNED_APPS_MARKER)
 
-            if (includePackages.isNotEmpty() && filteredIncludePackages.isEmpty()) {
+            if (includePackages.isNotEmpty() && filteredIncludePackages.isEmpty() && !includeNoAssignedAppsMarker) {
                 error("android: allowed package list is empty after excluding $packageName")
             }
 
@@ -220,6 +224,27 @@ class AndroidVpnService : VpnService(), PlatformInterface {
                 DiagnosticsLogger.append(
                     applicationContext,
                     "VPN app traffic bypassed by omitting $packageName from allowed packages",
+                )
+            } else if (includeNoAssignedAppsMarker) {
+                var disallowedPackagesAdded = 0
+                installedPackages()
+                    .asSequence()
+                    .filter { it != packageName }
+                    .distinct()
+                    .forEach { pkg ->
+                        try {
+                            builder.addDisallowedApplication(pkg)
+                            disallowedPackagesAdded += 1
+                        } catch (error: NameNotFoundException) {
+                            Log.w(TAG, "Skipping unknown disallowed package", error)
+                        }
+                    }
+                if (disallowedPackagesAdded == 0) {
+                    error("android: no installed apps available to disallow for empty app assignments")
+                }
+                DiagnosticsLogger.append(
+                    applicationContext,
+                    "VPN app traffic bypassed for all installed apps because no app assignments are enabled",
                 )
             } else {
                 (linkedSetOf(packageName) + excludePackages)
@@ -255,6 +280,15 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     override fun writeLog(message: String) {
         Log.d(TAG, message)
         DiagnosticsLogger.append(applicationContext, "libbox: $message")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedPackages(): List<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
+        } else {
+            packageManager.getInstalledApplications(0)
+        }.map { it.packageName }
     }
 
     override fun useProcFS(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q

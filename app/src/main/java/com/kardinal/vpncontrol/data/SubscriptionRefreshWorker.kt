@@ -9,7 +9,7 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
-import java.io.IOException
+import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import kotlinx.coroutines.delay
 
 class SubscriptionRefreshWorker(
@@ -20,9 +20,11 @@ class SubscriptionRefreshWorker(
 
     override suspend fun doWork(): Result {
         val state = storage.snapshot()
+        val subscriptionRefreshScheduler = SubscriptionRefreshScheduler(applicationContext)
+        val refreshAll = isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
         if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION ||
             state.subscriptionRefreshPolicy == SubscriptionRefreshPolicy.OFF ||
-            state.profileUrl.isBlank()
+            if (refreshAll) state.subscriptions.isEmpty() else state.profileUrl.isBlank()
         ) {
             WorkManager.getInstance(applicationContext)
                 .cancelUniqueWork(SubscriptionRefreshScheduler.WORK_NAME)
@@ -32,7 +34,15 @@ class SubscriptionRefreshWorker(
             )
             return Result.success()
         }
-        if (RemoteSourceResolver.validateProfileSource(state.profileUrl).isFailure) {
+        val hasValidSource = if (refreshAll) {
+            state.subscriptions.any { subscription ->
+                subscription.url.isNotBlank() &&
+                    RemoteSourceResolver.validateProfileSource(subscription.url).isSuccess
+            }
+        } else {
+            RemoteSourceResolver.validateProfileSource(state.profileUrl).isSuccess
+        }
+        if (!hasValidSource) {
             WorkManager.getInstance(applicationContext)
                 .cancelUniqueWork(SubscriptionRefreshScheduler.WORK_NAME)
             DiagnosticsLogger.append(
@@ -44,24 +54,64 @@ class SubscriptionRefreshWorker(
 
         val orchestrator = BenchmarkOrchestrator(applicationContext, storage)
         val vpnManager = VpnManager(applicationContext, storage)
-        return orchestrator.syncSubscriptionLocations().fold(
-            onSuccess = { syncResult ->
-                if (syncResult.selectedMissing && state.isVpnRunning) {
+        val repository = AppRepository(
+            storage = storage,
+            orchestrator = orchestrator,
+            subscriptionRefreshScheduler = subscriptionRefreshScheduler,
+        )
+        suspend fun finishAndScheduleNext(): Result {
+            subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
+            return Result.success()
+        }
+        val previousSelectedStored = LocationConfigs.selectedStoredReference(
+            selectedProfileJson = state.selectedProfileJson,
+            selectedProfileRawLink = state.selectedProfileRawLink,
+        )
+        val refreshResult = if (refreshAll) {
+            repository.refreshAllSubscriptionsCaches()
+        } else {
+            repository.refreshActiveSubscriptionCache()
+        }
+        return refreshResult.fold(
+            onSuccess = { refresh ->
+                val refreshedState = storage.snapshot()
+                val failedSubscriptions = refresh.failedSubscriptions
+                val failedSourceUrls = failedSubscriptions.map { it.sourceUrl }.toSet()
+                val partialFailureMessage = backgroundRefreshFailureSummary(failedSubscriptions)
+                val selectedSourceFailed = state.selectedProfileSourceUrl.isNotBlank() &&
+                    state.selectedProfileSourceUrl in failedSourceUrls
+                val selectedMissing =
+                    if (refreshAll) {
+                        previousSelectedStored.isNotBlank() &&
+                            previousSelectedStored !in refreshedState.currentLocations
+                    } else {
+                        val activeLocations = refreshedState.subscriptions
+                            .firstOrNull { it.id == refreshedState.activeSubscriptionId }
+                            ?.cachedLocations
+                            .orEmpty()
+                        previousSelectedStored.isNotBlank() &&
+                            state.selectedProfileSourceUrl.isNotBlank() &&
+                            state.selectedProfileSourceUrl == state.profileUrl &&
+                            previousSelectedStored !in activeLocations
+                    }
+
+                if (state.isVpnRunning && state.findBestAfterSubscriptionRefresh) {
                     if (state.appMode == AppMode.VPN && VpnService.prepare(applicationContext) != null) {
-                        val stopMessage = stopVpnForBackgroundPermissionLoss(
-                            previousState = state,
-                            vpnManager = vpnManager,
+                        storage.restoreSelection(
+                            state,
+                            restoreRuntimeArtifacts = true,
+                            sourceUrlOverride = "",
                         )
                         storage.updateStatus(
-                            "Selected subscription location is no longer available. VPN permission is required to switch in background. $stopMessage".trim(),
+                            "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
                         )
                         DiagnosticsLogger.append(
                             applicationContext,
                             "Background subscription sync skipped auto-switch because VPN permission is not available in background",
                         )
-                        return@fold Result.success()
+                        return@fold finishAndScheduleNext()
                     }
-                    storage.updateStatus("Selected subscription location is no longer available. Finding a new best location...")
+                    storage.updateStatus("Subscription refresh finished. Finding the best location...")
                     var switchFailure: Throwable? = null
                     val replacement = findBestProfileWithRetries(
                         orchestrator = orchestrator,
@@ -71,18 +121,37 @@ class SubscriptionRefreshWorker(
                         val selection = replacement.getOrThrow()
                         val switchResult = startReplacementLocation(
                             selection = selection,
-                            sourceUrl = state.profileUrl,
+                            sourceUrl = selection.sourceUrl.ifBlank { state.profileUrl },
                             vpnManager = vpnManager,
+                            repository = repository,
                         )
                         if (switchResult.isSuccess) {
+                            val winnerSource = backgroundSelectionSourceLabel(
+                                sourceUrl = selection.sourceUrl,
+                                state = refreshedState,
+                            )
                             storage.updateStatus(
-                                "Subscription changed. Switched ${connectionLabel(state.appMode)} to ${selection.profile.remarks}",
+                                buildString {
+                                    append("Subscriptions refreshed")
+                                    if (failedSubscriptions.isNotEmpty()) {
+                                        append(" with partial failures")
+                                    }
+                                    append(". Switched ${connectionLabel(state.appMode)} to ${selection.profile.remarks}")
+                                    winnerSource?.let {
+                                        append(" (best from $it)")
+                                    }
+                                    partialFailureMessage?.let {
+                                        append(". ")
+                                        append(it)
+                                    }
+                                },
                             )
                             DiagnosticsLogger.append(
                                 applicationContext,
-                                "Background subscription sync switched ${connectionLabel(state.appMode)} to replacement location: ${selection.profile.remarks}",
+                                "Background subscription sync switched ${connectionLabel(state.appMode)} to refreshed best location: ${selection.profile.remarks}" +
+                                    (winnerSource?.let { " from $it" } ?: ""),
                             )
-                            return@fold Result.success()
+                            return@fold finishAndScheduleNext()
                         }
                         switchFailure = switchResult.exceptionOrNull()
                     }
@@ -97,22 +166,78 @@ class SubscriptionRefreshWorker(
                         ?: replacement.exceptionOrNull()?.message
                         ?: "Failed to find a replacement location"
                     storage.updateStatus(
-                        "Selected subscription location disappeared. $failureMessage $rollbackMessage".trim(),
+                        buildString {
+                            append("Subscription refresh finished. ")
+                            append(failureMessage)
+                            partialFailureMessage?.let {
+                                append(". ")
+                                append(it)
+                            }
+                            if (selectedSourceFailed) {
+                                append(". Current ${connectionLabel(state.appMode)} location belongs to a subscription that did not refresh")
+                            }
+                            if (rollbackMessage.isNotBlank()) {
+                                append(" ")
+                                append(rollbackMessage)
+                            }
+                        }.trim(),
                     )
                     DiagnosticsLogger.append(
                         applicationContext,
-                        "Background subscription sync could not switch to replacement location: $failureMessage",
+                        "Background subscription sync could not switch to refreshed best location: $failureMessage",
                     )
-                    return@fold Result.success()
+                    return@fold finishAndScheduleNext()
                 }
+
+                if (selectedMissing && state.isVpnRunning) {
+                    storage.restoreSelection(
+                        state,
+                        restoreRuntimeArtifacts = true,
+                        sourceUrlOverride = "",
+                    )
+                    storage.updateStatus(
+                        buildString {
+                            append("Active subscription changed, but the current ${connectionLabel(state.appMode)} location was kept as a fallback")
+                            partialFailureMessage?.let {
+                                append(". ")
+                                append(it)
+                            }
+                        },
+                    )
+                    DiagnosticsLogger.append(
+                        applicationContext,
+                        "Background subscription sync kept previous ${connectionLabel(state.appMode)} location as fallback after active subscription changed",
+                    )
+                    return@fold finishAndScheduleNext()
+                }
+
+                if (state.isVpnRunning) {
+                    storage.updateStatus(
+                        buildString {
+                            append("Subscriptions refreshed")
+                            if (failedSubscriptions.isNotEmpty()) {
+                                append(" with partial failures")
+                            }
+                            append(". Current ${connectionLabel(state.appMode)} location kept")
+                            if (selectedSourceFailed) {
+                                append(" from the previous cache")
+                            }
+                            partialFailureMessage?.let {
+                                append(". ")
+                                append(it)
+                            }
+                        },
+                    )
+                }
+
                 DiagnosticsLogger.append(
                     applicationContext,
-                    "Background subscription sync complete: selectedMissing=${syncResult.selectedMissing}",
+                    "Background subscription sync complete: refreshed=${refresh.refreshedCount} failed=${refresh.failedCount} selectedMissing=$selectedMissing refreshAll=$refreshAll",
                 )
-                Result.success()
+                finishAndScheduleNext()
             },
             onFailure = { error ->
-                if (state.activeSubscriptionId.isNotBlank()) {
+                if (!refreshAll && state.activeSubscriptionId.isNotBlank()) {
                     storage.updateSubscriptionRefreshStatus(
                         subscriptionId = state.activeSubscriptionId,
                         status = error.message ?: "Background refresh failed",
@@ -122,11 +247,7 @@ class SubscriptionRefreshWorker(
                     applicationContext,
                     "Background subscription sync failed: ${error.message ?: error::class.java.simpleName}",
                 )
-                if (error is IOException && runAttemptCount < 3) {
-                    Result.retry()
-                } else {
-                    Result.failure()
-                }
+                finishAndScheduleNext()
             },
         )
     }
@@ -159,6 +280,7 @@ class SubscriptionRefreshWorker(
         selection: ProfileSelection,
         sourceUrl: String,
         vpnManager: VpnManager,
+        repository: AppRepository,
     ): kotlin.Result<Unit> {
         val appMode = storage.snapshot().appMode
         storage.updateStatus("Starting ${connectionLabel(appMode)} with the new best location...")
@@ -169,12 +291,7 @@ class SubscriptionRefreshWorker(
             )
         }
         val persistResult = runCatching {
-            storage.updateSelection(
-                profile = selection.profile,
-                summary = selection.benchmark.detail,
-                runtimeConfigJson = selection.runtimeConfigJson,
-                sourceUrl = sourceUrl,
-            )
+            repository.persistSelection(selection, sourceUrl)
         }
         if (persistResult.isFailure) {
             return kotlin.Result.failure(
@@ -251,6 +368,34 @@ class SubscriptionRefreshWorker(
         return when (appMode) {
             AppMode.VPN -> "VPN"
             AppMode.PROXY_ONLY -> "proxy"
+        }
+    }
+
+    private fun backgroundRefreshFailureSummary(
+        failures: List<AppRepository.SubscriptionRefreshFailure>,
+    ): String? {
+        if (failures.isEmpty()) return null
+        val labels = failures
+            .map { it.displayName }
+            .distinct()
+        val visible = labels.take(2).joinToString(", ")
+        val overflow = (labels.size - 2).coerceAtLeast(0)
+        return if (overflow > 0) {
+            "Failed to refresh: $visible +$overflow more"
+        } else {
+            "Failed to refresh: $visible"
+        }
+    }
+
+    private fun backgroundSelectionSourceLabel(
+        sourceUrl: String,
+        state: com.kardinal.vpncontrol.model.PersistedState,
+    ): String? {
+        val normalized = sourceUrl.trim()
+        if (normalized.isBlank()) return null
+        val subscription = state.subscriptions.firstOrNull { it.url == normalized } ?: return null
+        return subscription.customName.ifBlank {
+            RemoteSourceResolver.preview(subscription.url)?.title ?: "Remote source"
         }
     }
 }

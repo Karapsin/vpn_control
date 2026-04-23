@@ -77,6 +77,7 @@ class DiagnosticsExporter(
             appendLine("profile_source_mode=${state.profileSourceMode}")
             appendLine("app_mode=${state.appMode}")
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
+            appendLine("find_best_after_subscription_refresh=${state.findBestAfterSubscriptionRefresh}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
             appendLine("validation_primary_url=${state.validationSettings.primaryUrl}")
             appendLine("validation_secondary_url=${state.validationSettings.secondaryUrl}")
@@ -98,11 +99,22 @@ class DiagnosticsExporter(
             appendLine("selected_profile_server=${state.selectedProfileServer}")
             appendLine("status_message=${state.statusMessage}")
             appendLine("is_vpn_running=${state.isVpnRunning}")
+            appendLine("session_stats_enabled=${state.sessionStatsEnabled}")
+            appendLine("live_traffic_stats_enabled=${state.liveTrafficStatsEnabled}")
+            appendLine("profile_totals_enabled=${state.profileTotalsEnabled}")
+            appendLine("latency_history_enabled=${state.latencyHistoryEnabled}")
+            appendLine("connection_log_enabled=${state.connectionLogEnabled}")
+            appendLine("connection_test_tools_enabled=${state.connectionTestToolsEnabled}")
             appendLine("session_started_at_epoch_millis=${state.sessionStartedAtEpochMillis}")
             appendLine("session_stopped_at_epoch_millis=${state.sessionStoppedAtEpochMillis}")
+            appendLine("session_start_rx_bytes=${state.sessionStartRxBytes}")
+            appendLine("session_start_tx_bytes=${state.sessionStartTxBytes}")
             appendLine("successful_starts=${state.successfulStarts}")
             appendLine("successful_stops=${state.successfulStops}")
             appendLine("last_benchmark_summary=${state.lastBenchmarkSummary}")
+            appendLine("profile_traffic_totals_count=${state.profileTrafficTotals.size}")
+            appendLine("latency_history_count=${state.latencyHistory.size}")
+            appendLine("connection_log_count=${state.connectionLog.size}")
             appendLine("proxy_only_port=${SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT}")
             appendLine()
             appendSection(
@@ -135,6 +147,36 @@ class DiagnosticsExporter(
                     file = RuntimeFiles.runtimeConfigFile(context),
                     fallback = state.runtimeConfigJson,
                 ),
+            )
+            appendSection(
+                "profile_traffic_totals",
+                state.profileTrafficTotals.joinToString(separator = "\n") { total ->
+                    listOf(
+                        "name=${total.profileName}",
+                        "source=${RemoteSourceResolver.redactForDiagnostics(total.sourceUrl)}",
+                        "rx=${total.rxBytes}",
+                        "tx=${total.txBytes}",
+                        "updated=${total.lastUpdatedAtEpochMillis}",
+                    ).joinToString(" | ")
+                }.ifBlank { "<empty>" },
+            )
+            appendSection(
+                "latency_history",
+                state.latencyHistory.joinToString(separator = "\n") { entry ->
+                    listOf(
+                        "name=${entry.profileName}",
+                        "primary=${entry.primaryStatus}:${entry.primaryTotalMs ?: "n/a"}",
+                        "secondary=${entry.secondaryStatus}:${entry.secondaryTotalMs ?: "n/a"}",
+                        "created=${entry.createdAtEpochMillis}",
+                        "detail=${entry.detail}",
+                    ).joinToString(" | ")
+                }.ifBlank { "<empty>" },
+            )
+            appendSection(
+                "connection_log",
+                state.connectionLog.joinToString(separator = "\n") { entry ->
+                    "${entry.createdAtEpochMillis} | ${entry.message}"
+                }.ifBlank { "<empty>" },
             )
             appendSection(
                 "diagnostics_log",

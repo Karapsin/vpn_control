@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import android.content.Intent
+import android.content.ClipboardManager
 import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
@@ -9,16 +10,27 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.ui.VpnControlApp
 
 class MainActivity : ComponentActivity() {
+    private enum class QrImportMode {
+        SUBSCRIPTION,
+        LOCATION,
+        ROUTING_RULES,
+    }
+
     private val viewModel: MainViewModel by viewModels {
         MainViewModel.factory(applicationContext)
     }
     private var pendingRoutingRulesExport: String? = null
     private var pendingLocationsExport: String? = null
     private var pendingVpnPermissionAction: (() -> Unit)? = null
+    private var pendingQrImportMode: QrImportMode = QrImportMode.LOCATION
+    private var pendingFileImportPreference: ImportPreference = ImportPreference.LOCATION
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -104,6 +116,29 @@ class MainActivity : ComponentActivity() {
             viewModel.postStatus(error.message ?: "Failed to import locations")
         }
     }
+    private val genericImportFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            viewModel.postStatus("Import canceled")
+            return@registerForActivityResult
+        }
+
+        runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                reader.readText()
+            } ?: error("Could not open selected file")
+        }.onSuccess { raw ->
+            handleImportedFileContent(raw, pendingFileImportPreference)
+        }.onFailure { error ->
+            viewModel.postStatus(error.message ?: "Failed to import file")
+        }
+    }
+    private val qrScanLauncher = registerForActivityResult(
+        ScanContract(),
+    ) { result ->
+        handleQrImportResult(result.contents.orEmpty())
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,14 +163,18 @@ class MainActivity : ComponentActivity() {
                 onProfileHistoryRenameDraftChange = viewModel::onProfileHistoryRenameDraftChanged,
                 onSaveProfileHistoryRename = viewModel::saveProfileHistoryRename,
                 onCloseLocationMutationBlockedDialog = viewModel::closeLocationMutationBlockedDialog,
+                onScanSubscriptionQr = { launchQrScanner(QrImportMode.SUBSCRIPTION) },
+                onImportSubscriptionFromClipboard = { pasteSubscriptionFromClipboard() },
+                onImportSubscriptionFromFile = {
+                    launchImportFilePicker(ImportPreference.SUBSCRIPTION)
+                },
                 onToggleDnsDialog = viewModel::toggleDnsDialog,
-                onToggleUiSettingsDialog = viewModel::toggleUiSettingsDialog,
-                onSessionStatsEnabledChange = viewModel::setSessionStatsEnabled,
                 onDnsEnabledChange = viewModel::onCustomDnsEnabledChanged,
                 onDnsChange = viewModel::onDnsDraftChanged,
                 onSaveDns = viewModel::saveDns,
                 onToggleRefreshPolicyDialog = viewModel::toggleRefreshPolicyDialog,
                 onSubscriptionRefreshPolicyChange = viewModel::onSubscriptionRefreshPolicyDraftChanged,
+                onFindBestAfterSubscriptionRefreshChange = viewModel::onFindBestAfterSubscriptionRefreshDraftChanged,
                 onSubscriptionRefreshCustomHoursChange = viewModel::onSubscriptionRefreshCustomHoursDraftChanged,
                 onSaveSubscriptionRefreshPolicy = viewModel::saveSubscriptionRefreshPolicy,
                 onToggleValidationSettingsDialog = viewModel::toggleValidationSettingsDialog,
@@ -150,6 +189,7 @@ class MainActivity : ComponentActivity() {
                 onOpenProfileTab = viewModel::openProfileTab,
                 onOpenLocationsTab = viewModel::openLocationsTab,
                 onOpenRoutingRules = viewModel::openRoutingRules,
+                onOpenStatsTab = viewModel::openStatsTab,
                 onShowAddLocation = viewModel::showAddLocationDialog,
                 onExportLocations = {
                     val document = viewModel.buildLocationsExport()
@@ -158,6 +198,11 @@ class MainActivity : ComponentActivity() {
                 },
                 onImportLocations = {
                     importLocationsLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                },
+                onScanLocationQr = { launchQrScanner(QrImportMode.LOCATION) },
+                onImportLocationFromClipboard = { importClipboardAs(ImportPreference.LOCATION) },
+                onImportLocationFromFile = {
+                    launchImportFilePicker(ImportPreference.LOCATION)
                 },
                 onEditLocation = viewModel::editLocation,
                 onDeleteLocation = viewModel::deleteLocation,
@@ -206,6 +251,8 @@ class MainActivity : ComponentActivity() {
                     pendingRoutingRulesExport = document.content
                     exportRoutingRulesLauncher.launch(document.fileName)
                 },
+                onScanRoutingRulesQr = { launchQrScanner(QrImportMode.ROUTING_RULES) },
+                onImportRoutingRulesFromClipboard = { importClipboardAs(ImportPreference.ROUTING_RULES) },
                 onImportRoutingRules = {
                     importRoutingRulesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                 },
@@ -266,5 +313,77 @@ class MainActivity : ComponentActivity() {
             viewModel.handleIncomingSharedText(sharedText)
             intent.removeExtra(Intent.EXTRA_TEXT)
         }
+    }
+
+    private fun launchQrScanner(mode: QrImportMode) {
+        pendingQrImportMode = mode
+        ImportTestHooks.qrContentsOverride?.let { override ->
+            handleQrImportResult(override)
+            return
+        }
+        qrScanLauncher.launch(
+            ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("Scan a QR code")
+                setBeepEnabled(false)
+                setOrientationLocked(false)
+            },
+        )
+    }
+
+    private fun importClipboardAs(preference: ImportPreference) {
+        val text = readClipboardText()
+        if (text.isBlank()) {
+            viewModel.postStatus("Clipboard is empty")
+            return
+        }
+        viewModel.handleIncomingImportText(text, preference)
+    }
+
+    private fun pasteSubscriptionFromClipboard() {
+        val text = readClipboardText()
+        if (text.isBlank()) {
+            viewModel.postStatus("Clipboard is empty")
+            return
+        }
+        viewModel.pasteSubscriptionDraft(text)
+    }
+
+    private fun handleQrImportResult(rawContents: String) {
+        val contents = rawContents.trim()
+        if (contents.isBlank()) {
+            viewModel.postStatus("QR scan canceled")
+            return
+        }
+        when (pendingQrImportMode) {
+            QrImportMode.SUBSCRIPTION -> viewModel.pasteSubscriptionDraft(contents)
+            QrImportMode.LOCATION -> viewModel.handleIncomingImportText(contents, ImportPreference.LOCATION)
+            QrImportMode.ROUTING_RULES -> viewModel.importRoutingRules(contents)
+        }
+    }
+
+    private fun handleImportedFileContent(raw: String, preference: ImportPreference) {
+        when (preference) {
+            ImportPreference.SUBSCRIPTION -> viewModel.pasteSubscriptionDraft(raw)
+            else -> viewModel.handleIncomingImportText(raw, preference)
+        }
+    }
+
+    private fun readClipboardText(): String {
+        ImportTestHooks.clipboardTextOverride?.let { override ->
+            return override.trim()
+        }
+        val clipboardManager = getSystemService(ClipboardManager::class.java)
+        return clipboardManager?.primaryClip
+            ?.getItemAt(0)
+            ?.coerceToText(this)
+            ?.toString()
+            ?.trim()
+            .orEmpty()
+    }
+
+    private fun launchImportFilePicker(preference: ImportPreference) {
+        pendingFileImportPreference = preference
+        genericImportFileLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
     }
 }

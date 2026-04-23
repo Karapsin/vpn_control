@@ -8,6 +8,9 @@ import com.kardinal.vpncontrol.data.AppRepository
 import com.kardinal.vpncontrol.data.BenchmarkOrchestrator
 import com.kardinal.vpncontrol.data.DiagnosticsExporter
 import com.kardinal.vpncontrol.data.InstalledAppsCatalog
+import com.kardinal.vpncontrol.data.ImportPreference
+import com.kardinal.vpncontrol.data.IncomingImportPayload
+import com.kardinal.vpncontrol.data.IncomingImportResolver
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.ProfileStorage
@@ -18,8 +21,13 @@ import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.InstalledApp
+import com.kardinal.vpncontrol.model.LatencyHistoryEntry
+import com.kardinal.vpncontrol.model.MIN_SUBSCRIPTION_REFRESH_MINUTES
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.RoutingRuleSet
@@ -28,6 +36,10 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
+import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
+import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -47,12 +59,14 @@ enum class AppScreen {
     PROFILE,
     LOCATIONS,
     ROUTING_RULES,
+    STATS,
 }
 
 data class MainUiState(
     val currentScreen: AppScreen = AppScreen.MAIN,
     val screenHistory: List<AppScreen> = emptyList(),
     val profileUrl: String = "",
+    val activeSubscriptionId: String = "",
     val subscriptions: List<SubscriptionSource> = emptyList(),
     val profileHistory: List<String> = emptyList(),
     val profileHistoryNames: Map<String, String> = emptyMap(),
@@ -62,7 +76,9 @@ data class MainUiState(
     val appMode: AppMode = AppMode.VPN,
     val subscriptionRefreshPolicy: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
     val subscriptionRefreshPolicyDraft: SubscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF,
-    val subscriptionRefreshCustomHours: Int = 3,
+    val findBestAfterSubscriptionRefresh: Boolean = true,
+    val findBestAfterSubscriptionRefreshDraft: Boolean = true,
+    val subscriptionRefreshCustomHours: Double = DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS,
     val subscriptionRefreshCustomHoursDraft: String = "3",
     val validationSettings: BenchmarkValidationSettings = BenchmarkValidationSettings(),
     val validationPrimaryUrlDraft: String = BenchmarkValidationSettings.DEFAULT_PRIMARY_URL,
@@ -98,10 +114,20 @@ data class MainUiState(
     val lastBenchmarkSummary: String = "",
     val statusMessage: String = "Idle",
     val sessionStatsEnabled: Boolean = false,
+    val liveTrafficStatsEnabled: Boolean = false,
+    val profileTotalsEnabled: Boolean = false,
+    val latencyHistoryEnabled: Boolean = false,
+    val connectionLogEnabled: Boolean = false,
+    val connectionTestToolsEnabled: Boolean = false,
     val sessionStartedAtEpochMillis: Long = 0L,
     val sessionStoppedAtEpochMillis: Long = 0L,
+    val sessionStartRxBytes: Long = -1L,
+    val sessionStartTxBytes: Long = -1L,
     val successfulStarts: Int = 0,
     val successfulStops: Int = 0,
+    val profileTrafficTotals: List<ProfileTrafficTotal> = emptyList(),
+    val latencyHistory: List<LatencyHistoryEntry> = emptyList(),
+    val connectionLog: List<ConnectionLogEntry> = emptyList(),
     val showDnsDialog: Boolean = false,
     val showUiSettingsDialog: Boolean = false,
     val showAppModeDialog: Boolean = false,
@@ -162,6 +188,7 @@ class MainViewModel(
         repository.state.onEach { persisted ->
             _uiState.value = _uiState.value.copy(
                 profileUrl = persisted.profileUrl,
+                activeSubscriptionId = persisted.activeSubscriptionId,
                 subscriptions = persisted.subscriptions,
                 profileHistory = persisted.profileHistory,
                 profileHistoryNames = persisted.profileHistoryNames,
@@ -178,11 +205,17 @@ class MainViewModel(
                 } else {
                     persisted.subscriptionRefreshPolicy
                 },
+                findBestAfterSubscriptionRefresh = persisted.findBestAfterSubscriptionRefresh,
+                findBestAfterSubscriptionRefreshDraft = if (_uiState.value.showRefreshPolicyDialog) {
+                    _uiState.value.findBestAfterSubscriptionRefreshDraft
+                } else {
+                    persisted.findBestAfterSubscriptionRefresh
+                },
                 subscriptionRefreshCustomHours = persisted.subscriptionRefreshCustomHours,
                 subscriptionRefreshCustomHoursDraft = if (_uiState.value.showRefreshPolicyDialog) {
                     _uiState.value.subscriptionRefreshCustomHoursDraft
                 } else {
-                    persisted.subscriptionRefreshCustomHours.toString()
+                    formatSubscriptionRefreshHoursInput(persisted.subscriptionRefreshCustomHours)
                 },
                 validationSettings = persisted.validationSettings,
                 validationPrimaryUrlDraft = if (_uiState.value.showValidationSettingsDialog) {
@@ -231,10 +264,20 @@ class MainViewModel(
                 isVpnRunning = persisted.isVpnRunning,
                 statusMessage = persisted.statusMessage,
                 sessionStatsEnabled = persisted.sessionStatsEnabled,
+                liveTrafficStatsEnabled = persisted.liveTrafficStatsEnabled,
+                profileTotalsEnabled = persisted.profileTotalsEnabled,
+                latencyHistoryEnabled = persisted.latencyHistoryEnabled,
+                connectionLogEnabled = persisted.connectionLogEnabled,
+                connectionTestToolsEnabled = persisted.connectionTestToolsEnabled,
                 sessionStartedAtEpochMillis = persisted.sessionStartedAtEpochMillis,
                 sessionStoppedAtEpochMillis = persisted.sessionStoppedAtEpochMillis,
+                sessionStartRxBytes = persisted.sessionStartRxBytes,
+                sessionStartTxBytes = persisted.sessionStartTxBytes,
                 successfulStarts = persisted.successfulStarts,
                 successfulStops = persisted.successfulStops,
+                profileTrafficTotals = persisted.profileTrafficTotals,
+                latencyHistory = persisted.latencyHistory,
+                connectionLog = persisted.connectionLog,
                 screenHistory = _uiState.value.screenHistory,
             )
         }.launchIn(viewModelScope)
@@ -268,6 +311,56 @@ class MainViewModel(
         }
     }
 
+    fun setLiveTrafficStatsEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(liveTrafficStatsEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateLiveTrafficStatsEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Live traffic stats enabled" else "Live traffic stats hidden",
+            )
+        }
+    }
+
+    fun setProfileTotalsEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(profileTotalsEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateProfileTotalsEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Per-profile totals enabled" else "Per-profile totals hidden",
+            )
+        }
+    }
+
+    fun setLatencyHistoryEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(latencyHistoryEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateLatencyHistoryEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Latency history enabled" else "Latency history hidden",
+            )
+        }
+    }
+
+    fun setConnectionLogEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(connectionLogEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateConnectionLogEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Connection log enabled" else "Connection log hidden",
+            )
+        }
+    }
+
+    fun setConnectionTestToolsEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(connectionTestToolsEnabled = enabled)
+        viewModelScope.launch {
+            repository.updateConnectionTestToolsEnabled(enabled)
+            repository.updateStatus(
+                if (enabled) "Connection test tools enabled" else "Connection test tools hidden",
+            )
+        }
+    }
+
     fun toggleAppModeDialog() {
         _uiState.value = _uiState.value.copy(
             showAppModeDialog = !_uiState.value.showAppModeDialog,
@@ -278,7 +371,10 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             showRefreshPolicyDialog = !_uiState.value.showRefreshPolicyDialog,
             subscriptionRefreshPolicyDraft = _uiState.value.subscriptionRefreshPolicy,
-            subscriptionRefreshCustomHoursDraft = _uiState.value.subscriptionRefreshCustomHours.toString(),
+            findBestAfterSubscriptionRefreshDraft = _uiState.value.findBestAfterSubscriptionRefresh,
+            subscriptionRefreshCustomHoursDraft = formatSubscriptionRefreshHoursInput(
+                _uiState.value.subscriptionRefreshCustomHours,
+            ),
         )
     }
 
@@ -298,7 +394,7 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             routingIgnoreRulesDraft = rules.ignoreRules,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
-            routingBypassPackagesDraft = rules.bypassPackages.toSet(),
+            routingBypassPackagesDraft = emptySet(),
             routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
             routingRuleSetsDraft = rules.ruleSets,
@@ -319,6 +415,10 @@ class MainViewModel(
 
     fun openLocationsTab() {
         navigateToScreen(AppScreen.LOCATIONS)
+    }
+
+    fun openStatsTab() {
+        navigateToScreen(AppScreen.STATS)
     }
 
     fun navigateBack() {
@@ -343,6 +443,26 @@ class MainViewModel(
 
     fun onProfileDraftChanged(value: String) {
         _uiState.value = _uiState.value.copy(profileDraft = value)
+    }
+
+    fun pasteSubscriptionDraft(raw: String) {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) {
+            viewModelScope.launch {
+                repository.updateStatus("Clipboard is empty")
+            }
+            return
+        }
+        navigateToScreen(AppScreen.PROFILE)
+        _uiState.value = _uiState.value.copy(
+            profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            profileDraft = trimmed,
+            showAddSubscriptionEditor = true,
+        )
+        viewModelScope.launch {
+            repository.updateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION)
+            repository.updateStatus("Subscription text loaded into the Profile tab")
+        }
     }
 
     fun toggleAddSubscriptionEditor() {
@@ -434,9 +554,13 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(subscriptionRefreshPolicyDraft = policy)
     }
 
+    fun onFindBestAfterSubscriptionRefreshDraftChanged(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(findBestAfterSubscriptionRefreshDraft = enabled)
+    }
+
     fun onSubscriptionRefreshCustomHoursDraftChanged(value: String) {
         _uiState.value = _uiState.value.copy(
-            subscriptionRefreshCustomHoursDraft = value.filter { it.isDigit() }.take(3),
+            subscriptionRefreshCustomHoursDraft = sanitizeDecimalInput(value).take(6),
         )
     }
 
@@ -628,29 +752,21 @@ class MainViewModel(
 
     fun toggleProxyRoutingApp(packageName: String) {
         val nextProxy = _uiState.value.routingProxyPackagesDraft.toMutableSet()
-        val nextDirect = _uiState.value.routingBypassPackagesDraft.toMutableSet()
         if (!nextProxy.add(packageName)) {
             nextProxy.remove(packageName)
-        } else {
-            nextDirect.remove(packageName)
         }
         _uiState.value = _uiState.value.copy(
             routingProxyPackagesDraft = nextProxy,
-            routingBypassPackagesDraft = nextDirect,
+            routingBypassPackagesDraft = emptySet(),
         )
     }
 
     fun toggleDirectRoutingApp(packageName: String) {
         val nextProxy = _uiState.value.routingProxyPackagesDraft.toMutableSet()
-        val nextDirect = _uiState.value.routingBypassPackagesDraft.toMutableSet()
-        if (!nextDirect.add(packageName)) {
-            nextDirect.remove(packageName)
-        } else {
-            nextProxy.remove(packageName)
-        }
+        nextProxy.remove(packageName)
         _uiState.value = _uiState.value.copy(
             routingProxyPackagesDraft = nextProxy,
-            routingBypassPackagesDraft = nextDirect,
+            routingBypassPackagesDraft = emptySet(),
         )
     }
 
@@ -658,11 +774,9 @@ class MainViewModel(
         val visiblePackages = filteredRoutingPackages()
         val nextProxy = _uiState.value.routingProxyPackagesDraft.toMutableSet()
         nextProxy.addAll(visiblePackages)
-        val nextDirect = _uiState.value.routingBypassPackagesDraft.toMutableSet()
-        nextDirect.removeAll(visiblePackages.toSet())
         _uiState.value = _uiState.value.copy(
             routingProxyPackagesDraft = nextProxy,
-            routingBypassPackagesDraft = nextDirect,
+            routingBypassPackagesDraft = emptySet(),
         )
     }
 
@@ -673,21 +787,21 @@ class MainViewModel(
     }
 
     fun selectAllVisibleDirectApps() {
-        val visiblePackages = filteredRoutingPackages()
-        val nextDirect = _uiState.value.routingBypassPackagesDraft.toMutableSet()
-        nextDirect.addAll(visiblePackages)
         val nextProxy = _uiState.value.routingProxyPackagesDraft.toMutableSet()
-        nextProxy.removeAll(visiblePackages.toSet())
+        nextProxy.removeAll(filteredRoutingPackages().toSet())
         _uiState.value = _uiState.value.copy(
             routingProxyPackagesDraft = nextProxy,
-            routingBypassPackagesDraft = nextDirect,
+            routingBypassPackagesDraft = emptySet(),
         )
     }
 
     fun clearAllVisibleDirectApps() {
-        val nextDirect = _uiState.value.routingBypassPackagesDraft.toMutableSet()
-        nextDirect.removeAll(filteredRoutingPackages().toSet())
-        _uiState.value = _uiState.value.copy(routingBypassPackagesDraft = nextDirect)
+        val nextProxy = _uiState.value.routingProxyPackagesDraft.toMutableSet()
+        nextProxy.removeAll(filteredRoutingPackages().toSet())
+        _uiState.value = _uiState.value.copy(
+            routingProxyPackagesDraft = nextProxy,
+            routingBypassPackagesDraft = emptySet(),
+        )
     }
 
     fun onVpnPermissionGranted() {
@@ -719,11 +833,33 @@ class MainViewModel(
             }
             setBusy(true)
             try {
-                repository.updateStatus("Refreshing active subscription...")
+                repository.updateStatus(
+                    if (isAllSubscriptionsGroupActive(_uiState.value.activeSubscriptionId(), _uiState.value.subscriptions)) {
+                        "Refreshing all subscriptions..."
+                    } else {
+                        "Refreshing active subscription..."
+                    },
+                )
                 val result = repository.refreshActiveSubscriptionCache()
                 repository.updateStatus(
                     result.fold(
-                        onSuccess = { "Active subscription refreshed" },
+                        onSuccess = { refresh ->
+                            if (isAllSubscriptionsGroupActive(_uiState.value.activeSubscriptionId(), _uiState.value.subscriptions)) {
+                                formatRefreshSummaryMessage(
+                                    refreshedCount = refresh.refreshedCount,
+                                    failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
+                                    totalCount = _uiState.value.subscriptions.size,
+                                    defaultSuccess = "All subscriptions refreshed",
+                                )
+                            } else {
+                                formatRefreshSummaryMessage(
+                                    refreshedCount = refresh.refreshedCount,
+                                    failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
+                                    totalCount = 1,
+                                    defaultSuccess = "Active subscription refreshed",
+                                )
+                            }
+                        },
                         onFailure = { it.message ?: "Failed to refresh the active subscription" },
                     ),
                 )
@@ -745,8 +881,13 @@ class MainViewModel(
                 val result = repository.refreshAllSubscriptionsCaches()
                 repository.updateStatus(
                     result.fold(
-                        onSuccess = { count ->
-                            "Subscriptions refreshed: $count/${_uiState.value.subscriptions.size}"
+                        onSuccess = { refresh ->
+                            formatRefreshSummaryMessage(
+                                refreshedCount = refresh.refreshedCount,
+                                failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
+                                totalCount = _uiState.value.subscriptions.size,
+                                defaultSuccess = "Subscriptions refreshed: ${refresh.refreshedCount}/${_uiState.value.subscriptions.size}",
+                            )
                         },
                         onFailure = { it.message ?: "Failed to refresh subscriptions" },
                     ),
@@ -758,47 +899,82 @@ class MainViewModel(
     }
 
     fun handleIncomingSharedText(raw: String) {
+        handleIncomingImportText(raw, ImportPreference.AUTO)
+    }
+
+    fun handleIncomingImportText(raw: String, preference: ImportPreference = ImportPreference.AUTO) {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
-            when {
-                RemoteSourceResolver.looksLikeRemoteSourceLink(trimmed) -> {
-                    repository.updateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION)
-                    navigateToScreen(AppScreen.PROFILE)
-                    _uiState.value = _uiState.value.copy(
-                        profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
-                        profileDraft = trimmed,
-                        showAddSubscriptionEditor = true,
+            IncomingImportResolver.resolve(trimmed, preference).fold(
+                onSuccess = { payload ->
+                    when (payload) {
+                        is IncomingImportPayload.Subscription -> {
+                            repository.updateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION)
+                            navigateToScreen(AppScreen.PROFILE)
+                            _uiState.value = _uiState.value.copy(
+                                profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                                profileDraft = payload.raw,
+                                showAddSubscriptionEditor = true,
+                            )
+                            repository.updateStatus(
+                                when (preference) {
+                                    ImportPreference.SUBSCRIPTION -> "Subscription received. Review and save it on the Profile tab."
+                                    else -> "Subscription link received. Review and save it on the Profile tab."
+                                },
+                            )
+                        }
+                        is IncomingImportPayload.Location -> {
+                            repository.updateProfileSourceMode(ProfileSourceMode.CURRENT_LOCATIONS)
+                            navigateToScreen(AppScreen.LOCATIONS)
+                            _uiState.value = _uiState.value.copy(
+                                profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+                                showLocationDialog = true,
+                                locationDraft = payload.raw,
+                                editingLocationIndex = null,
+                            )
+                            repository.updateStatus(
+                                when (preference) {
+                                    ImportPreference.LOCATION -> "Location config received. Review and save it on the Locations tab."
+                                    else -> "Location config received. Review and save it on the Locations tab."
+                                },
+                            )
+                        }
+                        is IncomingImportPayload.RoutingRules -> {
+                            navigateToScreen(AppScreen.ROUTING_RULES)
+                            importRoutingRules(payload.raw)
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    repository.updateStatus(
+                        error.message ?: "Shared text is not a supported import payload",
                     )
-                    repository.updateStatus("Subscription link received. Review and save it on the Profile tab.")
-                }
-                runCatching { LocationConfigs.parseLocationInput(trimmed) }.isSuccess -> {
-                    repository.updateProfileSourceMode(ProfileSourceMode.CURRENT_LOCATIONS)
-                    navigateToScreen(AppScreen.LOCATIONS)
-                    _uiState.value = _uiState.value.copy(
-                        profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
-                        showLocationDialog = true,
-                        locationDraft = trimmed,
-                        editingLocationIndex = null,
-                    )
-                    repository.updateStatus("Location config received. Review and save it on the Locations tab.")
-                }
-                else -> {
-                    repository.updateStatus("Shared text is not a supported subscription or location config")
-                }
-            }
+                },
+            )
         }
     }
 
-    fun useProfileHistoryEntry(source: String) {
-        val normalized = source.trim()
+    fun useProfileHistoryEntry(subscriptionId: String) {
+        val normalized = subscriptionId.trim()
+        val selectedUrl = _uiState.value.subscriptions
+            .firstOrNull { it.id == normalized }
+            ?.url
+            .orEmpty()
         _uiState.value = _uiState.value.copy(
-            profileDraft = normalized,
+            profileDraft = if (normalized == ALL_SUBSCRIPTIONS_ID) "" else selectedUrl,
             profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
             showAddSubscriptionEditor = false,
         )
         viewModelScope.launch {
-            saveProfileSource(normalized, ProfileSourceMode.SUBSCRIPTION)
+            repository.selectActiveSubscription(normalized)
+            repository.updateStatus(
+                if (normalized == ALL_SUBSCRIPTIONS_ID) {
+                    "All subscriptions selected"
+                } else {
+                    "Subscription selected"
+                },
+            )
         }
     }
 
@@ -834,24 +1010,61 @@ class MainViewModel(
 
     fun saveSubscriptionRefreshPolicy() {
         val policy = _uiState.value.subscriptionRefreshPolicyDraft
-        val customHours = _uiState.value.subscriptionRefreshCustomHoursDraft.toIntOrNull()
-            ?.coerceAtLeast(1)
+        val customHours = _uiState.value.subscriptionRefreshCustomHoursDraft
+            .replace(',', '.')
+            .toDoubleOrNull()
         viewModelScope.launch {
             if (policy == SubscriptionRefreshPolicy.CUSTOM && customHours == null) {
-                repository.updateStatus("Enter a custom refresh interval in hours")
+                repository.updateStatus("Enter a valid custom refresh interval in hours")
+                return@launch
+            }
+            if (policy == SubscriptionRefreshPolicy.CUSTOM &&
+                customHours != null &&
+                customHours * 60.0 < MIN_SUBSCRIPTION_REFRESH_MINUTES
+            ) {
+                repository.updateStatus(
+                    "Custom refresh interval must be at least $MIN_SUBSCRIPTION_REFRESH_MINUTES minutes",
+                )
                 return@launch
             }
             val resolvedHours = when (policy) {
-                SubscriptionRefreshPolicy.OFF -> _uiState.value.subscriptionRefreshCustomHours.coerceAtLeast(1)
-                SubscriptionRefreshPolicy.EVERY_HOUR -> 1
-                SubscriptionRefreshPolicy.CUSTOM -> customHours ?: _uiState.value.subscriptionRefreshCustomHours.coerceAtLeast(1)
+                SubscriptionRefreshPolicy.OFF ->
+                    normalizeSubscriptionRefreshCustomHours(_uiState.value.subscriptionRefreshCustomHours)
+                SubscriptionRefreshPolicy.EVERY_HOUR -> 1.0
+                SubscriptionRefreshPolicy.CUSTOM ->
+                    normalizeSubscriptionRefreshCustomHours(
+                        customHours ?: _uiState.value.subscriptionRefreshCustomHours,
+                    )
             }
-            repository.updateSubscriptionRefreshPolicy(policy, resolvedHours)
+            repository.updateSubscriptionRefreshPolicy(
+                policy = policy,
+                customHours = resolvedHours,
+                findBestAfterRefresh = _uiState.value.findBestAfterSubscriptionRefreshDraft,
+            )
             repository.updateStatus(
                 "Subscription auto-refresh set to ${policy.displayValue(resolvedHours).lowercase()}",
             )
             _uiState.value = _uiState.value.copy(showRefreshPolicyDialog = false)
         }
+    }
+
+    private fun sanitizeDecimalInput(value: String): String {
+        val normalized = value.replace(',', '.')
+        val builder = StringBuilder()
+        var dotSeen = false
+        normalized.forEach { char ->
+            when {
+                char.isDigit() -> builder.append(char)
+                char == '.' && !dotSeen -> {
+                    if (builder.isEmpty()) {
+                        builder.append('0')
+                    }
+                    builder.append('.')
+                    dotSeen = true
+                }
+            }
+        }
+        return builder.toString()
     }
 
     fun saveValidationSettings() {
@@ -995,29 +1208,22 @@ class MainViewModel(
 
     fun benchmarkLocation(index: Int) {
         val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
-        launchTrackedBusyOperation {
-            setBusy(true)
-            _uiState.value = _uiState.value.copy(isRefreshing = true)
-            try {
-                val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
-                    .getOrDefault("Location")
-                repository.updateStatus("Checking $remarks...")
-                val result = repository.benchmarkLocation(rawLink)
-                repository.updateStatus(
-                    result.fold(
-                        onSuccess = { benchmark -> "Location checked: ${benchmark.profile.remarks}" },
-                        onFailure = { it.message ?: "Location check failed" },
-                    ),
-                )
-            } catch (_: CancellationException) {
-                withContext(NonCancellable) {
-                    repository.updateStatus("Location check cancelled")
-                }
-            } finally {
-                _uiState.value = _uiState.value.copy(isRefreshing = false)
-                setBusy(false)
-            }
+        benchmarkLocationStored(rawLink)
+    }
+
+    fun benchmarkSelectedLocationFromStats() {
+        val rawLink = selectedLocationReference().ifBlank {
+            _uiState.value.currentLocations.firstOrNull {
+                it == selectedLocationReference()
+            }.orEmpty()
         }
+        if (rawLink.isBlank()) {
+            viewModelScope.launch {
+                repository.updateStatus("Select a location first")
+            }
+            return
+        }
+        benchmarkLocationStored(rawLink)
     }
 
     fun selectLocation(index: Int) {
@@ -1181,7 +1387,7 @@ class MainViewModel(
                         _uiState.value = _uiState.value.copy(
                             routingIgnoreRulesDraft = rules.ignoreRules,
                             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
-                            routingBypassPackagesDraft = rules.bypassPackages.toSet(),
+                            routingBypassPackagesDraft = emptySet(),
                             routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
                             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
                             routingRuleSetsDraft = rules.ruleSets,
@@ -1214,7 +1420,7 @@ class MainViewModel(
     fun refresh() {
         launchTrackedBusyOperation {
             if (_uiState.value.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
-                _uiState.value.profileUrl.isBlank()
+                currentSubscriptionSearchTargets().isEmpty()
             ) {
                 repository.updateStatus("Set a remote source first")
                 return@launchTrackedBusyOperation
@@ -1246,6 +1452,7 @@ class MainViewModel(
                             statusMessage = bestSelectionStartMessage(),
                         )
                         if (applyResult.isSuccess) {
+                            appendLatencyHistory(selection.benchmark)
                             "Best location selected and ${startedConnectionLabel().lowercase()}: ${selection.profile.remarks}"
                         } else if (applyResult.requiresLiveRollback) {
                             rollbackSelectionChange(
@@ -1460,6 +1667,17 @@ class MainViewModel(
         return Result.success(Unit)
     }
 
+    private fun MainUiState.activeSubscriptionId(): String = activeSubscriptionId
+
+    private fun currentSubscriptionSearchTargets(): List<SubscriptionSource> {
+        val state = _uiState.value
+        return if (isAllSubscriptionsGroupActive(state.activeSubscriptionId(), state.subscriptions)) {
+            state.subscriptions.filter { it.url.isNotBlank() }
+        } else {
+            state.subscriptions.filter { it.id == state.activeSubscriptionId() && it.url.isNotBlank() }
+        }
+    }
+
     private suspend fun reapplyVpnIfRunning(
         selection: com.kardinal.vpncontrol.model.ProfileSelection,
         statusMessage: String,
@@ -1565,6 +1783,50 @@ class MainViewModel(
         )
     }
 
+    private fun benchmarkLocationStored(rawLink: String) {
+        launchTrackedBusyOperation {
+            setBusy(true)
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            try {
+                val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
+                    .getOrDefault("Location")
+                repository.updateStatus("Checking $remarks...")
+                val result = repository.benchmarkLocation(rawLink)
+                result.onSuccess { benchmark ->
+                    appendLatencyHistory(benchmark)
+                }
+                repository.updateStatus(
+                    result.fold(
+                        onSuccess = { benchmark -> "Location checked: ${benchmark.profile.remarks}" },
+                        onFailure = { it.message ?: "Location check failed" },
+                    ),
+                )
+            } catch (_: CancellationException) {
+                withContext(NonCancellable) {
+                    repository.updateStatus("Location check cancelled")
+                }
+            } finally {
+                _uiState.value = _uiState.value.copy(isRefreshing = false)
+                setBusy(false)
+            }
+        }
+    }
+
+    private suspend fun appendLatencyHistory(benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark) {
+        repository.appendLatencyHistory(
+            LatencyHistoryEntry(
+                id = UUID.randomUUID().toString(),
+                profileName = benchmark.profile.remarks,
+                detail = benchmark.detail,
+                primaryStatus = benchmark.primaryStatus,
+                secondaryStatus = benchmark.secondaryStatus,
+                primaryTotalMs = benchmark.primaryTotal,
+                secondaryTotalMs = benchmark.secondaryTotal,
+                createdAtEpochMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     private fun selectionCommitFailureMessage(
         result: SelectionCommitResult,
         applyFailureFallback: String,
@@ -1654,6 +1916,28 @@ class MainViewModel(
         }
     }
 
+    private fun formatRefreshSummaryMessage(
+        refreshedCount: Int,
+        failedSubscriptions: List<String>,
+        totalCount: Int,
+        defaultSuccess: String,
+    ): String {
+        if (failedSubscriptions.isEmpty()) {
+            return defaultSuccess
+        }
+        val distinctFailures = failedSubscriptions.distinct()
+        val failedLabel = distinctFailures
+            .take(2)
+            .joinToString(", ")
+        val overflow = (distinctFailures.size - 2).coerceAtLeast(0)
+        val failedSuffix = if (overflow > 0) {
+            "$failedLabel +$overflow more"
+        } else {
+            failedLabel
+        }
+        return "Subscriptions refreshed: $refreshedCount/$totalCount. Failed: $failedSuffix"
+    }
+
     private fun startingConnectionLabel(): String {
         return when (_uiState.value.appMode) {
             AppMode.VPN -> "Starting VPN..."
@@ -1713,8 +1997,7 @@ class MainViewModel(
         return RoutingRules(
             ignoreRules = _uiState.value.routingIgnoreRulesDraft,
             proxyPackages = proxyPackages,
-            bypassPackages = RoutingRules.normalizePackageNames(_uiState.value.routingBypassPackagesDraft)
-                .filterNot { it in proxyPackages.toSet() },
+            bypassPackages = emptyList(),
             nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(_uiState.value.routingNationalDomainsDraft),
             directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(_uiState.value.routingDirectDomainsDraft),
             ruleSets = sanitizeRuleSets(_uiState.value.routingRuleSetsDraft),
@@ -1822,8 +2105,7 @@ class MainViewModel(
         val proxyPackages = RoutingRules.normalizePackageNames(rules.proxyPackages)
         return rules.copy(
             proxyPackages = proxyPackages,
-            bypassPackages = RoutingRules.normalizePackageNames(rules.bypassPackages)
-                .filterNot { it in proxyPackages.toSet() },
+            bypassPackages = emptyList(),
             ruleSets = sanitizeRuleSets(rules.ruleSets),
         )
     }
