@@ -4,7 +4,6 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.VlessProfile
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
-import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -33,6 +32,7 @@ class DesktopProxyRuntimeManager(
         ".vpn-control-desktop",
         "runtime",
     ),
+    private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
 ) {
     @Volatile
     private var process: Process? = null
@@ -99,11 +99,12 @@ class DesktopProxyRuntimeManager(
                 runtimeConfigStore.clearRuntimeConfig()
                 error(preflight.failureMessage())
             }
+            val singBox = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())
 
             val started = try {
                 Files.writeString(runtimeLogFile, "")
                 runtimeConfigStore.writeRuntimeConfig(configJson)
-                ProcessBuilder("sing-box", "run", "-c", configPath.toString())
+                ProcessBuilder(singBox.path.toString(), "run", "-c", configPath.toString())
                     .directory(baseDir.toFile())
                     .redirectErrorStream(true)
                     .redirectOutput(runtimeLogFile.toFile())
@@ -111,7 +112,7 @@ class DesktopProxyRuntimeManager(
             } catch (error: IOException) {
                 runtimeConfigStore.clearRuntimeConfig()
                 throw IllegalStateException(
-                    "sing-box is not available on PATH. Install sing-box or add it to PATH.",
+                    "Failed to launch sing-box at ${singBox.path}. ${singBoxResolver.missingMessage()}",
                     error,
                 )
             }
@@ -202,21 +203,23 @@ class DesktopProxyRuntimeManager(
         listenPort: Int?,
     ): DesktopPreflightReport {
         val checks = buildList {
-            val binary = resolveExecutable("sing-box")
+            val binary = singBoxResolver.resolve()
             add(
                 if (binary == null) {
                     DesktopPreflightCheck(
                         name = "sing-box binary",
                         status = DesktopPreflightStatus.FAIL,
-                        detail = "sing-box is not available on PATH. Install sing-box or add it to PATH.",
+                        detail = singBoxResolver.missingMessage(),
                     )
                 } else {
-                    val version = runCommand(listOf(binary.toString(), "version"), timeoutSeconds = 3)
+                    val version = runCommand(listOf(binary.path.toString(), "version"), timeoutSeconds = 3)
                     DesktopPreflightCheck(
                         name = "sing-box binary",
                         status = if (version.exitCode == 0) DesktopPreflightStatus.PASS else DesktopPreflightStatus.FAIL,
                         detail = if (version.exitCode == 0) {
-                            version.output.lineSequence().firstOrNull { it.isNotBlank() } ?: binary.toString()
+                            val versionLine = version.output.lineSequence().firstOrNull { it.isNotBlank() }
+                                ?: binary.path.toString()
+                            "$versionLine (${binary.source})"
                         } else {
                             version.output.ifBlank { "sing-box version command failed" }
                         },
@@ -284,7 +287,7 @@ class DesktopProxyRuntimeManager(
 
             if (binary != null) {
                 val validation = runCommand(
-                    command = listOf(binary.toString(), "check", "-c", configPath.toString()),
+                    command = listOf(binary.path.toString(), "check", "-c", configPath.toString()),
                     timeoutSeconds = 5,
                 )
                 add(
@@ -402,7 +405,7 @@ class DesktopProxyRuntimeManager(
         if (System.getProperty("user.name") == "root") {
             return true
         }
-        val binary = resolveExecutable("sing-box") ?: return false
+        val binary = singBoxResolver.resolve()?.path ?: return false
         val output = runCatching {
             val process = ProcessBuilder("getcap", binary.toString())
                 .redirectErrorStream(true)
@@ -412,16 +415,6 @@ class DesktopProxyRuntimeManager(
             text
         }.getOrDefault("")
         return output.contains("cap_net_admin")
-    }
-
-    private fun resolveExecutable(name: String): Path? {
-        return System.getenv("PATH")
-            .orEmpty()
-            .split(File.pathSeparator)
-            .asSequence()
-            .filter(String::isNotBlank)
-            .map { Path.of(it).resolve(name) }
-            .firstOrNull { Files.isExecutable(it) }
     }
 
     private fun isLinux(): Boolean {

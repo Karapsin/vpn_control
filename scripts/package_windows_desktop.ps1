@@ -10,6 +10,8 @@ Set-Location $RepoRoot
 Write-Host "[vpn-control] checking Java runtime"
 java -version
 
+.\scripts\prepare_sing_box_desktop_runtime.ps1
+
 Write-Host "[vpn-control] compiling desktop app"
 .\gradlew.bat :desktopApp:compileKotlin
 

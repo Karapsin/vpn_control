@@ -41,6 +41,7 @@ class DesktopProxyValidationRuntime(
         ".vpn-control-desktop",
         "validation",
     ),
+    private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
 ) {
     suspend fun benchmarkLocation(
         profile: VlessProfile,
@@ -142,10 +143,12 @@ class DesktopProxyValidationRuntime(
         val logFile = Files.createTempFile(baseDir, "validate-$safeName-", ".log")
         Files.writeString(configFile, configJson)
         Files.writeString(logFile, "")
+        val singBox = singBoxResolver.resolve()
+            ?: return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_missing")
 
         var process: Process? = null
         try {
-            process = ProcessBuilder("sing-box", "run", "-c", configFile.toString())
+            process = ProcessBuilder(singBox.path.toString(), "run", "-c", configFile.toString())
                 .directory(baseDir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(logFile.toFile())

@@ -2,6 +2,7 @@
 .kotlin/
 .sandbox-home/
 .sandbox-tmp/
+.runtime/
 build/
 **/build/
 local.properties
@@ -11,3 +12,4 @@ local.properties
 *.aab
 *.deb
 *.rpm
+desktopApp/src/main/resources/bin/

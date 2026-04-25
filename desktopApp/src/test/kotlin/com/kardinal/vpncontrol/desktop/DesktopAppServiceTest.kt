@@ -1,8 +1,10 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -15,6 +17,67 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopAppServiceTest {
+    @Test
+    fun defaultWorkspaceStartsInVpnModeWithoutDefaultRoutingDomains() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-defaults")
+        try {
+            val service = DesktopAppService.createForTesting(store = DesktopStateStore(tempDir))
+
+            assertEquals(AppMode.VPN, service.state.appMode)
+            assertTrue(service.state.routingRules.nationalDomainSuffixes.isEmpty())
+            assertTrue(service.state.routingRules.directDomainSuffixes.isEmpty())
+            assertTrue(service.state.routingNationalDomainsDraft.isBlank())
+            assertTrue(service.state.routingDirectDomainsDraft.isBlank())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun legacyDefaultWorkspaceMigratesToVpnModeAndEmptyRoutingDomains() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-legacy-defaults")
+        try {
+            val store = DesktopStateStore(tempDir)
+            val subscriptions = listOf(
+                SubscriptionSource(id = "desktop-sub-1", url = "https://desktop.example.net/whitelists"),
+                SubscriptionSource(id = "desktop-sub-2", url = "https://desktop.example.net/fallback"),
+            )
+            store.writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(
+                        profileUrl = subscriptions.first().url,
+                        activeSubscriptionId = subscriptions.first().id,
+                        subscriptions = subscriptions,
+                        profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                        appMode = AppMode.PROXY_ONLY,
+                        routingRules = RoutingRules(
+                            proxyPackages = listOf("com.example.browser", "org.telegram.messenger"),
+                            nationalDomainSuffixes = listOf("ru", "by"),
+                            directDomainSuffixes = listOf("example.com", "intranet.local"),
+                        ),
+                        selectedProfileRawLink = "vless://desktop-nl",
+                        statusMessage = "Desktop proxy shell ready",
+                        connectionLog = listOf(ConnectionLogEntry(id = "legacy", message = "Proxy mode available")),
+                    ),
+                    locations = emptyList(),
+                ),
+            )
+
+            val migrated = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            ).persistedState
+
+            assertEquals(AppMode.VPN, migrated.appMode)
+            assertTrue(migrated.routingRules.nationalDomainSuffixes.isEmpty())
+            assertTrue(migrated.routingRules.directDomainSuffixes.isEmpty())
+            assertTrue(migrated.routingRules.proxyPackages.isEmpty())
+            assertEquals("Desktop VPN shell ready", migrated.statusMessage)
+            assertEquals("VPN mode available", migrated.connectionLog.single().message)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun saveSubscriptionDraftAddsNewSubscriptionAndActivatesIt() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-add-subscription")

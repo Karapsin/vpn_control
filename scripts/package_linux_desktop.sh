@@ -12,6 +12,8 @@ cd "$repo_root"
 echo "[vpn-control] checking Java runtime"
 java -version
 
+./scripts/prepare_sing_box_desktop_runtime.sh
+
 echo "[vpn-control] compiling desktop app"
 ./gradlew :desktopApp:compileKotlin
 

@@ -6,7 +6,6 @@ import com.kardinal.vpncontrol.data.RoutingRuleSetCodec
 import com.kardinal.vpncontrol.data.StatsCodec
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
-import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -66,7 +65,7 @@ class DesktopStateStore(
     override suspend fun snapshot(): PersistedState = stateFlow.value
 
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
-        val workspace = runCatching {
+        val loadedWorkspace = runCatching {
             if (!Files.exists(workspaceFile)) {
                 writeWorkspace(defaultWorkspace)
                 defaultWorkspace
@@ -74,6 +73,10 @@ class DesktopStateStore(
                 decodeWorkspace(Files.readString(workspaceFile))
             }
         }.getOrDefault(defaultWorkspace)
+        val workspace = loadedWorkspace.migrateLegacyDesktopDefaults()
+        if (workspace != loadedWorkspace) {
+            writeWorkspace(workspace)
+        }
         stateFlow.value = workspace.persistedState
         return workspace
     }
@@ -335,6 +338,63 @@ class DesktopStateStore(
             connectionLog = StatsCodec.decodeConnectionLog(root.string("connection_log_json")),
         )
     }
+}
+
+private fun DesktopWorkspace.migrateLegacyDesktopDefaults(): DesktopWorkspace {
+    val migratedState = persistedState.migrateLegacyDesktopDefaults()
+    return if (migratedState == persistedState) {
+        this
+    } else {
+        copy(persistedState = migratedState)
+    }
+}
+
+private fun PersistedState.migrateLegacyDesktopDefaults(): PersistedState {
+    val migratedMode = if (isLegacyDefaultDesktopShell() && appMode == AppMode.PROXY_ONLY) {
+        AppMode.VPN
+    } else {
+        appMode
+    }
+    val migratedRules = if (routingRules.isLegacyDefaultDesktopRoutingRules()) {
+        RoutingRules()
+    } else {
+        routingRules
+    }
+    val migratedStatus = if (statusMessage == "Desktop proxy shell ready") {
+        "Desktop VPN shell ready"
+    } else {
+        statusMessage
+    }
+    val migratedLog = connectionLog.map { entry ->
+        if (entry.message == "Proxy mode available") {
+            entry.copy(message = "VPN mode available")
+        } else {
+            entry
+        }
+    }
+    return copy(
+        appMode = migratedMode,
+        routingRules = migratedRules,
+        statusMessage = migratedStatus,
+        connectionLog = migratedLog,
+    )
+}
+
+private fun PersistedState.isLegacyDefaultDesktopShell(): Boolean {
+    return profileUrl == "https://desktop.example.net/whitelists" &&
+        activeSubscriptionId == "desktop-sub-1" &&
+        subscriptions.map(SubscriptionSource::id) == listOf("desktop-sub-1", "desktop-sub-2") &&
+        selectedProfileRawLink == "vless://desktop-nl" &&
+        statusMessage == "Desktop proxy shell ready"
+}
+
+private fun RoutingRules.isLegacyDefaultDesktopRoutingRules(): Boolean {
+    return !ignoreRules &&
+        proxyPackages == listOf("com.example.browser", "org.telegram.messenger") &&
+        bypassPackages.isEmpty() &&
+        nationalDomainSuffixes == listOf("ru", "by") &&
+        directDomainSuffixes == listOf("example.com", "intranet.local") &&
+        ruleSets.isEmpty()
 }
 
 private fun encodeStringArray(values: List<String>): JsonArray = buildJsonArray {
