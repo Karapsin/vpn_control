@@ -250,6 +250,7 @@ private fun DesktopVpnControlApp(
                         DesktopAdditionalSettingsMenu(
                             state = state,
                             onToggleDnsDialog = service::toggleDnsDialog,
+                            onSetStartOnBootEnabled = service::setStartOnBootEnabled,
                             onToggleAppModeDialog = service::toggleAppModeDialog,
                             onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
@@ -725,6 +726,7 @@ private fun DesktopProfileContent(
 private fun DesktopAdditionalSettingsMenu(
     state: MainUiState,
     onToggleDnsDialog: () -> Unit,
+    onSetStartOnBootEnabled: (Boolean) -> Unit,
     onToggleAppModeDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
@@ -765,6 +767,31 @@ private fun DesktopAdditionalSettingsMenu(
                 onClick = {
                     expanded = false
                     onToggleDnsDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Start on Login")
+                        Text(
+                            if (state.startOnBootEnabled) "enabled" else "disabled",
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    Switch(
+                        checked = state.startOnBootEnabled,
+                        onCheckedChange = { enabled ->
+                            expanded = false
+                            onSetStartOnBootEnabled(enabled)
+                        },
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onSetStartOnBootEnabled(!state.startOnBootEnabled)
                 },
             )
             DropdownMenuItem(

@@ -1,0 +1,82 @@
+name: Windows Desktop Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/windows-desktop.yml"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "gradlew.bat"
+      - "scripts/package_windows_desktop.ps1"
+  pull_request:
+    paths:
+      - ".github/workflows/windows-desktop.yml"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "gradlew.bat"
+      - "scripts/package_windows_desktop.ps1"
+
+jobs:
+  package-windows-desktop:
+    name: Build EXE and MSI
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Add WiX Toolset to PATH
+        shell: pwsh
+        run: |
+          $WixRoot = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $WixRoot) {
+            throw "WiX Toolset installation directory was not found"
+          }
+          $WixBin = Join-Path $WixRoot.FullName "bin"
+          if (-not (Test-Path $WixBin)) {
+            throw "WiX Toolset bin directory was not found at $WixBin"
+          }
+          $WixBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build Windows packages
+        shell: pwsh
+        run: .\scripts\package_windows_desktop.ps1
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-windows-installers
+          path: |
+            desktopApp/build/compose/binaries/main/**/*.exe
+            desktopApp/build/compose/binaries/main/**/*.msi
+          if-no-files-found: error

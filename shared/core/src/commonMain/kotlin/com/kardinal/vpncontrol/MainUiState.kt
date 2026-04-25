@@ -114,6 +114,7 @@ data class MainUiState(
     val locationDraft: String = "",
     val editingLocationIndex: Int? = null,
     val hasVpnPermission: Boolean = false,
+    val startOnBootEnabled: Boolean = false,
 )
 
 object MainUiStateProjector {

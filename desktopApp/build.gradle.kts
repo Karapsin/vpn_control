@@ -1,3 +1,14 @@
+import org.gradle.internal.os.OperatingSystem
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+
+val hostOs = OperatingSystem.current()
+val desktopPackageTargets = when {
+    hostOs.isWindows -> arrayOf(TargetFormat.Exe, TargetFormat.Msi)
+    hostOs.isLinux -> arrayOf(TargetFormat.Deb, TargetFormat.Rpm)
+    hostOs.isMacOsX -> arrayOf(TargetFormat.Dmg)
+    else -> emptyArray()
+}
+
 plugins {
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.jvm")
@@ -25,5 +36,31 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.kardinal.vpncontrol.desktop.MainKt"
+
+        nativeDistributions {
+            targetFormats(*desktopPackageTargets)
+            packageName = "vpn-control"
+            packageVersion = "0.1.0"
+            vendor = "Kardinal"
+            description = "Desktop VPN Control client"
+
+            linux {
+                iconFile.set(project.file("../app/src/main/res/drawable-nodpi/gen_icon.png"))
+                menuGroup = "Network"
+                appCategory = "Network"
+                debMaintainer = "kardinal"
+                rpmLicenseType = "MIT"
+            }
+
+            windows {
+                iconFile.set(project.file("src/main/resources/icons/vpn-control.ico"))
+                menu = true
+                menuGroup = "VPN Control"
+                shortcut = true
+                dirChooser = true
+                perUserInstall = true
+                upgradeUuid = "7a5e0a8e-2a7a-4baf-9f2a-5fb2c3529af2"
+            }
+        }
     }
 }

@@ -47,6 +47,7 @@ class DesktopAppService private constructor(
     private val runtimeManager: DesktopProxyRuntimeManager,
     private val validationRuntime: DesktopProxyValidationRuntime,
     private val subscriptionContentFetcher: SubscriptionContentFetcher,
+    private val autostartManager: DesktopAutostartManager,
     private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
     initialWorkspace: DesktopWorkspace,
 ) {
@@ -61,6 +62,7 @@ class DesktopAppService private constructor(
             } else {
                 initialWorkspace.persistedState.statusMessage
             },
+            startOnBootEnabled = autostartManager.isEnabled(),
         ),
     )
         private set
@@ -73,6 +75,7 @@ class DesktopAppService private constructor(
                 runtimeManager = DesktopProxyRuntimeManager(store),
                 validationRuntime = DesktopProxyValidationRuntime(),
                 subscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
+                autostartManager = DesktopAutostartManager.default(),
                 autoRefreshBestSelectionAction = { service ->
                     service.findBestLocation(refreshSubscriptionsFirst = false)
                 },
@@ -86,6 +89,7 @@ class DesktopAppService private constructor(
             runtimeManager: DesktopProxyRuntimeManager = DesktopProxyRuntimeManager(store),
             validationRuntime: DesktopProxyValidationRuntime = DesktopProxyValidationRuntime(),
             subscriptionContentFetcher: SubscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
+            autostartManager: DesktopAutostartManager = DesktopAutostartManager.default(),
             autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit = { service ->
                 service.findBestLocation(refreshSubscriptionsFirst = false)
             },
@@ -96,6 +100,7 @@ class DesktopAppService private constructor(
                 runtimeManager = runtimeManager,
                 validationRuntime = validationRuntime,
                 subscriptionContentFetcher = subscriptionContentFetcher,
+                autostartManager = autostartManager,
                 autoRefreshBestSelectionAction = autoRefreshBestSelectionAction,
                 initialWorkspace = initialWorkspace,
             )
@@ -378,6 +383,21 @@ class DesktopAppService private constructor(
                 showDnsDialog = false,
             ).withStatus(plan.statusMessage),
         )
+    }
+
+    fun setStartOnBootEnabled(enabled: Boolean) {
+        val result = autostartManager.setEnabled(enabled)
+        val actual = autostartManager.isEnabled()
+        val status = if (result.isSuccess) {
+            if (actual) {
+                "App will start automatically after login"
+            } else {
+                "App startup on login disabled"
+            }
+        } else {
+            result.exceptionOrNull()?.message ?: "Failed to update startup setting"
+        }
+        updateState { it.copy(startOnBootEnabled = actual).withStatus(status) }
     }
 
     fun toggleAppModeDialog() {
