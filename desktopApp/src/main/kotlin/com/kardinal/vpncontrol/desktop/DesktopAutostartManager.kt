@@ -15,10 +15,17 @@ internal class DesktopAutostartManager(
     private val autostartFile = configHome
         .resolve("autostart")
         .resolve("vpn-control.desktop")
+    private val systemdServiceFile = configHome
+        .resolve("systemd")
+        .resolve("user")
+        .resolve("vpn-control.service")
+    private val systemdWantsFile = systemdServiceFile.parent
+        .resolve("default.target.wants")
+        .resolve("vpn-control.service")
 
     fun isEnabled(): Boolean {
         return when (platform) {
-            DesktopAutostartPlatform.LINUX -> isXdgAutostartEnabled()
+            DesktopAutostartPlatform.LINUX -> isLinuxAutostartEnabled()
             DesktopAutostartPlatform.WINDOWS -> isWindowsRunEnabled()
             DesktopAutostartPlatform.UNSUPPORTED -> false
         }
@@ -27,10 +34,40 @@ internal class DesktopAutostartManager(
     fun setEnabled(enabled: Boolean): Result<Boolean> {
         return runCatching {
             when (platform) {
-                DesktopAutostartPlatform.LINUX -> setXdgAutostartEnabled(enabled)
+                DesktopAutostartPlatform.LINUX -> setLinuxAutostartEnabled(enabled)
                 DesktopAutostartPlatform.WINDOWS -> setWindowsRunEnabled(enabled)
                 DesktopAutostartPlatform.UNSUPPORTED -> error("Start on login is not supported on this desktop platform.")
             }
+        }
+    }
+
+    private fun isLinuxAutostartEnabled(): Boolean {
+        return isXdgAutostartEnabled() || Files.exists(systemdServiceFile) || Files.exists(systemdWantsFile)
+    }
+
+    private fun setLinuxAutostartEnabled(enabled: Boolean): Boolean {
+        return if (enabled) {
+            val command = commandResolver()?.takeIf(String::isNotBlank)
+                ?: error("Could not resolve the desktop app launcher path.")
+            Files.createDirectories(autostartFile.parent)
+            Files.writeString(autostartFile, desktopEntry(command))
+            Files.createDirectories(systemdServiceFile.parent)
+            Files.writeString(systemdServiceFile, systemdUserService(command))
+            Files.createDirectories(systemdWantsFile.parent)
+            Files.deleteIfExists(systemdWantsFile)
+            runCatching {
+                Files.createSymbolicLink(systemdWantsFile, Paths.get("..", "vpn-control.service"))
+            }.getOrElse {
+                Files.copy(systemdServiceFile, systemdWantsFile)
+            }
+            reloadSystemdUser()
+            true
+        } else {
+            Files.deleteIfExists(autostartFile)
+            Files.deleteIfExists(systemdWantsFile)
+            Files.deleteIfExists(systemdServiceFile)
+            reloadSystemdUser()
+            false
         }
     }
 
@@ -55,6 +92,28 @@ internal class DesktopAutostartManager(
         }
     }
 
+    private fun systemdUserService(command: String): String {
+        return """
+            |[Unit]
+            |Description=VPN Control Desktop
+            |
+            |[Service]
+            |Type=simple
+            |ExecStart=${quoteSystemdExec(command)} --autostart
+            |Restart=on-failure
+            |RestartSec=5
+            |
+            |[Install]
+            |WantedBy=default.target
+            |
+        """.trimMargin()
+    }
+
+    private fun reloadSystemdUser() {
+        val systemctl = platformSystemctl() ?: return
+        commandRunner(listOf(systemctl.toString(), "--user", "daemon-reload"))
+    }
+
     private fun desktopEntry(command: String): String {
         return """
             |[Desktop Entry]
@@ -62,7 +121,7 @@ internal class DesktopAutostartManager(
             |Version=1.0
             |Name=VPN Control
             |Comment=Start VPN Control at login
-            |Exec=${quoteDesktopExec(command)}
+            |Exec=${quoteDesktopExec(command)} --autostart
             |Terminal=false
             |Categories=Network;
             |X-GNOME-Autostart-enabled=true
@@ -141,6 +200,7 @@ internal class DesktopAutostartManager(
         private fun platformLaunchCandidates(): List<Path> {
             return when (currentAutostartPlatform()) {
                 DesktopAutostartPlatform.LINUX -> listOf(
+                    Paths.get("/usr/local/bin/vpn-control"),
                     Paths.get("/opt/vpn-control/bin/vpn-control"),
                 )
                 DesktopAutostartPlatform.WINDOWS -> listOfNotNull(
@@ -170,6 +230,21 @@ internal class DesktopAutostartManager(
                 }
             }
             return "\"$escaped\""
+        }
+
+        private fun quoteSystemdExec(value: String): String {
+            if (!value.any(Char::isWhitespace)) return value
+            val escaped = value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+            return "\"$escaped\""
+        }
+
+        private fun platformSystemctl(): Path? {
+            return listOf(
+                Paths.get("/usr/bin/systemctl"),
+                Paths.get("/bin/systemctl"),
+            ).firstOrNull(Files::isExecutable)
         }
 
         private fun runCommand(command: List<String>): DesktopAutostartCommandResult {

@@ -51,6 +51,7 @@ data class DesktopLocationRecord(
 data class DesktopWorkspace(
     val persistedState: PersistedState,
     val locations: List<DesktopLocationRecord>,
+    val resumeConnectionOnLaunch: Boolean = persistedState.isVpnRunning,
 )
 
 class DesktopStateStore(
@@ -63,6 +64,10 @@ class DesktopStateStore(
     override val state: Flow<PersistedState> = stateFlow.asStateFlow()
 
     override suspend fun snapshot(): PersistedState = stateFlow.value
+
+    fun runtimeDirectory(): Path = baseDir.resolve("runtime")
+
+    fun validationDirectory(): Path = baseDir.resolve("validation")
 
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
         val loadedWorkspace = runCatching {
@@ -134,6 +139,7 @@ class DesktopStateStore(
     private fun encodeWorkspace(workspace: DesktopWorkspace): JsonObject {
         return buildJsonObject {
             put("persisted_state", encodePersistedState(workspace.persistedState))
+            put("resume_connection_on_launch", JsonPrimitive(workspace.resumeConnectionOnLaunch))
             put("locations", buildJsonArray {
                 workspace.locations.forEach { location ->
                     add(
@@ -174,6 +180,10 @@ class DesktopStateStore(
         return DesktopWorkspace(
             persistedState = persisted,
             locations = locations,
+            resumeConnectionOnLaunch = root.boolean(
+                key = "resume_connection_on_launch",
+                default = persisted.isVpnRunning,
+            ),
         )
     }
 

@@ -14,6 +14,7 @@ import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 data class DesktopRuntimeSession(
@@ -149,6 +150,13 @@ class DesktopProxyRuntimeManager(
     suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             stopActiveProcess()
+            runtimeConfigStore.clearRuntimeConfig()
+        }
+    }
+
+    fun stopBlocking(): Result<Unit> = runCatching {
+        stopActiveProcess()
+        runBlocking {
             runtimeConfigStore.clearRuntimeConfig()
         }
     }
@@ -507,22 +515,54 @@ class DesktopProxyRuntimeManager(
 
     private fun stopActiveProcess() {
         val active = process
-        if (active == null) {
-            listenPort = null
-            logFile = null
-            return
-        }
-        if (active.isAlive) {
+        if (active?.isAlive == true) {
             active.destroy()
             if (!active.waitFor(2, TimeUnit.SECONDS)) {
                 active.destroyForcibly()
                 active.waitFor(2, TimeUnit.SECONDS)
             }
         }
+        stopOrphanRuntimeProcesses(excludedPid = active?.pid())
         process = null
         listenPort = null
         logFile = null
         activeMode = null
+    }
+
+    private fun stopOrphanRuntimeProcesses(excludedPid: Long?) {
+        val runtimeConfigPaths = listOf(
+            baseDir.resolve("runtime-sing-box-vpn.json"),
+            baseDir.resolve("runtime-sing-box-proxy_only.json"),
+        ).map { it.toAbsolutePath().normalize().toString() }
+        val currentPid = ProcessHandle.current().pid()
+        ProcessHandle.allProcesses().forEach { handle ->
+            if (handle.pid() == currentPid || handle.pid() == excludedPid) return@forEach
+            val info = handle.info()
+            val command = info.command().orElse("")
+            val commandLine = info.commandLine().orElse("")
+            val arguments = info.arguments().orElse(emptyArray()).toList()
+            val commandName = command.substringAfterLast('/').substringAfterLast('\\')
+            val isSingBox = commandName.contains("sing-box", ignoreCase = true) ||
+                commandLine.contains("sing-box", ignoreCase = true)
+            val usesRuntimeConfig = runtimeConfigPaths.any { path ->
+                path in arguments || commandLine.contains(path)
+            }
+            if (isSingBox && usesRuntimeConfig) {
+                stopProcessHandle(handle)
+            }
+        }
+    }
+
+    private fun stopProcessHandle(handle: ProcessHandle) {
+        if (!handle.isAlive) return
+        handle.destroy()
+        val stopped = runCatching {
+            handle.onExit().get(2, TimeUnit.SECONDS)
+        }.isSuccess
+        if (!stopped && handle.isAlive) {
+            handle.destroyForcibly()
+            runCatching { handle.onExit().get(2, TimeUnit.SECONDS) }
+        }
     }
 }
 

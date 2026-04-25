@@ -22,6 +22,7 @@ import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.PersistedState
@@ -41,6 +42,7 @@ import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DesktopAppService private constructor(
     private val desktopStore: DesktopStateStore,
@@ -51,14 +53,18 @@ class DesktopAppService private constructor(
     private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
     initialWorkspace: DesktopWorkspace,
 ) {
+    private var resumeConnectionOnLaunch = initialWorkspace.resumeConnectionOnLaunch ||
+        initialWorkspace.persistedState.isVpnRunning
+    private var launchResumeAttempted = false
+
     var desktopLocations by mutableStateOf(initialWorkspace.locations)
         private set
 
     var state by mutableStateOf(
         restoreDesktopUiState(initialWorkspace.persistedState, initialWorkspace.locations).copy(
             isVpnRunning = false,
-            statusMessage = if (initialWorkspace.persistedState.isVpnRunning) {
-                "Desktop runtime is not running. Start it again."
+            statusMessage = if (resumeConnectionOnLaunch) {
+                "Previous VPN session will be restored"
             } else {
                 initialWorkspace.persistedState.statusMessage
             },
@@ -67,27 +73,40 @@ class DesktopAppService private constructor(
     )
         private set
 
+    private val shutdownHookInstalled = AtomicBoolean(false)
+    private val shutdownHook = Thread(
+        {
+            runtimeManager.stopBlocking()
+        },
+        "vpn-control-runtime-shutdown",
+    )
+
     companion object {
         fun default(): DesktopAppService {
             val store = DesktopStateStore.default()
             return DesktopAppService(
                 desktopStore = store,
-                runtimeManager = DesktopProxyRuntimeManager(store),
-                validationRuntime = DesktopProxyValidationRuntime(),
+                runtimeManager = DesktopProxyRuntimeManager(store, baseDir = store.runtimeDirectory()),
+                validationRuntime = DesktopProxyValidationRuntime(baseDir = store.validationDirectory()),
                 subscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
                 autostartManager = DesktopAutostartManager.default(),
                 autoRefreshBestSelectionAction = { service ->
                     service.findBestLocation(refreshSubscriptionsFirst = false)
                 },
                 initialWorkspace = store.loadWorkspace(defaultDesktopWorkspace()),
-            )
+            ).installShutdownHook()
         }
 
         internal fun createForTesting(
             store: DesktopStateStore,
             initialWorkspace: DesktopWorkspace = store.loadWorkspace(defaultDesktopWorkspace()),
-            runtimeManager: DesktopProxyRuntimeManager = DesktopProxyRuntimeManager(store),
-            validationRuntime: DesktopProxyValidationRuntime = DesktopProxyValidationRuntime(),
+            runtimeManager: DesktopProxyRuntimeManager = DesktopProxyRuntimeManager(
+                runtimeConfigStore = store,
+                baseDir = store.runtimeDirectory(),
+            ),
+            validationRuntime: DesktopProxyValidationRuntime = DesktopProxyValidationRuntime(
+                baseDir = store.validationDirectory(),
+            ),
             subscriptionContentFetcher: SubscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
             autostartManager: DesktopAutostartManager = DesktopAutostartManager.default(),
             autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit = { service ->
@@ -105,6 +124,7 @@ class DesktopAppService private constructor(
                 initialWorkspace = initialWorkspace,
             )
             if (forceRunningState != null) {
+                service.resumeConnectionOnLaunch = forceRunningState
                 service.commitState(
                     nextState = service.state.copy(
                         isVpnRunning = forceRunningState,
@@ -114,6 +134,41 @@ class DesktopAppService private constructor(
             }
             return service
         }
+    }
+
+    private fun installShutdownHook(): DesktopAppService {
+        if (shutdownHookInstalled.compareAndSet(false, true)) {
+            runCatching { Runtime.getRuntime().addShutdownHook(shutdownHook) }
+        }
+        return this
+    }
+
+    fun shouldResumeConnectionOnLaunch(): Boolean = resumeConnectionOnLaunch
+
+    suspend fun resumePreviousConnectionIfNeeded() {
+        if (launchResumeAttempted || !resumeConnectionOnLaunch || state.isVpnRunning || state.isBusy) {
+            return
+        }
+        launchResumeAttempted = true
+        val location = selectedDesktopLocation()
+        if (location == null) {
+            updateState {
+                it.copy(isBusy = false, isVpnRunning = false)
+                    .withStatus("Previous VPN location is no longer available")
+            }
+            return
+        }
+        updateState {
+            it.withStatus("Restoring VPN: ${location.name}...")
+        }
+        startDesktopProxy(
+            location = location,
+            benchmarkSummary = state.lastBenchmarkSummary,
+        )
+    }
+
+    suspend fun shutdownForExit() {
+        stopRuntimeForAppExit()
     }
 
     fun openScreen(screen: AppScreen) {
@@ -689,6 +744,7 @@ class DesktopAppService private constructor(
     suspend fun stopDesktopProxy(message: String? = null): Result<Unit> {
         val wasRunning = state.isVpnRunning || runtimeManager.isRunning()
         val stoppedMode = runtimeManager.currentMode() ?: state.appMode
+        resumeConnectionOnLaunch = false
         if (!wasRunning) {
             commitState(
                 nextState = state.copy(
@@ -714,6 +770,41 @@ class DesktopAppService private constructor(
             updateState {
                 it.copy(isBusy = false).withStatus(
                     result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)}",
+                )
+            }
+        }
+        return result.map { Unit }
+    }
+
+    private suspend fun stopRuntimeForAppExit(): Result<Unit> {
+        val wasRunning = state.isVpnRunning || runtimeManager.isRunning()
+        val stoppedMode = runtimeManager.currentMode() ?: state.appMode
+        resumeConnectionOnLaunch = wasRunning
+        if (!wasRunning) {
+            commitState(
+                nextState = state.copy(
+                    isBusy = false,
+                    isVpnRunning = false,
+                ).withStatus("App closed. VPN was off."),
+            )
+            return Result.success(Unit)
+        }
+
+        updateState { it.copy(isBusy = true) }
+        val result = runtimeManager.stop()
+        val stoppedAt = System.currentTimeMillis()
+        if (result.isSuccess) {
+            commitState(
+                nextState = state.copy(
+                    isBusy = false,
+                    isVpnRunning = false,
+                    sessionStoppedAtEpochMillis = stoppedAt,
+                ).withStatus("${MainCommandLogic.connectionDisplayName(stoppedMode)} stopped. Will reconnect on next launch."),
+            )
+        } else {
+            updateState {
+                it.copy(isBusy = false).withStatus(
+                    result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)} before exit",
                 )
             }
         }
@@ -756,6 +847,7 @@ class DesktopAppService private constructor(
         if (result.isSuccess) {
             val session = result.getOrThrow()
             val startedAt = System.currentTimeMillis()
+            resumeConnectionOnLaunch = true
             val startedMessage = when (targetMode) {
                 AppMode.PROXY_ONLY -> "Proxy started on 127.0.0.1:${session.listenPort}"
                 AppMode.VPN -> "VPN started on ${session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME}"
@@ -1096,6 +1188,7 @@ class DesktopAppService private constructor(
             return
         }
         updateState { it.copy(isBusy = true).withStatus("Testing ${location.name}...") }
+        val validationSettings = state.validationSettings.normalized()
         val benchmark = validationRuntime.benchmarkLocation(
             profile = profile.getOrThrow(),
             dnsSettings = DesktopDnsSettings(
@@ -1103,9 +1196,10 @@ class DesktopAppService private constructor(
                 value = state.customDns,
             ),
             benchmarkUrls = BenchmarkUrls(
-                primary = state.validationSettings.primaryUrl,
-                secondary = state.validationSettings.secondaryUrl,
+                primary = validationSettings.primaryUrl,
+                secondary = validationSettings.secondaryUrl,
             ),
+            settings = validationSettings.toDesktopValidationSettings(),
         )
         if (benchmark.isSuccess) {
             val result = benchmark.getOrThrow()
@@ -1164,8 +1258,11 @@ class DesktopAppService private constructor(
             return
         }
         updateState {
-            it.copy(isBusy = true, isRefreshing = true).withStatus(MainCommandLogic.refreshStartMessage(it))
+            it.copy(isBusy = true, isRefreshing = true).withStatus(
+                "${MainCommandLogic.refreshStartMessage(it)} Testing fastest candidates in batches...",
+            )
         }
+        val validationSettings = state.validationSettings.normalized()
         val evaluation = validationRuntime.evaluateProfiles(
             profiles = profiles,
             dnsSettings = DesktopDnsSettings(
@@ -1173,9 +1270,10 @@ class DesktopAppService private constructor(
                 value = state.customDns,
             ),
             benchmarkUrls = BenchmarkUrls(
-                primary = state.validationSettings.primaryUrl,
-                secondary = state.validationSettings.secondaryUrl,
+                primary = validationSettings.primaryUrl,
+                secondary = validationSettings.secondaryUrl,
             ),
+            settings = validationSettings.toDesktopValidationSettings(),
         )
         val winning = evaluation.winner ?: evaluation.fallback
         val winningRawKey = winning?.let { LocationConfigs.encodeStoredLocation(it.profile) }
@@ -1303,6 +1401,7 @@ class DesktopAppService private constructor(
             DesktopWorkspace(
                 persistedState = syncedState.toPersistedState(nextLocations),
                 locations = nextLocations,
+                resumeConnectionOnLaunch = resumeConnectionOnLaunch,
             ),
         )
     }
@@ -1395,6 +1494,15 @@ private fun restoreDesktopUiState(
             routingRuleSetsDraft = emptyList(),
         ),
         locations = locations,
+    )
+}
+
+private fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopValidationSettings {
+    val normalized = normalized()
+    val concurrency = minOf(normalized.batchSize.coerceAtLeast(1), 5)
+    return DesktopValidationSettings(
+        preflightConcurrency = concurrency,
+        batchSize = normalized.batchSize,
     )
 }
 

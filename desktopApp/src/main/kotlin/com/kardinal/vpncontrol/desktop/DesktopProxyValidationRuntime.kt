@@ -6,7 +6,9 @@ import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.PreflightResult
 import com.kardinal.vpncontrol.data.ProxyRunResult
 import com.kardinal.vpncontrol.data.SearchEvaluation
+import com.kardinal.vpncontrol.data.ValidationWalkResult
 import com.kardinal.vpncontrol.model.ProfileBenchmark
+import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.VlessProfile
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -26,9 +28,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class DesktopValidationSettings(
     val preflightConcurrency: Int = 4,
+    val batchSize: Int = 3,
     val preflightConnectTimeoutMillis: Int = 1_500,
     val proxyConnectTimeoutMillis: Int = 4_000,
     val proxyReadTimeoutMillis: Int = 5_000,
@@ -64,33 +69,88 @@ class DesktopProxyValidationRuntime(
         dnsSettings: DesktopDnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
+        onProgress: suspend (String) -> Unit = {},
     ): SearchEvaluation = withContext(Dispatchers.IO) {
-        val preflightResults = preflightProfiles(profiles, settings)
-        val benchmarks = mutableListOf<ProfileBenchmark>()
-        preflightResults
+        val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+        onProgress("Checking ${profiles.size} locations...")
+        val preflightResults = preflightProfiles(benchmarkableProfiles, settings)
+        val reachableProfiles = preflightResults
             .filter { it.connectMillis != null }
             .sortedBy { it.connectMillis }
-            .forEach { candidate ->
-                benchmarks += benchmarkCandidate(candidate, dnsSettings, benchmarkUrls, settings)
+        val walk = if (benchmarkableProfiles.isNotEmpty() && reachableProfiles.isNotEmpty()) {
+            validateInBatchesUntilSuccess(
+                candidates = reachableProfiles,
+                dnsSettings = dnsSettings,
+                benchmarkUrls = benchmarkUrls,
+                settings = settings,
+                onProgress = onProgress,
+            ) { benchmark ->
+                benchmark.primaryStatus == "ok" && benchmark.secondaryStatus == "ok"
             }
-        val winner = benchmarks
-            .filter { it.primaryStatus == "ok" && it.secondaryStatus == "ok" }
-            .minByOrNull(ProfileBenchmark::score)
+        } else {
+            ValidationWalkResult(
+                benchmarks = emptyList(),
+                winner = null,
+            )
+        }
         BenchmarkSearchLogic.evaluateProfilesForSelection(
             profiles = profiles,
             preflightResults = preflightResults,
-            candidateBenchmarks = benchmarks,
-            winner = winner,
+            candidateBenchmarks = walk.benchmarks,
+            winner = walk.winner,
         )
     }
 
     private suspend fun preflightProfiles(
         profiles: List<VlessProfile>,
         settings: DesktopValidationSettings,
-    ): List<PreflightResult> = coroutineScope {
-        profiles.map { profile ->
-            async { preflightProfile(profile, settings) }
-        }.awaitAll()
+    ): List<PreflightResult> {
+        val concurrency = settings.preflightConcurrency.coerceAtLeast(1)
+        return profiles.chunked(concurrency).flatMap { batch ->
+            coroutineScope {
+                batch.map { profile ->
+                    async { preflightProfile(profile, settings) }
+                }.awaitAll()
+            }
+        }
+    }
+
+    private suspend fun validateInBatchesUntilSuccess(
+        candidates: List<PreflightResult>,
+        dnsSettings: DesktopDnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        settings: DesktopValidationSettings,
+        onProgress: suspend (String) -> Unit,
+        isWinner: (ProfileBenchmark) -> Boolean,
+    ): ValidationWalkResult = coroutineScope {
+        val benchmarks = mutableListOf<ProfileBenchmark>()
+        val normalizedBatchSize = settings.batchSize.coerceAtLeast(1)
+        val validationConcurrency = minOf(normalizedBatchSize, 5)
+        val semaphore = Semaphore(validationConcurrency)
+        for ((batchIndex, batch) in candidates.chunked(normalizedBatchSize).withIndex()) {
+            val start = batchIndex * normalizedBatchSize + 1
+            val end = start + batch.size - 1
+            onProgress("Testing locations $start-$end of ${candidates.size}...")
+            val batchBenchmarks = batch.map { candidate ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        benchmarkCandidate(candidate, dnsSettings, benchmarkUrls, settings)
+                    }
+                }
+            }.awaitAll()
+            benchmarks += batchBenchmarks
+            val winner = batchBenchmarks.firstOrNull(isWinner)
+            if (winner != null) {
+                return@coroutineScope ValidationWalkResult(
+                    benchmarks = benchmarks,
+                    winner = winner,
+                )
+            }
+        }
+        ValidationWalkResult(
+            benchmarks = benchmarks,
+            winner = null,
+        )
     }
 
     private fun preflightProfile(

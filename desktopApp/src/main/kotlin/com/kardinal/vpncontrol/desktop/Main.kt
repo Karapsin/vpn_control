@@ -87,12 +87,60 @@ import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
 import kotlinx.coroutines.launch
 
-fun main() = application {
+fun main(args: Array<String>) {
+    val instanceLock = DesktopSingleInstanceLock.acquire()
+    if (instanceLock == null) {
+        if (!DesktopActivationServer.requestShow()) {
+            println("VPN Control is already running.")
+        }
+        return
+    }
+    val activationEvents = DesktopActivationEvents()
+    val activationServer = DesktopActivationServer.start(activationEvents::requestShowWindow)
+    val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
+    try {
+        application {
+            DesktopApplication(
+                startInTray = startInTray,
+                activationEvents = activationEvents,
+                onExitApplication = ::exitApplication,
+            )
+        }
+    } finally {
+        activationServer?.close()
+        instanceLock.close()
+    }
+}
+
+@Composable
+private fun DesktopApplication(
+    startInTray: Boolean,
+    activationEvents: DesktopActivationEvents,
+    onExitApplication: () -> Unit,
+) {
     val service = remember { DesktopAppService.default() }
     val coroutineScope = rememberCoroutineScope()
     val traySupported = remember { isDesktopTraySupported() }
-    var windowVisible by remember { mutableStateOf(true) }
+    var windowVisible by remember { mutableStateOf(!startInTray || !traySupported) }
+    var exitRequested by remember { mutableStateOf(false) }
     val state = service.state
+    DisposableEffect(activationEvents) {
+        activationEvents.setShowWindowHandler { windowVisible = true }
+        onDispose { activationEvents.setShowWindowHandler(null) }
+    }
+
+    fun exitAfterStoppingRuntime() {
+        if (exitRequested) return
+        exitRequested = true
+        coroutineScope.launch {
+            service.shutdownForExit()
+            onExitApplication()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        service.resumePreviousConnectionIfNeeded()
+    }
 
     if (traySupported) {
         DesktopTrayIcon(
@@ -111,7 +159,7 @@ fun main() = application {
             },
             onShowWindow = { windowVisible = true },
             onHideWindow = { windowVisible = false },
-            onExit = ::exitApplication,
+            onExit = ::exitAfterStoppingRuntime,
         )
     }
 
@@ -121,7 +169,7 @@ fun main() = application {
             if (traySupported) {
                 windowVisible = false
             } else {
-                exitApplication()
+                exitAfterStoppingRuntime()
             }
         },
         title = "VPN Control Desktop",

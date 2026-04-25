@@ -10,10 +10,15 @@ class DesktopAutostartManagerTest {
     fun setEnabledCreatesAndRemovesXdgAutostartEntry() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart")
         try {
+            val commands = mutableListOf<List<String>>()
             val manager = DesktopAutostartManager(
                 configHome = tempDir,
                 commandResolver = { "/opt/vpn-control/bin/vpn-control" },
                 platform = DesktopAutostartPlatform.LINUX,
+                commandRunner = { command ->
+                    commands += command
+                    DesktopAutostartCommandResult(0, "")
+                },
             )
 
             assertFalse(manager.isEnabled())
@@ -26,14 +31,19 @@ class DesktopAutostartManagerTest {
             val content = Files.readString(tempDir.resolve("autostart").resolve("vpn-control.desktop"))
             assertTrue(content.contains("Type=Application"))
             assertTrue(content.contains("Name=VPN Control"))
-            assertTrue(content.contains("Exec=\"/opt/vpn-control/bin/vpn-control\""))
+            assertTrue(content.contains("Exec=\"/opt/vpn-control/bin/vpn-control\" --autostart"))
             assertTrue(content.contains("X-GNOME-Autostart-enabled=true"))
+            val service = Files.readString(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service"))
+            assertTrue(service.contains("ExecStart=/opt/vpn-control/bin/vpn-control --autostart"))
+            assertTrue(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("default.target.wants").resolve("vpn-control.service")))
 
             val disabled = manager.setEnabled(false)
 
             assertTrue(disabled.isSuccess)
             assertFalse(manager.isEnabled())
             assertFalse(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
+            assertFalse(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service")))
+            assertTrue(commands.any { it.takeLast(2) == listOf("--user", "daemon-reload") })
         } finally {
             tempDir.toFile().deleteRecursively()
         }

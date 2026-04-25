@@ -8,6 +8,9 @@ val desktopPackageTargets = when {
     hostOs.isMacOsX -> arrayOf(TargetFormat.Dmg)
     else -> emptyArray()
 }
+val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
+    .orElse(providers.environmentVariable("VPN_CONTROL_DESKTOP_VERSION"))
+    .orElse("0.1.1")
 
 plugins {
     id("org.jetbrains.compose")
@@ -40,7 +43,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*desktopPackageTargets)
             packageName = "vpn-control"
-            packageVersion = "0.1.0"
+            packageVersion = desktopPackageVersion.get()
             vendor = "Kardinal"
             description = "Desktop VPN Control client"
 

@@ -237,6 +237,57 @@ class DesktopAppServiceTest {
     }
 
     @Test
+    fun shutdownRemembersRunningVpnForNextLaunchWithoutPersistingLiveRunningState() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-resume-after-shutdown")
+        try {
+            val store = DesktopStateStore(tempDir)
+            val service = DesktopAppService.createForTesting(
+                store = store,
+                forceRunningState = true,
+            )
+
+            service.shutdownForExit()
+
+            val reloaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(),
+                    locations = emptyList(),
+                ),
+            )
+            assertFalse(reloaded.persistedState.isVpnRunning)
+            assertTrue(reloaded.resumeConnectionOnLaunch)
+            assertTrue(reloaded.persistedState.selectedProfileRawLink.isNotBlank())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun manualStopDisablesResumeOnNextLaunch() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-no-resume-after-stop")
+        try {
+            val store = DesktopStateStore(tempDir)
+            val service = DesktopAppService.createForTesting(
+                store = store,
+                forceRunningState = true,
+            )
+
+            service.stopDesktopProxy()
+
+            val reloaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(),
+                    locations = emptyList(),
+                ),
+            )
+            assertFalse(reloaded.persistedState.isVpnRunning)
+            assertFalse(reloaded.resumeConnectionOnLaunch)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun findBestInVpnModeUsesNormalPreconditionsInsteadOfUnsupportedModeGuard() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-vpn-mode-precondition")
         try {
