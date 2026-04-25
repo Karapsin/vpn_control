@@ -1,0 +1,83 @@
+package com.kardinal.vpncontrol.desktop
+
+import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.VlessProfile
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class DesktopProxyConfigFactoryTest {
+    @Test
+    fun buildProxyOnlyConfigUsesSingBoxThirteenCompatibleSniffRule() {
+        val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
+            profile = testProfile(),
+            dns = DesktopDnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(ignoreRules = true),
+            listenPort = 40999,
+        )
+
+        val root = Json.parseToJsonElement(config).jsonObject
+        val inbound = root.getValue("inbounds").jsonArray.single().jsonObject
+        val routeRules = root.getValue("route").jsonObject.getValue("rules").jsonArray
+        val sniffRule = routeRules.first().jsonObject
+
+        assertEquals("mixed", inbound.getValue("type").jsonPrimitive.content)
+        assertEquals("mixed-in", inbound.getValue("tag").jsonPrimitive.content)
+        assertFalse("sniff" in inbound)
+        assertEquals("mixed-in", sniffRule.getValue("inbound").jsonPrimitive.content)
+        assertEquals("sniff", sniffRule.getValue("action").jsonPrimitive.content)
+        assertEquals("1s", sniffRule.getValue("timeout").jsonPrimitive.content)
+    }
+
+    @Test
+    fun buildVpnConfigUsesTunInboundAndProxyOutbound() {
+        val config = DesktopProxyConfigFactory.buildVpnConfig(
+            profile = testProfile(),
+            dns = DesktopDnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(ignoreRules = true),
+        )
+
+        val root = Json.parseToJsonElement(config).jsonObject
+        val inbound = root.getValue("inbounds").jsonArray.single().jsonObject
+        val outboundTags = root.getValue("outbounds")
+            .jsonArray
+            .map { it.jsonObject.getValue("tag").jsonPrimitive.content }
+
+        assertEquals("tun", inbound.getValue("type").jsonPrimitive.content)
+        assertEquals(
+            DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME,
+            inbound.getValue("interface_name").jsonPrimitive.content,
+        )
+        assertTrue(outboundTags.contains("proxy"))
+        assertEquals("proxy", root.getValue("route").jsonObject.getValue("final").jsonPrimitive.content)
+    }
+
+    private fun testProfile(): VlessProfile {
+        return VlessProfile(
+            protocol = ProxyProtocol.SOCKS,
+            remarks = "Test SOCKS",
+            server = "127.0.0.1",
+            serverPort = 1080,
+            username = "user",
+            password = "pass",
+            network = "tcp",
+            flow = "",
+            security = "",
+            sni = "",
+            fingerprint = "",
+            publicKey = "",
+            shortId = "",
+            path = "",
+            hostHeader = "",
+            serviceName = "",
+            headerType = "",
+            rawLink = "socks://user:pass@127.0.0.1:1080#Test%20SOCKS",
+        )
+    }
+}

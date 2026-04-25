@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-04-25T12:33:45.751Z" hostname="archlinux" time="0.121">
+  <properties/>
+  <testcase name="saveSubscriptionRefreshPolicyRejectsTooSmallIntervalWithoutPersisting" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.091"/>
+  <testcase name="saveAdditionalSettingsPersistsDnsAndValidationSettings" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.012"/>
+  <testcase name="saveSubscriptionRefreshPolicyPersistsValidCustomIntervalAndFindBestFlag" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.003"/>
+  <testcase name="runAutoRefreshCycleRefreshesSupportedSubscriptionsAndTriggersPostRefreshSelection" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.009"/>
+  <testcase name="deleteSubscriptionRemovesItAndFallsBackToRemainingSubscription" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.001"/>
+  <testcase name="saveSubscriptionDraftAddsNewSubscriptionAndActivatesIt" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.003"/>
+  <testcase name="findBestInVpnModeUsesNormalPreconditionsInsteadOfUnsupportedModeGuard" classname="com.kardinal.vpncontrol.desktop.DesktopAppServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,7 @@
+com.kardinal.vpncontrol.shared.core.test.core-androidTest-0 /home/kardinal/projects/vpn_control_android/shared/core/build/generated/res/resValues/androidTest/debug
+com.kardinal.vpncontrol.shared.core.test.core-mergeDebugAndroidTestResources-1 /home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
+com.kardinal.vpncontrol.shared.core.test.core-mergeDebugAndroidTestResources-2 /home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
+com.kardinal.vpncontrol.shared.core.test.core-debugAndroidTest-3 /home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
+com.kardinal.vpncontrol.shared.core.test.core-debug-4 /home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/packaged_res/debug/packageDebugResources
+com.kardinal.vpncontrol.shared.core.test.core-debug-5 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/packaged_res/debug/packageDebugResources
+com.kardinal.vpncontrol.shared.core.test.core-debug-6 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/intermediates/packaged_res/debug/packageDebugResources

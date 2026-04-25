@@ -372,7 +372,7 @@ class SubscriptionRefreshWorker(
     }
 
     private fun backgroundRefreshFailureSummary(
-        failures: List<AppRepository.SubscriptionRefreshFailure>,
+        failures: List<SubscriptionRefreshFailure>,
     ): String? {
         if (failures.isEmpty()) return null
         val labels = failures

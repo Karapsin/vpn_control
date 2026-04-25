@@ -3,23 +3,9 @@ package com.kardinal.vpncontrol.data
 import io.nekohasekai.libbox.Libbox
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
-import java.net.URI
 import java.util.Base64
 import java.util.Locale
 import java.util.zip.InflaterInputStream
-
-data class RemoteSourcePreview(
-    val kindLabel: String,
-    val title: String,
-    val detail: String,
-    val supported: Boolean,
-    val warning: String? = null,
-)
-
-data class ResolvedRemoteSource(
-    val preview: RemoteSourcePreview,
-    val fetchUrl: String? = null,
-)
 
 object RemoteSourceResolver {
     fun preview(raw: String): RemoteSourcePreview? {
@@ -69,9 +55,9 @@ object RemoteSourceResolver {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return "<empty>"
         return when (val source = parse(trimmed)) {
-            is DirectSubscriptionSource -> sanitizeUrl(source.url)
+            is DirectSubscriptionSource -> redactRemoteSourceUrl(source.url)
             is SingBoxRemoteImportSource -> {
-                "sing-box import: name=${source.name} host=${source.host} url=${sanitizeUrl(source.remoteUrl)}"
+                "sing-box import: name=${source.name} host=${source.host} url=${redactRemoteSourceUrl(source.remoteUrl)}"
             }
             is UnsupportedRemoteSource -> {
                 buildString {
@@ -88,50 +74,29 @@ object RemoteSourceResolver {
     private fun parse(raw: String): ParsedRemoteSource? {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return null
-        return when {
-            trimmed.startsWith("http://", ignoreCase = true) -> {
-                UnsupportedRemoteSource(
-                    preview = RemoteSourcePreview(
-                        kindLabel = "Subscription URL",
-                        title = trimmed.displayHost() ?: trimmed,
-                        detail = "Insecure HTTP subscriptions are not supported",
-                        supported = false,
-                        warning = "Use an https:// subscription URL.",
-                    ),
-                    errorMessage = "HTTP subscription URLs are not supported. Use https:// instead.",
-                )
-            }
-            trimmed.startsWith("https://", ignoreCase = true) -> {
-                val host = trimmed.displayHost()
-                if (host.isNullOrBlank()) {
-                    UnsupportedRemoteSource(
-                        preview = RemoteSourcePreview(
-                            kindLabel = "Subscription URL",
-                            title = "Unreadable subscription URL",
-                            detail = "The URL must include a valid HTTPS host",
-                            supported = false,
-                            warning = "Paste a valid https:// subscription URL.",
-                        ),
-                        errorMessage = "Remote source must be a valid https:// URL with a host.",
-                    )
-                } else {
+        parseDirectRemoteSource(trimmed)?.let { source ->
+            return when (source) {
+                is DirectRemoteSourceResolution -> {
                     DirectSubscriptionSource(
-                        url = trimmed,
-                        preview = RemoteSourcePreview(
-                            kindLabel = "Subscription URL",
-                            title = host,
-                            detail = "Direct remote source",
-                            supported = true,
-                        ),
+                        url = source.url,
+                        preview = source.preview,
+                    )
+                }
+                is UnsupportedRemoteSourceResolution -> {
+                    UnsupportedRemoteSource(
+                        preview = source.preview,
+                        errorMessage = source.errorMessage,
                     )
                 }
             }
+        }
+        return when {
             trimmed.startsWith("sing-box://import-remote-profile", ignoreCase = true) -> {
                 runCatching {
                     val parsed = Libbox.parseRemoteProfileImportLink(trimmed)
                     val name = parsed.name.ifBlank { parsed.host.ifBlank { "Remote profile" } }
                     val remoteUrl = parsed.url
-                    val host = parsed.host.ifBlank { remoteUrl.displayHost().orEmpty() }
+                    val host = parsed.host.ifBlank { displayRemoteSourceHost(remoteUrl).orEmpty() }
                     if (!remoteUrl.startsWith("https://", ignoreCase = true) || host.isBlank()) {
                         UnsupportedRemoteSource(
                             preview = RemoteSourcePreview(
@@ -239,36 +204,6 @@ object RemoteSourceResolver {
         }.firstOrNull()
         require(!decodedText.isNullOrBlank()) { "Could not inflate vpn:// payload" }
         return JSONObject(decodedText)
-    }
-
-    private fun sanitizeUrl(raw: String): String {
-        return runCatching {
-            val uri = URI(raw)
-            val host = uri.host ?: return@runCatching raw
-            buildString {
-                append(uri.scheme ?: "https")
-                append("://")
-                append(host)
-                if (uri.port != -1) {
-                    append(':')
-                    append(uri.port)
-                }
-                uri.path?.takeIf { it.isNotBlank() }?.let { append(it) }
-                if (!uri.query.isNullOrBlank()) {
-                    append("?<redacted>")
-                }
-                if (!uri.fragment.isNullOrBlank()) {
-                    append("#<redacted>")
-                }
-            }
-        }.getOrDefault(raw)
-    }
-
-    private fun String.displayHost(): String? {
-        return runCatching { URI(this).host }
-            .getOrNull()
-            ?.removePrefix("www.")
-            ?.takeIf { it.isNotBlank() }
     }
 
     private fun String.padBase64(): String {

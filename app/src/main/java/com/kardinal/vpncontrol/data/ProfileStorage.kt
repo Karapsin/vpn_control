@@ -30,6 +30,11 @@ import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
 import com.kardinal.vpncontrol.model.supportsAllSubscriptionsGroup
+import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
+import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
+import com.kardinal.vpncontrol.shared.storageapi.RepositoryStateStore
+import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
+import com.kardinal.vpncontrol.shared.storageapi.SearchStateStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -45,10 +50,9 @@ import java.util.UUID
 
 private val Context.dataStore by preferencesDataStore(name = "vpn_control")
 
-class ProfileStorage(private val context: Context) {
-    data class CurrentLocationsUpdateResult(
-        val selectedMissing: Boolean,
-    )
+class ProfileStorage(
+    private val context: Context,
+) : RepositoryStateStore, SearchStateStore {
 
     private object Keys {
         val profileUrl = stringPreferencesKey("profile_url")
@@ -105,7 +109,7 @@ class ProfileStorage(private val context: Context) {
         val connectionLog = stringPreferencesKey("connection_log")
     }
 
-    val state: Flow<PersistedState> = context.dataStore.data
+    override val state: Flow<PersistedState> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -115,7 +119,7 @@ class ProfileStorage(private val context: Context) {
         }
         .map(::mapState)
 
-    suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean = false) {
+    override suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean) {
         context.dataStore.edit { prefs ->
             val trimmed = url.trim()
             val subscriptions = decodeSubscriptions(prefs).toMutableList()
@@ -150,7 +154,7 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
-    suspend fun deleteProfileHistoryEntry(url: String) {
+    override suspend fun deleteProfileHistoryEntry(url: String) {
         context.dataStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
                 .filterNot { it.url == url }
@@ -179,7 +183,7 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Profile history entry deleted")
     }
 
-    suspend fun updateProfileHistoryName(url: String, name: String) {
+    override suspend fun updateProfileHistoryName(url: String, name: String) {
         val normalizedName = name.trim()
         context.dataStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs).map { subscription ->
@@ -206,14 +210,14 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
-    suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
+    override suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.profileSourceMode] = mode.name
         }
         DiagnosticsLogger.append(context, "Profile source mode updated: $mode")
     }
 
-    suspend fun selectActiveSubscription(subscriptionId: String) {
+    override suspend fun selectActiveSubscription(subscriptionId: String) {
         context.dataStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             when {
@@ -240,14 +244,14 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Active subscription selected: $subscriptionId")
     }
 
-    suspend fun updateAppMode(mode: AppMode) {
+    override suspend fun updateAppMode(mode: AppMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.appMode] = mode.name
         }
         DiagnosticsLogger.append(context, "App mode updated: $mode")
     }
 
-    suspend fun updateSubscriptionRefreshPolicy(
+    override suspend fun updateSubscriptionRefreshPolicy(
         policy: SubscriptionRefreshPolicy,
         customHours: Double,
         findBestAfterRefresh: Boolean,
@@ -265,7 +269,7 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
-    suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
+    override suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
         val normalized = settings.normalized()
         context.dataStore.edit { prefs ->
             prefs[Keys.validationPrimaryUrl] = normalized.primaryUrl
@@ -281,9 +285,9 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
-    suspend fun updateCurrentLocations(rawLinks: List<String>): CurrentLocationsUpdateResult {
+    override suspend fun updateCurrentLocations(rawLinks: List<String>): LocationUpdateResult {
         val normalized = normalizeStoredLocations(rawLinks)
-        var result = CurrentLocationsUpdateResult(
+        var result = LocationUpdateResult(
             selectedMissing = false,
         )
         context.dataStore.edit { prefs ->
@@ -352,7 +356,7 @@ class ProfileStorage(private val context: Context) {
             if (shouldClearSelection) {
                 clearStoredSelection(prefs)
             }
-            result = CurrentLocationsUpdateResult(
+            result = LocationUpdateResult(
                 selectedMissing = selectedMissing,
             )
         }
@@ -360,13 +364,13 @@ class ProfileStorage(private val context: Context) {
         return result
     }
 
-    suspend fun updateSubscriptionCache(
+    override suspend fun updateSubscriptionCache(
         subscriptionId: String,
         rawLinks: List<String>,
-        refreshStatus: String = "",
-    ): CurrentLocationsUpdateResult {
+        refreshStatus: String,
+    ): LocationUpdateResult {
         val normalized = normalizeStoredLocations(rawLinks)
-        var result = CurrentLocationsUpdateResult(selectedMissing = false)
+        var result = LocationUpdateResult(selectedMissing = false)
         context.dataStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             if (subscriptions.none { it.id == subscriptionId }) {
@@ -432,7 +436,7 @@ class ProfileStorage(private val context: Context) {
                 if (selectedMissing) {
                     clearStoredSelection(prefs)
                 }
-                result = CurrentLocationsUpdateResult(selectedMissing = selectedMissing)
+                result = LocationUpdateResult(selectedMissing = selectedMissing)
             }
         }
         DiagnosticsLogger.append(
@@ -442,7 +446,7 @@ class ProfileStorage(private val context: Context) {
         return result
     }
 
-    suspend fun updateSubscriptionRefreshStatus(
+    override suspend fun updateSubscriptionRefreshStatus(
         subscriptionId: String,
         status: String,
     ) {
@@ -469,14 +473,14 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Subscription refresh status updated: subscriptionId=$subscriptionId")
     }
 
-    suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
+    override suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
         context.dataStore.edit { prefs ->
             prefs[Keys.locationBenchmarkDetails] = encodeStringMap(details)
         }
         DiagnosticsLogger.append(context, "Location benchmark details updated: count=${details.size}")
     }
 
-    suspend fun updateDns(dns: String, enabled: Boolean) {
+    override suspend fun updateDns(dns: String, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.customDns] = dns
             prefs[Keys.useCustomDns] = enabled
@@ -484,27 +488,27 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Custom DNS updated: enabled=$enabled value=$dns")
     }
 
-    suspend fun updateRoutingRules(rules: RoutingRules) {
+    override suspend fun updateRoutingRules(rules: RoutingRules) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
             prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
             prefs[Keys.bypassPackages] = encodeList(emptyList())
             prefs[Keys.nationalDomainSuffixes] = encodeList(rules.nationalDomainSuffixes)
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
-            prefs[Keys.ruleSets] = RoutingRuleSetCodec.encode(rules.ruleSets)
+            prefs[Keys.ruleSets] = ""
         }
         DiagnosticsLogger.append(
             context,
             "Routing rules updated: ignore=${rules.ignoreRules} vpn_apps=${rules.proxyPackages.size} direct=0 " +
-                "national=${rules.nationalDomainSuffixes.size} domains=${rules.directDomainSuffixes.size} rulesets=${rules.ruleSets.size}",
+                "national=${rules.nationalDomainSuffixes.size} domains=${rules.directDomainSuffixes.size}",
         )
     }
 
-    suspend fun updateSelection(
+    override suspend fun updateSelection(
         profile: VlessProfile,
         summary: String,
         runtimeConfigJson: String,
-        sourceUrl: String = "",
+        sourceUrl: String,
     ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.selectedProfileName] = profile.remarks
@@ -521,7 +525,7 @@ class ProfileStorage(private val context: Context) {
         )
     }
 
-    suspend fun updateStatus(message: String) {
+    override suspend fun updateStatus(message: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.statusMessage] = message
             val updated = (
@@ -537,49 +541,49 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "Status: $message")
     }
 
-    suspend fun updateSessionStatsEnabled(enabled: Boolean) {
+    override suspend fun updateSessionStatsEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.sessionStatsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Session stats UI enabled: $enabled")
     }
 
-    suspend fun updateLiveTrafficStatsEnabled(enabled: Boolean) {
+    override suspend fun updateLiveTrafficStatsEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.liveTrafficStatsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Live traffic stats UI enabled: $enabled")
     }
 
-    suspend fun updateProfileTotalsEnabled(enabled: Boolean) {
+    override suspend fun updateProfileTotalsEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.profileTotalsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Profile totals UI enabled: $enabled")
     }
 
-    suspend fun updateLatencyHistoryEnabled(enabled: Boolean) {
+    override suspend fun updateLatencyHistoryEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.latencyHistoryEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Latency history UI enabled: $enabled")
     }
 
-    suspend fun updateConnectionLogEnabled(enabled: Boolean) {
+    override suspend fun updateConnectionLogEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.connectionLogEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Connection log UI enabled: $enabled")
     }
 
-    suspend fun updateConnectionTestToolsEnabled(enabled: Boolean) {
+    override suspend fun updateConnectionTestToolsEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.connectionTestToolsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Connection test tools UI enabled: $enabled")
     }
 
-    suspend fun appendLatencyHistory(entry: LatencyHistoryEntry) {
+    override suspend fun appendLatencyHistory(entry: LatencyHistoryEntry) {
         context.dataStore.edit { prefs ->
             if (!(prefs[Keys.latencyHistoryEnabled] ?: false)) return@edit
             val updated = (StatsCodec.decodeLatencyHistory(prefs[Keys.latencyHistory]) + entry)
@@ -588,7 +592,7 @@ class ProfileStorage(private val context: Context) {
         }
     }
 
-    suspend fun clearSelection() {
+    override suspend fun clearSelection() {
         context.dataStore.edit { prefs ->
             clearStoredSelection(prefs)
         }
@@ -598,7 +602,14 @@ class ProfileStorage(private val context: Context) {
     suspend fun restoreSelection(
         state: PersistedState,
         restoreRuntimeArtifacts: Boolean = true,
-        sourceUrlOverride: String? = null,
+    ) {
+        restoreSelection(state, restoreRuntimeArtifacts, null)
+    }
+
+    override suspend fun restoreSelection(
+        state: PersistedState,
+        restoreRuntimeArtifacts: Boolean,
+        sourceUrlOverride: String?,
     ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.selectedProfileName] = state.selectedProfileName
@@ -691,7 +702,46 @@ class ProfileStorage(private val context: Context) {
         DiagnosticsLogger.append(context, "VPN running flag: $running")
     }
 
-    suspend fun snapshot(): PersistedState = state.first()
+    override suspend fun snapshot(): PersistedState = state.first()
+
+    override suspend fun readLastSelectedProfile(): String? {
+        return lastProfileFile()
+            .takeIf(File::exists)
+            ?.runCatching { readText() }
+            ?.getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    override suspend fun readRuntimeConfig(): String? {
+        val fromState = snapshot().runtimeConfigJson.takeIf { it.isNotBlank() }
+        if (fromState != null) return fromState
+        return runtimeConfigFile()
+            .takeIf(File::exists)
+            ?.runCatching { readText() }
+            ?.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    override suspend fun writeRuntimeConfig(configJson: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.runtimeConfigJson] = configJson
+        }
+        runCatching {
+            if (configJson.isBlank()) {
+                runtimeConfigFile().delete()
+            } else {
+                runtimeConfigFile().writeText(configJson)
+            }
+        }
+    }
+
+    override suspend fun clearRuntimeConfig() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.runtimeConfigJson)
+        }
+        runCatching { runtimeConfigFile().delete() }
+    }
 
     fun runtimeConfigFile(): File = RuntimeFiles.runtimeConfigFile(context)
 
@@ -786,7 +836,7 @@ class ProfileStorage(private val context: Context) {
                 } else {
                     RoutingRules.DEFAULT_DIRECT_DOMAIN_SUFFIXES
                 },
-                ruleSets = RoutingRuleSetCodec.decode(preferences[Keys.ruleSets]),
+                ruleSets = emptyList(),
             ),
             selectedProfileName = preferences[Keys.selectedProfileName].orEmpty(),
             selectedProfileServer = preferences[Keys.selectedProfileServer].orEmpty(),

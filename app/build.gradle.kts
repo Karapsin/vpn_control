@@ -70,6 +70,10 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.02.00")
 
+    implementation(project(":shared:model"))
+    implementation(project(":shared:core"))
+    implementation(project(":shared:storage-api"))
+    implementation(project(":shared:ui"))
     implementation(files("libs/libbox.aar"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

@@ -91,10 +91,6 @@ class DiagnosticsExporter(
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("national_domain_suffixes=${state.routingRules.nationalDomainSuffixes.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
-            appendLine("rule_sets_count=${state.routingRules.ruleSets.size}")
-            appendLine(
-                "rule_sets=${state.routingRules.ruleSets.joinToString(";") { "${it.name}:${it.sourceType}:${it.action}" }}",
-            )
             appendLine("selected_profile_name=${state.selectedProfileName}")
             appendLine("selected_profile_server=${state.selectedProfileServer}")
             appendLine("status_message=${state.statusMessage}")

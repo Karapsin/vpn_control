@@ -16,3 +16,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "vpn_control_android"
 include(":app")
+include(":shared:model")
+include(":shared:core")
+include(":shared:storage-api")
+include(":shared:ui")
+include(":desktopApp")

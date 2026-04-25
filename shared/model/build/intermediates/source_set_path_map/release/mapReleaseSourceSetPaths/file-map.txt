@@ -1,0 +1,9 @@
+com.kardinal.vpncontrol.shared.model-pngs-0 /home/kardinal/projects/vpn_control_android/shared/model/build/generated/res/pngs/release
+com.kardinal.vpncontrol.shared.model-resValues-1 /home/kardinal/projects/vpn_control_android/shared/model/build/generated/res/resValues/release
+com.kardinal.vpncontrol.shared.model-mergeReleaseResources-2 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+com.kardinal.vpncontrol.shared.model-mergeReleaseResources-3 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+com.kardinal.vpncontrol.shared.model-release-4 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/merged_res/release/mergeReleaseResources
+com.kardinal.vpncontrol.shared.model-androidMain-5 /home/kardinal/projects/vpn_control_android/shared/model/src/androidMain/res
+com.kardinal.vpncontrol.shared.model-androidRelease-6 /home/kardinal/projects/vpn_control_android/shared/model/src/androidRelease/res
+com.kardinal.vpncontrol.shared.model-main-7 /home/kardinal/projects/vpn_control_android/shared/model/src/main/res
+com.kardinal.vpncontrol.shared.model-release-8 /home/kardinal/projects/vpn_control_android/shared/model/src/release/res

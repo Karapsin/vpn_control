@@ -9,16 +9,17 @@ import androidx.work.WorkManager
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import com.kardinal.vpncontrol.shared.storageapi.RefreshScheduler
 import java.util.concurrent.TimeUnit
 
 class SubscriptionRefreshScheduler(
     private val context: Context,
-) {
-    suspend fun sync(state: PersistedState) {
+) : RefreshScheduler {
+    override suspend fun sync(state: PersistedState) {
         schedule(state, appendToCurrentChain = false)
     }
 
-    suspend fun scheduleNext(state: PersistedState) {
+    override suspend fun scheduleNext(state: PersistedState) {
         schedule(state, appendToCurrentChain = true)
     }
 
@@ -77,5 +78,9 @@ class SubscriptionRefreshScheduler(
 
     companion object {
         const val WORK_NAME = "subscription-refresh-work"
+    }
+
+    override fun cancel() {
+        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
     }
 }

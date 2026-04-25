@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
@@ -53,6 +52,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -72,8 +72,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -125,9 +123,22 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
-import com.kardinal.vpncontrol.model.activeSubscriptionUrls
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
+import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
+import com.kardinal.vpncontrol.shared.ui.LocationsScreen as SharedLocationsScreen
+import com.kardinal.vpncontrol.shared.ui.MainScreen as SharedMainScreen
+import com.kardinal.vpncontrol.shared.ui.ProfileScreen as SharedProfileScreen
+import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen as SharedRoutingRulesScreen
+import com.kardinal.vpncontrol.shared.ui.SavedLocationRow as SharedSavedLocationRow
+import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
+import com.kardinal.vpncontrol.shared.ui.activeProfileLabel as sharedActiveProfileLabel
+import com.kardinal.vpncontrol.shared.ui.connectionLabel as sharedConnectionLabel
+import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel as sharedCurrentSubscriptionSelectionLabel
+import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel as sharedFormatLocationCountLabel
+import com.kardinal.vpncontrol.shared.ui.formatLocationLabel as sharedFormatLocationLabel
+import com.kardinal.vpncontrol.shared.ui.routingSummary as sharedRoutingSummary
+import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription as sharedSelectedLocationOutsideCurrentSubscription
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -708,20 +719,6 @@ fun VpnControlApp(
         )
     }
 
-    if (state.showRuleSetDialog) {
-        RuleSetEditorDialog(
-            state = state,
-            onDismiss = onCloseRuleSetDialog,
-            onNameChange = onRuleSetNameChange,
-            onSourceChange = onRuleSetSourceChange,
-            onSourceTypeChange = onRuleSetSourceTypeChange,
-            onFormatChange = onRuleSetFormatChange,
-            onActionChange = onRuleSetActionChange,
-            onUpdateHoursChange = onRuleSetUpdateHoursChange,
-            onSave = onSaveRuleSet,
-        )
-    }
-
     if (state.showLocationDialog) {
         AlertDialog(
             onDismissRequest = onCloseLocationDialog,
@@ -898,52 +895,60 @@ private fun HomeTabsScreen(
     onImportRoutingRulesFromClipboard: () -> Unit,
     onImportRoutingRules: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    if (state.currentScreen == AppScreen.ROUTING_RULES) {
-                        Color(0xFF141F2D)
-                    } else {
-                        Color.Transparent
-                    },
-                ),
-        ) {
+    HomeTabScaffold(
+        currentScreen = state.currentScreen,
+        onOpenMainTab = onOpenMainTab,
+        onOpenProfileTab = onOpenProfileTab,
+        onOpenLocationsTab = onOpenLocationsTab,
+        onOpenStatsTab = onOpenStatsTab,
+        onOpenRoutingRules = onOpenRoutingRules,
+        mainIcon = Icons.Filled.Home,
+        profileIcon = Icons.Filled.Person,
+        locationsIcon = Icons.Filled.Public,
+        statsIcon = Icons.Filled.QueryStats,
+        rulesIcon = Icons.Filled.Tune,
+    ) {
             when (state.currentScreen) {
-                AppScreen.MAIN -> MainScreen(
+                AppScreen.MAIN -> SharedMainScreen(
                     state = state,
-                    onToggleDnsDialog = onToggleDnsDialog,
-                    onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
-                    onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
-                    onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
-                    onValidationPrimaryUrlChange = onValidationPrimaryUrlChange,
-                    onValidationSecondaryUrlChange = onValidationSecondaryUrlChange,
-                    onValidationBatchSizeChange = onValidationBatchSizeChange,
-                    onValidationRetryCountChange = onValidationRetryCountChange,
-                    onSaveValidationSettings = onSaveValidationSettings,
-                    onToggleAppModeDialog = onToggleAppModeDialog,
+                    activeProfileLabel = activeProfileLabel(state),
+                    showSubscriptionMismatchWarning = selectedLocationOutsideCurrentSubscription(state),
                     onToggleVpn = onToggleVpn,
                     onRefresh = onRefresh,
                     onExportDiagnostics = onExportDiagnostics,
+                    powerIcon = Icons.Filled.PowerSettingsNew,
+                    findBestIcon = Icons.Filled.MyLocation,
+                    headerActions = {
+                        MainAdvancedMenu(
+                            state = state,
+                            onToggleDnsDialog = onToggleDnsDialog,
+                            onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
+                            onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
+                            onToggleAppModeDialog = onToggleAppModeDialog,
+                        )
+                    },
                 )
-                AppScreen.PROFILE -> ProfileScreen(
-                    state = state,
-                    onProfileChange = onProfileChange,
-                    onProfileSourceModeChange = onProfileSourceModeChange,
-                    onSaveProfile = onSaveProfile,
-                    onClearProfileSource = onClearProfileSource,
-                    onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
-                    onRefreshActiveSubscription = onRefreshActiveSubscription,
-                    onRefreshAllSubscriptions = onRefreshAllSubscriptions,
-                    onUseProfileHistoryEntry = onUseProfileHistoryEntry,
-                    onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
-                    onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
-                    onScanSubscriptionQr = onScanSubscriptionQr,
-                    onImportSubscriptionFromClipboard = onImportSubscriptionFromClipboard,
-                    onImportSubscriptionFromFile = onImportSubscriptionFromFile,
-                )
+                AppScreen.PROFILE -> SharedProfileScreen(
+                    activeProfileLabel = activeProfileLabel(state),
+                    currentSelectionLabel = currentSubscriptionSelectionLabel(state),
+                ) {
+                    ProfileSourceCard(
+                        state = state,
+                        onProfileChange = onProfileChange,
+                        onProfileSourceModeChange = onProfileSourceModeChange,
+                        onSaveProfile = onSaveProfile,
+                        onClearProfileSource = onClearProfileSource,
+                        onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
+                        onRefreshActiveSubscription = onRefreshActiveSubscription,
+                        onRefreshAllSubscriptions = onRefreshAllSubscriptions,
+                        onUseProfileHistoryEntry = onUseProfileHistoryEntry,
+                        onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
+                        onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
+                        onScanSubscriptionQr = onScanSubscriptionQr,
+                        onImportSubscriptionFromClipboard = onImportSubscriptionFromClipboard,
+                        onImportSubscriptionFromFile = onImportSubscriptionFromFile,
+                    )
+                }
                 AppScreen.LOCATIONS -> LocationsScreen(
                     state = state,
                     onShowAddLocation = onShowAddLocation,
@@ -987,81 +992,104 @@ private fun HomeTabsScreen(
                     onImportFromClipboard = onImportRoutingRulesFromClipboard,
                     onImport = onImportRoutingRules,
                 )
-                AppScreen.STATS -> StatsScreen(
+                AppScreen.STATS -> SharedStatsScreen(
                     state = state,
                 )
             }
         }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xCC141F2D))
-                .navigationBarsPadding(),
+}
+
+@Composable
+private fun MainAdvancedMenu(
+    state: MainUiState,
+    onToggleDnsDialog: () -> Unit,
+    onToggleRefreshPolicyDialog: () -> Unit,
+    onToggleValidationSettingsDialog: () -> Unit,
+    onToggleAppModeDialog: () -> Unit,
+) {
+    var advancedMenuExpanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(onClick = { advancedMenuExpanded = true }) {
+            Icon(
+                imageVector = Icons.Filled.Settings,
+                contentDescription = "Advanced settings",
+                tint = Color.White,
+            )
+        }
+        DropdownMenu(
+            expanded = advancedMenuExpanded,
+            onDismissRequest = { advancedMenuExpanded = false },
         ) {
-            TabRow(
-                selectedTabIndex = when (state.currentScreen) {
-                    AppScreen.MAIN -> 0
-                    AppScreen.PROFILE -> 1
-                    AppScreen.LOCATIONS -> 2
-                    AppScreen.STATS -> 3
-                    AppScreen.ROUTING_RULES -> 4
+            DropdownMenuItem(
+                text = { Text("Custom DNS") },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleDnsDialog()
                 },
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = Color.Transparent,
-                contentColor = Color.White,
-                divider = {},
-            ) {
-                Tab(
-                    selected = state.currentScreen == AppScreen.MAIN,
-                    onClick = onOpenMainTab,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Home,
-                            contentDescription = "Main",
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Proxy Mode Settings")
+                        Text(
+                            if (state.appMode == AppMode.VPN) "VPN mode" else "Proxy-only mode",
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
                         )
-                    },
-                )
-                Tab(
-                    selected = state.currentScreen == AppScreen.PROFILE,
-                    onClick = onOpenProfileTab,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Person,
-                            contentDescription = "Profile",
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleAppModeDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Subscription Auto-Refresh")
+                        Text(
+                            buildString {
+                                append(
+                                    state.subscriptionRefreshPolicy.displayValue(
+                                        state.subscriptionRefreshCustomHours,
+                                    ),
+                                )
+                                append(" • ")
+                                append(
+                                    if (isAllSubscriptionsActive(state)) {
+                                        "all subscriptions"
+                                    } else {
+                                        "selected subscription"
+                                    },
+                                )
+                            },
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
                         )
-                    },
-                )
-                Tab(
-                    selected = state.currentScreen == AppScreen.LOCATIONS,
-                    onClick = onOpenLocationsTab,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Public,
-                            contentDescription = "Locations",
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleRefreshPolicyDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Location Test Settings")
+                        Text(
+                            state.validationSettings.displaySummary(),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
                         )
-                    },
-                )
-                Tab(
-                    selected = state.currentScreen == AppScreen.STATS,
-                    onClick = onOpenStatsTab,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.QueryStats,
-                            contentDescription = "Stats",
-                        )
-                    },
-                )
-                Tab(
-                    selected = state.currentScreen == AppScreen.ROUTING_RULES,
-                    onClick = onOpenRoutingRules,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Tune,
-                            contentDescription = "Rules",
-                        )
-                    },
-                )
-            }
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleValidationSettingsDialog()
+                },
+            )
         }
     }
 }
@@ -1328,7 +1356,7 @@ private fun buildEditedRoutingRules(state: MainUiState): RoutingRules {
         bypassPackages = emptyList(),
         nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(state.routingNationalDomainsDraft),
         directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
-        ruleSets = state.routingRuleSetsDraft,
+        ruleSets = emptyList(),
     )
 }
 
@@ -1387,7 +1415,7 @@ private fun MainScreen(
                     Box {
                         IconButton(onClick = { advancedMenuExpanded = true }) {
                             Icon(
-                                imageVector = Icons.Filled.MoreVert,
+                                imageVector = Icons.Filled.Settings,
                                 contentDescription = "Advanced settings",
                                 tint = Color.White,
                             )
@@ -1535,54 +1563,6 @@ private fun MainScreen(
 }
 
 @Composable
-private fun StatsScreen(
-    state: MainUiState,
-) {
-    Scaffold(
-        containerColor = Color(0xFF141F2D),
-        contentColor = Color.White,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-        ),
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(start = 20.dp, top = 24.dp, end = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text("Stats", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = "Session data and recent status history are shown here.",
-                            color = Color(0xFFD3E3EE),
-                        )
-                    }
-                }
-                SessionCard(state)
-                ConnectionLogCard(state.connectionLog)
-            }
-        }
-    }
-}
-
-@Composable
 private fun ProxyOnlyInfoCard(state: MainUiState) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -1665,92 +1645,6 @@ private fun ProxyOnlyInfoCard(state: MainUiState) {
 }
 
 @Composable
-private fun ProfileScreen(
-    state: MainUiState,
-    onProfileChange: (String) -> Unit,
-    onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
-    onSaveProfile: () -> Unit,
-    onClearProfileSource: () -> Unit,
-    onToggleAddSubscriptionEditor: () -> Unit,
-    onRefreshActiveSubscription: () -> Unit,
-    onRefreshAllSubscriptions: () -> Unit,
-    onUseProfileHistoryEntry: (String) -> Unit,
-    onShowProfileHistoryRenameDialog: (String) -> Unit,
-    onDeleteProfileHistoryEntry: (String) -> Unit,
-    onScanSubscriptionQr: () -> Unit,
-    onImportSubscriptionFromClipboard: () -> Unit,
-    onImportSubscriptionFromFile: () -> Unit,
-) {
-    Scaffold(
-        containerColor = Color(0xFF141F2D),
-        contentColor = Color.White,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-        ),
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(start = 20.dp, top = 24.dp, end = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text("Profile", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Choose where the app gets locations from. Use a remote source in subscription mode, or work only with the saved list from the Locations tab.",
-                            color = Color(0xFFD3E3EE),
-                        )
-                        Text(
-                            "Selected profile: ${activeProfileLabel(state)}",
-                            color = Color(0xFF9ED6FF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "Current selection: ${currentSubscriptionSelectionLabel(state)}",
-                            color = Color(0xFFD3E3EE),
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-                ProfileSourceCard(
-                    state = state,
-                    onProfileChange = onProfileChange,
-                    onProfileSourceModeChange = onProfileSourceModeChange,
-                    onSaveProfile = onSaveProfile,
-                    onClearProfileSource = onClearProfileSource,
-                    onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
-                    onRefreshActiveSubscription = onRefreshActiveSubscription,
-                    onRefreshAllSubscriptions = onRefreshAllSubscriptions,
-                    onUseProfileHistoryEntry = onUseProfileHistoryEntry,
-                    onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
-                    onDeleteProfileHistoryEntry = onDeleteProfileHistoryEntry,
-                    onScanSubscriptionQr = onScanSubscriptionQr,
-                    onImportSubscriptionFromClipboard = onImportSubscriptionFromClipboard,
-                    onImportSubscriptionFromFile = onImportSubscriptionFromFile,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun LocationsScreen(
     state: MainUiState,
     onShowAddLocation: () -> Unit,
@@ -1776,7 +1670,7 @@ private fun LocationsScreen(
     val locations = state.currentLocations
         .mapIndexed { index, rawLink ->
             val parsed = runCatching { LocationConfigs.decodeStoredLocation(rawLink) }.getOrNull()
-            SavedLocationRow(
+            SharedSavedLocationRow(
                 index = index,
                 rawLink = rawLink,
                 name = parsed?.remarks?.let { formatLocationLabel(state.profileSourceMode, it) } ?: "Invalid location config",
@@ -1821,75 +1715,20 @@ private fun LocationsScreen(
         )
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        contentColor = Color.White,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-        ),
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(start = 20.dp, top = 24.dp, end = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text("Locations", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "Location search uses the remote source saved on the Profile tab. This list is updated from it each time."
-                        } else {
-                            "Location search uses the saved locations below. No subscription is required."
-                        },
-                        color = Color(0xFFD3E3EE),
-                    )
-                    Text(
-                        "Saved locations: ${locations.size}",
-                        color = Color(0xFF9ED6FF),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = if (selectedName.isNullOrBlank()) {
-                            "Selected: none"
-                        } else {
-                            "Selected: $selectedName"
-                        },
-                        color = Color(0xFFD3E3EE),
-                        fontSize = 13.sp,
-                    )
-                }
-            }
-
-            if (selectedLocationOutsideActiveSubscription) {
-                SubscriptionMismatchWarningCard(state)
-            }
-
+    SharedLocationsScreen(
+        state = state,
+        locations = locations,
+        selectedName = selectedName,
+        activeProfileLabel = activeProfileLabel(state),
+        showSubscriptionMismatchWarning = selectedLocationOutsideActiveSubscription,
+        onShowAddLocation = onShowAddLocation.takeIf { canMutateLocations },
+        onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
+        onBenchmarkLocation = onBenchmarkLocation,
+        onSelectLocation = onSelectLocation,
+        onEditLocation = onEditLocation,
+        onDeleteLocation = onDeleteLocation,
+        controls = {
             if (canMutateLocations) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Button(
-                        onClick = onShowAddLocation,
-                        enabled = !state.isBusy,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                    ) {
-                        Text("Add Location")
-                    }
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1942,58 +1781,8 @@ private fun LocationsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-
-            Card(
-                modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
-            ) {
-                if (locations.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(20.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                                "No locations cached yet. Find the best location in subscription mode to load them, or add your own."
-                            } else {
-                                "No saved locations yet. Add one manually or switch back to subscription mode."
-                            },
-                            color = Color(0xFFD3E3EE),
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(locations, key = { "${it.index}:${it.rawLink}" }) { location ->
-                            LocationRowCard(
-                                location = location,
-                                appMode = state.appMode,
-                                isVpnRunning = state.isVpnRunning,
-                                enabled = !state.isBusy,
-                                onPrimaryAction = {
-                                    if (location.isSelected) {
-                                        onToggleSelectedLocationVpn()
-                                    } else {
-                                        onSelectLocation(location.index)
-                                    }
-                                },
-                                onRefresh = { onBenchmarkLocation(location.index) },
-                                onEdit = { onEditLocation(location.index) },
-                                onDelete = { onDeleteLocation(location.index) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
+        },
+    )
 }
 
 @Composable
@@ -2581,20 +2370,6 @@ private fun RoutingRulesScreen(
     val clipboard = LocalClipboardManager.current
     var exportQrContent by remember { mutableStateOf<ExportQrContent?>(null) }
     var exportQrError by remember { mutableStateOf<String?>(null) }
-    val query = state.routingAppSearch.trim().lowercase(Locale.ROOT)
-    val filteredApps = state.installedApps
-        .asSequence()
-        .filter { app ->
-            query.isBlank() ||
-                app.label.contains(query, ignoreCase = true) ||
-                app.packageName.contains(query, ignoreCase = true)
-        }
-        .sortedWith(
-            compareBy<InstalledApp> { assignmentRank(it.packageName, state) }
-                .thenBy { it.isSystemApp }
-                .thenBy { it.label.lowercase(Locale.ROOT) },
-        )
-        .toList()
     exportQrContent?.let { qr ->
         ExportQrDialog(
             title = qr.title,
@@ -2615,231 +2390,50 @@ private fun RoutingRulesScreen(
         )
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        contentColor = Color.White,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-        ),
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(start = 20.dp, top = 18.dp, end = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 0.dp),
-        ) {
-            item {
-                Button(
-                    onClick = onSave,
+    SharedRoutingRulesScreen(
+        state = state,
+        onIgnoreRulesChange = onIgnoreRulesChange,
+        onAppSearchChange = onAppSearchChange,
+        onToggleProxyApp = onToggleProxyApp,
+        onSelectAllProxyApps = onSelectAllProxyApps,
+        onClearAllProxyApps = onClearAllProxyApps,
+        onNationalDomainsChange = onNationalDomainsChange,
+        onDirectDomainsChange = onDirectDomainsChange,
+        onSave = onSave,
+        controls = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ImportMenuButton(
+                    onQrClick = onScanQr,
+                    onClipboardClick = onImportFromClipboard,
+                    onFileClick = onImport,
                     enabled = !state.isBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = darkButtonColors(),
-                ) {
-                    Text("Save Rules")
-                }
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ImportMenuButton(
-                        onQrClick = onScanQr,
-                        onClipboardClick = onImportFromClipboard,
-                        onFileClick = onImport,
-                        enabled = !state.isBusy,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ExportMenuButton(
-                        onQrClick = {
-                            val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
-                            val bytes = document.content.toByteArray(Charsets.UTF_8).size
-                            if (bytes > MAX_QR_EXPORT_BYTES) {
-                                exportQrError =
-                                    "This rules export is $bytes bytes and is too large for a reliable single QR code. Use Clipboard or File instead."
-                            } else {
-                                exportQrContent = ExportQrContent("Rules Export", document.content)
-                            }
-                        },
-                        onClipboardClick = {
-                            val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
-                            clipboard.setText(AnnotatedString(document.content))
-                        },
-                        onFileClick = onExport,
-                        enabled = !state.isBusy,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Routing Rules",
-                        color = Color.White,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = if (state.appMode == AppMode.VPN) {
-                            "Choose which apps use the VPN and which domains bypass it. When Ignore Rules is on, normal app traffic goes through the VPN."
+                    modifier = Modifier.weight(1f),
+                )
+                ExportMenuButton(
+                    onQrClick = {
+                        val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
+                        val bytes = document.content.toByteArray(Charsets.UTF_8).size
+                        if (bytes > MAX_QR_EXPORT_BYTES) {
+                            exportQrError =
+                                "This rules export is $bytes bytes and is too large for a reliable single QR code. Use Clipboard or File instead."
                         } else {
-                            "Choose which domains go direct when using proxy-only mode. App assignments are still saved for VPN mode."
-                        },
-                        color = Color(0xFFD3E3EE),
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-            item {
-                CompactSummaryCard(state)
-            }
-            if (state.appMode == AppMode.PROXY_ONLY) {
-                item {
-                    ProxyOnlyRulesNoteCard()
-                }
-            }
-            item {
-                IgnoreRulesCard(
-                    enabled = state.routingIgnoreRulesDraft,
-                    appMode = state.appMode,
-                    onEnabledChange = onIgnoreRulesChange,
-                )
-            }
-            item {
-                RuleSetSectionCard(
-                    ruleSets = state.routingRuleSetsDraft,
-                    onAdd = onShowAddRuleSetDialog,
-                    onEdit = onEditRuleSet,
-                    onDelete = onDeleteRuleSet,
-                )
-            }
-            item {
-                AppSelectionSectionCard(
-                    title = "App Assignments",
-                    count = state.routingProxyPackagesDraft.size,
-                    description = if (state.appMode == AppMode.VPN) {
-                        "Only enabled apps use the VPN while Ignore Rules is off. Domain bypass rules still apply to those apps."
-                    } else {
-                        "Saved for VPN mode only. Proxy-only mode does not support per-app routing."
+                            exportQrContent = ExportQrContent("Rules Export", document.content)
+                        }
                     },
-                    onSelectAll = onSelectAllProxyApps,
-                    onClearAll = onClearAllProxyApps,
-                    enableSelectAll = !state.installedAppsLoading && filteredApps.isNotEmpty(),
-                    enableClearAll = !state.installedAppsLoading && state.routingProxyPackagesDraft.isNotEmpty(),
+                    onClipboardClick = {
+                        val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
+                        clipboard.setText(AnnotatedString(document.content))
+                    },
+                    onFileClick = onExport,
+                    enabled = !state.isBusy,
+                    modifier = Modifier.weight(1f),
                 )
             }
-            item {
-                RuleTextField(
-                    title = "Country-code Domains",
-                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: ru",
-                    value = state.routingNationalDomainsDraft,
-                    onValueChange = onNationalDomainsChange,
-                )
-            }
-            item {
-                RuleTextField(
-                    title = "Bypass Domains",
-                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: magnit.com",
-                    value = state.routingDirectDomainsDraft,
-                    onValueChange = onDirectDomainsChange,
-                )
-            }
-            item {
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("App Assignments", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                "${filteredApps.size} shown",
-                                color = Color(0xFFD3E3EE),
-                                fontSize = 12.sp,
-                            )
-                        }
-                        OutlinedTextField(
-                            value = state.routingAppSearch,
-                            onValueChange = onAppSearchChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Search apps or packages") },
-                            singleLine = true,
-                            colors = routingTextFieldColors(),
-                        )
-                        Text(
-                            text = "Turn apps on to route them through the VPN. Assigned apps are listed first.",
-                            color = Color(0xFFD3E3EE),
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-            }
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(320.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
-                ) {
-                    when {
-                        state.installedAppsLoading -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(color = Color.White)
-                            }
-                        }
-                        filteredApps.isEmpty() -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(18.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (state.installedAppsLoaded) {
-                                        "No apps match the current search."
-                                    } else {
-                                        "Installed apps have not loaded yet."
-                                    },
-                                    color = Color(0xFFD3E3EE),
-                                )
-                            }
-                        }
-                        else -> {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                items(filteredApps, key = { it.packageName }) { app ->
-                                    AppAssignmentRow(
-                                        app = app,
-                                        isProxy = app.packageName in state.routingProxyPackagesDraft,
-                                        onToggleProxy = { onToggleProxyApp(app.packageName) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -2862,7 +2456,7 @@ private fun CompactSummaryCard(state: MainUiState) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                "${state.routingRuleSetsDraft.size} rule-sets • ${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
+                "${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
                     "${state.routingDirectDomainsDraft.countEntries()} bypass domains",
                 color = Color(0xFFD3E3EE),
                 fontSize = 13.sp,
@@ -2922,7 +2516,7 @@ private fun IgnoreRulesCard(
                         }
                     } else {
                         if (appMode == AppMode.VPN) {
-                            "Only assigned apps use the VPN. Saved domain and rule-set rules are applied."
+                            "Only assigned apps use the VPN. Saved domain rules are applied."
                         } else {
                             "User-defined domain rules are applied. App assignments stay saved for VPN mode."
                         }
@@ -2995,252 +2589,6 @@ private fun AppSelectionSectionCard(
             }
         }
     }
-}
-
-@Composable
-private fun RuleSetSectionCard(
-    ruleSets: List<RoutingRuleSet>,
-    onAdd: () -> Unit,
-    onEdit: (String) -> Unit,
-    onDelete: (String) -> Unit,
-) {
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Rule-Sets", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = "Attach inline or remote sing-box rule-sets and route matches to direct, proxy, or block.",
-                        color = Color(0xFFD3E3EE),
-                        fontSize = 12.sp,
-                    )
-                }
-                OutlinedButton(
-                    onClick = onAdd,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                    colors = darkOutlinedButtonColors(),
-                ) {
-                    Text("Add")
-                }
-            }
-            if (ruleSets.isEmpty()) {
-                Text(
-                    text = "No rule-sets added yet.",
-                    color = Color(0xFF9FB8C8),
-                    fontSize = 12.sp,
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ruleSets.forEach { ruleSet ->
-                        RuleSetEntryCard(
-                            ruleSet = ruleSet,
-                            onEdit = { onEdit(ruleSet.id) },
-                            onDelete = { onDelete(ruleSet.id) },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RuleSetEntryCard(
-    ruleSet: RoutingRuleSet,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0x1F203041)),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(
-                    text = ruleSet.name,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "${ruleSet.sourceType.label()} • ${ruleSet.action.label()}${if (ruleSet.sourceType == RoutingRuleSetSourceType.REMOTE) " • ${ruleSet.format.label()} • ${ruleSet.updateIntervalHours}h" else ""}",
-                    color = Color(0xFF9ED6FF),
-                    fontSize = 12.sp,
-                )
-                Text(
-                    text = if (ruleSet.sourceType == RoutingRuleSetSourceType.REMOTE) ruleSet.source else "Inline rules",
-                    color = Color(0xFFD3E3EE),
-                    fontSize = 12.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                IconButton(onClick = onEdit) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = "Edit rule-set",
-                        tint = Color.White,
-                    )
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "Delete rule-set",
-                        tint = Color(0xFFFFC4C4),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RuleSetEditorDialog(
-    state: MainUiState,
-    onDismiss: () -> Unit,
-    onNameChange: (String) -> Unit,
-    onSourceChange: (String) -> Unit,
-    onSourceTypeChange: (RoutingRuleSetSourceType) -> Unit,
-    onFormatChange: (RoutingRuleSetFormat) -> Unit,
-    onActionChange: (RoutingRuleSetAction) -> Unit,
-    onUpdateHoursChange: (String) -> Unit,
-    onSave: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = if (state.editingRuleSetId.isBlank()) "Add Rule-Set" else "Edit Rule-Set",
-                color = Color.White,
-            )
-        },
-        containerColor = Color(0xFF141F2D),
-        textContentColor = Color.White,
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = state.routingRuleSetNameDraft,
-                    onValueChange = onNameChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Name") },
-                    singleLine = true,
-                    colors = routingTextFieldColors(),
-                )
-                Text("Source", color = Color.White, fontWeight = FontWeight.SemiBold)
-                SourceModeOption(
-                    title = "Remote",
-                    description = "Download a rule-set from an HTTPS URL.",
-                    selected = state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE,
-                    onClick = { onSourceTypeChange(RoutingRuleSetSourceType.REMOTE) },
-                )
-                SourceModeOption(
-                    title = "Inline",
-                    description = "Paste a sing-box rules array or source-format JSON directly.",
-                    selected = state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.INLINE,
-                    onClick = { onSourceTypeChange(RoutingRuleSetSourceType.INLINE) },
-                )
-                Text("Action", color = Color.White, fontWeight = FontWeight.SemiBold)
-                RoutingRuleSetAction.entries.forEach { action ->
-                    SourceModeOption(
-                        title = action.label(),
-                        description = when (action) {
-                            RoutingRuleSetAction.DIRECT -> "Send matching traffic directly."
-                            RoutingRuleSetAction.PROXY -> "Send matching traffic through the selected proxy."
-                            RoutingRuleSetAction.BLOCK -> "Block matching traffic."
-                        },
-                        selected = state.routingRuleSetActionDraft == action,
-                        onClick = { onActionChange(action) },
-                    )
-                }
-                if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
-                    Text("Format", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    RoutingRuleSetFormat.entries.forEach { format ->
-                        SourceModeOption(
-                            title = format.label(),
-                            description = if (format == RoutingRuleSetFormat.SOURCE) {
-                                "Use a source-format JSON rule-set."
-                            } else {
-                                "Use a binary .srs rule-set."
-                            },
-                            selected = state.routingRuleSetFormatDraft == format,
-                            onClick = { onFormatChange(format) },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = state.routingRuleSetSourceDraft,
-                    onValueChange = onSourceChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) 2 else 6,
-                    label = {
-                        Text(
-                            if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
-                                "Remote URL"
-                            } else {
-                                "Inline JSON"
-                            },
-                        )
-                    },
-                    placeholder = {
-                        Text(
-                            if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
-                                "https://example.com/ruleset.json"
-                            } else {
-                                "{\"version\":1,\"rules\":[...]}"
-                            },
-                        )
-                    },
-                    colors = routingTextFieldColors(),
-                )
-                if (state.routingRuleSetSourceTypeDraft == RoutingRuleSetSourceType.REMOTE) {
-                    OutlinedTextField(
-                        value = state.routingRuleSetUpdateHoursDraft,
-                        onValueChange = onUpdateHoursChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Update interval (hours)") },
-                        singleLine = true,
-                        colors = routingTextFieldColors(),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onSave) {
-                Text("Save", color = Color(0xFF9ED6FF))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color(0xFFD3E3EE))
-            }
-        },
-    )
 }
 
 @Composable
@@ -3898,44 +3246,14 @@ private fun SubscriptionMismatchWarningCard(state: MainUiState) {
 }
 
 private fun activeProfileLabel(state: MainUiState): String {
-    return when (state.profileSourceMode) {
-        ProfileSourceMode.SUBSCRIPTION -> {
-            val selectedSource = state.selectedProfileSourceUrl.trim()
-            val activeSource = when {
-                state.selectedProfileName.isNotBlank() && selectedSource.isNotBlank() -> selectedSource
-                state.selectedProfileName.isNotBlank() && selectedSource.isBlank() -> ""
-                isAllSubscriptionsActive(state) -> ALL_SUBSCRIPTIONS_ID
-                state.profileUrl.isNotBlank() -> state.profileUrl.trim()
-                else -> ""
-            }
-            when {
-                activeSource == ALL_SUBSCRIPTIONS_ID -> "All subscriptions"
-                activeSource.isNotBlank() -> profileLabelForSource(state, activeSource)
-                state.selectedProfileName.isNotBlank() -> "Different subscription"
-                else -> "none"
-            }
-        }
-        ProfileSourceMode.CURRENT_LOCATIONS -> "Saved Locations"
+    return sharedActiveProfileLabel(state) { source ->
+        profileLabelForSource(state, source)
     }
 }
 
 private fun currentSubscriptionSelectionLabel(state: MainUiState): String {
-    return when (state.profileSourceMode) {
-        ProfileSourceMode.CURRENT_LOCATIONS -> "Saved Locations"
-        ProfileSourceMode.SUBSCRIPTION -> when {
-            isAllSubscriptionsActive(state) -> "All subscriptions"
-            state.activeSubscriptionId.isNotBlank() ->
-                state.subscriptions
-                    .firstOrNull { it.id == state.activeSubscriptionId }
-                    ?.let { subscription ->
-                        state.profileHistoryNames[subscription.url]
-                            ?.takeIf { it.isNotBlank() }
-                            ?: RemoteSourceResolver.preview(subscription.url)?.title
-                            ?: "Remote source"
-                    }
-                    ?: "none"
-            else -> "none"
-        }
+    return sharedCurrentSubscriptionSelectionLabel(state) { source ->
+        profileLabelForSource(state, source)
     }
 }
 
@@ -3943,12 +3261,7 @@ private fun formatLocationCountLabel(
     count: Int,
     merged: Boolean = false,
 ): String {
-    val noun = if (count == 1) "location" else "locations"
-    return if (merged) {
-        "$count merged $noun"
-    } else {
-        "$count $noun"
-    }
+    return sharedFormatLocationCountLabel(count, merged)
 }
 
 private fun profileLabelForSource(state: MainUiState, source: String): String {
@@ -3965,26 +3278,11 @@ private fun isAllSubscriptionsActive(state: MainUiState): Boolean =
     isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
 
 private fun selectedLocationOutsideCurrentSubscription(state: MainUiState): Boolean {
-    if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION || state.selectedProfileName.isBlank()) {
-        return false
-    }
-    if (isAllSubscriptionsActive(state)) {
-        return false
-    }
-    return state.selectedProfileSourceUrl.isNotBlank() &&
-        state.selectedProfileSourceUrl !in activeSubscriptionUrls(
-            activeSubscriptionId = state.activeSubscriptionId,
-            subscriptions = state.subscriptions,
-        )
+    return sharedSelectedLocationOutsideCurrentSubscription(state)
 }
 
 private fun formatLocationLabel(mode: ProfileSourceMode, name: String): String {
-    val trimmed = name.trim()
-    if (trimmed.isBlank()) return "none"
-    return when (mode) {
-        ProfileSourceMode.SUBSCRIPTION -> "Subscription: $trimmed"
-        ProfileSourceMode.CURRENT_LOCATIONS -> "Saved location: $trimmed"
-    }
+    return sharedFormatLocationLabel(mode, name)
 }
 
 private fun Long.formatAsStatusTime(): String {
@@ -4090,51 +3388,11 @@ private fun ActionButton(
 }
 
 private fun routingSummary(state: MainUiState): String {
-    if (state.routingRules.ignoreRules) {
-        return if (state.appMode == AppMode.VPN) {
-            "Ignored • all normal app traffic through VPN"
-        } else {
-            "Ignored • all proxied traffic through the selected proxy outbound"
-        }
-    }
-    return buildString {
-        append("${state.routingRules.proxyPackages.size} VPN apps")
-        append(" • ")
-        append("${state.routingRules.ruleSets.size} rule-sets")
-        append(" • ")
-        append("${state.routingRules.nationalDomainSuffixes.size} country-code domains")
-        append(" • ")
-        append("${state.routingRules.directDomainSuffixes.size} bypass domains")
-    }
+    return sharedRoutingSummary(state)
 }
 
 private fun connectionLabel(appMode: AppMode): String {
-    return when (appMode) {
-        AppMode.VPN -> "VPN"
-        AppMode.PROXY_ONLY -> "proxy"
-    }
-}
-
-private fun RoutingRuleSetSourceType.label(): String {
-    return when (this) {
-        RoutingRuleSetSourceType.INLINE -> "Inline"
-        RoutingRuleSetSourceType.REMOTE -> "Remote"
-    }
-}
-
-private fun RoutingRuleSetFormat.label(): String {
-    return when (this) {
-        RoutingRuleSetFormat.SOURCE -> "Source"
-        RoutingRuleSetFormat.BINARY -> "Binary"
-    }
-}
-
-private fun RoutingRuleSetAction.label(): String {
-    return when (this) {
-        RoutingRuleSetAction.DIRECT -> "Direct"
-        RoutingRuleSetAction.PROXY -> "Proxy"
-        RoutingRuleSetAction.BLOCK -> "Block"
-    }
+    return sharedConnectionLabel(appMode)
 }
 
 private fun assignmentRank(packageName: String, state: MainUiState): Int {
@@ -4144,8 +3402,8 @@ private fun assignmentRank(packageName: String, state: MainUiState): Int {
     }
 }
 
-private fun locationRowComparator(): Comparator<SavedLocationRow> {
-    return compareBy<SavedLocationRow> { locationBenchmarkRank(it.benchmarkDetail) }
+private fun locationRowComparator(): Comparator<SharedSavedLocationRow> {
+    return compareBy<SharedSavedLocationRow> { locationBenchmarkRank(it.benchmarkDetail) }
         .thenBy { parseBenchmarkScore(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
         .thenBy { parseBenchmarkTimingMillis(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
         .thenBy { it.name.lowercase(Locale.ROOT) }

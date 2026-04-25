@@ -1,0 +1,16 @@
+#Thu Apr 23 20:57:28 MSK 2026
+path.4=0/classes.dex
+path.3=7/classes.dex
+path.2=12/classes.dex
+path.1=11/classes.dex
+path.0=classes.dex
+base.4=/home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/dex/debugAndroidTest/mergeProjectDexDebugAndroidTest/0/classes.dex
+base.3=/home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/dex/debugAndroidTest/mergeLibDexDebugAndroidTest/7/classes.dex
+base.2=/home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/dex/debugAndroidTest/mergeLibDexDebugAndroidTest/12/classes.dex
+base.1=/home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/dex/debugAndroidTest/mergeLibDexDebugAndroidTest/11/classes.dex
+base.0=/home/kardinal/projects/vpn_control_android/shared/core/build/intermediates/dex/debugAndroidTest/mergeExtDexDebugAndroidTest/classes.dex
+renamed.3=classes4.dex
+renamed.2=classes3.dex
+renamed.1=classes2.dex
+renamed.0=classes.dex
+renamed.4=classes5.dex

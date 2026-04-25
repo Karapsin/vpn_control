@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml:2:13-83
+INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml:2:13-83
+	package
+		INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml
+	xmlns:android
+		ADDED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml:2:23-81
+uses-sdk
+INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml reason: use-sdk injection requested
+INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml
+INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml
+	android:targetSdkVersion
+		INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml
+	android:minSdkVersion
+		INJECTED from /home/kardinal/projects/vpn_control_android/shared/ui/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest14079468735022024112.xml
