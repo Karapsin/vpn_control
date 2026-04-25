@@ -426,7 +426,7 @@ private fun DesktopProfileContent(
             ) {
                 Text("Desktop Shell", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "This desktop target persists its workspace, supports file and clipboard import-export for locations and routing rules, refreshes direct https subscriptions, and starts sing-box in Proxy-only or Linux VPN mode.",
+                    "This desktop target persists its workspace, supports file and clipboard import-export for locations and routing rules, refreshes direct https subscriptions, and starts sing-box in Proxy-only or desktop VPN mode.",
                     color = Color(0xFFD3E3EE),
                 )
                 Text(
@@ -929,7 +929,7 @@ private fun DesktopSettingsDialogs(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "VPN mode uses sing-box TUN on Linux. Proxy-only mode exposes a local mixed proxy without changing system routes.",
+                        text = "VPN mode uses sing-box TUN on Linux or Windows. Windows VPN mode requires running VPN Control as Administrator.",
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -958,7 +958,7 @@ private fun DesktopSettingsDialogs(
                                     text = if (state.appMode == AppMode.VPN) {
                                         "Turn off to use only the local proxy."
                                     } else {
-                                        "Turn on to route desktop traffic through Linux VPN/TUN mode."
+                                        "Turn on to route desktop traffic through VPN/TUN mode."
                                     },
                                     color = Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,

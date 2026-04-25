@@ -33,6 +33,8 @@ class DesktopProxyRuntimeManager(
         "runtime",
     ),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
+    private val runtimeOsNameOverride: String? = null,
+    private val windowsAdministratorOverride: Boolean? = null,
 ) {
     @Volatile
     private var process: Process? = null
@@ -165,12 +167,12 @@ class DesktopProxyRuntimeManager(
 
     fun lastAttemptedConfigJson(): String? = lastAttemptedConfigJson
 
-    fun linuxVpnCapabilityStatus(): String {
+    fun desktopVpnCapabilityStatus(): String {
         return runCatching {
-            ensureLinuxVpnSupported()
-            "Linux VPN capability: ready"
+            ensureDesktopVpnSupported()
+            "Desktop VPN capability: ready"
         }.getOrElse { error ->
-            "Linux VPN capability: ${error.message ?: "not ready"}"
+            "Desktop VPN capability: ${error.message ?: "not ready"}"
         }
     }
 
@@ -230,39 +232,10 @@ class DesktopProxyRuntimeManager(
             add(runtimeDirectoryCheck())
 
             if (appMode == AppMode.VPN) {
-                add(
-                    if (isLinux()) {
-                        DesktopPreflightCheck("operating system", DesktopPreflightStatus.PASS, "Linux detected")
-                    } else {
-                        DesktopPreflightCheck(
-                            name = "operating system",
-                            status = DesktopPreflightStatus.FAIL,
-                            detail = "Desktop VPN mode is currently implemented for Linux only.",
-                        )
-                    },
-                )
-                add(
-                    if (Files.exists(Path.of("/dev/net/tun"))) {
-                        DesktopPreflightCheck("TUN device", DesktopPreflightStatus.PASS, "/dev/net/tun exists")
-                    } else {
-                        DesktopPreflightCheck(
-                            name = "TUN device",
-                            status = DesktopPreflightStatus.FAIL,
-                            detail = "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-                        )
-                    },
-                )
-                add(
-                    if (hasNetworkPrivileges()) {
-                        DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "CAP_NET_ADMIN available")
-                    } else {
-                        DesktopPreflightCheck(
-                            name = "network privileges",
-                            status = DesktopPreflightStatus.FAIL,
-                            detail = "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep \$(command -v sing-box)",
-                        )
-                    },
-                )
+                val os = currentRuntimeOs()
+                add(vpnOperatingSystemCheck(os))
+                add(vpnTunBackendCheck(os))
+                add(vpnPrivilegesCheck(os))
                 add(
                     DesktopPreflightCheck(
                         name = "local ports",
@@ -386,18 +359,16 @@ class DesktopProxyRuntimeManager(
         return process?.isAlive == true
     }
 
-    private fun ensureLinuxVpnSupported() {
-        if (!isLinux()) {
-            error("Desktop VPN mode is currently implemented for Linux only.")
-        }
-        if (!Files.exists(Path.of("/dev/net/tun"))) {
-            error("Linux TUN device is missing at /dev/net/tun.")
-        }
-        if (!hasNetworkPrivileges()) {
-            error(
-                "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: " +
-                    "sudo setcap cap_net_admin,cap_net_raw+ep \$(command -v sing-box)",
-            )
+    private fun ensureDesktopVpnSupported() {
+        val os = currentRuntimeOs()
+        val checks = listOf(
+            vpnOperatingSystemCheck(os),
+            vpnTunBackendCheck(os),
+            vpnPrivilegesCheck(os),
+        )
+        val failed = checks.firstOrNull { it.status == DesktopPreflightStatus.FAIL }
+        if (failed != null) {
+            error(failed.detail)
         }
     }
 
@@ -417,8 +388,104 @@ class DesktopProxyRuntimeManager(
         return output.contains("cap_net_admin")
     }
 
-    private fun isLinux(): Boolean {
-        return System.getProperty("os.name").lowercase().contains("linux")
+    private fun hasWindowsAdministratorPrivileges(): Boolean {
+        windowsAdministratorOverride?.let { return it }
+        val result = runCommand(
+            command = listOf(
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
+            ),
+            timeoutSeconds = 3,
+        )
+        return result.exitCode == 0 && result.output.trim().equals("true", ignoreCase = true)
+    }
+
+    private fun vpnOperatingSystemCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
+        return when (os) {
+            DesktopRuntimeOs.LINUX ->
+                DesktopPreflightCheck("operating system", DesktopPreflightStatus.PASS, "Linux detected")
+            DesktopRuntimeOs.WINDOWS ->
+                DesktopPreflightCheck("operating system", DesktopPreflightStatus.PASS, "Windows detected")
+            DesktopRuntimeOs.OTHER ->
+                DesktopPreflightCheck(
+                    name = "operating system",
+                    status = DesktopPreflightStatus.FAIL,
+                    detail = "Desktop VPN mode is currently implemented for Linux and Windows.",
+                )
+        }
+    }
+
+    private fun vpnTunBackendCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
+        return when (os) {
+            DesktopRuntimeOs.LINUX -> {
+                if (Files.exists(Path.of("/dev/net/tun"))) {
+                    DesktopPreflightCheck("TUN device", DesktopPreflightStatus.PASS, "/dev/net/tun exists")
+                } else {
+                    DesktopPreflightCheck(
+                        name = "TUN device",
+                        status = DesktopPreflightStatus.FAIL,
+                        detail = "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+                    )
+                }
+            }
+            DesktopRuntimeOs.WINDOWS ->
+                DesktopPreflightCheck(
+                    name = "TUN device",
+                    status = DesktopPreflightStatus.PASS,
+                    detail = "Windows Wintun backend is provided by sing-box",
+                )
+            DesktopRuntimeOs.OTHER ->
+                DesktopPreflightCheck(
+                    name = "TUN device",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "No desktop TUN backend check for this operating system",
+                )
+        }
+    }
+
+    private fun vpnPrivilegesCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
+        return when (os) {
+            DesktopRuntimeOs.LINUX -> {
+                if (hasNetworkPrivileges()) {
+                    DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "CAP_NET_ADMIN available")
+                } else {
+                    DesktopPreflightCheck(
+                        name = "network privileges",
+                        status = DesktopPreflightStatus.FAIL,
+                        detail = "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep \$(command -v sing-box)",
+                    )
+                }
+            }
+            DesktopRuntimeOs.WINDOWS -> {
+                if (hasWindowsAdministratorPrivileges()) {
+                    DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "Windows Administrator token available")
+                } else {
+                    DesktopPreflightCheck(
+                        name = "network privileges",
+                        status = DesktopPreflightStatus.FAIL,
+                        detail = "Windows VPN mode needs Administrator privileges. Right-click VPN Control and choose Run as administrator.",
+                    )
+                }
+            }
+            DesktopRuntimeOs.OTHER ->
+                DesktopPreflightCheck(
+                    name = "network privileges",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "No privilege check for this operating system",
+                )
+        }
+    }
+
+    private fun currentRuntimeOs(): DesktopRuntimeOs {
+        val name = (runtimeOsNameOverride ?: System.getProperty("os.name")).lowercase()
+        return when {
+            name.contains("linux") -> DesktopRuntimeOs.LINUX
+            name.contains("windows") -> DesktopRuntimeOs.WINDOWS
+            else -> DesktopRuntimeOs.OTHER
+        }
     }
 
     private fun buildStartupFailureMessage(runtimeLogFile: Path): String {
@@ -430,7 +497,7 @@ class DesktopProxyRuntimeManager(
         }.getOrDefault("")
         return if (tail.isBlank()) {
             when (activeMode) {
-                AppMode.VPN -> "sing-box did not stay running for Linux VPN mode"
+                AppMode.VPN -> "sing-box did not stay running for desktop VPN mode"
                 else -> "sing-box did not open the local proxy port"
             }
         } else {
@@ -457,4 +524,10 @@ class DesktopProxyRuntimeManager(
         logFile = null
         activeMode = null
     }
+}
+
+private enum class DesktopRuntimeOs {
+    LINUX,
+    WINDOWS,
+    OTHER,
 }

@@ -144,7 +144,7 @@ class DesktopAppService private constructor(
                     .take(2)
                     .forEach { details += it.line() }
             } else {
-                details += runtimeManager.linuxVpnCapabilityStatus()
+                details += runtimeManager.desktopVpnCapabilityStatus()
             }
         }
         val logPath = runtimeManager.currentLogFile() ?: runtimeManager.defaultLogFile()
