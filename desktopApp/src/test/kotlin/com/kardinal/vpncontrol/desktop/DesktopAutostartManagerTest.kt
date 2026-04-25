@@ -19,6 +19,7 @@ class DesktopAutostartManagerTest {
                     commands += command
                     DesktopAutostartCommandResult(0, "")
                 },
+                systemctlResolver = { tempDir.resolve("systemctl") },
             )
 
             assertFalse(manager.isEnabled())

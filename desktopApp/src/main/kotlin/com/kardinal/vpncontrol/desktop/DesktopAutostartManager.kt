@@ -11,6 +11,7 @@ internal class DesktopAutostartManager(
     private val commandResolver: () -> String? = ::resolveLaunchCommand,
     private val platform: DesktopAutostartPlatform = currentAutostartPlatform(),
     private val commandRunner: (List<String>) -> DesktopAutostartCommandResult = ::runCommand,
+    private val systemctlResolver: () -> Path? = ::platformSystemctl,
 ) {
     private val autostartFile = configHome
         .resolve("autostart")
@@ -110,7 +111,7 @@ internal class DesktopAutostartManager(
     }
 
     private fun reloadSystemdUser() {
-        val systemctl = platformSystemctl() ?: return
+        val systemctl = systemctlResolver() ?: return
         commandRunner(listOf(systemctl.toString(), "--user", "daemon-reload"))
     }
 
