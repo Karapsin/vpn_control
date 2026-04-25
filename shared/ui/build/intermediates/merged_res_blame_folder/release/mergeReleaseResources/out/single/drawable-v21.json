@@ -1,6 +1,0 @@
-[
-    {
-        "merged": "com.kardinal.vpncontrol.shared.ui-release-43:/drawable-v21/notification_action_background.xml",
-        "source": "com.kardinal.vpncontrol.shared.ui-core-1.13.1-21:/drawable-v21/notification_action_background.xml"
-    }
-]

@@ -1,6 +1,0 @@
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-debug-0 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/packaged_res/debug/packageDebugResources
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-androidTest-1 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/generated/res/resValues/androidTest/debug
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-mergeDebugAndroidTestResources-2 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-mergeDebugAndroidTestResources-3 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-debugAndroidTest-4 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
-com.kardinal.vpncontrol.shared.storageapi.test.storage-api-debug-5 /home/kardinal/projects/vpn_control_android/shared/storage-api/build/intermediates/packaged_res/debug/packageDebugResources

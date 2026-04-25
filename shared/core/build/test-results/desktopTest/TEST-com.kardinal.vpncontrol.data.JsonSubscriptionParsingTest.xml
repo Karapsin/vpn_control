@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="JsonSubscriptionParsingTest[desktop]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-25T07:51:42.155Z" hostname="archlinux" time="0.032">
-  <properties/>
-  <testcase name="inspectorAllowsSupportedJsonButRejectsUnknownJson[desktop]" classname="com.kardinal.vpncontrol.data.JsonSubscriptionParsingTest" time="0.028"/>
-  <testcase name="keepsBase64LinkListSubscriptionSupport[desktop]" classname="com.kardinal.vpncontrol.data.JsonSubscriptionParsingTest" time="0.003"/>
-  <testcase name="parsesSupportedJsonSubscriptionArrayAndIgnoresAuxiliaryOutbounds[desktop]" classname="com.kardinal.vpncontrol.data.JsonSubscriptionParsingTest" time="0.0"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

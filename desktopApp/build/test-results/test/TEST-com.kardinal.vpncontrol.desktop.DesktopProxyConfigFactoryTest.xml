@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.kardinal.vpncontrol.desktop.DesktopProxyConfigFactoryTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-04-25T13:32:03.565Z" hostname="archlinux" time="0.001">
-  <properties/>
-  <testcase name="buildVpnConfigUsesTunInboundAndProxyOutbound" classname="com.kardinal.vpncontrol.desktop.DesktopProxyConfigFactoryTest" time="0.001"/>
-  <testcase name="buildProxyOnlyConfigUsesSingBoxThirteenCompatibleSniffRule" classname="com.kardinal.vpncontrol.desktop.DesktopProxyConfigFactoryTest" time="0.0"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

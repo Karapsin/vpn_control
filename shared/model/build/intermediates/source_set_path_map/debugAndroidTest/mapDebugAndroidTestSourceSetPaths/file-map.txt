@@ -1,5 +1,0 @@
-com.kardinal.vpncontrol.shared.model.test.model-androidTest-0 /home/kardinal/projects/vpn_control_android/shared/model/build/generated/res/resValues/androidTest/debug
-com.kardinal.vpncontrol.shared.model.test.model-mergeDebugAndroidTestResources-1 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
-com.kardinal.vpncontrol.shared.model.test.model-mergeDebugAndroidTestResources-2 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
-com.kardinal.vpncontrol.shared.model.test.model-debugAndroidTest-3 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
-com.kardinal.vpncontrol.shared.model.test.model-debug-4 /home/kardinal/projects/vpn_control_android/shared/model/build/intermediates/packaged_res/debug/packageDebugResources
