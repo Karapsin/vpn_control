@@ -13,12 +13,15 @@ import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopAutoRefreshSchedulerTest {
+    private val nowMillis = 60 * 60 * 1000L
+
     @Test
     fun offPolicyDoesNotScheduleRefresh() = runTest {
         var refreshRuns = 0
         val scheduler = DesktopAutoRefreshScheduler(
             scope = backgroundScope,
             runAutoRefreshCycle = { refreshRuns += 1 },
+            nowMillis = { nowMillis },
         )
         try {
             scheduler.sync(
@@ -42,12 +45,14 @@ class DesktopAutoRefreshSchedulerTest {
         val scheduler = DesktopAutoRefreshScheduler(
             scope = backgroundScope,
             runAutoRefreshCycle = { refreshRuns += 1 },
+            nowMillis = { nowMillis },
         )
         try {
             scheduler.sync(
                 schedulerState(
                     policy = SubscriptionRefreshPolicy.CUSTOM,
                     customHours = 0.5,
+                    subscriptions = listOf(schedulerSubscription(lastRefreshedAtEpochMillis = nowMillis)),
                 ),
             )
 
@@ -64,17 +69,44 @@ class DesktopAutoRefreshSchedulerTest {
     }
 
     @Test
-    fun syncCancelsOldScheduleAndRespectsLaterPolicyChanges() = runTest {
+    fun overduePolicyRunsRefreshImmediately() = runTest {
         var refreshRuns = 0
         val scheduler = DesktopAutoRefreshScheduler(
             scope = backgroundScope,
             runAutoRefreshCycle = { refreshRuns += 1 },
+            nowMillis = { nowMillis },
         )
         try {
             scheduler.sync(
                 schedulerState(
                     policy = SubscriptionRefreshPolicy.CUSTOM,
                     customHours = 0.5,
+                    subscriptions = listOf(schedulerSubscription(lastRefreshedAtEpochMillis = 1L)),
+                ),
+            )
+
+            runCurrent()
+
+            assertEquals(1, refreshRuns)
+        } finally {
+            scheduler.cancel()
+        }
+    }
+
+    @Test
+    fun syncCancelsOldScheduleAndRespectsLaterPolicyChanges() = runTest {
+        var refreshRuns = 0
+        val scheduler = DesktopAutoRefreshScheduler(
+            scope = backgroundScope,
+            runAutoRefreshCycle = { refreshRuns += 1 },
+            nowMillis = { nowMillis },
+        )
+        try {
+            scheduler.sync(
+                schedulerState(
+                    policy = SubscriptionRefreshPolicy.CUSTOM,
+                    customHours = 0.5,
+                    subscriptions = listOf(schedulerSubscription(lastRefreshedAtEpochMillis = nowMillis)),
                 ),
             )
 
@@ -93,6 +125,7 @@ class DesktopAutoRefreshSchedulerTest {
             scheduler.sync(
                 schedulerState(
                     policy = SubscriptionRefreshPolicy.EVERY_HOUR,
+                    subscriptions = listOf(schedulerSubscription(lastRefreshedAtEpochMillis = nowMillis)),
                 ),
             )
             advanceTimeBy(60 * 60 * 1000L)
@@ -109,16 +142,24 @@ private fun schedulerState(
     customHours: Double = 1.0,
     profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     subscriptions: List<SubscriptionSource> = listOf(
-        SubscriptionSource(
-            id = "desktop-scheduler-subscription",
-            url = "https://example.com/subscription.txt",
-        ),
+        schedulerSubscription(),
     ),
 ): MainUiState {
     return MainUiState(
+        activeSubscriptionId = subscriptions.firstOrNull()?.id.orEmpty(),
         profileSourceMode = profileSourceMode,
         subscriptionRefreshPolicy = policy,
         subscriptionRefreshCustomHours = customHours,
         subscriptions = subscriptions,
+    )
+}
+
+private fun schedulerSubscription(
+    lastRefreshedAtEpochMillis: Long = 0L,
+): SubscriptionSource {
+    return SubscriptionSource(
+        id = "desktop-scheduler-subscription",
+        url = "https://example.com/subscription.txt",
+        lastRefreshedAtEpochMillis = lastRefreshedAtEpochMillis,
     )
 }

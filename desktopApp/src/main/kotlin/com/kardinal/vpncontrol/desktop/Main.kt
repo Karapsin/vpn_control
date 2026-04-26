@@ -120,6 +120,7 @@ private fun DesktopApplication(
 ) {
     val service = remember { DesktopAppService.default() }
     val coroutineScope = rememberCoroutineScope()
+    val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
     val traySupported = remember { isDesktopTraySupported() }
     var windowVisible by remember { mutableStateOf(!startInTray || !traySupported) }
     var exitRequested by remember { mutableStateOf(false) }
@@ -140,6 +141,22 @@ private fun DesktopApplication(
 
     LaunchedEffect(Unit) {
         service.resumePreviousConnectionIfNeeded()
+    }
+
+    LaunchedEffect(
+        state.profileSourceMode,
+        state.subscriptionRefreshPolicy,
+        state.subscriptionRefreshCustomHours,
+        state.activeSubscriptionId,
+        state.subscriptions,
+    ) {
+        autoRefreshScheduler.sync(state)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            autoRefreshScheduler.cancel()
+        }
     }
 
     if (traySupported) {
@@ -201,26 +218,10 @@ private fun DesktopVpnControlApp(
     service: DesktopAppService,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
     val state = service.state
     val activeProfile = activeProfileLabel(state, service::sourceLabelFor)
     val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor)
     val showMismatchWarning = selectedLocationOutsideCurrentSubscription(state)
-
-    LaunchedEffect(
-        state.profileSourceMode,
-        state.subscriptionRefreshPolicy,
-        state.subscriptionRefreshCustomHours,
-        state.subscriptions,
-    ) {
-        autoRefreshScheduler.sync(state)
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            autoRefreshScheduler.cancel()
-        }
-    }
 
     DesktopSettingsDialogs(
         state = state,

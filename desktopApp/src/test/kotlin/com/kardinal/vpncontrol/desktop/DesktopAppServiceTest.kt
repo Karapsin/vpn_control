@@ -79,6 +79,39 @@ class DesktopAppServiceTest {
     }
 
     @Test
+    fun loadWorkspaceRepairsPreflightReachableLocationsMarkedInvalid() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-location-validity")
+        try {
+            val store = DesktopStateStore(tempDir)
+            store.writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(),
+                    locations = listOf(
+                        DesktopLocationRecord(
+                            index = 1,
+                            sourceUrl = "https://example.com/subscription.txt",
+                            rawLink = "vless://example",
+                            name = "Example",
+                            server = "example.com",
+                            details = "VLESS REALITY",
+                            benchmarkDetail = "Example: tcp=80.0ms",
+                            isValid = false,
+                        ),
+                    ),
+                ),
+            )
+
+            val loaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+
+            assertTrue(loaded.locations.single().isValid)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun saveSubscriptionDraftAddsNewSubscriptionAndActivatesIt() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-add-subscription")
         try {
@@ -360,6 +393,34 @@ class DesktopAppServiceTest {
         } finally {
             tempDir.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun benchmarkPreflightReachableLocationsRemainSelectable() {
+        assertTrue(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example: tcp=80.0ms",
+                previousIsValid = false,
+            ),
+        )
+        assertFalse(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example: tcp=unreachable",
+                previousIsValid = true,
+            ),
+        )
+        assertTrue(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example: tcp=39.4ms primary=ok primary_codes=204 secondary=ok secondary_codes=200",
+                previousIsValid = false,
+            ),
+        )
+        assertFalse(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example: tcp=46.4ms primary=bad primary_codes=000 secondary=bad secondary_codes=000",
+                previousIsValid = true,
+            ),
+        )
     }
 }
 

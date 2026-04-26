@@ -1376,10 +1376,9 @@ class DesktopAppService private constructor(
         val updatedLocations = desktopLocations.map { location ->
             val normalized = location.normalizedStorageKey()
             val detail = detailsByRawKey[normalized] ?: return@map location
-            val isHealthy = detail.contains("primary=ok")
             location.copy(
                 benchmarkDetail = detail.toCompactBenchmarkLabel(),
-                isValid = isHealthy,
+                isValid = benchmarkDetailIndicatesSelectable(detail, location.isValid),
                 isSelected = if (winningRawKey != null) {
                     normalized == winningRawKey
                 } else {
@@ -1769,6 +1768,24 @@ private fun String.toCompactBenchmarkLabel(): String {
         contains("tcp=") -> replace(':', ' ').trim()
         else -> this
     }
+}
+
+internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid: Boolean): Boolean {
+    val primary = Regex("""(?:^|\s)primary=([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
+    if (primary != null) {
+        return primary == "ok"
+    }
+
+    if (detail.contains("tcp_unreachable")) {
+        return false
+    }
+
+    val tcp = Regex("""(?:^|\s)tcp=([0-9.]+ms|unreachable)""").find(detail)?.groupValues?.getOrNull(1)
+    if (tcp != null) {
+        return tcp != "unreachable"
+    }
+
+    return previousIsValid
 }
 
 private fun MainUiState.withStatus(message: String): MainUiState {

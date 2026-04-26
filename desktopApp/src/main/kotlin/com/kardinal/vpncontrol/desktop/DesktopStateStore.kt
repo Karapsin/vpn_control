@@ -165,6 +165,8 @@ class DesktopStateStore(
         val persisted = decodePersistedState(root["persisted_state"]?.jsonObject ?: JsonObject(emptyMap()))
         val locations = root["locations"]?.jsonArray.orEmpty().mapNotNull { element ->
             val item = element as? JsonObject ?: return@mapNotNull null
+            val benchmarkDetail = item.string("benchmark_detail")
+            val storedIsValid = item.boolean("is_valid", default = true)
             DesktopLocationRecord(
                 index = item.int("index"),
                 sourceUrl = item.string("source_url"),
@@ -172,8 +174,8 @@ class DesktopStateStore(
                 name = item.string("name"),
                 server = item.string("server"),
                 details = item.string("details"),
-                benchmarkDetail = item.string("benchmark_detail"),
-                isValid = item.boolean("is_valid", default = true),
+                benchmarkDetail = benchmarkDetail,
+                isValid = benchmarkDetailIndicatesSelectable(benchmarkDetail, storedIsValid),
                 isSelected = item.boolean("is_selected", default = false),
             )
         }

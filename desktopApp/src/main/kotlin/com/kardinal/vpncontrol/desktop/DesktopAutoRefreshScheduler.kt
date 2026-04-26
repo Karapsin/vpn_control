@@ -1,8 +1,11 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
+import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -12,6 +15,8 @@ import kotlinx.coroutines.launch
 class DesktopAutoRefreshScheduler(
     private val scope: CoroutineScope,
     private val runAutoRefreshCycle: suspend () -> Unit,
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val logger: (String) -> Unit = {},
 ) {
     constructor(
         service: DesktopAppService,
@@ -19,11 +24,20 @@ class DesktopAutoRefreshScheduler(
     ) : this(
         scope = scope,
         runAutoRefreshCycle = service::runAutoRefreshCycle,
+        logger = { message -> println("[vpn-control] $message") },
     )
 
     private data class Config(
         val enabled: Boolean,
         val intervalMillis: Long,
+        val initialDelayMillis: Long,
+        val targetSignature: List<TargetSignature>,
+    )
+
+    private data class TargetSignature(
+        val id: String,
+        val url: String,
+        val lastRefreshedAtEpochMillis: Long,
     )
 
     private var activeJob: Job? = null
@@ -40,11 +54,22 @@ class DesktopAutoRefreshScheduler(
             activeJob = null
             return
         }
+        logger(
+            "auto-refresh scheduled: next run in ${formatDelay(nextConfig.initialDelayMillis)}, " +
+                "interval ${formatDelay(nextConfig.intervalMillis)}",
+        )
         activeJob = scope.launch {
+            delay(nextConfig.initialDelayMillis)
             while (isActive) {
-                delay(nextConfig.intervalMillis)
                 if (!isActive) break
-                runAutoRefreshCycle()
+                logger("auto-refresh started")
+                runCatching {
+                    runAutoRefreshCycle()
+                }.onFailure { error ->
+                    logger("auto-refresh failed: ${error.message ?: error::class.simpleName ?: "unknown error"}")
+                }
+                if (!isActive) break
+                delay(nextConfig.intervalMillis)
             }
         }
     }
@@ -58,15 +83,61 @@ class DesktopAutoRefreshScheduler(
     private fun MainUiState.toSchedulerConfig(): Config {
         val intervalMinutes = subscriptionRefreshPolicy
             .effectiveIntervalMinutes(subscriptionRefreshCustomHours)
-        val hasSupportedSubscription = subscriptions.any { subscription ->
-            subscription.url.isNotBlank() && parseDirectRemoteSource(subscription.url) is DirectRemoteSourceResolution
+        val refreshTargets = if (profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+            MainCommandLogic.currentSubscriptionSearchTargets(this)
+        } else {
+            emptyList()
         }
-        val enabled = profileSourceMode == com.kardinal.vpncontrol.model.ProfileSourceMode.SUBSCRIPTION &&
+        val supportedTargets = refreshTargets.filter { it.isSupportedRemoteSource() }
+        val enabled = profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
             intervalMinutes != null &&
-            hasSupportedSubscription
+            supportedTargets.isNotEmpty()
+        val intervalMillis = ((intervalMinutes ?: 0L) * 60_000L).coerceAtLeast(0L)
+        val targetSignature = supportedTargets.map { subscription ->
+            TargetSignature(
+                id = subscription.id,
+                url = subscription.url,
+                lastRefreshedAtEpochMillis = subscription.lastRefreshedAtEpochMillis,
+            )
+        }
         return Config(
             enabled = enabled,
-            intervalMillis = ((intervalMinutes ?: 0L) * 60_000L).coerceAtLeast(0L),
+            intervalMillis = intervalMillis,
+            initialDelayMillis = if (enabled) {
+                initialDelayMillis(intervalMillis, supportedTargets)
+            } else {
+                0L
+            },
+            targetSignature = targetSignature,
         )
+    }
+
+    private fun SubscriptionSource.isSupportedRemoteSource(): Boolean {
+        return url.isNotBlank() && parseDirectRemoteSource(url) is DirectRemoteSourceResolution
+    }
+
+    private fun initialDelayMillis(
+        intervalMillis: Long,
+        targets: List<SubscriptionSource>,
+    ): Long {
+        if (intervalMillis <= 0L) return 0L
+        val oldestRefresh = targets
+            .map { it.lastRefreshedAtEpochMillis }
+            .filter { it > 0L }
+            .minOrNull()
+            ?: return 0L
+        val elapsedMillis = (nowMillis() - oldestRefresh).coerceAtLeast(0L)
+        return (intervalMillis - elapsedMillis).coerceAtLeast(0L)
+    }
+
+    private fun formatDelay(delayMillis: Long): String {
+        val totalSeconds = (delayMillis / 1_000L).coerceAtLeast(0L)
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        return when {
+            minutes > 0L && seconds > 0L -> "${minutes}m ${seconds}s"
+            minutes > 0L -> "${minutes}m"
+            else -> "${seconds}s"
+        }
     }
 }

@@ -15,6 +15,7 @@ user_systemd_wants="$user_config_home/systemd/user/default.target.wants/vpn-cont
 
 skip_deps=false
 skip_build=false
+allow_running_update=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -24,15 +25,19 @@ for arg in "$@"; do
     --skip-build)
       skip_build=true
       ;;
+    --allow-running-update)
+      allow_running_update=true
+      ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./scripts/arch_install.sh [--skip-deps] [--skip-build]
+Usage: ./scripts/arch_install.sh [--skip-deps] [--skip-build] [--allow-running-update]
 
 Builds and installs the VPN Control desktop app locally on Arch Linux.
 
 Options:
-  --skip-deps   Do not install pacman dependencies.
-  --skip-build  Reuse an existing desktopApp/build/compose app image.
+  --skip-deps             Do not install pacman dependencies.
+  --skip-build            Reuse an existing desktopApp/build/compose app image.
+  --allow-running-update  Replace the installed app even if VPN Control is running.
 
 Environment overrides:
   VPN_CONTROL_INSTALL_DIR         default: /opt/vpn-control
@@ -60,6 +65,18 @@ case "$install_dir" in
     exit 1
     ;;
 esac
+
+if [[ "$allow_running_update" != true ]]; then
+  running_app_pids="$(pgrep -u "$(id -u)" -f "$install_dir/bin/vpn-control" || true)"
+  running_runtime_pids="$(pgrep -u "$(id -u)" -f "$install_dir/bin/sing-box" || true)"
+  if [[ -n "$running_app_pids" || -n "$running_runtime_pids" ]]; then
+    echo "[vpn-control] refusing to replace $install_dir while VPN Control is running" >&2
+    echo "[vpn-control] running app PIDs: ${running_app_pids:-none}" >&2
+    echo "[vpn-control] running runtime PIDs: ${running_runtime_pids:-none}" >&2
+    echo "[vpn-control] close the app first, or pass --allow-running-update if you accept runtime mismatch risk" >&2
+    exit 1
+  fi
+fi
 
 if [[ "$skip_deps" != true ]]; then
   if command -v pacman >/dev/null 2>&1; then
