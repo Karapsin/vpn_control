@@ -82,11 +82,18 @@ if (-not $Launcher) {
     throw "MSI payload is missing vpn-control.exe launcher"
 }
 
-$RuntimeJava = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "java.exe" |
-    Where-Object { $_.FullName -match "\\runtime\\bin\\java\.exe$" } |
+$RuntimeRelease = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "release" |
+    Where-Object { $_.FullName -match "\\runtime\\release$" } |
     Select-Object -First 1
-if (-not $RuntimeJava) {
-    throw "MSI payload is missing bundled runtime\bin\java.exe"
+if (-not $RuntimeRelease) {
+    throw "MSI payload is missing bundled runtime\release marker"
+}
+
+$RuntimeModules = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "modules" |
+    Where-Object { $_.FullName -match "\\runtime\\lib\\modules$" } |
+    Select-Object -First 1
+if (-not $RuntimeModules) {
+    throw "MSI payload is missing bundled runtime\lib\modules image"
 }
 
 $AppJars = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "*.jar"
@@ -96,7 +103,7 @@ if (-not $AppJars) {
 
 Write-Host "[vpn-control] verified MSI payload:"
 Write-Host " - launcher: $($Launcher.FullName)"
-Write-Host " - runtime:  $($RuntimeJava.FullName)"
+Write-Host " - runtime:  $($RuntimeRelease.DirectoryName)"
 Write-Host " - jars:     $($AppJars.Count)"
 
 $Packages | ForEach-Object {
