@@ -1771,7 +1771,7 @@ private fun String.toCompactBenchmarkLabel(): String {
 }
 
 internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid: Boolean): Boolean {
-    val primary = Regex("""(?:^|\s)primary=([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
+    val primary = Regex("""(?:^|\s)primary[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
     if (primary != null) {
         return primary == "ok"
     }
@@ -1780,7 +1780,7 @@ internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid:
         return false
     }
 
-    val tcp = Regex("""(?:^|\s)tcp=([0-9.]+ms|unreachable)""").find(detail)?.groupValues?.getOrNull(1)
+    val tcp = Regex("""(?:^|\s)tcp[= ]([0-9.]+ms|unreachable)""").find(detail)?.groupValues?.getOrNull(1)
     if (tcp != null) {
         return tcp != "unreachable"
     }

@@ -403,6 +403,12 @@ class DesktopAppServiceTest {
                 previousIsValid = false,
             ),
         )
+        assertTrue(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example  tcp 80.0ms",
+                previousIsValid = false,
+            ),
+        )
         assertFalse(
             benchmarkDetailIndicatesSelectable(
                 detail = "Example: tcp=unreachable",
@@ -415,9 +421,21 @@ class DesktopAppServiceTest {
                 previousIsValid = false,
             ),
         )
+        assertTrue(
+            benchmarkDetailIndicatesSelectable(
+                detail = "primary ok • secondary challenge • tcp 39.4ms",
+                previousIsValid = false,
+            ),
+        )
         assertFalse(
             benchmarkDetailIndicatesSelectable(
                 detail = "Example: tcp=46.4ms primary=bad primary_codes=000 secondary=bad secondary_codes=000",
+                previousIsValid = true,
+            ),
+        )
+        assertFalse(
+            benchmarkDetailIndicatesSelectable(
+                detail = "primary bad • secondary bad • tcp 46.4ms",
                 previousIsValid = true,
             ),
         )
