@@ -6,7 +6,9 @@ import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -131,6 +133,50 @@ class DesktopAutoRefreshSchedulerTest {
             advanceTimeBy(60 * 60 * 1000L)
             runCurrent()
             assertEquals(1, refreshRuns)
+        } finally {
+            scheduler.cancel()
+        }
+    }
+
+    @Test
+    fun subscriptionTimestampSyncDoesNotCancelRunningRefresh() = runTest {
+        var refreshStarted = false
+        var refreshCompleted = false
+        lateinit var scheduler: DesktopAutoRefreshScheduler
+        scheduler = DesktopAutoRefreshScheduler(
+            scope = backgroundScope,
+            runAutoRefreshCycle = {
+                refreshStarted = true
+                scheduler.sync(
+                    schedulerState(
+                        policy = SubscriptionRefreshPolicy.CUSTOM,
+                        customHours = 0.5,
+                        subscriptions = listOf(
+                            schedulerSubscription(lastRefreshedAtEpochMillis = nowMillis),
+                        ),
+                    ),
+                )
+                delay(1_000L)
+                refreshCompleted = true
+            },
+            nowMillis = { nowMillis },
+        )
+        try {
+            scheduler.sync(
+                schedulerState(
+                    policy = SubscriptionRefreshPolicy.CUSTOM,
+                    customHours = 0.5,
+                    subscriptions = listOf(schedulerSubscription(lastRefreshedAtEpochMillis = 1L)),
+                ),
+            )
+
+            runCurrent()
+            assertTrue(refreshStarted)
+
+            advanceTimeBy(1_000L)
+            runCurrent()
+
+            assertTrue(refreshCompleted)
         } finally {
             scheduler.cancel()
         }

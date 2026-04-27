@@ -32,12 +32,18 @@ class DesktopAutoRefreshScheduler(
         val intervalMillis: Long,
         val initialDelayMillis: Long,
         val targetSignature: List<TargetSignature>,
-    )
+    ) {
+        fun sameScheduleAs(other: Config?): Boolean {
+            return other != null &&
+                enabled == other.enabled &&
+                intervalMillis == other.intervalMillis &&
+                targetSignature == other.targetSignature
+        }
+    }
 
     private data class TargetSignature(
         val id: String,
         val url: String,
-        val lastRefreshedAtEpochMillis: Long,
     )
 
     private var activeJob: Job? = null
@@ -45,7 +51,7 @@ class DesktopAutoRefreshScheduler(
 
     fun sync(state: MainUiState) {
         val nextConfig = state.toSchedulerConfig()
-        if (nextConfig == activeConfig && activeJob?.isActive == true) {
+        if (nextConfig.sameScheduleAs(activeConfig) && activeJob?.isActive == true) {
             return
         }
         activeJob?.cancel()
@@ -97,7 +103,6 @@ class DesktopAutoRefreshScheduler(
             TargetSignature(
                 id = subscription.id,
                 url = subscription.url,
-                lastRefreshedAtEpochMillis = subscription.lastRefreshedAtEpochMillis,
             )
         }
         return Config(
