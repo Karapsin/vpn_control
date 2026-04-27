@@ -157,6 +157,20 @@ Useful options:
 - `-SkipPackageRegressionTests` skips installer payload validation.
 - `-DistDir <path>` changes the local artifact output directory.
 
+From the Linux host, the local Windows VM can do the full Windows-native package build:
+
+```bash
+./scripts/package_windows_desktop_vm.sh
+```
+
+That script starts `vpn-control-win11` if needed, waits for QEMU guest agent, sends the current working tree snapshot to Windows, runs the Windows packaging script in the VM, and copies the result back to:
+
+```text
+dist/windows-vm/
+```
+
+The VM flow also runs the Windows package regression checks. If Java is missing in the VM, it downloads a portable JDK 17 into the VM work directory.
+
 ## Key Files
 
 - `app/src/main/java/com/kardinal/vpncontrol/MainActivity.kt`

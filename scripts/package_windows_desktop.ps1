@@ -30,7 +30,17 @@ function Invoke-CheckedNative {
 }
 
 Write-Host "[vpn-control] checking Java runtime"
-java -version
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    java -version 2>&1 | ForEach-Object { Write-Host $_.ToString() }
+    $JavaExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+}
+if ($JavaExitCode -ne 0) {
+    throw "java -version failed with exit code $JavaExitCode"
+}
 
 .\scripts\prepare_sing_box_desktop_runtime.ps1
 
