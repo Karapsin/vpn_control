@@ -58,6 +58,51 @@ class DesktopProxyConfigFactoryTest {
         assertEquals("proxy", root.getValue("route").jsonObject.getValue("final").jsonPrimitive.content)
     }
 
+    @Test
+    fun resolvedValidationServerPreservesImplicitTlsAndWebSocketHosts() {
+        val profile = VlessProfile(
+            protocol = ProxyProtocol.VLESS,
+            remarks = "VLESS WS TLS",
+            server = "edge.example.net",
+            serverPort = 443,
+            uuid = "00000000-0000-0000-0000-000000000000",
+            network = "ws",
+            flow = "",
+            security = "tls",
+            sni = "",
+            fingerprint = "",
+            publicKey = "",
+            shortId = "",
+            path = "/ws",
+            hostHeader = "",
+            serviceName = "",
+            headerType = "",
+            rawLink = "vless://example",
+        )
+
+        val validationProfile = profile.withResolvedValidationServer("203.0.113.10")
+        val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
+            profile = validationProfile,
+            dns = DesktopDnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(ignoreRules = true),
+            listenPort = 40999,
+        )
+        val outbound = Json.parseToJsonElement(config)
+            .jsonObject
+            .getValue("outbounds")
+            .jsonArray
+            .first()
+            .jsonObject
+        val transportHeaders = outbound.getValue("transport")
+            .jsonObject
+            .getValue("headers")
+            .jsonObject
+
+        assertEquals("203.0.113.10", outbound.getValue("server").jsonPrimitive.content)
+        assertEquals("edge.example.net", outbound.getValue("tls").jsonObject.getValue("server_name").jsonPrimitive.content)
+        assertEquals("edge.example.net", transportHeaders.getValue("Host").jsonPrimitive.content)
+    }
+
     private fun testProfile(): VlessProfile {
         return VlessProfile(
             protocol = ProxyProtocol.SOCKS,

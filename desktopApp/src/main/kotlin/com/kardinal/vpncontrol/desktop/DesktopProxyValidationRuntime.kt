@@ -176,22 +176,26 @@ class DesktopProxyValidationRuntime(
                 isDaemon = true
             }
         }
-        val future = executor.submit<Double> {
+        val future = executor.submit<PreflightConnection> {
             val startedAt = System.nanoTime()
             Socket().use { socket ->
                 socket.connect(
                     InetSocketAddress(profile.server, profile.serverPort),
                     settings.preflightConnectTimeoutMillis,
                 )
+                PreflightConnection(
+                    connectMillis = (System.nanoTime() - startedAt) / 1_000_000.0,
+                    resolvedServerAddress = socket.inetAddress?.hostAddress,
+                )
             }
-            (System.nanoTime() - startedAt) / 1_000_000.0
         }
         return try {
-            val connectMillis = future.get(settings.preflightTimeoutMillis, TimeUnit.MILLISECONDS)
+            val connection = future.get(settings.preflightTimeoutMillis, TimeUnit.MILLISECONDS)
             PreflightResult(
                 profile = profile,
-                connectMillis = connectMillis,
-                detail = "${profile.remarks}: tcp=${BenchmarkSearchLogic.formatMillis(connectMillis)}",
+                connectMillis = connection.connectMillis,
+                detail = "${profile.remarks}: tcp=${BenchmarkSearchLogic.formatMillis(connection.connectMillis)}",
+                resolvedServerAddress = connection.resolvedServerAddress,
             )
         } catch (_: TimeoutException) {
             future.cancel(true)
@@ -243,7 +247,7 @@ class DesktopProxyValidationRuntime(
         Files.createDirectories(baseDir)
         val port = allocateListenPort()
         val configJson = DesktopProxyConfigFactory.buildProxyOnlyConfig(
-            profile = candidate.profile,
+            profile = candidate.profile.withResolvedValidationServer(candidate.resolvedServerAddress),
             dns = dnsSettings,
             routingRules = com.kardinal.vpncontrol.model.RoutingRules(ignoreRules = true),
             listenPort = port,
@@ -368,7 +372,40 @@ class DesktopProxyValidationRuntime(
         val total: Double?,
     )
 
+    private data class PreflightConnection(
+        val connectMillis: Double,
+        val resolvedServerAddress: String?,
+    )
+
     private fun PreflightResult.isPreflightTimeout(): Boolean {
         return detail.contains("tcp_timeout")
+    }
+}
+
+internal fun VlessProfile.withResolvedValidationServer(resolvedServerAddress: String?): VlessProfile {
+    val resolvedServer = resolvedServerAddress
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && it != server }
+        ?: return this
+    val originalServer = server
+    return copy(
+        server = resolvedServer,
+        sni = sni.ifBlank {
+            if (usesTlsForValidation()) originalServer else ""
+        },
+        hostHeader = hostHeader.ifBlank {
+            if (network == "ws") originalServer else ""
+        },
+    )
+}
+
+private fun VlessProfile.usesTlsForValidation(): Boolean {
+    return when (protocol) {
+        ProxyProtocol.VLESS,
+        ProxyProtocol.VMESS -> security.isNotBlank()
+        ProxyProtocol.TROJAN -> true
+        ProxyProtocol.SHADOWSOCKS,
+        ProxyProtocol.SOCKS,
+        ProxyProtocol.CUSTOM -> false
     }
 }

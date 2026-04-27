@@ -19,6 +19,7 @@ data class PreflightResult(
     val profile: VlessProfile,
     val connectMillis: Double?,
     val detail: String,
+    val resolvedServerAddress: String? = null,
 ) {
     val sortScore: Double
         get() = connectMillis ?: Double.POSITIVE_INFINITY
