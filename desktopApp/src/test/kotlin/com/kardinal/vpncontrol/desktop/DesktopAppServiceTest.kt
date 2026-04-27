@@ -12,6 +12,7 @@ import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.nio.file.Files
+import java.nio.file.attribute.FileTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -62,6 +63,67 @@ class DesktopAppServiceTest {
             assertEquals(null, loaded.persistedState.latencyHistory.single().secondaryTotalMs)
         } finally {
             tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun workspaceWriteFallsBackToRecoveryWhenPrimaryCannotBeReplaced() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-recovery-write")
+        try {
+            Files.createDirectories(tempDir.resolve("workspace.json"))
+            val store = DesktopStateStore(tempDir)
+
+            store.writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(profileUrl = "https://example.com/recovered"),
+                    locations = emptyList(),
+                ),
+            )
+
+            assertTrue(Files.exists(tempDir.resolve("workspace-recovery.json")))
+            assertFalse(Files.exists(tempDir.resolve("workspace-write-error.log")))
+
+            val loaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+            assertEquals("https://example.com/recovered", loaded.persistedState.profileUrl)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun loadWorkspacePrefersNewerRecoveryWorkspace() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-recovery-load")
+        val recoveryDir = Files.createTempDirectory("vpn-control-desktop-recovery-source")
+        try {
+            val store = DesktopStateStore(tempDir)
+            store.writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(profileUrl = "https://example.com/stale"),
+                    locations = emptyList(),
+                ),
+            )
+            DesktopStateStore(recoveryDir).writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(profileUrl = "https://example.com/fresh"),
+                    locations = emptyList(),
+                ),
+            )
+            val primary = tempDir.resolve("workspace.json")
+            val recovery = tempDir.resolve("workspace-recovery.json")
+            Files.copy(recoveryDir.resolve("workspace.json"), recovery)
+            Files.setLastModifiedTime(primary, FileTime.fromMillis(1_000L))
+            Files.setLastModifiedTime(recovery, FileTime.fromMillis(2_000L))
+
+            val loaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+
+            assertEquals("https://example.com/fresh", loaded.persistedState.profileUrl)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+            recoveryDir.toFile().deleteRecursively()
         }
     }
 

@@ -68,6 +68,7 @@ class DesktopStateStore(
     private val baseDir: Path,
 ) : PersistedStateStore, RuntimeConfigStore {
     private val workspaceFile = baseDir.resolve("workspace.json")
+    private val workspaceRecoveryFile = baseDir.resolve("workspace-recovery.json")
     private val workspaceWriteErrorFile = baseDir.resolve("workspace-write-error.log")
     private val runtimeConfigFile = baseDir.resolve("runtime-config.json")
     private val stateFlow = MutableStateFlow(PersistedState())
@@ -81,14 +82,7 @@ class DesktopStateStore(
     fun validationDirectory(): Path = baseDir.resolve("validation")
 
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
-        val loadedWorkspace = runCatching {
-            if (!Files.exists(workspaceFile)) {
-                writeWorkspace(defaultWorkspace)
-                defaultWorkspace
-            } else {
-                decodeWorkspace(Files.readString(workspaceFile))
-            }
-        }.getOrDefault(defaultWorkspace)
+        val loadedWorkspace = loadStoredWorkspace(defaultWorkspace)
         val workspace = loadedWorkspace.migrateLegacyDesktopDefaults()
         if (workspace != loadedWorkspace) {
             writeWorkspace(workspace)
@@ -109,16 +103,52 @@ class DesktopStateStore(
         }
     }
 
+    private fun loadStoredWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
+        val workspace = listOf(workspaceFile, workspaceRecoveryFile)
+            .filter(Files::exists)
+            .sortedByDescending { runCatching { Files.getLastModifiedTime(it).toMillis() }.getOrDefault(0L) }
+            .firstNotNullOfOrNull { file ->
+                runCatching { decodeWorkspace(Files.readString(file)) }.getOrNull()
+            }
+        if (workspace != null) {
+            return workspace
+        }
+        writeWorkspace(defaultWorkspace)
+        return defaultWorkspace
+    }
+
     private fun writeWorkspaceAtomically(content: String) {
+        var primaryError: IOException? = null
+        repeat(WORKSPACE_WRITE_ATTEMPTS) { attempt ->
+            try {
+                writeWorkspaceFile(workspaceFile, content)
+                runCatching { Files.deleteIfExists(workspaceRecoveryFile) }
+                return
+            } catch (error: IOException) {
+                primaryError = error
+                if (attempt < WORKSPACE_WRITE_ATTEMPTS - 1) {
+                    Thread.sleep(WORKSPACE_WRITE_RETRY_DELAY_MILLIS)
+                }
+            }
+        }
+        try {
+            writeWorkspaceFile(workspaceRecoveryFile, content)
+        } catch (recoveryError: IOException) {
+            primaryError?.addSuppressed(recoveryError)
+            throw primaryError ?: recoveryError
+        }
+    }
+
+    private fun writeWorkspaceFile(targetFile: Path, content: String) {
         val tempFile = Files.createTempFile(baseDir, "workspace-", ".tmp")
         try {
             Files.writeString(tempFile, content)
             try {
-                Files.move(tempFile, workspaceFile, REPLACE_EXISTING, ATOMIC_MOVE)
+                Files.move(tempFile, targetFile, REPLACE_EXISTING, ATOMIC_MOVE)
             } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(tempFile, workspaceFile, REPLACE_EXISTING)
+                Files.move(tempFile, targetFile, REPLACE_EXISTING)
             } catch (_: IOException) {
-                Files.writeString(workspaceFile, content, CREATE, TRUNCATE_EXISTING, WRITE)
+                Files.writeString(targetFile, content, CREATE, TRUNCATE_EXISTING, WRITE)
             }
         } finally {
             Files.deleteIfExists(tempFile)
@@ -185,6 +215,8 @@ class DesktopStateStore(
             prettyPrint = true
             prettyPrintIndent = "  "
         }
+        private const val WORKSPACE_WRITE_ATTEMPTS = 5
+        private const val WORKSPACE_WRITE_RETRY_DELAY_MILLIS = 100L
     }
 
     private fun encodeWorkspace(workspace: DesktopWorkspace): JsonObject {
