@@ -49,8 +49,12 @@ object StatsCodec {
                 put("detail", JsonPrimitive(entry.detail))
                 put("primary_status", JsonPrimitive(entry.primaryStatus))
                 put("secondary_status", JsonPrimitive(entry.secondaryStatus))
-                entry.primaryTotalMs?.let { put("primary_total_ms", JsonPrimitive(it)) }
-                entry.secondaryTotalMs?.let { put("secondary_total_ms", JsonPrimitive(it)) }
+                entry.primaryTotalMs?.takeIf(Double::isFinite)?.let {
+                    put("primary_total_ms", JsonPrimitive(it))
+                }
+                entry.secondaryTotalMs?.takeIf(Double::isFinite)?.let {
+                    put("secondary_total_ms", JsonPrimitive(it))
+                }
                 put("created_at_epoch_millis", JsonPrimitive(entry.createdAtEpochMillis))
             }
         }

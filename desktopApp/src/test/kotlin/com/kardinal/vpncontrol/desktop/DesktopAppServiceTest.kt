@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
+import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -17,6 +19,52 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopAppServiceTest {
+    @Test
+    fun workspaceWriteSurvivesNonFiniteMetrics() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-non-finite")
+        try {
+            val store = DesktopStateStore(tempDir)
+            store.writeWorkspace(
+                DesktopWorkspace(
+                    persistedState = PersistedState(
+                        subscriptionRefreshCustomHours = Double.POSITIVE_INFINITY,
+                        latencyHistory = listOf(
+                            LatencyHistoryEntry(
+                                id = "bad-metric",
+                                profileName = "Example",
+                                detail = "failed",
+                                primaryStatus = "error",
+                                secondaryStatus = "error",
+                                primaryTotalMs = Double.POSITIVE_INFINITY,
+                                secondaryTotalMs = Double.NaN,
+                            ),
+                        ),
+                    ),
+                    locations = emptyList(),
+                ),
+            )
+
+            val workspaceFile = tempDir.resolve("workspace.json")
+            val raw = Files.readString(workspaceFile)
+            val loaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+
+            assertTrue(Files.exists(workspaceFile))
+            assertFalse(raw.contains("Infinity"))
+            assertFalse(raw.contains("NaN"))
+            assertFalse(Files.exists(tempDir.resolve("workspace-write-error.log")))
+            assertEquals(
+                DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS,
+                loaded.persistedState.subscriptionRefreshCustomHours,
+            )
+            assertEquals(null, loaded.persistedState.latencyHistory.single().primaryTotalMs)
+            assertEquals(null, loaded.persistedState.latencyHistory.single().secondaryTotalMs)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun defaultWorkspaceStartsInVpnModeWithoutDefaultRoutingDomains() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-defaults")

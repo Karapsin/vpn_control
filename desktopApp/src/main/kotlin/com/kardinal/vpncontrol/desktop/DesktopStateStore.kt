@@ -13,11 +13,18 @@ import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
+import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.nio.file.StandardOpenOption.APPEND
+import java.nio.file.StandardOpenOption.CREATE
+import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,6 +65,7 @@ class DesktopStateStore(
     private val baseDir: Path,
 ) : PersistedStateStore, RuntimeConfigStore {
     private val workspaceFile = baseDir.resolve("workspace.json")
+    private val workspaceWriteErrorFile = baseDir.resolve("workspace-write-error.log")
     private val runtimeConfigFile = baseDir.resolve("runtime-config.json")
     private val stateFlow = MutableStateFlow(PersistedState())
 
@@ -89,8 +97,46 @@ class DesktopStateStore(
     fun writeWorkspace(workspace: DesktopWorkspace) {
         runCatching {
             Files.createDirectories(baseDir)
-            Files.writeString(workspaceFile, json.encodeToString(JsonObject.serializer(), encodeWorkspace(workspace)))
+            writeWorkspaceAtomically(
+                json.encodeToString(JsonObject.serializer(), encodeWorkspace(workspace)),
+            )
             stateFlow.value = workspace.persistedState
+        }.onFailure { error ->
+            logWorkspaceWriteError(error)
+        }
+    }
+
+    private fun writeWorkspaceAtomically(content: String) {
+        val tempFile = Files.createTempFile(baseDir, "workspace-", ".tmp")
+        try {
+            Files.writeString(tempFile, content)
+            try {
+                Files.move(tempFile, workspaceFile, REPLACE_EXISTING, ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tempFile, workspaceFile, REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(tempFile)
+        }
+    }
+
+    private fun logWorkspaceWriteError(error: Throwable) {
+        runCatching {
+            Files.createDirectories(baseDir)
+            Files.writeString(
+                workspaceWriteErrorFile,
+                buildString {
+                    append(Instant.now())
+                    append(' ')
+                    append(error::class.qualifiedName ?: error::class.simpleName ?: "Throwable")
+                    append(": ")
+                    append(error.message.orEmpty())
+                    appendLine()
+                    appendLine(error.stackTraceToString())
+                },
+                CREATE,
+                APPEND,
+            )
         }
     }
 
@@ -213,7 +259,10 @@ class DesktopStateStore(
             put("app_mode", JsonPrimitive(state.appMode.name))
             put("subscription_refresh_policy", JsonPrimitive(state.subscriptionRefreshPolicy.name))
             put("find_best_after_subscription_refresh", JsonPrimitive(state.findBestAfterSubscriptionRefresh))
-            put("subscription_refresh_custom_hours", JsonPrimitive(state.subscriptionRefreshCustomHours))
+            put(
+                "subscription_refresh_custom_hours",
+                JsonPrimitive(normalizeSubscriptionRefreshCustomHours(state.subscriptionRefreshCustomHours)),
+            )
             put(
                 "validation_settings",
                 buildJsonObject {
@@ -304,7 +353,7 @@ class DesktopStateStore(
             subscriptionRefreshCustomHours = root.double(
                 key = "subscription_refresh_custom_hours",
                 default = 3.0,
-            ),
+            ).let(::normalizeSubscriptionRefreshCustomHours),
             validationSettings = BenchmarkValidationSettings(
                 primaryUrl = validation.string("primary_url"),
                 secondaryUrl = validation.string("secondary_url"),
