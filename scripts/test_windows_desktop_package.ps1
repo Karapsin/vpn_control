@@ -93,12 +93,49 @@ if (-not $AppJars) {
     throw "MSI payload is missing application jars"
 }
 
+$SmokeStateDir = Join-Path $ValidationRoot "smoke-state"
+if (Test-Path $SmokeStateDir) {
+    Remove-Item $SmokeStateDir -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $SmokeStateDir | Out-Null
+
+Write-Host "[vpn-control] running extracted app smoke test"
+$SmokeProcess = Start-Process `
+    -FilePath $Launcher.FullName `
+    -ArgumentList @("--smoke-test", "--smoke-test-state-dir", $SmokeStateDir) `
+    -PassThru `
+    -WindowStyle Hidden
+try {
+    $Completed = $SmokeProcess.WaitForExit(60000)
+    if (-not $Completed) {
+        Stop-Process -Id $SmokeProcess.Id -Force -ErrorAction SilentlyContinue
+        throw "Extracted app smoke test timed out"
+    }
+    $SmokeProcess.Refresh()
+    if ($SmokeProcess.ExitCode -ne 0) {
+        throw "Extracted app smoke test failed with exit code $($SmokeProcess.ExitCode)"
+    }
+} finally {
+    Stop-Process -Id $SmokeProcess.Id -Force -ErrorAction SilentlyContinue
+}
+
+$SmokeWorkspace = Join-Path $SmokeStateDir "workspace.json"
+if (-not (Test-Path $SmokeWorkspace)) {
+    throw "Extracted app smoke test did not write workspace.json"
+}
+
+$SmokeTools = Join-Path $SmokeStateDir "runtime\tools"
+if (-not (Test-Path $SmokeTools)) {
+    throw "Extracted app smoke test did not extract bundled sing-box tools"
+}
+
 Write-Host "[vpn-control] verified Windows package regression checks:"
 Write-Host " - exe:      $($ExePackage.FullName)"
 Write-Host " - msi:      $($MsiPackage.FullName)"
 Write-Host " - launcher: $($Launcher.FullName)"
 Write-Host " - runtime:  $($RuntimeRelease.DirectoryName)"
 Write-Host " - jars:     $($AppJars.Count)"
+Write-Host " - smoke:    extracted app launcher"
 
 @($ExePackage, $MsiPackage) | ForEach-Object {
     $Hash = Get-FileHash -Algorithm SHA256 -Path $_.FullName

@@ -86,8 +86,10 @@ import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
 import kotlinx.coroutines.launch
+import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+    DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
     val instanceLock = DesktopSingleInstanceLock.acquire()
     if (instanceLock == null) {
         if (!DesktopActivationServer.requestShow()) {
