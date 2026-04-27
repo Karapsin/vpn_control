@@ -16,6 +16,7 @@ import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
+import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -24,6 +25,8 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.APPEND
 import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+import java.nio.file.StandardOpenOption.WRITE
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,6 +117,8 @@ class DesktopStateStore(
                 Files.move(tempFile, workspaceFile, REPLACE_EXISTING, ATOMIC_MOVE)
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(tempFile, workspaceFile, REPLACE_EXISTING)
+            } catch (_: IOException) {
+                Files.writeString(workspaceFile, content, CREATE, TRUNCATE_EXISTING, WRITE)
             }
         } finally {
             Files.deleteIfExists(tempFile)
