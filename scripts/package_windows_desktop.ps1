@@ -1,5 +1,7 @@
 param(
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$SkipPackageRegressionTests,
+    [string]$DistDir = "dist\windows"
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,6 +9,11 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 $OutputRoot = Join-Path $RepoRoot "desktopApp\build\compose\binaries\main"
+$DistRoot = if ([System.IO.Path]::IsPathRooted($DistDir)) {
+    $DistDir
+} else {
+    Join-Path $RepoRoot $DistDir
+}
 
 function Invoke-CheckedNative {
     param(
@@ -50,64 +57,40 @@ if (-not $Packages) {
     throw "No Windows installer artifacts were produced under $OutputRoot"
 }
 
-$MsiPackage = $Packages |
-    Where-Object { $_.Extension -eq ".msi" } |
-    Sort-Object LastWriteTimeUtc -Descending |
-    Select-Object -First 1
-if (-not $MsiPackage) {
-    throw "No MSI artifact was produced under $OutputRoot"
+if (-not $SkipPackageRegressionTests) {
+    Write-Host "[vpn-control] running Windows package regression tests"
+    & ".\scripts\test_windows_desktop_package.ps1" -PackageRoot $OutputRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows package regression tests failed with exit code $LASTEXITCODE"
+    }
+} else {
+    Write-Host "[vpn-control] skipping Windows package regression tests"
 }
 
-$ValidationRoot = Join-Path $RepoRoot "desktopApp\build\compose\validation\msi"
-if (Test-Path $ValidationRoot) {
-    Remove-Item $ValidationRoot -Recurse -Force
-}
-New-Item -ItemType Directory -Force -Path $ValidationRoot | Out-Null
+Write-Host "[vpn-control] copying local Windows installers to: $DistRoot"
+New-Item -ItemType Directory -Force -Path $DistRoot | Out-Null
+Get-ChildItem -Path $DistRoot -File |
+    Where-Object { $_.Extension -in @(".exe", ".msi") -or $_.Name -eq "SHA256SUMS.txt" } |
+    Remove-Item -Force
 
-Write-Host "[vpn-control] validating MSI payload: $($MsiPackage.FullName)"
-$MsiArgs = @(
-    "/a",
-    $MsiPackage.FullName,
-    "/qn",
-    "TARGETDIR=$ValidationRoot"
-)
-$MsiProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $MsiArgs -Wait -PassThru
-if ($MsiProcess.ExitCode -ne 0) {
-    throw "MSI administrative extraction failed with exit code $($MsiProcess.ExitCode)"
+$CopiedPackages = @()
+$Packages | Sort-Object Name | ForEach-Object {
+    $Target = Join-Path $DistRoot $_.Name
+    Copy-Item -Path $_.FullName -Destination $Target -Force
+    $CopiedPackages += Get-Item $Target
 }
 
-$Launcher = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "vpn-control.exe" |
-    Select-Object -First 1
-if (-not $Launcher) {
-    throw "MSI payload is missing vpn-control.exe launcher"
+$ChecksumFile = Join-Path $DistRoot "SHA256SUMS.txt"
+if (Test-Path $ChecksumFile) {
+    Remove-Item $ChecksumFile -Force
 }
-
-$RuntimeRelease = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "release" |
-    Where-Object { $_.FullName -match "\\runtime\\release$" } |
-    Select-Object -First 1
-if (-not $RuntimeRelease) {
-    throw "MSI payload is missing bundled runtime\release marker"
-}
-
-$RuntimeModules = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "modules" |
-    Where-Object { $_.FullName -match "\\runtime\\lib\\modules$" } |
-    Select-Object -First 1
-if (-not $RuntimeModules) {
-    throw "MSI payload is missing bundled runtime\lib\modules image"
-}
-
-$AppJars = Get-ChildItem -Path $ValidationRoot -Recurse -Filter "*.jar"
-if (-not $AppJars) {
-    throw "MSI payload is missing application jars"
-}
-
-Write-Host "[vpn-control] verified MSI payload:"
-Write-Host " - launcher: $($Launcher.FullName)"
-Write-Host " - runtime:  $($RuntimeRelease.DirectoryName)"
-Write-Host " - jars:     $($AppJars.Count)"
-
-$Packages | ForEach-Object {
+$CopiedPackages | ForEach-Object {
     $Hash = Get-FileHash -Algorithm SHA256 -Path $_.FullName
-    Write-Host " - $($_.FullName)"
-    Write-Host "   sha256: $($Hash.Hash.ToLowerInvariant())"
+    "$($Hash.Hash.ToLowerInvariant())  $($_.Name)" | Out-File -FilePath $ChecksumFile -Encoding ascii -Append
 }
+
+Write-Host "[vpn-control] local Windows installers:"
+$CopiedPackages | ForEach-Object {
+    Write-Host " - $($_.FullName)"
+}
+Write-Host " - $ChecksumFile"

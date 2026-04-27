@@ -131,6 +131,32 @@ Tradeoff:
 
 The release build is configured to use the debug signing config so it can be installed locally without extra signing setup.
 
+## Windows Desktop Packaging
+
+Run this from Windows or from the Windows VM:
+
+```powershell
+.\scripts\package_windows_desktop.ps1
+```
+
+The script builds local `.exe` and `.msi` installers, runs desktop unit tests, runs Windows package regression checks, and copies final artifacts to:
+
+```text
+dist\windows\
+```
+
+Expected outputs:
+
+- `dist\windows\vpn-control-<version>.exe`
+- `dist\windows\vpn-control-<version>.msi`
+- `dist\windows\SHA256SUMS.txt`
+
+Useful options:
+
+- `-SkipTests` skips Gradle unit tests.
+- `-SkipPackageRegressionTests` skips installer payload validation.
+- `-DistDir <path>` changes the local artifact output directory.
+
 ## Key Files
 
 - `app/src/main/java/com/kardinal/vpncontrol/MainActivity.kt`
