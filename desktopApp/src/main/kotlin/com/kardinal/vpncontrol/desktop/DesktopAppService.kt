@@ -43,6 +43,7 @@ import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.withTimeoutOrNull
 
 class DesktopAppService private constructor(
     private val desktopStore: DesktopStateStore,
@@ -212,7 +213,7 @@ class DesktopAppService private constructor(
     }
 
     fun selectedDesktopLocation(): DesktopLocationRecord? {
-        return desktopLocations.firstOrNull { it.rawLink == state.selectedProfileRawLink }
+        return desktopLocations.firstOrNull { it.matchesSelectedLocation(state) }
             ?: visibleDesktopLocations().firstOrNull { it.isSelected }
     }
 
@@ -579,6 +580,8 @@ class DesktopAppService private constructor(
 
     suspend fun runAutoRefreshCycle() {
         if (state.isBusy) return
+        val wasVpnRunning = state.isVpnRunning || runtimeManager.isRunning()
+        val shouldFindBestAfterRefresh = wasVpnRunning && state.findBestAfterSubscriptionRefresh
         val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
         if (refreshTargets.isEmpty()) return
         val refreshResult = refreshDesktopSubscriptions(
@@ -588,9 +591,10 @@ class DesktopAppService private constructor(
             } else {
                 "Auto-refreshing subscriptions..."
             },
+            stopVpnIfSelectedRemoved = !shouldFindBestAfterRefresh,
         )
         if (refreshResult.isFailure) return
-        if (state.isVpnRunning && state.findBestAfterSubscriptionRefresh) {
+        if (shouldFindBestAfterRefresh) {
             autoRefreshBestSelectionAction(this)
         }
     }
@@ -878,6 +882,7 @@ class DesktopAppService private constructor(
     suspend fun refreshDesktopSubscriptions(
         subscriptionsToRefresh: List<SubscriptionSource>,
         statusPrefix: String,
+        stopVpnIfSelectedRemoved: Boolean = true,
     ): Result<Int> {
         if (subscriptionsToRefresh.isEmpty()) {
             updateState { it.withStatus("Set a remote source first") }
@@ -941,8 +946,8 @@ class DesktopAppService private constructor(
         }
 
         val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
-            rebuiltLocations.none { it.rawLink == state.selectedProfileRawLink }
-        if (removedSelected && state.isVpnRunning) {
+            rebuiltLocations.none { it.matchesSelectedLocation(state) }
+        if (removedSelected && state.isVpnRunning && stopVpnIfSelectedRemoved) {
             val stopResult = stopDesktopProxy("${activeConnectionName()} stopped. Refreshed subscriptions removed the selected location.")
             if (stopResult.isFailure) {
                 updateState { it.copy(isBusy = false) }
@@ -962,7 +967,7 @@ class DesktopAppService private constructor(
         )
         commitState(
             nextLocations = rebuiltLocations,
-            nextState = state.clearSelectedLocationIf(removedSelected)
+            nextState = state.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
                 .copy(
                     isBusy = false,
                     isRefreshing = false,
@@ -1263,18 +1268,33 @@ class DesktopAppService private constructor(
             )
         }
         val validationSettings = state.validationSettings.normalized()
-        val evaluation = validationRuntime.evaluateProfiles(
-            profiles = profiles,
-            dnsSettings = DesktopDnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            ),
-            benchmarkUrls = BenchmarkUrls(
-                primary = validationSettings.primaryUrl,
-                secondary = validationSettings.secondaryUrl,
-            ),
-            settings = validationSettings.toDesktopValidationSettings(),
-        )
+        val desktopValidationSettings = validationSettings.toDesktopValidationSettings()
+        val evaluation = withTimeoutOrNull(desktopValidationSettings.searchTimeoutMillis) {
+            validationRuntime.evaluateProfiles(
+                profiles = profiles,
+                dnsSettings = DesktopDnsSettings(
+                    enabled = state.useCustomDns,
+                    value = state.customDns,
+                ),
+                benchmarkUrls = BenchmarkUrls(
+                    primary = validationSettings.primaryUrl,
+                    secondary = validationSettings.secondaryUrl,
+                ),
+                settings = desktopValidationSettings,
+                onProgress = { progress ->
+                    updateState {
+                        it.copy(isBusy = true, isRefreshing = true).withStatus(progress)
+                    }
+                },
+            )
+        } ?: run {
+            updateState {
+                it.copy(isBusy = false, isRefreshing = false).withStatus(
+                    "Best location search timed out; keeping the current connection",
+                )
+            }
+            return
+        }
         val winning = evaluation.winner ?: evaluation.fallback
         val winningRawKey = winning?.let { LocationConfigs.encodeStoredLocation(it.profile) }
         updateLocationBenchmarks(
@@ -1595,9 +1615,7 @@ private fun syncDesktopUiStateWithLocations(
         }
         ProfileSourceMode.CURRENT_LOCATIONS -> savedLocations.map(DesktopLocationRecord::rawLink)
     }
-    val selectedLocation = state.selectedProfileRawLink
-        .takeIf(String::isNotBlank)
-        ?.let { rawLink -> locations.firstOrNull { it.rawLink == rawLink } }
+    val selectedLocation = locations.firstOrNull { it.matchesSelectedLocation(state) }
     return state.copy(
         subscriptions = syncedSubscriptions,
         activeSubscriptionId = effectiveActiveSubscriptionId,
@@ -1720,6 +1738,16 @@ private fun List<String>.toDesktopLocationRecords(startIndex: Int): List<Desktop
 
 private fun DesktopLocationRecord.normalizedStorageKey(): String {
     return LocationConfigs.normalizeStoredReference(rawLink)
+}
+
+private fun DesktopLocationRecord.matchesSelectedLocation(state: MainUiState): Boolean {
+    val selectedRaw = state.selectedProfileRawLink.takeIf(String::isNotBlank) ?: return false
+    if (rawLink == selectedRaw) return true
+    if (normalizedStorageKey() == LocationConfigs.normalizeStoredReference(selectedRaw)) return true
+    return sourceUrl.isNotBlank() &&
+        sourceUrl == state.selectedProfileSourceUrl &&
+        name == state.selectedProfileName &&
+        server == state.selectedProfileServer
 }
 
 private fun nextLocationIndex(locations: List<DesktopLocationRecord>): Int {

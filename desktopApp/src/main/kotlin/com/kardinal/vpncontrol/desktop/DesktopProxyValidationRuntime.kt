@@ -20,7 +20,11 @@ import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -28,6 +32,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
@@ -35,9 +40,12 @@ data class DesktopValidationSettings(
     val preflightConcurrency: Int = 4,
     val batchSize: Int = 3,
     val preflightConnectTimeoutMillis: Int = 1_500,
+    val preflightTimeoutMillis: Long = 2_000L,
     val proxyConnectTimeoutMillis: Int = 4_000,
     val proxyReadTimeoutMillis: Int = 5_000,
     val startupTimeoutMillis: Long = 4_000L,
+    val profileTimeoutMillis: Long = 20_000L,
+    val searchTimeoutMillis: Long = 180_000L,
 )
 
 class DesktopProxyValidationRuntime(
@@ -48,6 +56,8 @@ class DesktopProxyValidationRuntime(
     ),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
 ) {
+    private val preflightThreadCounter = AtomicInteger()
+
     suspend fun benchmarkLocation(
         profile: VlessProfile,
         dnsSettings: DesktopDnsSettings,
@@ -77,9 +87,13 @@ class DesktopProxyValidationRuntime(
         val reachableProfiles = preflightResults
             .filter { it.connectMillis != null }
             .sortedBy { it.connectMillis }
-        val walk = if (benchmarkableProfiles.isNotEmpty() && reachableProfiles.isNotEmpty()) {
+        val timedOutProfiles = preflightResults
+            .filter { it.isPreflightTimeout() }
+        val validationCandidates = (reachableProfiles + timedOutProfiles)
+            .distinctBy { LocationConfigs.encodeStoredLocation(it.profile) }
+        val walk = if (benchmarkableProfiles.isNotEmpty() && validationCandidates.isNotEmpty()) {
             validateInBatchesUntilSuccess(
-                candidates = reachableProfiles,
+                candidates = validationCandidates,
                 dnsSettings = dnsSettings,
                 benchmarkUrls = benchmarkUrls,
                 settings = settings,
@@ -157,7 +171,12 @@ class DesktopProxyValidationRuntime(
         profile: VlessProfile,
         settings: DesktopValidationSettings,
     ): PreflightResult {
-        return try {
+        val executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "vpn-control-preflight-${preflightThreadCounter.incrementAndGet()}").apply {
+                isDaemon = true
+            }
+        }
+        val future = executor.submit<Double> {
             val startedAt = System.nanoTime()
             Socket().use { socket ->
                 socket.connect(
@@ -165,18 +184,53 @@ class DesktopProxyValidationRuntime(
                     settings.preflightConnectTimeoutMillis,
                 )
             }
-            val connectMillis = (System.nanoTime() - startedAt) / 1_000_000.0
+            (System.nanoTime() - startedAt) / 1_000_000.0
+        }
+        return try {
+            val connectMillis = future.get(settings.preflightTimeoutMillis, TimeUnit.MILLISECONDS)
             PreflightResult(
                 profile = profile,
                 connectMillis = connectMillis,
                 detail = "${profile.remarks}: tcp=${BenchmarkSearchLogic.formatMillis(connectMillis)}",
             )
+        } catch (_: TimeoutException) {
+            future.cancel(true)
+            PreflightResult(
+                profile = profile,
+                connectMillis = null,
+                detail = "${profile.remarks}: tcp_timeout",
+            )
+        } catch (error: InterruptedException) {
+            future.cancel(true)
+            Thread.currentThread().interrupt()
+            PreflightResult(
+                profile = profile,
+                connectMillis = null,
+                detail = "${profile.remarks}: tcp_cancelled",
+            )
+        } catch (error: ExecutionException) {
+            val cause = error.cause
+            if (cause is IOException) {
+                PreflightResult(
+                    profile = profile,
+                    connectMillis = null,
+                    detail = "${profile.remarks}: ${cause.javaClass.simpleName}",
+                )
+            } else {
+                PreflightResult(
+                    profile = profile,
+                    connectMillis = null,
+                    detail = "${profile.remarks}: tcp_error",
+                )
+            }
         } catch (_: IOException) {
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
                 detail = "${profile.remarks}: tcp_unreachable",
             )
+        } finally {
+            executor.shutdownNow()
         }
     }
 
@@ -208,23 +262,26 @@ class DesktopProxyValidationRuntime(
 
         var process: Process? = null
         try {
-            process = ProcessBuilder(singBox.path.toString(), "run", "-c", configFile.toString())
-                .directory(baseDir.toFile())
-                .redirectErrorStream(true)
-                .redirectOutput(logFile.toFile())
-                .start()
+            val benchmark = withTimeoutOrNull(settings.profileTimeoutMillis) {
+                process = ProcessBuilder(singBox.path.toString(), "run", "-c", configFile.toString())
+                    .directory(baseDir.toFile())
+                    .redirectErrorStream(true)
+                    .redirectOutput(logFile.toFile())
+                    .start()
 
-            if (!waitForPort(process, port, settings.startupTimeoutMillis)) {
-                return BenchmarkSearchLogic.failedBenchmark(
-                    candidate.profile,
-                    candidate,
-                    "proxy_not_ready",
-                )
+                if (!waitForPort(process, port, settings.startupTimeoutMillis)) {
+                    return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(
+                        candidate.profile,
+                        candidate,
+                        "proxy_not_ready",
+                    )
+                }
+
+                val primary = runProxyRuns(port, benchmarkUrls.primary, settings)
+                val secondary = runProxyRuns(port, benchmarkUrls.secondary, settings)
+                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, primary, secondary)
             }
-
-            val primary = runProxyRuns(port, benchmarkUrls.primary, settings)
-            val secondary = runProxyRuns(port, benchmarkUrls.secondary, settings)
-            return BenchmarkSearchLogic.buildValidatedBenchmark(candidate, primary, secondary)
+            return benchmark ?: BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "validation_timeout")
         } catch (_: IOException) {
             return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_launch_failed")
         } finally {
@@ -310,4 +367,8 @@ class DesktopProxyValidationRuntime(
         val code: String,
         val total: Double?,
     )
+
+    private fun PreflightResult.isPreflightTimeout(): Boolean {
+        return detail.contains("tcp_timeout")
+    }
 }

@@ -396,6 +396,128 @@ class DesktopAppServiceTest {
     }
 
     @Test
+    fun autoRefreshDoesNotStopRunningVpnBeforePostRefreshSelectionWhenSelectedLocationChanged() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-auto-refresh-selected-changed")
+        try {
+            val subscription = SubscriptionSource(
+                id = "desktop-test-subscription",
+                url = "https://example.com/subscription.txt",
+                customName = "Example",
+                cachedLocations = listOf("stale-selected-location"),
+            )
+            val workspace = DesktopWorkspace(
+                persistedState = PersistedState(
+                    profileUrl = subscription.url,
+                    activeSubscriptionId = subscription.id,
+                    subscriptions = listOf(subscription),
+                    profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                    appMode = AppMode.VPN,
+                    findBestAfterSubscriptionRefresh = true,
+                    selectedProfileName = "Old Location",
+                    selectedProfileServer = "192.0.2.1",
+                    selectedProfileRawLink = "stale-selected-location",
+                    selectedProfileSourceUrl = subscription.url,
+                    isVpnRunning = true,
+                ),
+                locations = listOf(
+                    DesktopLocationRecord(
+                        index = 1,
+                        sourceUrl = subscription.url,
+                        rawLink = "stale-selected-location",
+                        name = "Old Location",
+                        server = "192.0.2.1",
+                        details = "SOCKS",
+                        benchmarkDetail = "Imported • not checked yet",
+                        isValid = true,
+                        isSelected = true,
+                    ),
+                ),
+            )
+            var postRefreshSelections = 0
+            val service = DesktopAppService.createForTesting(
+                store = DesktopStateStore(tempDir),
+                initialWorkspace = workspace,
+                subscriptionContentFetcher = FakeSubscriptionContentFetcher(
+                    mapOf(
+                        subscription.url to "socks://user:pass@127.0.0.1:1080#New%20Location",
+                    ),
+                ),
+                autoRefreshBestSelectionAction = { postRefreshSelections += 1 },
+                forceRunningState = true,
+            )
+
+            service.runAutoRefreshCycle()
+
+            assertEquals(1, postRefreshSelections)
+            assertTrue(service.state.isVpnRunning)
+            assertTrue(service.state.connectionLog.none { it.message.contains("removed the selected location") })
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun refreshKeepsSelectedLocationWhenSubscriptionRebuildChangesRawLinkOnly() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-refresh-selected-remap")
+        try {
+            val subscription = SubscriptionSource(
+                id = "desktop-test-subscription",
+                url = "https://example.com/subscription.txt",
+                customName = "Example",
+                cachedLocations = listOf("stale-selected-location"),
+            )
+            val workspace = DesktopWorkspace(
+                persistedState = PersistedState(
+                    profileUrl = subscription.url,
+                    activeSubscriptionId = subscription.id,
+                    subscriptions = listOf(subscription),
+                    profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                    appMode = AppMode.VPN,
+                    selectedProfileName = "Auto Refresh",
+                    selectedProfileServer = "127.0.0.1",
+                    selectedProfileRawLink = "stale-selected-location",
+                    selectedProfileSourceUrl = subscription.url,
+                    isVpnRunning = true,
+                ),
+                locations = listOf(
+                    DesktopLocationRecord(
+                        index = 1,
+                        sourceUrl = subscription.url,
+                        rawLink = "stale-selected-location",
+                        name = "Auto Refresh",
+                        server = "127.0.0.1",
+                        details = "SOCKS",
+                        benchmarkDetail = "Imported • not checked yet",
+                        isValid = true,
+                        isSelected = true,
+                    ),
+                ),
+            )
+            val service = DesktopAppService.createForTesting(
+                store = DesktopStateStore(tempDir),
+                initialWorkspace = workspace,
+                subscriptionContentFetcher = FakeSubscriptionContentFetcher(
+                    mapOf(
+                        subscription.url to "socks://user:pass@127.0.0.1:1080#Auto%20Refresh",
+                    ),
+                ),
+                forceRunningState = true,
+            )
+
+            service.refreshActiveSubscriptions()
+
+            assertTrue(service.state.isVpnRunning)
+            assertEquals("Auto Refresh", service.state.selectedProfileName)
+            assertEquals("127.0.0.1", service.state.selectedProfileServer)
+            assertTrue(service.state.selectedProfileRawLink.isNotBlank())
+            assertFalse(service.state.selectedProfileRawLink == "stale-selected-location")
+            assertTrue(service.state.connectionLog.none { it.message.contains("removed the selected location") })
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun benchmarkPreflightReachableLocationsRemainSelectable() {
         assertTrue(
             benchmarkDetailIndicatesSelectable(

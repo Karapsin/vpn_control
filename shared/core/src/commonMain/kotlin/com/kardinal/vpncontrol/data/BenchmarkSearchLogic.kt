@@ -68,7 +68,7 @@ object BenchmarkSearchLogic {
         val reachableProfiles = preflightResults
             .filter { it.connectMillis != null }
             .sortedBy { it.connectMillis }
-        if (reachableProfiles.isEmpty()) {
+        if (reachableProfiles.isEmpty() && candidateBenchmarks.isEmpty()) {
             val bestAttempt = preflightResults.minByOrNull { it.sortScore }
             return SearchEvaluation(
                 locationBenchmarkDetails = locationBenchmarkDetails,
