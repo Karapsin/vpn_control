@@ -167,6 +167,8 @@ class DesktopProxyRuntimeManager(
 
     fun currentMode(): AppMode? = if (isRunning()) activeMode else null
 
+    fun currentProcessId(): Long? = process?.takeIf { it.isAlive }?.pid()
+
     fun currentLogFile(): Path? = logFile
 
     fun defaultLogFile(): Path = baseDir.resolve("runtime-sing-box.log")
@@ -244,6 +246,7 @@ class DesktopProxyRuntimeManager(
                 add(vpnOperatingSystemCheck(os))
                 add(vpnTunBackendCheck(os))
                 add(vpnPrivilegesCheck(os))
+                add(vpnRouteDnsToolingCheck(os))
                 add(
                     DesktopPreflightCheck(
                         name = "local ports",
@@ -398,7 +401,7 @@ class DesktopProxyRuntimeManager(
 
     private fun hasWindowsAdministratorPrivileges(): Boolean {
         windowsAdministratorOverride?.let { return it }
-        val result = runCommand(
+        val principalCheck = runCommand(
             command = listOf(
                 "powershell.exe",
                 "-NoProfile",
@@ -408,7 +411,14 @@ class DesktopProxyRuntimeManager(
             ),
             timeoutSeconds = 3,
         )
-        return result.exitCode == 0 && result.output.trim().equals("true", ignoreCase = true)
+        if (principalCheck.exitCode == 0 && principalCheck.output.trim().equals("true", ignoreCase = true)) {
+            return true
+        }
+        val netSessionCheck = runCommand(
+            command = listOf("cmd.exe", "/c", "net session >nul 2>nul"),
+            timeoutSeconds = 3,
+        )
+        return netSessionCheck.exitCode == 0
     }
 
     private fun vpnOperatingSystemCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
@@ -443,7 +453,7 @@ class DesktopProxyRuntimeManager(
                 DesktopPreflightCheck(
                     name = "TUN device",
                     status = DesktopPreflightStatus.PASS,
-                    detail = "Windows Wintun backend is provided by sing-box",
+                    detail = "Windows Wintun backend is created by sing-box when running as Administrator",
                 )
             DesktopRuntimeOs.OTHER ->
                 DesktopPreflightCheck(
@@ -483,6 +493,55 @@ class DesktopProxyRuntimeManager(
                     name = "network privileges",
                     status = DesktopPreflightStatus.SKIP,
                     detail = "No privilege check for this operating system",
+                )
+        }
+    }
+
+    private fun vpnRouteDnsToolingCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
+        return when (os) {
+            DesktopRuntimeOs.LINUX -> {
+                val ip = runCommand(listOf("sh", "-c", "command -v ip"), timeoutSeconds = 3)
+                if (ip.exitCode == 0) {
+                    DesktopPreflightCheck("route/DNS tooling", DesktopPreflightStatus.PASS, "iproute2 is available")
+                } else {
+                    DesktopPreflightCheck(
+                        name = "route/DNS tooling",
+                        status = DesktopPreflightStatus.FAIL,
+                        detail = "Linux route tooling is missing. Install iproute2.",
+                    )
+                }
+            }
+            DesktopRuntimeOs.WINDOWS -> {
+                val netsh = runCommand(listOf("cmd.exe", "/c", "where netsh.exe"), timeoutSeconds = 3)
+                val dns = runCommand(
+                    listOf(
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        "Get-Command Get-DnsClientServerAddress -ErrorAction Stop | Out-Null; 'ok'",
+                    ),
+                    timeoutSeconds = 3,
+                )
+                if (netsh.exitCode == 0 && dns.exitCode == 0) {
+                    DesktopPreflightCheck(
+                        name = "route/DNS tooling",
+                        status = DesktopPreflightStatus.PASS,
+                        detail = "Windows netsh and DNS client cmdlets are available",
+                    )
+                } else {
+                    DesktopPreflightCheck(
+                        name = "route/DNS tooling",
+                        status = DesktopPreflightStatus.FAIL,
+                        detail = "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+                    )
+                }
+            }
+            DesktopRuntimeOs.OTHER ->
+                DesktopPreflightCheck(
+                    name = "route/DNS tooling",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "No route/DNS tooling check for this operating system",
                 )
         }
     }

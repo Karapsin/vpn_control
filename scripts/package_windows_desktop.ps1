@@ -1,6 +1,7 @@
 param(
     [switch]$SkipTests,
     [switch]$SkipPackageRegressionTests,
+    [switch]$SkipInstalledPackageRegressionTests,
     [string]$DistDir = "dist\windows"
 )
 
@@ -75,6 +76,16 @@ if (-not $SkipPackageRegressionTests) {
     }
 } else {
     Write-Host "[vpn-control] skipping Windows package regression tests"
+}
+
+if (-not $SkipInstalledPackageRegressionTests) {
+    Write-Host "[vpn-control] running installed Windows package regression tests"
+    & ".\scripts\test_windows_installed_desktop.ps1" -PackageRoot $OutputRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed Windows package regression tests failed with exit code $LASTEXITCODE"
+    }
+} else {
+    Write-Host "[vpn-control] skipping installed Windows package regression tests"
 }
 
 Write-Host "[vpn-control] copying local Windows installers to: $DistRoot"

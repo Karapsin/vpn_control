@@ -19,6 +19,7 @@ on:
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
+      - "scripts/test_windows_installed_desktop.ps1"
   pull_request:
     paths:
       - ".github/workflows/windows-desktop.yml"
@@ -33,6 +34,7 @@ on:
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
+      - "scripts/test_windows_installed_desktop.ps1"
 
 jobs:
   package-windows-desktop:

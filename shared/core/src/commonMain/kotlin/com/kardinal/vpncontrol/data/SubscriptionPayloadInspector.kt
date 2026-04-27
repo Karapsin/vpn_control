@@ -30,7 +30,7 @@ object SubscriptionPayloadInspector {
                 "Subscription endpoint returned an HTML page instead of a subscription payload"
             looksLikeChallenge ->
                 "Subscription endpoint returned a challenge or website page instead of a subscription payload"
-            normalizedType.contains("json") && looksLikeJson && !ProxyParser.supportsJsonSubscription(trimmed) ->
+            looksLikeJson && !ProxyParser.supportsJsonSubscription(trimmed) ->
                 "Subscription endpoint returned JSON instead of a subscription payload"
             else -> null
         }

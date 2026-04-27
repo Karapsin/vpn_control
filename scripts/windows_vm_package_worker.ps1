@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$RepoRoot,
     [switch]$SkipTests,
-    [switch]$SkipPackageRegressionTests
+    [switch]$SkipPackageRegressionTests,
+    [switch]$SkipInstalledPackageRegressionTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,18 +92,25 @@ function Invoke-LoggedPackageScript {
     if ($SkipPackageRegressionTests) {
         $SwitchText += "-SkipPackageRegressionTests"
     }
+    if ($SkipInstalledPackageRegressionTests) {
+        $SwitchText += "-SkipInstalledPackageRegressionTests"
+    }
     Write-BuildLog "[vpn-control] running: $ScriptPath -DistDir $DistDir $($SwitchText -join ' ')"
 
     & {
-        if ($SkipTests -and $SkipPackageRegressionTests) {
-            & $ScriptPath -DistDir $DistDir -SkipTests -SkipPackageRegressionTests *>&1
-        } elseif ($SkipTests) {
-            & $ScriptPath -DistDir $DistDir -SkipTests *>&1
-        } elseif ($SkipPackageRegressionTests) {
-            & $ScriptPath -DistDir $DistDir -SkipPackageRegressionTests *>&1
-        } else {
-            & $ScriptPath -DistDir $DistDir *>&1
+        $PackageArguments = @{
+            DistDir = $DistDir
         }
+        if ($SkipTests) {
+            $PackageArguments.SkipTests = $true
+        }
+        if ($SkipPackageRegressionTests) {
+            $PackageArguments.SkipPackageRegressionTests = $true
+        }
+        if ($SkipInstalledPackageRegressionTests) {
+            $PackageArguments.SkipInstalledPackageRegressionTests = $true
+        }
+        & $ScriptPath @PackageArguments *>&1
     } | ForEach-Object {
         $Line = $_.ToString()
         $Line | Out-Host
@@ -182,6 +190,7 @@ try {
     "work_root=$WorkRoot" | Out-File -FilePath $SummaryFile -Encoding ascii -Append
     "skip_tests=$SkipTests" | Out-File -FilePath $SummaryFile -Encoding ascii -Append
     "skip_package_regression_tests=$SkipPackageRegressionTests" | Out-File -FilePath $SummaryFile -Encoding ascii -Append
+    "skip_installed_package_regression_tests=$SkipInstalledPackageRegressionTests" | Out-File -FilePath $SummaryFile -Encoding ascii -Append
 
     Copy-Item -Path $BuildLog -Destination (Join-Path $ResultStage "windows-package-build.log") -Force -ErrorAction SilentlyContinue
 

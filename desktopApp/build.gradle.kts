@@ -1,5 +1,6 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.util.concurrent.TimeUnit
 
 val hostOs = OperatingSystem.current()
 val desktopPackageTargets = when {
@@ -8,9 +9,31 @@ val desktopPackageTargets = when {
     hostOs.isMacOsX -> arrayOf(TargetFormat.Dmg)
     else -> emptyArray()
 }
+fun gitCommitCountOrFallback(): Int {
+    return runCatching {
+        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
+            .redirectErrorStream(true)
+            .start()
+        val finished = process.waitFor(5, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return@runCatching 1
+        }
+        if (process.exitValue() != 0) {
+            return@runCatching 1
+        }
+        process.inputStream.bufferedReader().use { it.readText() }
+            .trim()
+            .toIntOrNull()
+            ?.coerceAtLeast(1)
+            ?: 1
+    }.getOrDefault(1)
+}
+
+val gitCommitCount = providers.provider { gitCommitCountOrFallback() }
 val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
     .orElse(providers.environmentVariable("VPN_CONTROL_DESKTOP_VERSION"))
-    .orElse("0.1.1")
+    .orElse(gitCommitCount.map { count -> "0.1.$count" })
 
 plugins {
     id("org.jetbrains.compose")

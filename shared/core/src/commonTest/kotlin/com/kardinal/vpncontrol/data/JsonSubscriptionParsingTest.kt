@@ -148,16 +148,163 @@ class JsonSubscriptionParsingTest {
     @Test
     fun keepsBase64LinkListSubscriptionSupport() {
         val body = """
+            vless://11111111-1111-4111-8111-111111111111@vless.example.com:443?security=tls&sni=edge.example.com#VLESS
             trojan://secret@example.com:443?security=tls&sni=edge.example.com#Trojan
+            ss://YWVzLTI1Ni1nY206c2VjcmV0@ss.example.com:8388#Shadowsocks
+            vmess://${kotlin.io.encoding.Base64.Default.encode("""{"v":"2","ps":"VMess","add":"vmess.example.com","port":"443","id":"22222222-2222-4222-8222-222222222222","aid":"0","net":"ws","type":"none","host":"cdn.example.com","path":"/ws","tls":"tls","sni":"edge.example.com"}""".encodeToByteArray())}
             socks://user:pass@socks.example.com:1080#SOCKS
         """.trimIndent()
         val wrapped = kotlin.io.encoding.Base64.Default.encode(body.encodeToByteArray())
 
         val profiles = ProxyParser.parseSubscription(wrapped)
 
-        assertEquals(2, profiles.size)
+        assertEquals(5, profiles.size)
+        assertTrue(profiles.any { it.protocol == ProxyProtocol.VLESS })
         assertTrue(profiles.any { it.protocol == ProxyProtocol.TROJAN })
+        assertTrue(profiles.any { it.protocol == ProxyProtocol.SHADOWSOCKS })
+        assertTrue(profiles.any { it.protocol == ProxyProtocol.VMESS })
         assertTrue(profiles.any { it.protocol == ProxyProtocol.SOCKS })
+    }
+
+    @Test
+    fun keepsDirectLinkListSubscriptionSupport() {
+        val body = """
+            vless://11111111-1111-4111-8111-111111111111@vless.example.com:443?security=tls&sni=edge.example.com#VLESS
+            trojan://secret@example.com:443?security=tls&sni=edge.example.com#Trojan
+            socks://user:pass@socks.example.com:1080#SOCKS
+        """.trimIndent()
+
+        val profiles = ProxyParser.parseSubscription(body)
+
+        assertEquals(3, profiles.size)
+        assertEquals(listOf(ProxyProtocol.VLESS, ProxyProtocol.TROJAN, ProxyProtocol.SOCKS), profiles.map { it.protocol })
+    }
+
+    @Test
+    fun parsesSupportedJsonSubscriptionWithNonVlessProtocols() {
+        val body = """
+            [
+              {
+                "remarks": "Trojan JSON",
+                "outbounds": [
+                  {
+                    "protocol": "trojan",
+                    "tag": "proxy",
+                    "settings": {
+                      "servers": [
+                        {
+                          "address": "trojan.example.com",
+                          "port": 443,
+                          "password": "trojan-secret"
+                        }
+                      ]
+                    },
+                    "streamSettings": {
+                      "network": "tcp",
+                      "security": "tls",
+                      "tlsSettings": {
+                        "serverName": "edge.example.com"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "remarks": "Shadowsocks JSON",
+                "outbounds": [
+                  {
+                    "protocol": "shadowsocks",
+                    "tag": "proxy",
+                    "settings": {
+                      "servers": [
+                        {
+                          "address": "ss.example.com",
+                          "port": 8388,
+                          "method": "aes-256-gcm",
+                          "password": "ss-secret"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "remarks": "VMess JSON",
+                "outbounds": [
+                  {
+                    "protocol": "vmess",
+                    "tag": "proxy",
+                    "settings": {
+                      "vnext": [
+                        {
+                          "address": "vmess.example.com",
+                          "port": 443,
+                          "users": [
+                            {
+                              "id": "44444444-4444-4444-8444-444444444444",
+                              "security": "auto"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "streamSettings": {
+                      "network": "ws",
+                      "security": "tls",
+                      "tlsSettings": {
+                        "serverName": "edge.example.com"
+                      },
+                      "wsSettings": {
+                        "path": "/ws",
+                        "headers": {
+                          "Host": "cdn.example.com"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "remarks": "SOCKS JSON",
+                "outbounds": [
+                  {
+                    "protocol": "socks",
+                    "tag": "proxy",
+                    "settings": {
+                      "servers": [
+                        {
+                          "address": "socks.example.com",
+                          "port": 1080,
+                          "users": [
+                            {
+                              "user": "user",
+                              "pass": "pass"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val profiles = ProxyParser.parseSubscription(body)
+
+        assertEquals(
+            listOf(
+                ProxyProtocol.TROJAN,
+                ProxyProtocol.SHADOWSOCKS,
+                ProxyProtocol.VMESS,
+                ProxyProtocol.SOCKS,
+            ),
+            profiles.map { it.protocol },
+        )
+        assertEquals("Trojan JSON", profiles[0].remarks)
+        assertEquals("Shadowsocks JSON", profiles[1].remarks)
+        assertEquals("VMess JSON", profiles[2].remarks)
+        assertEquals("SOCKS JSON", profiles[3].remarks)
     }
 
     @Test
@@ -201,6 +348,37 @@ class JsonSubscriptionParsingTest {
             SubscriptionPayloadInspector.detectPayloadError(
                 body = """{"hello":"world"}""",
                 contentType = "application/json",
+            ),
+        )
+    }
+
+    @Test
+    fun inspectorClassifiesCommonBadSubscriptionPayloads() {
+        assertEquals(
+            "Subscription endpoint returned an empty response",
+            SubscriptionPayloadInspector.detectPayloadError(
+                body = "",
+                contentType = "text/plain",
+            ),
+        )
+        assertEquals(
+            "Subscription endpoint returned an HTML page instead of a subscription payload",
+            SubscriptionPayloadInspector.detectPayloadError(
+                body = "<html><body>login</body></html>",
+                contentType = "text/html; charset=utf-8",
+            ),
+        )
+        assertEquals(
+            "Subscription endpoint returned JSON instead of a subscription payload",
+            SubscriptionPayloadInspector.detectPayloadError(
+                body = """{"error":"not authorized"}""",
+                contentType = null,
+            ),
+        )
+        assertEquals(
+            "Subscription endpoint returned an invalid subscription payload",
+            SubscriptionPayloadInspector.invalidPayloadMessage(
+                IllegalArgumentException("Subscription format is not recognized as a supported proxy link list"),
             ),
         )
     }

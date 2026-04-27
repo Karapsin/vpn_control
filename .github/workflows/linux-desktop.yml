@@ -17,6 +17,7 @@ on:
       - "gradlew"
       - "scripts/prepare_sing_box_desktop_runtime.sh"
       - "scripts/package_linux_desktop.sh"
+      - "scripts/test_linux_desktop_package.sh"
   pull_request:
     paths:
       - ".github/workflows/linux-desktop.yml"
@@ -29,6 +30,7 @@ on:
       - "gradlew"
       - "scripts/prepare_sing_box_desktop_runtime.sh"
       - "scripts/package_linux_desktop.sh"
+      - "scripts/test_linux_desktop_package.sh"
 
 jobs:
   package-linux-desktop:
@@ -52,7 +54,7 @@ jobs:
       - name: Install Linux packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot rpm
+          sudo apt-get install -y fakeroot rpm cpio
 
       - name: Build Linux packages
         run: ./scripts/package_linux_desktop.sh

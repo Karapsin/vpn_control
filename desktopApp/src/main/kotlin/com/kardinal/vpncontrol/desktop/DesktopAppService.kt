@@ -1168,9 +1168,11 @@ class DesktopAppService private constructor(
             state = state,
             runtimeMode = runtimeManager.currentMode(),
             currentPort = runtimeManager.currentPort(),
+            runtimeProcessId = runtimeManager.currentProcessId(),
             logFile = runtimeManager.currentLogFile() ?: runtimeManager.defaultLogFile(),
             runtimeConfigJson = desktopStore.readRuntimeConfig() ?: runtimeManager.lastAttemptedConfigJson(),
             preflightReport = runtimeManager.lastPreflightReport(),
+            vpnCapabilityStatus = runtimeManager.desktopVpnCapabilityStatus(),
         )
         val result = DesktopTextTransfer.writeTextFile(target, report)
         updateState {

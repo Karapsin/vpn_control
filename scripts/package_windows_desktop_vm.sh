@@ -7,6 +7,7 @@ port="8771"
 output_dir="dist/windows-vm"
 skip_tests=false
 skip_package_regression_tests=false
+skip_installed_package_regression_tests=false
 guest_work_root='C:\Users\Public\vpn-control-vm-package'
 timeout_seconds=7200
 
@@ -25,6 +26,8 @@ Options:
   --timeout-seconds SECONDS              guest build timeout (default: 7200)
   --skip-tests                           skip Gradle desktop tests inside VM
   --skip-package-regression-tests        skip MSI/EXE package regression tests inside VM
+  --skip-installed-package-regression-tests
+                                          skip installed MSI smoke tests inside VM
   -h, --help                             show this help
 
 The script starts the VM if needed, waits for QEMU guest agent, sends the current
@@ -67,6 +70,10 @@ while (($#)); do
       skip_package_regression_tests=true
       shift
       ;;
+    --skip-installed-package-regression-tests)
+      skip_installed_package_regression_tests=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -94,6 +101,8 @@ result_zip="$upload_dir/windows-package-result.zip"
 bridge_log="$runtime_dir/vm-file-bridge.log"
 host_output_dir="$repo_root/$output_dir"
 host_base_url="http://$host_ip:$port"
+git_commit_count="$(git rev-list --count HEAD 2>/dev/null || printf '1')"
+build_version="0.1.$git_commit_count"
 
 mkdir -p "$runtime_dir" "$upload_dir" "$host_output_dir"
 rm -f "$repo_zip" "$result_zip" "$bridge_log"
@@ -243,7 +252,7 @@ if ! kill -0 "$bridge_pid" 2>/dev/null; then
 fi
 
 bootstrap_ps="$runtime_dir/bootstrap.ps1"
-python3 - "$bootstrap_ps" "$host_base_url" "$guest_work_root" "$skip_tests" "$skip_package_regression_tests" <<'PY'
+python3 - "$bootstrap_ps" "$host_base_url" "$guest_work_root" "$skip_tests" "$skip_package_regression_tests" "$skip_installed_package_regression_tests" "$build_version" "$git_commit_count" <<'PY'
 import pathlib
 import sys
 
@@ -252,6 +261,9 @@ host_base_url = sys.argv[2]
 work_root = sys.argv[3]
 skip_tests = "$true" if sys.argv[4] == "true" else "$false"
 skip_package_regression_tests = "$true" if sys.argv[5] == "true" else "$false"
+skip_installed_package_regression_tests = "$true" if sys.argv[6] == "true" else "$false"
+build_version = sys.argv[7]
+build_version_code = sys.argv[8]
 
 script = f'''
 $ErrorActionPreference = "Stop"
@@ -261,6 +273,9 @@ $HostBaseUrl = "{host_base_url}"
 $WorkRoot = "{work_root}"
 $RepoRoot = Join-Path $WorkRoot "repo"
 $RepoZip = Join-Path $WorkRoot "repo.zip"
+$env:VPN_CONTROL_DESKTOP_VERSION = "{build_version}"
+$env:VPN_CONTROL_VERSION_NAME = "{build_version}"
+$env:VPN_CONTROL_VERSION_CODE = "{build_version_code}"
 if (Test-Path $WorkRoot) {{
     Remove-Item -Path $WorkRoot -Recurse -Force
 }}
@@ -272,7 +287,8 @@ Expand-Archive -Path $RepoZip -DestinationPath $RepoRoot -Force
     -WorkRoot $WorkRoot `
     -RepoRoot $RepoRoot `
     -SkipTests:{skip_tests} `
-    -SkipPackageRegressionTests:{skip_package_regression_tests}
+    -SkipPackageRegressionTests:{skip_package_regression_tests} `
+    -SkipInstalledPackageRegressionTests:{skip_installed_package_regression_tests}
 exit $LASTEXITCODE
 '''
 path.write_text(script, encoding="utf-8")

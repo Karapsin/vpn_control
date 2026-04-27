@@ -2,9 +2,35 @@
 set -euo pipefail
 
 skip_tests=false
-if [[ "${1:-}" == "--skip-tests" ]]; then
-  skip_tests=true
-fi
+skip_package_regression_tests=false
+
+while (($#)); do
+  case "$1" in
+    --skip-tests)
+      skip_tests=true
+      shift
+      ;;
+    --skip-package-regression-tests)
+      skip_package_regression_tests=true
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: scripts/package_linux_desktop.sh [options]
+
+Options:
+  --skip-tests                       skip Gradle desktop tests
+  --skip-package-regression-tests    skip extracted package smoke checks
+  -h, --help                         show this help
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -35,3 +61,10 @@ if (( ${#packages[@]} == 0 )); then
 fi
 
 printf ' - %s\n' "${packages[@]}"
+
+if [[ "$skip_package_regression_tests" != true ]]; then
+  echo "[vpn-control] running Linux package regression tests"
+  ./scripts/test_linux_desktop_package.sh "$output_root"
+else
+  echo "[vpn-control] skipping Linux package regression tests"
+fi

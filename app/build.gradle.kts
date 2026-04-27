@@ -1,8 +1,40 @@
+import java.util.concurrent.TimeUnit
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+fun gitCommitCountOrFallback(): Int {
+    return runCatching {
+        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
+            .redirectErrorStream(true)
+            .start()
+        val finished = process.waitFor(5, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return@runCatching 1
+        }
+        if (process.exitValue() != 0) {
+            return@runCatching 1
+        }
+        process.inputStream.bufferedReader().use { it.readText() }
+            .trim()
+            .toIntOrNull()
+            ?.coerceAtLeast(1)
+            ?: 1
+    }.getOrDefault(1)
+}
+
+val gitCommitCount = providers.provider { gitCommitCountOrFallback() }
+val generatedVersionCode = providers.gradleProperty("vpnControlVersionCode")
+    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_CODE"))
+    .map { it.toIntOrNull()?.coerceAtLeast(1) ?: 1 }
+    .orElse(gitCommitCount)
+val generatedVersionName = providers.gradleProperty("vpnControlVersionName")
+    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
+    .orElse(generatedVersionCode.map { code -> "0.1.$code" })
 
 android {
     namespace = "com.kardinal.vpncontrol"
@@ -13,8 +45,8 @@ android {
         applicationId = "com.kardinal.vpncontrol"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = generatedVersionCode.get()
+        versionName = generatedVersionName.get()
 
         ndk {
             abiFilters += listOf("arm64-v8a")

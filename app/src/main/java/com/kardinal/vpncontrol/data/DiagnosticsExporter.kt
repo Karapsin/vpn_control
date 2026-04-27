@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.data
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.VpnService
 import androidx.core.content.FileProvider
 import com.kardinal.vpncontrol.BuildConfig
 import java.io.File
@@ -93,6 +94,7 @@ class DiagnosticsExporter(
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
             appendLine("selected_profile_name=${state.selectedProfileName}")
             appendLine("selected_profile_server=${state.selectedProfileServer}")
+            appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")
             appendLine("status_message=${state.statusMessage}")
             appendLine("is_vpn_running=${state.isVpnRunning}")
             appendLine("session_stats_enabled=${state.sessionStatsEnabled}")
@@ -113,6 +115,43 @@ class DiagnosticsExporter(
             appendLine("connection_log_count=${state.connectionLog.size}")
             appendLine("proxy_only_port=${SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT}")
             appendLine()
+            appendSection(
+                "runtime",
+                listOf(
+                    "mode=${state.appMode}",
+                    "is_vpn_running=${state.isVpnRunning}",
+                    "vpn_permission_granted=${vpnPermissionGranted()}",
+                    "sing_box_path=${RuntimeFiles.singBoxBinary(context).absolutePath}",
+                    "sing_box_exists=${RuntimeFiles.singBoxBinary(context).exists()}",
+                    "sing_box_executable=${RuntimeFiles.singBoxBinary(context).canExecute()}",
+                    "sing_box_size=${RuntimeFiles.singBoxBinary(context).takeIf(File::exists)?.length() ?: 0L}",
+                    "runtime_config_exists=${RuntimeFiles.runtimeConfigFile(context).exists()}",
+                    "selected_profile_file_exists=${RuntimeFiles.selectedProfileFile(context).exists()}",
+                ).joinToString(separator = "\n"),
+            )
+            appendSection(
+                "subscription_refresh",
+                state.subscriptions.joinToString(separator = "\n") { subscription ->
+                    listOf(
+                        "id=${subscription.id}",
+                        "cached=${subscription.cachedLocations.size}",
+                        "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
+                        "status=${subscription.lastRefreshStatus.ifBlank { "not refreshed yet" }}",
+                    ).joinToString(" | ")
+                }.ifBlank { "<empty>" },
+            )
+            appendSection(
+                "find_best",
+                listOf(
+                    "last_benchmark_summary=${state.lastBenchmarkSummary.ifBlank { "not_run" }}",
+                    "latency_history_count=${state.latencyHistory.size}",
+                    "latest_latency=${state.latencyHistory.lastOrNull()?.detail ?: "none"}",
+                    "validation_primary_url=${state.validationSettings.primaryUrl}",
+                    "validation_secondary_url=${state.validationSettings.secondaryUrl}",
+                    "validation_batch_size=${state.validationSettings.batchSize}",
+                    "validation_retry_count=${state.validationSettings.retryCount}",
+                ).joinToString(separator = "\n"),
+            )
             appendSection(
                 "subscriptions",
                 state.subscriptions.joinToString(separator = "\n") { subscription ->
@@ -192,6 +231,14 @@ class DiagnosticsExporter(
     private fun fileOrFallback(file: File, fallback: String): String {
         val content = safeRead(file)
         return if (content == "<missing>") fallback else content
+    }
+
+    private fun vpnPermissionGranted(): String {
+        return runCatching {
+            (VpnService.prepare(context) == null).toString()
+        }.getOrElse { error ->
+            "unknown: ${error.message ?: error::class.simpleName}"
+        }
     }
 
     private fun StringBuilder.appendSection(name: String, content: String) {
