@@ -128,12 +128,12 @@ class DesktopAppServiceTest {
     }
 
     @Test
-    fun defaultWorkspaceStartsInVpnModeWithoutDefaultRoutingDomains() = runTest {
+    fun defaultWorkspaceUsesPlatformDefaultModeWithoutDefaultRoutingDomains() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-defaults")
         try {
             val service = DesktopAppService.createForTesting(store = DesktopStateStore(tempDir))
 
-            assertEquals(AppMode.VPN, service.state.appMode)
+            assertEquals(defaultDesktopAppMode(), service.state.appMode)
             assertTrue(service.state.routingRules.nationalDomainSuffixes.isEmpty())
             assertTrue(service.state.routingRules.directDomainSuffixes.isEmpty())
             assertTrue(service.state.routingNationalDomainsDraft.isBlank())
