@@ -187,6 +187,7 @@ object DesktopProxyConfigFactory {
         dns: DesktopDnsSettings,
         routingRules: RoutingRules,
         interfaceName: String = DEFAULT_VPN_INTERFACE_NAME,
+        directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     ): String {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop VPN runtime yet"
@@ -204,6 +205,7 @@ object DesktopProxyConfigFactory {
                     put("timeout", "1s")
                 },
             )
+            buildDirectProbeRouteRules(directProbeRouting).forEach(::add)
             add(
                 buildJsonObject {
                     put("type", "logical")
@@ -489,6 +491,37 @@ object DesktopProxyConfigFactory {
                     put("download_detour", "direct")
                     put("update_interval", "${ruleSet.updateIntervalHours.coerceAtLeast(1)}h")
                 }
+            }
+        }
+    }
+
+    private fun buildDirectProbeRouteRules(routing: DesktopDirectProbeRouting): List<JsonObject> {
+        val processNames = routing.processNames
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+        val processPaths = routing.processPaths
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+        return buildList {
+            if (processNames.isNotEmpty()) {
+                add(
+                    buildJsonObject {
+                        put("process_name", processNames.asJsonArray())
+                        put("action", "route")
+                        put("outbound", "direct")
+                    },
+                )
+            }
+            if (processPaths.isNotEmpty()) {
+                add(
+                    buildJsonObject {
+                        put("process_path", processPaths.asJsonArray())
+                        put("action", "route")
+                        put("outbound", "direct")
+                    },
+                )
             }
         }
     }

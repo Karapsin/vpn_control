@@ -85,10 +85,15 @@ class DesktopAppService private constructor(
     companion object {
         fun default(): DesktopAppService {
             val store = DesktopStateStore.default()
+            val validationDirectory = store.validationDirectory()
             return DesktopAppService(
                 desktopStore = store,
-                runtimeManager = DesktopProxyRuntimeManager(store, baseDir = store.runtimeDirectory()),
-                validationRuntime = DesktopProxyValidationRuntime(baseDir = store.validationDirectory()),
+                runtimeManager = DesktopProxyRuntimeManager(
+                    runtimeConfigStore = store,
+                    baseDir = store.runtimeDirectory(),
+                    directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(validationDirectory),
+                ),
+                validationRuntime = DesktopProxyValidationRuntime(baseDir = validationDirectory),
                 subscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
                 autostartManager = DesktopAutostartManager.default(),
                 autoRefreshBestSelectionAction = { service ->
@@ -104,6 +109,7 @@ class DesktopAppService private constructor(
             runtimeManager: DesktopProxyRuntimeManager = DesktopProxyRuntimeManager(
                 runtimeConfigStore = store,
                 baseDir = store.runtimeDirectory(),
+                directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(store.validationDirectory()),
             ),
             validationRuntime: DesktopProxyValidationRuntime = DesktopProxyValidationRuntime(
                 baseDir = store.validationDirectory(),

@@ -80,24 +80,32 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
-    fun setEnabledWritesAndDeletesWindowsRunRegistryEntry() {
+    fun setEnabledWritesAndDeletesWindowsHighestPrivilegeScheduledTask() {
         val commands = mutableListOf<List<String>>()
-        var enabled = false
+        var taskEnabled = false
+        var legacyRunEnabled = false
         val manager = DesktopAutostartManager(
             commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
             platform = DesktopAutostartPlatform.WINDOWS,
             commandRunner = { command ->
                 commands += command
                 when {
-                    command.take(2) == listOf("reg", "query") -> {
-                        DesktopAutostartCommandResult(if (enabled) 0 else 1, "")
+                    command.take(2) == listOf("schtasks", "/Query") -> {
+                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1, "")
                     }
-                    command.take(2) == listOf("reg", "add") -> {
-                        enabled = true
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskEnabled = true
                         DesktopAutostartCommandResult(0, "ok")
                     }
+                    command.take(2) == listOf("schtasks", "/Delete") -> {
+                        taskEnabled = false
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    command.take(2) == listOf("reg", "query") -> {
+                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1, "")
+                    }
                     command.take(2) == listOf("reg", "delete") -> {
-                        enabled = false
+                        legacyRunEnabled = false
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     else -> DesktopAutostartCommandResult(1, "unexpected command")
@@ -113,16 +121,17 @@ class DesktopAutostartManagerTest {
         assertTrue(manager.isEnabled())
         assertTrue(commands.any { command ->
             command == listOf(
-                "reg",
-                "add",
-                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                "/v",
+                "schtasks",
+                "/Create",
+                "/TN",
                 "VPN Control",
-                "/t",
-                "REG_SZ",
-                "/d",
-                "\"C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe\"",
-                "/f",
+                "/SC",
+                "ONLOGON",
+                "/TR",
+                "\"C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe\" --autostart",
+                "/RL",
+                "HIGHEST",
+                "/F",
             )
         })
 
@@ -132,13 +141,49 @@ class DesktopAutostartManagerTest {
         assertFalse(manager.isEnabled())
         assertTrue(commands.any { command ->
             command == listOf(
-                "reg",
-                "delete",
-                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                "/v",
+                "schtasks",
+                "/Delete",
+                "/TN",
                 "VPN Control",
-                "/f",
+                "/F",
             )
         })
+    }
+
+    @Test
+    fun isEnabledMigratesLegacyWindowsRunEntryToHighestPrivilegeScheduledTask() {
+        val commands = mutableListOf<List<String>>()
+        var taskEnabled = false
+        var legacyRunEnabled = true
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.take(2) == listOf("schtasks", "/Query") -> {
+                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1, "")
+                    }
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskEnabled = true
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    command.take(2) == listOf("reg", "query") -> {
+                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1, "")
+                    }
+                    command.take(2) == listOf("reg", "delete") -> {
+                        legacyRunEnabled = false
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> DesktopAutostartCommandResult(1, "unexpected command")
+                }
+            },
+        )
+
+        assertTrue(manager.isEnabled())
+        assertTrue(taskEnabled)
+        assertFalse(legacyRunEnabled)
+        assertTrue(commands.any { it.take(2) == listOf("schtasks", "/Create") })
+        assertTrue(commands.any { it.take(2) == listOf("reg", "delete") })
     }
 }

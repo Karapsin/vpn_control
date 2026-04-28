@@ -34,6 +34,7 @@ class DesktopProxyRuntimeManager(
         "runtime",
     ),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
+    private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,
     private val windowsAdministratorOverride: Boolean? = null,
 ) {
@@ -85,6 +86,7 @@ class DesktopProxyRuntimeManager(
                         dns = dnsSettings,
                         routingRules = routingRules,
                         interfaceName = checkNotNull(interfaceName),
+                        directProbeRouting = directProbeRouting,
                     )
             }
             val configPath = baseDir.resolve("runtime-sing-box-${appMode.name.lowercase()}.json")
@@ -484,7 +486,7 @@ class DesktopProxyRuntimeManager(
                     DesktopPreflightCheck(
                         name = "network privileges",
                         status = DesktopPreflightStatus.FAIL,
-                        detail = "Windows VPN mode needs Administrator privileges. Right-click VPN Control and choose Run as administrator.",
+                        detail = "Windows VPN mode needs Administrator privileges. Relaunch VPN Control and accept the UAC prompt.",
                     )
                 }
             }

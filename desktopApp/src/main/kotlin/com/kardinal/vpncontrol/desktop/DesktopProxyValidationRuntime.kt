@@ -263,11 +263,16 @@ class DesktopProxyValidationRuntime(
         Files.writeString(logFile, "")
         val singBox = singBoxResolver.resolve()
             ?: return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_missing")
+        val probeSingBox = runCatching {
+            prepareDirectProbeSingBoxExecutable(singBox.path, baseDir)
+        }.getOrElse {
+            return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "probe_binary_failed")
+        }
 
         var process: Process? = null
         try {
             val benchmark = withTimeoutOrNull(settings.profileTimeoutMillis) {
-                process = ProcessBuilder(singBox.path.toString(), "run", "-c", configFile.toString())
+                process = ProcessBuilder(probeSingBox.toString(), "run", "-c", configFile.toString())
                     .directory(baseDir.toFile())
                     .redirectErrorStream(true)
                     .redirectOutput(logFile.toFile())

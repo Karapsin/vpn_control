@@ -90,6 +90,7 @@ import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
+    DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
     val instanceLock = DesktopSingleInstanceLock.acquire()
     if (instanceLock == null) {
         if (!DesktopActivationServer.requestShow()) {
@@ -980,7 +981,7 @@ private fun DesktopSettingsDialogs(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "VPN mode uses sing-box TUN on Linux or Windows. Windows VPN mode requires running VPN Control as Administrator.",
+                        text = "VPN mode uses sing-box TUN on Linux or Windows. On Windows, VPN Control requests Administrator privileges at launch.",
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )

@@ -27,7 +27,7 @@ internal class DesktopAutostartManager(
     fun isEnabled(): Boolean {
         return when (platform) {
             DesktopAutostartPlatform.LINUX -> isLinuxAutostartEnabled()
-            DesktopAutostartPlatform.WINDOWS -> isWindowsRunEnabled()
+            DesktopAutostartPlatform.WINDOWS -> isWindowsTaskEnabled() || migrateLegacyWindowsRunEntry()
             DesktopAutostartPlatform.UNSUPPORTED -> false
         }
     }
@@ -36,7 +36,7 @@ internal class DesktopAutostartManager(
         return runCatching {
             when (platform) {
                 DesktopAutostartPlatform.LINUX -> setLinuxAutostartEnabled(enabled)
-                DesktopAutostartPlatform.WINDOWS -> setWindowsRunEnabled(enabled)
+                DesktopAutostartPlatform.WINDOWS -> setWindowsTaskEnabled(enabled)
                 DesktopAutostartPlatform.UNSUPPORTED -> error("Start on login is not supported on this desktop platform.")
             }
         }
@@ -136,38 +136,65 @@ internal class DesktopAutostartManager(
         ).exitCode == 0
     }
 
-    private fun setWindowsRunEnabled(enabled: Boolean): Boolean {
+    private fun isWindowsTaskEnabled(): Boolean {
+        return commandRunner(
+            listOf("schtasks", "/Query", "/TN", WINDOWS_TASK_NAME),
+        ).exitCode == 0
+    }
+
+    private fun migrateLegacyWindowsRunEntry(): Boolean {
+        if (!isWindowsRunEnabled()) {
+            return false
+        }
+        return setWindowsTaskEnabled(true)
+    }
+
+    private fun setWindowsTaskEnabled(enabled: Boolean): Boolean {
         if (enabled) {
             val command = commandResolver()?.takeIf(String::isNotBlank)
                 ?: error("Could not resolve the desktop app launcher path.")
             val result = commandRunner(
                 listOf(
-                    "reg",
-                    "add",
-                    WINDOWS_RUN_KEY,
-                    "/v",
-                    WINDOWS_RUN_VALUE,
-                    "/t",
-                    "REG_SZ",
-                    "/d",
-                    quoteWindowsRunCommand(command),
-                    "/f",
+                    "schtasks",
+                    "/Create",
+                    "/TN",
+                    WINDOWS_TASK_NAME,
+                    "/SC",
+                    "ONLOGON",
+                    "/TR",
+                    windowsScheduledTaskCommand(command),
+                    "/RL",
+                    "HIGHEST",
+                    "/F",
                 ),
             )
             if (result.exitCode != 0) {
-                error(result.output.ifBlank { "Failed to write Windows startup registry entry." })
+                error(result.output.ifBlank { "Failed to create Windows startup scheduled task." })
             }
+            deleteWindowsRunEntryIfPresent()
             return true
         }
 
-        if (!isWindowsRunEnabled()) return false
+        if (isWindowsTaskEnabled()) {
+            val result = commandRunner(
+                listOf("schtasks", "/Delete", "/TN", WINDOWS_TASK_NAME, "/F"),
+            )
+            if (result.exitCode != 0) {
+                error(result.output.ifBlank { "Failed to delete Windows startup scheduled task." })
+            }
+        }
+        deleteWindowsRunEntryIfPresent()
+        return false
+    }
+
+    private fun deleteWindowsRunEntryIfPresent() {
+        if (!isWindowsRunEnabled()) return
         val result = commandRunner(
             listOf("reg", "delete", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE, "/f"),
         )
         if (result.exitCode != 0) {
             error(result.output.ifBlank { "Failed to delete Windows startup registry entry." })
         }
-        return false
     }
 
     companion object {
@@ -175,6 +202,7 @@ internal class DesktopAutostartManager(
 
         private const val WINDOWS_RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
         private const val WINDOWS_RUN_VALUE = "VPN Control"
+        private const val WINDOWS_TASK_NAME = "VPN Control"
 
         private fun defaultConfigHome(): Path {
             val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")
@@ -214,7 +242,11 @@ internal class DesktopAutostartManager(
             }
         }
 
-        private fun quoteWindowsRunCommand(value: String): String {
+        private fun windowsScheduledTaskCommand(command: String): String {
+            return "${quoteWindowsCommandPath(command)} --autostart"
+        }
+
+        private fun quoteWindowsCommandPath(value: String): String {
             return "\"${value.replace("\"", "\\\"")}\""
         }
 
