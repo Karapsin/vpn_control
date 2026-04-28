@@ -34,6 +34,9 @@ val gitCommitCount = providers.provider { gitCommitCountOrFallback() }
 val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
     .orElse(providers.environmentVariable("VPN_CONTROL_DESKTOP_VERSION"))
     .orElse(gitCommitCount.map { count -> "0.1.$count" })
+val macosPackageVersion = providers.gradleProperty("vpnControlMacosDesktopVersion")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_DESKTOP_VERSION"))
+    .orElse(gitCommitCount.map { count -> "1.0.$count" })
 
 plugins {
     id("org.jetbrains.compose")
@@ -92,6 +95,14 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
                 upgradeUuid = "7a5e0a8e-2a7a-4baf-9f2a-5fb2c3529af2"
+            }
+
+            macOS {
+                val version = macosPackageVersion.get()
+                packageVersion = version
+                packageBuildVersion = version
+                dmgPackageVersion = version
+                dmgPackageBuildVersion = version
             }
         }
     }
