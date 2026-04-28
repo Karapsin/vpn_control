@@ -1,0 +1,62 @@
+name: macOS Desktop Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/macos-desktop.yml"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/prepare_sing_box_macos_runtime.sh"
+      - "scripts/package_macos_desktop.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/macos-desktop.yml"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/prepare_sing_box_macos_runtime.sh"
+      - "scripts/package_macos_desktop.sh"
+
+jobs:
+  package-macos-desktop:
+    name: Build DMG
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build macOS package
+        run: ./scripts/package_macos_desktop.sh
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-macos-package
+          path: |
+            dist/macos/*.dmg
+            dist/macos/SHA256SUMS.txt
+          if-no-files-found: error

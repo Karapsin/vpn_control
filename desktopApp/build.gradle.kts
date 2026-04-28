@@ -59,6 +59,12 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 
+sourceSets {
+    main {
+        resources.srcDir(project.file("../app/src/main/res/drawable-nodpi"))
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.kardinal.vpncontrol.desktop.MainKt"

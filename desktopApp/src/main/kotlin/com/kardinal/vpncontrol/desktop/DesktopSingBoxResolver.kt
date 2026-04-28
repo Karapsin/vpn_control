@@ -13,6 +13,8 @@ data class DesktopSingBoxExecutable(
 class DesktopSingBoxResolver(
     private val toolsDir: Path,
     private val classLoader: ClassLoader = DesktopSingBoxResolver::class.java.classLoader,
+    private val osNameOverride: String? = null,
+    private val osArchOverride: String? = null,
 ) {
     fun resolve(): DesktopSingBoxExecutable? {
         envOverride()?.let { return it }
@@ -84,10 +86,12 @@ class DesktopSingBoxResolver(
         val os = when {
             isWindows() -> "windows"
             isLinux() -> "linux"
+            isMacOs() -> "darwin"
             else -> return null
         }
-        val arch = when (System.getProperty("os.arch").lowercase()) {
+        val arch = when (osArch()) {
             "amd64", "x86_64" -> "amd64"
+            "aarch64", "arm64" -> "arm64"
             else -> return null
         }
         val suffix = if (os == "windows") ".exe" else ""
@@ -99,10 +103,23 @@ class DesktopSingBoxResolver(
     }
 
     private fun isWindows(): Boolean {
-        return System.getProperty("os.name").lowercase().contains("windows")
+        return osName().contains("windows")
     }
 
     private fun isLinux(): Boolean {
-        return System.getProperty("os.name").lowercase().contains("linux")
+        return osName().contains("linux")
+    }
+
+    private fun isMacOs(): Boolean {
+        val name = osName()
+        return name.contains("mac") || name.contains("darwin")
+    }
+
+    private fun osName(): String {
+        return (osNameOverride ?: System.getProperty("os.name")).lowercase()
+    }
+
+    private fun osArch(): String {
+        return (osArchOverride ?: System.getProperty("os.arch")).lowercase()
     }
 }

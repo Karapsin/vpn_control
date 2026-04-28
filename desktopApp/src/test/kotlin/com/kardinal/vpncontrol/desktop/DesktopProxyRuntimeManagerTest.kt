@@ -41,6 +41,24 @@ class DesktopProxyRuntimeManagerTest {
             tempDir.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun macosVpnCapabilityExplainsProxyOnlyFallback() {
+        val tempDir = Files.createTempDirectory("vpn-control-macos-vpn")
+        try {
+            val manager = DesktopProxyRuntimeManager(
+                runtimeConfigStore = InMemoryRuntimeConfigStore(),
+                baseDir = tempDir,
+                runtimeOsNameOverride = "Mac OS X",
+            )
+
+            val status = manager.desktopVpnCapabilityStatus()
+            assertContains(status, "macOS VPN mode needs a privileged Network Extension helper")
+            assertContains(status, "Proxy-only mode")
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
 }
 
 private class InMemoryRuntimeConfigStore : com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore {

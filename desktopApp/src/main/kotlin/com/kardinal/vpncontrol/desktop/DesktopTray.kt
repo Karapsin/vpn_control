@@ -20,6 +20,7 @@ import java.awt.Window
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JLabel
@@ -28,6 +29,7 @@ import javax.swing.JSeparator
 import javax.swing.JWindow
 import javax.swing.SwingUtilities
 import javax.swing.Timer
+import kotlin.math.roundToInt
 
 @Composable
 internal fun DesktopTrayIcon(
@@ -126,6 +128,33 @@ private fun installTrayIcon(
 }
 
 private fun createTrayImage(size: Int): Image {
+    loadDesktopIconImage()?.let { return scaleDesktopIconForTray(it, size) }
+    return createFallbackTrayImage(size)
+}
+
+private fun loadDesktopIconImage(): BufferedImage? {
+    val classLoader = Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
+    return runCatching {
+        classLoader.getResourceAsStream("gen_icon.png")?.use(ImageIO::read)
+    }.getOrNull()
+}
+
+private fun scaleDesktopIconForTray(source: BufferedImage, size: Int): Image {
+    val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+    val graphics = image.createGraphics()
+    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+    graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+    graphics.color = AwtColor(source.getRGB(0, 0))
+    graphics.fillRect(0, 0, size, size)
+    val drawSize = (size * 0.9).roundToInt().coerceIn(1, size)
+    val offset = (size - drawSize) / 2
+    graphics.drawImage(source, offset, offset, drawSize, drawSize, null)
+    graphics.dispose()
+    return image
+}
+
+private fun createFallbackTrayImage(size: Int): Image {
     val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
     val graphics = image.createGraphics()
     graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)

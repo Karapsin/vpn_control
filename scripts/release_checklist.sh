@@ -3,6 +3,7 @@ set -euo pipefail
 
 skip_android=false
 skip_linux=false
+skip_macos=false
 skip_windows_vm=false
 skip_tests=false
 
@@ -15,6 +16,7 @@ Build release artifacts and run regression checks.
 Options:
   --skip-android       skip Android release APK build
   --skip-linux         skip Linux package build
+  --skip-macos         skip macOS DMG build
   --skip-windows-vm    skip Windows EXE/MSI build in the local VM
   --skip-tests         skip the standalone Gradle test pass
   -h, --help           show this help
@@ -32,6 +34,10 @@ while (($#)); do
       ;;
     --skip-linux)
       skip_linux=true
+      shift
+      ;;
+    --skip-macos)
+      skip_macos=true
       shift
       ;;
     --skip-windows-vm)
@@ -82,6 +88,17 @@ else
   log "skipping Linux desktop packages"
 fi
 
+if [[ "$skip_macos" != true ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    log "building macOS desktop package"
+    ./scripts/package_macos_desktop.sh --skip-tests
+  else
+    log "skipping macOS desktop package on non-macOS host"
+  fi
+else
+  log "skipping macOS desktop package"
+fi
+
 if [[ "$skip_windows_vm" != true ]]; then
   log "building Windows desktop packages in VM"
   ./scripts/package_windows_desktop_vm.sh
@@ -90,11 +107,15 @@ else
 fi
 
 log "release artifact candidates"
-mapfile -t artifacts < <(
+artifacts=()
+while IFS= read -r artifact; do
+  artifacts+=("$artifact")
+done < <(
   find app/build/outputs/apk/release \
       desktopApp/build/compose/binaries/main \
+      dist/macos \
       dist/windows-vm \
-      -type f \( -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.exe' -o -name '*.msi' \) \
+      -type f \( -name '*.apk' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
       2>/dev/null | sort
 )
 
@@ -106,4 +127,8 @@ fi
 printf ' - %s\n' "${artifacts[@]}"
 
 log "SHA256"
-sha256sum "${artifacts[@]}"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "${artifacts[@]}"
+else
+  shasum -a 256 "${artifacts[@]}"
+fi

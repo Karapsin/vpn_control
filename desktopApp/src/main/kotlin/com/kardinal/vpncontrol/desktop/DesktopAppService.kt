@@ -1442,6 +1442,7 @@ private fun defaultDesktopWorkspace(): DesktopWorkspace {
     val now = System.currentTimeMillis()
     val subscriptions = defaultSubscriptions()
     val locations = defaultDesktopLocations()
+    val appMode = defaultDesktopAppMode()
     val persisted = PersistedState(
         profileUrl = subscriptions.first().url,
         activeSubscriptionId = subscriptions.first().id,
@@ -1451,7 +1452,7 @@ private fun defaultDesktopWorkspace(): DesktopWorkspace {
             .filter { it.customName.isNotBlank() }
             .associate { it.url to it.customName },
         profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
-        appMode = AppMode.VPN,
+        appMode = appMode,
         subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
         findBestAfterSubscriptionRefresh = true,
         subscriptionRefreshCustomHours = 0.5,
@@ -1464,7 +1465,7 @@ private fun defaultDesktopWorkspace(): DesktopWorkspace {
         selectedProfileRawLink = "vless://desktop-nl",
         selectedProfileSourceUrl = subscriptions.first().url,
         lastBenchmarkSummary = "Desktop shell: Netherlands from Whitelists",
-        statusMessage = "Desktop VPN shell ready",
+        statusMessage = "Desktop ${MainCommandLogic.connectionDisplayName(appMode)} shell ready",
         isVpnRunning = false,
         successfulStarts = 0,
         successfulStops = 0,
@@ -1481,7 +1482,7 @@ private fun defaultDesktopWorkspace(): DesktopWorkspace {
             ),
             ConnectionLogEntry(
                 id = "desktop-log-3",
-                message = "VPN mode available",
+                message = "${MainCommandLogic.connectionDisplayName(appMode)} mode available",
                 createdAtEpochMillis = now - 6 * 60_000L,
             ),
         ),

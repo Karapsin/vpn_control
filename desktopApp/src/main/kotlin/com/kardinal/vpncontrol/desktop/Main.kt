@@ -981,7 +981,7 @@ private fun DesktopSettingsDialogs(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "VPN mode uses sing-box TUN on Linux or Windows. On Windows, VPN Control requests Administrator privileges at launch.",
+                        text = "VPN mode uses sing-box TUN on Linux or Windows. macOS currently supports Proxy-only mode until a privileged helper is implemented.",
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )

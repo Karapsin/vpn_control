@@ -377,7 +377,7 @@ class DesktopStateStore(
             ),
             appMode = root.enum(
                 key = "app_mode",
-                default = AppMode.VPN,
+                default = defaultDesktopAppMode(),
             ),
             subscriptionRefreshPolicy = root.enum(
                 key = "subscription_refresh_policy",

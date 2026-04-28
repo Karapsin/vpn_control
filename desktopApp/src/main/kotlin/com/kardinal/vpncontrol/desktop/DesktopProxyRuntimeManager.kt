@@ -429,6 +429,12 @@ class DesktopProxyRuntimeManager(
                 DesktopPreflightCheck("operating system", DesktopPreflightStatus.PASS, "Linux detected")
             DesktopRuntimeOs.WINDOWS ->
                 DesktopPreflightCheck("operating system", DesktopPreflightStatus.PASS, "Windows detected")
+            DesktopRuntimeOs.MACOS ->
+                DesktopPreflightCheck(
+                    name = "operating system",
+                    status = DesktopPreflightStatus.FAIL,
+                    detail = "macOS VPN mode needs a privileged Network Extension helper and is not implemented yet. Use Proxy-only mode on macOS.",
+                )
             DesktopRuntimeOs.OTHER ->
                 DesktopPreflightCheck(
                     name = "operating system",
@@ -456,6 +462,12 @@ class DesktopProxyRuntimeManager(
                     name = "TUN device",
                     status = DesktopPreflightStatus.PASS,
                     detail = "Windows Wintun backend is created by sing-box when running as Administrator",
+                )
+            DesktopRuntimeOs.MACOS ->
+                DesktopPreflightCheck(
+                    name = "TUN device",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "macOS TUN setup is skipped until a privileged helper is implemented",
                 )
             DesktopRuntimeOs.OTHER ->
                 DesktopPreflightCheck(
@@ -490,6 +502,12 @@ class DesktopProxyRuntimeManager(
                     )
                 }
             }
+            DesktopRuntimeOs.MACOS ->
+                DesktopPreflightCheck(
+                    name = "network privileges",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "macOS privilege checks are skipped until a privileged helper is implemented",
+                )
             DesktopRuntimeOs.OTHER ->
                 DesktopPreflightCheck(
                     name = "network privileges",
@@ -539,6 +557,12 @@ class DesktopProxyRuntimeManager(
                     )
                 }
             }
+            DesktopRuntimeOs.MACOS ->
+                DesktopPreflightCheck(
+                    name = "route/DNS tooling",
+                    status = DesktopPreflightStatus.SKIP,
+                    detail = "macOS route/DNS tooling is skipped until a privileged helper is implemented",
+                )
             DesktopRuntimeOs.OTHER ->
                 DesktopPreflightCheck(
                     name = "route/DNS tooling",
@@ -553,6 +577,7 @@ class DesktopProxyRuntimeManager(
         return when {
             name.contains("linux") -> DesktopRuntimeOs.LINUX
             name.contains("windows") -> DesktopRuntimeOs.WINDOWS
+            name.contains("mac") || name.contains("darwin") -> DesktopRuntimeOs.MACOS
             else -> DesktopRuntimeOs.OTHER
         }
     }
@@ -630,5 +655,6 @@ class DesktopProxyRuntimeManager(
 private enum class DesktopRuntimeOs {
     LINUX,
     WINDOWS,
+    MACOS,
     OTHER,
 }
