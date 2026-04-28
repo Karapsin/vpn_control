@@ -2,6 +2,7 @@
 set -euo pipefail
 
 skip_tests=false
+skip_package_regression_tests=false
 
 while (($#)); do
   case "$1" in
@@ -9,13 +10,18 @@ while (($#)); do
       skip_tests=true
       shift
       ;;
+    --skip-package-regression-tests)
+      skip_package_regression_tests=true
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
 Usage: scripts/package_macos_desktop.sh [options]
 
 Options:
-  --skip-tests    skip Gradle desktop tests
-  -h, --help      show this help
+  --skip-tests                       skip Gradle desktop tests
+  --skip-package-regression-tests    skip DMG smoke checks
+  -h, --help                         show this help
 EOF
       exit 0
       ;;
@@ -38,6 +44,7 @@ echo "[vpn-control] checking Java runtime"
 java -version
 
 ./scripts/prepare_sing_box_macos_runtime.sh
+. ./scripts/setup_macos_signing.sh
 
 echo "[vpn-control] compiling desktop app"
 ./gradlew :desktopApp:compileKotlin
@@ -71,6 +78,13 @@ done
   cd "$dist_dir"
   shasum -a 256 ./*.dmg > SHA256SUMS.txt
 )
+
+if [[ "$skip_package_regression_tests" != true ]]; then
+  echo "[vpn-control] running macOS package regression tests"
+  ./scripts/test_macos_desktop_package.sh "$dist_dir"
+else
+  echo "[vpn-control] skipping macOS package regression tests"
+fi
 
 echo "[vpn-control] macOS packages written under: $dist_dir"
 printf ' - %s\n' "${packages[@]}"

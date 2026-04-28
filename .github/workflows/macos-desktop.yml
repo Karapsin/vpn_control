@@ -16,7 +16,9 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/prepare_sing_box_macos_runtime.sh"
+      - "scripts/setup_macos_signing.sh"
       - "scripts/package_macos_desktop.sh"
+      - "scripts/test_macos_desktop_package.sh"
   pull_request:
     paths:
       - ".github/workflows/macos-desktop.yml"
@@ -28,7 +30,9 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/prepare_sing_box_macos_runtime.sh"
+      - "scripts/setup_macos_signing.sh"
       - "scripts/package_macos_desktop.sh"
+      - "scripts/test_macos_desktop_package.sh"
 
 jobs:
   package-macos-desktop:
@@ -51,6 +55,14 @@ jobs:
 
       - name: Build macOS package
         run: ./scripts/package_macos_desktop.sh
+        env:
+          VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.MACOS_SIGNING_CERTIFICATE_BASE64 }}
+          VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          VPN_CONTROL_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          VPN_CONTROL_MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          VPN_CONTROL_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+          VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v4

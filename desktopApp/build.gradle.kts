@@ -37,6 +37,18 @@ val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
 val macosPackageVersion = providers.gradleProperty("vpnControlMacosDesktopVersion")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_DESKTOP_VERSION"))
     .orElse(gitCommitCount.map { count -> "1.0.$count" })
+val macosSigningIdentity = providers.gradleProperty("vpnControlMacosSigningIdentity")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_SIGNING_IDENTITY"))
+val macosSigningKeychain = providers.gradleProperty("vpnControlMacosSigningKeychain")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_SIGNING_KEYCHAIN"))
+val macosNotarizationAppleId = providers.gradleProperty("vpnControlMacosNotarizationAppleId")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_APPLE_ID"))
+val macosNotarizationPassword = providers.gradleProperty("vpnControlMacosNotarizationPassword")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD"))
+val macosNotarizationTeamId = providers.gradleProperty("vpnControlMacosNotarizationTeamId")
+    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID"))
+
+fun Provider<String>.nonBlankOrNull(): String? = orNull?.trim()?.takeIf(String::isNotEmpty)
 
 plugins {
     id("org.jetbrains.compose")
@@ -103,6 +115,25 @@ compose.desktop {
                 packageBuildVersion = version
                 dmgPackageVersion = version
                 dmgPackageBuildVersion = version
+
+                macosSigningIdentity.nonBlankOrNull()?.let { identityValue ->
+                    signing {
+                        sign.set(true)
+                        identity.set(identityValue)
+                        macosSigningKeychain.nonBlankOrNull()?.let(keychain::set)
+                    }
+                }
+
+                val notarizationAppleId = macosNotarizationAppleId.nonBlankOrNull()
+                val notarizationPassword = macosNotarizationPassword.nonBlankOrNull()
+                val notarizationTeamId = macosNotarizationTeamId.nonBlankOrNull()
+                if (notarizationAppleId != null && notarizationPassword != null && notarizationTeamId != null) {
+                    notarization {
+                        appleID.set(notarizationAppleId)
+                        password.set(notarizationPassword)
+                        teamID.set(notarizationTeamId)
+                    }
+                }
             }
         }
     }
