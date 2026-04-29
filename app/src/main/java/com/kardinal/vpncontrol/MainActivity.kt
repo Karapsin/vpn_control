@@ -183,6 +183,8 @@ class MainActivity : ComponentActivity() {
                 onValidationBatchSizeChange = viewModel::onValidationBatchSizeDraftChanged,
                 onValidationRetryCountChange = viewModel::onValidationRetryCountDraftChanged,
                 onSaveValidationSettings = viewModel::saveValidationSettings,
+                onToggleLanguageDialog = viewModel::toggleLanguageDialog,
+                onAppLanguageChange = viewModel::setAppLanguage,
                 onToggleAppModeDialog = viewModel::toggleAppModeDialog,
                 onAppModeChange = viewModel::setAppMode,
                 onOpenMainTab = viewModel::openMainTab,

@@ -19,6 +19,7 @@ import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
@@ -137,6 +138,14 @@ class MainViewModel(
 
     fun toggleValidationSettingsDialog() {
         controller.toggleValidationSettingsDialog()
+    }
+
+    fun toggleLanguageDialog() {
+        controller.toggleLanguageDialog()
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        handleControllerEffects(controller.setAppLanguage(language))
     }
 
     fun openRoutingRules() {
@@ -1043,6 +1052,12 @@ class MainViewModel(
                 is MainControllerEffect.UpdateAppMode -> {
                     viewModelScope.launch {
                         repository.updateAppMode(effect.mode)
+                    }
+                }
+                is MainControllerEffect.UpdateAppLanguage -> {
+                    viewModelScope.launch {
+                        repository.updateAppLanguage(effect.language)
+                        repository.updateStatus(effect.statusMessage)
                     }
                 }
                 is MainControllerEffect.SelectActiveSubscription -> {

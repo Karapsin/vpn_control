@@ -75,6 +75,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -110,6 +111,7 @@ import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SingBoxConfigFactory
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
@@ -126,12 +128,15 @@ import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
+import com.kardinal.vpncontrol.shared.ui.LanguageSettingsDialog
+import com.kardinal.vpncontrol.shared.ui.LocalAppStrings
 import com.kardinal.vpncontrol.shared.ui.LocationsScreen as SharedLocationsScreen
 import com.kardinal.vpncontrol.shared.ui.MainScreen as SharedMainScreen
 import com.kardinal.vpncontrol.shared.ui.ProfileScreen as SharedProfileScreen
 import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen as SharedRoutingRulesScreen
 import com.kardinal.vpncontrol.shared.ui.SavedLocationRow as SharedSavedLocationRow
 import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
+import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel as sharedActiveProfileLabel
 import com.kardinal.vpncontrol.shared.ui.connectionLabel as sharedConnectionLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel as sharedCurrentSubscriptionSelectionLabel
@@ -139,6 +144,7 @@ import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel as sharedForma
 import com.kardinal.vpncontrol.shared.ui.formatLocationLabel as sharedFormatLocationLabel
 import com.kardinal.vpncontrol.shared.ui.routingSummary as sharedRoutingSummary
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription as sharedSelectedLocationOutsideCurrentSubscription
+import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -185,6 +191,8 @@ fun VpnControlApp(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleLanguageDialog: () -> Unit,
+    onAppLanguageChange: (AppLanguage) -> Unit,
     onToggleAppModeDialog: () -> Unit,
     onAppModeChange: (AppMode) -> Unit,
     onOpenMainTab: () -> Unit,
@@ -241,7 +249,10 @@ fun VpnControlApp(
         colors = listOf(Color(0xFF08111F), Color(0xFF12304B), Color(0xFF3D6B59)),
     )
     val showBlockingProgress = state.isRefreshing || state.isStartingVpn
+    val systemLanguageCode = Locale.getDefault().language
+    val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)
 
+    CompositionLocalProvider(LocalAppStrings provides appStrings) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -276,6 +287,7 @@ fun VpnControlApp(
             onValidationBatchSizeChange = onValidationBatchSizeChange,
             onValidationRetryCountChange = onValidationRetryCountChange,
             onSaveValidationSettings = onSaveValidationSettings,
+            onToggleLanguageDialog = onToggleLanguageDialog,
             onToggleAppModeDialog = onToggleAppModeDialog,
             onAppModeChange = onAppModeChange,
             onToggleVpn = onToggleVpn,
@@ -337,6 +349,7 @@ fun VpnControlApp(
             state.showAppModeDialog ||
             state.showRefreshPolicyDialog ||
             state.showValidationSettingsDialog ||
+            state.showLanguageDialog ||
             state.showLocationDialog ||
             state.currentScreen != AppScreen.MAIN ||
             state.screenHistory.isNotEmpty()
@@ -349,9 +362,19 @@ fun VpnControlApp(
             state.showAppModeDialog -> onToggleAppModeDialog()
             state.showRefreshPolicyDialog -> onToggleRefreshPolicyDialog()
             state.showValidationSettingsDialog -> onToggleValidationSettingsDialog()
+            state.showLanguageDialog -> onToggleLanguageDialog()
             state.showLocationDialog -> onCloseLocationDialog()
             else -> onNavigateBack()
         }
+    }
+
+    if (state.showLanguageDialog) {
+        LanguageSettingsDialog(
+            selectedLanguage = state.appLanguage,
+            systemLanguageCode = systemLanguageCode,
+            onSelectLanguage = onAppLanguageChange,
+            onDismiss = onToggleLanguageDialog,
+        )
     }
 
     if (state.showProfileHistoryRenameDialog) {
@@ -405,7 +428,7 @@ fun VpnControlApp(
             },
             confirmButton = {
                 TextButton(onClick = onCloseLocationMutationBlockedDialog) {
-                    Text("OK", color = Color(0xFF9ED6FF))
+                    Text(appStrings.get(UiText.OK), color = Color(0xFF9ED6FF))
                 }
             },
         )
@@ -414,7 +437,7 @@ fun VpnControlApp(
     if (state.showDnsDialog) {
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
-            title = { Text("Custom DNS", color = Color.White) },
+            title = { Text(appStrings.get(UiText.SETTINGS_CUSTOM_DNS), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -424,7 +447,7 @@ fun VpnControlApp(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Use custom DNS")
+                        Text(appStrings.get(UiText.USE_CUSTOM_DNS))
                         Switch(
                             checked = state.useCustomDnsDraft,
                             onCheckedChange = onDnsEnabledChange,
@@ -434,7 +457,7 @@ fun VpnControlApp(
                         value = state.customDnsDraft,
                         onValueChange = onDnsChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("DNS IP address") },
+                        label = { Text(appStrings.get(UiText.DNS_IP_ADDRESS)) },
                         enabled = state.useCustomDnsDraft,
                         colors = routingTextFieldColors(),
                     )
@@ -442,12 +465,12 @@ fun VpnControlApp(
             },
             confirmButton = {
                 TextButton(onClick = onSaveDns) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -456,13 +479,13 @@ fun VpnControlApp(
     if (state.showAppModeDialog) {
         AlertDialog(
             onDismissRequest = onToggleAppModeDialog,
-            title = { Text("Proxy Mode Settings", color = Color.White) },
+            title = { Text(appStrings.get(UiText.SETTINGS_PROXY_MODE), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Default mode is VPN. Turn on Proxy Only to run a local HTTP/SOCKS mixed proxy instead of Android VPN.",
+                        text = appStrings.get(UiText.APP_MODE_ANDROID_DESCRIPTION),
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
                     )
@@ -482,16 +505,20 @@ fun VpnControlApp(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = if (state.appMode == AppMode.PROXY_ONLY) "Proxy Only" else "VPN",
+                                    text = if (state.appMode == AppMode.PROXY_ONLY) {
+                                        appStrings.get(UiText.PROXY_ONLY)
+                                    } else {
+                                        appStrings.get(UiText.VPN)
+                                    },
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
                                     text = if (state.appMode == AppMode.PROXY_ONLY) {
-                                        "Local mixed proxy mode is enabled. Turn it off to use Android VPN mode."
+                                        appStrings.get(UiText.APP_MODE_ANDROID_PROXY_DETAIL)
                                     } else {
-                                        "Android VPN mode is enabled. Turn on Proxy Only to expose a local mixed proxy instead."
+                                        appStrings.get(UiText.APP_MODE_ANDROID_VPN_DETAIL)
                                     },
                                     color = Color(0xFFD3E3EE),
                                     fontSize = 12.sp,
@@ -511,7 +538,7 @@ fun VpnControlApp(
                         ProxyOnlyInfoCard(state)
                     } else {
                         Text(
-                            text = "VPN mode routes traffic through Android VpnService.",
+                            text = appStrings.get(UiText.APP_MODE_ANDROID_VPN_FOOTER),
                             color = Color(0xFF9FB8C8),
                             fontSize = 12.sp,
                         )
@@ -521,7 +548,7 @@ fun VpnControlApp(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = onToggleAppModeDialog) {
-                    Text("Close", color = Color(0xFFD3E3EE))
+                    Text(appStrings.get(UiText.CLOSE), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -530,7 +557,7 @@ fun VpnControlApp(
     if (state.showRefreshPolicyDialog) {
         AlertDialog(
             onDismissRequest = onToggleRefreshPolicyDialog,
-            title = { Text("Subscription Auto-Refresh", color = Color.White) },
+            title = { Text(appStrings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -543,9 +570,9 @@ fun VpnControlApp(
                 ) {
                     Text(
                         text = if (isAllSubscriptionsActive(state)) {
-                            "Works only when Profile Source is set to Subscription. The app will periodically redownload every saved subscription and update the merged locations list."
+                            appStrings.get(UiText.REFRESH_DESCRIPTION_ALL)
                         } else {
-                            "Works only when Profile Source is set to Subscription. The app will periodically redownload the selected subscription and update the saved locations list."
+                            appStrings.get(UiText.REFRESH_DESCRIPTION_SELECTED)
                         },
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
@@ -556,11 +583,11 @@ fun VpnControlApp(
                         SubscriptionRefreshPolicy.CUSTOM,
                     ).forEach { policy ->
                         SourceModeOption(
-                            title = policy.title,
+                            title = appStrings.refreshPolicyTitle(policy),
                             description = when (policy) {
-                                SubscriptionRefreshPolicy.OFF -> "Do not update the subscription in the background."
-                                SubscriptionRefreshPolicy.EVERY_HOUR -> "Update saved locations from the subscription every hour."
-                                SubscriptionRefreshPolicy.CUSTOM -> "Use a custom interval in hours. Minimum 5 minutes."
+                                SubscriptionRefreshPolicy.OFF -> appStrings.get(UiText.REFRESH_POLICY_OFF_DESCRIPTION)
+                                SubscriptionRefreshPolicy.EVERY_HOUR -> appStrings.get(UiText.REFRESH_POLICY_HOURLY_DESCRIPTION)
+                                SubscriptionRefreshPolicy.CUSTOM -> appStrings.get(UiText.REFRESH_POLICY_CUSTOM_DESCRIPTION)
                             },
                             selected = state.subscriptionRefreshPolicyDraft == policy,
                             onClick = { onSubscriptionRefreshPolicyChange(policy) },
@@ -583,9 +610,9 @@ fun VpnControlApp(
                             ) {
                                 Text(
                                     text = if (state.findBestAfterSubscriptionRefreshDraft) {
-                                        "Find best after refresh"
+                                        appStrings.get(UiText.FIND_BEST_AFTER_REFRESH)
                                     } else {
-                                        "Keep current location after refresh"
+                                        appStrings.get(UiText.KEEP_CURRENT_LOCATION_AFTER_REFRESH)
                                     },
                                     color = Color.White,
                                     fontSize = 16.sp,
@@ -593,9 +620,9 @@ fun VpnControlApp(
                                 )
                                 Text(
                                     text = if (state.findBestAfterSubscriptionRefreshDraft) {
-                                        "When already connected, rerun best-location search after a background refresh finishes."
+                                        appStrings.get(UiText.FIND_BEST_AFTER_REFRESH_DESCRIPTION)
                                     } else {
-                                        "Background refresh only updates subscription caches and does not rerun best-location search."
+                                        appStrings.get(UiText.KEEP_CURRENT_LOCATION_AFTER_REFRESH_DESCRIPTION)
                                     },
                                     color = Color(0xFFD3E3EE),
                                     fontSize = 12.sp,
@@ -613,13 +640,13 @@ fun VpnControlApp(
                                 value = state.subscriptionRefreshCustomHoursDraft,
                                 onValueChange = onSubscriptionRefreshCustomHoursChange,
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Custom interval (hours)") },
+                                label = { Text(appStrings.get(UiText.CUSTOM_INTERVAL_HOURS)) },
                                 placeholder = { Text("0.5") },
                                 singleLine = true,
                                 colors = routingTextFieldColors(),
                             )
                             Text(
-                                text = "Examples: 0.5 = 30 minutes, 1.5 = 1 h 30 min. Minimum 5 minutes.",
+                                text = appStrings.get(UiText.CUSTOM_INTERVAL_HELP),
                                 color = Color(0xFF9BB3C6),
                                 fontSize = 12.sp,
                             )
@@ -629,12 +656,12 @@ fun VpnControlApp(
             },
             confirmButton = {
                 TextButton(onClick = onSaveSubscriptionRefreshPolicy) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleRefreshPolicyDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -643,7 +670,7 @@ fun VpnControlApp(
     if (state.showValidationSettingsDialog) {
         AlertDialog(
             onDismissRequest = onToggleValidationSettingsDialog,
-            title = { Text("Location Test Settings", color = Color.White) },
+            title = { Text(appStrings.get(UiText.SETTINGS_LOCATION_TEST), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -656,9 +683,9 @@ fun VpnControlApp(
                 ) {
                     Text(
                         text = if (isAllSubscriptionsActive(state)) {
-                            "The app uses these sites when testing locations. In All mode it checks the fastest locations from every saved subscription in batches: top N first, then the next N, until the secondary site works."
+                            appStrings.get(UiText.VALIDATION_DESCRIPTION_ALL)
                         } else {
-                            "The app uses these sites when testing locations. In subscription mode it checks the fastest locations from the selected subscription in batches: top N first, then the next N, until the secondary site works."
+                            appStrings.get(UiText.VALIDATION_DESCRIPTION_SELECTED)
                         },
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
@@ -667,8 +694,8 @@ fun VpnControlApp(
                         value = state.validationPrimaryUrlDraft,
                         onValueChange = onValidationPrimaryUrlChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Primary test site") },
-                        placeholder = { Text("google.com or full URL") },
+                        label = { Text(appStrings.get(UiText.PRIMARY_TEST_SITE)) },
+                        placeholder = { Text(appStrings.get(UiText.PRIMARY_TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )
@@ -676,8 +703,8 @@ fun VpnControlApp(
                         value = state.validationSecondaryUrlDraft,
                         onValueChange = onValidationSecondaryUrlChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Secondary test site") },
-                        placeholder = { Text("secondary-site.com or full URL") },
+                        label = { Text(appStrings.get(UiText.SECONDARY_TEST_SITE)) },
+                        placeholder = { Text(appStrings.get(UiText.SECONDARY_TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )
@@ -685,7 +712,7 @@ fun VpnControlApp(
                         value = state.validationBatchSizeDraft,
                         onValueChange = onValidationBatchSizeChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Batch size") },
+                        label = { Text(appStrings.get(UiText.BATCH_SIZE)) },
                         placeholder = { Text("3") },
                         singleLine = true,
                         colors = routingTextFieldColors(),
@@ -694,13 +721,16 @@ fun VpnControlApp(
                         value = state.validationRetryCountDraft,
                         onValueChange = onValidationRetryCountChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Retry count") },
+                        label = { Text(appStrings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )
                     Text(
-                        text = "Concurrency matches the current batch size, up to 5. Retry count reruns the whole search if no usable location is found. Current settings: ${state.validationSettings.displaySummary()}",
+                        text = appStrings.format(
+                            UiText.VALIDATION_ANDROID_SUMMARY,
+                            state.validationSettings.displaySummary(),
+                        ),
                         color = Color(0xFF9ED6FF),
                         fontSize = 12.sp,
                     )
@@ -708,12 +738,12 @@ fun VpnControlApp(
             },
             confirmButton = {
                 TextButton(onClick = onSaveValidationSettings) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleValidationSettingsDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -765,6 +795,7 @@ fun VpnControlApp(
                 }
             },
         )
+    }
     }
 }
 
@@ -852,6 +883,7 @@ private fun HomeTabsScreen(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleLanguageDialog: () -> Unit,
     onToggleAppModeDialog: () -> Unit,
     onAppModeChange: (AppMode) -> Unit,
     onToggleVpn: () -> Unit,
@@ -924,6 +956,7 @@ private fun HomeTabsScreen(
                             onToggleDnsDialog = onToggleDnsDialog,
                             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
+                            onToggleLanguageDialog = onToggleLanguageDialog,
                             onToggleAppModeDialog = onToggleAppModeDialog,
                         )
                     },
@@ -1005,9 +1038,11 @@ private fun MainAdvancedMenu(
     onToggleDnsDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
+    onToggleLanguageDialog: () -> Unit,
     onToggleAppModeDialog: () -> Unit,
 ) {
     var advancedMenuExpanded by remember { mutableStateOf(false) }
+    val strings = LocalAppStrings.current
 
     Box {
         IconButton(onClick = { advancedMenuExpanded = true }) {
@@ -1022,7 +1057,7 @@ private fun MainAdvancedMenu(
             onDismissRequest = { advancedMenuExpanded = false },
         ) {
             DropdownMenuItem(
-                text = { Text("Custom DNS") },
+                text = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS)) },
                 onClick = {
                     advancedMenuExpanded = false
                     onToggleDnsDialog()
@@ -1031,9 +1066,29 @@ private fun MainAdvancedMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Proxy Mode Settings")
+                        Text(strings.get(UiText.SETTINGS_LANGUAGE))
                         Text(
-                            if (state.appMode == AppMode.VPN) "VPN mode" else "Proxy-only mode",
+                            strings.languageDisplayName(state.appLanguage, Locale.getDefault().language),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleLanguageDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_PROXY_MODE))
+                        Text(
+                            if (state.appMode == AppMode.VPN) {
+                                strings.get(UiText.SETTINGS_VPN_MODE)
+                            } else {
+                                strings.get(UiText.SETTINGS_PROXY_ONLY)
+                            },
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -1047,20 +1102,21 @@ private fun MainAdvancedMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Subscription Auto-Refresh")
+                        Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH))
                         Text(
                             buildString {
                                 append(
-                                    state.subscriptionRefreshPolicy.displayValue(
+                                    strings.refreshPolicyDisplay(
+                                        state.subscriptionRefreshPolicy,
                                         state.subscriptionRefreshCustomHours,
                                     ),
                                 )
                                 append(" • ")
                                 append(
                                     if (isAllSubscriptionsActive(state)) {
-                                        "all subscriptions"
+                                        strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
                                     } else {
-                                        "selected subscription"
+                                        strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
                                     },
                                 )
                             },
@@ -1077,7 +1133,7 @@ private fun MainAdvancedMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Location Test Settings")
+                        Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
                         Text(
                             state.validationSettings.displaySummary(),
                             color = Color(0xFF4A6070),

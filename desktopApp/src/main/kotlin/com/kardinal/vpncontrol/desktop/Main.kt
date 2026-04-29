@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,19 +73,25 @@ import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
+import com.kardinal.vpncontrol.shared.ui.LanguageSettingsDialog
+import com.kardinal.vpncontrol.shared.ui.LocalAppStrings
 import com.kardinal.vpncontrol.shared.ui.LocationsScreen
 import com.kardinal.vpncontrol.shared.ui.MainScreen
 import com.kardinal.vpncontrol.shared.ui.ProfileScreen
 import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen
 import com.kardinal.vpncontrol.shared.ui.SavedLocationRow
 import com.kardinal.vpncontrol.shared.ui.StatsScreen
+import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
+import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
+import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
@@ -225,9 +232,13 @@ private fun DesktopVpnControlApp(
     val activeProfile = activeProfileLabel(state, service::sourceLabelFor)
     val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor)
     val showMismatchWarning = selectedLocationOutsideCurrentSubscription(state)
+    val systemLanguageCode = Locale.getDefault().language
+    val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)
 
+    CompositionLocalProvider(LocalAppStrings provides appStrings) {
     DesktopSettingsDialogs(
         state = state,
+        systemLanguageCode = systemLanguageCode,
         onToggleDnsDialog = service::toggleDnsDialog,
         onUseCustomDnsDraftChange = service::setUseCustomDnsDraft,
         onCustomDnsDraftChange = service::setCustomDnsDraft,
@@ -249,6 +260,8 @@ private fun DesktopVpnControlApp(
         onValidationBatchSizeDraftChange = service::setValidationBatchSizeDraft,
         onValidationRetryCountDraftChange = service::setValidationRetryCountDraft,
         onSaveValidationSettings = service::saveValidationSettings,
+        onToggleLanguageDialog = service::toggleLanguageDialog,
+        onSetAppLanguage = service::setAppLanguage,
     )
 
     Box(
@@ -306,6 +319,7 @@ private fun DesktopVpnControlApp(
                             onToggleAppModeDialog = service::toggleAppModeDialog,
                             onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
+                            onToggleLanguageDialog = service::toggleLanguageDialog,
                         )
                     },
                 )
@@ -405,6 +419,7 @@ private fun DesktopVpnControlApp(
                 AppScreen.STATS -> StatsScreen(state = state)
             }
         }
+    }
     }
 }
 
@@ -782,12 +797,14 @@ private fun DesktopAdditionalSettingsMenu(
     onToggleAppModeDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
+    onToggleLanguageDialog: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val strings = LocalAppStrings.current
     val refreshScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
-        "all subscriptions"
+        strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
     } else {
-        "selected subscription"
+        strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
     }
 
     Box {
@@ -808,9 +825,9 @@ private fun DesktopAdditionalSettingsMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Custom DNS")
+                        Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
                         Text(
-                            if (state.useCustomDns) state.customDns.ifBlank { "enabled" } else "disabled",
+                            if (state.useCustomDns) state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) } else strings.get(UiText.SETTINGS_DISABLED),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -824,9 +841,25 @@ private fun DesktopAdditionalSettingsMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Start on Login")
+                        Text(strings.get(UiText.SETTINGS_LANGUAGE))
                         Text(
-                            if (state.startOnBootEnabled) "enabled" else "disabled",
+                            strings.languageDisplayName(state.appLanguage, Locale.getDefault().language),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onToggleLanguageDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_START_ON_LOGIN))
+                        Text(
+                            if (state.startOnBootEnabled) strings.get(UiText.SETTINGS_ENABLED) else strings.get(UiText.SETTINGS_DISABLED),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -849,9 +882,9 @@ private fun DesktopAdditionalSettingsMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("VPN / Proxy Mode")
+                        Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE))
                         Text(
-                            if (state.appMode == AppMode.VPN) "VPN mode" else "Proxy-only mode",
+                            if (state.appMode == AppMode.VPN) strings.get(UiText.SETTINGS_VPN_MODE) else strings.get(UiText.SETTINGS_PROXY_ONLY),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -865,9 +898,9 @@ private fun DesktopAdditionalSettingsMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Subscription Auto-Refresh")
+                        Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH))
                         Text(
-                            "${state.subscriptionRefreshPolicy.displayValue(state.subscriptionRefreshCustomHours)} • $refreshScope",
+                            "${strings.refreshPolicyDisplay(state.subscriptionRefreshPolicy, state.subscriptionRefreshCustomHours)} • $refreshScope",
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -881,7 +914,7 @@ private fun DesktopAdditionalSettingsMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Location Test Settings")
+                        Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
                         Text(
                             state.validationSettings.displaySummary(),
                             color = Color(0xFF4A6070),
@@ -901,6 +934,7 @@ private fun DesktopAdditionalSettingsMenu(
 @Composable
 private fun DesktopSettingsDialogs(
     state: MainUiState,
+    systemLanguageCode: String?,
     onToggleDnsDialog: () -> Unit,
     onUseCustomDnsDraftChange: (Boolean) -> Unit,
     onCustomDnsDraftChange: (String) -> Unit,
@@ -918,11 +952,24 @@ private fun DesktopSettingsDialogs(
     onValidationBatchSizeDraftChange: (String) -> Unit,
     onValidationRetryCountDraftChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
+    onToggleLanguageDialog: () -> Unit,
+    onSetAppLanguage: (AppLanguage) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
+
+    if (state.showLanguageDialog) {
+        LanguageSettingsDialog(
+            selectedLanguage = state.appLanguage,
+            systemLanguageCode = systemLanguageCode,
+            onSelectLanguage = onSetAppLanguage,
+            onDismiss = onToggleLanguageDialog,
+        )
+    }
+
     if (state.showDnsDialog) {
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
-            title = { Text("Custom DNS", color = Color.White) },
+            title = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -936,9 +983,9 @@ private fun DesktopSettingsDialogs(
                             modifier = Modifier.fillMaxWidth(0.76f),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text("Use custom DNS", color = Color.White)
+                            Text(strings.get(UiText.USE_CUSTOM_DNS), color = Color.White)
                             Text(
-                                "Applies to new desktop proxy or VPN sessions.",
+                                strings.get(UiText.DNS_APPLIES_NEW_DESKTOP_SESSIONS),
                                 color = Color(0xFFD3E3EE),
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -952,7 +999,7 @@ private fun DesktopSettingsDialogs(
                         value = state.customDnsDraft,
                         onValueChange = onCustomDnsDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("DNS IP address") },
+                        label = { Text(strings.get(UiText.DNS_IP_ADDRESS)) },
                         placeholder = { Text("1.1.1.1") },
                         enabled = state.useCustomDnsDraft,
                         singleLine = true,
@@ -961,12 +1008,12 @@ private fun DesktopSettingsDialogs(
             },
             confirmButton = {
                 TextButton(onClick = onSaveDns) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -975,13 +1022,13 @@ private fun DesktopSettingsDialogs(
     if (state.showAppModeDialog) {
         AlertDialog(
             onDismissRequest = onToggleAppModeDialog,
-            title = { Text("VPN / Proxy Mode", color = Color.White) },
+            title = { Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "VPN mode uses sing-box TUN on Linux or Windows. macOS currently supports Proxy-only mode until a privileged helper is implemented.",
+                        text = strings.get(UiText.APP_MODE_DESKTOP_DESCRIPTION),
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1001,16 +1048,20 @@ private fun DesktopSettingsDialogs(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = if (state.appMode == AppMode.VPN) "VPN Mode" else "Proxy-only",
+                                    text = if (state.appMode == AppMode.VPN) {
+                                        strings.get(UiText.VPN_MODE_LABEL)
+                                    } else {
+                                        strings.get(UiText.PROXY_ONLY)
+                                    },
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
                                     text = if (state.appMode == AppMode.VPN) {
-                                        "Turn off to use only the local proxy."
+                                        strings.get(UiText.APP_MODE_DESKTOP_VPN_DETAIL)
                                     } else {
-                                        "Turn on to route desktop traffic through VPN/TUN mode."
+                                        strings.get(UiText.APP_MODE_DESKTOP_PROXY_DETAIL)
                                     },
                                     color = Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,
@@ -1031,7 +1082,7 @@ private fun DesktopSettingsDialogs(
                         }
                     }
                     Text(
-                        text = "Changing mode while connected stops the current session first.",
+                        text = strings.get(UiText.APP_MODE_DESKTOP_CHANGE_WARNING),
                         color = Color(0xFF9BB3C6),
                         fontSize = 12.sp,
                     )
@@ -1040,7 +1091,7 @@ private fun DesktopSettingsDialogs(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = onToggleAppModeDialog) {
-                    Text("Close", color = Color(0xFFD3E3EE))
+                    Text(strings.get(UiText.CLOSE), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -1048,13 +1099,13 @@ private fun DesktopSettingsDialogs(
 
     if (state.showRefreshPolicyDialog) {
         val refreshTarget = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
-            "every saved subscription"
+            strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
         } else {
-            "the selected subscription"
+            strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
         }
         AlertDialog(
             onDismissRequest = onToggleRefreshPolicyDialog,
-            title = { Text("Subscription Auto-Refresh", color = Color.White) },
+            title = { Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -1066,7 +1117,7 @@ private fun DesktopSettingsDialogs(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        text = "While the desktop app is open, it can periodically redownload $refreshTarget and update cached locations.",
+                        text = strings.format(UiText.REFRESH_DESCRIPTION_DESKTOP, refreshTarget),
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1076,11 +1127,11 @@ private fun DesktopSettingsDialogs(
                         SubscriptionRefreshPolicy.CUSTOM,
                     ).forEach { policy ->
                         DesktopSettingsOption(
-                            title = policy.title,
+                            title = strings.refreshPolicyTitle(policy),
                             description = when (policy) {
-                                SubscriptionRefreshPolicy.OFF -> "Do not update subscriptions in the background."
-                                SubscriptionRefreshPolicy.EVERY_HOUR -> "Refresh cached locations every hour."
-                                SubscriptionRefreshPolicy.CUSTOM -> "Use a custom interval in hours. Minimum 5 minutes."
+                                SubscriptionRefreshPolicy.OFF -> strings.get(UiText.REFRESH_POLICY_OFF_DESCRIPTION)
+                                SubscriptionRefreshPolicy.EVERY_HOUR -> strings.get(UiText.REFRESH_POLICY_HOURLY_DESCRIPTION)
+                                SubscriptionRefreshPolicy.CUSTOM -> strings.get(UiText.REFRESH_POLICY_CUSTOM_DESCRIPTION)
                             },
                             selected = state.subscriptionRefreshPolicyDraft == policy,
                             onClick = { onSubscriptionRefreshPolicyDraftChange(policy) },
@@ -1103,15 +1154,15 @@ private fun DesktopSettingsDialogs(
                             ) {
                                 Text(
                                     text = if (state.findBestAfterSubscriptionRefreshDraft) {
-                                        "Find best after refresh"
+                                        strings.get(UiText.FIND_BEST_AFTER_REFRESH)
                                     } else {
-                                        "Keep current location after refresh"
+                                        strings.get(UiText.KEEP_CURRENT_LOCATION_AFTER_REFRESH)
                                     },
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
-                                    text = "When already connected, rerun best-location search after auto-refresh completes.",
+                                    text = strings.get(UiText.FIND_BEST_AFTER_REFRESH_DESCRIPTION),
                                     color = Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -1128,12 +1179,12 @@ private fun DesktopSettingsDialogs(
                                 value = state.subscriptionRefreshCustomHoursDraft,
                                 onValueChange = onSubscriptionRefreshCustomHoursDraftChange,
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Custom interval (hours)") },
+                                label = { Text(strings.get(UiText.CUSTOM_INTERVAL_HOURS)) },
                                 placeholder = { Text("0.5") },
                                 singleLine = true,
                             )
                             Text(
-                                text = "Examples: 0.5 = 30 minutes, 1.5 = 1 h 30 min. Minimum 5 minutes.",
+                                text = strings.get(UiText.CUSTOM_INTERVAL_HELP),
                                 color = Color(0xFF9BB3C6),
                                 fontSize = 12.sp,
                             )
@@ -1143,12 +1194,12 @@ private fun DesktopSettingsDialogs(
             },
             confirmButton = {
                 TextButton(onClick = onSaveSubscriptionRefreshPolicy) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleRefreshPolicyDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -1156,13 +1207,13 @@ private fun DesktopSettingsDialogs(
 
     if (state.showValidationSettingsDialog) {
         val searchScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
-            "all subscriptions"
+            strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
         } else {
-            "the selected subscription"
+            strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
         }
         AlertDialog(
             onDismissRequest = onToggleValidationSettingsDialog,
-            title = { Text("Location Test Settings", color = Color.White) },
+            title = { Text(strings.get(UiText.SETTINGS_LOCATION_TEST), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
@@ -1174,7 +1225,7 @@ private fun DesktopSettingsDialogs(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(
-                        text = "Find best uses these sites when testing locations from $searchScope.",
+                        text = strings.format(UiText.VALIDATION_DESCRIPTION_DESKTOP, searchScope),
                         color = Color(0xFFD3E3EE),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1182,23 +1233,23 @@ private fun DesktopSettingsDialogs(
                         value = state.validationPrimaryUrlDraft,
                         onValueChange = onValidationPrimaryUrlDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Primary test site") },
-                        placeholder = { Text("google.com or full URL") },
+                        label = { Text(strings.get(UiText.PRIMARY_TEST_SITE)) },
+                        placeholder = { Text(strings.get(UiText.PRIMARY_TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = state.validationSecondaryUrlDraft,
                         onValueChange = onValidationSecondaryUrlDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Secondary test site") },
-                        placeholder = { Text("secondary-site.com or full URL") },
+                        label = { Text(strings.get(UiText.SECONDARY_TEST_SITE)) },
+                        placeholder = { Text(strings.get(UiText.SECONDARY_TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = state.validationBatchSizeDraft,
                         onValueChange = onValidationBatchSizeDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Batch size") },
+                        label = { Text(strings.get(UiText.BATCH_SIZE)) },
                         placeholder = { Text("3") },
                         singleLine = true,
                     )
@@ -1206,12 +1257,15 @@ private fun DesktopSettingsDialogs(
                         value = state.validationRetryCountDraft,
                         onValueChange = onValidationRetryCountDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Retry count") },
+                        label = { Text(strings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
                         singleLine = true,
                     )
                     Text(
-                        text = "Concurrency matches batch size, up to 5. Current: ${state.validationSettings.displaySummary()}",
+                        text = strings.format(
+                            UiText.VALIDATION_DESKTOP_SUMMARY,
+                            state.validationSettings.displaySummary(),
+                        ),
                         color = Color(0xFF9ED6FF),
                         fontSize = 12.sp,
                     )
@@ -1219,12 +1273,12 @@ private fun DesktopSettingsDialogs(
             },
             confirmButton = {
                 TextButton(onClick = onSaveValidationSettings) {
-                    Text("Save", color = Color(0xFF9ED6FF))
+                    Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onToggleValidationSettingsDialog) {
-                    Text("Cancel", color = Color(0xFFD3E3EE))
+                    Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )

@@ -69,6 +69,7 @@ fun StatusCard(
     extraDetails: List<String> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -80,17 +81,17 @@ fun StatusCard(
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Status", color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
+            Text(strings.get(UiText.STATUS), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
             Text(state.statusMessage, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Selected profile: $activeProfileLabel", color = Color(0xFFD3E3EE))
+            Text(strings.format(UiText.SELECTED_PROFILE, activeProfileLabel), color = Color(0xFFD3E3EE))
             if (state.selectedProfileName.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Selected location: ${state.selectedProfileName}",
+                    strings.format(UiText.SELECTED_LOCATION, state.selectedProfileName),
                     color = Color(0xFFD3E3EE),
                 )
-                Text("Server: ${state.selectedProfileServer}", color = Color(0xFFD3E3EE))
+                Text(strings.format(UiText.SERVER, state.selectedProfileServer), color = Color(0xFFD3E3EE))
             }
             extraDetails.forEach { detail ->
                 if (detail.isNotBlank()) {
@@ -106,6 +107,7 @@ fun SubscriptionMismatchWarningCard(
     activeProfileLabel: String,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -119,19 +121,19 @@ fun SubscriptionMismatchWarningCard(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = "Selected location is from a different subscription",
+                text = strings.get(UiText.MISMATCH_TITLE),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
             )
             Text(
-                text = "Active profile: $activeProfileLabel",
+                text = strings.format(UiText.MISMATCH_ACTIVE_PROFILE, activeProfileLabel),
                 color = Color(0xFFFFD98A),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
             Text(
-                text = "Run Find Best or reconnect to switch to a location from the current subscription.",
+                text = strings.get(UiText.MISMATCH_ACTION),
                 color = Color(0xFFFFF0CC),
                 fontSize = 12.sp,
             )

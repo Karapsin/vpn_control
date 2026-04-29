@@ -26,6 +26,7 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Scaffold(
         modifier = modifier,
         containerColor = Color(0xFF141F2D),
@@ -48,17 +49,17 @@ fun ProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 ScreenHeaderCard(
-                    title = "Profile",
-                    description = "Choose where the app gets locations from. Use a remote source in subscription mode, or work only with the saved list from the Locations tab.",
+                    title = strings.get(UiText.PROFILE_TITLE),
+                    description = strings.get(UiText.PROFILE_DESCRIPTION),
                     footer = {
                         Text(
-                            text = "Selected profile: $activeProfileLabel",
+                            text = strings.format(UiText.SELECTED_PROFILE, activeProfileLabel),
                             color = Color(0xFF9ED6FF),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "Current selection: $currentSelectionLabel",
+                            text = strings.format(UiText.CURRENT_SELECTION, currentSelectionLabel),
                             color = Color(0xFFD3E3EE),
                             fontSize = 12.sp,
                         )

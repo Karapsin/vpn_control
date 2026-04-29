@@ -35,6 +35,7 @@ fun HomeTabScaffold(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color(0xFF141F2D),
@@ -58,35 +59,35 @@ fun HomeTabScaffold(
                         selected = currentScreen == AppScreen.MAIN,
                         onClick = onOpenMainTab,
                         icon = {
-                            Icon(imageVector = mainIcon, contentDescription = "Main")
+                            Icon(imageVector = mainIcon, contentDescription = strings.get(UiText.TAB_MAIN))
                         },
                     )
                     Tab(
                         selected = currentScreen == AppScreen.PROFILE,
                         onClick = onOpenProfileTab,
                         icon = {
-                            Icon(imageVector = profileIcon, contentDescription = "Profile")
+                            Icon(imageVector = profileIcon, contentDescription = strings.get(UiText.TAB_PROFILE))
                         },
                     )
                     Tab(
                         selected = currentScreen == AppScreen.LOCATIONS,
                         onClick = onOpenLocationsTab,
                         icon = {
-                            Icon(imageVector = locationsIcon, contentDescription = "Locations")
+                            Icon(imageVector = locationsIcon, contentDescription = strings.get(UiText.TAB_LOCATIONS))
                         },
                     )
                     Tab(
                         selected = currentScreen == AppScreen.STATS,
                         onClick = onOpenStatsTab,
                         icon = {
-                            Icon(imageVector = statsIcon, contentDescription = "Stats")
+                            Icon(imageVector = statsIcon, contentDescription = strings.get(UiText.TAB_STATS))
                         },
                     )
                     Tab(
                         selected = currentScreen == AppScreen.ROUTING_RULES,
                         onClick = onOpenRoutingRules,
                         icon = {
-                            Icon(imageVector = rulesIcon, contentDescription = "Rules")
+                            Icon(imageVector = rulesIcon, contentDescription = strings.get(UiText.TAB_RULES))
                         },
                     )
                 }

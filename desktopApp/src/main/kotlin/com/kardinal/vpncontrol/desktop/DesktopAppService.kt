@@ -22,6 +22,7 @@ import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.InstalledApp
@@ -472,6 +473,22 @@ class DesktopAppService private constructor(
 
     fun toggleValidationSettingsDialog() {
         updateState(MainUiStateTransitions::toggleValidationSettingsDialog)
+    }
+
+    fun toggleLanguageDialog() {
+        updateState { it.copy(showLanguageDialog = !it.showLanguageDialog) }
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        updateState {
+            it.copy(appLanguage = language, showLanguageDialog = false).withStatus(
+                if (language == AppLanguage.SYSTEM) {
+                    "Language set to system default"
+                } else {
+                    "Language set to ${language.nativeName}"
+                },
+            )
+        }
     }
 
     fun setValidationPrimaryUrlDraft(value: String) {
@@ -1675,6 +1692,7 @@ private fun MainUiState.toPersistedState(
         ruleSets = emptyList(),
     )
     return PersistedState(
+        appLanguage = synced.appLanguage,
         profileUrl = synced.profileUrl,
         activeSubscriptionId = synced.activeSubscriptionId,
         subscriptions = synced.subscriptions,

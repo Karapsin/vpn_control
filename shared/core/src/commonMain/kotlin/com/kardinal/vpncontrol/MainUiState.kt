@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
@@ -28,6 +29,7 @@ enum class AppScreen {
 
 data class MainUiState(
     val currentScreen: AppScreen = AppScreen.MAIN,
+    val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val screenHistory: List<AppScreen> = emptyList(),
     val profileUrl: String = "",
     val activeSubscriptionId: String = "",
@@ -97,6 +99,7 @@ data class MainUiState(
     val showAppModeDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
     val showValidationSettingsDialog: Boolean = false,
+    val showLanguageDialog: Boolean = false,
     val showProfileHistoryRenameDialog: Boolean = false,
     val showRuleSetDialog: Boolean = false,
     val editingRuleSetId: String = "",
@@ -123,6 +126,7 @@ object MainUiStateProjector {
         persisted: PersistedState,
     ): MainUiState {
         return current.copy(
+            appLanguage = persisted.appLanguage,
             profileUrl = persisted.profileUrl,
             activeSubscriptionId = persisted.activeSubscriptionId,
             subscriptions = persisted.subscriptions,

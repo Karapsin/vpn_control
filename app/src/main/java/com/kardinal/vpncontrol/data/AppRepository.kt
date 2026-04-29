@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -54,6 +55,10 @@ class AppRepository(
 
     suspend fun updateAppMode(mode: AppMode) {
         storage.updateAppMode(mode)
+    }
+
+    suspend fun updateAppLanguage(language: AppLanguage) {
+        storage.updateAppLanguage(language)
     }
 
     suspend fun updateSubscriptionRefreshPolicy(

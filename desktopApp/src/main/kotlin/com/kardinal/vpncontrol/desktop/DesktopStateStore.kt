@@ -5,6 +5,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.data.RoutingRuleSetCodec
 import com.kardinal.vpncontrol.data.StatsCodec
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
@@ -274,6 +275,7 @@ class DesktopStateStore(
 
     private fun encodePersistedState(state: PersistedState): JsonObject {
         return buildJsonObject {
+            put("app_language", JsonPrimitive(state.appLanguage.name))
             put("profile_url", JsonPrimitive(state.profileUrl))
             put("active_subscription_id", JsonPrimitive(state.activeSubscriptionId))
             put("subscriptions", buildJsonArray {
@@ -356,6 +358,10 @@ class DesktopStateStore(
         val validation = root["validation_settings"]?.jsonObject ?: JsonObject(emptyMap())
         val routing = root["routing_rules"]?.jsonObject ?: JsonObject(emptyMap())
         return PersistedState(
+            appLanguage = root.enum(
+                key = "app_language",
+                default = AppLanguage.SYSTEM,
+            ),
             profileUrl = root.string("profile_url"),
             activeSubscriptionId = root.string("active_subscription_id"),
             subscriptions = root["subscriptions"]?.jsonArray.orEmpty().mapNotNull { element ->

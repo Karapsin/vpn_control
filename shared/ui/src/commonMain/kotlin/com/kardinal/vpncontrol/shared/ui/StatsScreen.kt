@@ -39,6 +39,7 @@ import kotlinx.datetime.toLocalDateTime
 fun StatsScreen(
     state: MainUiState,
 ) {
+    val strings = LocalAppStrings.current
     Scaffold(
         containerColor = Color(0xFF141F2D),
         contentColor = Color.White,
@@ -60,8 +61,8 @@ fun StatsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 ScreenHeaderCard(
-                    title = "Stats",
-                    description = "Session data and recent status history are shown here.",
+                    title = strings.get(UiText.STATS_TITLE),
+                    description = strings.get(UiText.STATS_DESCRIPTION),
                 )
                 SessionCard(state)
                 ConnectionLogCard(state.connectionLog)
@@ -72,6 +73,7 @@ fun StatsScreen(
 
 @Composable
 private fun SessionCard(state: MainUiState) {
+    val strings = LocalAppStrings.current
     val now by produceState(
         initialValue = currentTimeMillis(),
         key1 = state.isVpnRunning,
@@ -95,29 +97,29 @@ private fun SessionCard(state: MainUiState) {
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Session", color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
+            Text(strings.get(UiText.SESSION), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
             Text(
                 text = if (state.isVpnRunning) {
-                    "Running for ${state.sessionStartedAtEpochMillis.elapsedLabel(now)}"
+                    strings.format(UiText.RUNNING_FOR, state.sessionStartedAtEpochMillis.elapsedLabel(now))
                 } else {
-                    "Stopped"
+                    strings.get(UiText.STOPPED)
                 },
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Started: ${state.sessionStartedAtEpochMillis.formatAsStatusTime()}",
+                text = strings.format(UiText.STARTED, state.sessionStartedAtEpochMillis.formatAsStatusTime()),
                 color = Color(0xFFD3E3EE),
                 fontSize = 12.sp,
             )
             Text(
-                text = "Stopped: ${state.sessionStoppedAtEpochMillis.formatAsStatusTime()}",
+                text = "${strings.get(UiText.STOPPED)}: ${state.sessionStoppedAtEpochMillis.formatAsStatusTime()}",
                 color = Color(0xFFD3E3EE),
                 fontSize = 12.sp,
             )
             Text(
-                text = "Successful starts: ${state.successfulStarts} • Successful stops: ${state.successfulStops}",
+                text = strings.format(UiText.SUCCESSFUL_STARTS_STOPS, state.successfulStarts, state.successfulStops),
                 color = Color(0xFFD3E3EE),
                 fontSize = 12.sp,
             )
@@ -127,6 +129,7 @@ private fun SessionCard(state: MainUiState) {
 
 @Composable
 private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
@@ -137,9 +140,9 @@ private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Connection Log", color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
+            Text(strings.get(UiText.CONNECTION_LOG), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
             if (connectionLog.isEmpty()) {
-                Text("No recent events yet.", color = Color(0xFFD3E3EE))
+                Text(strings.get(UiText.NO_RECENT_EVENTS), color = Color(0xFFD3E3EE))
             } else {
                 Card(
                     shape = RoundedCornerShape(18.dp),

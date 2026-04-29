@@ -45,6 +45,7 @@ fun MainScreen(
     headerActions: @Composable () -> Unit = {},
 ) {
     val activeMode = state.profileSourceMode
+    val strings = LocalAppStrings.current
 
     Scaffold(
         modifier = modifier,
@@ -73,7 +74,7 @@ fun MainScreen(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Text(
-                        text = "VPN Control",
+                        text = strings.get(UiText.APP_TITLE),
                         color = Color.White,
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
@@ -82,9 +83,9 @@ fun MainScreen(
                 }
                 Text(
                     text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                        "Subscription mode is active. Finding the best location downloads locations from the remote source and updates the saved list."
+                        strings.get(UiText.MAIN_SUBSCRIPTION_DESCRIPTION)
                     } else {
-                        "Saved locations are active. Finding the best location tests the locations saved on the Locations tab."
+                        strings.get(UiText.MAIN_SAVED_LOCATIONS_DESCRIPTION)
                     },
                     color = Color(0xFFD3E3EE),
                 )
@@ -99,18 +100,18 @@ fun MainScreen(
                 MainActionButton(
                     icon = powerIcon,
                     label = when {
-                        state.appMode == AppMode.PROXY_ONLY && state.isVpnRunning -> "Stop Proxy"
-                        state.appMode == AppMode.PROXY_ONLY -> "Start Proxy"
-                        state.isVpnRunning -> "Disconnect"
-                        else -> "Connect"
+                        state.appMode == AppMode.PROXY_ONLY && state.isVpnRunning -> strings.get(UiText.STOP_PROXY)
+                        state.appMode == AppMode.PROXY_ONLY -> strings.get(UiText.START_PROXY)
+                        state.isVpnRunning -> strings.get(UiText.DISCONNECT)
+                        else -> strings.get(UiText.CONNECT)
                     },
                     sublabel = when (state.appMode) {
                         AppMode.VPN -> if (state.hasVpnPermission) {
-                            "Connect or disconnect the VPN"
+                            strings.get(UiText.VPN_CONNECT_DESCRIPTION)
                         } else {
-                            "VPN permission required"
+                            strings.get(UiText.VPN_PERMISSION_REQUIRED)
                         }
-                        AppMode.PROXY_ONLY -> "Start or stop the local mixed proxy"
+                        AppMode.PROXY_ONLY -> strings.get(UiText.PROXY_CONNECT_DESCRIPTION)
                     },
                     onClick = onToggleVpn,
                     enabled = !state.isBusy,
@@ -118,12 +119,12 @@ fun MainScreen(
                 )
                 MainActionButton(
                     icon = findBestIcon,
-                    label = "Find Best",
+                    label = strings.get(UiText.FIND_BEST),
                     sublabel = state.lastBenchmarkSummary.ifBlank {
                         if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
-                            "Find the best location from the subscription"
+                            strings.get(UiText.FIND_BEST_SUBSCRIPTION)
                         } else {
-                            "Find the best location from saved locations"
+                            strings.get(UiText.FIND_BEST_SAVED)
                         }
                     },
                     onClick = onRefresh,
@@ -141,7 +142,7 @@ fun MainScreen(
                         disabledContentColor = Color(0xFF94A9B8),
                     ),
                 ) {
-                    Text("Export Diagnostics")
+                    Text(strings.get(UiText.EXPORT_DIAGNOSTICS))
                 }
             }
         }

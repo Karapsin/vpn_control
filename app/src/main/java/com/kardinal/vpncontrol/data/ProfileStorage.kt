@@ -15,6 +15,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
@@ -62,6 +63,7 @@ class ProfileStorage(
         val activeSubscriptionId = stringPreferencesKey("active_subscription_id")
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val appMode = stringPreferencesKey("app_mode")
+        val appLanguage = stringPreferencesKey("app_language")
         val subscriptionRefreshPolicy = stringPreferencesKey("subscription_refresh_policy")
         val findBestAfterSubscriptionRefresh = booleanPreferencesKey("find_best_after_subscription_refresh")
         val subscriptionRefreshCustomHours = doublePreferencesKey("subscription_refresh_custom_hours_v2")
@@ -249,6 +251,13 @@ class ProfileStorage(
             prefs[Keys.appMode] = mode.name
         }
         DiagnosticsLogger.append(context, "App mode updated: $mode")
+    }
+
+    override suspend fun updateAppLanguage(language: AppLanguage) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.appLanguage] = language.name
+        }
+        DiagnosticsLogger.append(context, "App language updated: $language")
     }
 
     override suspend fun updateSubscriptionRefreshPolicy(
@@ -785,6 +794,7 @@ class ProfileStorage(
             subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
         }
         return PersistedState(
+            appLanguage = AppLanguage.fromStoredName(preferences[Keys.appLanguage]),
             profileUrl = if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
                 ""
             } else {

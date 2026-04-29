@@ -181,6 +181,107 @@ class JsonSubscriptionParsingTest {
     }
 
     @Test
+    fun parsesClashYamlSubscriptions() {
+        val body = """
+            proxies:
+              - name: NL Reality
+                type: vless
+                server: nl.example.net
+                port: 443
+                uuid: 11111111-1111-4111-8111-111111111111
+                network: tcp
+                flow: xtls-rprx-vision
+                servername: edge.nl.example.net
+                client-fingerprint: chrome
+                reality-opts:
+                  public-key: pubkey-1
+                  short-id: abcd1234
+              - { name: VMess WS, type: vmess, server: vmess.example.net, port: 443, uuid: 22222222-2222-4222-8222-222222222222, alterId: 0, cipher: auto, tls: true, network: ws, servername: edge.example.net, ws-opts: { path: /ws, headers: { Host: cdn.example.net } } }
+              - name: Trojan GRPC
+                type: trojan
+                server: trojan.example.net
+                port: 443
+                password: trojan-secret
+                network: grpc
+                sni: edge-trojan.example.net
+                grpc-opts:
+                  grpc-service-name: tunnel
+              - name: Shadowsocks
+                type: ss
+                server: ss.example.net
+                port: 8388
+                cipher: chacha20-ietf-poly1305
+                password: ss-secret
+              - name: SOCKS
+                type: socks5
+                server: socks.example.net
+                port: 1080
+                username: user
+                password: pass
+            proxy-groups:
+              - name: Auto
+                type: select
+                proxies:
+                  - NL Reality
+        """.trimIndent()
+
+        val profiles = ProxyParser.parseSubscription(body)
+
+        assertEquals(5, profiles.size)
+
+        val vless = profiles[0]
+        assertEquals(ProxyProtocol.VLESS, vless.protocol)
+        assertEquals("NL Reality", vless.remarks)
+        assertEquals("nl.example.net", vless.server)
+        assertEquals("reality", vless.security)
+        assertEquals("edge.nl.example.net", vless.sni)
+        assertEquals("pubkey-1", vless.publicKey)
+        assertEquals("abcd1234", vless.shortId)
+        assertTrue(vless.rawLink.startsWith("vless://"))
+
+        val vmess = profiles[1]
+        assertEquals(ProxyProtocol.VMESS, vmess.protocol)
+        assertEquals("ws", vmess.network)
+        assertEquals("tls", vmess.security)
+        assertEquals("/ws", vmess.path)
+        assertEquals("cdn.example.net", vmess.hostHeader)
+
+        val trojan = profiles[2]
+        assertEquals(ProxyProtocol.TROJAN, trojan.protocol)
+        assertEquals("grpc", trojan.network)
+        assertEquals("tunnel", trojan.serviceName)
+        assertEquals("edge-trojan.example.net", trojan.sni)
+
+        assertEquals(ProxyProtocol.SHADOWSOCKS, profiles[3].protocol)
+        assertEquals("chacha20-ietf-poly1305", profiles[3].method)
+        assertEquals(ProxyProtocol.SOCKS, profiles[4].protocol)
+        assertEquals("user", profiles[4].username)
+    }
+
+    @Test
+    fun parsesBase64WrappedClashYamlSubscriptions() {
+        val body = """
+            proxies:
+              - name: Wrapped Clash VLESS
+                type: vless
+                server: wrapped.example.net
+                port: 443
+                uuid: 33333333-3333-4333-8333-333333333333
+                tls: true
+                servername: edge-wrapped.example.net
+        """.trimIndent()
+        val wrapped = kotlin.io.encoding.Base64.Default.encode(body.encodeToByteArray())
+
+        val profiles = ProxyParser.parseSubscription(wrapped)
+
+        assertEquals(1, profiles.size)
+        assertEquals(ProxyProtocol.VLESS, profiles.single().protocol)
+        assertEquals("Wrapped Clash VLESS", profiles.single().remarks)
+        assertEquals("tls", profiles.single().security)
+        assertEquals("edge-wrapped.example.net", profiles.single().sni)
+    }
+
+    @Test
     fun parsesSupportedJsonSubscriptionWithNonVlessProtocols() {
         val body = """
             [

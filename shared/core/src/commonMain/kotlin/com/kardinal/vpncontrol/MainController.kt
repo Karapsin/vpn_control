@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -15,6 +16,7 @@ sealed interface MainControllerEffect {
     data class UpdateStatus(val message: String) : MainControllerEffect
     data class UpdateProfileSourceMode(val mode: ProfileSourceMode) : MainControllerEffect
     data class UpdateAppMode(val mode: AppMode) : MainControllerEffect
+    data class UpdateAppLanguage(val language: AppLanguage, val statusMessage: String) : MainControllerEffect
     data class SelectActiveSubscription(val subscriptionId: String) : MainControllerEffect
     data class ImportRoutingRules(val raw: String) : MainControllerEffect
     data class SaveProfileSource(
@@ -112,6 +114,29 @@ class MainController(
     fun toggleAppModeDialog() {
         _state.value = _state.value.copy(
             showAppModeDialog = !_state.value.showAppModeDialog,
+        )
+    }
+
+    fun toggleLanguageDialog() {
+        _state.value = _state.value.copy(
+            showLanguageDialog = !_state.value.showLanguageDialog,
+        )
+    }
+
+    fun setAppLanguage(value: AppLanguage): List<MainControllerEffect> {
+        _state.value = _state.value.copy(
+            appLanguage = value,
+            showLanguageDialog = false,
+        )
+        return listOf(
+            MainControllerEffect.UpdateAppLanguage(
+                language = value,
+                statusMessage = if (value == AppLanguage.SYSTEM) {
+                    "Language set to system default"
+                } else {
+                    "Language set to ${value.nativeName}"
+                },
+            ),
         )
     }
 

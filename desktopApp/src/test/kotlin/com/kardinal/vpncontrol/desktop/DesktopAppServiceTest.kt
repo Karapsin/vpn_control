@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
@@ -138,6 +139,24 @@ class DesktopAppServiceTest {
             assertTrue(service.state.routingRules.directDomainSuffixes.isEmpty())
             assertTrue(service.state.routingNationalDomainsDraft.isBlank())
             assertTrue(service.state.routingDirectDomainsDraft.isBlank())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun selectedAppLanguagePersistsAcrossRestart() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-language")
+        try {
+            val store = DesktopStateStore(tempDir)
+            val service = DesktopAppService.createForTesting(store = store)
+
+            service.setAppLanguage(AppLanguage.RUSSIAN)
+
+            val reloaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+            assertEquals(AppLanguage.RUSSIAN, reloaded.persistedState.appLanguage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

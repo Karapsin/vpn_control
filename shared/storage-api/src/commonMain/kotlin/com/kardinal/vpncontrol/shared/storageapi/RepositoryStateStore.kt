@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.shared.storageapi
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
@@ -21,6 +22,8 @@ interface RepositoryStateStore : SearchStateStore, RuntimeConfigStore {
     suspend fun selectActiveSubscription(subscriptionId: String)
 
     suspend fun updateAppMode(mode: AppMode)
+
+    suspend fun updateAppLanguage(language: AppLanguage)
 
     suspend fun updateSubscriptionRefreshPolicy(
         policy: SubscriptionRefreshPolicy,
