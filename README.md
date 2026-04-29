@@ -1,82 +1,93 @@
 # VPN Control Install Files
 
-This page lists which file to use for installing VPN Control on each platform.
+Install files are available on the GitHub repository page under `Actions` artifacts.
+
+| Platform | GitHub Location | File To Use |
+| --- | --- | --- |
+| Windows | `Actions` -> `Windows Desktop Package` -> latest successful run -> `vpn-control-windows-installers` | `vpn-control-<version>.exe` |
+| Android | `Actions` -> `Android Release APK` -> latest successful run -> `vpn-control-android-release-apk` | `app-release.apk` |
+| Linux | `Actions` -> `Linux Desktop Package` -> latest successful run -> `vpn-control-linux-packages` | `.deb` or `.rpm` |
+| macOS | `Actions` -> `macOS Desktop Package` -> latest successful run -> `vpn-control-macos-package` | `.dmg` |
 
 ## Windows
 
-Use one of these installer files:
+Open:
 
 ```text
-dist/windows/vpn-control-<version>.exe
-dist/windows/vpn-control-<version>.msi
+Actions -> Windows Desktop Package -> latest successful run -> Artifacts
 ```
 
-Alternative Windows installer location:
+Download:
 
 ```text
-dist/windows-vm/vpn-control-<version>.exe
-dist/windows-vm/vpn-control-<version>.msi
+vpn-control-windows-installers
 ```
 
-Recommended file:
+Use:
 
 ```text
 vpn-control-<version>.exe
 ```
 
-Install by double-clicking the installer. For VPN mode on Windows, launch VPN Control as Administrator.
+Install by double-clicking it. For VPN mode on Windows, launch VPN Control as Administrator.
 
 ## Android
 
-Use the release APK:
+Open:
 
 ```text
-app/build/outputs/apk/release/app-release.apk
+Actions -> Android Release APK -> latest successful run -> Artifacts
 ```
 
-For emulator or test installs, use:
+Download:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+vpn-control-android-release-apk
 ```
 
-Install with:
+Use:
+
+```text
+app-release.apk
+```
+
+Install on a connected phone with:
 
 ```bash
-adb install -r app/build/outputs/apk/release/app-release.apk
+adb install -r app-release.apk
 ```
 
 ## Linux
 
-For Arch Linux on this machine, use the installer script:
+Open:
 
 ```text
-scripts/arch_install.sh
+Actions -> Linux Desktop Package -> latest successful run -> Artifacts
 ```
 
-Run it with:
-
-```bash
-./scripts/arch_install.sh
-```
-
-For package-based installation, use one of these files:
+Download:
 
 ```text
-desktopApp/build/compose/binaries/main/deb/*.deb
-desktopApp/build/compose/binaries/main/rpm/*.rpm
+vpn-control-linux-packages
+```
+
+Use one package:
+
+```text
+*.deb
+*.rpm
 ```
 
 Install DEB:
 
 ```bash
-sudo apt install ./desktopApp/build/compose/binaries/main/deb/*.deb
+sudo apt install ./*.deb
 ```
 
 Install RPM:
 
 ```bash
-sudo dnf install ./desktopApp/build/compose/binaries/main/rpm/*.rpm
+sudo dnf install ./*.rpm
 ```
 
 After installation, launch:
@@ -85,12 +96,30 @@ After installation, launch:
 vpn-control
 ```
 
-## macOS
-
-Use the DMG file:
+For Arch Linux, the repo also includes this local installer script:
 
 ```text
-dist/macos/*.dmg
+scripts/arch_install.sh
+```
+
+## macOS
+
+Open:
+
+```text
+Actions -> macOS Desktop Package -> latest successful run -> Artifacts
+```
+
+Download:
+
+```text
+vpn-control-macos-package
+```
+
+Use:
+
+```text
+*.dmg
 ```
 
 Install by opening the DMG and dragging VPN Control to Applications.
