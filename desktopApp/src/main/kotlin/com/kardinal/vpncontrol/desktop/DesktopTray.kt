@@ -134,9 +134,12 @@ private fun createTrayImage(size: Int): Image {
 
 private fun loadDesktopIconImage(): BufferedImage? {
     val classLoader = Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
-    return runCatching {
-        classLoader.getResourceAsStream("gen_icon.png")?.use(ImageIO::read)
-    }.getOrNull()
+    return listOf("tray_icon.png", "gen_icon.png")
+        .firstNotNullOfOrNull { resource ->
+            runCatching {
+                classLoader.getResourceAsStream(resource)?.use(ImageIO::read)
+            }.getOrNull()
+        }
 }
 
 private fun scaleDesktopIconForTray(source: BufferedImage, size: Int): Image {
@@ -145,13 +148,130 @@ private fun scaleDesktopIconForTray(source: BufferedImage, size: Int): Image {
     graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
     graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
     graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-    graphics.color = AwtColor(source.getRGB(0, 0))
+    val background = averageCornerRgb(source)
+    graphics.color = AwtColor(background)
     graphics.fillRect(0, 0, size, size)
-    val drawSize = (size * 0.9).roundToInt().coerceIn(1, size)
-    val offset = (size - drawSize) / 2
-    graphics.drawImage(source, offset, offset, drawSize, drawSize, null)
+    val bounds = findIconContentBounds(source, background)
+    val visualBounds = findBrightContentBounds(source) ?: bounds
+    val maxDrawSize = (size * 0.82).coerceAtLeast(1.0)
+    val scale = maxDrawSize / maxOf(bounds.width, bounds.height)
+    val drawWidth = (bounds.width * scale).roundToInt().coerceIn(1, size)
+    val drawHeight = (bounds.height * scale).roundToInt().coerceIn(1, size)
+    val offsetX = (size / 2.0 - (visualBounds.centerX - bounds.x) * scale)
+        .roundToInt()
+        .coerceIn(0, size - drawWidth)
+    val offsetY = (size / 2.0 - (visualBounds.centerY - bounds.y) * scale)
+        .roundToInt()
+        .coerceIn(0, size - drawHeight)
+    graphics.drawImage(
+        source,
+        offsetX,
+        offsetY,
+        offsetX + drawWidth,
+        offsetY + drawHeight,
+        bounds.x,
+        bounds.y,
+        bounds.x + bounds.width,
+        bounds.y + bounds.height,
+        null,
+    )
     graphics.dispose()
     return image
+}
+
+private data class IconContentBounds(
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+) {
+    val centerX: Double
+        get() = x + (width - 1) / 2.0
+    val centerY: Double
+        get() = y + (height - 1) / 2.0
+}
+
+private fun findIconContentBounds(source: BufferedImage, background: Int): IconContentBounds {
+    var minX = source.width
+    var minY = source.height
+    var maxX = -1
+    var maxY = -1
+    for (y in 0 until source.height) {
+        for (x in 0 until source.width) {
+            if (!isCloseToBackground(source.getRGB(x, y), background)) {
+                if (x < minX) minX = x
+                if (y < minY) minY = y
+                if (x > maxX) maxX = x
+                if (y > maxY) maxY = y
+            }
+        }
+    }
+    if (maxX < minX || maxY < minY) {
+        return IconContentBounds(0, 0, source.width, source.height)
+    }
+    val padding = maxOf(source.width, source.height) / 64
+    minX = (minX - padding).coerceAtLeast(0)
+    minY = (minY - padding).coerceAtLeast(0)
+    maxX = (maxX + padding).coerceAtMost(source.width - 1)
+    maxY = (maxY + padding).coerceAtMost(source.height - 1)
+    return IconContentBounds(
+        x = minX,
+        y = minY,
+        width = maxX - minX + 1,
+        height = maxY - minY + 1,
+    )
+}
+
+private fun averageCornerRgb(source: BufferedImage): Int {
+    val colors = intArrayOf(
+        source.getRGB(0, 0),
+        source.getRGB(source.width - 1, 0),
+        source.getRGB(0, source.height - 1),
+        source.getRGB(source.width - 1, source.height - 1),
+    )
+    val red = colors.sumOf { it shr 16 and 0xff } / colors.size
+    val green = colors.sumOf { it shr 8 and 0xff } / colors.size
+    val blue = colors.sumOf { it and 0xff } / colors.size
+    return AwtColor(red, green, blue).rgb
+}
+
+private fun findBrightContentBounds(source: BufferedImage): IconContentBounds? {
+    var minX = source.width
+    var minY = source.height
+    var maxX = -1
+    var maxY = -1
+    var brightPixels = 0
+    for (y in 0 until source.height) {
+        for (x in 0 until source.width) {
+            val rgb = source.getRGB(x, y)
+            val red = rgb shr 16 and 0xff
+            val green = rgb shr 8 and 0xff
+            val blue = rgb and 0xff
+            if (red >= 218 && green >= 218 && blue >= 218) {
+                brightPixels += 1
+                if (x < minX) minX = x
+                if (y < minY) minY = y
+                if (x > maxX) maxX = x
+                if (y > maxY) maxY = y
+            }
+        }
+    }
+    if (brightPixels < source.width * source.height / 200 || maxX < minX || maxY < minY) {
+        return null
+    }
+    return IconContentBounds(
+        x = minX,
+        y = minY,
+        width = maxX - minX + 1,
+        height = maxY - minY + 1,
+    )
+}
+
+private fun isCloseToBackground(rgb: Int, background: Int): Boolean {
+    val tolerance = 28
+    return kotlin.math.abs((rgb shr 16 and 0xff) - (background shr 16 and 0xff)) <= tolerance &&
+        kotlin.math.abs((rgb shr 8 and 0xff) - (background shr 8 and 0xff)) <= tolerance &&
+        kotlin.math.abs((rgb and 0xff) - (background and 0xff)) <= tolerance
 }
 
 private fun createFallbackTrayImage(size: Int): Image {

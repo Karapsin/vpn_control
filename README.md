@@ -1,192 +1,342 @@
-# vpn_control_android
+# VPN Control Installation
 
-Android VPN controller built around `sing-box` / `libbox`, modeled after the desktop `vpn_cli` flow.
+VPN Control is available from this repository as:
 
-The app now has 4 tabs:
+| Platform | Artifact | Main install path |
+| --- | --- | --- |
+| Android | APK | `app/build/outputs/apk/release/app-release.apk` |
+| Linux desktop | Arch install, DEB, RPM, app image | `scripts/arch_install.sh` or `desktopApp/build/compose/binaries/main/` |
+| Windows desktop | EXE, MSI | `dist/windows/` or `dist/windows-vm/` |
+| macOS desktop | DMG, experimental | `dist/macos/` |
 
-1. `Main`
-2. `Profile`
-3. `Locations`
-4. `Rules`
+The Android app uses the Android VPN service. The desktop app uses bundled `sing-box`; VPN mode is implemented for Linux and Windows. macOS packaging exists, but macOS VPN mode still needs a privileged-helper implementation, so macOS is currently useful mainly for desktop packaging/proxy-mode validation.
 
-It supports both subscription-based operation and manual location management.
+## Repository Layout
 
-## Main Features
+Important files and directories:
 
-- Functional Android VPN tunnel using bundled native `sing-box` / `libbox`.
-- `Profile` tab:
-  - choose `Subscription` or `Saved Locations`
-  - paste a remote source
-  - clear the current source
-  - reuse, rename, or delete items from subscription history
-- `Find the best location` benchmarks available locations and selects the best one.
-- `Locations` tab:
-  - add a location from either a `vless://...` link or JSON
-  - edit / delete locations
-  - mark one location as the current selected location via `Use`
-  - rerun benchmarks for one location via the refresh icon
-  - import / export locations as JSON
-- `Rules` tab:
-  - `Proxy Apps`
-  - `Direct Apps`
-  - `Country-code Domains`
-  - `Bypass Domains`
-  - `Ignore Rules`
-  - import / export routing rules as JSON
-- Advanced settings menu on the main screen:
-  - `Custom DNS`
-  - `Subscription Auto-Refresh`
-  - `Validation Settings`
-- Diagnostics export from the main screen.
+| Path | Purpose |
+| --- | --- |
+| `app/` | Android application. |
+| `desktopApp/` | Compose Desktop application for Linux, Windows, and macOS. |
+| `shared/` | Shared model, storage, core logic, and UI code. |
+| `scripts/arch_install.sh` | Build and install the Linux desktop app on Arch-style systems. |
+| `scripts/package_linux_desktop.sh` | Build Linux `.deb` and `.rpm` packages. |
+| `scripts/package_windows_desktop.ps1` | Build Windows `.exe` and `.msi` installers on Windows. |
+| `scripts/package_windows_desktop_vm.sh` | Build Windows installers from Linux using the local Windows VM. |
+| `scripts/package_macos_desktop.sh` | Build the macOS `.dmg`. |
+| `.github/workflows/android-release.yml` | GitHub Actions release APK build. |
+| `.github/workflows/linux-desktop.yml` | GitHub Actions Linux DEB/RPM build. |
+| `.github/workflows/windows-desktop.yml` | GitHub Actions Windows EXE/MSI build. |
+| `.github/workflows/macos-desktop.yml` | GitHub Actions macOS DMG build. |
 
-## Selection Behavior
+## Get Build Artifacts From GitHub Actions
 
-- Tapping `Use` on the `Locations` tab sets that location as the current selected location.
-- `Start VPN` uses the current selected location if one is already selected.
-- `Find the best location` benchmarks candidates and replaces the selected location with the new winner.
-- In `Subscription` mode, refresh downloads the subscription and syncs the `Locations` tab from it.
-- In `Saved Locations` mode, refresh benchmarks only the locations already stored in the app.
+After pushing to `main`, GitHub Actions builds platform artifacts. In the GitHub UI, open `Actions`, choose the workflow, open a successful run, and download its artifact.
 
-## Best-Location Logic
+With GitHub CLI:
 
-- Standard VLESS subscriptions:
-  - all locations are prefiltered by TCP connect speed
-  - candidates are tested from fastest to slowest
-  - the first location where the secondary test site succeeds is selected
-- On the `Locations` tab, the per-location refresh action uses the same benchmark path as the main search for the current source type.
+```bash
+gh run list --workflow "Android Release APK" --branch main
+gh run download <run-id> -n vpn-control-android-release-apk -D dist/android
 
-## Subscription Refresh Policy
+gh run list --workflow "Linux Desktop Package" --branch main
+gh run download <run-id> -n vpn-control-linux-packages -D dist/linux
 
-Available from the main screen overflow menu.
+gh run list --workflow "Windows Desktop Package" --branch main
+gh run download <run-id> -n vpn-control-windows-installers -D dist/windows
+```
 
-Supported options:
+The downloaded files are the same artifacts described below.
 
-- `Off`
-- `Every hour`
-- `Custom interval`
+## Android
+
+Requirements:
+
+| Requirement | Notes |
+| --- | --- |
+| Android 10 or newer | `minSdk` is 29. |
+| ARM64 device for release APK | Release builds are `arm64-v8a` only. |
+| Android SDK platform tools | Needed only for `adb install`. |
+| JDK 17 | Needed only when building locally. |
+
+Build the release APK:
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+The APK is written to:
+
+```text
+app/build/outputs/apk/release/app-release.apk
+```
+
+Install it on a connected Android device:
+
+```bash
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+For emulator/debug work, build the debug APK:
+
+```bash
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Debug APK output:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
 
 Notes:
 
-- The policy applies only when `Profile Source` is set to `Subscription`.
-- Background refresh redownloads the subscription URL and updates the saved locations list.
-- It does not automatically benchmark/select a new winner.
-- It does not automatically restart the live VPN tunnel.
+- The release build currently uses the debug signing config, so it is installable locally without Play Store signing setup.
+- The release APK is optimized for real ARM64 phones. Use debug builds for x86_64 emulator testing.
 
-## Routing Rules Behavior
+## Linux Desktop
 
-- `Proxy Apps`:
-  - if this list is non-empty, only these apps use the VPN
-- `Direct Apps`:
-  - these apps bypass the VPN
-- `Country-code Domains` and `Bypass Domains` have priority over app-based proxy routing
-- `Ignore Rules` disables custom routing rules and sends normal app traffic through the VPN
+Requirements:
 
-## Location Input Formats
+| Requirement | Notes |
+| --- | --- |
+| JDK 17 | Required for local builds. |
+| `curl`, `tar`, `bash` | Used by the packaging scripts. |
+| TUN support | VPN mode needs `/dev/net/tun`; load with `sudo modprobe tun` if missing. |
+| Network privilege for `sing-box` | VPN mode needs `CAP_NET_ADMIN`; the Arch installer handles this automatically. |
 
-The app accepts locations in two formats:
+### Arch Linux Local Install
 
-- raw `vless://...` links
-- JSON location objects
+The easiest local Linux install path on this repo is:
 
-Locations are normalized and stored internally as structured JSON-compatible data.
+```bash
+./scripts/arch_install.sh
+```
 
-Remote source support:
+The script:
 
-- supported: direct subscription URLs and `sing-box://import-remote-profile...` links that resolve to a VLESS list
-- not supported: `vpn://...` imports, including Amnezia Premium keys
+- installs Arch dependencies with `pacman` when available;
+- downloads and bundles the Linux `sing-box` runtime;
+- builds the desktop app image;
+- installs the app to `/opt/vpn-control`;
+- installs the launcher at `/usr/local/bin/vpn-control`;
+- installs the desktop entry and icon;
+- loads the TUN module;
+- grants `cap_net_admin,cap_net_raw` to the installed `sing-box` binary.
 
-## Diagnostics
+Launch after install:
 
-`Export Diagnostics` produces a text bundle with:
+```bash
+vpn-control
+```
 
-- current persisted app state
-- selected profile info
-- saved locations
-- generated runtime config
-- internal diagnostics log
+Useful options:
 
-This is intended for troubleshooting without requiring `adb`.
+```bash
+./scripts/arch_install.sh --skip-deps
+./scripts/arch_install.sh --skip-build
+./scripts/arch_install.sh --allow-running-update
+```
 
-## Packaging
+Default install paths:
 
-Current packaging is optimized for modern real phones:
+```text
+/opt/vpn-control
+/usr/local/bin/vpn-control
+/usr/share/applications/vpn-control.desktop
+/usr/share/icons/hicolor/256x256/apps/vpn-control.png
+```
 
-- `arm64-v8a` only
-- bundled native `sing-box` under `app/src/main/jniLibs/arm64-v8a/libsing-box.so`
-- release shrinking / minification enabled
+### Linux DEB/RPM Packages
 
-Tradeoff:
+Build packages:
 
-- the release APK is much smaller
-- x86 / x86_64 emulators and some older 32-bit devices are no longer supported
+```bash
+./scripts/package_linux_desktop.sh
+```
 
-## Build Outputs
+The script compiles the app, runs desktop tests, builds Linux packages, and runs package smoke checks.
 
-- debug APK:
-  - `app/build/outputs/apk/debug/app-debug.apk`
-  - currently about `203M`
-- minimized release APK:
-  - `app/build/outputs/apk/release/app-release.apk`
-  - currently about `33M`
+Outputs:
 
-The release build is configured to use the debug signing config so it can be installed locally without extra signing setup.
+```text
+desktopApp/build/compose/binaries/main/deb/*.deb
+desktopApp/build/compose/binaries/main/rpm/*.rpm
+```
 
-## Windows Desktop Packaging
+Install on Debian/Ubuntu:
 
-Run this from Windows or from the Windows VM:
+```bash
+sudo apt install ./desktopApp/build/compose/binaries/main/deb/*.deb
+```
+
+Install on Fedora/RHEL-style systems:
+
+```bash
+sudo dnf install ./desktopApp/build/compose/binaries/main/rpm/*.rpm
+```
+
+If VPN mode reports missing privileges after a package install, either use the Arch installer path or provide a privileged `sing-box` executable and point the app to it:
+
+```bash
+sudo modprobe tun
+sudo install -Dm755 desktopApp/src/main/resources/bin/linux-amd64/sing-box /opt/vpn-control/bin/sing-box
+sudo setcap cap_net_admin,cap_net_raw+ep /opt/vpn-control/bin/sing-box
+VPN_CONTROL_SING_BOX=/opt/vpn-control/bin/sing-box vpn-control
+```
+
+## Windows Desktop
+
+Requirements:
+
+| Requirement | Notes |
+| --- | --- |
+| Windows 10/11 x64 | Current desktop target is Windows AMD64. |
+| JDK 17 | Needed only when building locally. |
+| PowerShell | Used by packaging scripts. |
+| Administrator launch | Required for desktop VPN mode. Proxy-only mode does not need it. |
+
+### Install Existing EXE/MSI
+
+Use one of these installers:
+
+```text
+dist/windows/vpn-control-<version>.exe
+dist/windows/vpn-control-<version>.msi
+dist/windows-vm/vpn-control-<version>.exe
+dist/windows-vm/vpn-control-<version>.msi
+```
+
+Install by double-clicking the `.exe` or `.msi`.
+
+For VPN mode, launch VPN Control as Administrator and accept the UAC prompt. The app can run without Administrator rights in Proxy-only mode, but Windows VPN mode needs Administrator privileges so `sing-box` can create the Wintun backend.
+
+### Build On Windows
+
+From a Windows PowerShell prompt at the repo root:
 
 ```powershell
 .\scripts\package_windows_desktop.ps1
 ```
 
-The script builds local `.exe` and `.msi` installers, runs desktop unit tests, runs Windows package regression checks, and copies final artifacts to:
+The script:
+
+- checks Java;
+- downloads and bundles `sing-box.exe`;
+- compiles the desktop app;
+- runs desktop unit tests;
+- builds EXE/MSI installers;
+- runs package regression tests;
+- runs installed-package smoke tests;
+- copies final installers to `dist\windows\`.
+
+Outputs:
 
 ```text
-dist\windows\
+dist\windows\vpn-control-<version>.exe
+dist\windows\vpn-control-<version>.msi
+dist\windows\SHA256SUMS.txt
 ```
-
-Expected outputs:
-
-- `dist\windows\vpn-control-<version>.exe`
-- `dist\windows\vpn-control-<version>.msi`
-- `dist\windows\SHA256SUMS.txt`
 
 Useful options:
 
-- `-SkipTests` skips Gradle unit tests.
-- `-SkipPackageRegressionTests` skips installer payload validation.
-- `-DistDir <path>` changes the local artifact output directory.
+```powershell
+.\scripts\package_windows_desktop.ps1 -SkipTests
+.\scripts\package_windows_desktop.ps1 -SkipPackageRegressionTests
+.\scripts\package_windows_desktop.ps1 -SkipInstalledPackageRegressionTests
+.\scripts\package_windows_desktop.ps1 -DistDir dist\windows-local
+```
 
-From the Linux host, the local Windows VM can do the full Windows-native package build:
+### Build Windows Installers From Linux VM
+
+This repo also supports building Windows installers from Linux using the local libvirt VM.
+
+Default VM name:
+
+```text
+vpn-control-win11
+```
+
+Run:
 
 ```bash
 ./scripts/package_windows_desktop_vm.sh
 ```
 
-That script starts `vpn-control-win11` if needed, waits for QEMU guest agent, sends the current working tree snapshot to Windows, runs the Windows packaging script in the VM, and copies the result back to:
+The script starts the VM if needed, waits for the QEMU guest agent, sends the current working tree snapshot to Windows, builds inside the VM, and copies the installers back to:
 
 ```text
 dist/windows-vm/
 ```
 
-The VM flow also runs the Windows package regression checks. If Java is missing in the VM, it downloads a portable JDK 17 into the VM work directory.
+Useful options:
 
-## Key Files
+```bash
+./scripts/package_windows_desktop_vm.sh --vm-name vpn-control-win11
+./scripts/package_windows_desktop_vm.sh --output-dir dist/windows-vm
+./scripts/package_windows_desktop_vm.sh --skip-tests
+./scripts/package_windows_desktop_vm.sh --skip-package-regression-tests
+./scripts/package_windows_desktop_vm.sh --skip-installed-package-regression-tests
+```
 
-- `app/src/main/java/com/kardinal/vpncontrol/MainActivity.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/AppRepository.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/BenchmarkOrchestrator.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/LocationConfigs.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/RemoteSourceResolver.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/SingBoxConfigFactory.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshScheduler.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/data/VpnManager.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/ui/VpnControlApp.kt`
-- `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt`
+## macOS Desktop
 
-## Open In Android Studio
+macOS packaging is present, but desktop VPN mode is not complete on macOS yet.
 
-Open the `vpn_control_android` directory as a Gradle project.
+Build the DMG on macOS:
+
+```bash
+./scripts/package_macos_desktop.sh
+```
+
+Outputs:
+
+```text
+dist/macos/*.dmg
+dist/macos/SHA256SUMS.txt
+```
+
+Unsigned local DMGs are useful for development. Signed/notarized builds require the macOS signing and notarization environment variables used by `.github/workflows/macos-desktop.yml`.
+
+## Smoke Tests
+
+Common local checks:
+
+```bash
+./gradlew :app:assembleRelease
+./gradlew :desktopApp:test
+./scripts/package_linux_desktop.sh
+```
+
+Windows package checks are run by:
+
+```powershell
+.\scripts\package_windows_desktop.ps1
+```
+
+The desktop app also supports an internal smoke-test mode used by package tests:
+
+```bash
+desktopApp/build/compose/binaries/main/app/vpn-control/bin/vpn-control --smoke-test --smoke-test-state-dir /tmp/vpn-control-smoke
+```
+
+## Runtime Data And Logs
+
+Desktop runtime data is stored under:
+
+```text
+~/.vpn-control-desktop/
+```
+
+Useful files during troubleshooting:
+
+```text
+~/.vpn-control-desktop/workspace.json
+~/.vpn-control-desktop/runtime/runtime-sing-box.log
+~/.vpn-control-desktop/runtime/runtime-sing-box-vpn.json
+~/.vpn-control-desktop/runtime/runtime-sing-box-proxy_only.json
+```
+
+Android diagnostics can be exported from inside the app.
