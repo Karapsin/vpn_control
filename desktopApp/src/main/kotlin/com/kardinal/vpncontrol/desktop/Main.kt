@@ -135,6 +135,7 @@ private fun DesktopApplication(
     var windowVisible by remember { mutableStateOf(!startInTray || !traySupported) }
     var exitRequested by remember { mutableStateOf(false) }
     val state = service.state
+    val appStrings = rememberAppStrings(state.appLanguage, Locale.getDefault().language)
     DisposableEffect(activationEvents) {
         activationEvents.setShowWindowHandler { windowVisible = true }
         onDispose { activationEvents.setShowWindowHandler(null) }
@@ -171,7 +172,11 @@ private fun DesktopApplication(
 
     if (traySupported) {
         DesktopTrayIcon(
-            connectionActionLabel = trayConnectionActionLabel(state),
+            connectionActionLabel = trayConnectionActionLabel(state, appStrings),
+            findBestLabel = appStrings.get(UiText.FIND_BEST),
+            showWindowLabel = appStrings.get(UiText.SHOW_WINDOW),
+            hideWindowLabel = appStrings.get(UiText.HIDE_WINDOW),
+            exitLabel = appStrings.get(UiText.EXIT),
             connectionActionEnabled = !state.isBusy,
             findBestEnabled = !state.isBusy,
             onToggleConnection = {
@@ -229,11 +234,11 @@ private fun DesktopVpnControlApp(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val state = service.state
-    val activeProfile = activeProfileLabel(state, service::sourceLabelFor)
-    val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor)
     val showMismatchWarning = selectedLocationOutsideCurrentSubscription(state)
     val systemLanguageCode = Locale.getDefault().language
     val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)
+    val activeProfile = activeProfileLabel(state, service::sourceLabelFor, appStrings)
+    val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor, appStrings)
 
     CompositionLocalProvider(LocalAppStrings provides appStrings) {
     DesktopSettingsDialogs(
@@ -304,7 +309,7 @@ private fun DesktopVpnControlApp(
                         if (state.isBusy) return@MainScreen
                         val selection = DesktopTextTransfer.chooseSaveFile(
                             window = window,
-                            title = "Export Diagnostics",
+                            title = appStrings.get(UiText.EXPORT_DIAGNOSTICS),
                             suggestedFileName = DesktopDiagnosticsExporter.suggestedFileName(),
                         )
                         coroutineScope.launch { service.exportDiagnostics(selection) }
@@ -384,12 +389,17 @@ private fun DesktopVpnControlApp(
                             onImportFile = {
                                 val selection = DesktopTextTransfer.chooseOpenFile(
                                     window = window,
-                                    title = "Import Locations",
+                                    title = appStrings.get(UiText.IMPORT),
                                 )
                                 coroutineScope.launch { service.importLocationsFromFile(selection) }
                             },
                             onImportClipboard = { coroutineScope.launch { service.importLocationsFromClipboard() } },
-                            onExportFile = { service.exportLocationsToFile(window) },
+                            onExportFile = {
+                                service.exportLocationsToFile(
+                                    window = window,
+                                    title = appStrings.get(UiText.LOCATIONS_EXPORT_TITLE),
+                                )
+                            },
                             onExportClipboard = service::exportLocationsToClipboard,
                         )
                     },
@@ -408,9 +418,19 @@ private fun DesktopVpnControlApp(
                     showAppAssignments = false,
                     controls = {
                         DesktopActionRow(
-                            onImportFile = { service.importRoutingRulesFromFile(window) },
+                            onImportFile = {
+                                service.importRoutingRulesFromFile(
+                                    window = window,
+                                    title = appStrings.get(UiText.IMPORT),
+                                )
+                            },
                             onImportClipboard = service::importRoutingRulesFromClipboard,
-                            onExportFile = { service.exportRoutingRulesToFile(window) },
+                            onExportFile = {
+                                service.exportRoutingRulesToFile(
+                                    window = window,
+                                    title = appStrings.get(UiText.RULES_EXPORT_TITLE),
+                                )
+                            },
                             onExportClipboard = service::exportRoutingRulesToClipboard,
                         )
                     },
@@ -423,10 +443,13 @@ private fun DesktopVpnControlApp(
     }
 }
 
-private fun trayConnectionActionLabel(state: MainUiState): String {
+private fun trayConnectionActionLabel(
+    state: MainUiState,
+    strings: com.kardinal.vpncontrol.shared.ui.AppStrings,
+): String {
     return when (state.appMode) {
-        AppMode.VPN -> if (state.isVpnRunning) "Stop VPN" else "Start VPN"
-        AppMode.PROXY_ONLY -> if (state.isVpnRunning) "Stop Proxy" else "Start Proxy"
+        AppMode.VPN -> if (state.isVpnRunning) strings.get(UiText.STOP_VPN) else strings.get(UiText.START_VPN)
+        AppMode.PROXY_ONLY -> if (state.isVpnRunning) strings.get(UiText.STOP_PROXY) else strings.get(UiText.START_PROXY)
     }
 }
 
@@ -448,29 +471,30 @@ private fun DesktopProfileContent(
     onRefreshActiveSubscriptions: () -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     if (state.showProfileHistoryRenameDialog) {
         AlertDialog(
             onDismissRequest = onCloseSubscriptionRenameDialog,
             confirmButton = {
                 TextButton(onClick = onSaveSubscriptionRename) {
-                    Text("Save")
+                    Text(strings.get(UiText.SAVE))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onCloseSubscriptionRenameDialog) {
-                    Text("Cancel")
+                    Text(strings.get(UiText.CANCEL))
                 }
             },
             title = {
-                Text("Rename subscription")
+                Text(strings.get(UiText.RENAME_SUBSCRIPTION))
             },
             text = {
                 OutlinedTextField(
                     value = state.profileHistoryRenameDraft,
                     onValueChange = onSubscriptionRenameDraftChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Subscription name") },
-                    placeholder = { Text("Optional custom name") },
+                    label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
+                    placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
                     singleLine = true,
                 )
             },
@@ -491,15 +515,6 @@ private fun DesktopProfileContent(
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Desktop Shell", color = Color.White, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "This desktop target persists its workspace, supports file and clipboard import-export for locations and routing rules, refreshes direct https subscriptions, and starts sing-box in Proxy-only or desktop VPN mode.",
-                    color = Color(0xFFD3E3EE),
-                )
-                Text(
-                    "Auto-refresh while open: ${state.subscriptionRefreshPolicy.displayValue(state.subscriptionRefreshCustomHours)}",
-                    color = Color(0xFF9ED6FF),
-                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -511,17 +526,17 @@ private fun DesktopProfileContent(
                     ) {
                         Text(
                             if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                                "Subscription Mode"
+                                strings.get(UiText.SUBSCRIPTION_MODE)
                             } else {
-                                "Saved Locations"
+                                strings.get(UiText.SAVED_LOCATIONS)
                             },
                             color = Color.White,
                         )
                         Text(
                             if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-                                "Turn off to work only with locations saved on the Locations tab."
+                                strings.get(UiText.PROFILE_SOURCE_DESKTOP_USE_SAVED_HINT)
                             } else {
-                                "Turn on to use subscription-backed locations."
+                                strings.get(UiText.PROFILE_SOURCE_DESKTOP_USE_SUBSCRIPTION_HINT)
                             },
                             color = Color(0xFFD3E3EE),
                             style = MaterialTheme.typography.bodySmall,
@@ -557,7 +572,7 @@ private fun DesktopProfileContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    "Subscriptions",
+                    strings.get(UiText.SUBSCRIPTIONS),
                     color = Color.White,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
@@ -576,7 +591,7 @@ private fun DesktopProfileContent(
                             disabledContentColor = Color(0xFF9FB8C8),
                         ),
                     ) {
-                        Text("Refresh Active")
+                        Text(strings.get(UiText.REFRESH_ACTIVE))
                     }
                     OutlinedButton(
                         onClick = onRefreshAllSubscriptions,
@@ -586,7 +601,7 @@ private fun DesktopProfileContent(
                             disabledContentColor = Color(0xFF9FB8C8),
                         ),
                     ) {
-                        Text("Refresh All")
+                        Text(strings.get(UiText.REFRESH_ALL))
                     }
                 }
                 if (state.subscriptions.size > 1) {
@@ -616,7 +631,7 @@ private fun DesktopProfileContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Public,
-                                    contentDescription = "All subscriptions",
+                                    contentDescription = strings.get(UiText.ALL_SUBSCRIPTIONS),
                                     tint = Color.White,
                                 )
                             }
@@ -625,18 +640,19 @@ private fun DesktopProfileContent(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    "ALL • ${
-                                        formatLocationCountLabel(
+                                    strings.format(
+                                        UiText.ALL_SUBSCRIPTIONS_TITLE,
+                                        strings.locationCountLabel(
                                             state.subscriptions.sumOf { it.cachedLocations.size },
                                             merged = true,
-                                        )
-                                    }",
+                                        ),
+                                    ),
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
                                 )
                                 Text(
-                                    "Merge locations from every saved subscription and search across all of them.",
+                                    strings.get(UiText.ALL_SUBSCRIPTIONS_DESCRIPTION),
                                     color = if (allSelected) selectedBorderColor else Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -648,7 +664,7 @@ private fun DesktopProfileContent(
                                         .padding(horizontal = 12.dp, vertical = 6.dp),
                                 ) {
                                     Text(
-                                        "Active",
+                                        strings.get(UiText.ACTIVE),
                                         color = Color.White,
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.SemiBold,
@@ -660,6 +676,10 @@ private fun DesktopProfileContent(
                 }
                 state.subscriptions.forEach { subscription ->
                     val isSelected = state.activeSubscriptionId == subscription.id
+                    val refreshStatus = subscription.lastRefreshStatus
+                        .takeIf { it.isNotBlank() }
+                        ?.let(strings::statusMessage)
+                        ?: strings.get(UiText.NOT_REFRESHED_YET)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -689,14 +709,14 @@ private fun DesktopProfileContent(
                                 )
                                 if (isSelected) {
                                     Text(
-                                        "Selected subscription",
+                                        strings.get(UiText.SELECTED_SUBSCRIPTION),
                                         color = selectedBorderColor,
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                 }
                                 Text(
-                                    "${formatLocationCountLabel(subscription.cachedLocations.size)} • ${subscription.lastRefreshStatus.ifBlank { "not refreshed yet" }}",
+                                    "${strings.locationCountLabel(subscription.cachedLocations.size)} • $refreshStatus",
                                     color = Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -705,14 +725,14 @@ private fun DesktopProfileContent(
                                 IconButton(onClick = { onShowSubscriptionRenameDialog(subscription.id) }) {
                                     Icon(
                                         imageVector = Icons.Filled.Edit,
-                                        contentDescription = "Rename subscription",
+                                        contentDescription = strings.get(UiText.RENAME_SUBSCRIPTION),
                                         tint = Color.White,
                                     )
                                 }
                                 IconButton(onClick = { onDeleteSubscription(subscription.id) }) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
-                                        contentDescription = "Delete subscription",
+                                        contentDescription = strings.get(UiText.DELETE_SUBSCRIPTION),
                                         tint = Color(0xFFFFA6A6),
                                     )
                                 }
@@ -741,7 +761,7 @@ private fun DesktopProfileContent(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Add a subscription",
+                                strings.get(UiText.ADD_NEW_SUBSCRIPTION),
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleSmall,
                             )
@@ -749,14 +769,14 @@ private fun DesktopProfileContent(
                                 IconButton(onClick = onClearProfileDraft) {
                                     Icon(
                                         imageVector = Icons.Filled.DeleteSweep,
-                                        contentDescription = "Clear subscription draft",
+                                        contentDescription = strings.get(UiText.CLEAR_REMOTE_SOURCE),
                                         tint = Color.White,
                                     )
                                 }
                                 IconButton(onClick = onToggleAddSubscriptionEditor) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
-                                        contentDescription = "Close add subscription editor",
+                                        contentDescription = strings.get(UiText.CLOSE_SUBSCRIPTION_EDITOR),
                                         tint = Color.White,
                                     )
                                 }
@@ -766,17 +786,17 @@ private fun DesktopProfileContent(
                             value = state.profileDraft,
                             onValueChange = onProfileDraftChange,
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Subscription URL") },
+                            label = { Text(strings.get(UiText.SUBSCRIPTION_URL)) },
                             placeholder = { Text("https://example.com/subscription.txt") },
                             singleLine = true,
                         )
                         Text(
-                            "Desktop currently supports direct https:// subscription URLs here.",
+                            strings.get(UiText.DESKTOP_SUBSCRIPTION_URL_HELP),
                             color = Color(0xFFD3E3EE),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(onClick = onSaveSubscriptionDraft) {
-                            Text("Save Subscription")
+                            Text(strings.get(UiText.SAVE_SUBSCRIPTION))
                         }
                     }
                 }
@@ -814,7 +834,7 @@ private fun DesktopAdditionalSettingsMenu(
         ) {
             Icon(
                 imageVector = Icons.Filled.Settings,
-                contentDescription = "Additional settings",
+                contentDescription = strings.get(UiText.ADDITIONAL_SETTINGS),
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -916,7 +936,7 @@ private fun DesktopAdditionalSettingsMenu(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
                         Text(
-                            state.validationSettings.displaySummary(),
+                            strings.validationSummary(state.validationSettings),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -1264,7 +1284,7 @@ private fun DesktopSettingsDialogs(
                     Text(
                         text = strings.format(
                             UiText.VALIDATION_DESKTOP_SUMMARY,
-                            state.validationSettings.displaySummary(),
+                            strings.validationSummary(state.validationSettings),
                         ),
                         color = Color(0xFF9ED6FF),
                         fontSize = 12.sp,
@@ -1326,6 +1346,7 @@ private fun DesktopSettingsOption(
 private fun DesktopAddSubscriptionLauncherCard(
     onClick: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val borderColor = Color(0xFF9ED6FF)
     val cornerRadius = 20.dp
     Card(
@@ -1367,12 +1388,12 @@ private fun DesktopAddSubscriptionLauncherCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add,
-                    contentDescription = "Add new subscription",
+                    contentDescription = strings.get(UiText.ADD_NEW_SUBSCRIPTION),
                     tint = Color.White,
                 )
             }
             Text(
-                text = "Add new subscription",
+                text = strings.get(UiText.ADD_NEW_SUBSCRIPTION),
                 color = Color.White,
                 fontSize = 16.sp,
             )
@@ -1387,6 +1408,7 @@ private fun DesktopActionRow(
     onExportFile: () -> Unit,
     onExportClipboard: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     var showImportMenu by remember { mutableStateOf(false) }
     var showExportMenu by remember { mutableStateOf(false) }
     Row(
@@ -1398,21 +1420,21 @@ private fun DesktopActionRow(
                 onClick = { showImportMenu = true },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
             ) {
-                Text("Import")
+                Text(strings.get(UiText.IMPORT))
             }
             DropdownMenu(
                 expanded = showImportMenu,
                 onDismissRequest = { showImportMenu = false },
             ) {
                 DropdownMenuItem(
-                    text = { Text("File") },
+                    text = { Text(strings.get(UiText.FILE)) },
                     onClick = {
                         showImportMenu = false
                         onImportFile()
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Clipboard") },
+                    text = { Text(strings.get(UiText.CLIPBOARD)) },
                     onClick = {
                         showImportMenu = false
                         onImportClipboard()
@@ -1425,21 +1447,21 @@ private fun DesktopActionRow(
                 onClick = { showExportMenu = true },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
             ) {
-                Text("Export")
+                Text(strings.get(UiText.EXPORT))
             }
             DropdownMenu(
                 expanded = showExportMenu,
                 onDismissRequest = { showExportMenu = false },
             ) {
                 DropdownMenuItem(
-                    text = { Text("File") },
+                    text = { Text(strings.get(UiText.FILE)) },
                     onClick = {
                         showExportMenu = false
                         onExportFile()
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Clipboard") },
+                    text = { Text(strings.get(UiText.CLIPBOARD)) },
                     onClick = {
                         showExportMenu = false
                         onExportClipboard()

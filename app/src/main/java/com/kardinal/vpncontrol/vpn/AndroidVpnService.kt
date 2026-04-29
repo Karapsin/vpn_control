@@ -23,6 +23,7 @@ import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RuntimeFiles
 import com.kardinal.vpncontrol.data.SingBoxConfigFactory
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import io.nekohasekai.libbox.BoxService
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
@@ -500,17 +501,11 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     }
 
     private fun startedText(appMode: AppMode): String {
-        return when (appMode) {
-            AppMode.VPN -> "VPN started"
-            AppMode.PROXY_ONLY -> "Proxy started"
-        }
+        return StatusMessages.connectionStarted(appMode)
     }
 
     private fun stoppedText(appMode: AppMode): String {
-        return when (appMode) {
-            AppMode.VPN -> "VPN stopped"
-            AppMode.PROXY_ONLY -> "Proxy stopped"
-        }
+        return StatusMessages.connectionStopped(appMode)
     }
 
     private fun dumpFlags(networkInterface: NetworkInterface, hasInternet: Boolean): Int {

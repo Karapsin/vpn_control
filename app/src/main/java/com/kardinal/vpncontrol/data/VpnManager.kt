@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.vpn.AndroidVpnService
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -129,10 +130,7 @@ class VpnManager(
         const val STOP_TIMEOUT_MILLIS = 10_000L
 
         fun startedStatus(appMode: AppMode): String {
-            return when (appMode) {
-                AppMode.VPN -> "VPN started"
-                AppMode.PROXY_ONLY -> "Proxy started"
-            }
+            return StatusMessages.connectionStarted(appMode)
         }
 
         fun modeLabel(appMode: AppMode): String {

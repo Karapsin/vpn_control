@@ -5,6 +5,7 @@ import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.MIN_SUBSCRIPTION_REFRESH_MINUTES
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
@@ -72,7 +73,7 @@ object MainCommandLogic {
                 policy = policy,
                 resolvedHours = resolvedHours,
                 findBestAfterRefresh = state.findBestAfterSubscriptionRefreshDraft,
-                statusMessage = "Subscription auto-refresh set to ${policy.displayValue(resolvedHours).lowercase()}",
+                statusMessage = StatusMessages.subscriptionAutoRefreshSet(policy, resolvedHours),
             )
         }
     }

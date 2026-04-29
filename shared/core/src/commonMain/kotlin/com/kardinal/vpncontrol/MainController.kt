@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -131,11 +132,9 @@ class MainController(
         return listOf(
             MainControllerEffect.UpdateAppLanguage(
                 language = value,
-                statusMessage = if (value == AppLanguage.SYSTEM) {
-                    "Language set to system default"
-                } else {
-                    "Language set to ${value.nativeName}"
-                },
+                statusMessage = StatusMessages.languageSet(
+                    if (value == AppLanguage.SYSTEM) "" else value.nativeName,
+                ),
             ),
         )
     }

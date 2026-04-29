@@ -34,6 +34,7 @@ import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.VlessProfile
@@ -196,8 +197,9 @@ class DesktopAppService private constructor(
 
     fun runtimeStatusDetails(): List<String> {
         val details = mutableListOf<String>()
-        details += "Runtime mode: ${runtimeManager.currentMode()?.let(MainCommandLogic::connectionDisplayName) ?: MainCommandLogic.connectionDisplayName(state.appMode)}"
-        runtimeManager.currentPort()?.let { details += "Local proxy: 127.0.0.1:$it" }
+        val runtimeMode = runtimeManager.currentMode() ?: state.appMode
+        details += StatusMessages.runtimeMode(runtimeMode.name)
+        runtimeManager.currentPort()?.let { details += StatusMessages.localProxy("127.0.0.1:$it") }
         if (state.appMode == AppMode.VPN) {
             val preflight = runtimeManager.lastPreflightReport()
             if (preflight != null) {
@@ -211,7 +213,7 @@ class DesktopAppService private constructor(
             }
         }
         val logPath = runtimeManager.currentLogFile() ?: runtimeManager.defaultLogFile()
-        details += "Runtime log: $logPath"
+        details += StatusMessages.runtimeLog(logPath.toString())
         return details
     }
 
@@ -482,11 +484,7 @@ class DesktopAppService private constructor(
     fun setAppLanguage(language: AppLanguage) {
         updateState {
             it.copy(appLanguage = language, showLanguageDialog = false).withStatus(
-                if (language == AppLanguage.SYSTEM) {
-                    "Language set to system default"
-                } else {
-                    "Language set to ${language.nativeName}"
-                },
+                StatusMessages.languageSet(if (language == AppLanguage.SYSTEM) "" else language.nativeName),
             )
         }
     }
@@ -1077,7 +1075,10 @@ class DesktopAppService private constructor(
         }
     }
 
-    fun exportLocationsToFile(window: ComposeWindow) {
+    fun exportLocationsToFile(
+        window: ComposeWindow,
+        title: String = "Export Locations",
+    ) {
         if (state.currentLocations.isEmpty()) {
             updateState { it.withStatus("No locations to export") }
             return
@@ -1085,7 +1086,7 @@ class DesktopAppService private constructor(
         val document = LocationConfigs.export(state.currentLocations)
         val result = DesktopTextTransfer.saveTextFile(
             window = window,
-            title = "Export Locations",
+            title = title,
             suggestedFileName = document.fileName,
             content = document.content,
         )
@@ -1134,8 +1135,11 @@ class DesktopAppService private constructor(
         importRoutingRulesRaw(raw.getOrThrow())
     }
 
-    fun importRoutingRulesFromFile(window: ComposeWindow) {
-        val opened = DesktopTextTransfer.openTextFile(window, "Import Routing Rules")
+    fun importRoutingRulesFromFile(
+        window: ComposeWindow,
+        title: String = "Import Routing Rules",
+    ) {
+        val opened = DesktopTextTransfer.openTextFile(window, title)
         if (opened.isFailure) {
             updateState { it.withStatus(opened.exceptionOrNull()?.message ?: "Failed to open routing rules file") }
             return
@@ -1154,11 +1158,14 @@ class DesktopAppService private constructor(
         }
     }
 
-    fun exportRoutingRulesToFile(window: ComposeWindow) {
+    fun exportRoutingRulesToFile(
+        window: ComposeWindow,
+        title: String = "Export Routing Rules",
+    ) {
         val document = RoutingRulesTransfer.export(MainDraftLogic.buildEditedRoutingRules(state))
         val result = DesktopTextTransfer.saveTextFile(
             window = window,
-            title = "Export Routing Rules",
+            title = title,
             suggestedFileName = document.fileName,
             content = document.content,
         )
@@ -1482,14 +1489,14 @@ private fun defaultDesktopWorkspace(): DesktopWorkspace {
         selectedProfileRawLink = "vless://desktop-nl",
         selectedProfileSourceUrl = subscriptions.first().url,
         lastBenchmarkSummary = "Desktop shell: Netherlands from Whitelists",
-        statusMessage = "Desktop ${MainCommandLogic.connectionDisplayName(appMode)} shell ready",
+        statusMessage = StatusMessages.connectionReadyOnComputer(appMode),
         isVpnRunning = false,
         successfulStarts = 0,
         successfulStops = 0,
         connectionLog = listOf(
             ConnectionLogEntry(
                 id = "desktop-log-1",
-                message = "Desktop shell initialized",
+                message = StatusMessages.desktopAppInitialized(),
                 createdAtEpochMillis = now - 10 * 60_000L,
             ),
             ConnectionLogEntry(

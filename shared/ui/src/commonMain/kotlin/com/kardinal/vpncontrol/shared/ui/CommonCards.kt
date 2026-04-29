@@ -82,7 +82,7 @@ fun StatusCard(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(strings.get(UiText.STATUS), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold)
-            Text(state.statusMessage, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(strings.statusMessage(state.statusMessage), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(strings.format(UiText.SELECTED_PROFILE, activeProfileLabel), color = Color(0xFFD3E3EE))
             if (state.selectedProfileName.isNotBlank()) {
@@ -95,7 +95,7 @@ fun StatusCard(
             }
             extraDetails.forEach { detail ->
                 if (detail.isNotBlank()) {
-                    Text(detail, color = Color(0xFFD3E3EE))
+                    Text(strings.statusMessage(detail), color = Color(0xFFD3E3EE))
                 }
             }
         }
@@ -152,6 +152,7 @@ fun MainActionButton(
     outlined: Boolean = false,
     colors: ButtonColors? = null,
 ) {
+    val strings = LocalAppStrings.current
     val content: @Composable () -> Unit = {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -168,7 +169,7 @@ fun MainActionButton(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(label, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text(sublabel)
+                Text(strings.statusMessage(sublabel))
             }
         }
     }

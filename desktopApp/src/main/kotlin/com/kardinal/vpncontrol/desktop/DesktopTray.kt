@@ -34,6 +34,10 @@ import kotlin.math.roundToInt
 @Composable
 internal fun DesktopTrayIcon(
     connectionActionLabel: String,
+    findBestLabel: String,
+    showWindowLabel: String,
+    hideWindowLabel: String,
+    exitLabel: String,
     connectionActionEnabled: Boolean,
     findBestEnabled: Boolean,
     onToggleConnection: () -> Unit,
@@ -46,6 +50,10 @@ internal fun DesktopTrayIcon(
         val popup = TrayPopupController()
         val trayIcon = installTrayIcon(
             connectionActionLabel = connectionActionLabel,
+            findBestLabel = findBestLabel,
+            showWindowLabel = showWindowLabel,
+            hideWindowLabel = hideWindowLabel,
+            exitLabel = exitLabel,
             connectionActionEnabled = connectionActionEnabled,
             findBestEnabled = findBestEnabled,
             onToggleConnection = onToggleConnection,
@@ -72,6 +80,10 @@ internal fun isDesktopTraySupported(): Boolean {
 
 private fun installTrayIcon(
     connectionActionLabel: String,
+    findBestLabel: String,
+    showWindowLabel: String,
+    hideWindowLabel: String,
+    exitLabel: String,
     connectionActionEnabled: Boolean,
     findBestEnabled: Boolean,
     onToggleConnection: () -> Unit,
@@ -88,6 +100,10 @@ private fun installTrayIcon(
         popup.toggle(
             anchor = anchor,
             connectionActionLabel = connectionActionLabel,
+            findBestLabel = findBestLabel,
+            showWindowLabel = showWindowLabel,
+            hideWindowLabel = hideWindowLabel,
+            exitLabel = exitLabel,
             connectionActionEnabled = connectionActionEnabled,
             findBestEnabled = findBestEnabled,
             onToggleConnection = onToggleConnection,
@@ -365,6 +381,10 @@ private class TrayPopupController {
     fun toggle(
         anchor: Point,
         connectionActionLabel: String,
+        findBestLabel: String,
+        showWindowLabel: String,
+        hideWindowLabel: String,
+        exitLabel: String,
         connectionActionEnabled: Boolean,
         findBestEnabled: Boolean,
         onToggleConnection: () -> Unit,
@@ -387,6 +407,10 @@ private class TrayPopupController {
                 background = AwtColor(0, 0, 0, 0)
                 contentPane = TrayMenuPanel(
                     connectionActionLabel = connectionActionLabel,
+                    findBestLabel = findBestLabel,
+                    showWindowLabel = showWindowLabel,
+                    hideWindowLabel = hideWindowLabel,
+                    exitLabel = exitLabel,
                     connectionActionEnabled = connectionActionEnabled,
                     findBestEnabled = findBestEnabled,
                     onToggleConnection = {
@@ -461,6 +485,10 @@ private class TrayPopupController {
 
 private class TrayMenuPanel(
     connectionActionLabel: String,
+    findBestLabel: String,
+    showWindowLabel: String,
+    hideWindowLabel: String,
+    exitLabel: String,
     connectionActionEnabled: Boolean,
     findBestEnabled: Boolean,
     onToggleConnection: () -> Unit,
@@ -472,13 +500,13 @@ private class TrayMenuPanel(
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
-        add(row("Show window", true, onShowWindow))
-        add(row("Hide window", true, onHideWindow))
+        add(row(showWindowLabel, true, onShowWindow))
+        add(row(hideWindowLabel, true, onHideWindow))
         add(separator())
         add(row(connectionActionLabel, connectionActionEnabled, onToggleConnection))
-        add(row("Find Best", findBestEnabled, onFindBest))
+        add(row(findBestLabel, findBestEnabled, onFindBest))
         add(separator())
-        add(row("Exit", true, onExit))
+        add(row(exitLabel, true, onExit))
     }
 
     private fun separator(): JSeparator {

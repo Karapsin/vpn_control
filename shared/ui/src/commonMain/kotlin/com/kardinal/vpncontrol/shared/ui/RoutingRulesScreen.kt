@@ -55,6 +55,7 @@ fun RoutingRulesScreen(
     showAppAssignments: Boolean = true,
     controls: @Composable () -> Unit = {},
 ) {
+    val strings = LocalAppStrings.current
     val query = state.routingAppSearch.trim().lowercase()
     val filteredApps = if (showAppAssignments) {
         state.installedApps
@@ -98,7 +99,7 @@ fun RoutingRulesScreen(
                     shape = RoundedCornerShape(16.dp),
                     colors = darkButtonColors(),
                 ) {
-                    Text("Save Rules")
+                    Text(strings.get(UiText.SAVE_RULES))
                 }
             }
             item {
@@ -106,13 +107,13 @@ fun RoutingRulesScreen(
             }
             item {
                 ScreenHeaderCard(
-                    title = "Routing Rules",
+                    title = strings.get(UiText.ROUTING_RULES_TITLE),
                     description = if (!showAppAssignments) {
-                        "Choose domain bypass behavior for this desktop runtime. Per-app assignments are hidden on desktop because they need OS-level enforcement."
+                        strings.get(UiText.ROUTING_DESCRIPTION_DESKTOP)
                     } else if (state.appMode == AppMode.VPN) {
-                        "Choose which apps use the VPN and which domains bypass it. When Ignore Rules is on, normal app traffic goes through the VPN."
+                        strings.get(UiText.ROUTING_DESCRIPTION_VPN)
                     } else {
-                        "Choose which domains go direct when using proxy-only mode. App assignments are still saved for VPN mode."
+                        strings.get(UiText.ROUTING_DESCRIPTION_PROXY)
                     },
                 )
             }
@@ -135,12 +136,12 @@ fun RoutingRulesScreen(
             if (showAppAssignments) {
                 item {
                     AppSelectionSectionCard(
-                        title = "App Assignments",
+                        title = strings.get(UiText.APP_ASSIGNMENTS),
                         count = state.routingProxyPackagesDraft.size,
                         description = if (state.appMode == AppMode.VPN) {
-                            "Only enabled apps use the VPN while Ignore Rules is off. Domain bypass rules still apply to those apps."
+                            strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_VPN)
                         } else {
-                            "Saved for VPN mode only. Proxy-only mode does not support per-app routing."
+                            strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_PROXY)
                         },
                         onSelectAll = onSelectAllProxyApps,
                         onClearAll = onClearAllProxyApps,
@@ -151,16 +152,16 @@ fun RoutingRulesScreen(
             }
             item {
                 RuleTextField(
-                    title = "Country-code Domains",
-                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: ru",
+                    title = strings.get(UiText.COUNTRY_CODE_DOMAINS),
+                    description = strings.get(UiText.COUNTRY_CODE_DOMAINS_DESCRIPTION),
                     value = state.routingNationalDomainsDraft,
                     onValueChange = onNationalDomainsChange,
                 )
             }
             item {
                 RuleTextField(
-                    title = "Bypass Domains",
-                    description = "One per line. Traffic to these domains goes directly, without VPN. Example: magnit.com",
+                    title = strings.get(UiText.BYPASS_DOMAINS),
+                    description = strings.get(UiText.BYPASS_DOMAINS_DESCRIPTION),
                     value = state.routingDirectDomainsDraft,
                     onValueChange = onDirectDomainsChange,
                 )
@@ -182,9 +183,9 @@ fun RoutingRulesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("App Assignments", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(strings.get(UiText.APP_ASSIGNMENTS), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "${filteredApps.size} shown",
+                                    strings.format(UiText.SHOWN_COUNT, filteredApps.size),
                                     color = Color(0xFFD3E3EE),
                                     fontSize = 12.sp,
                                 )
@@ -193,12 +194,12 @@ fun RoutingRulesScreen(
                                 value = state.routingAppSearch,
                                 onValueChange = onAppSearchChange,
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Search apps or packages") },
+                                label = { Text(strings.get(UiText.SEARCH_APPS_OR_PACKAGES)) },
                                 singleLine = true,
                                 colors = routingTextFieldColors(),
                             )
                             Text(
-                                text = "Turn apps on to route them through the VPN. Assigned apps are listed first.",
+                                text = strings.get(UiText.APP_ASSIGNMENTS_HELP),
                                 color = Color(0xFFD3E3EE),
                                 fontSize = 12.sp,
                             )
@@ -232,9 +233,9 @@ fun RoutingRulesScreen(
                                 ) {
                                     Text(
                                         text = if (state.installedAppsLoaded) {
-                                            "No apps match the current search."
+                                            strings.get(UiText.NO_APPS_MATCH)
                                         } else {
-                                            "Installed apps have not loaded yet."
+                                            strings.get(UiText.APPS_NOT_LOADED)
                                         },
                                         color = Color(0xFFD3E3EE),
                                     )
@@ -269,6 +270,7 @@ private fun CompactSummaryCard(
     state: MainUiState,
     showAppAssignments: Boolean,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
@@ -279,32 +281,35 @@ private fun CompactSummaryCard(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Current Rules", color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(strings.get(UiText.CURRENT_RULES), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             if (showAppAssignments) {
                 Text(
-                    "${state.routingProxyPackagesDraft.size} VPN apps assigned",
+                    strings.format(UiText.VPN_APPS_ASSIGNED, state.routingProxyPackagesDraft.size),
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
             Text(
-                "${state.routingNationalDomainsDraft.countEntries()} country-code domains • " +
-                    "${state.routingDirectDomainsDraft.countEntries()} bypass domains",
+                strings.format(
+                    UiText.DOMAIN_RULE_COUNTS,
+                    state.routingNationalDomainsDraft.countEntries(),
+                    state.routingDirectDomainsDraft.countEntries(),
+                ),
                 color = Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
             Text(
                 if (!showAppAssignments) {
                     if (state.routingIgnoreRulesDraft) {
-                        "Ignore rules is on. Domain rules are saved but not applied."
+                        strings.get(UiText.IGNORE_RULES_ON_DOMAINS_ONLY)
                     } else {
-                        "Ignore rules is off. Domain rules are active."
+                        strings.get(UiText.IGNORE_RULES_OFF_DOMAINS_ONLY)
                     }
                 } else if (state.routingIgnoreRulesDraft) {
-                    "Ignore rules is on. App/domain rules are saved but not applied."
+                    strings.get(UiText.IGNORE_RULES_ON_APPS)
                 } else {
-                    "Ignore rules is off. Only assigned apps use the VPN and saved domain rules are active."
+                    strings.get(UiText.IGNORE_RULES_OFF_APPS)
                 },
                 color = if (state.routingIgnoreRulesDraft) Color(0xFFFFE0A3) else Color(0xFFD3E3EE),
                 fontSize = 13.sp,
@@ -312,9 +317,9 @@ private fun CompactSummaryCard(
             if (state.isVpnRunning) {
                 Text(
                     text = if (state.appMode == AppMode.VPN) {
-                        "Restart the VPN after saving or importing rules."
+                        strings.get(UiText.RESTART_VPN_AFTER_RULES)
                     } else {
-                        "Restart the local proxy after saving or importing rules."
+                        strings.get(UiText.RESTART_PROXY_AFTER_RULES)
                     },
                     color = Color(0xFFFFE0A3),
                     fontSize = 12.sp,
@@ -331,6 +336,7 @@ private fun IgnoreRulesCard(
     showAppAssignments: Boolean,
     onEnabledChange: (Boolean) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
@@ -346,25 +352,25 @@ private fun IgnoreRulesCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("Ignore Rules", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(strings.get(UiText.IGNORE_RULES), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text(
                     if (!showAppAssignments) {
                         if (enabled) {
-                            "Desktop domain rules are ignored."
+                            strings.get(UiText.IGNORE_RULES_ON_DOMAINS_ONLY)
                         } else {
-                            "Desktop domain rules are applied."
+                            strings.get(UiText.IGNORE_RULES_OFF_DOMAINS_ONLY)
                         }
                     } else if (enabled) {
                         if (appMode == AppMode.VPN) {
-                            "Saved app assignments and domain rules are ignored. Normal app traffic goes through the VPN."
+                            strings.get(UiText.IGNORE_RULES_ON_APPS)
                         } else {
-                            "User-defined domain rules are ignored. Proxy-only mode sends all proxied traffic through the selected connection."
+                            strings.get(UiText.IGNORE_RULES_ON_PROXY)
                         }
                     } else {
                         if (appMode == AppMode.VPN) {
-                            "Only assigned apps use the VPN. Saved domain rules are applied."
+                            strings.get(UiText.IGNORE_RULES_OFF_APPS)
                         } else {
-                            "User-defined domain rules are applied. App assignments stay saved for VPN mode."
+                            strings.get(UiText.IGNORE_RULES_OFF_PROXY)
                         }
                     },
                     color = Color(0xFFD3E3EE),
@@ -389,6 +395,7 @@ private fun AppSelectionSectionCard(
     enableSelectAll: Boolean,
     enableClearAll: Boolean,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
@@ -405,7 +412,7 @@ private fun AppSelectionSectionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("$count selected", color = Color(0xFFD3E3EE), fontSize = 12.sp)
+                Text(strings.format(UiText.SELECTED_COUNT, count), color = Color(0xFFD3E3EE), fontSize = 12.sp)
             }
             Text(description, color = Color(0xFFD3E3EE), fontSize = 12.sp)
             Row(
@@ -420,7 +427,7 @@ private fun AppSelectionSectionCard(
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = darkOutlinedButtonColors(),
                 ) {
-                    Text("Select All")
+                    Text(strings.get(UiText.SELECT_ALL))
                 }
                 OutlinedButton(
                     onClick = onClearAll,
@@ -430,7 +437,7 @@ private fun AppSelectionSectionCard(
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = darkOutlinedButtonColors(),
                 ) {
-                    Text("Clear All")
+                    Text(strings.get(UiText.CLEAR_ALL))
                 }
             }
         }
@@ -439,6 +446,7 @@ private fun AppSelectionSectionCard(
 
 @Composable
 private fun ProxyOnlyRulesNoteCard() {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x332A3E12)),
@@ -451,13 +459,13 @@ private fun ProxyOnlyRulesNoteCard() {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Proxy-only mode",
+                text = strings.get(UiText.PROXY_ONLY),
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Only domain rules apply in proxy-only mode. App assignments are kept for when you switch back to VPN mode.",
+                text = strings.get(UiText.PROXY_ONLY_RULES_DESCRIPTION),
                 color = Color(0xFFFFF0CC),
                 fontSize = 12.sp,
             )
@@ -472,6 +480,7 @@ private fun RuleTextField(
     value: String,
     onValueChange: (String) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
@@ -501,6 +510,7 @@ private fun AppAssignmentRow(
     isProxy: Boolean,
     onToggleProxy: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -543,7 +553,7 @@ private fun AppAssignmentRow(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = if (isProxy) "VPN on" else "VPN off",
+                    text = if (isProxy) strings.get(UiText.VPN_ON) else strings.get(UiText.VPN_OFF),
                     color = if (isProxy) Color(0xFF83B7FF) else Color(0xFFD3E3EE),
                     fontSize = 11.sp,
                 )
@@ -553,7 +563,7 @@ private fun AppAssignmentRow(
                 )
                 if (app.isSystemApp) {
                     Text(
-                        text = "System",
+                        text = strings.get(UiText.SYSTEM_APP),
                         color = Color(0xFF9ED6FF),
                         fontSize = 11.sp,
                     )

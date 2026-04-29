@@ -31,9 +31,6 @@ import androidx.compose.ui.unit.sp
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import kotlinx.coroutines.delay
-import kotlinx.datetime.Instant
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 
 @Composable
 fun StatsScreen(
@@ -109,12 +106,12 @@ private fun SessionCard(state: MainUiState) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = strings.format(UiText.STARTED, state.sessionStartedAtEpochMillis.formatAsStatusTime()),
+                text = strings.format(UiText.STARTED, strings.statusTime(state.sessionStartedAtEpochMillis)),
                 color = Color(0xFFD3E3EE),
                 fontSize = 12.sp,
             )
             Text(
-                text = "${strings.get(UiText.STOPPED)}: ${state.sessionStoppedAtEpochMillis.formatAsStatusTime()}",
+                text = "${strings.get(UiText.STOPPED)}: ${strings.statusTime(state.sessionStoppedAtEpochMillis)}",
                 color = Color(0xFFD3E3EE),
                 fontSize = 12.sp,
             )
@@ -157,9 +154,9 @@ private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
                     ) {
                         items(connectionLog.asReversed(), key = { it.id }) { entry ->
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(entry.message, color = Color.White, fontSize = 13.sp)
+                                Text(strings.statusMessage(entry.message), color = Color.White, fontSize = 13.sp)
                                 Text(
-                                    text = entry.createdAtEpochMillis.formatAsStatusTime(),
+                                    text = strings.statusTime(entry.createdAtEpochMillis),
                                     color = Color(0xFF9FB8C8),
                                     fontSize = 11.sp,
                                 )
@@ -169,23 +166,6 @@ private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
                 }
             }
         }
-    }
-}
-
-private fun Long.formatAsStatusTime(): String {
-    if (this <= 0L) return "never"
-    val local = Instant.fromEpochMilliseconds(this)
-        .toLocalDateTime(TimeZone.currentSystemDefault())
-    return buildString {
-        append(local.year.toString().padStart(4, '0'))
-        append('-')
-        append(local.monthNumber.toString().padStart(2, '0'))
-        append('-')
-        append(local.dayOfMonth.toString().padStart(2, '0'))
-        append(' ')
-        append(local.hour.toString().padStart(2, '0'))
-        append(':')
-        append(local.minute.toString().padStart(2, '0'))
     }
 }
 

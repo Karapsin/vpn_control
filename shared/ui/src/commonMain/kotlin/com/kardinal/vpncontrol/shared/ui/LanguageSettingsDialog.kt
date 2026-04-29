@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -39,31 +42,38 @@ fun LanguageSettingsDialog(
                     color = Color(0xFFD3E3EE),
                     fontSize = 13.sp,
                 )
-                AppLanguage.selectable.forEach { language ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectLanguage(language) }
-                            .padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = selectedLanguage == language,
-                            onClick = { onSelectLanguage(language) },
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = strings.languageDisplayName(language, systemLanguageCode),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 440.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                ) {
+                    AppLanguage.selectable.forEach { language ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectLanguage(language) }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedLanguage == language,
+                                onClick = { onSelectLanguage(language) },
                             )
-                            if (language != AppLanguage.SYSTEM) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = language.code,
-                                    color = Color(0xFFD3E3EE),
-                                    fontSize = 12.sp,
+                                    text = strings.languageDisplayName(language, systemLanguageCode),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
+                                if (language != AppLanguage.SYSTEM) {
+                                    Text(
+                                        text = language.code,
+                                        color = Color(0xFFD3E3EE),
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
                     }

@@ -69,6 +69,7 @@ fun LocationsScreen(
     modifier: Modifier = Modifier,
     controls: @Composable () -> Unit = {},
 ) {
+    val strings = LocalAppStrings.current
     Scaffold(
         modifier = modifier,
         containerColor = Color.Transparent,
@@ -85,24 +86,24 @@ fun LocationsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             ScreenHeaderCard(
-                title = "Locations",
+                title = strings.get(UiText.LOCATIONS_TITLE),
                 description = if (state.profileSourceMode == com.kardinal.vpncontrol.model.ProfileSourceMode.SUBSCRIPTION) {
-                    "Location search uses the remote source saved on the Profile tab. This list is updated from it each time."
+                    strings.get(UiText.LOCATIONS_DESCRIPTION_SUBSCRIPTION)
                 } else {
-                    "Location search uses the saved locations below. No subscription is required."
+                    strings.get(UiText.LOCATIONS_DESCRIPTION_SAVED)
                 },
                 footer = {
                     Text(
-                        "Saved locations: ${locations.size}",
+                        strings.format(UiText.SAVED_LOCATIONS_COUNT, locations.size),
                         color = Color(0xFF9ED6FF),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = if (selectedName.isNullOrBlank()) {
-                            "Selected: none"
+                            strings.get(UiText.SELECTED_NONE)
                         } else {
-                            "Selected: $selectedName"
+                            strings.format(UiText.SELECTED_VALUE, selectedName)
                         },
                         color = Color(0xFFD3E3EE),
                         fontSize = 13.sp,
@@ -125,7 +126,7 @@ fun LocationsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
                     ) {
-                        Text("Add Location")
+                        Text(strings.get(UiText.ADD_LOCATION))
                     }
                 }
             }
@@ -146,9 +147,9 @@ fun LocationsScreen(
                     ) {
                         Text(
                             text = if (state.profileSourceMode == com.kardinal.vpncontrol.model.ProfileSourceMode.SUBSCRIPTION) {
-                                "No locations cached yet. Find the best location in subscription mode to load them, or add your own."
+                                strings.get(UiText.NO_LOCATIONS_CACHED)
                             } else {
-                                "No saved locations yet. Add one manually or switch back to subscription mode."
+                                strings.get(UiText.NO_SAVED_LOCATIONS)
                             },
                             color = Color(0xFFD3E3EE),
                         )
@@ -195,7 +196,13 @@ private fun LocationRowCard(
     onEdit: (() -> Unit)?,
     onDelete: (() -> Unit)?,
 ) {
+    val strings = LocalAppStrings.current
     val isSelectedAndRunning = location.isSelected && isVpnRunning
+    val connection = if (appMode == com.kardinal.vpncontrol.model.AppMode.VPN) {
+        strings.get(UiText.VPN)
+    } else {
+        strings.get(UiText.PROXY)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -247,7 +254,7 @@ private fun LocationRowCard(
                 }
                 if (location.isSelected) {
                     Text(
-                        text = if (isVpnRunning) "In use" else "Selected",
+                        text = if (isVpnRunning) strings.get(UiText.IN_USE) else strings.get(UiText.SELECTED),
                         color = Color(0xFFFFE0A3),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -274,9 +281,9 @@ private fun LocationRowCard(
                             else -> Icons.Filled.PlayArrow
                         },
                         contentDescription = when {
-                            isSelectedAndRunning -> "Stop ${connectionLabel(appMode)} for this location"
-                            location.isSelected -> "Start ${connectionLabel(appMode)} for this location"
-                            else -> "Select this location"
+                            isSelectedAndRunning -> strings.format(UiText.STOP_CONNECTION_FOR_LOCATION, connection)
+                            location.isSelected -> strings.format(UiText.START_CONNECTION_FOR_LOCATION, connection)
+                            else -> strings.get(UiText.SELECT_THIS_LOCATION)
                         },
                     )
                 }
@@ -292,7 +299,7 @@ private fun LocationRowCard(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Recheck this location",
+                        contentDescription = strings.get(UiText.RECHECK_LOCATION),
                     )
                 }
                 if (onEdit != null) {
@@ -308,7 +315,7 @@ private fun LocationRowCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Edit,
-                            contentDescription = "Edit location",
+                            contentDescription = strings.get(UiText.EDIT_LOCATION),
                         )
                     }
                 }
@@ -325,7 +332,7 @@ private fun LocationRowCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "Delete location",
+                            contentDescription = strings.get(UiText.DELETE_LOCATION),
                         )
                     }
                 }

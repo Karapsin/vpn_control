@@ -21,6 +21,7 @@ fun selectedTabIndex(screen: AppScreen): Int {
 fun activeProfileLabel(
     state: MainUiState,
     resolveSourceLabel: (String) -> String,
+    strings: AppStrings? = null,
 ): String {
     return when (state.profileSourceMode) {
         ProfileSourceMode.SUBSCRIPTION -> {
@@ -33,30 +34,31 @@ fun activeProfileLabel(
                 else -> ""
             }
             when {
-                activeSource == ALL_SUBSCRIPTIONS_ID -> "All subscriptions"
+                activeSource == ALL_SUBSCRIPTIONS_ID -> strings?.get(UiText.ALL_SUBSCRIPTIONS) ?: "All subscriptions"
                 activeSource.isNotBlank() -> resolveSourceLabel(activeSource)
-                state.selectedProfileName.isNotBlank() -> "Different subscription"
-                else -> "none"
+                state.selectedProfileName.isNotBlank() -> strings?.get(UiText.DIFFERENT_SUBSCRIPTION) ?: "Different subscription"
+                else -> strings?.get(UiText.NONE) ?: "none"
             }
         }
-        ProfileSourceMode.CURRENT_LOCATIONS -> "Saved Locations"
+        ProfileSourceMode.CURRENT_LOCATIONS -> strings?.get(UiText.SAVED_LOCATIONS) ?: "Saved Locations"
     }
 }
 
 fun currentSubscriptionSelectionLabel(
     state: MainUiState,
     resolveSourceLabel: (String) -> String,
+    strings: AppStrings? = null,
 ): String {
     return when (state.profileSourceMode) {
-        ProfileSourceMode.CURRENT_LOCATIONS -> "Saved Locations"
+        ProfileSourceMode.CURRENT_LOCATIONS -> strings?.get(UiText.SAVED_LOCATIONS) ?: "Saved Locations"
         ProfileSourceMode.SUBSCRIPTION -> when {
-            isAllSubscriptionsActive(state) -> "All subscriptions"
+            isAllSubscriptionsActive(state) -> strings?.get(UiText.ALL_SUBSCRIPTIONS) ?: "All subscriptions"
             state.activeSubscriptionId.isNotBlank() ->
                 state.subscriptions
                     .firstOrNull { it.id == state.activeSubscriptionId }
                     ?.let { subscription -> resolveSourceLabel(subscription.url) }
-                    ?: "none"
-            else -> "none"
+                    ?: (strings?.get(UiText.NONE) ?: "none")
+            else -> strings?.get(UiText.NONE) ?: "none"
         }
     }
 }

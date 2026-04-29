@@ -227,6 +227,192 @@ data class ConnectionLogEntry(
     val createdAtEpochMillis: Long = 0L,
 )
 
+enum class StatusMessageKey {
+    IDLE,
+    LANGUAGE_SET,
+    SUBSCRIPTION_AUTO_REFRESH_SET,
+    VALIDATION_SETTINGS_SAVED,
+    CUSTOM_DNS_SAVED,
+    CUSTOM_DNS_DISABLED,
+    FIND_BEST_FROM_SUBSCRIPTION,
+    FIND_BEST_FROM_SAVED,
+    STARTING_CONNECTION,
+    STARTING_CONNECTION_WITH_BEST,
+    CONNECTION_STARTED,
+    CONNECTION_STOPPED,
+    CONNECTION_READY_ON_COMPUTER,
+    DESKTOP_APP_INITIALIZED,
+    RUNTIME_MODE,
+    LOCAL_PROXY,
+    RUNTIME_LOG,
+    PREFLIGHT_PASSED,
+    PREFLIGHT_FAILED,
+    DESKTOP_VPN_CAPABILITY_READY,
+    DESKTOP_VPN_CAPABILITY_ERROR,
+}
+
+data class StructuredStatusMessage(
+    val key: StatusMessageKey,
+    val args: List<String> = emptyList(),
+)
+
+object StatusMessages {
+    private const val PREFIX = "vpn-control-status:v1:"
+
+    fun encode(
+        key: StatusMessageKey,
+        vararg args: String,
+    ): String = buildString {
+        append(PREFIX)
+        append(key.name)
+        if (args.isNotEmpty()) {
+            append(':')
+            append(args.joinToString(separator = "|", transform = ::escapeArg))
+        }
+    }
+
+    fun decode(raw: String): StructuredStatusMessage? {
+        if (!raw.startsWith(PREFIX)) return null
+        val payload = raw.removePrefix(PREFIX)
+        val keyName = payload.substringBefore(':')
+        val key = StatusMessageKey.entries.firstOrNull { it.name == keyName } ?: return null
+        val encodedArgs = payload.substringAfter(':', missingDelimiterValue = "")
+        val args = if (encodedArgs.isBlank()) {
+            emptyList()
+        } else {
+            encodedArgs.split('|').map(::unescapeArg)
+        }
+        return StructuredStatusMessage(key, args)
+    }
+
+    fun idle(): String = encode(StatusMessageKey.IDLE)
+
+    fun languageSet(languageName: String): String =
+        encode(StatusMessageKey.LANGUAGE_SET, languageName)
+
+    fun subscriptionAutoRefreshSet(
+        policy: SubscriptionRefreshPolicy,
+        customIntervalHours: Double,
+    ): String = encode(
+        StatusMessageKey.SUBSCRIPTION_AUTO_REFRESH_SET,
+        policy.name,
+        policy.effectiveIntervalMinutes(customIntervalHours)?.toString().orEmpty(),
+    )
+
+    fun validationSettingsSaved(settings: BenchmarkValidationSettings): String {
+        val normalized = settings.normalized()
+        return encode(
+            StatusMessageKey.VALIDATION_SETTINGS_SAVED,
+            normalized.primaryUrl.displayHost(),
+            normalized.secondaryUrl.displayHost(),
+            normalized.batchSize.toString(),
+            normalized.retryCount.toString(),
+        )
+    }
+
+    fun customDnsSaved(enabled: Boolean): String =
+        encode(if (enabled) StatusMessageKey.CUSTOM_DNS_SAVED else StatusMessageKey.CUSTOM_DNS_DISABLED)
+
+    fun findBestStart(sourceMode: ProfileSourceMode): String =
+        encode(
+            when (sourceMode) {
+                ProfileSourceMode.SUBSCRIPTION -> StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION
+                ProfileSourceMode.CURRENT_LOCATIONS -> StatusMessageKey.FIND_BEST_FROM_SAVED
+            },
+        )
+
+    fun startingConnection(appMode: AppMode): String =
+        encode(StatusMessageKey.STARTING_CONNECTION, appMode.name)
+
+    fun startingConnectionWithBestLocation(appMode: AppMode): String =
+        encode(StatusMessageKey.STARTING_CONNECTION_WITH_BEST, appMode.name)
+
+    fun connectionStarted(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STARTED, appMode.name)
+
+    fun connectionStopped(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOPPED, appMode.name)
+
+    fun connectionReadyOnComputer(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_READY_ON_COMPUTER, appMode.name)
+
+    fun desktopAppInitialized(): String =
+        encode(StatusMessageKey.DESKTOP_APP_INITIALIZED)
+
+    fun runtimeMode(mode: String): String =
+        encode(StatusMessageKey.RUNTIME_MODE, mode)
+
+    fun localProxy(address: String): String =
+        encode(StatusMessageKey.LOCAL_PROXY, address)
+
+    fun runtimeLog(path: String): String =
+        encode(StatusMessageKey.RUNTIME_LOG, path)
+
+    fun preflightPassed(appMode: AppMode): String =
+        encode(StatusMessageKey.PREFLIGHT_PASSED, appMode.name)
+
+    fun preflightFailed(appMode: AppMode, failedChecks: Int): String =
+        encode(StatusMessageKey.PREFLIGHT_FAILED, appMode.name, failedChecks.toString())
+
+    fun desktopVpnCapabilityReady(): String =
+        encode(StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY)
+
+    fun desktopVpnCapabilityError(detail: String): String =
+        encode(StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR, detail)
+
+    private fun escapeArg(value: String): String = buildString {
+        value.forEach { char ->
+            when (char) {
+                '%' -> append("%25")
+                '|' -> append("%7C")
+                ':' -> append("%3A")
+                '\n' -> append("%0A")
+                '\r' -> append("%0D")
+                else -> append(char)
+            }
+        }
+    }
+
+    private fun unescapeArg(value: String): String {
+        val builder = StringBuilder()
+        var index = 0
+        while (index < value.length) {
+            if (value[index] == '%' && index + 2 < value.length) {
+                when (value.substring(index + 1, index + 3)) {
+                    "25" -> {
+                        builder.append('%')
+                        index += 3
+                        continue
+                    }
+                    "7C" -> {
+                        builder.append('|')
+                        index += 3
+                        continue
+                    }
+                    "3A" -> {
+                        builder.append(':')
+                        index += 3
+                        continue
+                    }
+                    "0A" -> {
+                        builder.append('\n')
+                        index += 3
+                        continue
+                    }
+                    "0D" -> {
+                        builder.append('\r')
+                        index += 3
+                        continue
+                    }
+                }
+            }
+            builder.append(value[index])
+            index += 1
+        }
+        return builder.toString()
+    }
+}
+
 data class PersistedState(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val profileUrl: String = "",
