@@ -1,0 +1,1356 @@
+{
+  "dynamic": {
+    "findingSubscription": "Finding the best location from the subscription...",
+    "findingSaved": "Finding the best location from saved locations...",
+    "testingFastestCandidates": "Testing fastest candidates in batches...",
+    "checkingLocations": "Checking {count} locations..."
+  },
+  "benchmark": {
+    "best": "Best: ",
+    "primary": "primary ",
+    "secondary": "secondary ",
+    "tcp": "tcp ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blocked",
+      "cached": "cached",
+      "challenge": "challenge",
+      "custom_config_manual_only": "custom_config_manual_only",
+      "error": "error",
+      "manual": "manual",
+      "ok": "ok",
+      "partial": "partial",
+      "tcp_error": "tcp_error",
+      "tcp_timeout": "tcp_timeout",
+      "timeout": "timeout",
+      "unreachable": "unreachable",
+      "validation_timeout": "validation_timeout"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "Subscription URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Unreadable subscription URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Insecure HTTP subscriptions are not supported"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Use an https:// subscription URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "The URL must include a valid HTTPS host"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Paste a valid https:// subscription URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direct remote source"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box import link"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Unreadable sing-box import link"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Only valid HTTPS remote URLs are supported"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Use a sing-box import link that resolves to a valid https:// URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Fetches remote content from the embedded URL"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Fetches remote content from "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "The import link could not be parsed"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Paste a valid sing-box remote-profile import link or a direct subscription URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN import link"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Unreadable VPN import link"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Unsupported provider import"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "The import payload could not be decoded"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP subscription URLs are not supported. Use https:// instead."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Remote source must be an https:// URL or a supported import link"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Remote source is empty"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Remote source must be a valid https:// URL with a host."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Applying selected location..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Applying updated selected location..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Best location search timed out; keeping the current connection"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Clipboard is empty"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Connection log enabled"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Connection log hidden"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Connection test tools enabled"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Connection test tools hidden"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Could not open export destination"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Could not open selected file"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Could not open selected locations file"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Could not open selected rules file"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop shell: Netherlands from Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktop app initialized"
+    },
+    {
+      "source": "App initialized",
+      "target": "App initialized"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Export Locations"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Failed to apply updated selected location"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Failed to export diagnostics"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Failed to export locations"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Failed to export routing rules"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Failed to find a replacement location"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Failed to import file"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Failed to open diagnostics destination"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Failed to save refresh settings"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Failed to update startup setting"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import canceled"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Invalid subscription URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latency history enabled"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latency history hidden"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live traffic stats enabled"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live traffic stats hidden"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Location check cancelled"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Location check failed"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Locations exported"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Locations import canceled"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "No locations available for benchmarking"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "No subscriptions to refresh"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "No suitable location found"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Per-profile totals enabled"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Per-profile totals hidden"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Previous VPN session will be restored"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR scan canceled"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Routing rules exported"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Routing rules import canceled"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Saved routing rules"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Session stats enabled"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Session stats hidden"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Shared text is not a supported import payload"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Subscription deleted"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Subscription refresh finished. Finding the best location..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Subscription refresh finished. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Runtime mode: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Local proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Runtime log: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN mode preflight passed"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Proxy-only mode preflight passed"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN mode preflight failed: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Proxy-only mode preflight failed: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN mode unavailable: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Proxy-only mode unavailable: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Desktop VPN capability: ready"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Desktop VPN capability: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN mode available"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxy mode available"
+    },
+    {
+      "source": "not ready",
+      "target": "not ready"
+    },
+    {
+      "source": " checks",
+      "target": " checks"
+    },
+    {
+      "source": " check",
+      "target": " check"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "fail TUN device: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "fail network privileges: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "fail route/DNS tooling: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN device"
+    },
+    {
+      "source": "network privileges",
+      "target": "network privileges"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS tooling"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN ready on this computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy ready on this computer"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Idle"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN started"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stopped"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy started"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stopped"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starting VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starting local proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starting VPN with the best location..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starting local proxy with the best location..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finding the best location from the subscription..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finding the best location from saved locations..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Location search cancelled"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Location search failed"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Grant VPN permission and try again"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Set a remote source first"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Add at least one saved location first"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Select a location first"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "No subscriptions saved yet"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Refreshing all subscriptions..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Refreshing active subscription..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Refreshing subscription..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Refreshing subscriptions..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Auto-refreshing subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Auto-refreshing subscriptions..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Subscription refreshed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Subscriptions refreshed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Active subscription refreshed"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "All subscriptions refreshed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Refresh failed"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profile source set to subscription"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profile source set to saved locations"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Connection mode set to VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Connection mode set to proxy only"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Disconnect first to change connection mode"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "History entry deleted"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Subscription name reset"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Subscription name saved"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Language set to system default"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Custom DNS saved"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Custom DNS disabled"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routing rules saved"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routing rules imported"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Locations imported"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Locations imported. Selected location is no longer available"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Switch to Saved Locations to import locations"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Switch to Saved Locations to add locations manually"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid location config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Location to edit is no longer available"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostics export opened"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostics export failed"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostics export canceled"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Previous VPN location is no longer available"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "App closed. VPN was off."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Activated all subscriptions"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "All subscriptions selected"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Subscription selected"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Locations copied to clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Locations export canceled"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routing rules copied to clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Routing rules export canceled"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Subscription locations are read-only. Switch to Saved Locations to save edits."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Subscription locations are read-only. Switch to Saved Locations to delete them."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Subscription received. Review and save it on the Profile tab."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Subscription link received. Review and save it on the Profile tab."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Location config received. Review and save it on the Locations tab."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starting local proxy with the best location..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starting VPN with the best location..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finding the best location from the subscription..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finding the best location from saved locations..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Locations imported. Selected location is no longer available, proxy stopped"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Locations imported. Selected location is no longer available, vpn stopped"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Locations imported. Selected location is no longer available"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Selected location applied, but failed to save it"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Location removal rolled back because the proxy could not be stopped"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Location removal rolled back because the VPN could not be stopped"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Locations import rolled back because the proxy could not be stopped"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Locations import rolled back because the VPN could not be stopped"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN stopped. Refreshed subscriptions removed the selected location."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy stopped. Refreshed subscriptions removed the selected location."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN stopped. Will reconnect on next launch."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy stopped. Will reconnect on next launch."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Routing rules saved. Restart VPN to apply"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Routing rules saved. Restart proxy to apply"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Routing rules imported. Restart VPN to apply"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Routing rules imported. Restart proxy to apply"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Selected location removed. VPN stopped: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Selected location removed. Proxy stopped: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Best location selected and vpn started: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Best location selected and proxy started: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN started, but failed to save the selected location"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy started, but failed to save the selected location"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN started, but failed to save the best location"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy started, but failed to save the best location"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Failed to start VPN with the best location"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Failed to start proxy with the best location"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Failed to save the selected location"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Failed to save selected location"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Failed to save the best location"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Failed to apply selected location"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Failed to select location"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Failed to stop VPN before exit"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Failed to stop Proxy before exit"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Failed to stop VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Failed to stop proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Failed to start VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Failed to start proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Could not prepare VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Could not prepare proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Preparing VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Preparing proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN start cancelled"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy start cancelled"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN stop cancelled"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy stop cancelled"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starting local proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starting VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Refreshing all subscriptions..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Refreshing active subscription..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Refreshing subscriptions..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Refreshing subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Auto-refreshing subscriptions..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Auto-refreshing subscription..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "All subscriptions refreshed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Active subscription refreshed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Subscriptions refreshed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Subscription refreshed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Refresh failed"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Location search cancelled"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Location search failed"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Grant VPN permission and try again"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Set a remote source first"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Add at least one saved location first"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Select a location first"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "No subscriptions saved yet"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profile source set to subscription"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profile source set to saved locations"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Connection mode set to VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Connection mode set to proxy only"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Disconnect first to change connection mode"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "History entry deleted"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Subscription name reset"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Subscription name saved"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Language set to system default"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Custom DNS saved"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Custom DNS disabled"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routing rules saved"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routing rules imported"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Locations imported"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Switch to Saved Locations to import locations"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Switch to Saved Locations to add locations manually"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid location config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Location to edit is no longer available"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostics export opened"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostics export failed"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostics export canceled"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Previous VPN location is no longer available"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "App closed. VPN was off."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Activated all subscriptions"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "All subscriptions selected"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Subscription selected"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Subscription saved"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Locations copied to clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Locations export canceled"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routing rules copied to clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Routing rules export canceled"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Clipboard read failed"
+    },
+    {
+      "source": "No locations to export",
+      "target": "No locations to export"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Failed to load apps"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Failed to refresh subscriptions"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Failed to refresh the active subscription"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Failed to import routing rules"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Failed to save routing rules"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Failed to import locations"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Failed to open locations file"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Failed to read locations file"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Failed to open routing rules file"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Best location could not be mapped to the desktop list"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN ready on this computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy ready on this computer"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Desktop VPN shell ready"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktop Proxy shell ready"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN started on "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy started on "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN stopped. App mode: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy stopped. App mode: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Language set to "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Subscription auto-refresh set to "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Validation settings saved: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Selected location unchanged: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Selected location removed: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Selected location set: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Location updated and merged: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Location already saved: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Location updated: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Location removed: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Location added: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Subscriptions refreshed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Failed: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Restoring VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Refreshing "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Locations exported to "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Routing rules exported to "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostics exported to "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Failed to benchmark "
+    },
+    {
+      "source": "Activated ",
+      "target": "Activated "
+    },
+    {
+      "source": "Added ",
+      "target": "Added "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Deleted "
+    },
+    {
+      "source": "Selected ",
+      "target": "Selected "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Edited location #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "App mode: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " locations refreshed"
+    },
+    {
+      "source": " location refreshed",
+      "target": " location refreshed"
+    },
+    {
+      "source": " • batch ",
+      "target": " • batch "
+    },
+    {
+      "source": " • retries ",
+      "target": " • retries "
+    },
+    {
+      "source": "custom interval",
+      "target": "custom interval"
+    },
+    {
+      "source": "every hour",
+      "target": "every hour"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "all subscriptions"
+    },
+    {
+      "source": "selected subscription",
+      "target": "selected subscription"
+    },
+    {
+      "source": "proxy only",
+      "target": "proxy only"
+    },
+    {
+      "source": "off",
+      "target": "off"
+    },
+    {
+      "source": "Idle",
+      "target": "Idle"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN started"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stopped"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy started"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stopped"
+    }
+  ]
+}

@@ -27,6 +27,48 @@ class AppStringsCoverageTest {
     }
 
     @Test
+    fun generatedStatusJsonCatalogExistsForEveryLanguage() {
+        val supportedLanguages = AppLanguage.entries.filter { it != AppLanguage.SYSTEM }
+        val missing = supportedLanguages.filter { language ->
+            generatedStatusTranslations[language] == null
+        }
+
+        assertTrue(
+            missing.isEmpty(),
+            "Missing generated status JSON catalogs: $missing",
+        )
+    }
+
+    @Test
+    fun generatedStatusJsonCatalogHasRequiredBenchmarkKeys() {
+        val requiredStatuses = setOf(
+            "ok",
+            "timeout",
+            "error",
+            "partial",
+            "blocked",
+            "challenge",
+            "manual",
+            "cached",
+            "unreachable",
+            "validation_timeout",
+            "tcp_timeout",
+            "tcp_error",
+            "custom_config_manual_only",
+        )
+        val missing = generatedStatusTranslations.flatMap { (language, catalog) ->
+            requiredStatuses
+                .filterNot { status -> status in catalog.benchmark.statuses }
+                .map { status -> "$language: $status" }
+        }
+
+        assertTrue(
+            missing.isEmpty(),
+            "Missing generated benchmark status translations: $missing",
+        )
+    }
+
+    @Test
     fun appStringsReadsUiTextFromGeneratedCatalog() {
         val russian = AppStrings(AppLanguage.RUSSIAN)
         val expected = generatedUiTextTranslations

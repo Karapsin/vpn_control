@@ -10,10 +10,12 @@ plugins {
 
 val generatedI18nCatalogDir = layout.buildDirectory.dir("generated/source/i18nCatalog/commonMain/kotlin")
 val i18nCatalogDir = layout.projectDirectory.dir("src/commonMain/resources/i18n")
+val i18nStatusCatalogDir = layout.projectDirectory.dir("src/commonMain/resources/i18n-status")
 
 val generateI18nCatalog by tasks.registering {
     val outputDir = generatedI18nCatalogDir
     inputs.dir(i18nCatalogDir)
+    inputs.dir(i18nStatusCatalogDir)
     outputs.dir(outputDir)
 
     doLast {
@@ -23,6 +25,16 @@ val generateI18nCatalog by tasks.registering {
             .orEmpty()
         require(jsonFiles.isNotEmpty()) {
             "No i18n JSON files found in ${i18nCatalogDir.asFile}"
+        }
+        val statusJsonFiles = i18nStatusCatalogDir.asFile
+            .listFiles { file -> file.isFile && file.extension == "json" }
+            ?.sortedBy { it.name }
+            .orEmpty()
+        require(statusJsonFiles.isNotEmpty()) {
+            "No status i18n JSON files found in ${i18nStatusCatalogDir.asFile}"
+        }
+        require(jsonFiles.map { it.nameWithoutExtension }.toSet() == statusJsonFiles.map { it.nameWithoutExtension }.toSet()) {
+            "UI and status i18n catalogs must use the same language codes"
         }
 
         val parser = JsonSlurper()
@@ -47,6 +59,63 @@ val generateI18nCatalog by tasks.registering {
             append('"')
         }
 
+        fun parseObject(file: java.io.File): Map<*, *> {
+            return parser.parse(file) as? Map<*, *>
+                ?: error("Expected a JSON object in ${file.path}")
+        }
+
+        fun Map<*, *>.objectValue(key: String, file: java.io.File): Map<*, *> {
+            return this[key] as? Map<*, *>
+                ?: error("Missing object '$key' in ${file.path}")
+        }
+
+        fun Map<*, *>.stringValue(key: String, file: java.io.File): String {
+            return this[key] as? String
+                ?: error("Missing string '$key' in ${file.path}")
+        }
+
+        fun Map<*, *>.pairsValue(key: String, file: java.io.File): List<Pair<String, String>> {
+            val entries = this[key] as? List<*>
+                ?: error("Missing replacement list '$key' in ${file.path}")
+            return entries.mapIndexed { index, entry ->
+                val map = entry as? Map<*, *>
+                    ?: error("Entry $index in '$key' must be an object in ${file.path}")
+                val source = map["source"] as? String
+                    ?: error("Entry $index in '$key' is missing source in ${file.path}")
+                val target = map["target"] as? String
+                    ?: error("Entry $index in '$key' is missing target in ${file.path}")
+                source to target
+            }
+        }
+
+        fun Map<*, *>.stringMapValue(key: String, file: java.io.File): Map<String, String> {
+            val entries = this[key] as? Map<*, *>
+                ?: error("Missing string map '$key' in ${file.path}")
+            return entries.map { (source, target) ->
+                val sourceText = source as? String
+                    ?: error("Map '$key' contains a non-string key in ${file.path}")
+                val targetText = target as? String
+                    ?: error("Map '$key' contains a non-string value for '$sourceText' in ${file.path}")
+                sourceText to targetText
+            }.toMap()
+        }
+
+        fun StringBuilder.appendPairList(entries: List<Pair<String, String>>, indent: String) {
+            appendLine("listOf(")
+            entries.forEach { (source, target) ->
+                appendLine("$indent    ${source.kotlinLiteral()} to ${target.kotlinLiteral()},")
+            }
+            append("$indent)")
+        }
+
+        fun StringBuilder.appendStringMap(entries: Map<String, String>, indent: String) {
+            appendLine("mapOf(")
+            entries.forEach { (source, target) ->
+                appendLine("$indent    ${source.kotlinLiteral()} to ${target.kotlinLiteral()},")
+            }
+            append("$indent)")
+        }
+
         targetFile.writeText(
             buildString {
                 appendLine("package com.kardinal.vpncontrol.shared.ui")
@@ -54,6 +123,31 @@ val generateI18nCatalog by tasks.registering {
                 appendLine("import com.kardinal.vpncontrol.model.AppLanguage")
                 appendLine()
                 appendLine("// Generated from shared/ui/src/commonMain/resources/i18n/*.json.")
+                appendLine("// Generated from shared/ui/src/commonMain/resources/i18n-status/*.json.")
+                appendLine("internal data class GeneratedDynamicStatusWords(")
+                appendLine("    val findingSubscription: String,")
+                appendLine("    val findingSaved: String,")
+                appendLine("    val testingFastestCandidates: String,")
+                appendLine("    val checkingLocations: String,")
+                appendLine(")")
+                appendLine()
+                appendLine("internal data class GeneratedBenchmarkWords(")
+                appendLine("    val best: String,")
+                appendLine("    val primary: String,")
+                appendLine("    val secondary: String,")
+                appendLine("    val tcp: String,")
+                appendLine("    val millisUnit: String,")
+                appendLine("    val statuses: Map<String, String>,")
+                appendLine(")")
+                appendLine()
+                appendLine("internal data class GeneratedStatusTranslations(")
+                appendLine("    val dynamic: GeneratedDynamicStatusWords,")
+                appendLine("    val benchmark: GeneratedBenchmarkWords,")
+                appendLine("    val freeformReplacements: List<Pair<String, String>>,")
+                appendLine("    val legacyExact: Map<String, String>,")
+                appendLine("    val legacyReplacements: List<Pair<String, String>>,")
+                appendLine(")")
+                appendLine()
                 appendLine("internal val generatedUiTextTranslations: Map<AppLanguage, Map<UiText, String>> = buildMap {")
                 jsonFiles.forEach { file ->
                     val code = file.nameWithoutExtension
@@ -67,6 +161,53 @@ val generateI18nCatalog by tasks.registering {
                     entries.forEach { (key, value) ->
                         appendLine("            UiText.$key to ${value.toString().kotlinLiteral()},")
                     }
+                    appendLine("        ))")
+                    appendLine("    }")
+                }
+                appendLine("}")
+                appendLine()
+                appendLine("internal val generatedStatusTranslations: Map<AppLanguage, GeneratedStatusTranslations> = buildMap {")
+                statusJsonFiles.forEach { file ->
+                    val code = file.nameWithoutExtension
+                    val root = parseObject(file)
+                    val dynamic = root.objectValue("dynamic", file)
+                    val benchmark = root.objectValue("benchmark", file)
+                    val statuses = benchmark.stringMapValue("statuses", file)
+                    val freeformReplacements = root.pairsValue("freeformReplacements", file)
+                        .sortedByDescending { it.first.length }
+                    val legacyExact = root.pairsValue("legacyExact", file).toMap()
+                    val legacyReplacements = root.pairsValue("legacyReplacements", file)
+                        .sortedByDescending { it.first.length }
+                    appendLine("    run {")
+                    appendLine("        val language = requireNotNull(AppLanguage.entries.firstOrNull { it.code == ${code.kotlinLiteral()} }) {")
+                    appendLine("            \"No AppLanguage entry exists for status i18n catalog ${code}\"")
+                    appendLine("        }")
+                    appendLine("        put(language, GeneratedStatusTranslations(")
+                    appendLine("            dynamic = GeneratedDynamicStatusWords(")
+                    appendLine("                findingSubscription = ${dynamic.stringValue("findingSubscription", file).kotlinLiteral()},")
+                    appendLine("                findingSaved = ${dynamic.stringValue("findingSaved", file).kotlinLiteral()},")
+                    appendLine("                testingFastestCandidates = ${dynamic.stringValue("testingFastestCandidates", file).kotlinLiteral()},")
+                    appendLine("                checkingLocations = ${dynamic.stringValue("checkingLocations", file).kotlinLiteral()},")
+                    appendLine("            ),")
+                    appendLine("            benchmark = GeneratedBenchmarkWords(")
+                    appendLine("                best = ${benchmark.stringValue("best", file).kotlinLiteral()},")
+                    appendLine("                primary = ${benchmark.stringValue("primary", file).kotlinLiteral()},")
+                    appendLine("                secondary = ${benchmark.stringValue("secondary", file).kotlinLiteral()},")
+                    appendLine("                tcp = ${benchmark.stringValue("tcp", file).kotlinLiteral()},")
+                    appendLine("                millisUnit = ${benchmark.stringValue("millisUnit", file).kotlinLiteral()},")
+                    append("                statuses = ")
+                    appendStringMap(statuses, "                ")
+                    appendLine(",")
+                    appendLine("            ),")
+                    append("            freeformReplacements = ")
+                    appendPairList(freeformReplacements, "            ")
+                    appendLine(",")
+                    append("            legacyExact = ")
+                    appendStringMap(legacyExact, "            ")
+                    appendLine(",")
+                    append("            legacyReplacements = ")
+                    appendPairList(legacyReplacements, "            ")
+                    appendLine(",")
                     appendLine("        ))")
                     appendLine("    }")
                 }

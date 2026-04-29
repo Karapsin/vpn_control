@@ -1,0 +1,1107 @@
+{
+  "dynamic": {
+    "findingSubscription": "Buscando la mejor ubicación de la suscripción...",
+    "findingSaved": "Buscando la mejor ubicación guardada...",
+    "testingFastestCandidates": "Probando los candidatos más rápidos por lotes...",
+    "checkingLocations": "Comprobando {count} ubicaciones..."
+  },
+  "benchmark": {
+    "best": "Mejor ubicación: ",
+    "primary": "prueba principal: ",
+    "secondary": "prueba secundaria: ",
+    "tcp": "TCP: ",
+    "millisUnit": "ms",
+    "statuses": {
+      "ok": "correcto",
+      "timeout": "tiempo agotado",
+      "error": "error",
+      "partial": "parcial",
+      "blocked": "bloqueado",
+      "challenge": "verificación",
+      "manual": "manual",
+      "cached": "en caché",
+      "unreachable": "inalcanzable",
+      "validation_timeout": "tiempo de validación agotado",
+      "tcp_timeout": "tiempo TCP agotado",
+      "tcp_error": "error TCP",
+      "custom_config_manual_only": "solo comprobación manual"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL de suscripción"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL de suscripción ilegible"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Las suscripciones HTTP inseguras no son compatibles"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Usa una URL de suscripción https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "La URL debe incluir un host HTTPS válido"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Pega una URL de suscripción https:// válida."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Fuente remota directa"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "enlace de importación sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Enlace de importación sing-box ilegible"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Solo se admiten URL remotas HTTPS válidas"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Usa un enlace de importación sing-box que resuelva a una URL https:// válida."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Obtiene contenido remoto desde la URL integrada"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Obtiene contenido remoto de "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "No se pudo analizar el enlace de importación"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Pega un enlace de importación remote-profile de sing-box válido o una URL directa de suscripción."
+    },
+    {
+      "source": "VPN import link",
+      "target": "enlace de importación VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Enlace de importación VPN ilegible"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Importación de proveedor no compatible"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia y otras importaciones vpn:// no son compatibles. Usa una URL normal de suscripción o añade ubicaciones manualmente."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "No se pudo decodificar el contenido de importación"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Las importaciones vpn:// no son compatibles. Usa una URL normal de suscripción o añade ubicaciones manualmente."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "Las URL de suscripción HTTP no son compatibles. Usa https:// en su lugar."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "La fuente remota debe ser una URL https:// o un enlace de importación compatible"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "La fuente remota está vacía"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "La fuente remota debe ser una URL https:// válida con host."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Esta importación de sing-box resuelve a una URL inválida o no HTTPS. Usa una URL https:// válida."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Aplicando la ubicación seleccionada..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Aplicando la ubicación seleccionada actualizada..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "La búsqueda de la mejor ubicación agotó el tiempo; se mantiene la conexión actual"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "El portapapeles está vacío"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Registro de conexión activado"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Registro de conexión oculto"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Herramientas de prueba de conexión activadas"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Herramientas de prueba de conexión ocultas"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "No se pudo abrir el destino de exportación"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "No se pudo abrir el archivo seleccionado"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "No se pudo abrir el archivo de ubicaciones seleccionado"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "No se pudo abrir el archivo de reglas seleccionado"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Países Bajos desde Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "App iniciada"
+    },
+    {
+      "source": "App initialized",
+      "target": "App iniciada"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Exportar ubicaciones"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "No se pudo aplicar la ubicación seleccionada actualizada"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "No se pudieron exportar los diagnósticos"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "No se pudieron exportar las ubicaciones"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "No se pudieron exportar las reglas de enrutamiento"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "No se pudo encontrar una ubicación de reemplazo"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "No se pudo importar el archivo"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "No se pudo abrir el destino de diagnósticos"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "No se pudieron guardar los ajustes de actualización"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "No se pudo actualizar el ajuste de inicio"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Importación cancelada"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL de suscripción inválida"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Historial de latencia activado"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Historial de latencia oculto"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Estadísticas de tráfico en vivo activadas"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Estadísticas de tráfico en vivo ocultas"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Comprobación de ubicación cancelada"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Comprobación de ubicación fallida"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Ubicaciones exportadas"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Importación de ubicaciones cancelada"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "No hay ubicaciones disponibles para probar"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "No hay suscripciones para actualizar"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "No se encontró una ubicación adecuada"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totales por perfil activados"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totales por perfil ocultos"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Se restaurará la sesión VPN anterior"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "Escaneo QR cancelado"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Reglas de enrutamiento exportadas"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Importación de reglas de enrutamiento cancelada"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Reglas de enrutamiento guardadas"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Estadísticas de sesión activadas"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Estadísticas de sesión ocultas"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "El texto compartido no es un contenido de importación compatible"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Suscripción eliminada"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "La actualización de la suscripción terminó, pero se requiere permiso de VPN para cambiar en segundo plano. La ubicación VPN anterior se conserva como respaldo."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "La actualización de la suscripción terminó. Buscando la mejor ubicación..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "La actualización de la suscripción terminó. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Modo actual: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Proxy local: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Registro de actividad: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Comprobación del modo VPN superada"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Comprobación del modo solo proxy superada"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Comprobación del modo VPN fallida: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Comprobación del modo solo proxy fallida: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Modo VPN no disponible: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Modo solo proxy no disponible: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN en este equipo: lista"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "VPN en este equipo: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "Modo VPN disponible"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Modo proxy disponible"
+    },
+    {
+      "source": "not ready",
+      "target": "no listo"
+    },
+    {
+      "source": " checks",
+      "target": " comprobaciones"
+    },
+    {
+      "source": " check",
+      "target": " comprobación"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "Error de dispositivo TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "Error de privilegios de red: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "Error de herramientas de ruta/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "dispositivo TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "privilegios de red"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "herramientas de ruta/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Falta el dispositivo TUN de Linux en /dev/net/tun. Prueba: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "El modo VPN en este equipo necesita CAP_NET_ADMIN. Ejecuta como root o concede permisos a sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Las herramientas de ruta/DNS de Windows no están disponibles. El modo VPN necesita netsh.exe y cmdlets de DNS client PowerShell."
+    }
+  ],
+  "legacyExact": [],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Las ubicaciones de la suscripción son de solo lectura. Cambia a Ubicaciones guardadas para guardar cambios."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Las ubicaciones de la suscripción son de solo lectura. Cambia a Ubicaciones guardadas para eliminarlas."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Suscripción recibida. Revísala y guárdala en la pestaña Perfil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Enlace de suscripción recibido. Revísalo y guárdalo en la pestaña Perfil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Configuración de ubicación recibida. Revísala y guárdala en la pestaña Ubicaciones."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Iniciando proxy local con la mejor ubicación..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Iniciando VPN con la mejor ubicación..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Buscando la mejor ubicación de la suscripción..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Buscando la mejor ubicación guardada..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Ubicaciones importadas. La ubicación seleccionada ya no está disponible, proxy detenido"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Ubicaciones importadas. La ubicación seleccionada ya no está disponible, VPN detenida"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Ubicaciones importadas. La ubicación seleccionada ya no está disponible"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Ubicación seleccionada aplicada, pero no se pudo guardar"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "La eliminación de la ubicación se revirtió porque no se pudo detener el proxy"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "La eliminación de la ubicación se revirtió porque no se pudo detener la VPN"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "La importación de ubicaciones se revirtió porque no se pudo detener el proxy"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "La importación de ubicaciones se revirtió porque no se pudo detener la VPN"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN detenida. Las suscripciones actualizadas eliminaron la ubicación seleccionada."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy detenido. Las suscripciones actualizadas eliminaron la ubicación seleccionada."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN detenida. Se reconectará en el próximo inicio."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy detenido. Se reconectará en el próximo inicio."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Reglas de enrutamiento guardadas. Reinicia la VPN para aplicar"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Reglas de enrutamiento guardadas. Reinicia el proxy para aplicar"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Reglas de enrutamiento importadas. Reinicia la VPN para aplicar"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Reglas de enrutamiento importadas. Reinicia el proxy para aplicar"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Ubicación seleccionada eliminada. VPN detenida: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Ubicación seleccionada eliminada. Proxy detenido: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Mejor ubicación seleccionada y VPN iniciada: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Mejor ubicación seleccionada y proxy iniciado: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN iniciada, pero no se pudo guardar la ubicación seleccionada"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy iniciado, pero no se pudo guardar la ubicación seleccionada"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN iniciada, pero no se pudo guardar la mejor ubicación"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy iniciado, pero no se pudo guardar la mejor ubicación"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "No se pudo iniciar la VPN con la mejor ubicación"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "No se pudo iniciar el proxy con la mejor ubicación"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "No se pudo guardar la ubicación seleccionada"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "No se pudo guardar la ubicación seleccionada"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "No se pudo guardar la mejor ubicación"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "No se pudo aplicar la ubicación seleccionada"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "No se pudo seleccionar la ubicación"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "No se pudo detener la VPN antes de salir"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "No se pudo detener el proxy antes de salir"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "No se pudo detener la VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "No se pudo detener el proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "No se pudo iniciar la VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "No se pudo iniciar el proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "No se pudo preparar la VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "No se pudo preparar el proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Preparando VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Preparando proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Inicio de VPN cancelado"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Inicio de proxy cancelado"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Detención de VPN cancelada"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Detención de proxy cancelada"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Iniciando proxy local..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Iniciando VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Actualizando todas las suscripciones..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Actualizando suscripción activa..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Actualizando suscripciones..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Actualizando suscripción..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Actualizando suscripciones automáticamente..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Actualizando suscripción automáticamente..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Todas las suscripciones actualizadas"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Suscripción activa actualizada"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Suscripciones actualizadas"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Suscripción actualizada"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Error al actualizar"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Búsqueda de ubicación cancelada"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Búsqueda de ubicación fallida"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Concede permiso de VPN e inténtalo de nuevo"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Primero configura una fuente remota"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Primero añade al menos una ubicación guardada"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Primero selecciona una ubicación"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Aún no hay suscripciones guardadas"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Fuente de perfil establecida en suscripción"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Fuente de perfil establecida en ubicaciones guardadas"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Modo de conexión establecido en VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Modo de conexión establecido en solo proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Desconecta primero para cambiar el modo de conexión"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Entrada del historial eliminada"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Nombre de suscripción restablecido"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Nombre de suscripción guardado"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Idioma establecido en el predeterminado del sistema"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS personalizado guardado"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS personalizado desactivado"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Reglas de enrutamiento guardadas"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Reglas de enrutamiento importadas"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Ubicaciones importadas"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Cambia a Ubicaciones guardadas para importar ubicaciones"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Cambia a Ubicaciones guardadas para añadir ubicaciones manualmente"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Configuración de ubicación no válida"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "La ubicación a editar ya no está disponible"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Exportación de diagnóstico abierta"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Exportación de diagnóstico fallida"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Exportación de diagnóstico cancelada"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "La ubicación VPN anterior ya no está disponible"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplicación cerrada. La VPN estaba apagada."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Todas las suscripciones activadas"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Todas las suscripciones seleccionadas"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Suscripción seleccionada"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Suscripción guardada"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Ubicaciones copiadas al portapapeles"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Exportación de ubicaciones cancelada"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Reglas de enrutamiento copiadas al portapapeles"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Exportación de reglas de enrutamiento cancelada"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "No se pudo leer el portapapeles"
+    },
+    {
+      "source": "No locations to export",
+      "target": "No hay ubicaciones para exportar"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "No se pudieron cargar las apps"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "No se pudieron actualizar las suscripciones"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "No se pudo actualizar la suscripción activa"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "No se pudieron importar las reglas de enrutamiento"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "No se pudieron guardar las reglas de enrutamiento"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "No se pudieron importar las ubicaciones"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "No se pudo abrir el archivo de ubicaciones"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "No se pudo leer el archivo de ubicaciones"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "No se pudo abrir el archivo de reglas de enrutamiento"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "La mejor ubicación no se pudo asociar a la lista de este equipo"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN lista en este equipo"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy listo en este equipo"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "VPN lista en este equipo"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Proxy listo en este equipo"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN iniciada en "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy iniciado en "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN detenida. Modo de app: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy detenido. Modo de app: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Idioma: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Actualización automática de suscripción: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Ajustes de validación guardados: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Ubicación seleccionada sin cambios: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Ubicación seleccionada eliminada: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Ubicación seleccionada: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Ubicación actualizada y combinada: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Ubicación ya guardada: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Ubicación actualizada: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Ubicación eliminada: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Ubicación añadida: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Suscripciones actualizadas: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Fallidas: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Restaurando VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Actualizando "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Ubicaciones exportadas a "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Reglas de enrutamiento exportadas a "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnóstico exportado a "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Falló la prueba de "
+    },
+    {
+      "source": "Activated ",
+      "target": "Activado: "
+    },
+    {
+      "source": "Added ",
+      "target": "Añadido: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Eliminado: "
+    },
+    {
+      "source": "Selected ",
+      "target": "Seleccionado: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Ubicación # editada: "
+    },
+    {
+      "source": "App mode: ",
+      "target": "Modo de app: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ubicaciones actualizadas"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ubicación actualizada"
+    },
+    {
+      "source": " • batch ",
+      "target": " • lote "
+    },
+    {
+      "source": " • retries ",
+      "target": " • reintentos "
+    },
+    {
+      "source": "custom interval",
+      "target": "intervalo personalizado"
+    },
+    {
+      "source": "every hour",
+      "target": "cada hora"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "todas las suscripciones"
+    },
+    {
+      "source": "selected subscription",
+      "target": "suscripción seleccionada"
+    },
+    {
+      "source": "proxy only",
+      "target": "solo proxy"
+    },
+    {
+      "source": "off",
+      "target": "apagado"
+    },
+    {
+      "source": "Idle",
+      "target": "Inactivo"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN iniciada"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN detenida"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy iniciado"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy detenido"
+    }
+  ]
+}

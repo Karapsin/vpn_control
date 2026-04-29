@@ -1,0 +1,1107 @@
+{
+  "dynamic": {
+    "findingSubscription": "正在从订阅中寻找最佳节点...",
+    "findingSaved": "正在从已保存节点中寻找最佳节点...",
+    "testingFastestCandidates": "正在分批测试最快候选节点...",
+    "checkingLocations": "正在检查 {count} 个节点..."
+  },
+  "benchmark": {
+    "best": "最佳节点：",
+    "primary": "主测试：",
+    "secondary": "备用测试：",
+    "tcp": "TCP：",
+    "millisUnit": "毫秒",
+    "statuses": {
+      "ok": "正常",
+      "timeout": "超时",
+      "error": "错误",
+      "partial": "部分可用",
+      "blocked": "被阻止",
+      "challenge": "验证",
+      "manual": "手动",
+      "cached": "缓存",
+      "unreachable": "不可达",
+      "validation_timeout": "验证超时",
+      "tcp_timeout": "TCP 超时",
+      "tcp_error": "TCP 错误",
+      "custom_config_manual_only": "仅手动检查"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "订阅 URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "无法读取的订阅 URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "不支持不安全的 HTTP 订阅"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "请使用 https:// 订阅 URL。"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL 必须包含有效的 HTTPS 主机"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "请粘贴有效的 https:// 订阅 URL。"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "直接远程来源"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box 导入链接"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "无法读取的 sing-box 导入链接"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "仅支持有效的 HTTPS 远程 URL"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "请使用解析到有效 https:// URL 的 sing-box 导入链接。"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "从嵌入 URL 获取远程内容"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "从以下位置获取远程内容："
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "无法解析导入链接"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "请粘贴有效的 sing-box remote-profile 导入链接或直接订阅 URL。"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN 导入链接"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "无法读取的 VPN 导入链接"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "不支持的提供商导入"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "不支持 Amnezia 和其他 vpn:// 导入。请使用普通订阅 URL 或手动添加节点。"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "无法解码导入内容"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "不支持 vpn:// 导入。请使用普通订阅 URL 或手动添加节点。"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "不支持 HTTP 订阅 URL。请改用 https://。"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "远程来源必须是 https:// URL 或支持的导入链接"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "远程来源为空"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "远程来源必须是带主机的有效 https:// URL。"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "此 sing-box 导入解析为无效或非 HTTPS URL。请改用有效的 https:// URL。"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "正在应用所选节点..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "正在应用更新后的所选节点..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "最佳节点搜索超时；保持当前连接"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "剪贴板为空"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "连接日志已启用"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "连接日志已隐藏"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "连接测试工具已启用"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "连接测试工具已隐藏"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "无法打开导出位置"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "无法打开所选文件"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "无法打开所选节点文件"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "无法打开所选规则文件"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Whitelists 中的荷兰"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "应用已启动"
+    },
+    {
+      "source": "App initialized",
+      "target": "应用已启动"
+    },
+    {
+      "source": "Export Locations",
+      "target": "导出节点"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "应用更新后的所选节点失败"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "导出诊断失败"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "导出节点失败"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "导出路由规则失败"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "未能找到替代节点"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "导入文件失败"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "无法打开诊断导出位置"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "保存刷新设置失败"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "更新开机启动设置失败"
+    },
+    {
+      "source": "Import canceled",
+      "target": "导入已取消"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "订阅 URL 无效"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "延迟历史已启用"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "延迟历史已隐藏"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "实时流量统计已启用"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "实时流量统计已隐藏"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "节点检查已取消"
+    },
+    {
+      "source": "Location check failed",
+      "target": "节点检查失败"
+    },
+    {
+      "source": "Locations exported",
+      "target": "节点已导出"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "节点导入已取消"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "没有可用于测试的节点"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "没有可刷新的订阅"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "未找到合适的节点"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "按配置统计已启用"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "按配置统计已隐藏"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "将恢复上一次 VPN 会话"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "二维码扫描已取消"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "路由规则已导出"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "路由规则导入已取消"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "路由规则已保存"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "会话统计已启用"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "会话统计已隐藏"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "分享的文本不是支持的导入内容"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "订阅已删除"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "订阅刷新已完成，但后台切换需要 VPN 权限。已保留之前的 VPN 节点作为备用。"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "订阅刷新已完成。正在寻找最佳节点..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "订阅刷新已完成。"
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "运行模式："
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "本地代理："
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "运行日志："
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN 模式检查已通过"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "仅代理模式检查已通过"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN 模式检查失败："
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "仅代理模式检查失败："
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN 模式不可用："
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "仅代理模式不可用："
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "这台电脑上的 VPN：就绪"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "这台电脑上的 VPN："
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN 模式可用"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "代理模式可用"
+    },
+    {
+      "source": "not ready",
+      "target": "未就绪"
+    },
+    {
+      "source": " checks",
+      "target": " 项检查"
+    },
+    {
+      "source": " check",
+      "target": " 项检查"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN 设备失败："
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "网络权限失败："
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "路由/DNS 工具失败："
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN 设备"
+    },
+    {
+      "source": "network privileges",
+      "target": "网络权限"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "路由/DNS 工具"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN 设备缺失于 /dev/net/tun。请尝试：sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "桌面 VPN 模式需要 CAP_NET_ADMIN。请以 root 运行或授予 sing-box 权限：sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows 路由/DNS 工具不可用。VPN 模式需要 netsh.exe 和 DNS client PowerShell cmdlets。"
+    }
+  ],
+  "legacyExact": [],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "订阅节点为只读。请切换到已保存节点后再保存编辑。"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "订阅节点为只读。请切换到已保存节点后再删除。"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "已收到订阅。请在配置页检查并保存。"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "已收到订阅链接。请在配置页检查并保存。"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "已收到节点配置。请在节点页检查并保存。"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "正在用最佳节点启动本地代理..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "正在用最佳节点启动 VPN..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "正在从订阅中寻找最佳节点..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "正在从已保存节点中寻找最佳节点..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "节点已导入。所选节点不再可用，代理已停止"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "节点已导入。所选节点不再可用，VPN 已停止"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "节点已导入。所选节点不再可用"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "所选节点已应用，但保存失败"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "代理无法停止，节点删除已回滚"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN 无法停止，节点删除已回滚"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "代理无法停止，节点导入已回滚"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN 无法停止，节点导入已回滚"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN 已停止。刷新后的订阅移除了所选节点。"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "代理已停止。刷新后的订阅移除了所选节点。"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN 已停止。下次启动时会重新连接。"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "代理已停止。下次启动时会重新连接。"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "路由规则已保存。重启 VPN 后生效"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "路由规则已保存。重启代理后生效"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "路由规则已导入。重启 VPN 后生效"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "路由规则已导入。重启代理后生效"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "所选节点已删除。VPN 已停止："
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "所选节点已删除。代理已停止："
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "已选择最佳节点并启动 VPN："
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "已选择最佳节点并启动代理："
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN 已启动，但所选节点保存失败"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "代理已启动，但所选节点保存失败"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN 已启动，但最佳节点保存失败"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "代理已启动，但最佳节点保存失败"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "无法用最佳节点启动 VPN"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "无法用最佳节点启动代理"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "所选节点保存失败"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "所选节点保存失败"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "最佳节点保存失败"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "所选节点应用失败"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "选择节点失败"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "退出前停止 VPN 失败"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "退出前停止代理失败"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "停止 VPN 失败"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "停止代理失败"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "启动 VPN 失败"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "启动代理失败"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "无法准备 VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "无法准备代理"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "正在准备 VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "正在准备代理"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN 启动已取消"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "代理启动已取消"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN 停止已取消"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "代理停止已取消"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "正在启动本地代理..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "正在启动 VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "正在刷新所有订阅..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "正在刷新当前订阅..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "正在刷新订阅..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "正在刷新订阅..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "正在自动刷新订阅..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "正在自动刷新订阅..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "所有订阅已刷新"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "当前订阅已刷新"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "订阅已刷新"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "订阅已刷新"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "刷新失败"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "节点搜索已取消"
+    },
+    {
+      "source": "Location search failed",
+      "target": "节点搜索失败"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "请授予 VPN 权限后重试"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "请先设置远程来源"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "请先添加至少一个已保存节点"
+    },
+    {
+      "source": "Select a location first",
+      "target": "请先选择节点"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "还没有保存订阅"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "配置来源已设为订阅"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "配置来源已设为已保存节点"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "连接模式已设为 VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "连接模式已设为仅代理"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "请先断开连接再更改连接模式"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "历史记录已删除"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "订阅名称已重置"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "订阅名称已保存"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "语言已设为系统默认"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "自定义 DNS 已保存"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "自定义 DNS 已禁用"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "路由规则已保存"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "路由规则已导入"
+    },
+    {
+      "source": "Locations imported",
+      "target": "节点已导入"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "请切换到已保存节点后再导入节点"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "请切换到已保存节点后再手动添加节点"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "节点配置无效"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "要编辑的节点不再可用"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "诊断导出已打开"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "诊断导出失败"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "诊断导出已取消"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "之前的 VPN 节点不再可用"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "应用已关闭。VPN 原本为关闭状态。"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "已启用所有订阅"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "已选择所有订阅"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "订阅已选择"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "订阅已保存"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "节点已复制到剪贴板"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "节点导出已取消"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "路由规则已复制到剪贴板"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "路由规则导出已取消"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "读取剪贴板失败"
+    },
+    {
+      "source": "No locations to export",
+      "target": "没有可导出的节点"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "加载应用失败"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "刷新订阅失败"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "刷新当前订阅失败"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "导入路由规则失败"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "保存路由规则失败"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "导入节点失败"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "打开节点文件失败"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "读取节点文件失败"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "打开路由规则文件失败"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "无法将最佳节点映射到这台电脑的列表"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "这台电脑上的 VPN 已就绪"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "这台电脑上的代理已就绪"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "这台电脑上的 VPN 已就绪"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "这台电脑上的代理已就绪"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN 已启动于 "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "代理已启动于 "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN 已停止。应用模式："
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "代理已停止。应用模式："
+    },
+    {
+      "source": "Language set to ",
+      "target": "语言："
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "订阅自动刷新："
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "验证设置已保存："
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "所选节点未变化："
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "所选节点已移除："
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "所选节点："
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "节点已更新并合并："
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "节点已保存："
+    },
+    {
+      "source": "Location updated: ",
+      "target": "节点已更新："
+    },
+    {
+      "source": "Location removed: ",
+      "target": "节点已移除："
+    },
+    {
+      "source": "Location added: ",
+      "target": "节点已添加："
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "订阅已刷新："
+    },
+    {
+      "source": "Failed: ",
+      "target": "失败："
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "正在恢复 VPN："
+    },
+    {
+      "source": "Refreshing ",
+      "target": "正在刷新 "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "节点已导出到 "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "路由规则已导出到 "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "诊断已导出到 "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "测速失败："
+    },
+    {
+      "source": "Activated ",
+      "target": "已启用："
+    },
+    {
+      "source": "Added ",
+      "target": "已添加："
+    },
+    {
+      "source": "Deleted ",
+      "target": "已删除："
+    },
+    {
+      "source": "Selected ",
+      "target": "已选择："
+    },
+    {
+      "source": "Edited location #",
+      "target": "已编辑节点 #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "应用模式："
+    },
+    {
+      "source": " locations refreshed",
+      "target": " 个节点已刷新"
+    },
+    {
+      "source": " location refreshed",
+      "target": " 个节点已刷新"
+    },
+    {
+      "source": " • batch ",
+      "target": " • 组大小 "
+    },
+    {
+      "source": " • retries ",
+      "target": " • 重试 "
+    },
+    {
+      "source": "custom interval",
+      "target": "自定义间隔"
+    },
+    {
+      "source": "every hour",
+      "target": "每小时"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "所有订阅"
+    },
+    {
+      "source": "selected subscription",
+      "target": "所选订阅"
+    },
+    {
+      "source": "proxy only",
+      "target": "仅代理"
+    },
+    {
+      "source": "off",
+      "target": "关闭"
+    },
+    {
+      "source": "Idle",
+      "target": "空闲"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN 已启动"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN 已停止"
+    },
+    {
+      "source": "Proxy started",
+      "target": "代理已启动"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "代理已停止"
+    }
+  ]
+}
