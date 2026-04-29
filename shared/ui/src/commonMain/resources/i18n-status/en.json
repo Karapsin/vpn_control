@@ -3,7 +3,13 @@
     "findingSubscription": "Finding the best location from the subscription...",
     "findingSaved": "Finding the best location from saved locations...",
     "testingFastestCandidates": "Testing fastest candidates in batches...",
-    "checkingLocations": "Checking {count} locations..."
+    "checkingLocations": "Checking {count} locations...",
+    "testingLocationsRange": "Testing locations {start}-{end} of {total}...",
+    "refreshIntervalMinutes": "{count} min",
+    "refreshIntervalHours": "{count} h",
+    "refreshIntervalHoursMinutes": "{hours} h {minutes} min",
+    "refreshIntervalEvery": "every {interval}",
+    "refreshIntervalEveryHour": "every hour"
   },
   "benchmark": {
     "best": "Best: ",
@@ -689,6 +695,14 @@
     {
       "source": "Routing rules export canceled",
       "target": "Routing rules export canceled"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profile source mode: SUBSCRIPTION"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profile source mode: CURRENT_LOCATIONS"
     }
   ],
   "legacyReplacements": [

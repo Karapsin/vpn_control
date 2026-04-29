@@ -348,16 +348,8 @@ class AppStrings(
         StatusMessages.decode(trimmed)?.let { return localizedStructuredStatusMessage(language, it) }
         localizedBenchmarkMessage(language, trimmed)?.let { return it }
         localizedDynamicStatusMessage(language, trimmed)?.let { return it }
-        localizedFreeformTextSupplement(language, trimmed)?.let { return it }
-        return when (language) {
-            AppLanguage.RUSSIAN -> trimmed.toRussianStatusMessage()
-            AppLanguage.GERMAN,
-            AppLanguage.CHINESE,
-            AppLanguage.SPANISH,
-            AppLanguage.PORTUGUESE,
-            AppLanguage.FRENCH -> trimmed.toTranslatedStatusMessage(language)
-            else -> trimmed
-        }
+        localizedGeneratedStatusMessage(language, trimmed)?.let { return it }
+        return trimmed
     }
 }
 
@@ -365,340 +357,83 @@ private fun localizedStructuredStatusMessage(
     language: AppLanguage,
     status: StructuredStatusMessage,
 ): String {
+    val english = englishStructuredStatusMessage(status)
+    if (language == AppLanguage.ENGLISH || language == AppLanguage.SYSTEM) return english
+    return localizedGeneratedStatusMessage(language, english) ?: english
+}
+
+private fun englishStructuredStatusMessage(status: StructuredStatusMessage): String {
     fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
     return when (status.key) {
-        StatusMessageKey.IDLE -> when (language) {
-            AppLanguage.RUSSIAN -> "Ожидание"
-            AppLanguage.GERMAN -> "Bereit"
-            AppLanguage.CHINESE -> "空闲"
-            AppLanguage.SPANISH -> "Inactivo"
-            AppLanguage.PORTUGUESE -> "Ocioso"
-            AppLanguage.FRENCH -> "Inactif"
-            else -> "Idle"
-        }
-        StatusMessageKey.LANGUAGE_SET -> localizedLanguageSetStatus(language, arg(0))
+        StatusMessageKey.IDLE -> "Idle"
+        StatusMessageKey.LANGUAGE_SET -> "Language set to ${arg(0).ifBlank { "system default" }}"
         StatusMessageKey.SUBSCRIPTION_AUTO_REFRESH_SET ->
-            localizedRefreshStatus(language, arg(0), arg(1).toIntOrNull())
+            englishRefreshStatus(arg(0), arg(1).toIntOrNull())
         StatusMessageKey.VALIDATION_SETTINGS_SAVED ->
-            localizedValidationSettingsSaved(language, arg(0), arg(1), arg(2), arg(3))
-        StatusMessageKey.CUSTOM_DNS_SAVED -> when (language) {
-            AppLanguage.RUSSIAN -> "Пользовательский DNS сохранен"
-            AppLanguage.GERMAN -> "Benutzerdefiniertes DNS gespeichert"
-            AppLanguage.CHINESE -> "自定义 DNS 已保存"
-            AppLanguage.SPANISH -> "DNS personalizado guardado"
-            AppLanguage.PORTUGUESE -> "DNS personalizado salvo"
-            AppLanguage.FRENCH -> "DNS personnalisé enregistré"
-            else -> "Custom DNS saved"
-        }
-        StatusMessageKey.CUSTOM_DNS_DISABLED -> when (language) {
-            AppLanguage.RUSSIAN -> "Пользовательский DNS отключен"
-            AppLanguage.GERMAN -> "Benutzerdefiniertes DNS deaktiviert"
-            AppLanguage.CHINESE -> "自定义 DNS 已禁用"
-            AppLanguage.SPANISH -> "DNS personalizado desactivado"
-            AppLanguage.PORTUGUESE -> "DNS personalizado desativado"
-            AppLanguage.FRENCH -> "DNS personnalisé désactivé"
-            else -> "Custom DNS disabled"
-        }
+            "Validation settings saved: ${arg(0)} • ${arg(1)} • batch ${arg(2)} • retries ${arg(3)}"
+        StatusMessageKey.CUSTOM_DNS_SAVED -> "Custom DNS saved"
+        StatusMessageKey.CUSTOM_DNS_DISABLED -> "Custom DNS disabled"
         StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION ->
-            generatedStatusTranslations[language]?.dynamic?.findingSubscription
+            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.findingSubscription
                 ?: "Finding the best location from the subscription..."
         StatusMessageKey.FIND_BEST_FROM_SAVED ->
-            generatedStatusTranslations[language]?.dynamic?.findingSaved
+            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.findingSaved
                 ?: "Finding the best location from saved locations..."
-        StatusMessageKey.STARTING_CONNECTION -> localizedStartingConnection(language, arg(0), withBestLocation = false)
-        StatusMessageKey.STARTING_CONNECTION_WITH_BEST -> localizedStartingConnection(language, arg(0), withBestLocation = true)
-        StatusMessageKey.CONNECTION_STARTED -> localizedConnectionStarted(language, arg(0))
-        StatusMessageKey.CONNECTION_STOPPED -> localizedConnectionStopped(language, arg(0))
-        StatusMessageKey.CONNECTION_READY_ON_COMPUTER -> localizedConnectionReadyOnComputer(language, arg(0))
-        StatusMessageKey.DESKTOP_APP_INITIALIZED -> when (language) {
-            AppLanguage.RUSSIAN -> "Приложение запущено"
-            AppLanguage.GERMAN -> "App gestartet"
-            AppLanguage.CHINESE -> "应用已启动"
-            AppLanguage.SPANISH -> "App iniciada"
-            AppLanguage.PORTUGUESE -> "App iniciada"
-            AppLanguage.FRENCH -> "App démarrée"
-            else -> "App initialized"
+        StatusMessageKey.STARTING_CONNECTION ->
+            englishStartingConnection(arg(0), withBestLocation = false)
+        StatusMessageKey.STARTING_CONNECTION_WITH_BEST ->
+            englishStartingConnection(arg(0), withBestLocation = true)
+        StatusMessageKey.CONNECTION_STARTED ->
+            if (arg(0).isProxyMode()) "Proxy started" else "VPN started"
+        StatusMessageKey.CONNECTION_STOPPED ->
+            if (arg(0).isProxyMode()) "Proxy stopped" else "VPN stopped"
+        StatusMessageKey.CONNECTION_READY_ON_COMPUTER ->
+            if (arg(0).isProxyMode()) "Proxy ready on this computer" else "VPN ready on this computer"
+        StatusMessageKey.DESKTOP_APP_INITIALIZED -> "App initialized"
+        StatusMessageKey.RUNTIME_MODE -> "Runtime mode: ${englishConnectionDisplay(arg(0))}"
+        StatusMessageKey.LOCAL_PROXY -> "Local proxy: ${arg(0)}"
+        StatusMessageKey.RUNTIME_LOG -> "Runtime log: ${arg(0)}"
+        StatusMessageKey.PREFLIGHT_PASSED -> "${englishConnectionDisplay(arg(0))} mode preflight passed"
+        StatusMessageKey.PREFLIGHT_FAILED -> {
+            val failedChecks = arg(1).toIntOrNull() ?: 0
+            val checks = "$failedChecks check${if (failedChecks == 1) "" else "s"}"
+            "${englishConnectionDisplay(arg(0))} mode preflight failed: $checks"
         }
-        StatusMessageKey.RUNTIME_MODE -> localizedRuntimeMode(language, arg(0))
-        StatusMessageKey.LOCAL_PROXY -> localizedLocalProxy(language, arg(0))
-        StatusMessageKey.RUNTIME_LOG -> localizedRuntimeLog(language, arg(0))
-        StatusMessageKey.PREFLIGHT_PASSED -> localizedPreflightPassed(language, arg(0))
-        StatusMessageKey.PREFLIGHT_FAILED -> localizedPreflightFailed(language, arg(0), arg(1).toIntOrNull() ?: 0)
-        StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY -> when (language) {
-            AppLanguage.RUSSIAN -> "VPN на компьютере: готово"
-            AppLanguage.GERMAN -> "VPN auf diesem Computer: bereit"
-            AppLanguage.CHINESE -> "这台电脑上的 VPN：就绪"
-            AppLanguage.SPANISH -> "VPN en este equipo: lista"
-            AppLanguage.PORTUGUESE -> "VPN neste computador: pronta"
-            AppLanguage.FRENCH -> "VPN sur cet ordinateur : prêt"
-            else -> "Desktop VPN capability: ready"
-        }
-        StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR -> localizedDesktopVpnCapabilityError(language, arg(0))
+        StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY -> "Desktop VPN capability: ready"
+        StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->
+            "Desktop VPN capability: ${arg(0).ifBlank { "not ready" }}"
     }
 }
 
-private fun localizedLanguageSetStatus(language: AppLanguage, languageName: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Язык: ${languageName.ifBlank { "системный" }}"
-        AppLanguage.GERMAN -> "Sprache: ${languageName.ifBlank { "Systemstandard" }}"
-        AppLanguage.CHINESE -> "语言：${languageName.ifBlank { "系统默认" }}"
-        AppLanguage.SPANISH -> "Idioma: ${languageName.ifBlank { "predeterminado del sistema" }}"
-        AppLanguage.PORTUGUESE -> "Idioma: ${languageName.ifBlank { "padrão do sistema" }}"
-        AppLanguage.FRENCH -> "Langue : ${languageName.ifBlank { "valeur système" }}"
-        else -> "Language set to ${languageName.ifBlank { "system default" }}"
-    }
-}
-
-private fun localizedRefreshStatus(
-    language: AppLanguage,
+private fun englishRefreshStatus(
     policyName: String,
     intervalMinutes: Int?,
 ): String {
     val value = when {
-        policyName == SubscriptionRefreshPolicy.OFF.name -> localizedOff(language)
-        intervalMinutes != null -> formatLocalizedRefreshInterval(intervalMinutes, language, includeEvery = true)
-        policyName == SubscriptionRefreshPolicy.EVERY_HOUR.name -> formatLocalizedRefreshInterval(60, language, includeEvery = true)
-        else -> when (language) {
-            AppLanguage.RUSSIAN -> "свой интервал"
-            AppLanguage.GERMAN -> "benutzerdefiniertes Intervall"
-            AppLanguage.CHINESE -> "自定义间隔"
-            AppLanguage.SPANISH -> "intervalo personalizado"
-            AppLanguage.PORTUGUESE -> "intervalo personalizado"
-            AppLanguage.FRENCH -> "intervalle personnalisé"
-            else -> "custom interval"
-        }
+        policyName == SubscriptionRefreshPolicy.OFF.name -> "off"
+        intervalMinutes != null -> formatLocalizedRefreshInterval(intervalMinutes, AppLanguage.ENGLISH, includeEvery = true)
+        policyName == SubscriptionRefreshPolicy.EVERY_HOUR.name ->
+            formatLocalizedRefreshInterval(60, AppLanguage.ENGLISH, includeEvery = true)
+        else -> "custom interval"
     }
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Автообновление подписки: $value"
-        AppLanguage.GERMAN -> "Abo-Autoaktualisierung: $value"
-        AppLanguage.CHINESE -> "订阅自动刷新：$value"
-        AppLanguage.SPANISH -> "Actualización automática de suscripción: $value"
-        AppLanguage.PORTUGUESE -> "Atualização automática da assinatura: $value"
-        AppLanguage.FRENCH -> "Actualisation automatique de l'abonnement : $value"
-        else -> "Subscription auto-refresh set to $value"
-    }
+    return "Subscription auto-refresh set to $value"
 }
 
-private fun localizedValidationSettingsSaved(
-    language: AppLanguage,
-    primary: String,
-    secondary: String,
-    batchSize: String,
-    retryCount: String,
-): String {
-    val summary = when (language) {
-        AppLanguage.RUSSIAN -> "$primary • $secondary • группа $batchSize • повторные попытки $retryCount"
-        AppLanguage.GERMAN -> "$primary • $secondary • Gruppe $batchSize • Wiederholungen $retryCount"
-        AppLanguage.CHINESE -> "$primary • $secondary • 组大小 $batchSize • 重试 $retryCount"
-        AppLanguage.SPANISH -> "$primary • $secondary • lote $batchSize • reintentos $retryCount"
-        AppLanguage.PORTUGUESE -> "$primary • $secondary • lote $batchSize • tentativas $retryCount"
-        AppLanguage.FRENCH -> "$primary • $secondary • lot $batchSize • relances $retryCount"
-        else -> "$primary • $secondary • batch $batchSize • retries $retryCount"
-    }
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Настройки проверки сохранены: $summary"
-        AppLanguage.GERMAN -> "Testeinstellungen gespeichert: $summary"
-        AppLanguage.CHINESE -> "验证设置已保存：$summary"
-        AppLanguage.SPANISH -> "Ajustes de validación guardados: $summary"
-        AppLanguage.PORTUGUESE -> "Configurações de validação salvas: $summary"
-        AppLanguage.FRENCH -> "Paramètres de validation enregistrés : $summary"
-        else -> "Validation settings saved: $summary"
-    }
-}
-
-private fun localizedStartingConnection(
-    language: AppLanguage,
+private fun englishStartingConnection(
     mode: String,
     withBestLocation: Boolean,
 ): String {
     val isProxy = mode.isProxyMode()
-    return when (language) {
-        AppLanguage.RUSSIAN -> when {
-            withBestLocation && isProxy -> "Запуск локального прокси с лучшей локацией..."
-            withBestLocation -> "Запуск VPN с лучшей локацией..."
-            isProxy -> "Запуск локального прокси..."
-            else -> "Запуск VPN..."
-        }
-        AppLanguage.GERMAN -> when {
-            withBestLocation && isProxy -> "Lokaler Proxy mit bestem Standort wird gestartet..."
-            withBestLocation -> "VPN mit bestem Standort wird gestartet..."
-            isProxy -> "Lokaler Proxy wird gestartet..."
-            else -> "VPN wird gestartet..."
-        }
-        AppLanguage.CHINESE -> when {
-            withBestLocation && isProxy -> "正在用最佳节点启动本地代理..."
-            withBestLocation -> "正在用最佳节点启动 VPN..."
-            isProxy -> "正在启动本地代理..."
-            else -> "正在启动 VPN..."
-        }
-        AppLanguage.SPANISH -> when {
-            withBestLocation && isProxy -> "Iniciando proxy local con la mejor ubicación..."
-            withBestLocation -> "Iniciando VPN con la mejor ubicación..."
-            isProxy -> "Iniciando proxy local..."
-            else -> "Iniciando VPN..."
-        }
-        AppLanguage.PORTUGUESE -> when {
-            withBestLocation && isProxy -> "Iniciando proxy local com a melhor localização..."
-            withBestLocation -> "Iniciando VPN com a melhor localização..."
-            isProxy -> "Iniciando proxy local..."
-            else -> "Iniciando VPN..."
-        }
-        AppLanguage.FRENCH -> when {
-            withBestLocation && isProxy -> "Démarrage du proxy local avec le meilleur emplacement..."
-            withBestLocation -> "Démarrage du VPN avec le meilleur emplacement..."
-            isProxy -> "Démarrage du proxy local..."
-            else -> "Démarrage du VPN..."
-        }
-        else -> when {
-            withBestLocation && isProxy -> "Starting local proxy with the best location..."
-            withBestLocation -> "Starting VPN with the best location..."
-            isProxy -> "Starting local proxy..."
-            else -> "Starting VPN..."
-        }
-    }
-}
-
-private fun localizedConnectionStarted(language: AppLanguage, mode: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> if (mode.isProxyMode()) "Прокси запущен" else "VPN запущен"
-        AppLanguage.GERMAN -> if (mode.isProxyMode()) "Proxy gestartet" else "VPN gestartet"
-        AppLanguage.CHINESE -> if (mode.isProxyMode()) "代理已启动" else "VPN 已启动"
-        AppLanguage.SPANISH -> if (mode.isProxyMode()) "Proxy iniciado" else "VPN iniciada"
-        AppLanguage.PORTUGUESE -> if (mode.isProxyMode()) "Proxy iniciado" else "VPN iniciada"
-        AppLanguage.FRENCH -> if (mode.isProxyMode()) "Proxy démarré" else "VPN démarré"
-        else -> if (mode.isProxyMode()) "Proxy started" else "VPN started"
-    }
-}
-
-private fun localizedConnectionStopped(language: AppLanguage, mode: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> if (mode.isProxyMode()) "Прокси остановлен" else "VPN остановлен"
-        AppLanguage.GERMAN -> if (mode.isProxyMode()) "Proxy gestoppt" else "VPN gestoppt"
-        AppLanguage.CHINESE -> if (mode.isProxyMode()) "代理已停止" else "VPN 已停止"
-        AppLanguage.SPANISH -> if (mode.isProxyMode()) "Proxy detenido" else "VPN detenida"
-        AppLanguage.PORTUGUESE -> if (mode.isProxyMode()) "Proxy parado" else "VPN parada"
-        AppLanguage.FRENCH -> if (mode.isProxyMode()) "Proxy arrêté" else "VPN arrêté"
-        else -> if (mode.isProxyMode()) "Proxy stopped" else "VPN stopped"
-    }
-}
-
-private fun localizedConnectionReadyOnComputer(language: AppLanguage, mode: String): String {
-    val proxy = mode.isProxyMode()
-    return when (language) {
-        AppLanguage.RUSSIAN -> if (proxy) "Прокси на компьютере готов" else "VPN на компьютере готов"
-        AppLanguage.GERMAN -> if (proxy) "Proxy auf diesem Computer bereit" else "VPN auf diesem Computer bereit"
-        AppLanguage.CHINESE -> if (proxy) "这台电脑上的代理已就绪" else "这台电脑上的 VPN 已就绪"
-        AppLanguage.SPANISH -> if (proxy) "Proxy listo en este equipo" else "VPN lista en este equipo"
-        AppLanguage.PORTUGUESE -> if (proxy) "Proxy pronto neste computador" else "VPN pronta neste computador"
-        AppLanguage.FRENCH -> if (proxy) "Proxy prêt sur cet ordinateur" else "VPN prêt sur cet ordinateur"
-        else -> if (proxy) "Proxy ready on this computer" else "VPN ready on this computer"
-    }
-}
-
-private fun localizedRuntimeMode(language: AppLanguage, mode: String): String {
-    val value = localizedConnectionDisplay(language, mode)
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Текущий режим: $value"
-        AppLanguage.GERMAN -> "Aktiver Modus: $value"
-        AppLanguage.CHINESE -> "运行模式：$value"
-        AppLanguage.SPANISH -> "Modo actual: $value"
-        AppLanguage.PORTUGUESE -> "Modo atual: $value"
-        AppLanguage.FRENCH -> "Mode actuel : $value"
-        else -> "Runtime mode: $value"
-    }
-}
-
-private fun localizedLocalProxy(language: AppLanguage, address: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Локальный прокси: $address"
-        AppLanguage.GERMAN -> "Lokaler Proxy: $address"
-        AppLanguage.CHINESE -> "本地代理：$address"
-        AppLanguage.SPANISH -> "Proxy local: $address"
-        AppLanguage.PORTUGUESE -> "Proxy local: $address"
-        AppLanguage.FRENCH -> "Proxy local : $address"
-        else -> "Local proxy: $address"
-    }
-}
-
-private fun localizedRuntimeLog(language: AppLanguage, path: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Журнал работы: $path"
-        AppLanguage.GERMAN -> "Protokolldatei: $path"
-        AppLanguage.CHINESE -> "运行日志：$path"
-        AppLanguage.SPANISH -> "Registro de actividad: $path"
-        AppLanguage.PORTUGUESE -> "Registro de atividade: $path"
-        AppLanguage.FRENCH -> "Journal d'activité : $path"
-        else -> "Runtime log: $path"
-    }
-}
-
-private fun localizedPreflightPassed(language: AppLanguage, mode: String): String {
-    val value = localizedConnectionDisplay(language, mode)
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Проверка режима $value пройдена"
-        AppLanguage.GERMAN -> "Prüfung für $value-Modus bestanden"
-        AppLanguage.CHINESE -> "$value 模式检查已通过"
-        AppLanguage.SPANISH -> "Comprobación del modo $value superada"
-        AppLanguage.PORTUGUESE -> "Verificação do modo $value aprovada"
-        AppLanguage.FRENCH -> "Vérification du mode $value réussie"
-        else -> "$value mode preflight passed"
-    }
-}
-
-private fun localizedPreflightFailed(language: AppLanguage, mode: String, failedChecks: Int): String {
-    val value = localizedConnectionDisplay(language, mode)
-    val checks = when (language) {
-        AppLanguage.RUSSIAN -> "$failedChecks проверок"
-        AppLanguage.GERMAN -> "$failedChecks Prüfungen"
-        AppLanguage.CHINESE -> "$failedChecks 项检查"
-        AppLanguage.SPANISH -> "$failedChecks comprobaciones"
-        AppLanguage.PORTUGUESE -> "$failedChecks verificações"
-        AppLanguage.FRENCH -> "$failedChecks vérifications"
-        else -> "$failedChecks check${if (failedChecks == 1) "" else "s"}"
-    }
-    return when (language) {
-        AppLanguage.RUSSIAN -> "Проверка режима $value не пройдена: $checks"
-        AppLanguage.GERMAN -> "Prüfung für $value-Modus fehlgeschlagen: $checks"
-        AppLanguage.CHINESE -> "$value 模式检查失败：$checks"
-        AppLanguage.SPANISH -> "Comprobación del modo $value fallida: $checks"
-        AppLanguage.PORTUGUESE -> "Verificação do modo $value falhou: $checks"
-        AppLanguage.FRENCH -> "Vérification du mode $value échouée : $checks"
-        else -> "$value mode preflight failed: $checks"
-    }
-}
-
-private fun localizedDesktopVpnCapabilityError(language: AppLanguage, detail: String): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> "VPN на компьютере: ${detail.ifBlank { "не готово" }}"
-        AppLanguage.GERMAN -> "VPN auf diesem Computer: ${detail.ifBlank { "nicht bereit" }}"
-        AppLanguage.CHINESE -> "这台电脑上的 VPN：${detail.ifBlank { "未就绪" }}"
-        AppLanguage.SPANISH -> "VPN en este equipo: ${detail.ifBlank { "no lista" }}"
-        AppLanguage.PORTUGUESE -> "VPN neste computador: ${detail.ifBlank { "não pronta" }}"
-        AppLanguage.FRENCH -> "VPN sur cet ordinateur : ${detail.ifBlank { "pas prêt" }}"
-        else -> "Desktop VPN capability: ${detail.ifBlank { "not ready" }}"
-    }
-}
-
-private fun localizedConnectionDisplay(language: AppLanguage, mode: String): String {
-    val proxy = mode.isProxyMode()
     return when {
-        !proxy -> "VPN"
-        language == AppLanguage.CHINESE -> "代理"
-        else -> "Proxy"
+        withBestLocation && isProxy -> "Starting local proxy with the best location..."
+        withBestLocation -> "Starting VPN with the best location..."
+        isProxy -> "Starting local proxy..."
+        else -> "Starting VPN..."
     }
 }
 
-private fun localizedOff(language: AppLanguage): String {
-    return when (language) {
-        AppLanguage.RUSSIAN -> "выключено"
-        AppLanguage.GERMAN -> "aus"
-        AppLanguage.CHINESE -> "关闭"
-        AppLanguage.SPANISH -> "apagado"
-        AppLanguage.PORTUGUESE -> "desligado"
-        AppLanguage.FRENCH -> "désactivé"
-        else -> "off"
-    }
-}
+private fun englishConnectionDisplay(mode: String): String =
+    if (mode.isProxyMode()) "Proxy" else "VPN"
 
 private fun String.isProxyMode(): Boolean =
     equals("PROXY_ONLY", ignoreCase = true) ||
@@ -709,6 +444,12 @@ private fun localizedDynamicStatusMessage(language: AppLanguage, text: String): 
     val words = generatedStatusTranslations[language]?.dynamic ?: return null
     Regex("^Checking (\\d+) locations\\.\\.\\.$").matchEntire(text)?.let {
         return words.checkingLocations.replace("{count}", it.groupValues[1])
+    }
+    Regex("^Testing locations (\\d+)-(\\d+) of (\\d+)\\.\\.\\.$").matchEntire(text)?.let {
+        return words.testingLocationsRange
+            .replace("{start}", it.groupValues[1])
+            .replace("{end}", it.groupValues[2])
+            .replace("{total}", it.groupValues[3])
     }
 
     val testingSuffix = " Testing fastest candidates in batches..."
@@ -764,52 +505,26 @@ private fun formatLocalizedRefreshInterval(
     val normalizedMinutes = minutes.coerceAtLeast(1)
     val hours = normalizedMinutes / 60
     val remainingMinutes = normalizedMinutes % 60
-    fun baseLabel(): String = when (language) {
-        AppLanguage.RUSSIAN -> when {
-            normalizedMinutes < 60 -> "$normalizedMinutes мин"
-            remainingMinutes == 0 -> "$hours ч"
-            else -> "$hours ч $remainingMinutes мин"
-        }
-        AppLanguage.GERMAN -> when {
-            normalizedMinutes < 60 -> "$normalizedMinutes Min."
-            remainingMinutes == 0 -> "$hours Std."
-            else -> "$hours Std. $remainingMinutes Min."
-        }
-        AppLanguage.CHINESE -> when {
-            normalizedMinutes < 60 -> "$normalizedMinutes 分钟"
-            remainingMinutes == 0 -> "$hours 小时"
-            else -> "$hours 小时 $remainingMinutes 分钟"
-        }
-        AppLanguage.SPANISH,
-        AppLanguage.PORTUGUESE,
-        AppLanguage.FRENCH,
-        -> when {
-            normalizedMinutes < 60 -> "$normalizedMinutes min"
-            remainingMinutes == 0 -> "$hours h"
-            else -> "$hours h $remainingMinutes min"
-        }
-        else -> when {
-            normalizedMinutes < 60 -> "$normalizedMinutes minute" + if (normalizedMinutes == 1) "" else "s"
-            remainingMinutes == 0 -> "$hours hour" + if (hours == 1) "" else "s"
-            else -> "$hours h $remainingMinutes min"
-        }
+    val words = generatedStatusTranslations[language]?.dynamic
+        ?: generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic
+    fun template(value: String?, fallback: String): String = value ?: fallback
+    fun baseLabel(): String = when {
+        normalizedMinutes < 60 -> template(words?.refreshIntervalMinutes, "{count} min")
+            .replace("{count}", normalizedMinutes.toString())
+        remainingMinutes == 0 -> template(words?.refreshIntervalHours, "{count} h")
+            .replace("{count}", hours.toString())
+        else -> template(words?.refreshIntervalHoursMinutes, "{hours} h {minutes} min")
+            .replace("{hours}", hours.toString())
+            .replace("{minutes}", remainingMinutes.toString())
     }
     val label = baseLabel()
     return if (!includeEvery) {
         label
+    } else if (normalizedMinutes == 60) {
+        template(words?.refreshIntervalEveryHour, "every hour")
     } else {
-        when (language) {
-            AppLanguage.RUSSIAN -> when {
-                normalizedMinutes == 60 -> "каждый час"
-                else -> "каждые $label"
-            }
-            AppLanguage.GERMAN -> "alle $label"
-            AppLanguage.CHINESE -> "每 $label"
-            AppLanguage.SPANISH -> "cada $label"
-            AppLanguage.PORTUGUESE -> "a cada $label"
-            AppLanguage.FRENCH -> "toutes les $label"
-            else -> "every $label"
-        }
+        template(words?.refreshIntervalEvery, "every {interval}")
+            .replace("{interval}", label)
     }
 }
 
@@ -825,148 +540,18 @@ private fun String.displayHostForUi(): String {
     return host.removePrefix("www.").ifBlank { this }
 }
 
-private val russianStatusPatterns: List<Pair<Regex, (MatchResult) -> String>> = listOf(
-    Regex("^Language set to (.+)$") to { "Язык: ${it.groupValues[1]}" },
-    Regex("^Subscription auto-refresh set to (.+)$") to {
-        "Автообновление подписки: ${it.groupValues[1].toRussianStatusValue()}"
-    },
-    Regex("^Validation settings saved: (.+)$") to {
-        "Настройки проверки сохранены: ${it.groupValues[1].toRussianValidationSummary()}"
-    },
-    Regex("^Preparing (VPN|proxy)$") to { "Подготовка ${it.groupValues[1].toRussianConnectionNoun()}" },
-    Regex("^(VPN|Proxy) start cancelled$") to { "Запуск ${it.groupValues[1].toRussianConnectionDisplay()} отменен" },
-    Regex("^(VPN|Proxy) stop cancelled$") to { "Остановка ${it.groupValues[1].toRussianConnectionDisplay()} отменена" },
-    Regex("^Failed to stop (VPN|proxy)$") to { "Не удалось остановить ${it.groupValues[1].toRussianConnectionNoun()}" },
-    Regex("^Failed to start (VPN|proxy)$") to { "Не удалось запустить ${it.groupValues[1].toRussianConnectionNoun()}" },
-    Regex("^Could not prepare (VPN|proxy)$") to { "Не удалось подготовить ${it.groupValues[1].toRussianConnectionNoun()}" },
-    Regex("^Best location selected and (vpn|proxy) started: (.+)$") to {
-        "Выбрана лучшая локация, ${it.groupValues[1].toRussianConnectionNoun()} запущен: ${it.groupValues[2]}"
-    },
-    Regex("^Selected location set: (.+)$") to { "Выбрана локация: ${it.groupValues[1]}" },
-    Regex("^Selected location unchanged: (.+)$") to { "Выбранная локация не изменилась: ${it.groupValues[1]}" },
-    Regex("^Selected location removed: (.+)$") to { "Выбранная локация удалена: ${it.groupValues[1]}" },
-    Regex("^Selected location removed\\. (VPN|Proxy) stopped: (.+)$") to {
-        "Выбранная локация удалена. ${it.groupValues[1].toRussianConnectionDisplay()} остановлен: ${it.groupValues[2]}"
-    },
-    Regex("^Location added: (.+)$") to { "Локация добавлена: ${it.groupValues[1]}" },
-    Regex("^Location updated: (.+)$") to { "Локация обновлена: ${it.groupValues[1]}" },
-    Regex("^Location updated and merged: (.+)$") to { "Локация обновлена и объединена: ${it.groupValues[1]}" },
-    Regex("^Location removed: (.+)$") to { "Локация удалена: ${it.groupValues[1]}" },
-    Regex("^Location already saved: (.+)$") to { "Локация уже сохранена: ${it.groupValues[1]}" },
-    Regex("^Locations imported\\. Selected location is no longer available, (vpn|proxy) stopped$") to {
-        "Локации импортированы. Выбранная локация больше недоступна, ${it.groupValues[1].toRussianConnectionNoun()} остановлен"
-    },
-    Regex("^Routing rules saved\\. Restart (VPN|proxy) to apply$") to {
-        "Правила маршрутизации сохранены. Перезапустите ${it.groupValues[1].toRussianConnectionNoun()}, чтобы применить"
-    },
-    Regex("^Routing rules imported\\. Restart (VPN|proxy) to apply$") to {
-        "Правила маршрутизации импортированы. Перезапустите ${it.groupValues[1].toRussianConnectionNoun()}, чтобы применить"
-    },
-    Regex("^Subscriptions refreshed: (\\d+)/(\\d+)$") to {
-        "Подписки обновлены: ${it.groupValues[1]}/${it.groupValues[2]}"
-    },
-    Regex("^Subscriptions refreshed: (\\d+)/(\\d+)\\. Failed: (.+)$") to {
-        "Подписки обновлены: ${it.groupValues[1]}/${it.groupValues[2]}. Ошибки: ${it.groupValues[3]}"
-    },
-    Regex("^(\\d+) locations refreshed$") to { "Локаций обновлено: ${it.groupValues[1]}" },
-    Regex("^Refreshing (.+)\\.\\.\\.$") to { "Обновление ${it.groupValues[1]}..." },
-    Regex("^Restoring VPN: (.+)\\.\\.\\.$") to { "Восстановление VPN: ${it.groupValues[1]}..." },
-    Regex("^VPN started on (.+)$") to { "VPN запущен на ${it.groupValues[1]}" },
-    Regex("^Proxy started on (.+)$") to { "Прокси запущен на ${it.groupValues[1]}" },
-    Regex("^(VPN|Proxy) stopped\\. Will reconnect on next launch\\.$") to {
-        "${it.groupValues[1].toRussianConnectionDisplay()} остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    Regex("^(VPN|Proxy) stopped\\. App mode: (.+)$") to {
-        "${it.groupValues[1].toRussianConnectionDisplay()} остановлен. Режим приложения: ${it.groupValues[2]}"
-    },
-    Regex("^(VPN|Proxy) stopped\\. Refreshed subscriptions removed the selected location\\.$") to {
-        "${it.groupValues[1].toRussianConnectionDisplay()} остановлен. Обновленные подписки удалили выбранную локацию."
-    },
-    Regex("^Failed to stop (VPN|Proxy) before exit$") to {
-        "Не удалось остановить ${it.groupValues[1].toRussianConnectionDisplay()} перед выходом"
-    },
-    Regex("^Failed to start (VPN|Proxy)$") to { "Не удалось запустить ${it.groupValues[1].toRussianConnectionDisplay()}" },
-    Regex("^Failed to select location$") to { "Не удалось выбрать локацию" },
-    Regex("^Failed to save selected location$") to { "Не удалось сохранить выбранную локацию" },
-    Regex("^Failed to apply selected location$") to { "Не удалось применить выбранную локацию" },
-    Regex("^Selected location applied, but failed to save it$") to {
-        "Выбранная локация применена, но сохранить ее не удалось"
-    },
-    Regex("^Failed to load apps$") to { "Не удалось загрузить приложения" },
-    Regex("^Failed to refresh subscriptions$") to { "Не удалось обновить подписки" },
-    Regex("^Failed to refresh the active subscription$") to { "Не удалось обновить активную подписку" },
-    Regex("^Failed to import routing rules$") to { "Не удалось импортировать правила маршрутизации" },
-    Regex("^Failed to save routing rules$") to { "Не удалось сохранить правила маршрутизации" },
-    Regex("^Failed to import locations$") to { "Не удалось импортировать локации" },
-    Regex("^Failed to open locations file$") to { "Не удалось открыть файл локаций" },
-    Regex("^Failed to read locations file$") to { "Не удалось прочитать файл локаций" },
-    Regex("^Failed to open routing rules file$") to { "Не удалось открыть файл правил маршрутизации" },
-    Regex("^Clipboard read failed$") to { "Не удалось прочитать буфер обмена" },
-    Regex("^No locations to export$") to { "Нет локаций для экспорта" },
-    Regex("^Locations exported to (.+)$") to { "Локации экспортированы в ${it.groupValues[1]}" },
-    Regex("^Routing rules exported to (.+)$") to { "Правила маршрутизации экспортированы в ${it.groupValues[1]}" },
-    Regex("^Diagnostics exported to (.+)$") to { "Диагностика экспортирована в ${it.groupValues[1]}" },
-    Regex("^Activated (.+)$") to { "Активировано: ${it.groupValues[1]}" },
-    Regex("^Added (.+)$") to { "Добавлено: ${it.groupValues[1]}" },
-    Regex("^Deleted (.+)$") to { "Удалено: ${it.groupValues[1]}" },
-    Regex("^Edited location #(\\d+)$") to { "Локация #${it.groupValues[1]} отредактирована" },
-    Regex("^Selected (.+)$") to { "Выбрано: ${it.groupValues[1]}" },
-    Regex("^App mode: (.+)$") to { "Режим приложения: ${it.groupValues[1]}" },
-)
-
-private fun String.toRussianStatusMessage(): String {
-    generatedStatusTranslations[AppLanguage.RUSSIAN]?.legacyExact?.get(this)?.let { return it }
-    russianStatusPatterns.forEach { (regex, formatter) ->
-        regex.matchEntire(this)?.let { return formatter(it) }
-    }
-    return toRussianValidationSummary()
-}
-
-private fun String.toRussianValidationSummary(): String {
-    return replace(" • batch ", " • группа ")
-        .replace(" • retries ", " • повторные попытки ")
-}
-
-private fun String.toRussianStatusValue(): String {
-    return when (lowercase()) {
-        "off" -> "выключено"
-        "every hour" -> "каждый час"
-        "custom interval" -> "свой интервал"
-        "all subscriptions" -> "все подписки"
-        "selected subscription" -> "выбранная подписка"
-        else -> replace("custom interval", "свой интервал")
-            .replace("every hour", "каждый час")
-            .replace("off", "выключено")
-            .replaceEnglishRefreshIntervals(AppLanguage.RUSSIAN)
-    }
-}
-
-private fun String.toRussianConnectionNoun(): String {
-    return when (lowercase()) {
-        "proxy" -> "прокси"
-        else -> "VPN"
-    }
-}
-
-private fun String.toRussianConnectionDisplay(): String {
-    return when (lowercase()) {
-        "proxy" -> "Прокси"
-        else -> "VPN"
-    }
-}
-
-private fun String.toTranslatedStatusMessage(language: AppLanguage): String {
-    val replacements = generatedStatusTranslations[language]?.legacyReplacements ?: return this
-    val translated = replacements.fold(this) { current, (source, target) ->
-        current.replace(source, target)
-    }
-    return translated.replaceEnglishRefreshIntervals(language)
-}
-
-private fun String.replaceEnglishRefreshIntervals(language: AppLanguage): String {
+internal fun String.replaceEnglishRefreshIntervals(language: AppLanguage): String {
     return Regex("\\bevery (\\d+) h (\\d+) min\\b").replace(this) { match ->
         val minutes = match.groupValues[1].toInt() * 60 + match.groupValues[2].toInt()
         formatLocalizedRefreshInterval(minutes, language, includeEvery = true)
+    }.let { text ->
+        Regex("\\bevery (\\d+) min\\b").replace(text) { match ->
+            formatLocalizedRefreshInterval(match.groupValues[1].toInt(), language, includeEvery = true)
+        }
+    }.let { text ->
+        Regex("\\bevery (\\d+) h\\b").replace(text) { match ->
+            formatLocalizedRefreshInterval(match.groupValues[1].toInt() * 60, language, includeEvery = true)
+        }
     }.let { text ->
         Regex("\\bevery (\\d+) minutes?\\b").replace(text) { match ->
             formatLocalizedRefreshInterval(match.groupValues[1].toInt(), language, includeEvery = true)

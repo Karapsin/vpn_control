@@ -147,6 +147,21 @@ Android diagnostics are exported from inside the app.
 - Windows packaging/runtime changes: run `scripts/package_windows_desktop_vm.sh` when practical.
 - If tests cannot be run, state exactly which tests were skipped and why.
 
+## Localization Rules
+
+- Keep user-facing translations in JSON catalogs, not in Kotlin source.
+- UI labels live in `shared/ui/src/commonMain/resources/i18n/<lang>.json`.
+- Status/log/freeform message translations live in `shared/ui/src/commonMain/resources/i18n-status/<lang>.json`.
+- `AppStrings.kt` should only choose keys, parse known message shapes, substitute placeholders, and generate English source messages for status catalogs.
+- Do not add `when (AppLanguage...)` branches with translated UI/status text in Kotlin. Add a JSON key, dynamic status template, exact status entry, or replacement entry instead.
+- For dynamic status strings, add placeholder templates under the `dynamic` section and keep placeholder names identical across all status catalogs.
+- For freeform or legacy runtime messages, prefer `legacyExact` for complete messages and `legacyReplacements` for stable prefixes/fragments.
+- Preserve technical commands, file paths, URLs, capability names, and protocol identifiers when translating. Example: keep `/dev/net/tun`, `sudo modprobe tun`, `CAP_NET_ADMIN`, `netsh.exe`, and `sing-box` recognizable.
+- Add every new language to `shared/model/src/commonMain/resources/languages.json`, then add matching files in both `i18n/` and `i18n-status/`.
+- Language choices in the UI should remain sorted alphabetically by visible display name, with `System` pinned first.
+- Run `./scripts/check_localization.py --language <code>` for changed languages and `./gradlew :shared:ui:desktopTest` after localization changes.
+- Add or update regression tests in `shared/ui/src/commonTest/kotlin/com/kardinal/vpncontrol/shared/ui/AppStringsCoverageTest.kt` when fixing untranslated screenshots or new status patterns.
+
 ## Behavior Requirements To Preserve
 
 - No default subscriptions should be added automatically.

@@ -3,7 +3,13 @@
     "findingSubscription": "正在从订阅中寻找最佳节点...",
     "findingSaved": "正在从已保存节点中寻找最佳节点...",
     "testingFastestCandidates": "正在分批测试最快候选节点...",
-    "checkingLocations": "正在检查 {count} 个节点..."
+    "checkingLocations": "正在检查 {count} 个节点...",
+    "testingLocationsRange": "正在测试第 {start}-{end} 个位置，共 {total} 个...",
+    "refreshIntervalMinutes": "{count} 分钟",
+    "refreshIntervalHours": "{count} 小时",
+    "refreshIntervalHoursMinutes": "{hours} 小时 {minutes} 分钟",
+    "refreshIntervalEvery": "每 {interval}",
+    "refreshIntervalEveryHour": "每小时"
   },
   "benchmark": {
     "best": "最佳节点：",
@@ -441,7 +447,16 @@
       "target": "Windows 路由/DNS 工具不可用。VPN 模式需要 netsh.exe 和 DNS client PowerShell cmdlets。"
     }
   ],
-  "legacyExact": [],
+  "legacyExact": [
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "配置来源：订阅"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "配置来源：已保存位置"
+    }
+  ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",

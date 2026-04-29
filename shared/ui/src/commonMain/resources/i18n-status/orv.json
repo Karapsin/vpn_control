@@ -3,7 +3,13 @@
     "findingSubscription": "Поискъ лучшего места изъ грамоты...",
     "findingSaved": "Поискъ лучшей сохраненной места...",
     "testingFastestCandidates": "Проверка самыхъ быстрыхъ кандидатовъ по группамъ...",
-    "checkingLocations": "Проверка местъ: {count}..."
+    "checkingLocations": "Проверка местъ: {count}...",
+    "testingLocationsRange": "Проверка местъ {start}-{end} изъ {total}...",
+    "refreshIntervalMinutes": "{count} минъ",
+    "refreshIntervalHours": "{count} ч",
+    "refreshIntervalHoursMinutes": "{hours} ч {minutes} минъ",
+    "refreshIntervalEvery": "каждые {interval}",
+    "refreshIntervalEveryHour": "каждый часъ"
   },
   "benchmark": {
     "best": "Лучшая место: ",
@@ -58,11 +64,11 @@
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "ссылка внесения sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Нечитаемая ссылка внесения sing-box"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
@@ -70,7 +76,7 @@
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведетъ к корректному URL https://."
+      "target": "Используйте ссылку внесения sing-box, которая ведетъ к корректному URL https://."
     },
     {
       "source": "Fetches remote content from the embedded URL",
@@ -82,35 +88,35 @@
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Ссылку внесения не удалось разобрать"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL грамоты."
+      "target": "Вставьте корректную ссылку внесения remote-profile sing-box или прямой URL грамоты."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "ссылка внесения тайной сѣти"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Нечитаемая ссылка внесения тайной сѣти"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импортъ провайдера"
+      "target": "Неподдерживаемое внесение провайдера"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL грамоты или добавьте места вручную."
+      "target": "Amnezia и иные внесения vpn:// не поддерживаются. Используйте обычный URL грамоты или добавьте места вручную."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Данные внесения не удалось разобрать"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL грамоты или добавьте места вручную."
+      "target": "Внесения vpn:// не поддерживаются. Используйте обычный URL грамоты или добавьте места вручную."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
@@ -118,7 +124,7 @@
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источникъ долженъ быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Удаленный источникъ долженъ быть URL https:// или поддерживаемой ссылкой внесения"
     },
     {
       "source": "Remote source is empty",
@@ -130,7 +136,7 @@
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этотъ импортъ sing-box ведетъ к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Сие внесение sing-box ведетъ к некорректному или не-HTTPS URL. Используйте корректный URL https://."
     },
     {
       "source": "Applying selected location...",
@@ -166,7 +172,7 @@
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Не удалось открыть место изнесения"
     },
     {
       "source": "Could not open selected file",
@@ -178,7 +184,7 @@
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файлъ правилъ"
+      "target": "Не удалось открыть выбранный файлъ устава"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
@@ -194,15 +200,15 @@
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готовъ"
+      "target": "Тайная сѣть на компьютере готова"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готовъ"
+      "target": "Посредникъ на компьютере готовъ"
     },
     {
       "source": "Export Locations",
-      "target": "Экспортъ местъ"
+      "target": "Изнесение местъ"
     },
     {
       "source": "Failed to apply updated selected location",
@@ -210,15 +216,15 @@
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Не удалось изнести диагностику"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать места"
+      "target": "Не удалось изнести места"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Не удалось изнести уставъ путей"
     },
     {
       "source": "Failed to find a replacement location",
@@ -226,7 +232,7 @@
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файлъ"
+      "target": "Не удалось внести файлъ"
     },
     {
       "source": "Failed to open diagnostics destination",
@@ -242,7 +248,7 @@
     },
     {
       "source": "Import canceled",
-      "target": "Импортъ отмененъ"
+      "target": "Внесение отменено"
     },
     {
       "source": "Invalid subscription URL",
@@ -274,11 +280,11 @@
     },
     {
       "source": "Locations exported",
-      "target": "Места экспортированы"
+      "target": "Места изнесены"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импортъ местъ отмененъ"
+      "target": "Внесение местъ отменено"
     },
     {
       "source": "No locations available for benchmarking",
@@ -302,7 +308,7 @@
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будетъ восстановлена"
+      "target": "Предыдущая сессия тайной сѣти будетъ восстановлена"
     },
     {
       "source": "QR scan canceled",
@@ -310,15 +316,15 @@
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Уставъ путей изнесенъ"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импортъ правилъ маршрутизации отмененъ"
+      "target": "Внесение устава путей отменено"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Уставъ путей сохраненъ"
     },
     {
       "source": "Session stats enabled",
@@ -330,7 +336,7 @@
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текстъ не является поддерживаемымъ импортомъ"
+      "target": "Отправленный текстъ не является поддерживаемымъ внесениемъ"
     },
     {
       "source": "Subscription deleted",
@@ -338,7 +344,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление грамоты завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-место оставлена какъ резервная."
+      "target": "Обновление грамоты завершено, но для фонового переключения требуется разрешение тайной сѣти. Предыдущее место тайной сѣти оставлено какъ запасное."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -349,12 +355,24 @@
       "target": "Обновление грамоты завершено. "
     },
     {
+      "source": "Language set to ",
+      "target": "Языкъ: "
+    },
+    {
+      "source": "Runtime mode: VPN",
+      "target": "Текущий режимъ: тайная сѣть"
+    },
+    {
+      "source": "Runtime mode: Proxy",
+      "target": "Текущий режимъ: посредникъ"
+    },
+    {
       "source": "Runtime mode: ",
       "target": "Текущий режимъ: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Местный посредникъ: "
     },
     {
       "source": "Runtime log: ",
@@ -362,43 +380,43 @@
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "Проверка тайной сѣти пройдена"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Проверка режима одного посредника пройдена"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "Проверка тайной сѣти не пройдена: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Проверка режима одного посредника не пройдена: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режимъ VPN недоступенъ: "
+      "target": "Тайная сѣть недоступна: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режимъ только прокси недоступенъ: "
+      "target": "Режимъ одного посредника недоступенъ: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Тайная сѣть на компьютере: готова"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Тайная сѣть на компьютере: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режимъ VPN доступенъ"
+      "target": "Тайная сѣть доступна"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режимъ прокси доступенъ"
+      "target": "Режимъ посредника доступенъ"
     },
     {
       "source": "not ready",
@@ -414,7 +432,7 @@
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "Ошибка сѣтевого хода: "
     },
     {
       "source": "fail network privileges: ",
@@ -422,11 +440,11 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментовъ маршрутизации/DNS: "
+      "target": "Ошибка орудий путей/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "сѣтевой ходъ"
     },
     {
       "source": "network privileges",
@@ -434,19 +452,19 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "орудия путей/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствуетъ в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Сѣтевой ходъ Linux отсутствуетъ в /dev/net/tun. Попробуйте: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нуженъ CAP_NET_ADMIN. Запустите отъ root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Тайной сѣти на компьютере нуженъ CAP_NET_ADMIN. Запустите отъ root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Орудия путей/DNS Windows недоступны. Тайной сѣти нужны netsh.exe и команды PowerShell для DNS Client."
     }
   ],
   "legacyExact": [
@@ -456,35 +474,35 @@
     },
     {
       "source": "VPN started",
-      "target": "VPN запущенъ"
+      "target": "Тайная сѣть запущена"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановленъ"
+      "target": "Тайная сѣть остановлена"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущенъ"
+      "target": "Посредникъ запущенъ"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановленъ"
+      "target": "Посредникъ остановленъ"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запускъ VPN..."
+      "target": "Запускъ тайной сѣти..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запускъ локального прокси..."
+      "target": "Запускъ местного посредника..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запускъ VPN с лучшей локацией..."
+      "target": "Запускъ тайной сѣти с лучшимъ местомъ..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запускъ локального прокси с лучшей локацией..."
+      "target": "Запускъ местного посредника с лучшимъ местомъ..."
     },
     {
       "source": "Finding the best location from the subscription...",
@@ -504,7 +522,7 @@
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Разрешите тайную сѣть и попробуйте снова"
     },
     {
       "source": "Set a remote source first",
@@ -576,11 +594,11 @@
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режимъ подключения: VPN"
+      "target": "Режимъ подключения: тайная сѣть"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режимъ подключения: только прокси"
+      "target": "Режимъ подключения: одинъ посредникъ"
     },
     {
       "source": "Disconnect first to change connection mode",
@@ -612,23 +630,23 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Уставъ путей сохраненъ"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Уставъ путей внесенъ"
     },
     {
       "source": "Locations imported",
-      "target": "Места импортированы"
+      "target": "Места внесены"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Места импортированы. Выбранное место больше недоступна"
+      "target": "Места внесены. Выбранное место больше недоступно"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные места, чтобы импортировать места"
+      "target": "Переключитесь на сохраненные места, чтобы внести места"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
@@ -644,23 +662,23 @@
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспортъ диагностики открытъ"
+      "target": "Изнесение диагностики открыто"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспортъ диагностики не удался"
+      "target": "Изнесение диагностики не удалось"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспортъ диагностики отмененъ"
+      "target": "Изнесение диагностики отменено"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-место больше недоступна"
+      "target": "Предыдущее место тайной сѣти больше недоступно"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN былъ выключенъ."
+      "target": "Приложение закрыто. Тайная сѣть была выключена."
     },
     {
       "source": "Activated all subscriptions",
@@ -680,16 +698,101 @@
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспортъ местъ отмененъ"
+      "target": "Изнесение местъ отменено"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буферъ обмена"
+      "target": "Уставъ путей скопированъ в буферъ обмена"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспортъ правилъ маршрутизации отмененъ"
+      "target": "Изнесение устава путей отменено"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Источникъ личины: грамота"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Источникъ личины: сохраненные места"
     }
   ],
-  "legacyReplacements": []
+  "legacyReplacements": [
+    {
+      "source": "VPN started on ",
+      "target": "Тайная сѣть запущена на "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Посредникъ запущенъ на "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Восстановление тайной сѣти: "
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "Тайная сѣть остановлена. Будетъ восстановлена при следующемъ запуске."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Посредникъ остановленъ. Будетъ восстановленъ при следующемъ запуске."
+    },
+    {
+      "source": " locations refreshed",
+      "target": " местъ обновлено"
+    },
+    {
+      "source": " location refreshed",
+      "target": " место обновлено"
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Грамоты обновлены: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Ошибки: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Автообновление грамоты: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Уставъ проверки сохраненъ: "
+    },
+    {
+      "source": " • batch ",
+      "target": " • группа "
+    },
+    {
+      "source": " • retries ",
+      "target": " • повторные попытки "
+    },
+    {
+      "source": "off",
+      "target": "выключено"
+    },
+    {
+      "source": "custom interval",
+      "target": "свой срокъ"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "все грамоты"
+    },
+    {
+      "source": "selected subscription",
+      "target": "выбранная грамота"
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "Тайная сѣть остановлена. Режимъ приложения: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Посредникъ остановленъ. Режимъ приложения: "
+    }
+  ]
 }

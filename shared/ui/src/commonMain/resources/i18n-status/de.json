@@ -3,7 +3,13 @@
     "findingSubscription": "Bester Standort aus dem Abo wird gesucht...",
     "findingSaved": "Bester gespeicherter Standort wird gesucht...",
     "testingFastestCandidates": "Schnellste Kandidaten werden gruppenweise geprüft...",
-    "checkingLocations": "Prüfe {count} Standorte..."
+    "checkingLocations": "Prüfe {count} Standorte...",
+    "testingLocationsRange": "Standorte {start}-{end} von {total} werden getestet...",
+    "refreshIntervalMinutes": "{count} Min.",
+    "refreshIntervalHours": "{count} Std.",
+    "refreshIntervalHoursMinutes": "{hours} Std. {minutes} Min.",
+    "refreshIntervalEvery": "alle {interval}",
+    "refreshIntervalEveryHour": "jede Stunde"
   },
   "benchmark": {
     "best": "Bester Standort: ",
@@ -441,7 +447,16 @@
       "target": "Windows-Routing-/DNS-Werkzeuge sind nicht verfügbar. VPN-Modus benötigt netsh.exe und DNS-Client-PowerShell-Cmdlets."
     }
   ],
-  "legacyExact": [],
+  "legacyExact": [
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profilquelle: Abo"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profilquelle: gespeicherte Standorte"
+    }
+  ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",

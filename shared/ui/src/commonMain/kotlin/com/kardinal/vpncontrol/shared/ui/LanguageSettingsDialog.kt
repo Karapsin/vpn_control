@@ -30,6 +30,7 @@ fun LanguageSettingsDialog(
     onDismiss: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
+    val displayLanguages = sortedLanguageOptions(strings, systemLanguageCode)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(strings.get(UiText.SETTINGS_LANGUAGE_DIALOG_TITLE), color = Color.White) },
@@ -48,7 +49,7 @@ fun LanguageSettingsDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = 8.dp),
                 ) {
-                    AppLanguage.selectable.forEach { language ->
+                    displayLanguages.forEach { language ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -87,4 +88,14 @@ fun LanguageSettingsDialog(
             }
         },
     )
+}
+
+internal fun sortedLanguageOptions(
+    strings: AppStrings,
+    systemLanguageCode: String?,
+): List<AppLanguage> {
+    val sortedLanguages = AppLanguage.selectable
+        .filterNot { it == AppLanguage.SYSTEM }
+        .sortedBy { strings.languageDisplayName(it, systemLanguageCode).lowercase() }
+    return listOf(AppLanguage.SYSTEM) + sortedLanguages
 }

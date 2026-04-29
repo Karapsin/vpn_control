@@ -3,7 +3,13 @@
     "findingSubscription": "Поиск лучшей локации из подписки...",
     "findingSaved": "Поиск лучшей сохраненной локации...",
     "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}..."
+    "checkingLocations": "Проверка локаций: {count}...",
+    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
+    "refreshIntervalMinutes": "{count} мин",
+    "refreshIntervalHours": "{count} ч",
+    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
+    "refreshIntervalEvery": "каждые {interval}",
+    "refreshIntervalEveryHour": "каждый час"
   },
   "benchmark": {
     "best": "Лучшая локация: ",
@@ -689,7 +695,84 @@
     {
       "source": "Routing rules export canceled",
       "target": "Экспорт правил маршрутизации отменен"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Источник профиля: подписка"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Источник профиля: сохранённые локации"
     }
   ],
-  "legacyReplacements": []
+  "legacyReplacements": [
+    {
+      "source": " locations refreshed",
+      "target": " локаций обновлено"
+    },
+    {
+      "source": " location refreshed",
+      "target": " локация обновлена"
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Автообновление подписки: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Настройки проверки сохранены: "
+    },
+    {
+      "source": " • batch ",
+      "target": " • группа "
+    },
+    {
+      "source": " • retries ",
+      "target": " • повторные попытки "
+    },
+    {
+      "source": "off",
+      "target": "выключено"
+    },
+    {
+      "source": "custom interval",
+      "target": "свой интервал"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "все подписки"
+    },
+    {
+      "source": "selected subscription",
+      "target": "выбранная подписка"
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN остановлен. Режим приложения: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Прокси остановлен. Режим приложения: "
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN запущен на "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Прокси запущен на "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Восстановление VPN: "
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
+    }
+  ]
 }

@@ -1,14 +1,20 @@
 {
   "dynamic": {
     "findingSubscription": "Поиск передового узла связи из сводки...",
-    "findingSaved": "Поиск передовой сохраненной узлы связи...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка узлов связи: {count}..."
+    "findingSaved": "Поиск передового учтённого узла связи...",
+    "testingFastestCandidates": "Проверка ударных кандидатов по бригадам...",
+    "checkingLocations": "Проверка узлов связи: {count}...",
+    "testingLocationsRange": "Проверка узлов связи {start}-{end} из {total}...",
+    "refreshIntervalMinutes": "{count} мин",
+    "refreshIntervalHours": "{count} ч",
+    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
+    "refreshIntervalEvery": "каждые {interval}",
+    "refreshIntervalEveryHour": "каждый час"
   },
   "benchmark": {
     "best": "Передовой узел связи: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
+    "primary": "основная проверка: ",
+    "secondary": "резервная проверка: ",
     "tcp": "TCP: ",
     "millisUnit": "мс",
     "statuses": {
@@ -58,11 +64,11 @@
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "ссылка приёма sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Нечитаемая ссылка приёма sing-box"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
@@ -70,7 +76,7 @@
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Используйте ссылку приёма sing-box, которая ведёт к корректному URL https://."
     },
     {
       "source": "Fetches remote content from the embedded URL",
@@ -82,35 +88,35 @@
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Ссылку приёма не удалось разобрать"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL сводки."
+      "target": "Вставьте корректную ссылку приёма remote-profile sing-box или прямой URL сводки."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "ссылка приёма спецканала"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Нечитаемая ссылка приёма спецканала"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Неподдерживаемый приём провайдера"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL сводки или добавьте узлы связи вручную."
+      "target": "Amnezia и другие приёмы vpn:// не поддерживаются. Используйте обычный URL сводки или добавьте узлы связи вручную."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Данные приёма не удалось декодировать"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL сводки или добавьте узлы связи вручную."
+      "target": "Приёмы vpn:// не поддерживаются. Используйте обычный URL сводки или добавьте узлы связи вручную."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
@@ -118,7 +124,7 @@
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Удалённый источник должен быть URL https:// или поддерживаемой ссылкой приёма"
     },
     {
       "source": "Remote source is empty",
@@ -130,15 +136,15 @@
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Этот приём sing-box ведёт к некорректному или не-HTTPS URL. Используйте корректный URL https://."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной узлы связи..."
+      "target": "Ввод выбранного узла связи в строй..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной узлы связи..."
+      "target": "Ввод обновлённого выбранного узла связи в строй..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
@@ -166,7 +172,7 @@
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Не удалось открыть место выдачи"
     },
     {
       "source": "Could not open selected file",
@@ -194,15 +200,15 @@
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
+      "target": "Спецканал на компьютере готов"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Ретранслятор на компьютере готов"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт узлов связи"
+      "target": "Выдача узлов связи"
     },
     {
       "source": "Failed to apply updated selected location",
@@ -210,15 +216,15 @@
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Не удалось выдать диагностику"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать узлы связи"
+      "target": "Не удалось выдать узлы связи"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать регламент маршрутизации"
+      "target": "Не удалось выдать постановления связи"
     },
     {
       "source": "Failed to find a replacement location",
@@ -226,7 +232,7 @@
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Не удалось принять файл"
     },
     {
       "source": "Failed to open diagnostics destination",
@@ -242,7 +248,7 @@
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Приём отменён"
     },
     {
       "source": "Invalid subscription URL",
@@ -266,19 +272,19 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка узлы связи отменена"
+      "target": "Проверка узла связи отменена"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка узлы связи не удалась"
+      "target": "Проверка узла связи не удалась"
     },
     {
       "source": "Locations exported",
-      "target": "Узлы связи экспортированы"
+      "target": "Узлы связи выданы"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт узлов связи отменен"
+      "target": "Приём узлов связи отменён"
     },
     {
       "source": "No locations available for benchmarking",
@@ -302,7 +308,7 @@
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Предыдущая смена спецканала будет восстановлена"
     },
     {
       "source": "QR scan canceled",
@@ -310,27 +316,27 @@
     },
     {
       "source": "Routing rules exported",
-      "target": "Регламент маршрутизации экспортированы"
+      "target": "Постановления связи выданы"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт регламента маршрутизации отменен"
+      "target": "Приём постановлений связи отменён"
     },
     {
       "source": "Saved routing rules",
-      "target": "Регламент маршрутизации сохранены"
+      "target": "Постановления связи утверждены"
     },
     {
       "source": "Session stats enabled",
-      "target": "Отчётность сессии включена"
+      "target": "Отчётность смены включена"
     },
     {
       "source": "Session stats hidden",
-      "target": "Отчётность сессии скрыта"
+      "target": "Отчётность смены скрыта"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Отправленный текст не является поддерживаемым приёмом"
     },
     {
       "source": "Subscription deleted",
@@ -338,7 +344,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление сводки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-узел связи оставлена как резервная."
+      "target": "Обновление сводки завершено, но для фонового переключения требуется разрешение спецканала. Предыдущий узел спецканала оставлен резервным."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -349,12 +355,24 @@
       "target": "Обновление сводки завершено. "
     },
     {
+      "source": "Language set to ",
+      "target": "Язык товарища: "
+    },
+    {
+      "source": "Runtime mode: VPN",
+      "target": "Текущий режим: спецканал"
+    },
+    {
+      "source": "Runtime mode: Proxy",
+      "target": "Текущий режим: ретранслятор"
+    },
+    {
       "source": "Runtime mode: ",
       "target": "Текущий режим: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Локальный ретранслятор: "
     },
     {
       "source": "Runtime log: ",
@@ -362,43 +380,43 @@
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "Проверка спецканала пройдена"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Проверка режима одного ретранслятора пройдена"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "Проверка спецканала не пройдена: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Проверка режима одного ретранслятора не пройдена: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "Спецканал недоступен: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Режим одного ретранслятора недоступен: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Спецканал на компьютере: готов"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Спецканал на компьютере: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "Спецканал доступен"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Режим ретранслятора доступен"
     },
     {
       "source": "not ready",
@@ -414,7 +432,7 @@
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "Ошибка магистрали: "
     },
     {
       "source": "fail network privileges: ",
@@ -422,11 +440,11 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "Ошибка инструментов связи/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "магистраль"
     },
     {
       "source": "network privileges",
@@ -434,19 +452,19 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "инструменты связи/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Магистраль Linux отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Спецканалу на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные полномочия: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Инструменты связи/DNS Windows недоступны. Спецканалу нужны netsh.exe и команды PowerShell для DNS Client."
     }
   ],
   "legacyExact": [
@@ -456,35 +474,35 @@
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "Спецканал введён в строй"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "Спецканал остановлен"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Ретранслятор введён в строй"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Ретранслятор остановлен"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "Ввод спецканала в строй..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Ввод локального ретранслятора в строй..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с передовой локацией..."
+      "target": "Ввод спецканала с передовым узлом связи..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с передовой локацией..."
+      "target": "Ввод локального ретранслятора с передовым узлом связи..."
     },
     {
       "source": "Finding the best location from the subscription...",
@@ -492,19 +510,19 @@
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск передовой сохраненной узлы связи..."
+      "target": "Поиск передового учтённого узла связи..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск узлы связи отменен"
+      "target": "Поиск узла связи отменён"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск узлы связи не удался"
+      "target": "Поиск узла связи не удался"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Разрешите спецканал и попробуйте снова"
     },
     {
       "source": "Set a remote source first",
@@ -576,11 +594,11 @@
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Режим подключения: спецканал"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Режим подключения: один ретранслятор"
     },
     {
       "source": "Disconnect first to change connection mode",
@@ -612,23 +630,23 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Регламент маршрутизации сохранены"
+      "target": "Постановления связи утверждены"
     },
     {
       "source": "Routing rules imported",
-      "target": "Регламент маршрутизации импортированы"
+      "target": "Постановления связи приняты"
     },
     {
       "source": "Locations imported",
-      "target": "Узлы связи импортированы"
+      "target": "Узлы связи приняты"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Узлы связи импортированы. Выбранный узел связи больше недоступна"
+      "target": "Узлы связи приняты. Выбранный узел связи больше недоступен"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на учтённые узлы связи, чтобы импортировать узлы связи"
+      "target": "Переключитесь на учтённые узлы связи, чтобы принять узлы связи"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
@@ -636,7 +654,7 @@
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация узлы связи"
+      "target": "Некорректная конфигурация узла связи"
     },
     {
       "source": "Location to edit is no longer available",
@@ -644,23 +662,23 @@
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Выдача диагностики открыта"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Выдача диагностики не удалась"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Выдача диагностики отменена"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-узел связи больше недоступна"
+      "target": "Предыдущий узел спецканала больше недоступен"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Приложение закрыто. Спецканал был выключен."
     },
     {
       "source": "Activated all subscriptions",
@@ -680,16 +698,101 @@
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт узлов связи отменен"
+      "target": "Выдача узлов связи отменена"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Регламент маршрутизации скопированы в буфер обмена"
+      "target": "Постановления связи скопированы в буфер обмена"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт регламента маршрутизации отменен"
+      "target": "Выдача постановлений связи отменена"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Источник партучёта: сводка"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Источник партучёта: учтённые узлы связи"
     }
   ],
-  "legacyReplacements": []
+  "legacyReplacements": [
+    {
+      "source": "VPN started on ",
+      "target": "Спецканал введён в строй на "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Ретранслятор введён в строй на "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Восстановление спецканала: "
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "Спецканал остановлен. Будет восстановлен при следующем запуске."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Ретранслятор остановлен. Будет восстановлен при следующем запуске."
+    },
+    {
+      "source": " locations refreshed",
+      "target": " узлов связи обновлено"
+    },
+    {
+      "source": " location refreshed",
+      "target": " узел связи обновлён"
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Сводки обновлены: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Срывов: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Автообновление сводки: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "План проверки утверждён: "
+    },
+    {
+      "source": " • batch ",
+      "target": " • бригада "
+    },
+    {
+      "source": " • retries ",
+      "target": " • повторные заходы "
+    },
+    {
+      "source": "off",
+      "target": "выключено"
+    },
+    {
+      "source": "custom interval",
+      "target": "плановый интервал"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "все сводки"
+    },
+    {
+      "source": "selected subscription",
+      "target": "выбранная сводка"
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "Спецканал остановлен. Режим приложения: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Ретранслятор остановлен. Режим приложения: "
+    }
+  ]
 }

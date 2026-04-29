@@ -10,6 +10,9 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class AppStringsCoverageTest {
+    private val nonEnglishLanguages = AppLanguage.entries
+        .filter { it != AppLanguage.SYSTEM && it != AppLanguage.ENGLISH }
+
     @Test
     fun everySupportedLanguageHasEveryUiTextKey() {
         assertTrue(
@@ -77,6 +80,22 @@ class AppStringsCoverageTest {
 
         assertTrue(russian.get(UiText.FIND_BEST) == expected)
     }
+
+    @Test
+    fun languageOptionsAreSortedByVisibleName() {
+        val strings = AppStrings(AppLanguage.ENGLISH)
+        val options = sortedLanguageOptions(strings, systemLanguageCode = "en")
+
+        assertTrue(options.first() == AppLanguage.SYSTEM)
+        val languageNames = options
+            .drop(1)
+            .map { strings.languageDisplayName(it, systemLanguageCode = "en") }
+        assertTrue(
+            languageNames == languageNames.sortedBy { it.lowercase() },
+            "Language options are not sorted by visible name: $languageNames",
+        )
+    }
+
 
     @Test
     fun remoteSourcePreviewMessagesAreLocalized() {
@@ -184,16 +203,7 @@ class AppStringsCoverageTest {
             StatusMessages.preflightPassed(AppMode.VPN),
             StatusMessages.desktopVpnCapabilityReady(),
         )
-        val supportedLanguages = listOf(
-            AppLanguage.RUSSIAN,
-            AppLanguage.GERMAN,
-            AppLanguage.CHINESE,
-            AppLanguage.SPANISH,
-            AppLanguage.PORTUGUESE,
-            AppLanguage.FRENCH,
-        )
-
-        val rawLeaks = supportedLanguages.flatMap { language ->
+        val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
             structuredMessages.mapNotNull { message ->
                 val localized = strings.statusMessage(message)
@@ -222,16 +232,7 @@ class AppStringsCoverageTest {
     @Test
     fun desktopProfileShellTextUsesGeneratedLocalizations() {
         val english = AppStrings(AppLanguage.ENGLISH)
-        val supportedLanguages = listOf(
-            AppLanguage.RUSSIAN,
-            AppLanguage.GERMAN,
-            AppLanguage.CHINESE,
-            AppLanguage.SPANISH,
-            AppLanguage.PORTUGUESE,
-            AppLanguage.FRENCH,
-        )
-
-        val missing = supportedLanguages.flatMap { language ->
+        val missing = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
             listOf(
                 UiText.DESKTOP_SHELL,
@@ -297,9 +298,52 @@ class AppStringsCoverageTest {
     }
 
     @Test
+    fun desktopRefreshAndConnectionLogMessagesAreLocalized() {
+        val runtimeMessages = listOf(
+            "VPN started on vpn-control",
+            "Proxy started on 127.0.0.1:2080",
+            "Restoring VPN: 🇭🇺⚡ Венгрия bypass...",
+            "VPN stopped. Will reconnect on next launch.",
+            "Proxy stopped. Will reconnect on next launch.",
+            "Profile source mode: SUBSCRIPTION",
+            "Profile source mode: CURRENT_LOCATIONS",
+            "43 locations refreshed",
+            "1 location refreshed",
+        )
+        assertMessagesAreLocalized(runtimeMessages)
+
+        val forbiddenFragments = listOf(
+            "VPN started",
+            "Proxy started",
+            "Restoring VPN",
+            "Will reconnect",
+            "Profile source mode",
+            "CURRENT_LOCATIONS",
+            "SUBSCRIPTION",
+            "locations refreshed",
+            "location refreshed",
+        )
+        val leftovers = nonEnglishLanguages.flatMap { language ->
+            val strings = AppStrings(language)
+            runtimeMessages.flatMap { message ->
+                val localized = strings.statusMessage(message)
+                forbiddenFragments.mapNotNull { fragment ->
+                    if (localized.contains(fragment)) "$language: $fragment in $localized" else null
+                }
+            }
+        }
+
+        assertTrue(
+            leftovers.isEmpty(),
+            "Desktop runtime/log messages still contain English fragments: $leftovers",
+        )
+    }
+
+    @Test
     fun benchmarkProgressMessagesAreLocalizedWithoutEnglishFragments() {
         val benchmarkMessages = listOf(
             "Checking 45 locations...",
+            "Testing locations 4-6 of 45...",
             "Finding the best location from the subscription... Testing fastest candidates in batches...",
             "Finding the best location from saved locations... Testing fastest candidates in batches...",
             "Best: 🇺🇸США • primary ok • secondary timeout • tcp 50.0ms",
@@ -312,21 +356,14 @@ class AppStringsCoverageTest {
             "secondary",
             "Checking",
             "locations...",
+            "Testing locations",
             "Finding the best",
             "Testing fastest",
             "candidates",
             "batches",
         )
-        val supportedLanguages = listOf(
-            AppLanguage.RUSSIAN,
-            AppLanguage.GERMAN,
-            AppLanguage.CHINESE,
-            AppLanguage.SPANISH,
-            AppLanguage.PORTUGUESE,
-            AppLanguage.FRENCH,
-        )
 
-        val leftovers = supportedLanguages.flatMap { language ->
+        val leftovers = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
             benchmarkMessages.flatMap { message ->
                 val localized = strings.statusMessage(message)
@@ -461,17 +498,83 @@ class AppStringsCoverageTest {
         }
     }
 
-    private fun assertMessagesAreLocalized(messages: List<String>) {
-        val supportedLanguages = listOf(
-            AppLanguage.RUSSIAN,
-            AppLanguage.GERMAN,
-            AppLanguage.CHINESE,
-            AppLanguage.SPANISH,
-            AppLanguage.PORTUGUESE,
-            AppLanguage.FRENCH,
-        )
+    @Test
+    fun easterEggLanguagesUseThemedVocabulary() {
+        val oldRussian = AppStrings(AppLanguage.OLD_RUSSIAN)
+        val oldRussianText = easterEggVocabularySample(oldRussian) + "\n" + listOf(
+            oldRussian.statusMessage(StatusMessages.languageSet("Древнерусский")),
+            oldRussian.statusMessage(StatusMessages.runtimeMode(AppMode.VPN.name)),
+            oldRussian.statusMessage(StatusMessages.runtimeMode(AppMode.PROXY_ONLY.name)),
+            oldRussian.statusMessage(StatusMessages.preflightPassed(AppMode.VPN)),
+            oldRussian.statusMessage("Runtime mode: VPN"),
+            oldRussian.statusMessage("Starting VPN..."),
+            oldRussian.statusMessage("Starting local proxy..."),
+            oldRussian.statusMessage("TUN device"),
+        ).joinToString("\n")
 
-        val missing = supportedLanguages.flatMap { language ->
+        assertNoFragments(
+            label = "Old Russian easter egg",
+            text = oldRussianText,
+            fragments = listOf("прокси", "TUN", "Импорт", "Экспорт", "маршрутиза", "домен", "локац"),
+        )
+        assertTrue(oldRussianText.contains("тайная сѣть"))
+        assertTrue(oldRussianText.contains("посредник"))
+        assertTrue(oldRussianText.contains("сѣтевой ход"))
+
+        val soviet = AppStrings(AppLanguage.SOVIET)
+        val sovietText = easterEggVocabularySample(soviet) + "\n" + listOf(
+            soviet.statusMessage(StatusMessages.languageSet("Советский")),
+            soviet.statusMessage(StatusMessages.runtimeMode(AppMode.VPN.name)),
+            soviet.statusMessage(StatusMessages.runtimeMode(AppMode.PROXY_ONLY.name)),
+            soviet.statusMessage(StatusMessages.preflightPassed(AppMode.VPN)),
+            soviet.statusMessage("Runtime mode: VPN"),
+            soviet.statusMessage("Starting VPN..."),
+            soviet.statusMessage("Starting local proxy..."),
+            soviet.statusMessage("TUN device"),
+        ).joinToString("\n")
+
+        assertNoFragments(
+            label = "Soviet easter egg",
+            text = sovietText,
+            fragments = listOf("прокси", "TUN", "Импорт", "Экспорт", "локац"),
+        )
+        assertTrue(sovietText.contains("спецканал"))
+        assertTrue(sovietText.contains("ретранслятор"))
+        assertTrue(sovietText.contains("магистраль"))
+    }
+
+    private fun easterEggVocabularySample(strings: AppStrings): String =
+        listOf(
+            UiText.START_VPN,
+            UiText.STOP_VPN,
+            UiText.START_PROXY,
+            UiText.STOP_PROXY,
+            UiText.SETTINGS_VPN_PROXY_MODE,
+            UiText.SETTINGS_VPN_MODE,
+            UiText.PROXY_ONLY,
+            UiText.APP_MODE_DESKTOP_DESCRIPTION,
+            UiText.APP_MODE_DESKTOP_PROXY_DETAIL,
+            UiText.IMPORT,
+            UiText.EXPORT,
+            UiText.LOCATIONS_EXPORT_TITLE,
+            UiText.RULES_EXPORT_TITLE,
+            UiText.ROUTING_RULES_TITLE,
+            UiText.ROUTING_DESCRIPTION_DESKTOP,
+            UiText.ROUTING_DESCRIPTION_VPN,
+            UiText.ROUTING_DESCRIPTION_PROXY,
+            UiText.COUNTRY_CODE_DOMAINS,
+            UiText.COUNTRY_CODE_DOMAINS_DESCRIPTION,
+            UiText.BYPASS_DOMAINS,
+            UiText.BYPASS_DOMAINS_DESCRIPTION,
+            UiText.LOCAL_PROXY,
+            UiText.LOCAL_PROXY_DESCRIPTION,
+            UiText.PROXY_STATUS_RUNNING,
+            UiText.PROXY_STATUS_STOPPED,
+            UiText.PROXY,
+        ).joinToString("\n") { strings.get(it) }
+
+    private fun assertMessagesAreLocalized(messages: List<String>) {
+        val missing = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
             messages.mapNotNull { message ->
                 if (strings.statusMessage(message) == message) "$language: $message" else null
