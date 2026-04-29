@@ -1,13 +1,15 @@
 # VPN Control Installation
 
-VPN Control is available from this repository as:
+VPN Control is built from this repository as:
 
-| Platform | Artifact | Main install path |
+| Platform | Artifact | Generated or downloaded artifact path |
 | --- | --- | --- |
 | Android | APK | `app/build/outputs/apk/release/app-release.apk` |
 | Linux desktop | Arch install, DEB, RPM, app image | `scripts/arch_install.sh` or `desktopApp/build/compose/binaries/main/` |
 | Windows desktop | EXE, MSI | `dist/windows/` or `dist/windows-vm/` |
 | macOS desktop | DMG, experimental | `dist/macos/` |
+
+`dist/` is intentionally ignored by git. It is a local/downloaded artifact directory created by packaging scripts or by `gh run download`; it is not expected to exist in a fresh clone.
 
 The Android app uses the Android VPN service. The desktop app uses bundled `sing-box`; VPN mode is implemented for Linux and Windows. macOS packaging exists, but macOS VPN mode still needs a privileged-helper implementation, so macOS is currently useful mainly for desktop packaging/proxy-mode validation.
 
@@ -32,7 +34,7 @@ Important files and directories:
 
 ## Get Build Artifacts From GitHub Actions
 
-After pushing to `main`, GitHub Actions builds platform artifacts. In the GitHub UI, open `Actions`, choose the workflow, open a successful run, and download its artifact.
+After pushing to `main`, GitHub Actions builds platform artifacts. In the GitHub UI, open `Actions`, choose the workflow, open a successful run, and download its artifact. These artifacts are stored by GitHub Actions, not committed to this repo.
 
 With GitHub CLI:
 
@@ -47,7 +49,7 @@ gh run list --workflow "Windows Desktop Package" --branch main
 gh run download <run-id> -n vpn-control-windows-installers -D dist/windows
 ```
 
-The downloaded files are the same artifacts described below.
+The commands above download artifacts into local `dist/` subdirectories. Those directories are ignored by git.
 
 ## Android
 
@@ -200,7 +202,7 @@ Requirements:
 
 ### Install Existing EXE/MSI
 
-Use one of these installers:
+Use one of these installers after building locally, building through the VM, or downloading the GitHub Actions artifact:
 
 ```text
 dist/windows/vpn-control-<version>.exe
@@ -208,6 +210,8 @@ dist/windows/vpn-control-<version>.msi
 dist/windows-vm/vpn-control-<version>.exe
 dist/windows-vm/vpn-control-<version>.msi
 ```
+
+These files are generated outputs. Because `dist/` is gitignored, they will not appear in a fresh clone until you build or download them.
 
 Install by double-clicking the `.exe` or `.msi`.
 
@@ -239,6 +243,8 @@ dist\windows\vpn-control-<version>.exe
 dist\windows\vpn-control-<version>.msi
 dist\windows\SHA256SUMS.txt
 ```
+
+`dist\windows\` is a generated output directory and is ignored by git.
 
 Useful options:
 
@@ -297,6 +303,8 @@ Outputs:
 dist/macos/*.dmg
 dist/macos/SHA256SUMS.txt
 ```
+
+`dist/macos/` is a generated output directory and is ignored by git.
 
 Unsigned local DMGs are useful for development. Signed/notarized builds require the macOS signing and notarization environment variables used by `.github/workflows/macos-desktop.yml`.
 
