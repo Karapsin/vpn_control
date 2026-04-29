@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import re
 import shutil
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODELS_FILE = ROOT / "shared/model/src/commonMain/kotlin/com/kardinal/vpncontrol/model/Models.kt"
+LANGUAGE_MANIFEST = ROOT / "shared/model/src/commonMain/resources/languages.json"
 UI_CATALOG_DIR = ROOT / "shared/ui/src/commonMain/resources/i18n"
 STATUS_CATALOG_DIR = ROOT / "shared/ui/src/commonMain/resources/i18n-status"
 
@@ -26,30 +27,26 @@ def copy_catalog(source: Path, target: Path, force: bool) -> None:
     print(f"[add-language] wrote {target.relative_to(ROOT)}")
 
 
-def add_app_language(code: str, enum_name: str, native_name: str) -> None:
-    text = MODELS_FILE.read_text(encoding="utf-8")
-    if f'code = "{code}"' in text:
-        print(f"[add-language] AppLanguage already has code {code}")
+def update_language_manifest(code: str, enum_name: str, native_name: str) -> None:
+    languages = json.loads(LANGUAGE_MANIFEST.read_text(encoding="utf-8"))
+    if any(language["code"] == code for language in languages):
+        print(f"[add-language] languages.json already has code {code}")
         return
-    if re.search(rf"\b{re.escape(enum_name)}\s*\(", text):
-        raise SystemExit(f"AppLanguage already has enum entry {enum_name}")
+    if any(language["enumName"] == enum_name for language in languages):
+        raise SystemExit(f"languages.json already has enumName {enum_name}")
 
-    pattern = re.compile(
-        r"(?P<indent>\s*)(?P<name>[A-Z_]+)\(code = \"(?P<code>[^\"]+)\", nativeName = \"(?P<native>[^\"]+)\"\);"
+    languages.append(
+        {
+            "enumName": enum_name,
+            "code": code,
+            "nativeName": native_name,
+        },
     )
-    matches = list(pattern.finditer(text))
-    if not matches:
-        raise SystemExit("Could not find the last AppLanguage enum entry")
-
-    last = matches[-1]
-    replacement = (
-        f'{last.group("indent")}{last.group("name")}(code = "{last.group("code")}", '
-        f'nativeName = "{last.group("native")}"),\n'
-        f'{last.group("indent")}{enum_name}(code = "{code}", nativeName = "{native_name}");'
+    LANGUAGE_MANIFEST.write_text(
+        json.dumps(languages, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
-    text = text[: last.start()] + replacement + text[last.end() :]
-    MODELS_FILE.write_text(text, encoding="utf-8")
-    print(f"[add-language] added AppLanguage.{enum_name}")
+    print(f"[add-language] added {enum_name} to {LANGUAGE_MANIFEST.relative_to(ROOT)}")
 
 
 def main() -> None:
@@ -73,7 +70,7 @@ def main() -> None:
     STATUS_CATALOG_DIR.mkdir(parents=True, exist_ok=True)
     copy_catalog(UI_CATALOG_DIR / "en.json", UI_CATALOG_DIR / f"{code}.json", args.force)
     copy_catalog(STATUS_CATALOG_DIR / "en.json", STATUS_CATALOG_DIR / f"{code}.json", args.force)
-    add_app_language(code, enum_name, args.native)
+    update_language_manifest(code, enum_name, args.native)
 
     print("[add-language] next steps:")
     print(f"[add-language] translate shared/ui/src/commonMain/resources/i18n/{code}.json")

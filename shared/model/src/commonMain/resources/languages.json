@@ -1,0 +1,52 @@
+[
+  {
+    "enumName": "SYSTEM",
+    "code": "",
+    "nativeName": "System"
+  },
+  {
+    "enumName": "ENGLISH",
+    "code": "en",
+    "nativeName": "English"
+  },
+  {
+    "enumName": "RUSSIAN",
+    "code": "ru",
+    "nativeName": "Русский"
+  },
+  {
+    "enumName": "GERMAN",
+    "code": "de",
+    "nativeName": "Deutsch"
+  },
+  {
+    "enumName": "CHINESE",
+    "code": "zh",
+    "nativeName": "中文"
+  },
+  {
+    "enumName": "SPANISH",
+    "code": "es",
+    "nativeName": "Español"
+  },
+  {
+    "enumName": "PORTUGUESE",
+    "code": "pt",
+    "nativeName": "Português"
+  },
+  {
+    "enumName": "FRENCH",
+    "code": "fr",
+    "nativeName": "Français"
+  },
+  {
+    "enumName": "OLD_RUSSIAN",
+    "code": "orv",
+    "nativeName": "Древнерусский"
+  },
+  {
+    "enumName": "SOVIET",
+    "code": "sov",
+    "nativeName": "Советский"
+  }
+]

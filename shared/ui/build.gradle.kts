@@ -116,6 +116,10 @@ val generateI18nCatalog by tasks.registering {
             append("$indent)")
         }
 
+        fun String.catalogFunctionSuffix(): String {
+            return replace(Regex("[^A-Za-z0-9]"), "_")
+        }
+
         targetFile.writeText(
             buildString {
                 appendLine("package com.kardinal.vpncontrol.shared.ui")
@@ -148,25 +152,33 @@ val generateI18nCatalog by tasks.registering {
                 appendLine("    val legacyReplacements: List<Pair<String, String>>,")
                 appendLine(")")
                 appendLine()
-                appendLine("internal val generatedUiTextTranslations: Map<AppLanguage, Map<UiText, String>> = buildMap {")
+                appendLine("private fun appLanguageForGeneratedCatalog(code: String, catalog: String): AppLanguage {")
+                appendLine("    return requireNotNull(AppLanguage.entries.firstOrNull { it.code == code }) {")
+                appendLine("        \"No AppLanguage entry exists for i18n catalog \$catalog\"")
+                appendLine("    }")
+                appendLine("}")
+                appendLine()
                 jsonFiles.forEach { file ->
                     val code = file.nameWithoutExtension
                     @Suppress("UNCHECKED_CAST")
                     val entries = parser.parse(file) as Map<String, Any?>
-                    appendLine("    run {")
-                    appendLine("        val language = requireNotNull(AppLanguage.entries.firstOrNull { it.code == ${code.kotlinLiteral()} }) {")
-                    appendLine("            \"No AppLanguage entry exists for i18n catalog ${code}\"")
-                    appendLine("        }")
-                    appendLine("        put(language, mapOf(")
+                    appendLine("private fun uiTextTranslations_${code.catalogFunctionSuffix()}(): Map<UiText, String> = mapOf(")
                     entries.forEach { (key, value) ->
-                        appendLine("            UiText.$key to ${value.toString().kotlinLiteral()},")
+                        appendLine("    UiText.$key to ${value.toString().kotlinLiteral()},")
                     }
-                    appendLine("        ))")
-                    appendLine("    }")
+                    appendLine(")")
+                    appendLine()
                 }
-                appendLine("}")
+                appendLine("internal val generatedUiTextTranslations: Map<AppLanguage, Map<UiText, String>> = mapOf(")
+                jsonFiles.forEach { file ->
+                    val code = file.nameWithoutExtension
+                    appendLine(
+                        "    appLanguageForGeneratedCatalog(${code.kotlinLiteral()}, \"UI ${code}\") " +
+                            "to uiTextTranslations_${code.catalogFunctionSuffix()}(),",
+                    )
+                }
+                appendLine(")")
                 appendLine()
-                appendLine("internal val generatedStatusTranslations: Map<AppLanguage, GeneratedStatusTranslations> = buildMap {")
                 statusJsonFiles.forEach { file ->
                     val code = file.nameWithoutExtension
                     val root = parseObject(file)
@@ -178,40 +190,44 @@ val generateI18nCatalog by tasks.registering {
                     val legacyExact = root.pairsValue("legacyExact", file).toMap()
                     val legacyReplacements = root.pairsValue("legacyReplacements", file)
                         .sortedByDescending { it.first.length }
-                    appendLine("    run {")
-                    appendLine("        val language = requireNotNull(AppLanguage.entries.firstOrNull { it.code == ${code.kotlinLiteral()} }) {")
-                    appendLine("            \"No AppLanguage entry exists for status i18n catalog ${code}\"")
-                    appendLine("        }")
-                    appendLine("        put(language, GeneratedStatusTranslations(")
-                    appendLine("            dynamic = GeneratedDynamicStatusWords(")
-                    appendLine("                findingSubscription = ${dynamic.stringValue("findingSubscription", file).kotlinLiteral()},")
-                    appendLine("                findingSaved = ${dynamic.stringValue("findingSaved", file).kotlinLiteral()},")
-                    appendLine("                testingFastestCandidates = ${dynamic.stringValue("testingFastestCandidates", file).kotlinLiteral()},")
-                    appendLine("                checkingLocations = ${dynamic.stringValue("checkingLocations", file).kotlinLiteral()},")
-                    appendLine("            ),")
-                    appendLine("            benchmark = GeneratedBenchmarkWords(")
-                    appendLine("                best = ${benchmark.stringValue("best", file).kotlinLiteral()},")
-                    appendLine("                primary = ${benchmark.stringValue("primary", file).kotlinLiteral()},")
-                    appendLine("                secondary = ${benchmark.stringValue("secondary", file).kotlinLiteral()},")
-                    appendLine("                tcp = ${benchmark.stringValue("tcp", file).kotlinLiteral()},")
-                    appendLine("                millisUnit = ${benchmark.stringValue("millisUnit", file).kotlinLiteral()},")
-                    append("                statuses = ")
-                    appendStringMap(statuses, "                ")
+                    appendLine("private fun statusTranslations_${code.catalogFunctionSuffix()}(): GeneratedStatusTranslations = GeneratedStatusTranslations(")
+                    appendLine("    dynamic = GeneratedDynamicStatusWords(")
+                    appendLine("        findingSubscription = ${dynamic.stringValue("findingSubscription", file).kotlinLiteral()},")
+                    appendLine("        findingSaved = ${dynamic.stringValue("findingSaved", file).kotlinLiteral()},")
+                    appendLine("        testingFastestCandidates = ${dynamic.stringValue("testingFastestCandidates", file).kotlinLiteral()},")
+                    appendLine("        checkingLocations = ${dynamic.stringValue("checkingLocations", file).kotlinLiteral()},")
+                    appendLine("    ),")
+                    appendLine("    benchmark = GeneratedBenchmarkWords(")
+                    appendLine("        best = ${benchmark.stringValue("best", file).kotlinLiteral()},")
+                    appendLine("        primary = ${benchmark.stringValue("primary", file).kotlinLiteral()},")
+                    appendLine("        secondary = ${benchmark.stringValue("secondary", file).kotlinLiteral()},")
+                    appendLine("        tcp = ${benchmark.stringValue("tcp", file).kotlinLiteral()},")
+                    appendLine("        millisUnit = ${benchmark.stringValue("millisUnit", file).kotlinLiteral()},")
+                    append("        statuses = ")
+                    appendStringMap(statuses, "        ")
                     appendLine(",")
-                    appendLine("            ),")
-                    append("            freeformReplacements = ")
-                    appendPairList(freeformReplacements, "            ")
+                    appendLine("    ),")
+                    append("    freeformReplacements = ")
+                    appendPairList(freeformReplacements, "    ")
                     appendLine(",")
-                    append("            legacyExact = ")
-                    appendStringMap(legacyExact, "            ")
+                    append("    legacyExact = ")
+                    appendStringMap(legacyExact, "    ")
                     appendLine(",")
-                    append("            legacyReplacements = ")
-                    appendPairList(legacyReplacements, "            ")
+                    append("    legacyReplacements = ")
+                    appendPairList(legacyReplacements, "    ")
                     appendLine(",")
-                    appendLine("        ))")
-                    appendLine("    }")
+                    appendLine(")")
+                    appendLine()
                 }
-                appendLine("}")
+                appendLine("internal val generatedStatusTranslations: Map<AppLanguage, GeneratedStatusTranslations> = mapOf(")
+                statusJsonFiles.forEach { file ->
+                    val code = file.nameWithoutExtension
+                    appendLine(
+                        "    appLanguageForGeneratedCatalog(${code.kotlinLiteral()}, \"status ${code}\") " +
+                            "to statusTranslations_${code.catalogFunctionSuffix()}(),",
+                    )
+                }
+                appendLine(")")
             },
             Charsets.UTF_8,
         )

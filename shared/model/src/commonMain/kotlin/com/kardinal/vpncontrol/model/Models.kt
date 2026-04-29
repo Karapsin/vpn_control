@@ -6,34 +6,6 @@ const val ALL_SUBSCRIPTIONS_ID = "__all_subscriptions__"
 const val MIN_SUBSCRIPTION_REFRESH_MINUTES = 5
 const val DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS = 3.0
 
-enum class AppLanguage(
-    val code: String,
-    val nativeName: String,
-) {
-    SYSTEM(code = "", nativeName = "System"),
-    ENGLISH(code = "en", nativeName = "English"),
-    RUSSIAN(code = "ru", nativeName = "Русский"),
-    GERMAN(code = "de", nativeName = "Deutsch"),
-    CHINESE(code = "zh", nativeName = "中文"),
-    SPANISH(code = "es", nativeName = "Español"),
-    PORTUGUESE(code = "pt", nativeName = "Português"),
-    FRENCH(code = "fr", nativeName = "Français");
-
-    companion object {
-        val selectable: List<AppLanguage> = entries
-
-        fun fromStoredName(raw: String?): AppLanguage {
-            val normalized = raw.orEmpty().trim()
-            return entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) } ?: SYSTEM
-        }
-
-        fun fromSystemLanguageCode(raw: String?): AppLanguage {
-            val normalized = raw.orEmpty().substringBefore('-').substringBefore('_').lowercase()
-            return entries.firstOrNull { it != SYSTEM && it.code == normalized } ?: ENGLISH
-        }
-    }
-}
-
 fun AppLanguage.effective(systemLanguageCode: String?): AppLanguage {
     return if (this == AppLanguage.SYSTEM) {
         AppLanguage.fromSystemLanguageCode(systemLanguageCode)
