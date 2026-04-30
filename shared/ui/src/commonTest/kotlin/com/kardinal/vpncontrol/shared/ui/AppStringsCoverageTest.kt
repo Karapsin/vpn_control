@@ -72,6 +72,195 @@ class AppStringsCoverageTest {
     }
 
     @Test
+    fun generatedStatusJsonCatalogDoesNotUseGenericPlaceholderTargets() {
+        val placeholderTargets = mapOf(
+            AppLanguage.ARABIC to listOf(
+                Regex("^(?:حدث:\\s*)?حالة(?::\\s*بعيد)?$"),
+                Regex("^تم تحديث الحالة$"),
+            ),
+            AppLanguage.BENGALI to listOf(
+                Regex("^(?:ঘটনা:\\s*)?অবস্থা(?::\\s*রিমোট)?$"),
+                Regex("^স্থিতি আপডেট হয়েছে$"),
+            ),
+            AppLanguage.PERSIAN to listOf(
+                Regex("^(?:رویداد:\\s*)?وضعیت(?::\\s*دور)?$"),
+                Regex("^وضعیت به‌روزرسانی شد$"),
+            ),
+            AppLanguage.INDONESIAN to listOf(
+                Regex("^(?:Peristiwa:\\s*)?Status(?::\\s*jarak jauh)?$"),
+            ),
+            AppLanguage.ITALIAN to listOf(
+                Regex("^Stato$"),
+            ),
+            AppLanguage.GREEK to listOf(
+                Regex("^(?:Συμβάν:\\s*)?Κατάσταση$"),
+            ),
+            AppLanguage.HINDI to listOf(
+                Regex("^(?:घटना:\\s*)?स्थिति$"),
+            ),
+            AppLanguage.JAPANESE to listOf(
+                Regex("^(?:イベント:\\s*)?状態$"),
+            ),
+            AppLanguage.KOREAN to listOf(
+                Regex("^(?:이벤트:\\s*)?상태(?::\\s*원격)?$"),
+                Regex("^상태를 업데이트했습니다$"),
+            ),
+            AppLanguage.THAI to listOf(
+                Regex("^(?:เหตุการณ์:\\s*)?สถานะ(?::\\s*ระยะไกล)?$"),
+                Regex("^อัปเดตสถานะแล้ว$"),
+            ),
+            AppLanguage.TURKISH to listOf(
+                Regex("^(?:Olay:\\s*)?Durum(?::\\s*uzak)?$"),
+                Regex("^Durum güncellendi$"),
+            ),
+        )
+        val violations = generatedStatusTranslations.flatMap { (language, catalog) ->
+            val patterns = placeholderTargets[language].orEmpty()
+            val replacements = catalog.freeformReplacements +
+                catalog.legacyReplacements +
+                catalog.legacyExact.map { (source, target) -> source to target }
+            replacements.mapNotNull { (source, target) ->
+                if (patterns.any { it.matches(target.trim()) }) {
+                    "$language: $source -> $target"
+                } else {
+                    null
+                }
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "Status catalogs still use generic placeholder targets: $violations",
+        )
+    }
+
+    @Test
+    fun generatedUiCatalogDoesNotUseTranslatedTextPlaceholders() {
+        val placeholderFragments = mapOf(
+            AppLanguage.ARABIC to listOf(Regex("(^|\\s)نص(\\s|$)")),
+            AppLanguage.BENGALI to listOf(Regex("পাঠ্য")),
+            AppLanguage.PERSIAN to listOf(Regex("(^|\\s)متن(\\s|$)")),
+            AppLanguage.INDONESIAN to listOf(Regex("\\bTeks\\b")),
+            AppLanguage.KOREAN to listOf(Regex("텍스트")),
+            AppLanguage.THAI to listOf(Regex("ข้อความ")),
+        )
+        val violations = placeholderFragments.flatMap { (language, patterns) ->
+            generatedUiTextTranslations.getValue(language).mapNotNull { (key, value) ->
+                val pattern = patterns.firstOrNull { it.containsMatchIn(value) }
+                if (pattern == null) null else "$language $key contains translated placeholder: $value"
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "Generated UI catalogs still contain translated text placeholders: $violations",
+        )
+    }
+
+    @Test
+    fun generatedUiCatalogDoesNotUseScaffoldedKeyPhrases() {
+        val generatedLanguages = AppLanguage.entries
+            .filter { it != AppLanguage.SYSTEM && it != AppLanguage.ENGLISH }
+        val awkwardFragments = listOf(
+            "Metin",
+            "connect περιγραφή",
+            "connect विवरण",
+            "connect 説明",
+            "mismatch",
+            "successful starts",
+            "on login",
+            "settings enabled",
+            "ρυθμίσεις enabled",
+            "सेटिंग्स enabled",
+            "設定 enabled",
+            "applies new desktop",
+            "android detail",
+            "desktop detail",
+            "policy off",
+            "policy hourly",
+            "interval hours",
+            "validation summary",
+            "qr too large message",
+            "qr generation failed",
+            "too large",
+            "generation failed",
+            "selected none",
+            "selected value",
+            "rename subscription",
+            "subscrição kind",
+            "rule counts",
+            "ignore rules",
+            "merged location",
+        )
+        val violations = generatedLanguages.flatMap { language ->
+            generatedUiTextTranslations.getValue(language).mapNotNull { (key, value) ->
+                val fragment = awkwardFragments.firstOrNull { value.contains(it, ignoreCase = true) }
+                if (fragment == null) null else "$language $key contains '$fragment': $value"
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "Generated UI catalogs still contain scaffolded phrases: $violations",
+        )
+    }
+
+    @Test
+    fun generatedStatusJsonCatalogDoesNotUseBrokenMixedEnglishFragments() {
+        val awkwardFragments = listOf(
+            Regex("lying", RegexOption.IGNORE_CASE),
+            Regex("timed out", RegexOption.IGNORE_CASE),
+            Regex("keeping the", RegexOption.IGNORE_CASE),
+            Regex("\\bis empty\\b", RegexOption.IGNORE_CASE),
+            Regex("Could not", RegexOption.IGNORE_CASE),
+            Regex("\\bSet a\\b", RegexOption.IGNORE_CASE),
+            Regex("Add at least", RegexOption.IGNORE_CASE),
+            Regex("\\bSwitch to\\b", RegexOption.IGNORE_CASE),
+            Regex("is no longer", RegexOption.IGNORE_CASE),
+            Regex("Auto-[^\\s]*ing", RegexOption.IGNORE_CASE),
+            Regex("\\bset to\\b", RegexOption.IGNORE_CASE),
+            Regex("\\bwas off\\b", RegexOption.IGNORE_CASE),
+            Regex("Review and save", RegexOption.IGNORE_CASE),
+            Regex("\\bare read", RegexOption.IGNORE_CASE),
+            Regex("could not be", RegexOption.IGNORE_CASE),
+            Regex("\\bBest .* and\\b", RegexOption.IGNORE_CASE),
+            Regex("yenilemeed", RegexOption.IGNORE_CASE),
+            Regex("penyegaraned", RegexOption.IGNORE_CASE),
+            Regex("aplikasily", RegexOption.IGNORE_CASE),
+            Regex("アプリly", RegexOption.IGNORE_CASE),
+            Regex("แอปly", RegexOption.IGNORE_CASE),
+            Regex("\\bto\\b", RegexOption.IGNORE_CASE),
+            Regex("Re(?:بدء|চালু|شروع|시작|เริ่ม|開始)", RegexOption.IGNORE_CASE),
+            Regex("Validation settings", RegexOption.IGNORE_CASE),
+            Regex("Desktop VPN", RegexOption.IGNORE_CASE),
+            Regex("Desktop Proxy", RegexOption.IGNORE_CASE),
+            Regex("route/DNS tooling is", RegexOption.IGNORE_CASE),
+            Regex("\\bneeds\\b", RegexOption.IGNORE_CASE),
+            Regex("Run as root", RegexOption.IGNORE_CASE),
+            Regex("\\bcapabilities\\b", RegexOption.IGNORE_CASE),
+            Regex("DNS client PowerShell cmdlets", RegexOption.IGNORE_CASE),
+        )
+        val violations = generatedStatusTranslations.flatMap { (language, catalog) ->
+            if (language == AppLanguage.ENGLISH) {
+                emptyList()
+            } else {
+                val replacements = catalog.freeformReplacements +
+                    catalog.legacyReplacements +
+                    catalog.legacyExact.map { (source, target) -> source to target }
+                replacements.mapNotNull { (source, target) ->
+                    val fragment = awkwardFragments.firstOrNull { it.containsMatchIn(target) }
+                    if (fragment == null) null else "$language: $source -> $target"
+                }
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "Status catalogs still contain broken mixed-English fragments: $violations",
+        )
+    }
+
+    @Test
     fun appStringsReadsUiTextFromGeneratedCatalog() {
         val russian = AppStrings(AppLanguage.RUSSIAN)
         val expected = generatedUiTextTranslations
@@ -79,6 +268,20 @@ class AppStringsCoverageTest {
             .getValue(UiText.FIND_BEST)
 
         assertTrue(russian.get(UiText.FIND_BEST) == expected)
+    }
+
+    @Test
+    fun mainScreenAppTitleIsLocalizedForEveryNonEnglishLanguage() {
+        val english = AppStrings(AppLanguage.ENGLISH).get(UiText.APP_TITLE)
+        val missing = nonEnglishLanguages.mapNotNull { language ->
+            val title = AppStrings(language).get(UiText.APP_TITLE)
+            if (title == english) "$language: $title" else null
+        }
+
+        assertTrue(
+            missing.isEmpty(),
+            "Main screen app title still uses English: $missing",
+        )
     }
 
     @Test
@@ -94,6 +297,47 @@ class AppStringsCoverageTest {
             languageNames == languageNames.sortedBy { it.lowercase() },
             "Language options are not sorted by visible name: $languageNames",
         )
+    }
+
+    @Test
+    fun compactSubscriptionRefreshButtonLabelsRespectReferenceCharacterBudget() {
+        val compactLanguages = setOf(AppLanguage.GERMAN, AppLanguage.OLD_RUSSIAN, AppLanguage.SOVIET)
+        val referenceLanguages = AppLanguage.entries
+            .filter { it != AppLanguage.SYSTEM && it !in compactLanguages }
+        val buttonKeys = listOf(UiText.REFRESH_ACTIVE, UiText.REFRESH_ALL)
+
+        val violations = buttonKeys.flatMap { key ->
+            val limit = referenceLanguages.maxOf { language ->
+                AppStrings(language).get(key).length
+            }
+            compactLanguages.mapNotNull { language ->
+                val label = AppStrings(language).get(key)
+                if (label.length > limit) {
+                    "$language $key label '$label' has ${label.length} chars, limit is $limit"
+                } else {
+                    null
+                }
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "Compact subscription refresh labels exceed reference character budget: $violations",
+        )
+    }
+
+    @Test
+    fun germanOldRussianAndSovietUseCompactSubscriptionRefreshButtonLabels() {
+        val german = AppStrings(AppLanguage.GERMAN)
+        val oldRussian = AppStrings(AppLanguage.OLD_RUSSIAN)
+        val soviet = AppStrings(AppLanguage.SOVIET)
+
+        assertTrue(german.get(UiText.REFRESH_ACTIVE) == "Aktives neu")
+        assertTrue(german.get(UiText.REFRESH_ALL) == "Alle neu")
+        assertTrue(oldRussian.get(UiText.REFRESH_ACTIVE) == "Активную")
+        assertTrue(oldRussian.get(UiText.REFRESH_ALL) == "Все грамоты")
+        assertTrue(soviet.get(UiText.REFRESH_ACTIVE) == "Активную")
+        assertTrue(soviet.get(UiText.REFRESH_ALL) == "Все сводки")
     }
 
 
@@ -195,7 +439,10 @@ class AppStringsCoverageTest {
             ),
             StatusMessages.customDnsSaved(enabled = true),
             StatusMessages.findBestStart(ProfileSourceMode.SUBSCRIPTION),
+            StatusMessages.startingConnection(AppMode.VPN),
+            StatusMessages.startingConnection(AppMode.PROXY_ONLY),
             StatusMessages.startingConnectionWithBestLocation(AppMode.VPN),
+            StatusMessages.startingConnectionWithBestLocation(AppMode.PROXY_ONLY),
             StatusMessages.connectionReadyOnComputer(AppMode.PROXY_ONLY),
             StatusMessages.desktopAppInitialized(),
             StatusMessages.runtimeMode(AppMode.VPN.name),
@@ -211,6 +458,7 @@ class AppStringsCoverageTest {
                     localized == message -> "$language: structured message fell back to raw $message"
                     localized.contains("vpn-control-status") -> "$language: encoded status leaked in $localized"
                     localized.contains("preflight", ignoreCase = true) -> "$language: technical preflight leaked in $localized"
+                    localized == strings.get(UiText.STATUS) -> "$language: structured message collapsed to generic status for $message"
                     else -> null
                 }
             }
@@ -305,14 +553,26 @@ class AppStringsCoverageTest {
             "Restoring VPN: 🇭🇺⚡ Венгрия bypass...",
             "VPN stopped. Will reconnect on next launch.",
             "Proxy stopped. Will reconnect on next launch.",
+            "Starting VPN...",
+            "Starting local proxy...",
+            "Starting VPN with the best location...",
+            "Starting local proxy with the best location...",
+            "Starting VPN with the new best location...",
+            "Starting proxy with the new best location...",
             "Profile source mode: SUBSCRIPTION",
             "Profile source mode: CURRENT_LOCATIONS",
             "43 locations refreshed",
             "1 location refreshed",
+            "Refreshing VLESS (auto)...",
+            "Refreshing Whitelists...",
         )
         assertMessagesAreLocalized(runtimeMessages)
 
         val forbiddenFragments = listOf(
+            "Refreshing ",
+            "Starting ",
+            "with the best location",
+            "new best location",
             "VPN started",
             "Proxy started",
             "Restoring VPN",
@@ -509,13 +769,15 @@ class AppStringsCoverageTest {
             oldRussian.statusMessage("Runtime mode: VPN"),
             oldRussian.statusMessage("Starting VPN..."),
             oldRussian.statusMessage("Starting local proxy..."),
+            oldRussian.statusMessage("Profile source mode: SUBSCRIPTION"),
+            oldRussian.statusMessage("App initialized"),
             oldRussian.statusMessage("TUN device"),
         ).joinToString("\n")
 
         assertNoFragments(
             label = "Old Russian easter egg",
             text = oldRussianText,
-            fragments = listOf("прокси", "TUN", "Импорт", "Экспорт", "маршрутиза", "домен", "локац"),
+            fragments = listOf("прокси", "TUN", "Импорт", "Экспорт", "маршрутиза", "домен", "локац", "профил", "прилож", "компьют"),
         )
         assertTrue(oldRussianText.contains("тайная сѣть"))
         assertTrue(oldRussianText.contains("посредник"))
@@ -556,12 +818,18 @@ class AppStringsCoverageTest {
             UiText.APP_MODE_DESKTOP_PROXY_DETAIL,
             UiText.IMPORT,
             UiText.EXPORT,
+            UiText.REFRESH_DESCRIPTION_ALL,
+            UiText.REFRESH_ACTIVE,
+            UiText.REFRESH_ALL,
+            UiText.PROFILE_SOURCE,
             UiText.LOCATIONS_EXPORT_TITLE,
             UiText.RULES_EXPORT_TITLE,
             UiText.ROUTING_RULES_TITLE,
             UiText.ROUTING_DESCRIPTION_DESKTOP,
             UiText.ROUTING_DESCRIPTION_VPN,
             UiText.ROUTING_DESCRIPTION_PROXY,
+            UiText.APP_ASSIGNMENTS,
+            UiText.APP_ASSIGNMENTS_DESCRIPTION_VPN,
             UiText.COUNTRY_CODE_DOMAINS,
             UiText.COUNTRY_CODE_DOMAINS_DESCRIPTION,
             UiText.BYPASS_DOMAINS,

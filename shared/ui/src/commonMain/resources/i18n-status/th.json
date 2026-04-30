@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากการสมัคร...",
+    "findingSaved": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากตำแหน่งที่บันทึกไว้...",
+    "testingFastestCandidates": "กำลังทดสอบตัวเลือกที่เร็วที่สุดเป็นชุด...",
+    "checkingLocations": "กำลังตรวจสอบ {count} ตำแหน่ง...",
+    "testingLocationsRange": "กำลังทดสอบตำแหน่ง {start}-{end} จาก {total}...",
+    "refreshIntervalMinutes": "{count} นาที",
+    "refreshIntervalHours": "{count} ชม.",
+    "refreshIntervalHoursMinutes": "{hours} ชม. {minutes} นาที",
+    "refreshIntervalEvery": "ทุก {interval}",
+    "refreshIntervalEveryHour": "ทุกชั่วโมง"
+  },
+  "benchmark": {
+    "best": "ดีที่สุด: ",
+    "primary": "หลัก ",
+    "secondary": "สำรอง ",
+    "tcp": "TCP ",
+    "millisUnit": "มิลลิวินาที",
+    "statuses": {
+      "blocked": "ถูกบล็อก",
+      "cached": "แคช",
+      "challenge": "ท้าทาย",
+      "custom_config_manual_only": "ด้วยตนเอง",
+      "error": "ข้อผิดพลาด",
+      "manual": "ด้วยตนเอง",
+      "ok": "ปกติ",
+      "partial": "บางส่วน",
+      "tcp_error": "ข้อผิดพลาด_tcp",
+      "tcp_timeout": "หมดเวลา_tcp",
+      "timeout": "หมดเวลา",
+      "unreachable": "เข้าถึงไม่ได้",
+      "validation_timeout": "หมดเวลา_ตรวจสอบ"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL การสมัครสมาชิก"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "อ่าน URL การสมัครสมาชิกไม่ได้"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "ไม่รองรับการสมัครสมาชิก HTTP ที่ไม่ปลอดภัย"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "ใช้ URL การสมัครสมาชิก https://"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL ต้องมีโฮสต์ HTTPS ที่ถูกต้อง"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "วาง URL การสมัครสมาชิก https:// ที่ถูกต้อง"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "แหล่งข้อมูลระยะไกลโดยตรง"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "ลิงก์นำเข้า sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "อ่านลิงก์นำเข้า sing-box ไม่ได้"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "รองรับเฉพาะ URL ระยะไกล HTTPS ที่ถูกต้อง"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "ใช้ลิงก์นำเข้า sing-box ที่ชี้ไปยัง URL https:// ที่ถูกต้อง"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ดึงเนื้อหาระยะไกลจาก URL ที่ฝังไว้"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "ดึงเนื้อหาระยะไกลจาก "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "ไม่สามารถแยกลิงก์นำเข้าได้"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "วางลิงก์นำเข้า remote-profile ของ sing-box ที่ถูกต้องหรือ URL การสมัครสมาชิกโดยตรง"
+    },
+    {
+      "source": "VPN import link",
+      "target": "ลิงก์นำเข้า VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "อ่านลิงก์นำเข้า VPN ไม่ได้"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "ไม่รองรับการนำเข้าจากผู้ให้บริการนี้"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ไม่รองรับการนำเข้า Amnezia และ vpn:// อื่น ๆ ใช้ URL การสมัครสมาชิกปกติหรือเพิ่มตำแหน่งด้วยตนเอง"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "ไม่สามารถถอดรหัสข้อมูลนำเข้าได้"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ไม่รองรับการนำเข้า vpn:// ใช้ URL การสมัครสมาชิกปกติหรือเพิ่มตำแหน่งด้วยตนเอง"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "ไม่รองรับ URL การสมัครสมาชิก HTTP ใช้ https:// แทน"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "แหล่งข้อมูลระยะไกลต้องเป็น URL https:// หรือลิงก์นำเข้าที่รองรับ"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "แหล่งข้อมูลระยะไกลว่างเปล่า"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "แหล่งข้อมูลระยะไกลต้องเป็น URL https:// ที่ถูกต้องและมีโฮสต์"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "การนำเข้า sing-box นี้ชี้ไปยัง URL ที่ไม่ถูกต้องหรือไม่ใช่ HTTPS ใช้ URL https:// ที่ถูกต้องแทน"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "กำลังใช้ตำแหน่งที่เลือก..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "กำลังใช้ตำแหน่งที่เลือกที่อัปเดตแล้ว..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "การค้นหาตำแหน่งที่ดีที่สุดหมดเวลา จะคงการเชื่อมต่อปัจจุบันไว้"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "คลิปบอร์ดว่างเปล่า"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "เปิดบันทึกการเชื่อมต่อแล้ว"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "ซ่อนบันทึกการเชื่อมต่อแล้ว"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "เปิดเครื่องมือทดสอบการเชื่อมต่อแล้ว"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "ซ่อนเครื่องมือทดสอบการเชื่อมต่อแล้ว"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "เปิดไฟล์ไม่ได้"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "เปิดไฟล์ไม่ได้"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "เปิดไฟล์ไม่ได้"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "เปิดไฟล์ไม่ได้"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "เดสก์ท็อป: เนเธอร์แลนด์จาก Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "เริ่มแอปเดสก์ท็อปแล้ว"
+    },
+    {
+      "source": "App initialized",
+      "target": "เริ่มแอปแล้ว"
+    },
+    {
+      "source": "Export Locations",
+      "target": "ส่งออก ตำแหน่ง"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Import canceled",
+      "target": "ยกเลิกการนำเข้าแล้ว"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "อัปเดตการสมัครสมาชิกแล้ว"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "เปิดประวัติความหน่วงแล้ว"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "ซ่อนประวัติความหน่วงแล้ว"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "เปิดสถิติทราฟฟิกสดแล้ว"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "ซ่อนสถิติทราฟฟิกสดแล้ว"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "Location check failed",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "Locations exported",
+      "target": "ตำแหน่ง ส่งออกแล้ว"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "ไม่มีการสมัครสมาชิกให้รีเฟรช"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "เปิดยอดรวมต่อโปรไฟล์แล้ว"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "ซ่อนยอดรวมต่อโปรไฟล์แล้ว"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "จะกู้คืนเซสชัน VPN ก่อนหน้า"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "ยกเลิกการสแกน QR แล้ว"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "การกำหนดเส้นทาง กฎ ส่งออกแล้ว"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "เปิดสถิติเซสชันแล้ว"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "ซ่อนสถิติเซสชันแล้ว"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "ข้อความที่แชร์ไม่ใช่ข้อมูลนำเข้าที่รองรับ"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "ลบการสมัครสมาชิกแล้ว"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "อัปเดตการสมัครสมาชิกแล้ว"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "รีเฟรชการสมัครเสร็จแล้ว กำลังค้นหาตำแหน่งที่ดีที่สุด..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "รีเฟรชการสมัครสมาชิกเสร็จแล้ว. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "โหมดรันไทม์: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "พร็อกซีท้องถิ่น: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "บันทึกรันไทม์: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "ตรวจโหมด VPN ผ่าน"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ตรวจโหมดพร็อกซีผ่าน"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "ตรวจโหมด VPN ไม่ผ่าน: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "โหมดพร็อกซีเท่านั้น ตรวจสอบก่อนเริ่มล้มเหลว: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "โหมด VPN ใช้ไม่ได้: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "โหมดพร็อกซีเท่านั้น ไม่พร้อมใช้งาน: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN เดสก์ท็อปพร้อม"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "VPN เดสก์ท็อป: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN โหมด พร้อมใช้งาน"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "พร็อกซี โหมด พร้อมใช้งาน"
+    },
+    {
+      "source": "not ready",
+      "target": "ยังไม่พร้อม"
+    },
+    {
+      "source": " checks",
+      "target": " รายการตรวจสอบ"
+    },
+    {
+      "source": " check",
+      "target": " รายการตรวจสอบ"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "ข้อผิดพลาดอุปกรณ์ TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "ข้อผิดพลาดสิทธิ์เครือข่าย: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "TUN device",
+      "target": "อุปกรณ์ TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "สิทธิ์เครือข่าย"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "ไม่พบอุปกรณ์ Linux TUN ที่ /dev/net/tun ลอง: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "โหมด VPN เดสก์ท็อปต้องใช้ CAP_NET_ADMIN เรียกใช้เป็น root หรือให้สิทธิ์ sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN พร้อมบนคอมพิวเตอร์นี้"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "พร็อกซีพร้อมบนคอมพิวเตอร์นี้"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "ว่าง"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN เริ่มแล้ว"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN หยุดแล้ว"
+    },
+    {
+      "source": "Proxy started",
+      "target": "พร็อกซี เริ่มแล้ว"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "พร็อกซี หยุดแล้ว"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "กำลังเริ่ม VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "กำลังเริ่มพร็อกซีท้องถิ่น..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "กำลังเริ่ม VPN ด้วยตำแหน่งที่ดีที่สุด..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "กำลังเริ่มพร็อกซีท้องถิ่นด้วยตำแหน่งที่ดีที่สุด..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากการสมัคร..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากตำแหน่งที่บันทึกไว้..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ตำแหน่ง ค้นหา ยกเลิกแล้ว"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ตำแหน่ง ค้นหา ล้มเหลว"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ให้สิทธิ์ VPN แล้วลองอีกครั้ง"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ตั้งค่าแหล่งข้อมูลระยะไกลก่อน"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "เพิ่มตำแหน่งที่บันทึกไว้อย่างน้อยหนึ่งรายการก่อน"
+    },
+    {
+      "source": "Select a location first",
+      "target": "เลือกตำแหน่งก่อน"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ยังไม่มีการสมัครสมาชิกที่บันทึกไว้"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกทั้งหมด..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกที่ใช้งานอยู่..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "กำลังรีเฟรช การสมัครสมาชิก..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "กำลังรีเฟรช การสมัครสมาชิก..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกอัตโนมัติ..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกอัตโนมัติ..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "การสมัครสมาชิก รีเฟรชed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "การสมัครสมาชิกs รีเฟรชed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "รีเฟรชการสมัครสมาชิกที่ใช้งานอยู่แล้ว"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "รีเฟรชการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "รีเฟรช ล้มเหลว"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ตั้งค่าแหล่งโปรไฟล์เป็นการสมัครสมาชิกแล้ว"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ตั้งค่าแหล่งโปรไฟล์เป็นตำแหน่งที่บันทึกแล้ว"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ตั้งค่าโหมดการเชื่อมต่อเป็น VPN แล้ว"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ตั้งค่าโหมดการเชื่อมต่อเป็นพร็อกซีเท่านั้นแล้ว"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ตัดการเชื่อมต่อก่อนเพื่อเปลี่ยนโหมด"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ลบรายการประวัติแล้ว"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "การสมัครสมาชิก ชื่อ รีเซ็ตแล้ว"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "การสมัครสมาชิก ชื่อ บันทึกแล้ว"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ตั้งภาษาเป็นค่าเริ่มต้นของระบบแล้ว"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "บันทึก DNS แบบกำหนดเองแล้ว"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "ปิด DNS กำหนดเองแล้ว"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "การกำหนดเส้นทาง กฎ บันทึกแล้ว"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "การกำหนดเส้นทาง กฎ นำเข้าแล้ว"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ตำแหน่ง นำเข้าแล้ว"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ตำแหน่งที่เลือกไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "สลับไปยังตำแหน่งที่บันทึกเพื่ออิมพอร์ตตำแหน่ง"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "สลับไปยังตำแหน่งที่บันทึกเพื่อเพิ่มตำแหน่งด้วยตนเอง"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "การตั้งค่าตำแหน่งไม่ถูกต้อง"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ตำแหน่งที่จะแก้ไขไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "เปิดการส่งออกข้อมูลวินิจฉัยแล้ว"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ส่งออกข้อมูลวินิจฉัยล้มเหลว"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ยกเลิกการส่งออกข้อมูลวินิจฉัยแล้ว"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ตำแหน่ง VPN ก่อนหน้าไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ปิดแอปแล้ว VPN ปิดอยู่"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "เปิดใช้งานการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "เลือกการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "การสมัครสมาชิก ที่เลือก"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "คัดลอกตำแหน่งไปยังคลิปบอร์ดแล้ว"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ยกเลิกการส่งออกตำแหน่งแล้ว"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "คัดลอกกฎการกำหนดเส้นทางไปยังคลิปบอร์ดแล้ว"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ยกเลิกการส่งออกกฎแล้ว"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "โหมดแหล่งโปรไฟล์: การสมัคร"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "โหมดแหล่งโปรไฟล์: ตำแหน่งปัจจุบัน"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "ตำแหน่งจากการสมัครสมาชิกเป็นแบบอ่านอย่างเดียว สลับไปยังตำแหน่งที่บันทึกเพื่อบันทึกการแก้ไข"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "ตำแหน่งจากการสมัครสมาชิกเป็นแบบอ่านอย่างเดียว สลับไปยังตำแหน่งที่บันทึกเพื่อลบ"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "ได้รับการสมัครสมาชิกแล้ว ตรวจสอบและบันทึกในแท็บโปรไฟล์"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "ได้รับลิงก์การสมัครสมาชิกแล้ว ตรวจสอบและบันทึกในแท็บโปรไฟล์"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "ได้รับการตั้งค่าตำแหน่งแล้ว ตรวจสอบและบันทึกในแท็บตำแหน่ง"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "กำลังเริ่มพร็อกซีท้องถิ่นด้วยตำแหน่งที่ดีที่สุด..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "กำลังเริ่ม VPN ด้วยตำแหน่งที่ดีที่สุด..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากการสมัคร..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "กำลังค้นหาตำแหน่งที่ดีที่สุดจากตำแหน่งที่บันทึกไว้..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "อิมพอร์ตตำแหน่งแล้ว ตำแหน่งที่เลือกไม่พร้อมใช้งาน จึงหยุดพร็อกซี"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "อิมพอร์ตตำแหน่งแล้ว ตำแหน่งที่เลือกไม่พร้อมใช้งาน จึงหยุด VPN"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ตำแหน่งที่เลือกไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุดพร็อกซีไม่ได้"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุด VPN ไม่ได้"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุดพร็อกซีไม่ได้"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุด VPN ไม่ได้"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "หยุด VPN แล้ว การสมัครสมาชิกที่รีเฟรชลบตำแหน่งที่เลือกออก"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "หยุดพร็อกซีแล้ว การสมัครสมาชิกที่รีเฟรชลบตำแหน่งที่เลือกออก"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN หยุดแล้ว จะเชื่อมต่อใหม่เมื่อเปิดครั้งถัดไป"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "พร็อกซีหยุดแล้ว จะเชื่อมต่อใหม่เมื่อเปิดครั้งถัดไป"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "อัปเดตกฎแล้ว"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "ลบตำแหน่งที่เลือกแล้ว หยุด VPN: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "ลบตำแหน่งที่เลือกแล้ว หยุดพร็อกซี: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "เลือกตำแหน่งที่ดีที่สุดและเริ่ม VPN แล้ว: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "เลือกตำแหน่งที่ดีที่สุดและเริ่มพร็อกซีแล้ว: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "เริ่ม VPN แล้ว แต่บันทึกตำแหน่งที่เลือกไม่สำเร็จ"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "เริ่มพร็อกซีแล้ว แต่บันทึกตำแหน่งที่เลือกไม่สำเร็จ"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "เริ่ม VPN แล้ว แต่บันทึกตำแหน่งที่ดีที่สุดไม่สำเร็จ"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "เริ่มพร็อกซีแล้ว แต่บันทึกตำแหน่งที่ดีที่สุดไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "เริ่ม VPN ด้วยตำแหน่งที่ดีที่สุดไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "เริ่มพร็อกซีด้วยตำแหน่งที่ดีที่สุดไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "บันทึกตำแหน่งที่เลือกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "บันทึกตำแหน่งที่เลือกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "บันทึกตำแหน่งที่ดีที่สุดไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "ใช้ตำแหน่งที่เลือกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "หยุด VPN ก่อนออกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "หยุดพร็อกซีก่อนออกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "หยุด VPN ไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "หยุดพร็อกซีไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "เริ่ม VPN ไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "เริ่มพร็อกซีไม่สำเร็จ"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "ไม่สามารถเตรียม VPN ได้"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "ไม่สามารถเตรียมพร็อกซีได้"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "กำลังเตรียม VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "กำลังเตรียม พร็อกซี"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN เริ่ม ยกเลิกแล้ว"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "พร็อกซี เริ่ม ยกเลิกแล้ว"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN หยุด ยกเลิกแล้ว"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "พร็อกซี หยุด ยกเลิกแล้ว"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "กำลังเริ่มพร็อกซีท้องถิ่น..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "กำลังเริ่ม VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกทั้งหมด..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกที่ใช้งานอยู่..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "กำลังรีเฟรช การสมัครสมาชิก..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "กำลังรีเฟรช การสมัครสมาชิก..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกอัตโนมัติ..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "กำลังรีเฟรชการสมัครสมาชิกอัตโนมัติ..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "รีเฟรชการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "รีเฟรชการสมัครสมาชิกที่ใช้งานอยู่แล้ว"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "การสมัครสมาชิกs รีเฟรชed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "การสมัครสมาชิก รีเฟรชed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "รีเฟรช ล้มเหลว"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ตำแหน่ง ค้นหา ยกเลิกแล้ว"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ตำแหน่ง ค้นหา ล้มเหลว"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ให้สิทธิ์ VPN แล้วลองอีกครั้ง"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ตั้งค่าแหล่งข้อมูลระยะไกลก่อน"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "เพิ่มตำแหน่งที่บันทึกไว้อย่างน้อยหนึ่งรายการก่อน"
+    },
+    {
+      "source": "Select a location first",
+      "target": "เลือกตำแหน่งก่อน"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ยังไม่มีการสมัครสมาชิกที่บันทึกไว้"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ตั้งค่าแหล่งโปรไฟล์เป็นการสมัครสมาชิกแล้ว"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ตั้งค่าแหล่งโปรไฟล์เป็นตำแหน่งที่บันทึกแล้ว"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ตั้งค่าโหมดการเชื่อมต่อเป็น VPN แล้ว"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ตั้งค่าโหมดการเชื่อมต่อเป็นพร็อกซีเท่านั้นแล้ว"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ตัดการเชื่อมต่อก่อนเพื่อเปลี่ยนโหมด"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ลบรายการประวัติแล้ว"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "การสมัครสมาชิก ชื่อ รีเซ็ตแล้ว"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "การสมัครสมาชิก ชื่อ บันทึกแล้ว"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ตั้งภาษาเป็นค่าเริ่มต้นของระบบแล้ว"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "บันทึก DNS แบบกำหนดเองแล้ว"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "ปิด DNS กำหนดเองแล้ว"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "การกำหนดเส้นทาง กฎ บันทึกแล้ว"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "การกำหนดเส้นทาง กฎ นำเข้าแล้ว"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ตำแหน่ง นำเข้าแล้ว"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "สลับไปยังตำแหน่งที่บันทึกเพื่ออิมพอร์ตตำแหน่ง"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "สลับไปยังตำแหน่งที่บันทึกเพื่อเพิ่มตำแหน่งด้วยตนเอง"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "การตั้งค่าตำแหน่งไม่ถูกต้อง"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ตำแหน่งที่จะแก้ไขไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "เปิดการส่งออกข้อมูลวินิจฉัยแล้ว"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ส่งออกข้อมูลวินิจฉัยล้มเหลว"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ยกเลิกการส่งออกข้อมูลวินิจฉัยแล้ว"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ตำแหน่ง VPN ก่อนหน้าไม่พร้อมใช้งานแล้ว"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ปิดแอปแล้ว VPN ปิดอยู่"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "เปิดใช้งานการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "เลือกการสมัครสมาชิกทั้งหมดแล้ว"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "การสมัครสมาชิก ที่เลือก"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "การสมัครสมาชิก บันทึกแล้ว"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "คัดลอกตำแหน่งไปยังคลิปบอร์ดแล้ว"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ยกเลิกการส่งออกตำแหน่งแล้ว"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "คัดลอกกฎการกำหนดเส้นทางไปยังคลิปบอร์ดแล้ว"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ยกเลิกการส่งออกกฎแล้ว"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "คลิปบอร์ด อ่าน ล้มเหลว"
+    },
+    {
+      "source": "No locations to export",
+      "target": "อัปเดตตำแหน่งแล้ว"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "โหลดแอปไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "รีเฟรชการสมัครสมาชิกไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "การดำเนินการล้มเหลว"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "เปิดไฟล์ตำแหน่งไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "อ่านไฟล์ตำแหน่งไม่สำเร็จ"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "เปิดไฟล์กฎการกำหนดเส้นทางไม่สำเร็จ"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "จับคู่ตำแหน่งที่ดีที่สุดกับรายการเดสก์ท็อปไม่ได้"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN พร้อมบนคอมพิวเตอร์นี้"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "พร็อกซีพร้อมบนคอมพิวเตอร์นี้"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "เชลล์ VPN เดสก์ท็อปพร้อมแล้ว"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "เชลล์พร็อกซีเดสก์ท็อปพร้อมแล้ว"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "เริ่ม VPN บน "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "เริ่มพร็อกซีบน "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN หยุดแล้ว. แอป โหมด: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "พร็อกซี หยุดแล้ว. แอป โหมด: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "ตั้งภาษาเป็น "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "ตั้งค่ารีเฟรชอัตโนมัติของการสมัครสมาชิกเป็น "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "บันทึกการตั้งค่าการตรวจสอบแล้ว: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ตำแหน่งที่เลือกไม่เปลี่ยนแปลง: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ลบตำแหน่งที่เลือกแล้ว: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "ตั้งค่าตำแหน่งที่เลือกแล้ว: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "อัปเดตและรวมตำแหน่งแล้ว: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ตำแหน่ง alพร้อม บันทึกแล้ว: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "อัปเดตตำแหน่งแล้ว: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ลบตำแหน่งแล้ว: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "เพิ่มตำแหน่งแล้ว: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "การสมัครสมาชิกs รีเฟรชed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ล้มเหลว: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "กำลังกู้คืน VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "กำลังรีเฟรช "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ส่งออกตำแหน่งไปยัง "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "ส่งออกกฎการกำหนดเส้นทางไปยัง "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "ส่งออกการวินิจฉัยไปยัง "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "ทดสอบไม่สำเร็จ: "
+    },
+    {
+      "source": "Activated ",
+      "target": "เปิดใช้แล้ว "
+    },
+    {
+      "source": "Added ",
+      "target": "เพิ่มแล้ว "
+    },
+    {
+      "source": "Deleted ",
+      "target": "ลบแล้ว "
+    },
+    {
+      "source": "Selected ",
+      "target": "ที่เลือก "
+    },
+    {
+      "source": "Edited location #",
+      "target": "แก้ไขแล้ว ตำแหน่ง #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "แอป โหมด: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ตำแหน่งรีเฟรชแล้ว"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ตำแหน่งรีเฟรชแล้ว"
+    },
+    {
+      "source": " • batch ",
+      "target": " • ชุด "
+    },
+    {
+      "source": " • retries ",
+      "target": " • ลองใหม่ "
+    },
+    {
+      "source": "custom interval",
+      "target": "ช่วงเวลาที่กำหนดเอง"
+    },
+    {
+      "source": "every hour",
+      "target": "ทุกชั่วโมง"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "การสมัครสมาชิกทั้งหมด"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ที่เลือก การสมัครสมาชิก"
+    },
+    {
+      "source": "proxy only",
+      "target": "พร็อกซีเท่านั้น"
+    },
+    {
+      "source": "off",
+      "target": "ปิด"
+    },
+    {
+      "source": "Idle",
+      "target": "ว่าง"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN เริ่มแล้ว"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN หยุดแล้ว"
+    },
+    {
+      "source": "Proxy started",
+      "target": "พร็อกซี เริ่มแล้ว"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "พร็อกซี หยุดแล้ว"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "กำลังเริ่ม VPN ด้วยตำแหน่งใหม่ที่ดีที่สุด..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "กำลังเริ่มพร็อกซีด้วยตำแหน่งใหม่ที่ดีที่สุด..."
+    }
+  ]
+}

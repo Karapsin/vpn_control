@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "جارٍ العثور على أفضل موقع من الاشتراك...",
+    "findingSaved": "جارٍ العثور على أفضل موقع من المواقع المحفوظة...",
+    "testingFastestCandidates": "جارٍ اختبار أسرع المرشحين على دفعات...",
+    "checkingLocations": "جارٍ فحص {count} موقع...",
+    "testingLocationsRange": "اختبار المواقع {start}-{end} من {total}...",
+    "refreshIntervalMinutes": "{count} د",
+    "refreshIntervalHours": "{count} س",
+    "refreshIntervalHoursMinutes": "{hours} س {minutes} د",
+    "refreshIntervalEvery": "كل {interval}",
+    "refreshIntervalEveryHour": "كل ساعة"
+  },
+  "benchmark": {
+    "best": "الأفضل: ",
+    "primary": "أساسي ",
+    "secondary": "احتياطي ",
+    "tcp": "TCP ",
+    "millisUnit": "مللي ثانية",
+    "statuses": {
+      "blocked": "محظور",
+      "cached": "مخزن",
+      "challenge": "تحدي",
+      "custom_config_manual_only": "يدوي",
+      "error": "خطأ",
+      "manual": "يدوي",
+      "ok": "جيد",
+      "partial": "جزئي",
+      "tcp_error": "خطأ_tcp",
+      "tcp_timeout": "مهلة_tcp",
+      "timeout": "مهلة",
+      "unreachable": "غير متاح",
+      "validation_timeout": "مهلة_التحقق"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "رابط الاشتراك"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "رابط الاشتراك غير قابل للقراءة"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "اشتراكات HTTP غير الآمنة غير مدعومة"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "استخدم رابط اشتراك يبدأ بـ https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "يجب أن يحتوي الرابط على مضيف HTTPS صالح"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "الصق رابط اشتراك https:// صالحًا."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "مصدر بعيد مباشر"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "رابط استيراد sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "رابط استيراد sing-box غير قابل للقراءة"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "تدعم فقط الروابط البعيدة HTTPS الصالحة"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "استخدم رابط استيراد sing-box يؤدي إلى رابط https:// صالح."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "يجلب المحتوى البعيد من الرابط المضمن"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "يجلب المحتوى البعيد من "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "تعذر تحليل رابط الاستيراد"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "الصق رابط استيراد ملف sing-box بعيدًا صالحًا أو رابط اشتراك مباشرًا."
+    },
+    {
+      "source": "VPN import link",
+      "target": "رابط استيراد VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "رابط استيراد VPN غير قابل للقراءة"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "استيراد مزود غير مدعوم"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "استيرادات Amnezia وروابط vpn:// الأخرى غير مدعومة. استخدم رابط اشتراك عاديًا أو أضف المواقع يدويًا."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "تعذر فك بيانات الاستيراد"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "استيرادات vpn:// غير مدعومة. استخدم رابط اشتراك عاديًا أو أضف المواقع يدويًا."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "روابط اشتراك HTTP غير مدعومة. استخدم https:// بدلًا منها."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "يجب أن يكون المصدر البعيد رابط https:// أو رابط استيراد مدعومًا"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "المصدر البعيد فارغ"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "يجب أن يكون المصدر البعيد رابط https:// صالحًا مع مضيف."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "يؤدي استيراد sing-box هذا إلى رابط غير صالح أو غير HTTPS. استخدم رابط https:// صالحًا بدلًا من ذلك."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "جارٍ تطبيق الموقع المحدد..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "جارٍ تطبيق الموقع المحدد المحدّث..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "انتهت مهلة البحث عن أفضل موقع؛ سيبقى الاتصال الحالي"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "الحافظة فارغة"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "تم تفعيل سجل الاتصال"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "تم إخفاء سجل الاتصال"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "تم تفعيل أدوات اختبار الاتصال"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "تم إخفاء أدوات اختبار الاتصال"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "تعذر فتح الملف"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "تعذر فتح الملف"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "تعذر فتح الملف"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "تعذر فتح الملف"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "سطح المكتب: هولندا من Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "تم بدء تطبيق سطح المكتب"
+    },
+    {
+      "source": "App initialized",
+      "target": "تم بدء التطبيق"
+    },
+    {
+      "source": "Export Locations",
+      "target": "تصدير المواقع"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Import canceled",
+      "target": "أُلغي الاستيراد"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "تم تحديث الاشتراك"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "تم تفعيل سجل زمن الاستجابة"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "تم إخفاء سجل زمن الاستجابة"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "تم تفعيل إحصاءات المرور الحية"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "تم إخفاء إحصاءات المرور الحية"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Location check failed",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Locations exported",
+      "target": "المواقع تم التصدير"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "تم تحديث المواقع"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "تم تحديث المواقع"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "لا توجد اشتراكات للتحديث"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "تم تفعيل إجماليات كل ملف"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "تم إخفاء إجماليات كل ملف"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "ستتم استعادة جلسة VPN السابقة"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "أُلغي مسح QR"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "التوجيه القواعد تم التصدير"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "تم تحديث القواعد"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "تم تحديث القواعد"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "تم تفعيل إحصاءات الجلسة"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "تم إخفاء إحصاءات الجلسة"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "النص المشارَك ليس بيانات استيراد مدعومة"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "تم حذف الاشتراك"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "تم تحديث الاشتراك"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "اكتمل تحديث الاشتراك. جارٍ العثور على أفضل موقع..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "انتهى تحديث الاشتراك. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "وضع التشغيل: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "وسيط محلي: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "سجل التشغيل: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "نجحت فحوصات وضع VPN"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "نجحت فحوصات وضع الوسيط فقط"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "فشلت فحوصات وضع VPN: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "وضع الوكيل فقط فشل الفحص الأولي: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "وضع VPN غير متاح: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "وضع الوكيل فقط غير متاح: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN سطح المكتب جاهز"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "قدرة VPN سطح المكتب: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN الوضع متاح"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "الوكيل الوضع متاح"
+    },
+    {
+      "source": "not ready",
+      "target": "غير جاهز"
+    },
+    {
+      "source": " checks",
+      "target": " فحوصات"
+    },
+    {
+      "source": " check",
+      "target": " فحص"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "فشل جهاز TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "فشل صلاحيات الشبكة: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "تم تحديث القواعد"
+    },
+    {
+      "source": "TUN device",
+      "target": "جهاز TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "صلاحيات الشبكة"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "تم تحديث القواعد"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "جهاز Linux TUN غير موجود في /dev/net/tun. جرّب: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "وضع VPN لسطح المكتب يحتاج CAP_NET_ADMIN. شغّله كجذر أو امنح sing-box الصلاحيات: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "تم تحديث القواعد"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN جاهز على هذا الحاسوب"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "الوسيط جاهز على هذا الحاسوب"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "خامل"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN بدأ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN توقف"
+    },
+    {
+      "source": "Proxy started",
+      "target": "الوكيل بدأ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "الوكيل توقف"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "جارٍ تشغيل VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "جارٍ تشغيل الوسيط المحلي..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "جارٍ تشغيل VPN بأفضل موقع..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "جارٍ تشغيل الوسيط المحلي بأفضل موقع..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "جارٍ العثور على أفضل موقع من الاشتراك..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "جارٍ العثور على أفضل موقع من المواقع المحفوظة..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "الموقع بحث أُلغي"
+    },
+    {
+      "source": "Location search failed",
+      "target": "الموقع بحث فشل"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "امنح إذن VPN ثم حاول مرة أخرى"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "اضبط المصدر البعيد أولاً"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "أضف موقعاً محفوظاً واحداً على الأقل أولاً"
+    },
+    {
+      "source": "Select a location first",
+      "target": "اختر موقعاً أولاً"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "لا توجد اشتراكات محفوظة بعد"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "جارٍ تحديث كل الاشتراكات..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "جارٍ تحديث الاشتراك النشط..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "تحديث الاشتراك..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "تحديث الاشتراكات..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "جارٍ التحديث التلقائي للاشتراك..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "جارٍ التحديث التلقائي للاشتراكات..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "الاشتراك التحديثed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "الاشتراكs التحديثed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "تم تحديث الاشتراك النشط"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "تم تحديث كل الاشتراكات"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "التحديث فشل"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "تم ضبط مصدر الملف على الاشتراك"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "تم ضبط مصدر الملف على المواقع المحفوظة"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "تم ضبط وضع الاتصال على VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "تم ضبط وضع الاتصال على الوكيل فقط"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "افصل الاتصال أولاً لتغيير وضع الاتصال"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "تم حذف إدخال السجل"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "تم تحديث الاشتراك"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "الاشتراك الاسم محفوظ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "تم ضبط اللغة على إعداد النظام"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "تم حفظ DNS المخصص"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "تم تعطيل DNS المخصص"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "التوجيه القواعد محفوظ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "التوجيه القواعد تم الاستيراد"
+    },
+    {
+      "source": "Locations imported",
+      "target": "المواقع تم الاستيراد"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "الموقع المحدد لم يعد متاحاً"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "انتقل إلى المواقع المحفوظة لاستيراد المواقع"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "انتقل إلى المواقع المحفوظة لإضافة المواقع يدوياً"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "إعداد الموقع غير صالح"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "الموقع المطلوب تعديله لم يعد متاحاً"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "تم فتح تصدير التشخيص"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "فشل تصدير التشخيص"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "أُلغي تصدير التشخيص"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "موقع VPN السابق لم يعد متاحاً"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "أُغلق التطبيق. كان VPN متوقفاً."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "تم تفعيل كل الاشتراكات"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "تم اختيار كل الاشتراكات"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "الاشتراك المحدد"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "تم نسخ المواقع إلى الحافظة"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "أُلغي تصدير المواقع"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "تم نسخ القواعد إلى الحافظة"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "أُلغي تصدير القواعد"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "وضع مصدر الملف: اشتراك"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "وضع مصدر الملف: المواقع الحالية"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "مواقع الاشتراك للقراءة فقط. انتقل إلى المواقع المحفوظة لحفظ التعديلات."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "مواقع الاشتراك للقراءة فقط. انتقل إلى المواقع المحفوظة لحذفها."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "تم استلام الاشتراك. راجعه واحفظه في تبويب الملف."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "تم استلام رابط الاشتراك. راجعه واحفظه في تبويب الملف."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "تم استلام إعداد الموقع. راجعه واحفظه في تبويب المواقع."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "جارٍ تشغيل الوسيط المحلي بأفضل موقع..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "جارٍ تشغيل VPN بأفضل موقع..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "جارٍ العثور على أفضل موقع من الاشتراك..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "جارٍ العثور على أفضل موقع من المواقع المحفوظة..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "تم استيراد المواقع. الموقع المحدد لم يعد متاحاً، وتم إيقاف الوكيل"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "تم استيراد المواقع. الموقع المحدد لم يعد متاحاً، وتم إيقاف VPN"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "الموقع المحدد لم يعد متاحاً"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "تم التراجع عن تغيير الموقع لأن الوكيل لم يتوقف"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "تم التراجع عن تغيير الموقع لأن VPN لم يتوقف"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "تم التراجع عن تغيير الموقع لأن الوكيل لم يتوقف"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "تم التراجع عن تغيير الموقع لأن VPN لم يتوقف"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "توقف VPN. أزالت الاشتراكات المحدّثة الموقع المحدد."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "توقف الوكيل. أزالت الاشتراكات المحدّثة الموقع المحدد."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "توقف VPN. سيعاد الاتصال عند التشغيل التالي."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "توقف الوسيط. سيعاد الاتصال عند التشغيل التالي."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "تم حفظ قواعد التوجيه. أعد تشغيل VPN لتطبيقها"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "تم حفظ قواعد التوجيه. أعد تشغيل الوكيل لتطبيقها"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "تم استيراد قواعد التوجيه. أعد تشغيل VPN لتطبيقها"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "تم استيراد قواعد التوجيه. أعد تشغيل الوكيل لتطبيقها"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "أزيل الموقع المحدد. توقف VPN: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "أزيل الموقع المحدد. توقف الوكيل: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "تم اختيار أفضل موقع وبدء VPN: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "تم اختيار أفضل موقع وبدء الوكيل: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "بدأ VPN، لكن فشل حفظ الموقع المحدد"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "بدأ الوكيل، لكن فشل حفظ الموقع المحدد"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "بدأ VPN، لكن فشل حفظ أفضل موقع"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "بدأ الوكيل، لكن فشل حفظ أفضل موقع"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "فشل بدء VPN بأفضل موقع"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "فشل بدء الوكيل بأفضل موقع"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "فشل حفظ الموقع المحدد"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "فشل حفظ الموقع المحدد"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "فشل حفظ أفضل موقع"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "فشل تطبيق الموقع المحدد"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "فشل إيقاف VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "فشل إيقاف الوكيل"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "فشل بدء VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "فشل بدء الوكيل"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "تعذر تحضير VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "تعذر تجهيز الوكيل"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "تحضير VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "تحضير الوكيل"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN بدء أُلغي"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "الوكيل بدء أُلغي"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN إيقاف أُلغي"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "الوكيل إيقاف أُلغي"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "جارٍ تشغيل الوسيط المحلي..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "جارٍ تشغيل VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "جارٍ تحديث كل الاشتراكات..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "جارٍ تحديث الاشتراك النشط..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "تحديث الاشتراكات..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "تحديث الاشتراك..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "جارٍ التحديث التلقائي للاشتراكات..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "جارٍ التحديث التلقائي للاشتراك..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "تم تحديث كل الاشتراكات"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "تم تحديث الاشتراك النشط"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "الاشتراكs التحديثed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "الاشتراك التحديثed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "التحديث فشل"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "الموقع بحث أُلغي"
+    },
+    {
+      "source": "Location search failed",
+      "target": "الموقع بحث فشل"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "امنح إذن VPN ثم حاول مرة أخرى"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "اضبط المصدر البعيد أولاً"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "أضف موقعاً محفوظاً واحداً على الأقل أولاً"
+    },
+    {
+      "source": "Select a location first",
+      "target": "اختر موقعاً أولاً"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "لا توجد اشتراكات محفوظة بعد"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "تم ضبط مصدر الملف على الاشتراك"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "تم ضبط مصدر الملف على المواقع المحفوظة"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "تم ضبط وضع الاتصال على VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "تم ضبط وضع الاتصال على الوكيل فقط"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "افصل الاتصال أولاً لتغيير وضع الاتصال"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "تم حذف إدخال السجل"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "تم تحديث الاشتراك"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "الاشتراك الاسم محفوظ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "تم ضبط اللغة على إعداد النظام"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "تم حفظ DNS المخصص"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "تم تعطيل DNS المخصص"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "التوجيه القواعد محفوظ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "التوجيه القواعد تم الاستيراد"
+    },
+    {
+      "source": "Locations imported",
+      "target": "المواقع تم الاستيراد"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "انتقل إلى المواقع المحفوظة لاستيراد المواقع"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "انتقل إلى المواقع المحفوظة لإضافة المواقع يدوياً"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "إعداد الموقع غير صالح"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "الموقع المطلوب تعديله لم يعد متاحاً"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "تم فتح تصدير التشخيص"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "فشل تصدير التشخيص"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "أُلغي تصدير التشخيص"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "موقع VPN السابق لم يعد متاحاً"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "أُغلق التطبيق. كان VPN متوقفاً."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "تم تفعيل كل الاشتراكات"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "تم اختيار كل الاشتراكات"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "الاشتراك المحدد"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "الاشتراك محفوظ"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "تم نسخ المواقع إلى الحافظة"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "أُلغي تصدير المواقع"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "تم نسخ القواعد إلى الحافظة"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "أُلغي تصدير القواعد"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "الحافظة قراءة فشل"
+    },
+    {
+      "source": "No locations to export",
+      "target": "تم تحديث المواقع"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "فشل تحديث الاشتراكات"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "فشل فتح ملف المواقع"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "فشل قراءة ملف المواقع"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "تعذر مطابقة أفضل موقع مع قائمة سطح المكتب"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN جاهز على هذا الحاسوب"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "الوسيط جاهز على هذا الحاسوب"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "واجهة VPN لسطح المكتب جاهزة"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "واجهة الوكيل لسطح المكتب جاهزة"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "تم تشغيل VPN على "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "تم تشغيل الوسيط على "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN توقف. التطبيق الوضع: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "الوكيل توقف. التطبيق الوضع: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "تم ضبط اللغة على "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "تم ضبط التحديث التلقائي للاشتراك على "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "تم حفظ إعدادات الاختبار: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "الموقع المحدد لم يتغير: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "أزيل الموقع المحدد: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "تم ضبط الموقع المحدد: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "الموقع alجاهز محفوظ: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Location removed: ",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Location added: ",
+      "target": "تم تحديث الموقع"
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "الاشتراكs التحديثed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "فشل: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "استعادة VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "تحديث "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "تم تصدير المواقع إلى "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "تم تصدير قواعد التوجيه إلى "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "تم تصدير التشخيصات إلى "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "فشلت العملية"
+    },
+    {
+      "source": "Activated ",
+      "target": "تم تفعيل "
+    },
+    {
+      "source": "Added ",
+      "target": "أُضيف "
+    },
+    {
+      "source": "Deleted ",
+      "target": "حُذف "
+    },
+    {
+      "source": "Selected ",
+      "target": "اخترed "
+    },
+    {
+      "source": "Edited location #",
+      "target": "عُدّل الموقع #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "التطبيق الوضع: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " مواقع محدثة"
+    },
+    {
+      "source": " location refreshed",
+      "target": " موقع محدث"
+    },
+    {
+      "source": " • batch ",
+      "target": " • دفعة "
+    },
+    {
+      "source": " • retries ",
+      "target": " • محاولات "
+    },
+    {
+      "source": "custom interval",
+      "target": "فاصل مخصص"
+    },
+    {
+      "source": "every hour",
+      "target": "كل ساعة"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "كل الاشتراكات"
+    },
+    {
+      "source": "selected subscription",
+      "target": "المحدد الاشتراك"
+    },
+    {
+      "source": "proxy only",
+      "target": "الوكيل فقط"
+    },
+    {
+      "source": "off",
+      "target": "إيقاف"
+    },
+    {
+      "source": "Idle",
+      "target": "خامل"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN بدأ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN توقف"
+    },
+    {
+      "source": "Proxy started",
+      "target": "الوكيل بدأ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "الوكيل توقف"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "جارٍ تشغيل VPN بالموقع الأفضل الجديد..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "جارٍ تشغيل الوسيط بالموقع الأفضل الجديد..."
+    }
+  ]
+}

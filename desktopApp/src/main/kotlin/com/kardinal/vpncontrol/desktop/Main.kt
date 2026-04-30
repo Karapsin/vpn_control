@@ -172,6 +172,7 @@ private fun DesktopApplication(
 
     if (traySupported) {
         DesktopTrayIcon(
+            appTitle = appStrings.get(UiText.APP_TITLE),
             connectionActionLabel = trayConnectionActionLabel(state, appStrings),
             findBestLabel = appStrings.get(UiText.FIND_BEST),
             showWindowLabel = appStrings.get(UiText.SHOW_WINDOW),
@@ -204,7 +205,7 @@ private fun DesktopApplication(
                 exitAfterStoppingRuntime()
             }
         },
-        title = "VPN Control Desktop",
+        title = appStrings.get(UiText.APP_TITLE),
     ) {
         LaunchedEffect(windowVisible) {
             if (windowVisible) {

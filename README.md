@@ -2,6 +2,8 @@
 
 Install files are available on the GitHub repository page under `Actions` artifacts.
 
+Artifacts can include `SHA256SUMS.txt` checksum files where the packaging workflow produces them.
+
 | Platform | GitHub Location | File To Use |
 | --- | --- | --- |
 | Windows | `Actions` -> `Windows Desktop Package` -> latest successful run -> `vpn-control-windows-installers` | `vpn-control-<version>.exe` |
@@ -56,6 +58,8 @@ Install on a connected phone with:
 ```bash
 adb install -r app-release.apk
 ```
+
+Note: the current release APK is signed with the Android debug signing config, so treat it as a direct-install artifact rather than a Play Store release artifact.
 
 ## Linux
 

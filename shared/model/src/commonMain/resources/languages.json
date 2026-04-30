@@ -48,5 +48,160 @@
     "enumName": "SOVIET",
     "code": "sov",
     "nativeName": "Советский"
+  },
+  {
+    "enumName": "ITALIAN",
+    "code": "it",
+    "nativeName": "Italiano"
+  },
+  {
+    "enumName": "GREEK",
+    "code": "el",
+    "nativeName": "Ελληνικά"
+  },
+  {
+    "enumName": "HINDI",
+    "code": "hi",
+    "nativeName": "हिन्दी"
+  },
+  {
+    "enumName": "JAPANESE",
+    "code": "ja",
+    "nativeName": "日本語"
+  },
+  {
+    "enumName": "ARABIC",
+    "code": "ar",
+    "nativeName": "العربية"
+  },
+  {
+    "enumName": "TURKISH",
+    "code": "tr",
+    "nativeName": "Türkçe"
+  },
+  {
+    "enumName": "KOREAN",
+    "code": "ko",
+    "nativeName": "한국어"
+  },
+  {
+    "enumName": "PERSIAN",
+    "code": "fa",
+    "nativeName": "فارسی"
+  },
+  {
+    "enumName": "THAI",
+    "code": "th",
+    "nativeName": "ไทย"
+  },
+  {
+    "enumName": "BENGALI",
+    "code": "bn",
+    "nativeName": "বাংলা"
+  },
+  {
+    "enumName": "INDONESIAN",
+    "code": "id",
+    "nativeName": "Bahasa Indonesia"
+  },
+  {
+    "enumName": "UKRAINIAN",
+    "code": "uk",
+    "nativeName": "Українська"
+  },
+  {
+    "enumName": "BELARUSIAN",
+    "code": "be",
+    "nativeName": "Беларуская"
+  },
+  {
+    "enumName": "KAZAKH",
+    "code": "kk",
+    "nativeName": "Қазақша"
+  },
+  {
+    "enumName": "UZBEK",
+    "code": "uz",
+    "nativeName": "Oʻzbekcha"
+  },
+  {
+    "enumName": "KYRGYZ",
+    "code": "ky",
+    "nativeName": "Кыргызча"
+  },
+  {
+    "enumName": "TAJIK",
+    "code": "tg",
+    "nativeName": "Тоҷикӣ"
+  },
+  {
+    "enumName": "GEORGIAN",
+    "code": "ka",
+    "nativeName": "ქართული"
+  },
+  {
+    "enumName": "ARMENIAN",
+    "code": "hy",
+    "nativeName": "Հայերեն"
+  },
+  {
+    "enumName": "AZERBAIJANI",
+    "code": "az",
+    "nativeName": "Azərbaycanca"
+  },
+  {
+    "enumName": "ESTONIAN",
+    "code": "et",
+    "nativeName": "Eesti"
+  },
+  {
+    "enumName": "LATVIAN",
+    "code": "lv",
+    "nativeName": "Latviešu"
+  },
+  {
+    "enumName": "LITHUANIAN",
+    "code": "lt",
+    "nativeName": "Lietuvių"
+  },
+  {
+    "enumName": "TURKMEN",
+    "code": "tk",
+    "nativeName": "Türkmençe"
+  },
+  {
+    "enumName": "VIETNAMESE",
+    "code": "vi",
+    "nativeName": "Tiếng Việt"
+  },
+  {
+    "enumName": "POLISH",
+    "code": "pl",
+    "nativeName": "Polski"
+  },
+  {
+    "enumName": "HUNGARIAN",
+    "code": "hu",
+    "nativeName": "Magyar"
+  },
+  {
+    "enumName": "FINNISH",
+    "code": "fi",
+    "nativeName": "Suomi"
+  },
+  {
+    "enumName": "SERBIAN",
+    "code": "sr",
+    "nativeName": "Српски"
+  },
+  {
+    "enumName": "BULGARIAN",
+    "code": "bg",
+    "nativeName": "Български"
+  },
+  {
+    "enumName": "ROMANIAN",
+    "code": "ro",
+    "nativeName": "Română"
   }
 ]

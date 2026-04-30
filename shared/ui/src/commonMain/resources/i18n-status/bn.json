@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "সাবস্ক্রিপশন থেকে সেরা অবস্থান খোঁজা হচ্ছে...",
+    "findingSaved": "সংরক্ষিত অবস্থান থেকে সেরা অবস্থান খোঁজা হচ্ছে...",
+    "testingFastestCandidates": "দ্রুততম প্রার্থীদের ব্যাচে পরীক্ষা করা হচ্ছে...",
+    "checkingLocations": "{count}টি অবস্থান পরীক্ষা হচ্ছে...",
+    "testingLocationsRange": "মোট {total}টির মধ্যে {start}-{end} অবস্থান পরীক্ষা হচ্ছে...",
+    "refreshIntervalMinutes": "{count} মিনিট",
+    "refreshIntervalHours": "{count} ঘণ্টা",
+    "refreshIntervalHoursMinutes": "{hours} ঘণ্টা {minutes} মিনিট",
+    "refreshIntervalEvery": "প্রতি {interval}",
+    "refreshIntervalEveryHour": "প্রতি ঘণ্টা"
+  },
+  "benchmark": {
+    "best": "সেরা: ",
+    "primary": "প্রধান ",
+    "secondary": "দ্বিতীয় ",
+    "tcp": "TCP ",
+    "millisUnit": "মিলিসেকেন্ড",
+    "statuses": {
+      "blocked": "অবরুদ্ধ",
+      "cached": "ক্যাশ",
+      "challenge": "চ্যালেঞ্জ",
+      "custom_config_manual_only": "ম্যানুয়াল",
+      "error": "ত্রুটি",
+      "manual": "ম্যানুয়াল",
+      "ok": "ঠিক",
+      "partial": "আংশিক",
+      "tcp_error": "tcp_ত্রুটি",
+      "tcp_timeout": "tcp_সময়শেষ",
+      "timeout": "সময়শেষ",
+      "unreachable": "অপ্রাপ্য",
+      "validation_timeout": "যাচাই_সময়শেষ"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "সাবস্ক্রিপশন URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "পড়া যায় না এমন সাবস্ক্রিপশন URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "অনিরাপদ HTTP সাবস্ক্রিপশন সমর্থিত নয়"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// সাবস্ক্রিপশন URL ব্যবহার করুন।"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL-এ বৈধ HTTPS হোস্ট থাকতে হবে"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "একটি বৈধ https:// সাবস্ক্রিপশন URL পেস্ট করুন।"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "সরাসরি রিমোট উৎস"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box ইম্পোর্ট লিংক"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "পড়া যায় না এমন sing-box ইম্পোর্ট লিংক"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "শুধু বৈধ HTTPS রিমোট URL সমর্থিত"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "বৈধ https:// URL-এ নির্দেশ করা sing-box ইম্পোর্ট লিংক ব্যবহার করুন।"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "এম্বেড করা URL থেকে রিমোট কনটেন্ট আনে"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "রিমোট কনটেন্ট আনে: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "ইম্পোর্ট লিংক পার্স করা যায়নি"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "একটি বৈধ sing-box remote-profile ইম্পোর্ট লিংক বা সরাসরি সাবস্ক্রিপশন URL পেস্ট করুন।"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN ইম্পোর্ট লিংক"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "পড়া যায় না এমন VPN ইম্পোর্ট লিংক"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "অসমর্থিত প্রদানকারীর ইম্পোর্ট"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia এবং অন্যান্য vpn:// ইম্পোর্ট সমর্থিত নয়। সাধারণ সাবস্ক্রিপশন URL ব্যবহার করুন বা লোকেশন ম্যানুয়ালি যোগ করুন।"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "ইম্পোর্ট পেলোড ডিকোড করা যায়নি"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// ইম্পোর্ট সমর্থিত নয়। সাধারণ সাবস্ক্রিপশন URL ব্যবহার করুন বা লোকেশন ম্যানুয়ালি যোগ করুন।"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP সাবস্ক্রিপশন URL সমর্থিত নয়। পরিবর্তে https:// ব্যবহার করুন।"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "রিমোট উৎস অবশ্যই https:// URL বা সমর্থিত ইম্পোর্ট লিংক হতে হবে"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "রিমোট উৎস খালি"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "রিমোট উৎস হোস্টসহ বৈধ https:// URL হতে হবে।"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "রিমোট উৎস অবৈধ"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "নির্বাচিত লোকেশন প্রয়োগ করা হচ্ছে..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "আপডেট করা নির্বাচিত লোকেশন প্রয়োগ করা হচ্ছে..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "সেরা লোকেশন খোঁজার সময় শেষ; বর্তমান সংযোগ রাখা হচ্ছে"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "ক্লিপবোর্ড খালি"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "সংযোগ লগ চালু হয়েছে"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "সংযোগ লগ লুকানো হয়েছে"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "সংযোগ পরীক্ষা সরঞ্জাম চালু হয়েছে"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "সংযোগ পরীক্ষা সরঞ্জাম লুকানো হয়েছে"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "ডেস্কটপ: Whitelists থেকে নেদারল্যান্ডস"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "ডেস্কটপ অ্যাপ শুরু হয়েছে"
+    },
+    {
+      "source": "App initialized",
+      "target": "অ্যাপ শুরু হয়েছে"
+    },
+    {
+      "source": "Export Locations",
+      "target": "এক্সপোর্ট লোকেশন"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Import canceled",
+      "target": "আমদানি বাতিল হয়েছে"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "সাবস্ক্রিপশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "লেটেন্সি ইতিহাস চালু হয়েছে"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "লেটেন্সি ইতিহাস লুকানো হয়েছে"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "লাইভ ট্রাফিক পরিসংখ্যান চালু হয়েছে"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "লাইভ ট্রাফিক পরিসংখ্যান লুকানো হয়েছে"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "লোকেশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Location check failed",
+      "target": "লোকেশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Locations exported",
+      "target": "লোকেশন এক্সপোর্ট হয়েছে"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "লোকেশনগুলো আপডেট হয়েছে"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "লোকেশনগুলো আপডেট হয়েছে"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "রিফ্রেশ করার মতো কোনো সাবস্ক্রিপশন নেই"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "লোকেশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "প্রতি-প্রোফাইল মোট চালু হয়েছে"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "প্রতি-প্রোফাইল মোট লুকানো হয়েছে"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "আগের VPN সেশন পুনরুদ্ধার করা হবে"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR স্ক্যান বাতিল হয়েছে"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "রাউটিং নিয়ম এক্সপোর্ট হয়েছে"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "নিয়ম আপডেট হয়েছে"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "নিয়ম আপডেট হয়েছে"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "সেশন পরিসংখ্যান চালু হয়েছে"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "সেশন পরিসংখ্যান লুকানো হয়েছে"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "শেয়ার করা টেক্সট সমর্থিত ইম্পোর্ট পেলোড নয়"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "সাবস্ক্রিপশন মুছে ফেলা হয়েছে"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "সাবস্ক্রিপশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "সাবস্ক্রিপশন রিফ্রেশ শেষ। সেরা অবস্থান খোঁজা হচ্ছে..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "সাবস্ক্রিপশন রিফ্রেশ শেষ. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "রানটাইম মোড: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "স্থানীয় প্রক্সি: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "রানটাইম লগ: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN মোড পূর্বপরীক্ষা সফল"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "প্রক্সি মোড পূর্বপরীক্ষা সফল"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN মোড পূর্বপরীক্ষা ব্যর্থ: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "শুধু প্রক্সি মোড প্রাথমিক পরীক্ষা ব্যর্থ: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN মোড উপলভ্য নয়: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "শুধু প্রক্সি মোড উপলব্ধ নয়: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ডেস্কটপ VPN প্রস্তুত"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ডেস্কটপ VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN মোড উপলব্ধ"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "প্রক্সি মোড উপলব্ধ"
+    },
+    {
+      "source": "not ready",
+      "target": "প্রস্তুত নয়"
+    },
+    {
+      "source": " checks",
+      "target": "টি পরীক্ষা"
+    },
+    {
+      "source": " check",
+      "target": "টি পরীক্ষা"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN ডিভাইস ত্রুটি: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "নেটওয়ার্ক অনুমতি ত্রুটি: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "নিয়ম আপডেট হয়েছে"
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN ডিভাইস"
+    },
+    {
+      "source": "network privileges",
+      "target": "নেটওয়ার্ক অনুমতি"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "নিয়ম আপডেট হয়েছে"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "লোকেশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ডেস্কটপ VPN মোডে CAP_NET_ADMIN প্রয়োজন। root হিসেবে চালান অথবা sing-box-কে ক্ষমতা দিন: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "নিয়ম আপডেট হয়েছে"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "এই কম্পিউটারে VPN প্রস্তুত"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "এই কম্পিউটারে প্রক্সি প্রস্তুত"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "নিষ্ক্রিয়"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN চালু হয়েছে"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN বন্ধ হয়েছে"
+    },
+    {
+      "source": "Proxy started",
+      "target": "প্রক্সি চালু হয়েছে"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "প্রক্সি বন্ধ হয়েছে"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "স্থানীয় প্রক্সি শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "সেরা অবস্থান দিয়ে VPN শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "সেরা অবস্থান দিয়ে স্থানীয় প্রক্সি শুরু হচ্ছে..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "সাবস্ক্রিপশন থেকে সেরা অবস্থান খোঁজা হচ্ছে..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "সংরক্ষিত অবস্থান থেকে সেরা অবস্থান খোঁজা হচ্ছে..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "লোকেশন অনুসন্ধান বাতিল"
+    },
+    {
+      "source": "Location search failed",
+      "target": "লোকেশন অনুসন্ধান ব্যর্থ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN অনুমতি দিন এবং আবার চেষ্টা করুন"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "আগে দূরবর্তী উৎস সেট করুন"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "আগে অন্তত একটি সংরক্ষিত লোকেশন যোগ করুন"
+    },
+    {
+      "source": "Select a location first",
+      "target": "আগে একটি লোকেশন নির্বাচন করুন"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "এখনও কোনো সাবস্ক্রিপশন সংরক্ষিত নেই"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "সব সাবস্ক্রিপশন রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "রিফ্রেশ হচ্ছে সাবস্ক্রিপশন..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "রিফ্রেশ হচ্ছে সাবস্ক্রিপশনগুলো..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "সাবস্ক্রিপশন স্বয়ংক্রিয়ভাবে রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "সাবস্ক্রিপশনগুলো স্বয়ংক্রিয়ভাবে রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "সাবস্ক্রিপশন রিফ্রেশed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "সাবস্ক্রিপশনs রিফ্রেশed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "সব সাবস্ক্রিপশন রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "রিফ্রেশ ব্যর্থ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "প্রোফাইল উৎস সাবস্ক্রিপশনে সেট হয়েছে"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "প্রোফাইল উৎস সংরক্ষিত লোকেশনে সেট হয়েছে"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "সংযোগ মোড VPN করা হয়েছে"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "সংযোগ মোড শুধু প্রॉক্সি করা হয়েছে"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "সংযোগ মোড বদলাতে আগে ডিসকানেক্ট করুন"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ইতিহাসের এন্ট্রি মুছে ফেলা হয়েছে"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "সাবস্ক্রিপশন নাম রিসেট"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "সাবস্ক্রিপশন নাম সংরক্ষিত"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ভাষা সিস্টেম ডিফল্টে সেট হয়েছে"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "কাস্টম DNS সংরক্ষিত হয়েছে"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "কাস্টম DNS বন্ধ হয়েছে"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "রাউটিং নিয়ম সংরক্ষিত"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "রাউটিং নিয়ম ইম্পোর্ট হয়েছে"
+    },
+    {
+      "source": "Locations imported",
+      "target": "লোকেশন ইম্পোর্ট হয়েছে"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "নির্বাচিত লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "লোকেশন আমদানি করতে সংরক্ষিত লোকেশনে যান"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ম্যানুয়ালি লোকেশন যোগ করতে সংরক্ষিত লোকেশনে যান"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "লোকেশন কনফিগ অবৈধ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "সম্পাদনার লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট খোলা হয়েছে"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট ব্যর্থ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "আগের VPN লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "অ্যাপ বন্ধ হয়েছে। VPN বন্ধ ছিল।"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "সব সাবস্ক্রিপশন সক্রিয়"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "সব সাবস্ক্রিপশন নির্বাচিত"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "সাবস্ক্রিপশন নির্বাচিত"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "লোকেশন ক্লিপবোর্ডে কপি হয়েছে"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "লোকেশন এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "রাউটিং নিয়ম ক্লিপবোর্ডে কপি হয়েছে"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "নিয়ম এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "প্রোফাইল উৎস মোড: সাবস্ক্রিপশন"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "প্রোফাইল উৎস মোড: বর্তমান অবস্থান"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "সাবস্ক্রিপশনের লোকেশন শুধু-পড়ার জন্য। সম্পাদনা সংরক্ষণ করতে সংরক্ষিত লোকেশনে যান।"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "সাবস্ক্রিপশনের লোকেশন শুধু-পড়ার জন্য। মুছতে সংরক্ষিত লোকেশনে যান।"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "সাবস্ক্রিপশন পাওয়া গেছে। প্রোফাইল ট্যাবে দেখে সংরক্ষণ করুন।"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "সাবস্ক্রিপশন লিংক পাওয়া গেছে। প্রোফাইল ট্যাবে দেখে সংরক্ষণ করুন।"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "লোকেশন কনফিগ পাওয়া গেছে। লোকেশন ট্যাবে দেখে সংরক্ষণ করুন।"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "সেরা অবস্থান দিয়ে স্থানীয় প্রক্সি শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "সেরা অবস্থান দিয়ে VPN শুরু হচ্ছে..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "সাবস্ক্রিপশন থেকে সেরা অবস্থান খোঁজা হচ্ছে..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "সংরক্ষিত অবস্থান থেকে সেরা অবস্থান খোঁজা হচ্ছে..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "লোকেশন আমদানি হয়েছে। নির্বাচিত লোকেশন আর নেই, প্রॉক্সি বন্ধ হয়েছে"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "লোকেশন আমদানি হয়েছে। নির্বাচিত লোকেশন আর নেই, VPN বন্ধ হয়েছে"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "নির্বাচিত লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "লোকেশন আপডেট হয়েছে"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "প্রॉক্সি বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "প্রॉক্সি বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN বন্ধ হয়েছে। রিফ্রেশ হওয়া সাবস্ক্রিপশনগুলো নির্বাচিত লোকেশন সরিয়ে দিয়েছে।"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "প্রক্সি বন্ধ হয়েছে। রিফ্রেশ হওয়া সাবস্ক্রিপশনগুলো নির্বাচিত লোকেশন সরিয়ে দিয়েছে।"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN থেমেছে। পরের চালুতে আবার সংযোগ হবে।"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "প্রক্সি থেমেছে। পরের চালুতে আবার সংযোগ হবে।"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "রাউটিং নিয়ম সংরক্ষিত। প্রয়োগ করতে VPN পুনরায় চালু করুন"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "রাউটিং নিয়ম সংরক্ষিত। প্রয়োগ করতে প্রক্সি পুনরায় চালু করুন"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "রাউটিং নিয়ম আমদানি হয়েছে। প্রয়োগ করতে VPN পুনরায় চালু করুন"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "রাউটিং নিয়ম আমদানি হয়েছে। প্রয়োগ করতে প্রক্সি পুনরায় চালু করুন"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "নির্বাচিত লোকেশন সরানো হয়েছে। VPN বন্ধ হয়েছে: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "নির্বাচিত লোকেশন সরানো হয়েছে। প্রক্সি বন্ধ হয়েছে: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "সেরা লোকেশন নির্বাচিত হয়েছে এবং VPN শুরু হয়েছে: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "সেরা লোকেশন নির্বাচিত হয়েছে এবং প্রॉক্সি শুরু হয়েছে: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN চালু হয়েছে, কিন্তু নির্বাচিত লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "প্রক্সি চালু হয়েছে, কিন্তু নির্বাচিত লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN চালু হয়েছে, কিন্তু সেরা লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "প্রক্সি চালু হয়েছে, কিন্তু সেরা লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "সেরা লোকেশন দিয়ে VPN চালু করা যায়নি"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "সেরা লোকেশন দিয়ে প্রক্সি চালু করা যায়নি"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "নির্বাচিত লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "নির্বাচিত লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "সেরা লোকেশন সংরক্ষণ করা যায়নি"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "নির্বাচিত লোকেশন প্রয়োগ করা যায়নি"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "বের হওয়ার আগে VPN বন্ধ করা যায়নি"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "বের হওয়ার আগে প্রক্সি বন্ধ করা যায়নি"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN বন্ধ করা যায়নি"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "প্রক্সি বন্ধ করা যায়নি"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN চালু করা যায়নি"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "প্রক্সি চালু করা যায়নি"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN প্রস্তুত করা যায়নি"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "প্রক্সি প্রস্তুত করা যায়নি"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "প্রস্তুত করা হচ্ছে VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "প্রস্তুত করা হচ্ছে প্রক্সি"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN চালু বাতিল"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "প্রক্সি চালু বাতিল"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN বন্ধ বাতিল"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "প্রক্সি বন্ধ বাতিল"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "স্থানীয় প্রক্সি শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN শুরু হচ্ছে..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "সব সাবস্ক্রিপশন রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "রিফ্রেশ হচ্ছে সাবস্ক্রিপশনগুলো..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "রিফ্রেশ হচ্ছে সাবস্ক্রিপশন..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "সাবস্ক্রিপশনগুলো স্বয়ংক্রিয়ভাবে রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "সাবস্ক্রিপশন স্বয়ংক্রিয়ভাবে রিফ্রেশ হচ্ছে..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "সব সাবস্ক্রিপশন রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "সাবস্ক্রিপশনs রিফ্রেশed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "সাবস্ক্রিপশন রিফ্রেশed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "রিফ্রেশ ব্যর্থ"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "লোকেশন অনুসন্ধান বাতিল"
+    },
+    {
+      "source": "Location search failed",
+      "target": "লোকেশন অনুসন্ধান ব্যর্থ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN অনুমতি দিন এবং আবার চেষ্টা করুন"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "আগে দূরবর্তী উৎস সেট করুন"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "আগে অন্তত একটি সংরক্ষিত লোকেশন যোগ করুন"
+    },
+    {
+      "source": "Select a location first",
+      "target": "আগে একটি লোকেশন নির্বাচন করুন"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "এখনও কোনো সাবস্ক্রিপশন সংরক্ষিত নেই"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "প্রোফাইল উৎস সাবস্ক্রিপশনে সেট হয়েছে"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "প্রোফাইল উৎস সংরক্ষিত লোকেশনে সেট হয়েছে"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "সংযোগ মোড VPN করা হয়েছে"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "সংযোগ মোড শুধু প্রॉক্সি করা হয়েছে"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "সংযোগ মোড বদলাতে আগে ডিসকানেক্ট করুন"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ইতিহাসের এন্ট্রি মুছে ফেলা হয়েছে"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "সাবস্ক্রিপশন নাম রিসেট"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "সাবস্ক্রিপশন নাম সংরক্ষিত"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ভাষা সিস্টেম ডিফল্টে সেট হয়েছে"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "কাস্টম DNS সংরক্ষিত হয়েছে"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "কাস্টম DNS বন্ধ হয়েছে"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "রাউটিং নিয়ম সংরক্ষিত"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "রাউটিং নিয়ম ইম্পোর্ট হয়েছে"
+    },
+    {
+      "source": "Locations imported",
+      "target": "লোকেশন ইম্পোর্ট হয়েছে"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "লোকেশন আমদানি করতে সংরক্ষিত লোকেশনে যান"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ম্যানুয়ালি লোকেশন যোগ করতে সংরক্ষিত লোকেশনে যান"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "লোকেশন কনফিগ অবৈধ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "সম্পাদনার লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট খোলা হয়েছে"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট ব্যর্থ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ডায়াগনস্টিক এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "আগের VPN লোকেশন আর উপলব্ধ নয়"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "অ্যাপ বন্ধ হয়েছে। VPN বন্ধ ছিল।"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "সব সাবস্ক্রিপশন সক্রিয়"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "সব সাবস্ক্রিপশন নির্বাচিত"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "সাবস্ক্রিপশন নির্বাচিত"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "সাবস্ক্রিপশন সংরক্ষিত"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "লোকেশন ক্লিপবোর্ডে কপি হয়েছে"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "লোকেশন এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "রাউটিং নিয়ম ক্লিপবোর্ডে কপি হয়েছে"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "নিয়ম এক্সপোর্ট বাতিল"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "ক্লিপবোর্ড পড়া ব্যর্থ"
+    },
+    {
+      "source": "No locations to export",
+      "target": "লোকেশনগুলো আপডেট হয়েছে"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "অ্যাপ লোড করা যায়নি"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "সাবস্ক্রিপশন রিফ্রেশ করা যায়নি"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "কাজটি ব্যর্থ হয়েছে"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "লোকেশন ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "লোকেশন ফাইল পড়া যায়নি"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "রাউটিং নিয়ম ফাইল খোলা যায়নি"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "সেরা লোকেশন ডেস্কটপ তালিকার সঙ্গে মেলানো যায়নি"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "এই কম্পিউটারে VPN প্রস্তুত"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "এই কম্পিউটারে প্রক্সি প্রস্তুত"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ডেস্কটপ VPN শেল প্রস্তুত"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ডেস্কটপ প্রॉক্সি শেল প্রস্তুত"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN শুরু হয়েছে: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "প্রক্সি শুরু হয়েছে: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN বন্ধ হয়েছে. অ্যাপ মোড: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "প্রক্সি বন্ধ হয়েছে. অ্যাপ মোড: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "ভাষা সেট হয়েছে: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "সাবস্ক্রিপশন স্বয়ং-রিফ্রেশ সেট করা হয়েছে: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "যাচাই সেটিংস সংরক্ষিত: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "নির্বাচিত লোকেশন অপরিবর্তিত: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "নির্বাচিত লোকেশন সরানো হয়েছে: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "নির্বাচিত লোকেশন সেট করা হয়েছে: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "লোকেশন আপডেট ও একীভূত হয়েছে: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "লোকেশন alপ্রস্তুত সংরক্ষিত: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "লোকেশন আপডেট হয়েছে: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "লোকেশন সরানো হয়েছে: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "লোকেশন যোগ হয়েছে: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "সাবস্ক্রিপশনs রিফ্রেশed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ব্যর্থ: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN পুনরুদ্ধার হচ্ছে: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "রিফ্রেশ হচ্ছে "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "লোকেশন এক্সপোর্ট হয়েছে: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "রাউটিং নিয়ম এক্সপোর্ট হয়েছে: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "ডায়াগনস্টিক্স এক্সপোর্ট হয়েছে: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "পরীক্ষা ব্যর্থ: "
+    },
+    {
+      "source": "Activated ",
+      "target": "সক্রিয় করা হয়েছে "
+    },
+    {
+      "source": "Added ",
+      "target": "যোগ করা হয়েছে "
+    },
+    {
+      "source": "Deleted ",
+      "target": "মুছে ফেলা হয়েছে "
+    },
+    {
+      "source": "Selected ",
+      "target": "নির্বাচিত "
+    },
+    {
+      "source": "Edited location #",
+      "target": "সম্পাদিত লোকেশন #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "অ্যাপ মোড: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " অবস্থান রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": " location refreshed",
+      "target": " অবস্থান রিফ্রেশ হয়েছে"
+    },
+    {
+      "source": " • batch ",
+      "target": " • গ্রুপ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • পুনরায় চেষ্টা "
+    },
+    {
+      "source": "custom interval",
+      "target": "নিজস্ব বিরতি"
+    },
+    {
+      "source": "every hour",
+      "target": "প্রতি ঘণ্টা"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "সব সাবস্ক্রিপশন"
+    },
+    {
+      "source": "selected subscription",
+      "target": "নির্বাচিত সাবস্ক্রিপশন"
+    },
+    {
+      "source": "proxy only",
+      "target": "শুধু প্রॉক্সি"
+    },
+    {
+      "source": "off",
+      "target": "বন্ধ"
+    },
+    {
+      "source": "Idle",
+      "target": "নিষ্ক্রিয়"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN চালু হয়েছে"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN বন্ধ হয়েছে"
+    },
+    {
+      "source": "Proxy started",
+      "target": "প্রক্সি চালু হয়েছে"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "প্রক্সি বন্ধ হয়েছে"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "নতুন সেরা অবস্থান দিয়ে VPN শুরু হচ্ছে..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "নতুন সেরা অবস্থান দিয়ে প্রক্সি শুরু হচ্ছে..."
+    }
+  ]
+}

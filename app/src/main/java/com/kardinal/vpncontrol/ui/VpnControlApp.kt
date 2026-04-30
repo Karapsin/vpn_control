@@ -1048,13 +1048,6 @@ private fun MainAdvancedMenu(
             onDismissRequest = { advancedMenuExpanded = false },
         ) {
             DropdownMenuItem(
-                text = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS)) },
-                onClick = {
-                    advancedMenuExpanded = false
-                    onToggleDnsDialog()
-                },
-            )
-            DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LANGUAGE))
@@ -1068,6 +1061,13 @@ private fun MainAdvancedMenu(
                 onClick = {
                     advancedMenuExpanded = false
                     onToggleLanguageDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS)) },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleDnsDialog()
                 },
             )
             DropdownMenuItem(

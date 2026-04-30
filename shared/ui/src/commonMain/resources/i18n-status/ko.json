@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "구독에서 최적 위치를 찾는 중...",
+    "findingSaved": "저장된 위치에서 최적 위치를 찾는 중...",
+    "testingFastestCandidates": "가장 빠른 후보를 묶음으로 테스트 중...",
+    "checkingLocations": "위치 {count}개 확인 중...",
+    "testingLocationsRange": "총 {total}개 중 {start}-{end} 위치 테스트 중...",
+    "refreshIntervalMinutes": "{count}분",
+    "refreshIntervalHours": "{count}시간",
+    "refreshIntervalHoursMinutes": "{hours}시간 {minutes}분",
+    "refreshIntervalEvery": "{interval}마다",
+    "refreshIntervalEveryHour": "매시간"
+  },
+  "benchmark": {
+    "best": "최적: ",
+    "primary": "기본 ",
+    "secondary": "보조 ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "차단됨",
+      "cached": "캐시됨",
+      "challenge": "확인 필요",
+      "custom_config_manual_only": "수동",
+      "error": "오류",
+      "manual": "수동",
+      "ok": "정상",
+      "partial": "부분",
+      "tcp_error": "tcp_오류",
+      "tcp_timeout": "tcp_시간초과",
+      "timeout": "시간초과",
+      "unreachable": "연결 불가",
+      "validation_timeout": "검증_시간초과"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "구독 URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "읽을 수 없는 구독 URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "안전하지 않은 HTTP 구독은 지원되지 않습니다"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// 구독 URL을 사용하세요."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL에는 유효한 HTTPS 호스트가 포함되어야 합니다"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "유효한 https:// 구독 URL을 붙여넣으세요."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "직접 원격 소스"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box 가져오기 링크"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "읽을 수 없는 sing-box 가져오기 링크"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "유효한 HTTPS 원격 URL만 지원됩니다"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "유효한 https:// URL로 해석되는 sing-box 가져오기 링크를 사용하세요."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "포함된 URL에서 원격 콘텐츠를 가져옵니다"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "원격 콘텐츠를 가져오는 위치: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "가져오기 링크를 파싱할 수 없습니다"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "유효한 sing-box remote-profile 가져오기 링크 또는 직접 구독 URL을 붙여넣으세요."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN 가져오기 링크"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "읽을 수 없는 VPN 가져오기 링크"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "지원되지 않는 제공자 가져오기"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia 및 기타 vpn:// 가져오기는 지원되지 않습니다. 일반 구독 URL을 사용하거나 위치를 수동으로 추가하세요."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "가져오기 페이로드를 디코드할 수 없습니다"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// 가져오기는 지원되지 않습니다. 일반 구독 URL을 사용하거나 위치를 수동으로 추가하세요."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP 구독 URL은 지원되지 않습니다. 대신 https://를 사용하세요."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "원격 소스는 https:// URL 또는 지원되는 가져오기 링크여야 합니다"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "원격 소스가 비어 있습니다"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "원격 소스는 호스트가 있는 유효한 https:// URL이어야 합니다."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "이 sing-box 가져오기는 유효하지 않거나 HTTPS가 아닌 URL로 해석됩니다. 유효한 https:// URL을 사용하세요."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "선택한 위치를 적용하는 중..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "업데이트된 선택 위치를 적용하는 중..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "최적 위치 검색 시간이 초과되어 현재 연결을 유지합니다"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "클립보드가 비어 있습니다"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "연결 로그를 켰습니다"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "연결 로그를 숨겼습니다"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "연결 테스트 도구를 켰습니다"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "연결 테스트 도구를 숨겼습니다"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "파일을 열 수 없습니다"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "파일을 열 수 없습니다"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "파일을 열 수 없습니다"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "파일을 열 수 없습니다"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "데스크톱: Whitelists의 네덜란드"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "데스크톱 앱 초기화됨"
+    },
+    {
+      "source": "App initialized",
+      "target": "앱 초기화됨"
+    },
+    {
+      "source": "Export Locations",
+      "target": "내보내기 위치"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Import canceled",
+      "target": "가져오기를 취소했습니다"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "구독을 업데이트했습니다"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "지연 시간 기록이 활성화됨"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "지연 시간 기록이 숨겨짐"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "실시간 트래픽 통계가 활성화됨"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "실시간 트래픽 통계가 숨겨짐"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "Location check failed",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "Locations exported",
+      "target": "위치 내보냄"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "새로고침할 구독이 없습니다"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "프로필별 합계를 켰습니다"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "프로필별 합계를 숨겼습니다"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "이전 VPN 세션이 복원됩니다"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR 스캔을 취소했습니다"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "라우팅 규칙 내보냄"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "규칙을 업데이트했습니다"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "규칙을 업데이트했습니다"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "세션 통계가 활성화됨"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "세션 통계가 숨겨짐"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "공유된 텍스트는 지원되는 가져오기 데이터가 아닙니다"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "구독을 삭제했습니다"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "구독을 업데이트했습니다"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "구독 새로고침 완료. 최적 위치를 찾는 중..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "구독 새로고침 완료. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "실행 모드: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "로컬 프록시: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "실행 로그: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN 모드 사전 확인 성공"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "프록시 전용 사전 확인 성공"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN 모드 사전 확인 실패: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "프록시 전용 모드 사전 점검 실패: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN 모드 사용 불가: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "프록시 전용 모드 사용 불가: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "데스크톱 VPN 준비됨"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "데스크톱 VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN 모드 사용 가능"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "프록시 모드 사용 가능"
+    },
+    {
+      "source": "not ready",
+      "target": "준비되지 않음"
+    },
+    {
+      "source": " checks",
+      "target": "개 검사"
+    },
+    {
+      "source": " check",
+      "target": "개 검사"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN 장치 오류: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "네트워크 권한 오류: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "규칙을 업데이트했습니다"
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN 장치"
+    },
+    {
+      "source": "network privileges",
+      "target": "네트워크 권한"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "규칙을 업데이트했습니다"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN 장치가 /dev/net/tun에 없습니다. 시도: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "데스크톱 VPN 모드에는 CAP_NET_ADMIN이 필요합니다. root로 실행하거나 sing-box에 권한을 부여하세요: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "규칙을 업데이트했습니다"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "이 컴퓨터에서 VPN 준비됨"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "이 컴퓨터에서 프록시 준비됨"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "대기 중"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN 시작됨"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN 중지됨"
+    },
+    {
+      "source": "Proxy started",
+      "target": "프록시 시작됨"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "프록시 중지됨"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN 시작 중..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "로컬 프록시 시작 중..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "최적 위치로 VPN 시작 중..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "최적 위치로 로컬 프록시 시작 중..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "구독에서 최적 위치를 찾는 중..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "저장된 위치에서 최적 위치를 찾는 중..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "위치 검색 취소됨"
+    },
+    {
+      "source": "Location search failed",
+      "target": "위치 검색 실패"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN 권한을 허용하고 다시 시도하세요"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "먼저 원격 소스를 설정하세요"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "먼저 저장된 위치를 하나 이상 추가하세요"
+    },
+    {
+      "source": "Select a location first",
+      "target": "먼저 위치를 선택하세요"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "아직 저장된 구독이 없습니다"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "모든 구독을 새로고침하는 중..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "활성 구독을 새로고침하는 중..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "새로고침 중 구독..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "새로고침 중 구독..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "구독을 자동 새로고침하는 중..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "구독을 자동 새로고침하는 중..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "구독 새로고침ed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "구독s 새로고침ed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "활성 구독을 새로고침했습니다"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "모든 구독을 새로고침했습니다"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "새로고침 실패"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "프로필 소스를 구독으로 설정했습니다"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "프로필 소스를 저장된 위치로 설정했습니다"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "연결 모드를 VPN으로 설정했습니다"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "연결 모드를 프록시 전용으로 설정했습니다"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "연결 모드를 변경하려면 먼저 연결을 끊으세요"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "기록 항목이 삭제되었습니다"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "구독 이름 재설정됨"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "구독 이름 저장됨"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "언어가 시스템 기본값으로 설정됨"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "사용자 지정 DNS가 저장되었습니다"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "사용자 지정 DNS가 비활성화됨"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "라우팅 규칙 저장됨"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "라우팅 규칙 가져옴"
+    },
+    {
+      "source": "Locations imported",
+      "target": "위치 가져옴"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "선택한 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "위치를 가져오려면 저장된 위치로 전환하세요"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "위치를 수동으로 추가하려면 저장된 위치로 전환하세요"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "위치 설정이 올바르지 않습니다"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "편집할 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "진단 내보내기를 열었습니다"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "진단 내보내기에 실패했습니다"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "진단 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "이전 VPN 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "앱이 닫혔습니다. VPN은 꺼져 있었습니다."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "모든 구독을 활성화했습니다"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "모든 구독을 선택했습니다"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "구독 선택됨"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "위치가 클립보드에 복사되었습니다"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "위치 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "라우팅 규칙이 클립보드에 복사되었습니다"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "규칙 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "프로필 소스 모드: 구독"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "프로필 소스 모드: 현재 위치"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "구독 위치는 읽기 전용입니다. 편집 내용을 저장하려면 저장된 위치로 전환하세요."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "구독 위치는 읽기 전용입니다. 삭제하려면 저장된 위치로 전환하세요."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "구독을 받았습니다. 프로필 탭에서 확인하고 저장하세요."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "구독 링크를 받았습니다. 프로필 탭에서 확인하고 저장하세요."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "위치 설정을 받았습니다. 위치 탭에서 확인하고 저장하세요."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "최적 위치로 로컬 프록시 시작 중..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "최적 위치로 VPN 시작 중..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "구독에서 최적 위치를 찾는 중..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "저장된 위치에서 최적 위치를 찾는 중..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "위치를 가져왔습니다. 선택한 위치를 더 이상 사용할 수 없어 프록시를 중지했습니다"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "위치를 가져왔습니다. 선택한 위치를 더 이상 사용할 수 없어 VPN을 중지했습니다"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "선택한 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "프록시를 중지할 수 없어 위치 변경을 되돌렸습니다"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN을 중지할 수 없어 위치 변경을 되돌렸습니다"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "프록시를 중지할 수 없어 위치 변경을 되돌렸습니다"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN을 중지할 수 없어 위치 변경을 되돌렸습니다"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN이 중지되었습니다. 새로고침된 구독에서 선택한 위치가 제거되었습니다."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "프록시가 중지되었습니다. 새로고침된 구독에서 선택한 위치가 제거되었습니다."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN이 중지되었습니다. 다음 실행 시 다시 연결합니다."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "프록시가 중지되었습니다. 다음 실행 시 다시 연결합니다."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "라우팅 규칙이 저장되었습니다. 적용하려면 VPN을 다시 시작하세요"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "라우팅 규칙이 저장되었습니다. 적용하려면 프록시를 다시 시작하세요"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "라우팅 규칙을 가져왔습니다. 적용하려면 VPN을 다시 시작하세요"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "라우팅 규칙을 가져왔습니다. 적용하려면 프록시를 다시 시작하세요"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "선택한 위치가 제거되었습니다. VPN 중지됨: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "선택한 위치가 제거되었습니다. 프록시 중지됨: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "최적 위치를 선택하고 VPN을 시작했습니다: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "최적 위치를 선택하고 프록시를 시작했습니다: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN은 시작됐지만 선택한 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "프록시는 시작됐지만 선택한 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN은 시작됐지만 최적 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "프록시는 시작됐지만 최적 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "최적 위치로 VPN을 시작하지 못했습니다"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "최적 위치로 프록시를 시작하지 못했습니다"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "선택한 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "선택한 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "최적 위치를 저장하지 못했습니다"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "선택한 위치 적용 실패"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "종료 전에 VPN 중지 실패"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "종료 전에 프록시 중지 실패"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN 중지 실패"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "프록시 중지 실패"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN 시작 실패"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "프록시 시작 실패"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN을 준비할 수 없습니다"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "프록시를 준비할 수 없습니다"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "준비 중 VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "준비 중 프록시"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN 시작 취소됨"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "프록시 시작 취소됨"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN 중지 취소됨"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "프록시 중지 취소됨"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "로컬 프록시 시작 중..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN 시작 중..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "모든 구독을 새로고침하는 중..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "활성 구독을 새로고침하는 중..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "새로고침 중 구독..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "새로고침 중 구독..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "구독을 자동 새로고침하는 중..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "구독을 자동 새로고침하는 중..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "모든 구독을 새로고침했습니다"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "활성 구독을 새로고침했습니다"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "구독s 새로고침ed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "구독 새로고침ed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "새로고침 실패"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "위치 검색 취소됨"
+    },
+    {
+      "source": "Location search failed",
+      "target": "위치 검색 실패"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN 권한을 허용하고 다시 시도하세요"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "먼저 원격 소스를 설정하세요"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "먼저 저장된 위치를 하나 이상 추가하세요"
+    },
+    {
+      "source": "Select a location first",
+      "target": "먼저 위치를 선택하세요"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "아직 저장된 구독이 없습니다"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "프로필 소스를 구독으로 설정했습니다"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "프로필 소스를 저장된 위치로 설정했습니다"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "연결 모드를 VPN으로 설정했습니다"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "연결 모드를 프록시 전용으로 설정했습니다"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "연결 모드를 변경하려면 먼저 연결을 끊으세요"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "기록 항목이 삭제되었습니다"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "구독 이름 재설정됨"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "구독 이름 저장됨"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "언어가 시스템 기본값으로 설정됨"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "사용자 지정 DNS가 저장되었습니다"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "사용자 지정 DNS가 비활성화됨"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "라우팅 규칙 저장됨"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "라우팅 규칙 가져옴"
+    },
+    {
+      "source": "Locations imported",
+      "target": "위치 가져옴"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "위치를 가져오려면 저장된 위치로 전환하세요"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "위치를 수동으로 추가하려면 저장된 위치로 전환하세요"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "위치 설정이 올바르지 않습니다"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "편집할 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "진단 내보내기를 열었습니다"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "진단 내보내기에 실패했습니다"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "진단 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "이전 VPN 위치를 더 이상 사용할 수 없습니다"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "앱이 닫혔습니다. VPN은 꺼져 있었습니다."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "모든 구독을 활성화했습니다"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "모든 구독을 선택했습니다"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "구독 선택됨"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "구독 저장됨"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "위치가 클립보드에 복사되었습니다"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "위치 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "라우팅 규칙이 클립보드에 복사되었습니다"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "규칙 내보내기를 취소했습니다"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "클립보드 읽기 실패"
+    },
+    {
+      "source": "No locations to export",
+      "target": "위치를 업데이트했습니다"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "앱 로드 실패"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "구독 새로고침 실패"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "작업에 실패했습니다"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "위치 파일 열기 실패"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "위치 파일 읽기 실패"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "라우팅 규칙 파일 열기 실패"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "최적 위치를 데스크톱 목록에 매핑할 수 없습니다"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "이 컴퓨터에서 VPN 준비됨"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "이 컴퓨터에서 프록시 준비됨"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "데스크톱 VPN 셸 준비 완료"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "데스크톱 프록시 셸 준비 완료"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN 시작: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "프록시 시작: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN 중지됨. 앱 모드: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "프록시 중지됨. 앱 모드: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "언어 설정: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "구독 자동 새로고침 설정: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "검증 설정 저장됨: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "선택한 위치 변경 없음: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "선택한 위치가 제거되었습니다: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "선택한 위치 설정됨: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "위치가 업데이트되고 병합됨: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "위치 al준비됨 저장됨: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "위치가 업데이트됨: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "위치가 제거됨: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "위치가 추가됨: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "구독s 새로고침ed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "실패: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN 복원 중: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "새로고침 중 "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "위치 내보내기 위치: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "라우팅 규칙 내보내기 위치: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "진단 내보내기 위치: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "측정 실패: "
+    },
+    {
+      "source": "Activated ",
+      "target": "활성화됨 "
+    },
+    {
+      "source": "Added ",
+      "target": "추가됨 "
+    },
+    {
+      "source": "Deleted ",
+      "target": "삭제됨 "
+    },
+    {
+      "source": "Selected ",
+      "target": "선택됨 "
+    },
+    {
+      "source": "Edited location #",
+      "target": "수정됨 위치 #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "앱 모드: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": "개 위치 새로고침됨"
+    },
+    {
+      "source": " location refreshed",
+      "target": "개 위치 새로고침됨"
+    },
+    {
+      "source": " • batch ",
+      "target": " • 그룹 "
+    },
+    {
+      "source": " • retries ",
+      "target": " • 재시도 "
+    },
+    {
+      "source": "custom interval",
+      "target": "사용자 지정 간격"
+    },
+    {
+      "source": "every hour",
+      "target": "매시간"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "모든 구독"
+    },
+    {
+      "source": "selected subscription",
+      "target": "선택됨 구독"
+    },
+    {
+      "source": "proxy only",
+      "target": "프록시 전용"
+    },
+    {
+      "source": "off",
+      "target": "꺼짐"
+    },
+    {
+      "source": "Idle",
+      "target": "대기 중"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN 시작됨"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN 중지됨"
+    },
+    {
+      "source": "Proxy started",
+      "target": "프록시 시작됨"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "프록시 중지됨"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "새 최적 위치로 VPN 시작 중..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "새 최적 위치로 프록시 시작 중..."
+    }
+  ]
+}

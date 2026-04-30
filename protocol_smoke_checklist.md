@@ -1,4 +1,4 @@
-# Device Protocol Smoke Checklist
+# Android Device Protocol Smoke Checklist
 
 This checklist is for manual device or emulator verification of the non-VLESS protocols currently supported by the app:
 
@@ -8,6 +8,8 @@ This checklist is for manual device or emulator verification of the non-VLESS pr
 - `SOCKS`
 
 Use one known-good endpoint for each protocol. Run the same sequence for every protocol.
+
+For desktop manual checks, use `docs/desktop_smoke_testing.md`.
 
 ## Preconditions
 
@@ -21,41 +23,48 @@ Use one known-good endpoint for each protocol. Run the same sequence for every p
 ## Per-Protocol Flow
 
 1. Import
-- Import the config from a direct link, clipboard, QR, or file.
-- Confirm the app accepts the payload without rewriting it into an invalid form.
-- Confirm the location appears in the `Locations` tab with the expected name and server.
+
+   - Import the config from a direct link, clipboard, QR, or file.
+   - Confirm the app accepts the payload without rewriting it into an invalid form.
+   - Confirm the location appears in the `Locations` tab with the expected name and server.
 
 2. Edit / round-trip
-- Open the imported location in the editor.
-- Verify the displayed config is readable and protocol-appropriate.
-- Save without changing the payload.
-- Export it and re-import it.
-- Confirm the round-trip preserves a working config.
+
+   - Open the imported location in the editor.
+   - Verify the displayed config is readable and protocol-appropriate.
+   - Save without changing the payload.
+   - Export it and re-import it.
+   - Confirm the round-trip preserves a working config.
 
 3. Benchmark
-- Run `Check` on the location from the `Locations` tab.
-- Confirm the benchmark completes without parser or runtime-config errors.
-- Confirm the result is stored in the location detail line.
+
+   - Run `Check` on the location from the `Locations` tab.
+   - Confirm the benchmark completes without parser or runtime-config errors.
+   - Confirm the result is stored in the location detail line.
 
 4. Manual selection
-- Select the location manually from `Locations`.
-- Confirm the selected location and selected profile/source labels update correctly.
+
+   - Select the location manually from `Locations`.
+   - Confirm the selected location and selected profile/source labels update correctly.
 
 5. Connect
-- Start the connection in both:
-  - `VPN`
-  - `Proxy Only`
-- Confirm the app reaches `started` state and does not immediately roll back.
+
+   - Start the connection in both:
+     - `VPN`
+     - `Proxy Only`
+   - Confirm the app reaches `started` state and does not immediately roll back.
 
 6. Real traffic
-- Open a real site through the connection.
-- Confirm ordinary browsing works.
-- For `Proxy Only`, verify the local proxy can be used by a client app.
+
+   - Open a real site through the connection.
+   - Confirm ordinary browsing works.
+   - For `Proxy Only`, verify the local proxy can be used by a client app.
 
 7. Disconnect / reconnect
-- Stop the connection.
-- Start it again using the saved selection.
-- Confirm the selection persists and reconnect works.
+
+   - Stop the connection.
+   - Start it again using the saved selection.
+   - Confirm the selection persists and reconnect works.
 
 ## Subscription Variant
 

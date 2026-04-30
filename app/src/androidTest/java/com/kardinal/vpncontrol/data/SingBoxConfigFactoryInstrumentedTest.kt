@@ -204,26 +204,7 @@ class SingBoxConfigFactoryInstrumentedTest {
     fun buildTunConfigLimitsVpnToAssignedAppsWhenRulesAreActive() {
         val config = JSONObject(
             SingBoxConfigFactory.buildTunConfig(
-                profile = ProxyProfile(
-                    protocol = ProxyProtocol.SOCKS,
-                    remarks = "SOCKS",
-                    server = "socks.example.com",
-                    serverPort = 1080,
-                    username = "user",
-                    password = "pass",
-                    network = "tcp",
-                    flow = "",
-                    security = "",
-                    sni = "",
-                    fingerprint = "chrome",
-                    publicKey = "",
-                    shortId = "",
-                    path = "",
-                    hostHeader = "",
-                    serviceName = "",
-                    headerType = "none",
-                    rawLink = "",
-                ),
+                profile = socksProfile(),
                 dns = DnsSettings(enabled = false, value = ""),
                 routingRules = RoutingRules(
                     ignoreRules = false,
@@ -238,7 +219,64 @@ class SingBoxConfigFactoryInstrumentedTest {
         assertEquals("com.example.app", includePackages.getString(0))
     }
 
+    @Test
+    fun buildTunConfigRoutesAllAppsWhenAssignmentsAreEmpty() {
+        val rawConfig = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                proxyPackages = emptyList(),
+            ),
+        )
+        val config = JSONObject(rawConfig)
+
+        val inbound = config.getJSONArray("inbounds").getJSONObject(0)
+        assertFalse(inbound.has("include_package"))
+        assertFalse(rawConfig.contains("__vpncontrol_no_assigned_apps__"))
+    }
+
+    @Test
+    fun buildTunConfigRoutesAllAppsWhenRulesAreIgnored() {
+        val config = JSONObject(
+            SingBoxConfigFactory.buildTunConfig(
+                profile = socksProfile(),
+                dns = DnsSettings(enabled = false, value = ""),
+                routingRules = RoutingRules(
+                    ignoreRules = true,
+                    proxyPackages = listOf("com.example.app"),
+                ),
+            ),
+        )
+
+        val inbound = config.getJSONArray("inbounds").getJSONObject(0)
+        assertFalse(inbound.has("include_package"))
+    }
+
     private fun outbound(config: JSONObject): JSONObject {
         return config.getJSONArray("outbounds").getJSONObject(0)
+    }
+
+    private fun socksProfile(): ProxyProfile {
+        return ProxyProfile(
+            protocol = ProxyProtocol.SOCKS,
+            remarks = "SOCKS",
+            server = "socks.example.com",
+            serverPort = 1080,
+            username = "user",
+            password = "pass",
+            network = "tcp",
+            flow = "",
+            security = "",
+            sni = "",
+            fingerprint = "chrome",
+            publicKey = "",
+            shortId = "",
+            path = "",
+            hostHeader = "",
+            serviceName = "",
+            headerType = "none",
+            rawLink = "",
+        )
     }
 }

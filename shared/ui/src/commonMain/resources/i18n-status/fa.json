@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "در حال یافتن بهترین مکان از اشتراک...",
+    "findingSaved": "در حال یافتن بهترین مکان از مکان‌های ذخیره‌شده...",
+    "testingFastestCandidates": "در حال آزمون سریع‌ترین گزینه‌ها به‌صورت گروهی...",
+    "checkingLocations": "در حال بررسی {count} مکان...",
+    "testingLocationsRange": "آزمون مکان‌های {start}-{end} از {total}...",
+    "refreshIntervalMinutes": "{count} دقیقه",
+    "refreshIntervalHours": "{count} ساعت",
+    "refreshIntervalHoursMinutes": "{hours} ساعت {minutes} دقیقه",
+    "refreshIntervalEvery": "هر {interval}",
+    "refreshIntervalEveryHour": "هر ساعت"
+  },
+  "benchmark": {
+    "best": "بهترین: ",
+    "primary": "اصلی ",
+    "secondary": "پشتیبان ",
+    "tcp": "TCP ",
+    "millisUnit": "میلی‌ثانیه",
+    "statuses": {
+      "blocked": "مسدود",
+      "cached": "ذخیره‌شده",
+      "challenge": "چالش",
+      "custom_config_manual_only": "دستی",
+      "error": "خطا",
+      "manual": "دستی",
+      "ok": "خوب",
+      "partial": "جزئی",
+      "tcp_error": "خطای_tcp",
+      "tcp_timeout": "مهلت_tcp",
+      "timeout": "مهلت",
+      "unreachable": "دسترس‌ناپذیر",
+      "validation_timeout": "مهلت_اعتبارسنجی"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "نشانی اشتراک"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "نشانی اشتراک خواندنی نیست"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "اشتراک‌های HTTP ناامن پشتیبانی نمی‌شوند"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "از نشانی اشتراک https:// استفاده کنید."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "نشانی باید میزبان HTTPS معتبر داشته باشد"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "یک نشانی اشتراک https:// معتبر وارد کنید."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "منبع راه دور مستقیم"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "پیوند وارد کردن sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "پیوند وارد کردن sing-box خواندنی نیست"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "فقط نشانی‌های راه دور HTTPS معتبر پشتیبانی می‌شوند"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "از پیوند وارد کردن sing-box استفاده کنید که به نشانی https:// معتبر برسد."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "محتوای راه دور را از نشانی جاسازی‌شده دریافت می‌کند"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "محتوای راه دور را دریافت می‌کند از "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "پیوند وارد کردن قابل پردازش نبود"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "یک پیوند وارد کردن remote-profile معتبر sing-box یا نشانی اشتراک مستقیم وارد کنید."
+    },
+    {
+      "source": "VPN import link",
+      "target": "پیوند وارد کردن VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "پیوند وارد کردن VPN خواندنی نیست"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "وارد کردن ارائه‌دهنده پشتیبانی نمی‌شود"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "وارد کردن Amnezia و سایر vpn:// پشتیبانی نمی‌شود. از نشانی اشتراک عادی استفاده کنید یا مکان‌ها را دستی اضافه کنید."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "داده وارد کردن قابل رمزگشایی نبود"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "وارد کردن vpn:// پشتیبانی نمی‌شود. از نشانی اشتراک عادی استفاده کنید یا مکان‌ها را دستی اضافه کنید."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "نشانی‌های اشتراک HTTP پشتیبانی نمی‌شوند. به‌جای آن از https:// استفاده کنید."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "منبع راه دور باید نشانی https:// یا پیوند وارد کردن پشتیبانی‌شده باشد"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "منبع راه دور خالی است"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "منبع راه دور باید نشانی https:// معتبر با میزبان باشد."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "این وارد کردن sing-box به نشانی نامعتبر یا غیر HTTPS می‌رسد. به‌جای آن از نشانی https:// معتبر استفاده کنید."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "در حال اعمال مکان انتخاب‌شده..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "در حال اعمال مکان انتخاب‌شدهٔ به‌روزشده..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "جستجوی بهترین مکان زمان‌بر شد؛ اتصال فعلی حفظ می‌شود"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "کلیپ‌بورد خالی است"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "گزارش اتصال فعال شد"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "گزارش اتصال پنهان شد"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "ابزار آزمون اتصال فعال شد"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "ابزار آزمون اتصال پنهان شد"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "فایل باز نشد"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "فایل باز نشد"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "فایل باز نشد"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "فایل باز نشد"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "دسکتاپ: هلند از Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "برنامه دسکتاپ آماده شد"
+    },
+    {
+      "source": "App initialized",
+      "target": "برنامه آماده شد"
+    },
+    {
+      "source": "Export Locations",
+      "target": "صدور مکان‌ها"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Import canceled",
+      "target": "واردسازی لغو شد"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "اشتراک به‌روزرسانی شد"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "تاریخچه تأخیر فعال شد"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "تاریخچه تأخیر پنهان شد"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "آمار زنده ترافیک فعال شد"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "آمار زنده ترافیک پنهان شد"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "مکان به‌روزرسانی شد"
+    },
+    {
+      "source": "Location check failed",
+      "target": "مکان به‌روزرسانی شد"
+    },
+    {
+      "source": "Locations exported",
+      "target": "مکان‌ها صادر شد"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "مکان‌ها به‌روزرسانی شدند"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "مکان‌ها به‌روزرسانی شدند"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "اشتراکی برای نوسازی وجود ندارد"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "مکان به‌روزرسانی شد"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "جمع هر نمایه فعال شد"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "جمع هر نمایه پنهان شد"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "جلسه قبلی VPN بازیابی می‌شود"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "اسکن QR لغو شد"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "مسیریابی قوانین صادر شد"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "قوانین به‌روزرسانی شدند"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "قوانین به‌روزرسانی شدند"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "آمار جلسه فعال شد"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "آمار جلسه پنهان شد"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "متن اشتراک‌گذاری‌شده داده وارد کردن پشتیبانی‌شده نیست"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "اشتراک حذف شد"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "اشتراک به‌روزرسانی شد"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "نوسازی اشتراک پایان یافت. در حال یافتن بهترین مکان..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "نوسازی اشتراک تمام شد. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "حالت اجرا: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "پراکسی محلی: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "گزارش اجرا: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "بررسی‌های حالت VPN موفق بود"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "بررسی‌های حالت پراکسی موفق بود"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "بررسی‌های حالت VPN ناموفق: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "حالت فقط پروکسی بررسی اولیه ناموفق بود: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "حالت VPN در دسترس نیست: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "حالت فقط پروکسی در دسترس نیست: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN دسکتاپ آماده است"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "توانایی VPN دسکتاپ: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN حالت در دسترس"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "پروکسی حالت در دسترس"
+    },
+    {
+      "source": "not ready",
+      "target": "آماده نیست"
+    },
+    {
+      "source": " checks",
+      "target": " بررسی"
+    },
+    {
+      "source": " check",
+      "target": " بررسی"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "خطای دستگاه TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "خطای مجوز شبکه: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "قوانین به‌روزرسانی شدند"
+    },
+    {
+      "source": "TUN device",
+      "target": "دستگاه TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "مجوزهای شبکه"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "قوانین به‌روزرسانی شدند"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "دستگاه TUN لینوکس در /dev/net/tun وجود ندارد. امتحان کنید: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "حالت VPN دسکتاپ به CAP_NET_ADMIN نیاز دارد. به‌صورت root اجرا کنید یا توانایی‌های sing-box را بدهید: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "قوانین به‌روزرسانی شدند"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN روی این رایانه آماده است"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "پراکسی روی این رایانه آماده است"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "بی‌کار"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN شروع شد"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN متوقف شد"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پروکسی شروع شد"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پروکسی متوقف شد"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "در حال شروع VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "در حال شروع پراکسی محلی..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "در حال شروع VPN با بهترین مکان..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "در حال شروع پراکسی محلی با بهترین مکان..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "در حال یافتن بهترین مکان از اشتراک..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "در حال یافتن بهترین مکان از مکان‌های ذخیره‌شده..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "مکان جستجو لغو شد"
+    },
+    {
+      "source": "Location search failed",
+      "target": "مکان جستجو ناموفق"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "مجوز VPN را بدهید و دوباره تلاش کنید"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ابتدا منبع راه‌دور را تنظیم کنید"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ابتدا دست‌کم یک مکان ذخیره‌شده اضافه کنید"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ابتدا یک مکان انتخاب کنید"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "هنوز اشتراکی ذخیره نشده است"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "در حال به‌روزرسانی همهٔ اشتراک‌ها..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "در حال به‌روزرسانی اشتراک فعال..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "در حال نوسازی اشتراک..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "در حال نوسازی اشتراک‌ها..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "در حال به‌روزرسانی خودکار اشتراک..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "در حال به‌روزرسانی خودکار اشتراک‌ها..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "اشتراک نوسازیed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "اشتراکs نوسازیed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "اشتراک فعال به‌روزرسانی شد"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "همهٔ اشتراک‌ها به‌روزرسانی شدند"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "نوسازی ناموفق"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "منبع نمایه روی اشتراک تنظیم شد"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "منبع نمایه روی مکان‌های ذخیره‌شده تنظیم شد"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "حالت اتصال روی VPN تنظیم شد"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "حالت اتصال روی فقط پروکسی تنظیم شد"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "برای تغییر حالت اتصال ابتدا قطع شوید"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ورودی تاریخچه حذف شد"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "اشتراک نام بازنشانی شد"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "اشتراک نام ذخیره‌شده"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "زبان روی پیش‌فرض سیستم تنظیم شد"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS سفارشی ذخیره شد"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS سفارشی غیرفعال شد"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "مسیریابی قوانین ذخیره‌شده"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "مسیریابی قوانین وارد شد"
+    },
+    {
+      "source": "Locations imported",
+      "target": "مکان‌ها وارد شد"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "مکان انتخاب‌شده دیگر در دسترس نیست"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "برای وارد کردن مکان‌ها به مکان‌های ذخیره‌شده بروید"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "برای افزودن دستی مکان‌ها به مکان‌های ذخیره‌شده بروید"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "پیکربندی مکان نامعتبر است"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "مکان مورد ویرایش دیگر در دسترس نیست"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "خروجی تشخیص باز شد"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "خروجی تشخیص ناموفق بود"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "خروجی تشخیص لغو شد"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "مکان VPN قبلی دیگر در دسترس نیست"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "برنامه بسته شد. VPN خاموش بود."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "همهٔ اشتراک‌ها فعال شدند"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "همهٔ اشتراک‌ها انتخاب شدند"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "اشتراک انتخاب‌شده"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "مکان‌ها در کلیپ‌بورد کپی شدند"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "خروجی مکان‌ها لغو شد"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "قوانین مسیریابی در کلیپ‌بورد کپی شدند"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "خروجی قوانین لغو شد"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "حالت منبع نمایه: اشتراک"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "حالت منبع نمایه: مکان‌های فعلی"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "مکان‌های اشتراک فقط خواندنی هستند. برای ذخیرهٔ ویرایش‌ها به مکان‌های ذخیره‌شده بروید."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "مکان‌های اشتراک فقط خواندنی هستند. برای حذف آن‌ها به مکان‌های ذخیره‌شده بروید."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "اشتراک دریافت شد. آن را در زبانهٔ نمایه بازبینی و ذخیره کنید."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "پیوند اشتراک دریافت شد. آن را در زبانهٔ نمایه بازبینی و ذخیره کنید."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "پیکربندی مکان دریافت شد. آن را در زبانهٔ مکان‌ها بازبینی و ذخیره کنید."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "در حال شروع پراکسی محلی با بهترین مکان..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "در حال شروع VPN با بهترین مکان..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "در حال یافتن بهترین مکان از اشتراک..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "در حال یافتن بهترین مکان از مکان‌های ذخیره‌شده..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "مکان‌ها وارد شدند. مکان انتخاب‌شده دیگر در دسترس نیست، پروکسی متوقف شد"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "مکان‌ها وارد شدند. مکان انتخاب‌شده دیگر در دسترس نیست، VPN متوقف شد"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "مکان انتخاب‌شده دیگر در دسترس نیست"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "مکان به‌روزرسانی شد"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "تغییر مکان بازگردانده شد چون پروکسی متوقف نشد"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "تغییر مکان بازگردانده شد چون VPN متوقف نشد"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "تغییر مکان بازگردانده شد چون پروکسی متوقف نشد"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "تغییر مکان بازگردانده شد چون VPN متوقف نشد"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN متوقف شد. اشتراک‌های نوسازی‌شده مکان انتخاب‌شده را حذف کردند."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "پروکسی متوقف شد. اشتراک‌های نوسازی‌شده مکان انتخاب‌شده را حذف کردند."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN متوقف شد. در اجرای بعدی دوباره وصل می‌شود."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "پراکسی متوقف شد. در اجرای بعدی دوباره وصل می‌شود."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "قوانین مسیریابی ذخیره شد. برای اعمال، VPN را دوباره راه‌اندازی کنید"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "قوانین مسیریابی ذخیره شد. برای اعمال، پروکسی را دوباره راه‌اندازی کنید"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "قوانین مسیریابی وارد شد. برای اعمال، VPN را دوباره راه‌اندازی کنید"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "قوانین مسیریابی وارد شد. برای اعمال، پروکسی را دوباره راه‌اندازی کنید"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "مکان انتخاب‌شده حذف شد. VPN متوقف شد: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "مکان انتخاب‌شده حذف شد. پروکسی متوقف شد: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "بهترین مکان انتخاب شد و VPN شروع شد: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "بهترین مکان انتخاب شد و پروکسی شروع شد: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN شروع شد، اما مکان انتخاب‌شده ذخیره نشد"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "پروکسی شروع شد، اما مکان انتخاب‌شده ذخیره نشد"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN شروع شد، اما بهترین مکان ذخیره نشد"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "پروکسی شروع شد، اما بهترین مکان ذخیره نشد"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "شروع VPN با بهترین مکان ناموفق بود"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "شروع پروکسی با بهترین مکان ناموفق بود"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "ذخیره مکان انتخاب‌شده ناموفق بود"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "ذخیره مکان انتخاب‌شده ناموفق بود"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "ذخیره بهترین مکان ناموفق بود"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "اعمال مکان انتخاب‌شده ناموفق بود"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "توقف VPN پیش از خروج ناموفق بود"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "توقف پروکسی پیش از خروج ناموفق بود"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "توقف VPN ناموفق بود"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "توقف پروکسی ناموفق بود"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "شروع VPN ناموفق بود"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "شروع پروکسی ناموفق بود"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN آماده نشد"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "پروکسی آماده نشد"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "در حال آماده‌سازی VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "در حال آماده‌سازی پروکسی"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN شروع لغو شد"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "پروکسی شروع لغو شد"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN توقف لغو شد"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "پروکسی توقف لغو شد"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "در حال شروع پراکسی محلی..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "در حال شروع VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "در حال به‌روزرسانی همهٔ اشتراک‌ها..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "در حال به‌روزرسانی اشتراک فعال..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "در حال نوسازی اشتراک‌ها..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "در حال نوسازی اشتراک..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "در حال به‌روزرسانی خودکار اشتراک‌ها..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "در حال به‌روزرسانی خودکار اشتراک..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "همهٔ اشتراک‌ها به‌روزرسانی شدند"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "اشتراک فعال به‌روزرسانی شد"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "اشتراکs نوسازیed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "اشتراک نوسازیed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "نوسازی ناموفق"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "مکان جستجو لغو شد"
+    },
+    {
+      "source": "Location search failed",
+      "target": "مکان جستجو ناموفق"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "مجوز VPN را بدهید و دوباره تلاش کنید"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ابتدا منبع راه‌دور را تنظیم کنید"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ابتدا دست‌کم یک مکان ذخیره‌شده اضافه کنید"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ابتدا یک مکان انتخاب کنید"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "هنوز اشتراکی ذخیره نشده است"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "منبع نمایه روی اشتراک تنظیم شد"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "منبع نمایه روی مکان‌های ذخیره‌شده تنظیم شد"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "حالت اتصال روی VPN تنظیم شد"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "حالت اتصال روی فقط پروکسی تنظیم شد"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "برای تغییر حالت اتصال ابتدا قطع شوید"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ورودی تاریخچه حذف شد"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "اشتراک نام بازنشانی شد"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "اشتراک نام ذخیره‌شده"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "زبان روی پیش‌فرض سیستم تنظیم شد"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS سفارشی ذخیره شد"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS سفارشی غیرفعال شد"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "مسیریابی قوانین ذخیره‌شده"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "مسیریابی قوانین وارد شد"
+    },
+    {
+      "source": "Locations imported",
+      "target": "مکان‌ها وارد شد"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "برای وارد کردن مکان‌ها به مکان‌های ذخیره‌شده بروید"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "برای افزودن دستی مکان‌ها به مکان‌های ذخیره‌شده بروید"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "پیکربندی مکان نامعتبر است"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "مکان مورد ویرایش دیگر در دسترس نیست"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "خروجی تشخیص باز شد"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "خروجی تشخیص ناموفق بود"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "خروجی تشخیص لغو شد"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "مکان VPN قبلی دیگر در دسترس نیست"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "برنامه بسته شد. VPN خاموش بود."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "همهٔ اشتراک‌ها فعال شدند"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "همهٔ اشتراک‌ها انتخاب شدند"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "اشتراک انتخاب‌شده"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "اشتراک ذخیره‌شده"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "مکان‌ها در کلیپ‌بورد کپی شدند"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "خروجی مکان‌ها لغو شد"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "قوانین مسیریابی در کلیپ‌بورد کپی شدند"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "خروجی قوانین لغو شد"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "کلیپ‌بورد خواندن ناموفق"
+    },
+    {
+      "source": "No locations to export",
+      "target": "مکان‌ها به‌روزرسانی شدند"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "بارگذاری برنامه‌ها ناموفق بود"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "نوسازی اشتراک‌ها ناموفق بود"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "عملیات ناموفق بود"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "باز کردن فایل مکان‌ها ناموفق بود"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "خواندن فایل مکان‌ها ناموفق بود"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "باز کردن فایل قوانین مسیریابی ناموفق بود"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "بهترین مکان با فهرست دسکتاپ تطبیق داده نشد"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN روی این رایانه آماده است"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "پراکسی روی این رایانه آماده است"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "پوستهٔ VPN دسکتاپ آماده است"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "پوستهٔ پروکسی دسکتاپ آماده است"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN شروع شد روی "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "پراکسی شروع شد روی "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN متوقف شد. برنامه حالت: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "پروکسی متوقف شد. برنامه حالت: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "زبان تنظیم شد به "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "به‌روزرسانی خودکار اشتراک تنظیم شد روی "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "تنظیمات آزمون ذخیره شد: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "مکان انتخاب‌شده تغییر نکرد: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "مکان انتخاب‌شده حذف شد: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "مکان انتخاب‌شده تنظیم شد: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "مکان به‌روزرسانی و ادغام شد: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "مکان alآماده ذخیره‌شده: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "مکان به‌روزرسانی شد: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "مکان حذف شد: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "مکان افزوده شد: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "اشتراکs نوسازیed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ناموفق: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "بازیابی VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "نوسازی "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "مکان‌ها صادر شدند: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "قوانین مسیریابی صادر شدند: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "عیب‌یابی صادر شد: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "آزمون ناموفق بود: "
+    },
+    {
+      "source": "Activated ",
+      "target": "فعال شد "
+    },
+    {
+      "source": "Added ",
+      "target": "افزوده شد "
+    },
+    {
+      "source": "Deleted ",
+      "target": "حذف شد "
+    },
+    {
+      "source": "Selected ",
+      "target": "انتخاب‌شده "
+    },
+    {
+      "source": "Edited location #",
+      "target": "ویرایش شد مکان #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "برنامه حالت: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " مکان نوسازی شد"
+    },
+    {
+      "source": " location refreshed",
+      "target": " مکان نوسازی شد"
+    },
+    {
+      "source": " • batch ",
+      "target": " • گروه "
+    },
+    {
+      "source": " • retries ",
+      "target": " • تلاش دوباره "
+    },
+    {
+      "source": "custom interval",
+      "target": "بازه سفارشی"
+    },
+    {
+      "source": "every hour",
+      "target": "هر ساعت"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "همهٔ اشتراک‌ها"
+    },
+    {
+      "source": "selected subscription",
+      "target": "انتخاب‌شده اشتراک"
+    },
+    {
+      "source": "proxy only",
+      "target": "فقط پروکسی"
+    },
+    {
+      "source": "off",
+      "target": "خاموش"
+    },
+    {
+      "source": "Idle",
+      "target": "بی‌کار"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN شروع شد"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN متوقف شد"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پروکسی شروع شد"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پروکسی متوقف شد"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "در حال شروع VPN با بهترین مکان تازه..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "در حال شروع پراکسی با بهترین مکان تازه..."
+    }
+  ]
+}

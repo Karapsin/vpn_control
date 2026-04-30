@@ -192,19 +192,19 @@
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Действо запущено"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Действо запущено"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "Тайная сѣть на компьютере готова"
+      "target": "Тайная сѣть на считальнице готова"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Посредникъ на компьютере готовъ"
+      "target": "Посредникъ на считальнице готовъ"
     },
     {
       "source": "Export Locations",
@@ -300,11 +300,11 @@
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилямъ включены"
+      "target": "Итоги по личинамъ включены"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилямъ скрыты"
+      "target": "Итоги по личинамъ скрыты"
     },
     {
       "source": "Previous VPN session will be restored",
@@ -404,11 +404,11 @@
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "Тайная сѣть на компьютере: готова"
+      "target": "Тайная сѣть на считальнице: готова"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "Тайная сѣть на компьютере: "
+      "target": "Тайная сѣть на считальнице: "
     },
     {
       "source": "VPN mode available",
@@ -460,7 +460,7 @@
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Тайной сѣти на компьютере нуженъ CAP_NET_ADMIN. Запустите отъ root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Тайной сѣти на считальнице нуженъ CAP_NET_ADMIN. Запустите отъ root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
@@ -586,11 +586,11 @@
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источникъ профиля: грамота"
+      "target": "Источникъ личины: грамота"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источникъ профиля: сохраненные места"
+      "target": "Источникъ личины: сохраненные места"
     },
     {
       "source": "Connection mode set to VPN",
@@ -678,7 +678,7 @@
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. Тайная сѣть была выключена."
+      "target": "Действо закрыто. Тайная сѣть была выключена."
     },
     {
       "source": "Activated all subscriptions",
@@ -788,11 +788,23 @@
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "Тайная сѣть остановлена. Режимъ приложения: "
+      "target": "Тайная сѣть остановлена. Режимъ действа: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Посредникъ остановленъ. Режимъ приложения: "
+      "target": "Посредникъ остановленъ. Режимъ действа: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Обновление "
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Запускъ тайной сѣти с новымъ лучшимъ местомъ..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Запускъ посредника с новымъ лучшимъ местомъ..."
     }
   ]
 }

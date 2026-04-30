@@ -143,10 +143,7 @@ object MainCommandLogic {
     }
 
     fun startingConnectionLabel(appMode: AppMode): String {
-        return when (appMode) {
-            AppMode.VPN -> "Starting VPN..."
-            AppMode.PROXY_ONLY -> "Starting local proxy..."
-        }
+        return StatusMessages.startingConnection(appMode)
     }
 
     fun startedConnectionLabel(appMode: AppMode): String {
@@ -164,10 +161,7 @@ object MainCommandLogic {
     }
 
     fun bestSelectionStartMessage(appMode: AppMode): String {
-        return when (appMode) {
-            AppMode.VPN -> "Starting VPN with the best location..."
-            AppMode.PROXY_ONLY -> "Starting local proxy with the best location..."
-        }
+        return StatusMessages.startingConnectionWithBestLocation(appMode)
     }
 
     fun incomingImportEffect(

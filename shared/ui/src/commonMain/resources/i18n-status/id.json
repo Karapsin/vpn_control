@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "Mencari lokasi terbaik dari langganan...",
+    "findingSaved": "Mencari lokasi terbaik dari lokasi tersimpan...",
+    "testingFastestCandidates": "Menguji kandidat tercepat dalam kelompok...",
+    "checkingLocations": "Memeriksa {count} lokasi...",
+    "testingLocationsRange": "Menguji lokasi {start}-{end} dari {total}...",
+    "refreshIntervalMinutes": "{count} mnt",
+    "refreshIntervalHours": "{count} jam",
+    "refreshIntervalHoursMinutes": "{hours} jam {minutes} mnt",
+    "refreshIntervalEvery": "setiap {interval}",
+    "refreshIntervalEveryHour": "setiap jam"
+  },
+  "benchmark": {
+    "best": "Terbaik: ",
+    "primary": "utama ",
+    "secondary": "cadangan ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "diblokir",
+      "cached": "cache",
+      "challenge": "tantangan",
+      "custom_config_manual_only": "manual",
+      "error": "galat",
+      "manual": "pilihan pengguna",
+      "ok": "baik",
+      "partial": "sebagian",
+      "tcp_error": "galat_tcp",
+      "tcp_timeout": "waktu_habis_tcp",
+      "timeout": "waktu habis",
+      "unreachable": "tidak terjangkau",
+      "validation_timeout": "validasi_waktu_habis"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL langganan"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL langganan tidak dapat dibaca"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Langganan HTTP tidak aman tidak didukung"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Gunakan URL langganan https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL harus berisi host HTTPS yang valid"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Tempel URL langganan https:// yang valid."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Sumber jarak jauh langsung"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "Tautan impor sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Tautan impor sing-box tidak dapat dibaca"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Hanya URL jarak jauh HTTPS yang valid yang didukung"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Gunakan tautan impor sing-box yang mengarah ke URL https:// yang valid."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Mengambil konten jarak jauh dari URL tertanam"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Mengambil konten jarak jauh dari "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Tautan impor tidak dapat diurai"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Tempel tautan impor profil jarak jauh sing-box yang valid atau URL langganan langsung."
+    },
+    {
+      "source": "VPN import link",
+      "target": "Tautan impor VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Tautan impor VPN tidak dapat dibaca"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Impor penyedia tidak didukung"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Impor Amnezia dan vpn:// lain tidak didukung. Gunakan URL langganan biasa atau tambah lokasi secara manual."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Payload impor tidak dapat didekode"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Impor vpn:// tidak didukung. Gunakan URL langganan biasa atau tambah lokasi secara manual."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "URL langganan HTTP tidak didukung. Gunakan https:// sebagai gantinya."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Sumber jarak jauh harus berupa URL https:// atau tautan impor yang didukung"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Sumber jarak jauh kosong"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Sumber jarak jauh harus berupa URL https:// valid dengan host."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Impor sing-box ini mengarah ke URL tidak valid atau bukan HTTPS. Gunakan URL https:// yang valid."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Menerapkan lokasi terpilih..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Menerapkan lokasi terpilih yang diperbarui..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Pencarian lokasi terbaik habis waktu; koneksi saat ini dipertahankan"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Clipboard kosong"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Log koneksi diaktifkan"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Log koneksi disembunyikan"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Alat uji koneksi diaktifkan"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Alat uji koneksi disembunyikan"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Tujuan ekspor tidak dapat dibuka"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "File terpilih tidak dapat dibuka"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "File lokasi terpilih tidak dapat dibuka"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "File aturan terpilih tidak dapat dibuka"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Shell desktop: Belanda dari Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Aplikasi desktop dimulai"
+    },
+    {
+      "source": "App initialized",
+      "target": "Aplikasi dimulai"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Ekspor Lokasi"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Gagal menerapkan lokasi terpilih yang diperbarui"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Gagal mengekspor diagnostik"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Gagal mengekspor lokasi"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Gagal mengekspor aturan perutean"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Gagal menemukan lokasi pengganti"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Gagal mengimpor file"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Gagal membuka tujuan diagnostik"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Gagal menyimpan pengaturan penyegaran"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Gagal memperbarui pengaturan mulai otomatis"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import dibatalkan"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Invalid langganan URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Riwayat latensi diaktifkan"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Riwayat latensi disembunyikan"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Statistik trafik langsung diaktifkan"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Statistik trafik langsung disembunyikan"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Lokasi check dibatalkan"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Lokasi check gagal"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Lokasi diekspor"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Lokasi import dibatalkan"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "No lokasi tersedia for ujiing"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Tidak ada langganan untuk disegarkan"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Lokasi diperbarui"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Total per profil diaktifkan"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Total per profil disembunyikan"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Sesi VPN sebelumnya akan dipulihkan"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR scan dibatalkan"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Perutean aturan diekspor"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Perutean aturan import dibatalkan"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Saved perutean aturan"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Statistik sesi diaktifkan"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Statistik sesi disembunyikan"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Teks yang dibagikan bukan payload impor yang didukung"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Langganan dihapus"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Penyegaran langganan selesai, tetapi izin VPN diperlukan untuk beralih di latar belakang. Lokasi VPN sebelumnya dipertahankan sebagai cadangan."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Penyegaran langganan selesai. Mencari lokasi terbaik..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Penyegaran langganan selesai. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Mode runtime: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Proksi lokal: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Log runtime: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Pemeriksaan mode VPN berhasil"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Pemeriksaan mode proksi berhasil"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Pemeriksaan mode VPN gagal: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Mode hanya proksi pemeriksaan awal gagal: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Mode VPN tidak tersedia: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Mode hanya proksi tidak tersedia: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN desktop siap"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "VPN desktop: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN mode tersedia"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proksi mode tersedia"
+    },
+    {
+      "source": "not ready",
+      "target": "belum siap"
+    },
+    {
+      "source": " checks",
+      "target": " pemeriksaan"
+    },
+    {
+      "source": " check",
+      "target": " pemeriksaan"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "galat perangkat TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "galat izin jaringan: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "galat alat route/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "Perangkat TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "Hak jaringan"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "Alat route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Perangkat TUN Linux tidak ada di /dev/net/tun. Coba: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Mode VPN desktop memerlukan CAP_NET_ADMIN. Jalankan sebagai root atau beri kemampuan sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Alat rute/DNS Windows tidak tersedia. Mode VPN memerlukan netsh.exe dan cmdlet PowerShell klien DNS."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN siap di komputer ini"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proksi siap di komputer ini"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Siaga"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN dimulai"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN dihentikan"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proksi dimulai"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proksi dihentikan"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Memulai VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Memulai proksi lokal..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Memulai VPN dengan lokasi terbaik..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Memulai proksi lokal dengan lokasi terbaik..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Mencari lokasi terbaik dari langganan..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Mencari lokasi terbaik dari lokasi tersimpan..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lokasi pencarian dibatalkan"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lokasi pencarian gagal"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Berikan izin VPN lalu coba lagi"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Atur sumber jarak jauh terlebih dahulu"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Tambahkan minimal satu lokasi tersimpan terlebih dahulu"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pilih a lokasi first"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "No langganan tersimpan yet"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Menyegarkan active langganan..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Menyegarkan langganan..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Menyegarkan langganan..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Menyegarkan langganan secara otomatis..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Menyegarkan langganan secara otomatis..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Penyegaran gagal"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Sumber profil diatur ke langganan"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Sumber profil diatur ke lokasi tersimpan"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Mode koneksi diatur ke VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Mode koneksi diatur ke proxy saja"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Putuskan koneksi dulu untuk mengubah mode koneksi"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Entri riwayat dihapus"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Langganan nama direset"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Langganan nama tersimpan"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Bahasa disetel ke bawaan sistem"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Custom DNS tersimpan"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS khusus dinonaktifkan"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Perutean aturan tersimpan"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Perutean aturan diimpor"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokasi diimpor"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokasi yang dipilih tidak tersedia lagi"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Beralih ke Lokasi Tersimpan untuk mengimpor lokasi"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Beralih ke Lokasi Tersimpan untuk menambahkan lokasi manual"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid lokasi config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokasi yang akan diedit tidak tersedia lagi"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostik export bukaed"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostik export gagal"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostik export dibatalkan"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Lokasi VPN sebelumnya tidak tersedia lagi"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikasi ditutup. VPN sedang mati."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Diaktifkan all langganan"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "All langganan terpilih"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Langganan terpilih"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokasi disalin ke clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Lokasi export dibatalkan"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Aturan perutean disalin ke clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Perutean aturan export dibatalkan"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Mode sumber profil: langganan"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Mode sumber profil: lokasi saat ini"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Lokasi langganan bersifat baca-saja. Beralih ke Lokasi Tersimpan untuk menyimpan perubahan."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Lokasi langganan bersifat baca-saja. Beralih ke Lokasi Tersimpan untuk menghapusnya."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Langganan diterima. Tinjau dan simpan di tab Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Tautan langganan diterima. Tinjau dan simpan di tab Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Konfigurasi lokasi diterima. Tinjau dan simpan di tab Lokasi."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Memulai proksi lokal dengan lokasi terbaik..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Memulai VPN dengan lokasi terbaik..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Mencari lokasi terbaik dari langganan..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Mencari lokasi terbaik dari lokasi tersimpan..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Lokasi diimpor. Lokasi yang dipilih tidak tersedia lagi, proxy dihentikan"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Lokasi diimpor. Lokasi yang dipilih tidak tersedia lagi, VPN dihentikan"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokasi yang dipilih tidak tersedia lagi"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Lokasi terpilih diterapkan, tetapi gagal menyimpannya"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Perubahan lokasi dibatalkan karena proxy tidak dapat dihentikan"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Perubahan lokasi dibatalkan karena VPN tidak dapat dihentikan"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Perubahan lokasi dibatalkan karena proxy tidak dapat dihentikan"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Perubahan lokasi dibatalkan karena VPN tidak dapat dihentikan"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN dihentikan. Langganan yang disegarkan menghapus lokasi terpilih."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proksi dihentikan. Langganan yang disegarkan menghapus lokasi terpilih."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN berhenti. Akan tersambung lagi saat peluncuran berikutnya."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proksi berhenti. Akan tersambung lagi saat peluncuran berikutnya."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Aturan diperbarui"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Aturan diperbarui"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Aturan diperbarui"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Aturan diperbarui"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Lokasi terpilih dihapus. VPN dihentikan: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Lokasi terpilih dihapus. Proksi dihentikan: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Lokasi terbaik dipilih dan VPN dimulai: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Lokasi terbaik dipilih dan proxy dimulai: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN dimulai, tetapi lokasi terpilih gagal disimpan"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proksi dimulai, tetapi lokasi terpilih gagal disimpan"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN dimulai, tetapi lokasi terbaik gagal disimpan"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proksi dimulai, tetapi lokasi terbaik gagal disimpan"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Gagal memulai VPN dengan lokasi terbaik"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Gagal memulai proksi dengan lokasi terbaik"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Gagal menyimpan lokasi terpilih"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Gagal menyimpan lokasi terpilih"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Gagal menyimpan lokasi terbaik"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Gagal menerapkan lokasi yang dipilih"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Gagal memilih lokasi"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Gagal menghentikan VPN sebelum keluar"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Gagal menghentikan proksi sebelum keluar"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Gagal menghentikan VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Gagal menghentikan proksi"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Gagal memulai VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Gagal memulai proksi"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN tidak dapat disiapkan"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Proksi tidak dapat disiapkan"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Menyiapkan VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Menyiapkan proksi"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN mulai dibatalkan"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proksi mulai dibatalkan"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN hentikan dibatalkan"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proksi hentikan dibatalkan"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Memulai proksi lokal..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Memulai VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Menyegarkan active langganan..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Menyegarkan langganan..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Menyegarkan langganan..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Menyegarkan langganan secara otomatis..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Menyegarkan langganan secara otomatis..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Penyegaran gagal"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lokasi pencarian dibatalkan"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lokasi pencarian gagal"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Berikan izin VPN lalu coba lagi"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Atur sumber jarak jauh terlebih dahulu"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Tambahkan minimal satu lokasi tersimpan terlebih dahulu"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pilih a lokasi first"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "No langganan tersimpan yet"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Sumber profil diatur ke langganan"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Sumber profil diatur ke lokasi tersimpan"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Mode koneksi diatur ke VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Mode koneksi diatur ke proxy saja"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Putuskan koneksi dulu untuk mengubah mode koneksi"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Entri riwayat dihapus"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Langganan nama direset"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Langganan nama tersimpan"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Bahasa disetel ke bawaan sistem"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Custom DNS tersimpan"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS khusus dinonaktifkan"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Perutean aturan tersimpan"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Perutean aturan diimpor"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokasi diimpor"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Beralih ke Lokasi Tersimpan untuk mengimpor lokasi"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Beralih ke Lokasi Tersimpan untuk menambahkan lokasi manual"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid lokasi config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokasi yang akan diedit tidak tersedia lagi"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostik export bukaed"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostik export gagal"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostik export dibatalkan"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Lokasi VPN sebelumnya tidak tersedia lagi"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikasi ditutup. VPN sedang mati."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Diaktifkan all langganan"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "All langganan terpilih"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Langganan terpilih"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Langganan tersimpan"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokasi disalin ke clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Lokasi export dibatalkan"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Aturan perutean disalin ke clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Perutean aturan export dibatalkan"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Clipboard baca gagal"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Tidak ada lokasi untuk diekspor"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Gagal memuat aplikasi"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Gagal menyegarkan langganan"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Gagal menyegarkan langganan aktif"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Gagal mengimpor aturan perutean"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Gagal menyimpan aturan perutean"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Gagal mengimpor lokasi"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Gagal membuka file lokasi"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Gagal membaca file lokasi"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Gagal membuka file aturan perutean"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Lokasi terbaik tidak dapat dicocokkan dengan daftar desktop"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN siap di komputer ini"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proksi siap di komputer ini"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Shell VPN desktop siap"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktop Proksi shell siap"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN dimulai di "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proksi dimulai di "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN dihentikan. Aplikasi mode: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proksi dihentikan. Aplikasi mode: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Bahasa disetel ke "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Penyegaran otomatis langganan diatur ke "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Pengaturan validasi tersimpan: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Terpilih lokasi unchanged: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Lokasi terpilih dihapus: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Terpilih lokasi set: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Lokasi diperbarui dan digabung: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Lokasi alsiap tersimpan: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Lokasi diperbarui: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Lokasi dihapus: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Lokasi ditambahkan: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Langganan diperbarui"
+    },
+    {
+      "source": "Failed: ",
+      "target": "Gagal: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Memulihkan VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Menyegarkan "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Lokasi diekspor ke "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Aturan perutean diekspor ke "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostik diekspor ke "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Gagal menguji "
+    },
+    {
+      "source": "Activated ",
+      "target": "Diaktifkan "
+    },
+    {
+      "source": "Added ",
+      "target": "Ditambahkan "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Dihapus "
+    },
+    {
+      "source": "Selected ",
+      "target": "Terpilih "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Diedit lokasi #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Aplikasi mode: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " lokasi disegarkan"
+    },
+    {
+      "source": " location refreshed",
+      "target": " lokasi disegarkan"
+    },
+    {
+      "source": " • batch ",
+      "target": " • grup "
+    },
+    {
+      "source": " • retries ",
+      "target": " • percobaan ulang "
+    },
+    {
+      "source": "custom interval",
+      "target": "interval khusus"
+    },
+    {
+      "source": "every hour",
+      "target": "setiap jam"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "all langganan"
+    },
+    {
+      "source": "selected subscription",
+      "target": "terpilih langganan"
+    },
+    {
+      "source": "proxy only",
+      "target": "proksi only"
+    },
+    {
+      "source": "off",
+      "target": "mati"
+    },
+    {
+      "source": "Idle",
+      "target": "Siaga"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN dimulai"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN dihentikan"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proksi dimulai"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proksi dihentikan"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Memulai VPN dengan lokasi terbaik baru..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Memulai proksi dengan lokasi terbaik baru..."
+    }
+  ]
+}

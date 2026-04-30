@@ -444,7 +444,7 @@
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Windows 路由/DNS 工具不可用。VPN 模式需要 netsh.exe 和 DNS client PowerShell cmdlets。"
+      "target": "Windows 路由/DNS 工具不可用。VPN 模式需要 netsh.exe 和 DNS 客户端 PowerShell cmdlet。"
     }
   ],
   "legacyExact": [
@@ -1117,6 +1117,14 @@
     {
       "source": "Proxy stopped",
       "target": "代理已停止"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "正在用新的最佳节点启动 VPN..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "正在用新的最佳节点启动代理..."
     }
   ]
 }

@@ -1117,6 +1117,14 @@
     {
       "source": "Proxy stopped",
       "target": "Proxy detenido"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Iniciando VPN con la nueva mejor ubicación..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Iniciando proxy con la nueva mejor ubicación..."
     }
   ]
 }

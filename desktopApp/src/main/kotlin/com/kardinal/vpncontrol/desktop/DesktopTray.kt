@@ -33,6 +33,7 @@ import kotlin.math.roundToInt
 
 @Composable
 internal fun DesktopTrayIcon(
+    appTitle: String,
     connectionActionLabel: String,
     findBestLabel: String,
     showWindowLabel: String,
@@ -46,9 +47,19 @@ internal fun DesktopTrayIcon(
     onHideWindow: () -> Unit,
     onExit: () -> Unit,
 ) {
-    DisposableEffect(connectionActionLabel, connectionActionEnabled, findBestEnabled) {
+    DisposableEffect(
+        appTitle,
+        connectionActionLabel,
+        findBestLabel,
+        showWindowLabel,
+        hideWindowLabel,
+        exitLabel,
+        connectionActionEnabled,
+        findBestEnabled,
+    ) {
         val popup = TrayPopupController()
         val trayIcon = installTrayIcon(
+            appTitle = appTitle,
             connectionActionLabel = connectionActionLabel,
             findBestLabel = findBestLabel,
             showWindowLabel = showWindowLabel,
@@ -79,6 +90,7 @@ internal fun isDesktopTraySupported(): Boolean {
 }
 
 private fun installTrayIcon(
+    appTitle: String,
     connectionActionLabel: String,
     findBestLabel: String,
     showWindowLabel: String,
@@ -117,7 +129,7 @@ private fun installTrayIcon(
     val tray = SystemTray.getSystemTray()
     val iconSize = maxOf(tray.trayIconSize.width, tray.trayIconSize.height, 22)
         .coerceAtMost(128)
-    val trayIcon = TrayIcon(createTrayImage(iconSize), "VPN Control Desktop").apply {
+    val trayIcon = TrayIcon(createTrayImage(iconSize), appTitle).apply {
         isImageAutoSize = true
         addActionListener { toggleMenu() }
         addMouseListener(

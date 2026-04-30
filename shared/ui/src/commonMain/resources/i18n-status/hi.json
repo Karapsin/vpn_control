@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "सदस्यता से श्रेष्ठ स्थान खोजा जा रहा है...",
+    "findingSaved": "सहेजे गए स्थानों से श्रेष्ठ स्थान खोजा जा रहा है...",
+    "testingFastestCandidates": "सबसे तेज़ उम्मीदवारों को बैचों में जाँचा जा रहा है...",
+    "checkingLocations": "{count} स्थान जाँचे जा रहे हैं...",
+    "testingLocationsRange": "{total} में से {start}-{end} स्थान जाँचे जा रहे हैं...",
+    "refreshIntervalMinutes": "{count} मि.",
+    "refreshIntervalHours": "{count} घं.",
+    "refreshIntervalHoursMinutes": "{hours} घं. {minutes} मि.",
+    "refreshIntervalEvery": "हर {interval}",
+    "refreshIntervalEveryHour": "हर घंटे"
+  },
+  "benchmark": {
+    "best": "श्रेष्ठ: ",
+    "primary": "प्राथमिक ",
+    "secondary": "द्वितीयक ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "अवरुद्ध",
+      "cached": "कैश",
+      "challenge": "चुनौती",
+      "custom_config_manual_only": "मैनुअल",
+      "error": "त्रुटि",
+      "manual": "मैनुअल",
+      "ok": "ठीक",
+      "partial": "आंशिक",
+      "tcp_error": "tcp_त्रुटि",
+      "tcp_timeout": "tcp_समयसीमा",
+      "timeout": "समयसीमा",
+      "unreachable": "अप्राप्य",
+      "validation_timeout": "जाँच_समयसीमा"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "सदस्यता URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "सदस्यता URL पढ़ा नहीं जा सका"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "असुरक्षित HTTP सदस्यताएँ समर्थित नहीं हैं"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// सदस्यता URL उपयोग करें।"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL में वैध HTTPS होस्ट होना चाहिए"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "वैध https:// सदस्यता URL चिपकाएँ।"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "सीधा दूरस्थ स्रोत"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box आयात लिंक"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "sing-box लिंक पढ़ा नहीं जा सका"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "केवल वैध HTTPS दूरस्थ URL समर्थित हैं"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "ऐसा sing-box लिंक उपयोग करें जो वैध https:// URL देता हो।"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "एम्बेडेड URL से दूरस्थ सामग्री लाता है"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "दूरस्थ सामग्री यहाँ से लाता है "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "आयात लिंक पढ़ा नहीं जा सका"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "वैध sing-box रिमोट प्रोफ़ाइल लिंक या सीधा सदस्यता URL चिपकाएँ।"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN आयात लिंक"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "VPN आयात लिंक पढ़ा नहीं जा सका"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "प्रदाता आयात समर्थित नहीं"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia और अन्य vpn:// आयात समर्थित नहीं हैं। सामान्य सदस्यता URL उपयोग करें या स्थान मैन्युअल रूप से जोड़ें।"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "आयात सामग्री डिकोड नहीं हुई"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// आयात समर्थित नहीं हैं। सामान्य सदस्यता URL उपयोग करें या स्थान मैन्युअल रूप से जोड़ें।"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP सदस्यता URL समर्थित नहीं हैं। इसके बजाय https:// उपयोग करें।"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "दूरस्थ स्रोत अमान्य है"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "दूरस्थ स्रोत खाली है"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "दूरस्थ स्रोत अमान्य है"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "दूरस्थ स्रोत अमान्य है"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "कनेक्शन लॉग चालू"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "कनेक्शन लॉग छिपा"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "कनेक्शन परीक्षण उपकरण चालू"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "कनेक्शन परीक्षण उपकरण छिपे"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "डेस्कटॉप ऐप शुरू हुआ"
+    },
+    {
+      "source": "App initialized",
+      "target": "ऐप शुरू हुआ"
+    },
+    {
+      "source": "Export Locations",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Import canceled",
+      "target": "आयात रद्द हुआ"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location check failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Locations exported",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "प्रति-प्रोफ़ाइल कुल चालू"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "प्रति-प्रोफ़ाइल कुल छिपे"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR स्कैन रद्द हुआ"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "सदस्यता रीफ़्रेश पूरा हुआ। श्रेष्ठ स्थान खोजा जा रहा है..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "रनटाइम मोड: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "स्थानीय प्रॉक्सी: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "रनटाइम लॉग: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN मोड जाँच सफल"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "प्रॉक्सी मोड जाँच सफल"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN मोड जाँच विफल: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN मोड उपलब्ध नहीं: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "डेस्कटॉप VPN: तैयार"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "डेस्कटॉप VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "not ready",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": " checks",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": " check",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN डिवाइस त्रुटि: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "नेटवर्क अनुमति त्रुटि: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS उपकरण त्रुटि: "
+    },
+    {
+      "source": "TUN device",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "network privileges",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "इस कंप्यूटर पर VPN तैयार है"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "इस कंप्यूटर पर प्रॉक्सी तैयार है"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "निष्क्रिय"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN शुरू हुआ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN रुका"
+    },
+    {
+      "source": "Proxy started",
+      "target": "प्रॉक्सी शुरू हुई"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "प्रॉक्सी रुकी"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN शुरू हो रहा है..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "स्थानीय प्रॉक्सी शुरू हो रही है..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "श्रेष्ठ स्थान के साथ VPN शुरू हो रहा है..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "श्रेष्ठ स्थान के साथ स्थानीय प्रॉक्सी शुरू हो रही है..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "सदस्यता से श्रेष्ठ स्थान खोजा जा रहा है..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "सहेजे गए स्थानों से श्रेष्ठ स्थान खोजा जा रहा है..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "दूरस्थ स्रोत अमान्य है"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "कस्टम DNS सहेजा गया"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "कस्टम DNS बंद किया गया"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Locations imported",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "सदस्यता अपडेट हुई"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "श्रेष्ठ स्थान के साथ स्थानीय प्रॉक्सी शुरू हो रही है..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "श्रेष्ठ स्थान के साथ VPN शुरू हो रहा है..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "सदस्यता से श्रेष्ठ स्थान खोजा जा रहा है..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "सहेजे गए स्थानों से श्रेष्ठ स्थान खोजा जा रहा है..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN रुक गया। अगले लॉन्च पर फिर जुड़ेगा।"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "प्रॉक्सी रुक गई। अगले लॉन्च पर फिर जुड़ेगी।"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "स्थानीय प्रॉक्सी शुरू हो रही है..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN शुरू हो रहा है..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "दूरस्थ स्रोत अमान्य है"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "कस्टम DNS सहेजा गया"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "कस्टम DNS बंद किया गया"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Locations imported",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "No locations to export",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "फ़ाइल नहीं खुली"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "इस कंप्यूटर पर VPN तैयार है"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "इस कंप्यूटर पर प्रॉक्सी तैयार है"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN शुरू हुआ: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "प्रॉक्सी शुरू हुई: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Language set to ",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location updated: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location removed: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Location added: ",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "Failed: ",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN बहाल हो रहा है: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "रीफ़्रेश हो रहा है "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "स्थान अपडेट हुए"
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "नियम अपडेट हुए"
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "कार्रवाई विफल हुई"
+    },
+    {
+      "source": "Activated ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Added ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Deleted ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Selected ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Edited location #",
+      "target": "स्थान अपडेट हुआ"
+    },
+    {
+      "source": "App mode: ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": " locations refreshed",
+      "target": " स्थान रीफ़्रेश हुए"
+    },
+    {
+      "source": " location refreshed",
+      "target": " स्थान रीफ़्रेश हुआ"
+    },
+    {
+      "source": " • batch ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": " • retries ",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "custom interval",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "every hour",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "selected subscription",
+      "target": "सदस्यता अपडेट हुई"
+    },
+    {
+      "source": "proxy only",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "off",
+      "target": "स्थिति अपडेट हुई"
+    },
+    {
+      "source": "Idle",
+      "target": "निष्क्रिय"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN शुरू हुआ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN रुका"
+    },
+    {
+      "source": "Proxy started",
+      "target": "प्रॉक्सी शुरू हुई"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "प्रॉक्सी रुकी"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "नए श्रेष्ठ स्थान के साथ VPN शुरू हो रहा है..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "नए श्रेष्ठ स्थान के साथ प्रॉक्सी शुरू हो रही है..."
+    }
+  ]
+}

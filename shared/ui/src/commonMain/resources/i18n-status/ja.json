@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "サブスクリプションから最適なロケーションを検索中...",
+    "findingSaved": "保存済みロケーションから最適なロケーションを検索中...",
+    "testingFastestCandidates": "最速候補をバッチでテスト中...",
+    "checkingLocations": "{count} 件のロケーションを確認中...",
+    "testingLocationsRange": "{total} 件中 {start}-{end} 件をテスト中...",
+    "refreshIntervalMinutes": "{count} 分",
+    "refreshIntervalHours": "{count} 時間",
+    "refreshIntervalHoursMinutes": "{hours} 時間 {minutes} 分",
+    "refreshIntervalEvery": "{interval} ごと",
+    "refreshIntervalEveryHour": "毎時"
+  },
+  "benchmark": {
+    "best": "最適: ",
+    "primary": "プライマリ ",
+    "secondary": "セカンダリ ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "ブロック",
+      "cached": "キャッシュ",
+      "challenge": "チャレンジ",
+      "custom_config_manual_only": "手動",
+      "error": "エラー",
+      "manual": "手動",
+      "ok": "OK",
+      "partial": "一部",
+      "tcp_error": "tcpエラー",
+      "tcp_timeout": "tcpタイムアウト",
+      "timeout": "タイムアウト",
+      "unreachable": "到達不可",
+      "validation_timeout": "検証タイムアウト"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "サブスクリプション URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "読めないサブスクリプション URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "安全でない HTTP サブスクリプションは未対応です"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// のサブスクリプション URL を使ってください。"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL には有効な HTTPS ホストが必要です"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "有効な https:// サブスクリプション URL を貼り付けてください。"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "直接リモートソース"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box インポートリンク"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "読めない sing-box インポートリンク"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "有効な HTTPS リモート URL のみ対応です"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "有効な https:// URL に解決される sing-box リンクを使ってください。"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "埋め込み URL からリモート内容を取得します"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "リモート内容の取得元: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "インポートリンクを解析できません"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "有効な sing-box リモートプロファイルリンクまたは直接サブスクリプション URL を貼り付けてください。"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN インポートリンク"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "読めない VPN インポートリンク"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "未対応のプロバイダーインポート"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "インポート内容をデコードできません"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "リモートソースは https:// URL または対応するインポートリンクである必要があります"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "リモートソースが空です"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "リモートソースはホスト付きの有効な https:// URL である必要があります。"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "この sing-box インポートは無効または非 HTTPS の URL を指しています。有効な https:// URL を使用してください。"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "接続ログを有効にしました"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "接続ログを非表示にしました"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "接続テストツールを有効にしました"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "接続テストツールを非表示にしました"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ファイルを開けませんでした"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ファイルを開けませんでした"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "ファイルを開けませんでした"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "ファイルを開けませんでした"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "デスクトップアプリを初期化しました"
+    },
+    {
+      "source": "App initialized",
+      "target": "アプリを初期化しました"
+    },
+    {
+      "source": "Export Locations",
+      "target": "エクスポート ロケーション"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Import canceled",
+      "target": "インポートをキャンセルしました"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Location check failed",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Locations exported",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "プロファイル別合計を有効にしました"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "プロファイル別合計を非表示にしました"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR スキャンをキャンセルしました"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "サブスクリプションを更新しました"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "サブスクリプション更新が完了しました。最適なロケーションを検索中..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "購読の更新が完了しました. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "実行モード: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "ローカルプロキシ: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "実行ログ: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN モード事前チェック成功"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "プロキシ専用事前チェック成功"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN モード事前チェック失敗: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "プロキシ専用モード 事前チェック失敗: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN モード利用不可: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "プロキシ専用モード 利用不可: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "デスクトップ VPN: 準備完了"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "デスクトップ VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN モード 利用可能"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "プロキシ モード 利用可能"
+    },
+    {
+      "source": "not ready",
+      "target": "未準備"
+    },
+    {
+      "source": " checks",
+      "target": " 件のチェック"
+    },
+    {
+      "source": " check",
+      "target": " 件のチェック"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN デバイスエラー: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "ネットワーク権限エラー: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN デバイス"
+    },
+    {
+      "source": "network privileges",
+      "target": "ネットワーク権限"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN デバイスが /dev/net/tun にありません。試してください: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "状態を更新しました"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "このコンピューターで VPN 準備完了"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "このコンピューターでプロキシ準備完了"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "待機中"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN 開始しました"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN 停止しました"
+    },
+    {
+      "source": "Proxy started",
+      "target": "プロキシ 開始しました"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "プロキシ 停止しました"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN を開始中..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ローカルプロキシを開始中..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "最適なロケーションで VPN を開始中..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "最適なロケーションでローカルプロキシを開始中..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "サブスクリプションから最適なロケーションを検索中..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "保存済みロケーションから最適なロケーションを検索中..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ロケーション 検索 キャンセル済み"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ロケーション 検索 失敗"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN 権限を許可してから再試行してください"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "先にリモートソースを設定してください"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "先に保存済みロケーションを 1 つ以上追加してください"
+    },
+    {
+      "source": "Select a location first",
+      "target": "先にロケーションを選択してください"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "保存済みサブスクリプションはまだありません"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "すべてのサブスクリプションを更新中..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "有効なサブスクリプションを更新中..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "更新中 購読..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "更新中 購読..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "サブスクリプションを自動更新中..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "サブスクリプションを自動更新中..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "購読 更新ed"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "購読s 更新ed"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "有効なサブスクリプションを更新しました"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "すべてのサブスクリプションを更新しました"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "更新 失敗"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "プロファイルソースをサブスクリプションに設定しました"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "プロファイルソースを保存済みロケーションに設定しました"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "接続モードを VPN に設定しました"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "接続モードをプロキシのみに設定しました"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "接続モードを変更するには先に切断してください"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "履歴項目を削除しました"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "購読 名前 リセットしました"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "購読 名前 保存済み"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "言語をシステム既定にしました"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "カスタム DNS を保存しました"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "カスタム DNS を無効にしました"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ルーティング ルール 保存済み"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ルーティング ルール インポート済み"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ロケーション インポート済み"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "選択中のロケーションは利用できなくなりました"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ロケーションをインポートするには保存済みロケーションに切り替えてください"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ロケーションを手動追加するには保存済みロケーションに切り替えてください"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ロケーション設定が無効です"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "編集対象のロケーションは利用できなくなりました"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "診断エクスポートを開きました"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "診断エクスポートに失敗しました"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "診断エクスポートをキャンセルしました"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "以前の VPN ロケーションは利用できなくなりました"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "アプリを閉じました。VPN はオフでした。"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "すべてのサブスクリプションを有効化しました"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "すべてのサブスクリプションを選択しました"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "購読 選択済み"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ロケーションをクリップボードにコピーしました"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ロケーションのエクスポートをキャンセルしました"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ルーティングルールをクリップボードにコピーしました"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ルールのエクスポートをキャンセルしました"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "プロファイルソース: 購読"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "プロファイルソース: 保存済みロケーション"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "サブスクリプションのロケーションは読み取り専用です。編集を保存するには保存済みロケーションに切り替えてください。"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "サブスクリプションのロケーションは読み取り専用です。削除するには保存済みロケーションに切り替えてください。"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "サブスクリプションを受信しました。プロファイルタブで確認して保存してください。"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "サブスクリプションリンクを受信しました。プロファイルタブで確認して保存してください。"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "ロケーション設定を受信しました。ロケーションタブで確認して保存してください。"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "最適なロケーションでローカルプロキシを開始中..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "最適なロケーションで VPN を開始中..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "サブスクリプションから最適なロケーションを検索中..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "保存済みロケーションから最適なロケーションを検索中..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "ロケーションをインポートしました。選択中のロケーションは利用できなくなったため、プロキシを停止しました"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "ロケーションをインポートしました。選択中のロケーションは利用できなくなったため、VPN を停止しました"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "選択中のロケーションは利用できなくなりました"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "プロキシを停止できなかったため、ロケーション変更を元に戻しました"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN を停止できなかったため、ロケーション変更を元に戻しました"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "プロキシを停止できなかったため、ロケーション変更を元に戻しました"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN を停止できなかったため、ロケーション変更を元に戻しました"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN を停止しました。更新された購読から選択中のロケーションが削除されました。"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "プロキシを停止しました。更新された購読から選択中のロケーションが削除されました。"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN を停止しました。次回起動時に再接続します。"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "プロキシを停止しました。次回起動時に再接続します。"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "ルールを更新しました"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "選択中のロケーションを削除しました。VPN を停止しました: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "選択中のロケーションを削除しました。プロキシを停止しました: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "最適なロケーションを選択し、VPN を開始しました: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "最適なロケーションを選択し、プロキシを開始しました: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN は開始しましたが、選択中のロケーションを保存できませんでした"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "プロキシは開始しましたが、選択中のロケーションを保存できませんでした"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN は開始しましたが、最適なロケーションを保存できませんでした"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "プロキシは開始しましたが、最適なロケーションを保存できませんでした"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "最適なロケーションで VPN を開始できませんでした"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "最適なロケーションでプロキシを開始できませんでした"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "選択中のロケーションを保存できませんでした"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "選択中のロケーションを保存できませんでした"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "最適なロケーションを保存できませんでした"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "選択したロケーションを適用できませんでした"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "終了前にVPNを停止できませんでした"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "終了前にプロキシを停止できませんでした"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPNを停止できませんでした"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "プロキシを停止できませんでした"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPNを開始できませんでした"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "プロキシを開始できませんでした"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN を準備できませんでした"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "プロキシを準備できませんでした"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "準備中 VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "準備中 プロキシ"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN 開始 キャンセル済み"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "プロキシ 開始 キャンセル済み"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN 停止 キャンセル済み"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "プロキシ 停止 キャンセル済み"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ローカルプロキシを開始中..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN を開始中..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "すべてのサブスクリプションを更新中..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "有効なサブスクリプションを更新中..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "更新中 購読..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "更新中 購読..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "サブスクリプションを自動更新中..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "サブスクリプションを自動更新中..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "すべてのサブスクリプションを更新しました"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "有効なサブスクリプションを更新しました"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "購読s 更新ed"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "購読 更新ed"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "更新 失敗"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ロケーション 検索 キャンセル済み"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ロケーション 検索 失敗"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN 権限を許可してから再試行してください"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "先にリモートソースを設定してください"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "先に保存済みロケーションを 1 つ以上追加してください"
+    },
+    {
+      "source": "Select a location first",
+      "target": "先にロケーションを選択してください"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "保存済みサブスクリプションはまだありません"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "プロファイルソースをサブスクリプションに設定しました"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "プロファイルソースを保存済みロケーションに設定しました"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "接続モードを VPN に設定しました"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "接続モードをプロキシのみに設定しました"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "接続モードを変更するには先に切断してください"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "履歴項目を削除しました"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "購読 名前 リセットしました"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "購読 名前 保存済み"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "言語をシステム既定にしました"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "カスタム DNS を保存しました"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "カスタム DNS を無効にしました"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ルーティング ルール 保存済み"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ルーティング ルール インポート済み"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ロケーション インポート済み"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ロケーションをインポートするには保存済みロケーションに切り替えてください"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ロケーションを手動追加するには保存済みロケーションに切り替えてください"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ロケーション設定が無効です"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "編集対象のロケーションは利用できなくなりました"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "診断エクスポートを開きました"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "診断エクスポートに失敗しました"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "診断エクスポートをキャンセルしました"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "以前の VPN ロケーションは利用できなくなりました"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "アプリを閉じました。VPN はオフでした。"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "すべてのサブスクリプションを有効化しました"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "すべてのサブスクリプションを選択しました"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "購読 選択済み"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "購読 保存済み"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ロケーションをクリップボードにコピーしました"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ロケーションのエクスポートをキャンセルしました"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ルーティングルールをクリップボードにコピーしました"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ルールのエクスポートをキャンセルしました"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "クリップボード 読み取り 失敗"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ロケーションを更新しました"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "アプリを読み込めませんでした"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "サブスクリプションを更新できませんでした"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "操作に失敗しました"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "ロケーションファイルを開けませんでした"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "ロケーションファイルを読み取れませんでした"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "ルーティングルールファイルを開けませんでした"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "最適なロケーションをデスクトップ一覧に対応付けできませんでした"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "このコンピューターで VPN 準備完了"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "このコンピューターでプロキシ準備完了"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "デスクトップ VPN シェルの準備ができました"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "デスクトッププロキシシェルの準備ができました"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN 開始: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "プロキシ開始: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN 停止しました. アプリ モード: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "プロキシ 停止しました. アプリ モード: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "言語を設定しました: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "サブスクリプション自動更新を設定しました: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "検証設定を保存しました: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "選択中のロケーションは変更なし: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "選択中のロケーションを削除しました: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "選択中のロケーションを設定しました: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "ロケーションを更新して統合しました: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ロケーション al準備完了 保存済み: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "ロケーションを更新しました: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ロケーションを削除しました: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "ロケーションを追加しました: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "購読s 更新ed: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "失敗: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN 復元中: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "更新中 "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ロケーションのエクスポート先: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "ルーティングルールのエクスポート先: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "診断のエクスポート先: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "ベンチマークに失敗: "
+    },
+    {
+      "source": "Activated ",
+      "target": "有効化しました "
+    },
+    {
+      "source": "Added ",
+      "target": "追加しました "
+    },
+    {
+      "source": "Deleted ",
+      "target": "削除しました "
+    },
+    {
+      "source": "Selected ",
+      "target": "選択済み "
+    },
+    {
+      "source": "Edited location #",
+      "target": "編集しました ロケーション #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "アプリ モード: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " 件のロケーションを更新しました"
+    },
+    {
+      "source": " location refreshed",
+      "target": " 件のロケーションを更新しました"
+    },
+    {
+      "source": " • batch ",
+      "target": " • グループ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • 再試行 "
+    },
+    {
+      "source": "custom interval",
+      "target": "カスタム間隔"
+    },
+    {
+      "source": "every hour",
+      "target": "毎時"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "すべてのサブスクリプション"
+    },
+    {
+      "source": "selected subscription",
+      "target": "選択済み 購読"
+    },
+    {
+      "source": "proxy only",
+      "target": "プロキシのみ"
+    },
+    {
+      "source": "off",
+      "target": "オフ"
+    },
+    {
+      "source": "Idle",
+      "target": "待機中"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN 開始しました"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN 停止しました"
+    },
+    {
+      "source": "Proxy started",
+      "target": "プロキシ 開始しました"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "プロキシ 停止しました"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "新しい最適ロケーションで VPN を開始中..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "新しい最適ロケーションでプロキシを開始中..."
+    }
+  ]
+}

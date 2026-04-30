@@ -18,7 +18,6 @@ data class DnsSettings(
 object SingBoxConfigFactory {
     private const val DEFAULT_DNS_SERVER = "1.1.1.1"
     const val DEFAULT_PROXY_ONLY_PORT = 2080
-    const val NO_ASSIGNED_APPS_MARKER = "__vpncontrol_no_assigned_apps__"
     private val LOCAL_DIRECT_CIDRS = listOf(
         "127.0.0.0/8",
         "10.0.0.0/8",
@@ -102,12 +101,10 @@ object SingBoxConfigFactory {
             .put("strict_route", true)
             .put("stack", "system")
 
-        if (!routingRules.ignoreRules) {
+        if (!routingRules.ignoreRules && routingRules.proxyPackages.isNotEmpty()) {
             tunInbound.put(
                 "include_package",
-                JSONArray(
-                    routingRules.proxyPackages.ifEmpty { listOf(NO_ASSIGNED_APPS_MARKER) },
-                ),
+                JSONArray(routingRules.proxyPackages),
             )
         }
 

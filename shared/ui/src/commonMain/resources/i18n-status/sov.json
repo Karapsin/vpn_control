@@ -192,11 +192,11 @@
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Программа запущена"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Программа запущена"
     },
     {
       "source": "VPN ready on this computer",
@@ -678,7 +678,7 @@
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. Спецканал был выключен."
+      "target": "Программа закрыта. Спецканал был выключен."
     },
     {
       "source": "Activated all subscriptions",
@@ -788,11 +788,23 @@
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "Спецканал остановлен. Режим приложения: "
+      "target": "Спецканал остановлен. Режим программы: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Ретранслятор остановлен. Режим приложения: "
+      "target": "Ретранслятор остановлен. Режим программы: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Обновление "
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Ввод спецканала с новым передовым узлом связи..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Ввод ретранслятора с новым передовым узлом связи..."
     }
   ]
 }

@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.core.content.FileProvider
 import com.kardinal.vpncontrol.BuildConfig
+import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.PersistedState
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -60,7 +62,7 @@ class DiagnosticsExporter(
         context.startActivity(chooser)
     }
 
-    private fun buildDiagnostics(state: com.kardinal.vpncontrol.model.PersistedState): String {
+    private fun buildDiagnostics(state: PersistedState): String {
         return buildString {
             appendLine("VPN Control diagnostics")
             appendLine("generated_at=${Instant.now()}")
@@ -89,6 +91,7 @@ class DiagnosticsExporter(
             appendLine("use_custom_dns=${state.useCustomDns}")
             appendLine("ignore_rules=${state.routingRules.ignoreRules}")
             appendLine("proxy_packages=${state.routingRules.proxyPackages.joinToString(",")}")
+            appendLine("android_app_scope=${androidAppScope(state)}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("national_domain_suffixes=${state.routingRules.nationalDomainSuffixes.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
@@ -238,6 +241,15 @@ class DiagnosticsExporter(
             (VpnService.prepare(context) == null).toString()
         }.getOrElse { error ->
             "unknown: ${error.message ?: error::class.simpleName}"
+        }
+    }
+
+    private fun androidAppScope(state: PersistedState): String {
+        return when {
+            state.appMode != AppMode.VPN -> "not_applicable_proxy_only"
+            state.routingRules.ignoreRules -> "all_apps_ignore_rules"
+            state.routingRules.proxyPackages.isEmpty() -> "all_apps_empty_assignments"
+            else -> "assigned_apps:${state.routingRules.proxyPackages.size}"
         }
     }
 

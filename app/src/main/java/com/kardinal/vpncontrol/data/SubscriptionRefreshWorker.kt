@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
@@ -283,7 +284,7 @@ class SubscriptionRefreshWorker(
         repository: AppRepository,
     ): kotlin.Result<Unit> {
         val appMode = storage.snapshot().appMode
-        storage.updateStatus("Starting ${connectionLabel(appMode)} with the new best location...")
+        storage.updateStatus(StatusMessages.startingConnectionWithBestLocation(appMode))
         val startResult = vpnManager.start(selection)
         if (startResult.isFailure) {
             return kotlin.Result.failure(
