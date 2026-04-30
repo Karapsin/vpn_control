@@ -35,6 +35,8 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 - Do not restore old default subscriptions, default rules, or demo data.
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
+- If large work intentionally spans multiple dirty buckets, document the intent in `docs/work-in-progress.md`.
+- Start low-context repository navigation from `docs/README.md`.
 
 ## Common Commands
 
@@ -138,6 +140,11 @@ Desktop state and logs:
 
 Android diagnostics are exported from inside the app.
 
+Detailed runtime safety and troubleshooting:
+
+- `docs/runtime-troubleshooting.md`
+- `docs/desktop-runtime-troubleshooting.md`
+
 ## Testing Expectations
 
 - UI-only Android changes: run at least Android compile or APK build when practical.
@@ -146,6 +153,8 @@ Android diagnostics are exported from inside the app.
 - Linux packaging changes: run `scripts/package_linux_desktop.sh` when practical.
 - Windows packaging/runtime changes: run `scripts/package_windows_desktop_vm.sh` when practical.
 - If tests cannot be run, state exactly which tests were skipped and why.
+
+Use `docs/test-matrix.md` for path-based test selection.
 
 ## Localization Rules
 
@@ -162,6 +171,8 @@ Android diagnostics are exported from inside the app.
 - Run `./scripts/check_localization.py --language <code>` for changed languages and `./gradlew :shared:ui:desktopTest` after localization changes.
 - Add or update regression tests in `shared/ui/src/commonTest/kotlin/com/kardinal/vpncontrol/shared/ui/AppStringsCoverageTest.kt` when fixing untranslated screenshots or new status patterns.
 
+See `docs/localization.md` for catalog structure, all-language validation, and status translation rules.
+
 ## Behavior Requirements To Preserve
 
 - No default subscriptions should be added automatically.
@@ -176,8 +187,12 @@ Android diagnostics are exported from inside the app.
 - Desktop best-location checks should use direct probes so results are not biased by whether VPN is currently on.
 - Android best-location and refresh behavior should remain consistent with shared core logic.
 
+See `docs/architecture.md`, `docs/desktop-lifecycle.md`, `docs/platform-matrix.md`, and `docs/sing-box-contract.md` before changing cross-platform runtime behavior.
+
 ## User-Facing Install Docs
 
 README is intentionally short and user-facing. It should point users to GitHub `Actions` artifacts, not ignored local `dist/` paths.
 
 Use local generated paths such as `dist/windows/` or `dist/windows-vm/` only when documenting developer packaging workflows, not simple user installation.
+
+Developer release packaging details belong in `docs/developer-release-checklist.md`.

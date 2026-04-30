@@ -3,6 +3,7 @@
 .sandbox-home/
 .sandbox-tmp/
 .runtime/
+.codex
 build/
 **/build/
 local.properties

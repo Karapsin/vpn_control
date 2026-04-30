@@ -1,6 +1,6 @@
 # Desktop Smoke Testing
 
-Use this checklist for Linux and Windows desktop verification. Android device/emulator protocol testing stays in `../protocol_smoke_checklist.md`.
+Use this checklist for Linux and Windows desktop verification. Android device/emulator protocol testing lives in `docs/smoke-android.md`.
 
 ## Preconditions
 

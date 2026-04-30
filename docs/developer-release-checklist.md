@@ -1,6 +1,48 @@
 # Developer Release Checklist
 
-This document is for maintainers building release artifacts from the repository. User-facing install instructions stay in `README.md` and should point to GitHub Actions artifacts, not ignored local `dist/` paths.
+This document owns developer release packaging. User-facing install instructions stay in `README.md` and should point to GitHub Actions artifacts, not ignored local `dist/` paths.
+
+## Prerequisites
+
+All platforms:
+
+- JDK 17 is available on `PATH`.
+- The repository can run the Gradle wrapper.
+- Generated artifacts under `build/`, `dist/`, and `.runtime/` are ignored and should not be committed.
+- `sing-box` runtime downloads are allowed when packaging scripts prepare bundled runtime files.
+
+Android:
+
+- Android SDK and build tools are installed.
+- `local.properties` points to the Android SDK when needed.
+- Release APKs are currently signed with the debug signing config in `app/build.gradle.kts`; treat them as direct-install/test artifacts, not Play Store artifacts.
+
+Linux desktop:
+
+- Package build must run on Linux.
+- `jpackage` requirements for `.deb`/`.rpm` are available through the JDK and host packaging tools.
+- VPN mode after install needs `/dev/net/tun` and `CAP_NET_ADMIN` on the installed `sing-box`.
+
+Windows desktop from a Windows host:
+
+- PowerShell is available.
+- JDK 17 is available.
+- WiX is downloaded by the Compose packaging task when needed.
+- Package regression scripts validate MSI/EXE payloads and extracted launcher smoke behavior.
+
+Windows desktop from Linux VM:
+
+- libvirt VM `vpn-control-win11` exists, or pass `--vm-name`.
+- QEMU guest agent is installed and running inside the VM.
+- The host can reach the VM file bridge address, usually `virbr0` or `192.168.122.1`.
+- `VPN_CONTROL_SUDO_PASSWORD` can be set for non-interactive VM control if sudo is required.
+
+macOS:
+
+- DMG packaging must run on macOS.
+- Unsigned DMG builds work without Apple secrets.
+- Signing and notarization require the secrets described in `docs/macos-release.md`.
+- Full desktop VPN mode is not implemented yet; package smoke should use proxy-only assumptions.
 
 ## One-Command Release Check
 
@@ -92,6 +134,15 @@ Run targeted package scripts when only one platform changed:
 ```
 
 Each platform package script has skip flags for tests or extracted package smoke checks. Use skip flags only when the omitted check is unrelated to the change and record that decision in the handoff.
+
+## Common Failure Modes
+
+- `Filename too long` on Windows checkout usually means generated `build/` outputs were committed. Remove generated artifacts from Git instead of changing source names.
+- `Windows app image was not produced` usually means the packaging script expects an output layout that changed. Inspect `desktopApp/build/compose/binaries/main/`.
+- `MSI payload is missing bundled runtime` usually means the package validation script and current Compose runtime layout disagree.
+- `Timed out waiting for QEMU guest agent` means the Windows VM is off, locked too early, or the guest agent service is not running.
+- macOS signing failures usually mean one of the Developer ID or notarization secrets is missing or malformed.
+- Linux VPN package installs can build successfully but still fail at runtime if TUN or `CAP_NET_ADMIN` is missing on the installed machine.
 
 ## Repository Hygiene
 
