@@ -17,6 +17,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Touched Area | Run |
 | --- | --- |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
+| Shared typed status helpers or status models | `./gradlew :shared:model:desktopTest :shared:ui:desktopTest` |
 | `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
@@ -30,10 +31,12 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Android settings or diagnostics orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
+| Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
 | Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
 | Desktop runtime status detail assembly | `./gradlew :desktopApp:test` |
 | Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
 | Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
+| Desktop active-connection naming, selected-location toggle, or subscription-source validation helpers | `./gradlew :desktopApp:test` |
 | Desktop subscription refresh orchestration | `./gradlew :desktopApp:test` |
 | Desktop per-location benchmark orchestration | `./gradlew :desktopApp:test` |
 | Desktop package metadata or bundled runtime extraction | Relevant package script and package smoke tests |
@@ -88,6 +91,19 @@ Desktop runtime patch:
 
 ```bash
 ./gradlew :desktopApp:test
+```
+
+Desktop service extraction patch:
+
+```bash
+./gradlew :desktopApp:test
+```
+
+Structured status/localization patch:
+
+```bash
+./scripts/check_localization.py
+./gradlew :shared:model:desktopTest :shared:ui:desktopTest
 ```
 
 Android VPN/config patch:
