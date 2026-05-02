@@ -237,6 +237,14 @@ enum class StatusMessageKey {
     TESTING_LOCATION,
     LOCATION_CHECK_CANCELLED,
     NO_LOCATIONS_TO_EXPORT,
+    START_ON_LOGIN_ENABLED,
+    START_ON_LOGIN_DISABLED,
+    STARTUP_SETTING_UPDATE_FAILED,
+    SUBSCRIPTION_HWID_CLEARED,
+    SUBSCRIPTION_HWID_SAVED,
+    REFRESH_SETTINGS_SAVE_FAILED,
+    APP_MODE_CHANGED,
+    CONNECTION_STOPPED_FOR_APP_MODE,
 }
 
 data class StructuredStatusMessage(
@@ -392,6 +400,32 @@ object StatusMessages {
 
     fun noLocationsToExport(): String =
         encode(StatusMessageKey.NO_LOCATIONS_TO_EXPORT)
+
+    fun startOnLoginEnabled(): String =
+        encode(StatusMessageKey.START_ON_LOGIN_ENABLED)
+
+    fun startOnLoginDisabled(): String =
+        encode(StatusMessageKey.START_ON_LOGIN_DISABLED)
+
+    fun startupSettingUpdateFailed(detail: String = ""): String =
+        encode(StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED, detail)
+
+    fun subscriptionHwidCleared(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_HWID_CLEARED)
+
+    fun subscriptionHwidSaved(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_HWID_SAVED)
+
+    fun refreshSettingsSaveFailed(detail: String = ""): String =
+        encode(StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED, detail)
+
+    fun appModeChanged(mode: AppMode): String =
+        encode(StatusMessageKey.APP_MODE_CHANGED, mode.name)
+
+    fun connectionStoppedForAppMode(
+        stoppedMode: AppMode,
+        nextMode: AppMode,
+    ): String = encode(StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE, stoppedMode.name, nextMode.name)
 
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->

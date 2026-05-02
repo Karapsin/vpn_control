@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -605,7 +606,7 @@ class DesktopAppServiceTest {
                 DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
             )
             assertEquals("authorized-device-id", reloaded.persistedState.subscriptionHwid)
-            assertTrue(service.state.statusMessage.contains("Refresh the subscription"))
+            assertEquals(StatusMessages.subscriptionHwidSaved(), service.state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

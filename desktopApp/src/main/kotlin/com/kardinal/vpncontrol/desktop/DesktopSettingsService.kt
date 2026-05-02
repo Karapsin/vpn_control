@@ -58,12 +58,12 @@ internal class DesktopSettingsService(
         val actual = autostartManager.isEnabled()
         val status = if (result.isSuccess) {
             if (actual) {
-                "App will start automatically after login"
+                StatusMessages.startOnLoginEnabled()
             } else {
-                "App startup on login disabled"
+                StatusMessages.startOnLoginDisabled()
             }
         } else {
-            result.exceptionOrNull()?.message ?: "Failed to update startup setting"
+            StatusMessages.startupSettingUpdateFailed(result.exceptionOrNull()?.message.orEmpty())
         }
         updateState { it.copy(startOnBootEnabled = actual).withStatus(status) }
     }
@@ -95,9 +95,9 @@ internal class DesktopSettingsService(
     fun setSubscriptionHwid(value: String) {
         val normalized = value.trim()
         val status = if (normalized.isBlank()) {
-            "Subscription x-hwid cleared. A new ID will be generated on the next refresh."
+            StatusMessages.subscriptionHwidCleared()
         } else {
-            "Subscription x-hwid saved. Refresh the subscription to use it."
+            StatusMessages.subscriptionHwidSaved()
         }
         updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
     }
@@ -140,7 +140,7 @@ internal class DesktopSettingsService(
         if (resolution.isFailure) {
             updateState {
                 it.withStatus(
-                    resolution.exceptionOrNull()?.message ?: "Failed to save refresh settings",
+                    resolution.exceptionOrNull()?.message ?: StatusMessages.refreshSettingsSaveFailed(),
                 )
             }
             return
@@ -163,13 +163,13 @@ internal class DesktopSettingsService(
         val state = stateProvider()
         if (state.isVpnRunning && mode != state.appMode) {
             val stopResult = stopConnection(
-                "${MainCommandLogic.connectionDisplayName(state.appMode)} stopped. App mode: ${mode.name}",
+                StatusMessages.connectionStoppedForAppMode(state.appMode, mode),
             )
             if (stopResult.isFailure) {
                 return
             }
         }
-        updateState { it.withStatus("App mode: ${mode.name}").copy(appMode = mode, showAppModeDialog = false) }
+        updateState { it.withStatus(StatusMessages.appModeChanged(mode)).copy(appMode = mode, showAppModeDialog = false) }
     }
 
     suspend fun toggleAppMode() {

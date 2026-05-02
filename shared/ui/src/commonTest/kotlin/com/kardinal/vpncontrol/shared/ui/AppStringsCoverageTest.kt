@@ -475,6 +475,14 @@ class AppStringsCoverageTest {
             StatusMessages.testingLocation("Germany"),
             StatusMessages.locationCheckCancelled(),
             StatusMessages.noLocationsToExport(),
+            StatusMessages.startOnLoginEnabled(),
+            StatusMessages.startOnLoginDisabled(),
+            StatusMessages.startupSettingUpdateFailed(),
+            StatusMessages.subscriptionHwidCleared(),
+            StatusMessages.subscriptionHwidSaved(),
+            StatusMessages.refreshSettingsSaveFailed(),
+            StatusMessages.appModeChanged(AppMode.PROXY_ONLY),
+            StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
@@ -509,6 +517,32 @@ class AppStringsCoverageTest {
         assertTrue(
             locationStatusEnglishLeaks.isEmpty(),
             "Structured location status messages still contain English fragments: $locationStatusEnglishLeaks",
+        )
+        val desktopSettingsEnglishLeaks = nonEnglishLanguages.flatMap { language ->
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.startOnLoginEnabled(),
+                StatusMessages.startOnLoginDisabled(),
+                StatusMessages.subscriptionHwidCleared(),
+                StatusMessages.subscriptionHwidSaved(),
+                StatusMessages.appModeChanged(AppMode.PROXY_ONLY),
+                StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
+            ).flatMap { message ->
+                val localized = strings.statusMessage(message)
+                listOf(
+                    "App will start",
+                    "App startup",
+                    "Subscription x-hwid",
+                    "App mode",
+                    "stopped",
+                ).mapNotNull { fragment ->
+                    if (localized.contains(fragment, ignoreCase = true)) "$language: $fragment in $localized" else null
+                }
+            }
+        }
+        assertTrue(
+            desktopSettingsEnglishLeaks.isEmpty(),
+            "Structured desktop settings status messages still contain English fragments: $desktopSettingsEnglishLeaks",
         )
         assertTrue(
             AppStrings(AppLanguage.RUSSIAN)

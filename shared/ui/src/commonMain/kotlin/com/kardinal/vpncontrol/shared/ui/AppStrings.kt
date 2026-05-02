@@ -359,8 +359,53 @@ private fun localizedStructuredStatusMessage(
 ): String {
     val english = englishStructuredStatusMessage(status)
     if (language == AppLanguage.ENGLISH || language == AppLanguage.SYSTEM) return english
+    localizedDesktopSettingsStatusMessage(language, status)?.let { return it }
     localizedLocationStatusMessage(language, status)?.let { return it }
     return localizedGeneratedStatusMessage(language, english) ?: english
+}
+
+private fun localizedDesktopSettingsStatusMessage(
+    language: AppLanguage,
+    status: StructuredStatusMessage,
+): String? {
+    fun ui(key: UiText): String =
+        generatedUiTextTranslations[language]?.get(key)
+            ?: generatedUiTextTranslations[AppLanguage.ENGLISH]?.get(key)
+            ?: key.name
+
+    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
+    fun modeLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY_ONLY) else ui(UiText.VPN)
+    fun connectionLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY) else ui(UiText.VPN)
+    fun withDetail(base: String, detail: String): String =
+        if (detail.isBlank()) base else "$base: $detail"
+
+    return when (status.key) {
+        StatusMessageKey.START_ON_LOGIN_ENABLED ->
+            "${ui(UiText.SETTINGS_START_ON_LOGIN)}: ${ui(UiText.SETTINGS_ENABLED)}"
+        StatusMessageKey.START_ON_LOGIN_DISABLED ->
+            "${ui(UiText.SETTINGS_START_ON_LOGIN)}: ${ui(UiText.SETTINGS_DISABLED)}"
+        StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->
+            withDetail(
+                localizedGeneratedStatusMessage(language, "Failed to update startup setting")
+                    ?: "Failed to update startup setting",
+                arg(0),
+            )
+        StatusMessageKey.SUBSCRIPTION_HWID_CLEARED ->
+            "x-hwid: ${ui(UiText.SETTINGS_DISABLED)}"
+        StatusMessageKey.SUBSCRIPTION_HWID_SAVED ->
+            "x-hwid: ${ui(UiText.SETTINGS_ENABLED)}"
+        StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED ->
+            withDetail(
+                localizedGeneratedStatusMessage(language, "Failed to save refresh settings")
+                    ?: "Failed to save refresh settings",
+                arg(0),
+            )
+        StatusMessageKey.APP_MODE_CHANGED ->
+            "${ui(UiText.SETTINGS_VPN_PROXY_MODE)}: ${modeLabel(arg(0))}"
+        StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE ->
+            "${connectionLabel(arg(0))} ${ui(UiText.STOPPED)}. ${ui(UiText.SETTINGS_VPN_PROXY_MODE)}: ${modeLabel(arg(1))}"
+        else -> null
+    }
 }
 
 private fun localizedLocationStatusMessage(
@@ -444,8 +489,25 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
         StatusMessageKey.NO_LOCATIONS_TO_EXPORT ->
             generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.noLocationsToExport
                 ?: "No locations to export"
+        StatusMessageKey.START_ON_LOGIN_ENABLED -> "App will start automatically after login"
+        StatusMessageKey.START_ON_LOGIN_DISABLED -> "App startup on login disabled"
+        StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->
+            appendStatusDetail("Failed to update startup setting", arg(0))
+        StatusMessageKey.SUBSCRIPTION_HWID_CLEARED ->
+            "Subscription x-hwid cleared. A new ID will be generated on the next refresh."
+        StatusMessageKey.SUBSCRIPTION_HWID_SAVED ->
+            "Subscription x-hwid saved. Refresh the subscription to use it."
+        StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED ->
+            appendStatusDetail("Failed to save refresh settings", arg(0))
+        StatusMessageKey.APP_MODE_CHANGED ->
+            "App mode: ${englishConnectionDisplay(arg(0))}"
+        StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE ->
+            "${englishConnectionDisplay(arg(0))} stopped. App mode: ${englishConnectionDisplay(arg(1))}"
     }
 }
+
+private fun appendStatusDetail(base: String, detail: String): String =
+    if (detail.isBlank()) base else "$base: $detail"
 
 private fun englishRefreshStatus(
     policyName: String,
