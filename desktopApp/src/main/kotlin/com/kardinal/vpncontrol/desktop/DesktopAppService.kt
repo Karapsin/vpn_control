@@ -69,11 +69,24 @@ class DesktopAppService private constructor(
         },
         "vpn-control-runtime-shutdown",
     )
+    private val connectionActions = DesktopConnectionActionsService(
+        stateProvider = { state },
+        locationsProvider = { desktopLocations },
+        connectionLifecycle = connectionLifecycle,
+        getResumeConnectionOnLaunch = { resumeConnectionOnLaunch },
+        setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
+        getLaunchResumeAttempted = { launchResumeAttempted },
+        setLaunchResumeAttempted = { launchResumeAttempted = it },
+        commitState = { nextLocations, nextState ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
+        updateState = ::updateState,
+    )
     private val locationService = DesktopLocationService(
         stateProvider = { state },
         locationsProvider = { desktopLocations },
         currentRuntimeMode = { connectionLifecycle.currentRuntimeMode() },
-        stopConnection = { message -> stopDesktopProxy(message) },
+        stopConnection = { message -> connectionActions.stop(message) },
         commitState = { nextState, nextLocations ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
@@ -83,7 +96,7 @@ class DesktopAppService private constructor(
         stateProvider = { state },
         locationsProvider = { desktopLocations },
         validateSubscriptionSource = ::validateDesktopSubscriptionSource,
-        stopConnection = { message -> stopDesktopProxy(message) },
+        stopConnection = { message -> connectionActions.stop(message) },
         activeConnectionName = ::activeConnectionName,
         commitState = { nextState, nextLocations ->
             commitState(nextState = nextState, nextLocations = nextLocations)
@@ -104,7 +117,7 @@ class DesktopAppService private constructor(
     private val settingsService = DesktopSettingsService(
         stateProvider = { state },
         autostartManager = autostartManager,
-        stopConnection = { message -> stopDesktopProxy(message) },
+        stopConnection = { message -> connectionActions.stop(message) },
         commitState = { nextState -> commitState(nextState = nextState) },
         updateState = ::updateState,
     )
@@ -118,7 +131,7 @@ class DesktopAppService private constructor(
                 statusPrefix = statusPrefix,
             )
         },
-        startConnection = ::startDesktopProxy,
+        startConnection = connectionActions::start,
         commitState = { nextLocations, nextState ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
@@ -205,32 +218,14 @@ class DesktopAppService private constructor(
         return this
     }
 
-    fun shouldResumeConnectionOnLaunch(): Boolean = resumeConnectionOnLaunch
+    fun shouldResumeConnectionOnLaunch(): Boolean = connectionActions.shouldResumeConnectionOnLaunch()
 
     suspend fun resumePreviousConnectionIfNeeded() {
-        if (launchResumeAttempted || !resumeConnectionOnLaunch || state.isVpnRunning || state.isBusy) {
-            return
-        }
-        launchResumeAttempted = true
-        val location = selectedDesktopLocation()
-        if (location == null) {
-            updateState {
-                it.copy(isBusy = false, isVpnRunning = false)
-                    .withStatus("Previous VPN location is no longer available")
-            }
-            return
-        }
-        updateState {
-            it.withStatus("Restoring VPN: ${location.name}...")
-        }
-        startDesktopProxy(
-            location = location,
-            benchmarkSummary = state.lastBenchmarkSummary,
-        )
+        connectionActions.resumePreviousConnectionIfNeeded()
     }
 
     suspend fun shutdownForExit() {
-        stopRuntimeForAppExit()
+        connectionActions.shutdownForExit()
     }
 
     fun openScreen(screen: AppScreen) {
@@ -516,48 +511,14 @@ class DesktopAppService private constructor(
     }
 
     suspend fun stopDesktopProxy(message: String? = null): Result<Unit> {
-        return connectionLifecycle.stopConnection(
-            state = state,
-            locations = desktopLocations,
-            message = message,
-            currentState = { state },
-            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
-            commitState = { nextLocations, nextState ->
-                commitState(nextState = nextState, nextLocations = nextLocations)
-            },
-            updateState = ::updateState,
-        )
-    }
-
-    private suspend fun stopRuntimeForAppExit(): Result<Unit> {
-        return connectionLifecycle.stopRuntimeForAppExit(
-            state = state,
-            locations = desktopLocations,
-            currentState = { state },
-            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
-            commitState = { nextLocations, nextState ->
-                commitState(nextState = nextState, nextLocations = nextLocations)
-            },
-            updateState = ::updateState,
-        )
+        return connectionActions.stop(message)
     }
 
     suspend fun startDesktopProxy(
         location: DesktopLocationRecord,
         benchmarkSummary: String? = null,
     ): Result<Unit> {
-        return connectionLifecycle.startConnection(
-            state = state,
-            locations = desktopLocations,
-            location = location,
-            benchmarkSummary = benchmarkSummary,
-            currentState = { state },
-            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
-            commitState = { nextLocations, nextState ->
-                commitState(nextState = nextState, nextLocations = nextLocations)
-            },
-            updateState = ::updateState,
-        )
+        return connectionActions.start(location, benchmarkSummary)
     }
 
     suspend fun refreshDesktopSubscriptions(

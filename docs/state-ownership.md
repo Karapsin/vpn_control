@@ -48,6 +48,7 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAppService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopStateStore.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopConnectionActionsService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManager.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionManagementService.kt`
