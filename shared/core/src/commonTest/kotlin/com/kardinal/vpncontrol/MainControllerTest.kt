@@ -46,7 +46,7 @@ class MainControllerTest {
         assertEquals(AppMode.VPN, controller.currentState().appMode)
         assertEquals(true, controller.currentState().showAppModeDialog)
         assertEquals(
-            listOf(MainControllerEffect.UpdateStatus("Disconnect first to change connection mode")),
+            listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode())),
             effects,
         )
     }
@@ -70,7 +70,7 @@ class MainControllerTest {
             listOf(
                 MainControllerEffect.DeleteProfileHistoryEntry(
                     source = "https://example.com/sub",
-                    statusMessage = "History entry deleted",
+                    statusMessage = StatusMessages.historyEntryDeleted(),
                 ),
             ),
             effects,

@@ -4,12 +4,12 @@ import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.ImportLocationsDecision
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.LocationMutationLogic
-import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SelectionCandidate
 import com.kardinal.vpncontrol.SelectionMappingLogic
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Path
 
 internal class DesktopLocationService(
@@ -44,7 +44,7 @@ internal class DesktopLocationService(
             isValid = true,
         )
         commitState(
-            stateProvider().withStatus("Added ${newLocation.name}"),
+            stateProvider().withStatus(StatusMessages.locationAdded(newLocation.name)),
             locations + newLocation,
         )
     }
@@ -58,7 +58,7 @@ internal class DesktopLocationService(
             }
         }
         commitState(
-            stateProvider().withStatus("Edited location #$index"),
+            stateProvider().withStatus(StatusMessages.locationEdited(index)),
             updatedLocations,
         )
     }
@@ -70,7 +70,7 @@ internal class DesktopLocationService(
         val removedSelected = removed.rawLink == state.selectedProfileRawLink
         if (removedSelected && state.isVpnRunning) {
             val stopResult = stopConnection(
-                MainCommandLogic.stoppedConnectionLabel(currentRuntimeMode() ?: state.appMode),
+                StatusMessages.connectionStopped(currentRuntimeMode() ?: state.appMode),
             )
             if (stopResult.isFailure) {
                 return
@@ -80,7 +80,7 @@ internal class DesktopLocationService(
         val updatedLocations = locations.filterNot { it.index == index }
         commitState(
             latestState.clearSelectedLocationIf(removedSelected)
-                .withStatus("Deleted ${removed.name}"),
+                .withStatus(StatusMessages.locationRemoved(removed.name)),
             updatedLocations,
         )
     }
@@ -91,7 +91,7 @@ internal class DesktopLocationService(
         val selected = locations.firstOrNull { it.index == index } ?: return
         val updatedLocations = locations.map { it.copy(isSelected = it.index == index) }
         commitState(
-            state.withStatus("$messagePrefix ${selected.name}").copy(
+            state.withStatus(StatusMessages.selectedLocationSet(selected.name)).copy(
                 selectedProfileName = selected.name,
                 selectedProfileServer = selected.server,
                 selectedProfileRawLink = selected.rawLink,
@@ -118,7 +118,7 @@ internal class DesktopLocationService(
     suspend fun importFromClipboard() {
         val raw = DesktopTextTransfer.readClipboardText()
         if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Clipboard read failed") }
+            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: StatusMessages.clipboardReadFailed()) }
             return
         }
         importRaw(raw.getOrThrow())
@@ -126,13 +126,13 @@ internal class DesktopLocationService(
 
     suspend fun importFromFile(selection: Result<Path?>) {
         if (selection.isFailure) {
-            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: "Failed to open locations file") }
+            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: StatusMessages.locationsFileOpenFailed()) }
             return
         }
         val path = selection.getOrNull() ?: return
         val raw = DesktopTextTransfer.readTextFile(path)
         if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Failed to read locations file") }
+            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: StatusMessages.locationsFileReadFailed()) }
             return
         }
         importRaw(raw.getOrThrow())
@@ -148,7 +148,7 @@ internal class DesktopLocationService(
         val result = DesktopTextTransfer.writeClipboardText(document.content)
         updateState {
             it.withStatus(
-                result.exceptionOrNull()?.message ?: "Locations copied to clipboard",
+                result.exceptionOrNull()?.message ?: StatusMessages.locationsCopiedToClipboard(),
             )
         }
     }
@@ -174,12 +174,12 @@ internal class DesktopLocationService(
                 result.fold(
                     onSuccess = { path ->
                         if (path == null) {
-                            "Locations export canceled"
+                            StatusMessages.locationsExportCanceled()
                         } else {
-                            "Locations exported to $path"
+                            StatusMessages.locationsExportedTo(path.toString())
                         }
                     },
-                    onFailure = { error -> error.message ?: "Failed to export locations" },
+                    onFailure = { error -> error.message ?: StatusMessages.locationsExportFailed() },
                 ),
             )
         }

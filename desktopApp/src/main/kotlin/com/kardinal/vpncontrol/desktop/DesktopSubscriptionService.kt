@@ -12,6 +12,7 @@ import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
@@ -36,7 +37,7 @@ internal class DesktopSubscriptionService(
         onProgress: (String) -> Unit,
     ): Result<DesktopSubscriptionRefreshPayload> {
         if (subscriptionsToRefresh.isEmpty()) {
-            return Result.failure(IllegalStateException("No subscriptions to refresh"))
+            return Result.failure(IllegalStateException(StatusMessages.noSubscriptionsToRefresh()))
         }
 
         val subscriptionHwid = state.subscriptionHwid.trim().ifBlank(hwidGenerator)

@@ -1,7 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
 import androidx.compose.ui.awt.ComposeWindow
-import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
@@ -11,6 +10,7 @@ import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class DesktopRoutingRulesService(
     private val stateProvider: () -> MainUiState,
@@ -55,7 +55,7 @@ internal class DesktopRoutingRulesService(
 
     fun addSampleRuleSet() {
         updateState {
-            it.withStatus("Added a sample rule-set").copy(
+            it.withStatus(StatusMessages.sampleRuleSetAdded()).copy(
                 routingRuleSetsDraft = it.routingRuleSetsDraft + RoutingRuleSet(
                     id = "desktop-${it.routingRuleSetsDraft.size + 1}",
                     name = "Desktop Sample ${it.routingRuleSetsDraft.size + 1}",
@@ -81,13 +81,13 @@ internal class DesktopRoutingRulesService(
     fun deleteRuleSet(id: String) {
         updateState {
             it.copy(routingRuleSetsDraft = it.routingRuleSetsDraft.filterNot { ruleSet -> ruleSet.id == id })
-                .withStatus("Deleted rule-set $id")
+                .withStatus(StatusMessages.ruleSetDeleted(id))
         }
     }
 
     fun saveRoutingRules() {
         updateState {
-            it.withStatus("Saved routing rules").copy(
+            it.withStatus(StatusMessages.routingRulesSaved()).copy(
                 routingRules = RoutingRules(
                     ignoreRules = it.routingIgnoreRulesDraft,
                     proxyPackages = RoutingRules.normalizePackageNames(it.routingProxyPackagesDraft),
@@ -103,15 +103,15 @@ internal class DesktopRoutingRulesService(
     fun importRaw(raw: String) {
         val parsed = runCatching { RoutingRulesTransfer.import(raw) }
         if (parsed.isFailure) {
-            updateState { it.withStatus(parsed.exceptionOrNull()?.message ?: "Failed to import routing rules") }
+            updateState { it.withStatus(parsed.exceptionOrNull()?.message ?: StatusMessages.routingRulesImportFailed()) }
             return
         }
         val state = stateProvider()
         val rules = MainDraftLogic.sanitizeRoutingRules(parsed.getOrThrow())
         val message = if (state.isVpnRunning) {
-            "Routing rules imported. Restart ${MainCommandLogic.connectionNoun(state.appMode)} to apply"
+            StatusMessages.routingRulesImportedRestartRequired(state.appMode)
         } else {
-            "Routing rules imported"
+            StatusMessages.routingRulesImported()
         }
         commitState(
             MainDraftLogic.applyImportedRoutingRules(
@@ -124,7 +124,7 @@ internal class DesktopRoutingRulesService(
     fun importFromClipboard() {
         val raw = DesktopTextTransfer.readClipboardText()
         if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Clipboard read failed") }
+            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: StatusMessages.clipboardReadFailed()) }
             return
         }
         importRaw(raw.getOrThrow())
@@ -136,7 +136,7 @@ internal class DesktopRoutingRulesService(
     ) {
         val opened = DesktopTextTransfer.openTextFile(window, title)
         if (opened.isFailure) {
-            updateState { it.withStatus(opened.exceptionOrNull()?.message ?: "Failed to open routing rules file") }
+            updateState { it.withStatus(opened.exceptionOrNull()?.message ?: StatusMessages.routingRulesFileOpenFailed()) }
             return
         }
         val raw = opened.getOrNull() ?: return
@@ -148,7 +148,7 @@ internal class DesktopRoutingRulesService(
         val result = DesktopTextTransfer.writeClipboardText(document.content)
         updateState {
             it.withStatus(
-                result.exceptionOrNull()?.message ?: "Routing rules copied to clipboard",
+                result.exceptionOrNull()?.message ?: StatusMessages.routingRulesCopiedToClipboard(),
             )
         }
     }
@@ -169,12 +169,12 @@ internal class DesktopRoutingRulesService(
                 result.fold(
                     onSuccess = { path ->
                         if (path == null) {
-                            "Routing rules export canceled"
+                            StatusMessages.routingRulesExportCanceled()
                         } else {
-                            "Routing rules exported to $path"
+                            StatusMessages.routingRulesExportedTo(path.toString())
                         }
                     },
-                    onFailure = { error -> error.message ?: "Failed to export routing rules" },
+                    onFailure = { error -> error.message ?: StatusMessages.routingRulesExportFailed() },
                 ),
             )
         }

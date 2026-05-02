@@ -45,6 +45,7 @@ class DesktopLocationServiceTest {
         assertEquals("", state.selectedProfileServer)
         assertEquals("", state.selectedProfileRawLink)
         assertTrue(locations.isEmpty())
+        assertEquals(StatusMessages.locationRemoved("Netherlands"), state.statusMessage)
     }
 
     @Test
@@ -73,6 +74,7 @@ class DesktopLocationServiceTest {
         assertEquals("vless://second", state.selectedProfileRawLink)
         assertFalse(locations[0].isSelected)
         assertTrue(locations[1].isSelected)
+        assertEquals(StatusMessages.selectedLocationSet("Second"), state.statusMessage)
     }
 
     @Test

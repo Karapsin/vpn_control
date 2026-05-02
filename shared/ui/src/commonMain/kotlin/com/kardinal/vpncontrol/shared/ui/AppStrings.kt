@@ -5,6 +5,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.StructuredStatusMessage
@@ -517,6 +518,50 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
             "Locations imported. Selected location is no longer available, ${englishConnectionNounLower(arg(0))} stopped"
         StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED ->
             "Locations import rolled back because the ${englishConnectionNoun(arg(0))} could not be stopped"
+        StatusMessageKey.CLIPBOARD_EMPTY -> "Clipboard is empty"
+        StatusMessageKey.CLIPBOARD_READ_FAILED -> "Clipboard read failed"
+        StatusMessageKey.SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE -> "Subscription text loaded into the Profile tab"
+        StatusMessageKey.PROFILE_SOURCE_SET ->
+            if (arg(0) == ProfileSourceMode.SUBSCRIPTION.name) {
+                "Profile source set to subscription"
+            } else {
+                "Profile source set to saved locations"
+            }
+        StatusMessageKey.DISCONNECT_FIRST_CHANGE_CONNECTION_MODE -> "Disconnect first to change connection mode"
+        StatusMessageKey.CONNECTION_MODE_SET ->
+            if (arg(0).isProxyMode()) "Connection mode set to proxy only" else "Connection mode set to VPN"
+        StatusMessageKey.RULE_SET_REMOVED -> "Rule-set removed"
+        StatusMessageKey.SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS ->
+            "Switch to Saved Locations to add locations manually"
+        StatusMessageKey.HISTORY_ENTRY_DELETED -> "History entry deleted"
+        StatusMessageKey.SELECTED_LOCATION_UNCHANGED -> "Selected location unchanged: ${arg(0)}"
+        StatusMessageKey.SELECTED_LOCATION_SET -> "Selected location set: ${arg(0)}"
+        StatusMessageKey.LOCATION_CHECKED -> "Location checked: ${arg(0)}"
+        StatusMessageKey.LOCATION_CHECK_FAILED -> "Location check failed"
+        StatusMessageKey.LOCATION_EDITED -> "Edited location #${arg(0)}"
+        StatusMessageKey.SAMPLE_RULE_SET_ADDED -> "Added a sample rule-set"
+        StatusMessageKey.RULE_SET_DELETED -> "Deleted rule-set ${arg(0)}"
+        StatusMessageKey.ROUTING_RULES_SAVED -> "Routing rules saved"
+        StatusMessageKey.ROUTING_RULES_IMPORTED -> "Routing rules imported"
+        StatusMessageKey.ROUTING_RULES_IMPORTED_RESTART_REQUIRED ->
+            "Routing rules imported. Restart ${englishConnectionNoun(arg(0))} to apply"
+        StatusMessageKey.ROUTING_RULES_IMPORT_FAILED -> "Failed to import routing rules"
+        StatusMessageKey.ROUTING_RULES_COPIED_TO_CLIPBOARD -> "Routing rules copied to clipboard"
+        StatusMessageKey.ROUTING_RULES_EXPORT_CANCELED -> "Routing rules export canceled"
+        StatusMessageKey.ROUTING_RULES_EXPORTED_TO -> "Routing rules exported to ${arg(0)}"
+        StatusMessageKey.ROUTING_RULES_EXPORT_FAILED -> "Failed to export routing rules"
+        StatusMessageKey.ROUTING_RULES_FILE_OPEN_FAILED -> "Failed to open routing rules file"
+        StatusMessageKey.LOCATIONS_COPIED_TO_CLIPBOARD -> "Locations copied to clipboard"
+        StatusMessageKey.LOCATIONS_EXPORT_CANCELED -> "Locations export canceled"
+        StatusMessageKey.LOCATIONS_EXPORTED_TO -> "Locations exported to ${arg(0)}"
+        StatusMessageKey.LOCATIONS_EXPORT_FAILED -> "Failed to export locations"
+        StatusMessageKey.LOCATIONS_FILE_OPEN_FAILED -> "Failed to open locations file"
+        StatusMessageKey.LOCATIONS_FILE_READ_FAILED -> "Failed to read locations file"
+        StatusMessageKey.DIAGNOSTICS_EXPORT_CANCELED -> "Diagnostics export canceled"
+        StatusMessageKey.DIAGNOSTICS_EXPORTED_TO -> "Diagnostics exported to ${arg(0)}"
+        StatusMessageKey.DIAGNOSTICS_EXPORT_FAILED -> "Failed to export diagnostics"
+        StatusMessageKey.DIAGNOSTICS_DESTINATION_OPEN_FAILED -> "Failed to open diagnostics destination"
+        StatusMessageKey.NO_SUBSCRIPTIONS_TO_REFRESH -> "No subscriptions to refresh"
         StatusMessageKey.START_ON_LOGIN_ENABLED -> "App will start automatically after login"
         StatusMessageKey.START_ON_LOGIN_DISABLED -> "App startup on login disabled"
         StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->

@@ -56,7 +56,7 @@ internal class DesktopConnectionActionsService(
         val location = selectedDesktopLocation()
         return if (location == null) {
             updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }
-            Result.failure(IllegalStateException("Select a location first"))
+            Result.failure(IllegalStateException(StatusMessages.selectLocationFirst()))
         } else {
             start(location)
         }

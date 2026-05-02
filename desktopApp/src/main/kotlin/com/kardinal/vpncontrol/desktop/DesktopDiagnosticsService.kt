@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Path
 
 internal class DesktopDiagnosticsService(
@@ -12,12 +13,12 @@ internal class DesktopDiagnosticsService(
     suspend fun export(selection: Result<Path?>) {
         if (selection.isFailure) {
             updateState {
-                it.withStatus(selection.exceptionOrNull()?.message ?: "Failed to open diagnostics destination")
+                it.withStatus(selection.exceptionOrNull()?.message ?: StatusMessages.diagnosticsDestinationOpenFailed())
             }
             return
         }
         val target = selection.getOrNull() ?: run {
-            updateState { it.withStatus("Diagnostics export canceled") }
+            updateState { it.withStatus(StatusMessages.diagnosticsExportCanceled()) }
             return
         }
         val report = DesktopDiagnosticsExporter.buildReport(
@@ -34,8 +35,8 @@ internal class DesktopDiagnosticsService(
         updateState {
             it.withStatus(
                 result.fold(
-                    onSuccess = { path -> "Diagnostics exported to $path" },
-                    onFailure = { error -> error.message ?: "Failed to export diagnostics" },
+                    onSuccess = { path -> StatusMessages.diagnosticsExportedTo(path.toString()) },
+                    onFailure = { error -> error.message ?: StatusMessages.diagnosticsExportFailed() },
                 ),
             )
         }

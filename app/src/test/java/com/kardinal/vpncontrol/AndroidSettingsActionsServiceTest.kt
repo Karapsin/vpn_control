@@ -43,7 +43,7 @@ class AndroidSettingsActionsServiceTest {
 
         assertEquals(AppMode.VPN, controller.currentState().appMode)
         assertEquals(
-            listOf(MainControllerEffect.UpdateStatus("Disconnect first to change connection mode")),
+            listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode())),
             effects,
         )
     }

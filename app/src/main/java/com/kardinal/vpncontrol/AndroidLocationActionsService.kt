@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -186,7 +187,7 @@ internal class AndroidLocationActionsService(
             val isSelected = rawLink == selectedLocationReference()
             val previousState = snapshot()
             val result = if (isSelected) {
-                Result.success("Selected location unchanged")
+                Result.success(Unit)
             } else {
                 val selectionResult = selectionFromRawLink(rawLink, "Selected location manually")
                 if (selectionResult.isFailure) {
@@ -215,7 +216,7 @@ internal class AndroidLocationActionsService(
                         }
                         Result.failure(IllegalStateException(resolvedMessage))
                     } else {
-                        Result.success("Selected location set")
+                        Result.success(Unit)
                     }
                 }
             }
@@ -224,9 +225,9 @@ internal class AndroidLocationActionsService(
                     val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
                         .getOrDefault("Location")
                     if (isSelected) {
-                        "Selected location unchanged: $remarks"
+                        StatusMessages.selectedLocationUnchanged(remarks)
                     } else {
-                        "Selected location set: $remarks"
+                        StatusMessages.selectedLocationSet(remarks)
                     }
                 } else {
                     result.exceptionOrNull()?.message ?: "Failed to select location"
@@ -315,8 +316,8 @@ internal class AndroidLocationActionsService(
                 }
                 updateStatus(
                     result.fold(
-                        onSuccess = { benchmark -> "Location checked: ${benchmark.profile.remarks}" },
-                        onFailure = { it.message ?: "Location check failed" },
+                        onSuccess = { benchmark -> StatusMessages.locationChecked(benchmark.profile.remarks) },
+                        onFailure = { it.message ?: StatusMessages.locationCheckFailed() },
                     ),
                 )
             } catch (_: CancellationException) {

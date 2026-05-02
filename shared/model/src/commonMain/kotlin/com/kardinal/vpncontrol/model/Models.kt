@@ -265,6 +265,42 @@ enum class StatusMessageKey {
     LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE,
     LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED,
     LOCATIONS_IMPORT_ROLLBACK_FAILED,
+    CLIPBOARD_EMPTY,
+    CLIPBOARD_READ_FAILED,
+    SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE,
+    PROFILE_SOURCE_SET,
+    DISCONNECT_FIRST_CHANGE_CONNECTION_MODE,
+    CONNECTION_MODE_SET,
+    RULE_SET_REMOVED,
+    SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS,
+    HISTORY_ENTRY_DELETED,
+    SELECTED_LOCATION_UNCHANGED,
+    SELECTED_LOCATION_SET,
+    LOCATION_CHECKED,
+    LOCATION_CHECK_FAILED,
+    LOCATION_EDITED,
+    SAMPLE_RULE_SET_ADDED,
+    RULE_SET_DELETED,
+    ROUTING_RULES_SAVED,
+    ROUTING_RULES_IMPORTED,
+    ROUTING_RULES_IMPORTED_RESTART_REQUIRED,
+    ROUTING_RULES_IMPORT_FAILED,
+    ROUTING_RULES_COPIED_TO_CLIPBOARD,
+    ROUTING_RULES_EXPORT_CANCELED,
+    ROUTING_RULES_EXPORTED_TO,
+    ROUTING_RULES_EXPORT_FAILED,
+    ROUTING_RULES_FILE_OPEN_FAILED,
+    LOCATIONS_COPIED_TO_CLIPBOARD,
+    LOCATIONS_EXPORT_CANCELED,
+    LOCATIONS_EXPORTED_TO,
+    LOCATIONS_EXPORT_FAILED,
+    LOCATIONS_FILE_OPEN_FAILED,
+    LOCATIONS_FILE_READ_FAILED,
+    DIAGNOSTICS_EXPORT_CANCELED,
+    DIAGNOSTICS_EXPORTED_TO,
+    DIAGNOSTICS_EXPORT_FAILED,
+    DIAGNOSTICS_DESTINATION_OPEN_FAILED,
+    NO_SUBSCRIPTIONS_TO_REFRESH,
     START_ON_LOGIN_ENABLED,
     START_ON_LOGIN_DISABLED,
     STARTUP_SETTING_UPDATE_FAILED,
@@ -501,6 +537,114 @@ object StatusMessages {
 
     fun locationsImportRollbackFailed(appMode: AppMode): String =
         encode(StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED, appMode.name)
+
+    fun clipboardEmpty(): String =
+        encode(StatusMessageKey.CLIPBOARD_EMPTY)
+
+    fun clipboardReadFailed(): String =
+        encode(StatusMessageKey.CLIPBOARD_READ_FAILED)
+
+    fun subscriptionTextLoadedIntoProfile(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE)
+
+    fun profileSourceSet(mode: ProfileSourceMode): String =
+        encode(StatusMessageKey.PROFILE_SOURCE_SET, mode.name)
+
+    fun disconnectFirstChangeConnectionMode(): String =
+        encode(StatusMessageKey.DISCONNECT_FIRST_CHANGE_CONNECTION_MODE)
+
+    fun connectionModeSet(mode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_MODE_SET, mode.name)
+
+    fun ruleSetRemoved(): String =
+        encode(StatusMessageKey.RULE_SET_REMOVED)
+
+    fun switchToSavedLocationsToAddLocations(): String =
+        encode(StatusMessageKey.SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS)
+
+    fun historyEntryDeleted(): String =
+        encode(StatusMessageKey.HISTORY_ENTRY_DELETED)
+
+    fun selectedLocationUnchanged(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_UNCHANGED, remarks)
+
+    fun selectedLocationSet(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_SET, remarks)
+
+    fun locationChecked(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_CHECKED, remarks)
+
+    fun locationCheckFailed(): String =
+        encode(StatusMessageKey.LOCATION_CHECK_FAILED)
+
+    fun locationEdited(index: Int): String =
+        encode(StatusMessageKey.LOCATION_EDITED, index.toString())
+
+    fun sampleRuleSetAdded(): String =
+        encode(StatusMessageKey.SAMPLE_RULE_SET_ADDED)
+
+    fun ruleSetDeleted(id: String): String =
+        encode(StatusMessageKey.RULE_SET_DELETED, id)
+
+    fun routingRulesSaved(): String =
+        encode(StatusMessageKey.ROUTING_RULES_SAVED)
+
+    fun routingRulesImported(): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORTED)
+
+    fun routingRulesImportedRestartRequired(appMode: AppMode): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORTED_RESTART_REQUIRED, appMode.name)
+
+    fun routingRulesImportFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORT_FAILED)
+
+    fun routingRulesCopiedToClipboard(): String =
+        encode(StatusMessageKey.ROUTING_RULES_COPIED_TO_CLIPBOARD)
+
+    fun routingRulesExportCanceled(): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORT_CANCELED)
+
+    fun routingRulesExportedTo(path: String): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORTED_TO, path)
+
+    fun routingRulesExportFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORT_FAILED)
+
+    fun routingRulesFileOpenFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_FILE_OPEN_FAILED)
+
+    fun locationsCopiedToClipboard(): String =
+        encode(StatusMessageKey.LOCATIONS_COPIED_TO_CLIPBOARD)
+
+    fun locationsExportCanceled(): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORT_CANCELED)
+
+    fun locationsExportedTo(path: String): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORTED_TO, path)
+
+    fun locationsExportFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORT_FAILED)
+
+    fun locationsFileOpenFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_FILE_OPEN_FAILED)
+
+    fun locationsFileReadFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_FILE_READ_FAILED)
+
+    fun diagnosticsExportCanceled(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORT_CANCELED)
+
+    fun diagnosticsExportedTo(path: String): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORTED_TO, path)
+
+    fun diagnosticsExportFailed(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORT_FAILED)
+
+    fun diagnosticsDestinationOpenFailed(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_DESTINATION_OPEN_FAILED)
+
+    fun noSubscriptionsToRefresh(): String =
+        encode(StatusMessageKey.NO_SUBSCRIPTIONS_TO_REFRESH)
 
     fun startOnLoginEnabled(): String =
         encode(StatusMessageKey.START_ON_LOGIN_ENABLED)

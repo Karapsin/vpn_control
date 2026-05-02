@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.AutoRefreshLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 
 internal class DesktopSubscriptionRefreshService(
@@ -60,7 +61,7 @@ internal class DesktopSubscriptionRefreshService(
     ): Result<Int> {
         if (subscriptionsToRefresh.isEmpty()) {
             updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
-            return Result.failure(IllegalStateException("No subscriptions to refresh"))
+            return Result.failure(IllegalStateException(StatusMessages.noSubscriptionsToRefresh()))
         }
 
         updateState { it.copy(isBusy = true, isRefreshing = true).withStatus(statusPrefix) }
