@@ -9,6 +9,7 @@ import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.StructuredStatusMessage
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import com.kardinal.vpncontrol.model.effective
 import com.kardinal.vpncontrol.model.subscriptionRefreshIntervalMinutes
 import kotlinx.datetime.Instant
@@ -489,6 +490,33 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
         StatusMessageKey.NO_LOCATIONS_TO_EXPORT ->
             generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.noLocationsToExport
                 ?: "No locations to export"
+        StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED ->
+            englishUiSettingVisibility(arg(0), arg(1).equals("true", ignoreCase = true))
+        StatusMessageKey.SUBSCRIPTION_LOCATION_SAVE_READ_ONLY ->
+            "Subscription locations are read-only. Switch to Saved Locations to save edits."
+        StatusMessageKey.INVALID_LOCATION_CONFIG -> "Invalid location config"
+        StatusMessageKey.LOCATION_ALREADY_SAVED -> "Location already saved: ${arg(0)}"
+        StatusMessageKey.LOCATION_EDIT_UNAVAILABLE -> "Location to edit is no longer available"
+        StatusMessageKey.LOCATION_ADDED -> "Location added: ${arg(0)}"
+        StatusMessageKey.LOCATION_UPDATED_AND_MERGED -> "Location updated and merged: ${arg(0)}"
+        StatusMessageKey.LOCATION_UPDATED -> "Location updated: ${arg(0)}"
+        StatusMessageKey.SUBSCRIPTION_LOCATION_DELETE_READ_ONLY ->
+            "Subscription locations are read-only. Switch to Saved Locations to delete them."
+        StatusMessageKey.SELECTED_LOCATION_REMOVED -> "Selected location removed: ${arg(0)}"
+        StatusMessageKey.LOCATION_REMOVED -> "Location removed: ${arg(0)}"
+        StatusMessageKey.SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED ->
+            "Selected location removed. ${englishConnectionDisplay(arg(0))} stopped: ${arg(1)}"
+        StatusMessageKey.LOCATION_REMOVAL_ROLLBACK_FAILED ->
+            "Location removal rolled back because the ${englishConnectionNoun(arg(0))} could not be stopped"
+        StatusMessageKey.IMPORT_LOCATIONS_BLOCKED -> "Switch to Saved Locations to import locations"
+        StatusMessageKey.IMPORT_LOCATIONS_FAILED -> "Failed to import locations"
+        StatusMessageKey.LOCATIONS_IMPORTED -> "Locations imported"
+        StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE ->
+            "Locations imported. Selected location is no longer available"
+        StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED ->
+            "Locations imported. Selected location is no longer available, ${englishConnectionNounLower(arg(0))} stopped"
+        StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED ->
+            "Locations import rolled back because the ${englishConnectionNoun(arg(0))} could not be stopped"
         StatusMessageKey.START_ON_LOGIN_ENABLED -> "App will start automatically after login"
         StatusMessageKey.START_ON_LOGIN_DISABLED -> "App startup on login disabled"
         StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->
@@ -555,6 +583,31 @@ private fun englishConnectionDisplay(mode: String): String =
 
 private fun englishConnectionNoun(mode: String): String =
     if (mode.isProxyMode()) "proxy" else "VPN"
+
+private fun englishConnectionNounLower(mode: String): String =
+    if (mode.isProxyMode()) "proxy" else "vpn"
+
+private fun englishUiSettingVisibility(
+    itemName: String,
+    enabled: Boolean,
+): String {
+    val item = UiSettingsStatusItem.entries.firstOrNull { it.name == itemName }
+    return when (item) {
+        UiSettingsStatusItem.SESSION_STATS ->
+            if (enabled) "Session stats enabled" else "Session stats hidden"
+        UiSettingsStatusItem.LIVE_TRAFFIC_STATS ->
+            if (enabled) "Live traffic stats enabled" else "Live traffic stats hidden"
+        UiSettingsStatusItem.PROFILE_TOTALS ->
+            if (enabled) "Per-profile totals enabled" else "Per-profile totals hidden"
+        UiSettingsStatusItem.LATENCY_HISTORY ->
+            if (enabled) "Latency history enabled" else "Latency history hidden"
+        UiSettingsStatusItem.CONNECTION_LOG ->
+            if (enabled) "Connection log enabled" else "Connection log hidden"
+        UiSettingsStatusItem.CONNECTION_TEST_TOOLS ->
+            if (enabled) "Connection test tools enabled" else "Connection test tools hidden"
+        null -> if (enabled) "Settings enabled" else "Settings hidden"
+    }
+}
 
 private fun String.isProxyMode(): Boolean =
     equals("PROXY_ONLY", ignoreCase = true) ||

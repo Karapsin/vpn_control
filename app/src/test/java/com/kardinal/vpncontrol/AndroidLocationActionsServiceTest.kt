@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -34,7 +35,7 @@ class AndroidLocationActionsServiceTest {
 
         assertTrue(harness.state.showLocationMutationBlockedDialog)
         assertEquals(
-            "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+            StatusMessages.subscriptionLocationSaveReadOnly(),
             harness.state.locationMutationBlockedMessage,
         )
         assertEquals(emptyList<String>(), statuses)
@@ -50,7 +51,7 @@ class AndroidLocationActionsServiceTest {
 
         harness.service.importLocations("not relevant")
 
-        assertEquals(listOf("Switch to Saved Locations to import locations"), statuses)
+        assertEquals(listOf(StatusMessages.importLocationsBlocked()), statuses)
     }
 
     @Test
@@ -82,7 +83,10 @@ class AndroidLocationActionsServiceTest {
 
         assertEquals(1, stopCalls)
         assertEquals(emptyList<String>(), harness.state.currentLocations)
-        assertEquals("Selected location removed. VPN stopped: Selected", statuses.single())
+        assertEquals(
+            StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Selected"),
+            statuses.single(),
+        )
     }
 
     @Test

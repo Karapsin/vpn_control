@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Paleidžiamas proxy su nauja geriausia vieta..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Prenumeratos vietos yra tik skaitomos. Norėdami išsaugoti pakeitimus, pereikite prie išsaugotų vietų."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Prenumeratos vietos yra tik skaitomos. Norėdami jas ištrinti, pereikite prie išsaugotų vietų."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Netinkama vietos konfigūracija"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Redaguojama vieta nebepasiekiama"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Vieta jau išsaugota: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Vieta pridėta: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Vieta atnaujinta ir sujungta: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Vieta atnaujinta: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Pasirinkta vieta pašalinta. VPN sustabdytas: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Pasirinkta vieta pašalinta. Proxy sustabdytas: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Pasirinkta vieta pašalinta: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Vieta pašalinta: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Vietos pašalinimas atšauktas, nes proxy nepavyko sustabdyti"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Vietos pašalinimas atšauktas, nes VPN nepavyko sustabdyti"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Nepavyko importuoti vietų"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Vietos importuotos. Pasirinkta vieta nebepasiekiama, proxy sustabdytas"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Vietos importuotos. Pasirinkta vieta nebepasiekiama, VPN sustabdytas"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Vietos importuotos. Pasirinkta vieta nebepasiekiama"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Vietos importuotos"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Vietų importavimas atšauktas, nes proxy nepavyko sustabdyti"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Vietų importavimas atšauktas, nes VPN nepavyko sustabdyti"
     }
   ]
 }

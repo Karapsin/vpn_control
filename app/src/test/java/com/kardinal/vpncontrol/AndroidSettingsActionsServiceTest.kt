@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -23,7 +24,10 @@ class AndroidSettingsActionsServiceTest {
 
         assertTrue(controller.currentState().sessionStatsEnabled)
         assertEquals(true, persisted)
-        assertEquals(listOf("Session stats enabled"), statuses)
+        assertEquals(
+            listOf(StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true)),
+            statuses,
+        )
     }
 
     @Test

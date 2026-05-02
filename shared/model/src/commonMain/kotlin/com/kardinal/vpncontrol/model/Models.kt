@@ -200,6 +200,15 @@ data class ConnectionLogEntry(
     val createdAtEpochMillis: Long = 0L,
 )
 
+enum class UiSettingsStatusItem {
+    SESSION_STATS,
+    LIVE_TRAFFIC_STATS,
+    PROFILE_TOTALS,
+    LATENCY_HISTORY,
+    CONNECTION_LOG,
+    CONNECTION_TEST_TOOLS,
+}
+
 enum class StatusMessageKey {
     IDLE,
     LANGUAGE_SET,
@@ -237,6 +246,25 @@ enum class StatusMessageKey {
     TESTING_LOCATION,
     LOCATION_CHECK_CANCELLED,
     NO_LOCATIONS_TO_EXPORT,
+    UI_SETTING_VISIBILITY_CHANGED,
+    SUBSCRIPTION_LOCATION_SAVE_READ_ONLY,
+    INVALID_LOCATION_CONFIG,
+    LOCATION_ALREADY_SAVED,
+    LOCATION_EDIT_UNAVAILABLE,
+    LOCATION_ADDED,
+    LOCATION_UPDATED_AND_MERGED,
+    LOCATION_UPDATED,
+    SUBSCRIPTION_LOCATION_DELETE_READ_ONLY,
+    SELECTED_LOCATION_REMOVED,
+    LOCATION_REMOVED,
+    SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED,
+    LOCATION_REMOVAL_ROLLBACK_FAILED,
+    IMPORT_LOCATIONS_BLOCKED,
+    IMPORT_LOCATIONS_FAILED,
+    LOCATIONS_IMPORTED,
+    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE,
+    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED,
+    LOCATIONS_IMPORT_ROLLBACK_FAILED,
     START_ON_LOGIN_ENABLED,
     START_ON_LOGIN_DISABLED,
     STARTUP_SETTING_UPDATE_FAILED,
@@ -409,6 +437,70 @@ object StatusMessages {
 
     fun noLocationsToExport(): String =
         encode(StatusMessageKey.NO_LOCATIONS_TO_EXPORT)
+
+    fun uiSettingVisibilityChanged(
+        item: UiSettingsStatusItem,
+        enabled: Boolean,
+    ): String = encode(StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED, item.name, enabled.toString())
+
+    fun subscriptionLocationSaveReadOnly(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_LOCATION_SAVE_READ_ONLY)
+
+    fun invalidLocationConfig(): String =
+        encode(StatusMessageKey.INVALID_LOCATION_CONFIG)
+
+    fun locationAlreadySaved(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_ALREADY_SAVED, remarks)
+
+    fun locationEditUnavailable(): String =
+        encode(StatusMessageKey.LOCATION_EDIT_UNAVAILABLE)
+
+    fun locationAdded(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_ADDED, remarks)
+
+    fun locationUpdatedAndMerged(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_UPDATED_AND_MERGED, remarks)
+
+    fun locationUpdated(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_UPDATED, remarks)
+
+    fun subscriptionLocationDeleteReadOnly(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_LOCATION_DELETE_READ_ONLY)
+
+    fun selectedLocationRemoved(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_REMOVED, remarks)
+
+    fun locationRemoved(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_REMOVED, remarks)
+
+    fun selectedLocationRemovedConnectionStopped(
+        appMode: AppMode,
+        remarks: String,
+    ): String = encode(StatusMessageKey.SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED, appMode.name, remarks)
+
+    fun locationRemovalRollbackFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATION_REMOVAL_ROLLBACK_FAILED, appMode.name)
+
+    fun importLocationsBlocked(): String =
+        encode(StatusMessageKey.IMPORT_LOCATIONS_BLOCKED)
+
+    fun importLocationsFailed(): String =
+        encode(StatusMessageKey.IMPORT_LOCATIONS_FAILED)
+
+    fun locationsImported(removedSelected: Boolean): String =
+        encode(
+            if (removedSelected) {
+                StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE
+            } else {
+                StatusMessageKey.LOCATIONS_IMPORTED
+            },
+        )
+
+    fun locationsImportedSelectedUnavailableConnectionStopped(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED, appMode.name)
+
+    fun locationsImportRollbackFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED, appMode.name)
 
     fun startOnLoginEnabled(): String =
         encode(StatusMessageKey.START_ON_LOGIN_ENABLED)

@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "proxy-ს გაშვება ახალი საუკეთესო ლოკაციით..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "გამოწერის მდებარეობები მხოლოდ წასაკითხადაა. ცვლილებების შესანახად გადაერთეთ შენახულ მდებარეობებზე."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "გამოწერის მდებარეობები მხოლოდ წასაკითხადაა. წასაშლელად გადაერთეთ შენახულ მდებარეობებზე."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "მდებარეობის კონფიგურაცია არასწორია"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "რედაქტირებადი მდებარეობა აღარ არის ხელმისაწვდომი"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "მდებარეობა უკვე შენახულია: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "მდებარეობა დაემატა: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "მდებარეობა განახლდა და გაერთიანდა: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "მდებარეობა განახლდა: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "არჩეული მდებარეობა წაიშალა. VPN შეჩერდა: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "არჩეული მდებარეობა წაიშალა. Proxy შეჩერდა: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "არჩეული მდებარეობა წაიშალა: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "მდებარეობა წაიშალა: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "მდებარეობის წაშლა გაუქმდა, რადგან proxy ვერ შეჩერდა"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "მდებარეობის წაშლა გაუქმდა, რადგან VPN ვერ შეჩერდა"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "მდებარეობების იმპორტი ვერ მოხერხდა"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "მდებარეობები იმპორტირებულია. არჩეული მდებარეობა აღარ არის ხელმისაწვდომი, proxy შეჩერდა"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "მდებარეობები იმპორტირებულია. არჩეული მდებარეობა აღარ არის ხელმისაწვდომი, VPN შეჩერდა"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "მდებარეობები იმპორტირებულია. არჩეული მდებარეობა აღარ არის ხელმისაწვდომი"
+    },
+    {
+      "source": "Locations imported",
+      "target": "მდებარეობები იმპორტირებულია"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "მდებარეობების იმპორტი გაუქმდა, რადგან proxy ვერ შეჩერდა"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "მდებარეობების იმპორტი გაუქმდა, რადგან VPN ვერ შეჩერდა"
     }
   ]
 }

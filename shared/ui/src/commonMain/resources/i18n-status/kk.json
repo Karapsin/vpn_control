@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Proxy жаңа ең жақсы локациямен іске қосылуда..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Жазылым локациялары тек оқуға арналған. Өзгерістерді сақтау үшін сақталған локацияларға ауысыңыз."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Жазылым локациялары тек оқуға арналған. Оларды жою үшін сақталған локацияларға ауысыңыз."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Локация конфигурациясы жарамсыз"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Өңделетін локация енді қолжетімді емес"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Локация бұрын сақталған: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Локация қосылды: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Локация жаңартылып біріктірілді: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Локация жаңартылды: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Таңдалған локация жойылды. VPN тоқтатылды: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Таңдалған локация жойылды. Proxy тоқтатылды: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Таңдалған локация жойылды: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Локация жойылды: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Proxy тоқтатылмағандықтан локацияны жою қайтарылды"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN тоқтатылмағандықтан локацияны жою қайтарылды"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Локацияларды импорттау сәтсіз аяқталды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, proxy тоқтатылды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, VPN тоқтатылды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локациялар импортталды"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Proxy тоқтатылмағандықтан локация импорты қайтарылды"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN тоқтатылмағандықтан локация импорты қайтарылды"
     }
   ]
 }

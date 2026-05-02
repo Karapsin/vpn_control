@@ -810,6 +810,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Ввод ретранслятора с новым передовым узлом связи..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Узлы связи из сводки доступны только для чтения. Перейдите к сохранённым узлам, чтобы утвердить правки."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Узлы связи из сводки доступны только для чтения. Перейдите к сохранённым узлам, чтобы удалить их."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Неверная карточка узла связи"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Редактируемый узел связи больше недоступен"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Узел связи уже сохранён: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Узел связи добавлен: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Узел связи обновлён и объединён: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Узел связи обновлён: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Выбранный узел связи снят. Спецканал остановлен: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Выбранный узел связи снят. Ретранслятор остановлен: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Выбранный узел связи снят: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Узел связи снят: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Снятие узла связи отменено, потому что ретранслятор не удалось остановить"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Снятие узла связи отменено, потому что спецканал не удалось остановить"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Не удалось принять узлы связи"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Узлы связи приняты. Выбранный узел больше недоступен, ретранслятор остановлен"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Узлы связи приняты. Выбранный узел больше недоступен, спецканал остановлен"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Узлы связи приняты. Выбранный узел больше недоступен"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Узлы связи приняты"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Приём узлов связи отменён, потому что ретранслятор не удалось остановить"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Приём узлов связи отменён, потому что спецканал не удалось остановить"
     }
   ]
 }

@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Запуск прокси с новой лучшей локацией..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Локации подписки доступны только для чтения. Переключитесь на сохранённые локации, чтобы сохранить изменения."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Локации подписки доступны только для чтения. Переключитесь на сохранённые локации, чтобы удалить их."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Недопустимая конфигурация локации"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Редактируемая локация больше недоступна"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Локация уже сохранена: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Локация добавлена: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Локация обновлена и объединена: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Локация обновлена: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Выбранная локация удалена. VPN остановлен: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Выбранная локация удалена. Прокси остановлен: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Выбранная локация удалена: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Локация удалена: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Удаление локации отменено, потому что прокси не удалось остановить"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Удаление локации отменено, потому что VPN не удалось остановить"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Не удалось импортировать локации"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Локации импортированы. Выбранная локация больше недоступна, прокси остановлен"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Локации импортированы. Выбранная локация больше недоступна, VPN остановлен"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локации импортированы. Выбранная локация больше недоступна"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локации импортированы"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Импорт локаций отменён, потому что прокси не удалось остановить"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Импорт локаций отменён, потому что VPN не удалось остановить"
     }
   ]
 }

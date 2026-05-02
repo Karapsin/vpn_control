@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Запуск проксі з новай найлепшай лакацыяй..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Лакацыі падпіскі даступныя толькі для чытання. Пераключыцеся на захаваныя лакацыі, каб захаваць праўкі."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Лакацыі падпіскі даступныя толькі для чытання. Пераключыцеся на захаваныя лакацыі, каб выдаліць іх."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Недапушчальная канфігурацыя лакацыі"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Лакацыя для рэдагавання больш недаступная"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Лакацыя ўжо захаваная: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Лакацыя дададзеная: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Лакацыя абноўленая і аб'яднаная: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Лакацыя абноўленая: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Выбраная лакацыя выдаленая. VPN спынены: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Выбраная лакацыя выдаленая. Проксі спынены: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Выбраная лакацыя выдаленая: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Лакацыя выдаленая: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Выдаленне лакацыі адменена, бо не ўдалося спыніць проксі"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Выдаленне лакацыі адменена, бо не ўдалося спыніць VPN"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Не ўдалося імпартаваць лакацыі"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Лакацыі імпартаваныя. Выбраная лакацыя больш недаступная, проксі спынены"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Лакацыі імпартаваныя. Выбраная лакацыя больш недаступная, VPN спынены"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Лакацыі імпартаваныя. Выбраная лакацыя больш недаступная"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Лакацыі імпартаваныя"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Імпарт лакацый адменены, бо не ўдалося спыніць проксі"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Імпарт лакацый адменены, бо не ўдалося спыніць VPN"
     }
   ]
 }

@@ -1,17 +1,40 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class UiSettingsStatusLogicTest {
     @Test
     fun statsVisibilityMessagesReflectEnabledState() {
-        assertEquals("Session stats enabled", UiSettingsStatusLogic.sessionStats(true))
-        assertEquals("Session stats hidden", UiSettingsStatusLogic.sessionStats(false))
-        assertEquals("Live traffic stats enabled", UiSettingsStatusLogic.liveTrafficStats(true))
-        assertEquals("Per-profile totals hidden", UiSettingsStatusLogic.profileTotals(false))
-        assertEquals("Latency history enabled", UiSettingsStatusLogic.latencyHistory(true))
-        assertEquals("Connection log hidden", UiSettingsStatusLogic.connectionLog(false))
-        assertEquals("Connection test tools enabled", UiSettingsStatusLogic.connectionTestTools(true))
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true),
+            UiSettingsStatusLogic.sessionStats(true),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, false),
+            UiSettingsStatusLogic.sessionStats(false),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LIVE_TRAFFIC_STATS, true),
+            UiSettingsStatusLogic.liveTrafficStats(true),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.PROFILE_TOTALS, false),
+            UiSettingsStatusLogic.profileTotals(false),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LATENCY_HISTORY, true),
+            UiSettingsStatusLogic.latencyHistory(true),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_LOG, false),
+            UiSettingsStatusLogic.connectionLog(false),
+        )
+        assertEquals(
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_TEST_TOOLS, true),
+            UiSettingsStatusLogic.connectionTestTools(true),
+        )
     }
 }

@@ -810,6 +810,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Запускъ посредника с новымъ лучшимъ местомъ..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Места изъ грамоты токмо для чтения. Перейдите къ сохранённымъ местамъ, дабы сохранить правки."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Места изъ грамоты токмо для чтения. Перейдите къ сохранённымъ местамъ, дабы удалить ихъ."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Неверная запись места"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Правимое место боле недоступно"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Место уже сохранено: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Место добавлено: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Место обновлено и соединено: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Место обновлено: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Избранное место удалено. Тайная сѣть остановлена: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Избранное место удалено. Посредникъ остановленъ: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Избранное место удалено: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Место удалено: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Удаление места откачено, понеже посредника не удалось остановить"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Удаление места откачено, понеже тайную сѣть не удалось остановить"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Не удалось принять места"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Места приняты. Избранное место боле недоступно, посредникъ остановленъ"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Места приняты. Избранное место боле недоступно, тайная сѣть остановлена"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Места приняты. Избранное место боле недоступно"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Места приняты"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Принятие местъ откачено, понеже посредника не удалось остановить"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Принятие местъ откачено, понеже тайную сѣть не удалось остановить"
     }
   ]
 }

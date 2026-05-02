@@ -6,6 +6,7 @@ import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -475,6 +476,31 @@ class AppStringsCoverageTest {
             StatusMessages.testingLocation("Germany"),
             StatusMessages.locationCheckCancelled(),
             StatusMessages.noLocationsToExport(),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LIVE_TRAFFIC_STATS, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.PROFILE_TOTALS, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LATENCY_HISTORY, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_LOG, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_TEST_TOOLS, true),
+            StatusMessages.subscriptionLocationSaveReadOnly(),
+            StatusMessages.invalidLocationConfig(),
+            StatusMessages.locationAlreadySaved("Germany"),
+            StatusMessages.locationEditUnavailable(),
+            StatusMessages.locationAdded("Germany"),
+            StatusMessages.locationUpdatedAndMerged("Germany"),
+            StatusMessages.locationUpdated("Germany"),
+            StatusMessages.subscriptionLocationDeleteReadOnly(),
+            StatusMessages.selectedLocationRemoved("Germany"),
+            StatusMessages.locationRemoved("Germany"),
+            StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
+            StatusMessages.locationRemovalRollbackFailed(AppMode.PROXY_ONLY),
+            StatusMessages.importLocationsBlocked(),
+            StatusMessages.importLocationsFailed(),
+            StatusMessages.locationsImported(removedSelected = false),
+            StatusMessages.locationsImported(removedSelected = true),
+            StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.VPN),
+            StatusMessages.locationsImportRollbackFailed(AppMode.PROXY_ONLY),
             StatusMessages.startOnLoginEnabled(),
             StatusMessages.startOnLoginDisabled(),
             StatusMessages.startupSettingUpdateFailed(),
@@ -527,6 +553,29 @@ class AppStringsCoverageTest {
         assertTrue(
             locationStatusEnglishLeaks.isEmpty(),
             "Structured location status messages still contain English fragments: $locationStatusEnglishLeaks",
+        )
+        val sharedStatusFallbacks = nonEnglishLanguages.flatMap { language ->
+            val english = AppStrings(AppLanguage.ENGLISH)
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true),
+                StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LIVE_TRAFFIC_STATS, false),
+                StatusMessages.subscriptionLocationSaveReadOnly(),
+                StatusMessages.locationAdded("Germany"),
+                StatusMessages.locationRemoved("Germany"),
+                StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
+                StatusMessages.importLocationsBlocked(),
+                StatusMessages.locationsImported(removedSelected = true),
+                StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.PROXY_ONLY),
+            ).mapNotNull { message ->
+                val localized = strings.statusMessage(message)
+                val englishText = english.statusMessage(message)
+                if (localized == englishText) "$language: $englishText" else null
+            }
+        }
+        assertTrue(
+            sharedStatusFallbacks.isEmpty(),
+            "Structured shared status messages still fall back to English: $sharedStatusFallbacks",
         )
         val desktopSettingsEnglishLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)

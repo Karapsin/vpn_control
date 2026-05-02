@@ -790,6 +790,90 @@
     {
       "source": "Starting proxy with the new best location...",
       "target": "Proxy käivitamine uue parima asukohaga..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Tellimuse asukohad on ainult lugemiseks. Muudatuste salvestamiseks lülitu salvestatud asukohtadele."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Tellimuse asukohad on ainult lugemiseks. Kustutamiseks lülitu salvestatud asukohtadele."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Vigane asukoha konfiguratsioon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Muudetav asukoht pole enam saadaval"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Asukoht on juba salvestatud: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Asukoht lisatud: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Asukoht uuendatud ja ühendatud: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Asukoht uuendatud: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Valitud asukoht eemaldatud. VPN peatatud: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Valitud asukoht eemaldatud. Proxy peatatud: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Valitud asukoht eemaldatud: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Asukoht eemaldatud: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Asukoha eemaldamine tühistati, sest proxyt ei saanud peatada"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Asukoha eemaldamine tühistati, sest VPN-i ei saanud peatada"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Asukohtade importimine ebaõnnestus"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval, proxy peatatud"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval, VPN peatatud"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Asukohad imporditud"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Asukohtade import tühistati, sest proxyt ei saanud peatada"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Asukohtade import tühistati, sest VPN-i ei saanud peatada"
     }
   ]
 }

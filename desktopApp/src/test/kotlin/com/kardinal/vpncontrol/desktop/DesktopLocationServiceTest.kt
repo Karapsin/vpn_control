@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -71,6 +73,27 @@ class DesktopLocationServiceTest {
         assertEquals("vless://second", state.selectedProfileRawLink)
         assertFalse(locations[0].isSelected)
         assertTrue(locations[1].isSelected)
+    }
+
+    @Test
+    fun importRawReportsStructuredBlockedStatusInSubscriptionMode() = runTest {
+        var state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION)
+        var locations = emptyList<DesktopLocationRecord>()
+        val service = DesktopLocationService(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            currentRuntimeMode = { null },
+            stopConnection = { Result.success(Unit) },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        service.importRaw("not relevant")
+
+        assertEquals(StatusMessages.importLocationsBlocked(), state.statusMessage)
     }
 }
 
