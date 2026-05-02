@@ -103,6 +103,49 @@ class SingBoxRouteDnsBuilderTest {
     }
 
     @Test
+    fun inlineRuleSetUsesInlineDefinitionAndDoesNotEnableCacheFile() {
+        val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsEnabled = false,
+            dnsValue = "",
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                ruleSets = listOf(
+                    RoutingRuleSet(
+                        id = "inline-12345678",
+                        name = "Inline Ads",
+                        sourceType = RoutingRuleSetSourceType.INLINE,
+                        format = RoutingRuleSetFormat.SOURCE,
+                        source = """{"rules":[{"domain_suffix":["ads.example"]}]}""",
+                        action = RoutingRuleSetAction.PROXY,
+                    ),
+                ),
+            ),
+        )
+
+        val ruleSetDefinition = config.route.array("rule_set").single().jsonObject
+        val ruleSetRoute = config.route.array("rules").last().jsonObject
+
+        assertEquals("inline", ruleSetDefinition.string("type"))
+        assertEquals("ruleset-inline-ads-12345678", ruleSetDefinition.string("tag"))
+        assertEquals("ads.example", ruleSetDefinition.array("rules").single().jsonObject.array("domain_suffix").single().jsonPrimitive.content)
+        assertFalse("url" in ruleSetDefinition)
+        assertEquals("proxy", ruleSetRoute.string("outbound"))
+        assertEquals(null, config.experimental)
+    }
+
+    @Test
+    fun directCidrsIncludeCustomDnsOnlyWhenEnabled() {
+        assertFalse(
+            SingBoxRouteDnsBuilder.directCidrs(dnsEnabled = false, dnsValue = "9.9.9.9")
+                .contains("9.9.9.9/32"),
+        )
+        assertTrue(
+            SingBoxRouteDnsBuilder.directCidrs(dnsEnabled = true, dnsValue = "9.9.9.9")
+                .contains("9.9.9.9/32"),
+        )
+    }
+
+    @Test
     fun validationDnsConfigDoesNotAddRouteRules() {
         val dns = SingBoxRouteDnsBuilder.buildValidationDnsConfig(
             dnsEnabled = true,

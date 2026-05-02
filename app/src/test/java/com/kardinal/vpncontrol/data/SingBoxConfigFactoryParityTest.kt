@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SingBoxConfigFactoryParityTest {
@@ -70,6 +71,55 @@ class SingBoxConfigFactoryParityTest {
         assertFalse("rule_set" in route)
         assertEquals(-1, routeRules.indexOfFirstRuleWith("domain_suffix"))
         assertEquals(-1, routeRules.indexOfFirstRuleWith("rule_set"))
+    }
+
+    @Test
+    fun androidVpnConfigWithProxyPackagesLimitsTunInbound() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                proxyPackages = listOf("org.example.browser", "org.example.chat"),
+            ),
+        )
+        val inbound = parseConfig(config)
+            .getValue("inbounds")
+            .jsonArray
+            .single()
+            .jsonObject
+        val packages = inbound.getValue("include_package").jsonArray.map { it.jsonPrimitive.content }
+
+        assertEquals(listOf("org.example.browser", "org.example.chat"), packages)
+    }
+
+    @Test
+    fun androidVpnConfigRoutesCustomDnsDirect() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = true, value = "9.9.9.9"),
+            routingRules = RoutingRules(ignoreRules = true),
+        )
+        val root = parseConfig(config)
+        val dnsServer = root.getValue("dns")
+            .jsonObject
+            .getValue("servers")
+            .jsonArray
+            .single()
+            .jsonObject
+        val directCidrs = root.getValue("route")
+            .jsonObject
+            .getValue("rules")
+            .jsonArray
+            .first { rule -> rule.jsonObject.containsKey("ip_cidr") }
+            .jsonObject
+            .getValue("ip_cidr")
+            .jsonArray
+            .map { it.jsonPrimitive.content }
+
+        assertEquals("custom-dns", dnsServer.getValue("tag").jsonPrimitive.content)
+        assertEquals("9.9.9.9", dnsServer.getValue("server").jsonPrimitive.content)
+        assertTrue(directCidrs.contains("9.9.9.9/32"))
     }
 
     private fun protocolProfiles(): List<ProxyProfile> {
