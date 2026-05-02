@@ -112,6 +112,42 @@ class SingBoxOutboundBuilderTest {
     }
 
     @Test
+    fun socksWithoutCredentialsOmitsCredentialFields() {
+        val outbound = SingBoxOutboundBuilder.buildOutbound(
+            profile = profile(
+                protocol = ProxyProtocol.SOCKS,
+                network = "tcp",
+            ),
+        )
+
+        assertEquals("socks", outbound.string("type"))
+        assertEquals("5", outbound.string("version"))
+        assertFalse("username" in outbound)
+        assertFalse("password" in outbound)
+        assertFalse("network" in outbound)
+        assertFalse("tls" in outbound)
+    }
+
+    @Test
+    fun vlessPlainTcpOmitsTlsTransportAndFlowWhenBlank() {
+        val outbound = SingBoxOutboundBuilder.buildOutbound(
+            profile = profile(
+                protocol = ProxyProtocol.VLESS,
+                uuid = "00000000-0000-0000-0000-000000000003",
+                network = "tcp",
+                security = "",
+                flow = "",
+            ),
+        )
+
+        assertEquals("vless", outbound.string("type"))
+        assertEquals("tcp", outbound.string("network"))
+        assertFalse("tls" in outbound)
+        assertFalse("transport" in outbound)
+        assertFalse("flow" in outbound)
+    }
+
+    @Test
     fun vmessUsesAutoSecurityAndTlsWhenRequested() {
         val outbound = SingBoxOutboundBuilder.buildOutbound(
             profile = profile(
@@ -129,6 +165,30 @@ class SingBoxOutboundBuilderTest {
         assertEquals(2, outbound.int("alter_id"))
         assertEquals("tcp", outbound.string("network"))
         assertTrue(outbound.objectValue("tls").boolean("enabled"))
+    }
+
+    @Test
+    fun vmessWebsocketIncludesTlsAndHostHeaderTransport() {
+        val outbound = SingBoxOutboundBuilder.buildOutbound(
+            profile = profile(
+                protocol = ProxyProtocol.VMESS,
+                uuid = "00000000-0000-0000-0000-000000000004",
+                network = "ws",
+                security = "tls",
+                sni = "vmess-sni.example.com",
+                path = "/socket",
+                hostHeader = "front.example.com",
+                alterId = 0,
+                vmessSecurity = "chacha20-poly1305",
+            ),
+        )
+
+        assertEquals("vmess", outbound.string("type"))
+        assertEquals("chacha20-poly1305", outbound.string("security"))
+        assertEquals("ws", outbound.string("network"))
+        assertEquals("vmess-sni.example.com", outbound.objectValue("tls").string("server_name"))
+        assertEquals("/socket", outbound.objectValue("transport").string("path"))
+        assertEquals("front.example.com", outbound.objectValue("transport").objectValue("headers").string("Host"))
     }
 
     @Test
