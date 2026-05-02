@@ -48,6 +48,7 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAppService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopStateStore.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopWorkspaceStateMapper.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopConnectionActionsService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManager.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt`
@@ -59,7 +60,7 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTrayController.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt`
 
-Desktop currently bypasses some `MainController` actions while its service owns persistence/runtime orchestration. Keep subscription refresh orchestration in `DesktopSubscriptionRefreshService`, per-location benchmark orchestration in `DesktopLocationBenchmarkService`, broad Find Best selection in `DesktopFindBestService`, and connection command glue in `DesktopConnectionActionsService` instead of growing `DesktopAppService`. New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
+Desktop currently bypasses some `MainController` actions while its service owns persistence/runtime orchestration. Keep desktop workspace restore/sync/persist mapping in `DesktopWorkspaceStateMapper`, subscription refresh orchestration in `DesktopSubscriptionRefreshService`, per-location benchmark orchestration in `DesktopLocationBenchmarkService`, broad Find Best selection in `DesktopFindBestService`, and connection command glue in `DesktopConnectionActionsService` instead of growing `DesktopAppService`. New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 
 ## Patch Rules
 

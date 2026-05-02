@@ -27,6 +27,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Android settings or diagnostics orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
+| Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
 | Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
 | Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
 | Desktop subscription refresh orchestration | `./gradlew :desktopApp:test` |
