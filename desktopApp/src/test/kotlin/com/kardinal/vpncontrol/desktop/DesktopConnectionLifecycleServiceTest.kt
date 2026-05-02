@@ -96,7 +96,7 @@ class DesktopConnectionLifecycleServiceTest {
         assertFalse(state.isBusy)
         assertEquals(5678L, state.sessionStoppedAtEpochMillis)
         assertEquals(1, state.successfulStops)
-        assertTrue(state.statusMessage.contains("VPN stopped"))
+        assertEquals(StatusMessages.connectionStopped(AppMode.VPN), state.statusMessage)
     }
 
     @Test

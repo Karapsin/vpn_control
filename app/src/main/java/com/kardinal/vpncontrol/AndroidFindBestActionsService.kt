@@ -42,7 +42,7 @@ internal class AndroidFindBestActionsService(
         val previousState = snapshot()
         var startAttempted = false
         try {
-            updateStatus(MainCommandLogic.refreshStartMessage(stateProvider()))
+            updateStatus(MainCommandLogic.refreshStartStatus(stateProvider()))
             val result = findBestProfileWithRetries()
             val message = result.fold(
                 onSuccess = { selection ->

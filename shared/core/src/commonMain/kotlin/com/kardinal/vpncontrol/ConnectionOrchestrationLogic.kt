@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.delay
 
 enum class SelectionCommitStage {
@@ -77,15 +78,15 @@ object ConnectionOrchestrationLogic {
     }
 
     fun preparingConnectionMessage(appMode: AppMode): String {
-        return "Preparing ${MainCommandLogic.connectionNoun(appMode)}"
+        return StatusMessages.startingConnection(appMode)
     }
 
     fun ensureSelectionFailureMessage(appMode: AppMode, errorMessage: String?): String {
-        return errorMessage ?: "Could not prepare ${MainCommandLogic.connectionNoun(appMode)}"
+        return errorMessage ?: StatusMessages.connectionStartFailed(appMode)
     }
 
     fun refreshSelectionStartedMessage(appMode: AppMode, remarks: String): String {
-        return "Best location selected and ${MainCommandLogic.startedConnectionLabel(appMode).lowercase()}: $remarks"
+        return StatusMessages.connectionStartedOnTarget(appMode, remarks)
     }
 
     fun refreshCancelledMessage(): String = "Location search cancelled"
@@ -103,7 +104,7 @@ object ConnectionOrchestrationLogic {
     }
 
     fun connectionStopFailureMessage(appMode: AppMode, errorMessage: String?): String {
-        return errorMessage ?: "Failed to stop ${MainCommandLogic.connectionNoun(appMode)}"
+        return errorMessage ?: StatusMessages.connectionStopFailed(appMode)
     }
 
     fun startSelectionFailureTexts(appMode: AppMode): SelectionCommitFailureTexts {

@@ -1,7 +1,10 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessageKey
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
@@ -111,6 +114,37 @@ class MainCommandLogicTest {
         )
 
         assertNull(error)
+    }
+
+    @Test
+    fun findBestStartStatusUsesStructuredKeysForLocalization() {
+        assertEquals(
+            StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION,
+            StatusMessages.decode(
+                MainCommandLogic.refreshStartStatus(
+                    MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION),
+                ),
+            )?.key,
+        )
+        assertEquals(
+            StatusMessageKey.FIND_BEST_FROM_SAVED,
+            StatusMessages.decode(
+                MainCommandLogic.refreshStartStatus(
+                    MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS),
+                ),
+            )?.key,
+        )
+    }
+
+    @Test
+    fun connectionLifecycleStatusesUseStructuredKeysForLocalization() {
+        val started = StatusMessages.decode(MainCommandLogic.startedConnectionStatus(AppMode.VPN))
+        val stopped = StatusMessages.decode(MainCommandLogic.stoppedConnectionStatus(AppMode.PROXY_ONLY))
+
+        assertEquals(StatusMessageKey.CONNECTION_STARTED, started?.key)
+        assertEquals(listOf(AppMode.VPN.name), started?.args)
+        assertEquals(StatusMessageKey.CONNECTION_STOPPED, stopped?.key)
+        assertEquals(listOf(AppMode.PROXY_ONLY.name), stopped?.args)
     }
 
     private fun subscription(id: String, url: String): SubscriptionSource {

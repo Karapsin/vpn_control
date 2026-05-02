@@ -35,6 +35,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
 | Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
 | Desktop runtime status detail assembly | `./gradlew :desktopApp:test` |
+| Desktop diagnostics/export status mapping | `./gradlew :desktopApp:test` |
 | Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
 | Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
 | Desktop active-connection naming, selected-location toggle, or subscription-source validation helpers | `./gradlew :desktopApp:test` |

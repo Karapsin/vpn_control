@@ -115,7 +115,7 @@ internal class DesktopConnectionLifecycleService(
                 state.copy(
                     isBusy = false,
                     isVpnRunning = false,
-                ).withStatus(message ?: MainCommandLogic.stoppedConnectionLabel(stoppedMode)),
+                ).withStatus(message ?: MainCommandLogic.stoppedConnectionStatus(stoppedMode)),
             )
             return Result.success(Unit)
         }
@@ -131,7 +131,7 @@ internal class DesktopConnectionLifecycleService(
                     isVpnRunning = false,
                     sessionStoppedAtEpochMillis = stoppedAt,
                     successfulStops = latestState.successfulStops + 1,
-                ).withStatus(message ?: MainCommandLogic.stoppedConnectionLabel(stoppedMode)),
+                ).withStatus(message ?: MainCommandLogic.stoppedConnectionStatus(stoppedMode)),
             )
         } else {
             updateState {

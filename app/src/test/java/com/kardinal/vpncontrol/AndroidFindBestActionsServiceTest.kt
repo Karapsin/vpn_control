@@ -9,6 +9,8 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.StatusMessageKey
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -67,8 +69,13 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(1, startCalls)
-        assertEquals("Finding the best location from saved locations...", statuses.first())
-        assertTrue(statuses.last().contains("Germany"))
+        assertEquals(
+            StatusMessageKey.FIND_BEST_FROM_SAVED,
+            StatusMessages.decode(statuses.first())?.key,
+        )
+        val finalStatus = StatusMessages.decode(statuses.last())
+        assertEquals(StatusMessageKey.CONNECTION_STARTED_ON_TARGET, finalStatus?.key)
+        assertEquals(listOf(AppMode.VPN.name, "Germany"), finalStatus?.args)
         assertEquals("fixed-id", latencies.single().id)
         assertEquals("Germany", latencies.single().profileName)
         assertEquals(1234L, latencies.single().createdAtEpochMillis)

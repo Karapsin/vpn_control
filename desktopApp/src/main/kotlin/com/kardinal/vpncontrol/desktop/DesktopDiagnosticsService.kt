@@ -13,7 +13,9 @@ internal class DesktopDiagnosticsService(
     suspend fun export(selection: Result<Path?>) {
         if (selection.isFailure) {
             updateState {
-                it.withStatus(selection.exceptionOrNull()?.message ?: StatusMessages.diagnosticsDestinationOpenFailed())
+                it.withStatus(
+                    DesktopDiagnosticsExportLogic.destinationSelectionFailureMessage(selection.exceptionOrNull()),
+                )
             }
             return
         }
@@ -33,12 +35,7 @@ internal class DesktopDiagnosticsService(
         )
         val result = DesktopTextTransfer.writeTextFile(target, report)
         updateState {
-            it.withStatus(
-                result.fold(
-                    onSuccess = { path -> StatusMessages.diagnosticsExportedTo(path.toString()) },
-                    onFailure = { error -> error.message ?: StatusMessages.diagnosticsExportFailed() },
-                ),
-            )
+            it.withStatus(DesktopDiagnosticsExportLogic.exportResultMessage(result))
         }
     }
 }

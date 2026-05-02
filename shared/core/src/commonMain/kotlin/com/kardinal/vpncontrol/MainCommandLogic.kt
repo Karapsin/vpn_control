@@ -106,6 +106,10 @@ object MainCommandLogic {
         }
     }
 
+    fun refreshStartStatus(state: MainUiState): String {
+        return StatusMessages.findBestStart(state.profileSourceMode)
+    }
+
     fun formatRefreshSummaryMessage(
         refreshedCount: Int,
         failedSubscriptions: List<String>,
@@ -145,11 +149,19 @@ object MainCommandLogic {
         }
     }
 
+    fun startedConnectionStatus(appMode: AppMode): String {
+        return StatusMessages.connectionStarted(appMode)
+    }
+
     fun stoppedConnectionLabel(appMode: AppMode): String {
         return when (appMode) {
             AppMode.VPN -> "VPN stopped"
             AppMode.PROXY_ONLY -> "Proxy stopped"
         }
+    }
+
+    fun stoppedConnectionStatus(appMode: AppMode): String {
+        return StatusMessages.connectionStopped(appMode)
     }
 
     fun bestSelectionStartMessage(appMode: AppMode): String {

@@ -14,7 +14,6 @@ import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 
 class DesktopAppService internal constructor(
     private val desktopStore: DesktopStateStore,
@@ -46,13 +45,7 @@ class DesktopAppService internal constructor(
     )
         private set
 
-    private val shutdownHookInstalled = AtomicBoolean(false)
-    private val shutdownHook = Thread(
-        {
-            runtimeManager.stopBlocking()
-        },
-        "vpn-control-runtime-shutdown",
-    )
+    private val shutdownHook = DesktopRuntimeShutdownHook(runtimeManager::stopBlocking)
     private val connectionActions = DesktopConnectionActionsService(
         stateProvider = { state },
         locationsProvider = { desktopLocations },
@@ -180,9 +173,7 @@ class DesktopAppService internal constructor(
     )
 
     internal fun installShutdownHook(): DesktopAppService {
-        if (shutdownHookInstalled.compareAndSet(false, true)) {
-            runCatching { Runtime.getRuntime().addShutdownHook(shutdownHook) }
-        }
+        runCatching { shutdownHook.install() }
         return this
     }
 

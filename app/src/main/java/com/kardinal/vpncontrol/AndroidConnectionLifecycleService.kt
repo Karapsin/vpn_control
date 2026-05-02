@@ -175,7 +175,7 @@ internal class AndroidConnectionLifecycleService(
             val result = stopConnection()
             updateStatus(
                 result.fold(
-                    onSuccess = { MainCommandLogic.stoppedConnectionLabel(stateProvider().appMode) },
+                    onSuccess = { MainCommandLogic.stoppedConnectionStatus(stateProvider().appMode) },
                     onFailure = {
                         ConnectionOrchestrationLogic.connectionStopFailureMessage(
                             appMode = stateProvider().appMode,
@@ -223,7 +223,7 @@ internal class AndroidConnectionLifecycleService(
                 statusMessage = MainCommandLogic.startingConnectionLabel(stateProvider().appMode),
             )
             val message = if (applyResult.isSuccess) {
-                MainCommandLogic.startedConnectionLabel(stateProvider().appMode)
+                MainCommandLogic.startedConnectionStatus(stateProvider().appMode)
             } else {
                 ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                     result = applyResult,
