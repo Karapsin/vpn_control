@@ -88,6 +88,12 @@ class DesktopAppService private constructor(
         commitState = { nextState -> commitState(nextState = nextState) },
         updateState = ::updateState,
     )
+    private val diagnosticsService = DesktopDiagnosticsService(
+        stateProvider = { state },
+        desktopStore = desktopStore,
+        runtimeManager = runtimeManager,
+        updateState = ::updateState,
+    )
 
     companion object {
         fun default(): DesktopAppService {
@@ -835,35 +841,7 @@ class DesktopAppService private constructor(
     }
 
     suspend fun exportDiagnostics(selection: Result<Path?>) {
-        if (selection.isFailure) {
-            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: "Failed to open diagnostics destination") }
-            return
-        }
-        val target = selection.getOrNull() ?: run {
-            updateState { it.withStatus("Diagnostics export canceled") }
-            return
-        }
-        val report = DesktopDiagnosticsExporter.buildReport(
-            state = state,
-            runtimeMode = runtimeManager.currentMode(),
-            currentPort = runtimeManager.currentPort(),
-            runtimeProcessId = runtimeManager.currentProcessId(),
-            logFile = runtimeManager.currentLogFile() ?: runtimeManager.defaultLogFile(),
-            runtimeConfigJson = desktopStore.readRuntimeConfig() ?: runtimeManager.lastAttemptedConfigJson(),
-            preflightReport = runtimeManager.lastPreflightReport(),
-            vpnCapabilityStatus = runtimeManager.desktopVpnCapabilityStatus(),
-        )
-        val result = DesktopTextTransfer.writeTextFile(target, report)
-        updateState {
-            it.withStatus(
-                result.fold(
-                    onSuccess = { path ->
-                        "Diagnostics exported to $path"
-                    },
-                    onFailure = { error -> error.message ?: "Failed to export diagnostics" },
-                ),
-            )
-        }
+        diagnosticsService.export(selection)
     }
 
     suspend fun benchmarkLocation(index: Int) {
