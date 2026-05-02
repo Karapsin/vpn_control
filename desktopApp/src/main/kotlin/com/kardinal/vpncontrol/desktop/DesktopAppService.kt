@@ -8,14 +8,12 @@ import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
-import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
@@ -165,6 +163,15 @@ class DesktopAppService private constructor(
             )
         },
     )
+    private val runtimeStatusService = DesktopRuntimeStatusService(
+        stateProvider = { state },
+        currentMode = runtimeManager::currentMode,
+        currentPort = runtimeManager::currentPort,
+        lastPreflightReport = runtimeManager::lastPreflightReport,
+        desktopVpnCapabilityStatus = runtimeManager::desktopVpnCapabilityStatus,
+        currentLogFile = runtimeManager::currentLogFile,
+        defaultLogFile = runtimeManager::defaultLogFile,
+    )
 
     companion object {
         fun default(): DesktopAppService {
@@ -256,25 +263,7 @@ class DesktopAppService private constructor(
     }
 
     fun runtimeStatusDetails(): List<String> {
-        val details = mutableListOf<String>()
-        val runtimeMode = runtimeManager.currentMode() ?: state.appMode
-        details += StatusMessages.runtimeMode(runtimeMode.name)
-        runtimeManager.currentPort()?.let { details += StatusMessages.localProxy("127.0.0.1:$it") }
-        if (state.appMode == AppMode.VPN) {
-            val preflight = runtimeManager.lastPreflightReport()
-            if (preflight != null) {
-                details += preflight.summary()
-                preflight.checks
-                    .filter { it.status == DesktopPreflightStatus.FAIL }
-                    .take(2)
-                    .forEach { details += it.line() }
-            } else {
-                details += runtimeManager.desktopVpnCapabilityStatus()
-            }
-        }
-        val logPath = runtimeManager.currentLogFile() ?: runtimeManager.defaultLogFile()
-        details += StatusMessages.runtimeLog(logPath.toString())
-        return details
+        return runtimeStatusService.details()
     }
 
     fun visibleDesktopLocations(): List<DesktopLocationRecord> {

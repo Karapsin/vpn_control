@@ -16,7 +16,6 @@ import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
-import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
@@ -39,10 +38,17 @@ class MainViewModel(
     private val _uiState = controller.mutableState
     val uiState: StateFlow<MainUiState> = controller.state
     private var activeBusyJob: Job? = null
+    private val installedAppsActions = AndroidInstalledAppsActionsService(
+        stateProvider = { _uiState.value },
+        updateState = { transform -> _uiState.value = transform(_uiState.value) },
+        launch = { block -> viewModelScope.launch { block() } },
+        loadInstalledApps = installedAppsCatalog::load,
+        updateStatus = repository::updateStatus,
+    )
     private val controllerEffectHandler = AndroidControllerEffectHandler(
         repository = repository,
         launch = { block -> viewModelScope.launch { block() } },
-        ensureInstalledAppsLoaded = ::ensureInstalledAppsLoaded,
+        ensureInstalledAppsLoaded = installedAppsActions::ensureLoaded,
         importRoutingRules = ::importRoutingRules,
     )
     private val profileActions = AndroidProfileActionsService(
@@ -508,28 +514,6 @@ class MainViewModel(
 
     fun exportDiagnostics() {
         diagnosticsActions.exportDiagnostics()
-    }
-
-    private fun ensureInstalledAppsLoaded() {
-        if (_uiState.value.installedAppsLoaded || _uiState.value.installedAppsLoading) {
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(installedAppsLoading = true)
-            runCatching { installedAppsCatalog.load() }
-                .onSuccess { apps ->
-                    _uiState.value = _uiState.value.copy(
-                        installedApps = apps,
-                        installedAppsLoaded = true,
-                        installedAppsLoading = false,
-                    )
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(installedAppsLoading = false)
-                    repository.updateStatus(error.message ?: "Failed to load apps")
-                }
-        }
     }
 
     private fun handleControllerEffects(effects: List<MainControllerEffect>) {
