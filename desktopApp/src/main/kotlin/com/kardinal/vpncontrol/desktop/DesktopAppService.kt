@@ -11,9 +11,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateProjector
 import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
-import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
-import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
@@ -119,6 +117,22 @@ class DesktopAppService private constructor(
         autostartManager = autostartManager,
         stopConnection = { message -> connectionActions.stop(message) },
         commitState = { nextState -> commitState(nextState = nextState) },
+        updateState = ::updateState,
+    )
+    private val locationBenchmarkService = DesktopLocationBenchmarkService(
+        stateProvider = { state },
+        locationsProvider = { desktopLocations },
+        benchmarkLocation = { profile, dnsSettings, benchmarkUrls, settings ->
+            validationRuntime.benchmarkLocation(
+                profile = profile,
+                dnsSettings = dnsSettings,
+                benchmarkUrls = benchmarkUrls,
+                settings = settings,
+            )
+        },
+        commitState = { nextState, nextLocations ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
         updateState = ::updateState,
     )
     private val findBestService = DesktopFindBestService(
@@ -625,51 +639,7 @@ class DesktopAppService private constructor(
     }
 
     suspend fun benchmarkLocation(index: Int) {
-        val location = desktopLocations.firstOrNull { it.index == index } ?: return
-        val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
-        if (profile.isFailure) {
-            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: "Invalid location config") }
-            return
-        }
-        updateState { it.copy(isBusy = true).withStatus("Testing ${location.name}...") }
-        val validationSettings = state.validationSettings.normalized()
-        val benchmark = validationRuntime.benchmarkLocation(
-            profile = profile.getOrThrow(),
-            dnsSettings = DesktopDnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            ),
-            benchmarkUrls = BenchmarkUrls(
-                primary = validationSettings.primaryUrl,
-                secondary = validationSettings.secondaryUrl,
-            ),
-            settings = validationSettings.toDesktopValidationSettings(),
-        )
-        if (benchmark.isSuccess) {
-            val result = benchmark.getOrThrow()
-            val updatedLocations = desktopLocations.map { existing ->
-                if (existing.index == index) {
-                    existing.copy(
-                        benchmarkDetail = result.detail.toCompactBenchmarkLabel(),
-                        isValid = result.primaryStatus == "ok",
-                    )
-                } else {
-                    existing
-                }
-            }
-            commitState(
-                nextLocations = updatedLocations,
-                nextState = state.copy(isBusy = false).withStatus(
-                    "Benchmarked ${location.name}: ${result.primaryStatus} / ${result.secondaryStatus}",
-                ),
-            )
-        } else {
-            updateState {
-                it.copy(isBusy = false).withStatus(
-                    benchmark.exceptionOrNull()?.message ?: "Failed to benchmark ${location.name}",
-                )
-            }
-        }
+        locationBenchmarkService.benchmark(index)
     }
 
     suspend fun findBestLocation(
