@@ -21,7 +21,7 @@ subscription/import input
 | --- | --- | --- | --- |
 | Manual import/export UI | `app/src/main/java/com/kardinal/vpncontrol/ui/VpnControlApp.kt` | shared UI plus `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTextTransfer.kt` | `shared/ui/` |
 | Subscription fetch/resolve | `app/src/main/java/com/kardinal/vpncontrol/data/RemoteSourceResolver.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionDownloadClient.kt` | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/` |
-| Profile parsing | Android uses the shared parser from app workflows | Desktop uses the shared parser from service workflows | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/ProxyParser.kt` facade, `ProxyParserEngine.kt` implementation, `VlessParser.kt` compatibility shim |
+| Profile parsing | Android uses the shared parser from app workflows | Desktop uses the shared parser from service workflows | `ProxyParser.kt` facade, `ProxyLinkParser.kt`, `ProxyLinkEncoder.kt`, `ProxyParserEngine.kt` subscription implementation, `VlessParser.kt` compatibility shim |
 | Persisted state | `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopStateStore.kt` | `shared/storage-api/`, `shared/model/` |
 | Main state/actions | `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt` plus shared controller | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAppService.kt` | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/MainController.kt`, `MainUiState.kt`, `MainUiStateProjector` |
 | Find Best / benchmark selection | `app/src/main/java/com/kardinal/vpncontrol/data/BenchmarkOrchestrator.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt` | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/BenchmarkSearchLogic.kt` |
@@ -44,7 +44,7 @@ subscription/import input
 
 | Change | Also inspect/update |
 | --- | --- |
-| Subscription payload or direct-link parsing | `ProxyParser`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `docs/sing-box-contract.md`, Android and desktop smoke docs. |
+| Subscription payload or direct-link parsing | `ProxyParser`, `ProxyLinkParser`, `ProxyLinkEncoder`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `docs/sing-box-contract.md`, Android and desktop smoke docs. |
 | `ProxyProtocol` or `ProxyProfile` fields | shared model, parser encoder/decoder, `SingBoxOutboundBuilder`, Android and desktop config factories, diagnostics/export paths. |
 | sing-box outbound/TLS/transport shape | `SingBoxOutboundBuilder`, `SingBoxOutboundBuilderTest`, Android instrumented config tests, desktop config tests. |
 | sing-box DNS, route rules, domain bypass, or rule-set shape | `SingBoxRouteDnsBuilder`, `SingBoxRouteDnsBuilderTest`, Android parity/instrumented config tests, desktop config/parity tests. |
