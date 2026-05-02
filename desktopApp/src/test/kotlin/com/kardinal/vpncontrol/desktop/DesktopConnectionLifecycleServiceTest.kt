@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -60,7 +61,7 @@ class DesktopConnectionLifecycleServiceTest {
         assertEquals(1234L, state.sessionStartedAtEpochMillis)
         assertEquals(1, state.successfulStarts)
         assertEquals("Best: Test", state.lastBenchmarkSummary)
-        assertTrue(state.statusMessage.contains("VPN started on tun-test"))
+        assertEquals(StatusMessages.connectionStartedOnTarget(AppMode.VPN, "tun-test"), state.statusMessage)
     }
 
     @Test
@@ -128,7 +129,7 @@ class DesktopConnectionLifecycleServiceTest {
         assertFalse(state.isVpnRunning)
         assertEquals(9012L, state.sessionStoppedAtEpochMillis)
         assertEquals(0, state.successfulStops)
-        assertTrue(state.statusMessage.contains("Will reconnect on next launch"))
+        assertEquals(StatusMessages.connectionStoppedReconnectOnNextLaunch(AppMode.PROXY_ONLY), state.statusMessage)
     }
 }
 

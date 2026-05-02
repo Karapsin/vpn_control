@@ -5,6 +5,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +29,7 @@ class DesktopConnectionActionsServiceTest {
         actions.resumePreviousConnectionIfNeeded()
 
         assertFalse(state.isVpnRunning)
-        assertEquals("Previous VPN location is no longer available", state.statusMessage)
+        assertEquals(StatusMessages.previousLocationUnavailable(), state.statusMessage)
     }
 
     @Test

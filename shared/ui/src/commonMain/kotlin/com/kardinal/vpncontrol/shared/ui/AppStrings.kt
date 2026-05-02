@@ -503,6 +503,20 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
             "App mode: ${englishConnectionDisplay(arg(0))}"
         StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE ->
             "${englishConnectionDisplay(arg(0))} stopped. App mode: ${englishConnectionDisplay(arg(1))}"
+        StatusMessageKey.PREVIOUS_CONNECTION_RESTORE_PENDING -> "Previous VPN session will be restored"
+        StatusMessageKey.PREVIOUS_LOCATION_UNAVAILABLE -> "Previous VPN location is no longer available"
+        StatusMessageKey.RESTORING_PREVIOUS_CONNECTION -> "Restoring VPN: ${arg(0)}..."
+        StatusMessageKey.CONNECTION_STARTED_ON_TARGET ->
+            "${englishConnectionDisplay(arg(0))} started on ${arg(1)}"
+        StatusMessageKey.CONNECTION_START_FAILED ->
+            "Failed to start ${englishConnectionNoun(arg(0))}"
+        StatusMessageKey.CONNECTION_STOP_FAILED ->
+            "Failed to stop ${englishConnectionNoun(arg(0))}"
+        StatusMessageKey.APP_CLOSED_CONNECTION_WAS_OFF -> "App closed. VPN was off."
+        StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH ->
+            "${englishConnectionDisplay(arg(0))} stopped. Will reconnect on next launch."
+        StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED ->
+            "Failed to stop ${englishConnectionDisplay(arg(0))} before exit"
     }
 }
 
@@ -538,6 +552,9 @@ private fun englishStartingConnection(
 
 private fun englishConnectionDisplay(mode: String): String =
     if (mode.isProxyMode()) "Proxy" else "VPN"
+
+private fun englishConnectionNoun(mode: String): String =
+    if (mode.isProxyMode()) "proxy" else "VPN"
 
 private fun String.isProxyMode(): Boolean =
     equals("PROXY_ONLY", ignoreCase = true) ||

@@ -245,6 +245,15 @@ enum class StatusMessageKey {
     REFRESH_SETTINGS_SAVE_FAILED,
     APP_MODE_CHANGED,
     CONNECTION_STOPPED_FOR_APP_MODE,
+    PREVIOUS_CONNECTION_RESTORE_PENDING,
+    PREVIOUS_LOCATION_UNAVAILABLE,
+    RESTORING_PREVIOUS_CONNECTION,
+    CONNECTION_STARTED_ON_TARGET,
+    CONNECTION_START_FAILED,
+    CONNECTION_STOP_FAILED,
+    APP_CLOSED_CONNECTION_WAS_OFF,
+    CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
+    CONNECTION_STOP_BEFORE_EXIT_FAILED,
 }
 
 data class StructuredStatusMessage(
@@ -426,6 +435,33 @@ object StatusMessages {
         stoppedMode: AppMode,
         nextMode: AppMode,
     ): String = encode(StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE, stoppedMode.name, nextMode.name)
+
+    fun previousConnectionRestorePending(): String =
+        encode(StatusMessageKey.PREVIOUS_CONNECTION_RESTORE_PENDING)
+
+    fun previousLocationUnavailable(): String =
+        encode(StatusMessageKey.PREVIOUS_LOCATION_UNAVAILABLE)
+
+    fun restoringPreviousConnection(locationName: String): String =
+        encode(StatusMessageKey.RESTORING_PREVIOUS_CONNECTION, locationName)
+
+    fun connectionStartedOnTarget(appMode: AppMode, target: String): String =
+        encode(StatusMessageKey.CONNECTION_STARTED_ON_TARGET, appMode.name, target)
+
+    fun connectionStartFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_START_FAILED, appMode.name)
+
+    fun connectionStopFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOP_FAILED, appMode.name)
+
+    fun appClosedConnectionWasOff(): String =
+        encode(StatusMessageKey.APP_CLOSED_CONNECTION_WAS_OFF)
+
+    fun connectionStoppedReconnectOnNextLaunch(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH, appMode.name)
+
+    fun connectionStopBeforeExitFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED, appMode.name)
 
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->

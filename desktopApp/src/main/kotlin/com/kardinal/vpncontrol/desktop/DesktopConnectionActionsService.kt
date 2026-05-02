@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class DesktopConnectionActionsService(
     private val stateProvider: () -> MainUiState,
@@ -31,12 +32,12 @@ internal class DesktopConnectionActionsService(
         if (location == null) {
             updateState {
                 it.copy(isBusy = false, isVpnRunning = false)
-                    .withStatus("Previous VPN location is no longer available")
+                    .withStatus(StatusMessages.previousLocationUnavailable())
             }
             return
         }
         updateState {
-            it.withStatus("Restoring VPN: ${location.name}...")
+            it.withStatus(StatusMessages.restoringPreviousConnection(location.name))
         }
         start(
             location = location,

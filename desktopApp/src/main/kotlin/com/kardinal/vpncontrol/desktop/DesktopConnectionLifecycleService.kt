@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal interface DesktopRuntimeController {
     suspend fun start(
@@ -68,9 +69,9 @@ internal class DesktopConnectionLifecycleService(
             val session = result.getOrThrow()
             val startedAt = clockMillis()
             setResumeConnectionOnLaunch(true)
-            val startedMessage = when (targetMode) {
-                AppMode.PROXY_ONLY -> "Proxy started on 127.0.0.1:${session.listenPort}"
-                AppMode.VPN -> "VPN started on ${session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME}"
+            val startedTarget = when (targetMode) {
+                AppMode.PROXY_ONLY -> "127.0.0.1:${session.listenPort}"
+                AppMode.VPN -> session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
             }
             val latestState = currentState()
             commitState(
@@ -83,14 +84,14 @@ internal class DesktopConnectionLifecycleService(
                     sessionStoppedAtEpochMillis = 0L,
                     successfulStarts = latestState.successfulStarts + 1,
                     lastBenchmarkSummary = benchmarkSummary ?: latestState.lastBenchmarkSummary,
-                ).withStatus(startedMessage),
+                ).withStatus(StatusMessages.connectionStartedOnTarget(targetMode, startedTarget)),
             )
         } else {
             updateState {
                 it.copy(
                     isBusy = false,
                     isVpnRunning = false,
-                ).withStatus(result.exceptionOrNull()?.message ?: "Failed to start ${MainCommandLogic.connectionDisplayName(targetMode)}")
+                ).withStatus(result.exceptionOrNull()?.message ?: StatusMessages.connectionStartFailed(targetMode))
             }
         }
         return result.map { Unit }
@@ -135,7 +136,7 @@ internal class DesktopConnectionLifecycleService(
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)}",
+                    result.exceptionOrNull()?.message ?: StatusMessages.connectionStopFailed(stoppedMode),
                 )
             }
         }
@@ -159,7 +160,7 @@ internal class DesktopConnectionLifecycleService(
                 state.copy(
                     isBusy = false,
                     isVpnRunning = false,
-                ).withStatus("App closed. VPN was off."),
+                ).withStatus(StatusMessages.appClosedConnectionWasOff()),
             )
             return Result.success(Unit)
         }
@@ -175,12 +176,12 @@ internal class DesktopConnectionLifecycleService(
                     isBusy = false,
                     isVpnRunning = false,
                     sessionStoppedAtEpochMillis = stoppedAt,
-                ).withStatus("${MainCommandLogic.connectionDisplayName(stoppedMode)} stopped. Will reconnect on next launch."),
+                ).withStatus(StatusMessages.connectionStoppedReconnectOnNextLaunch(stoppedMode)),
             )
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)} before exit",
+                    result.exceptionOrNull()?.message ?: StatusMessages.connectionStopBeforeExitFailed(stoppedMode),
                 )
             }
         }

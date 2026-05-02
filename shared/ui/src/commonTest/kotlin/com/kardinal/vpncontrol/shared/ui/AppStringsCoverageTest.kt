@@ -483,6 +483,16 @@ class AppStringsCoverageTest {
             StatusMessages.refreshSettingsSaveFailed(),
             StatusMessages.appModeChanged(AppMode.PROXY_ONLY),
             StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
+            StatusMessages.previousConnectionRestorePending(),
+            StatusMessages.previousLocationUnavailable(),
+            StatusMessages.restoringPreviousConnection("Germany"),
+            StatusMessages.connectionStartedOnTarget(AppMode.VPN, "tun-test"),
+            StatusMessages.connectionStartedOnTarget(AppMode.PROXY_ONLY, "127.0.0.1:2080"),
+            StatusMessages.connectionStartFailed(AppMode.VPN),
+            StatusMessages.connectionStopFailed(AppMode.PROXY_ONLY),
+            StatusMessages.appClosedConnectionWasOff(),
+            StatusMessages.connectionStoppedReconnectOnNextLaunch(AppMode.VPN),
+            StatusMessages.connectionStopBeforeExitFailed(AppMode.VPN),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
