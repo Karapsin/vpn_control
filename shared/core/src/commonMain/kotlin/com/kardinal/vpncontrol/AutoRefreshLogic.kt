@@ -22,11 +22,10 @@ object AutoRefreshLogic {
         val shouldFindBestAfterRefresh = wasConnectionRunning && state.findBestAfterSubscriptionRefresh
         return AutoRefreshPlan(
             subscriptionsToRefresh = refreshTargets,
-            statusPrefix = if (refreshTargets.size == 1) {
-                "Auto-refreshing subscription..."
-            } else {
-                "Auto-refreshing subscriptions..."
-            },
+            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(
+                targetCount = refreshTargets.size,
+                auto = true,
+            ),
             shouldFindBestAfterRefresh = shouldFindBestAfterRefresh,
             stopVpnIfSelectedRemoved = !shouldFindBestAfterRefresh,
         )

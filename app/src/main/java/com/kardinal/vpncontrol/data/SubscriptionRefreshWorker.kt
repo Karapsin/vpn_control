@@ -5,6 +5,7 @@ import android.net.VpnService
 import androidx.work.WorkManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.StatusMessages
@@ -77,24 +78,17 @@ class SubscriptionRefreshWorker(
             onSuccess = { refresh ->
                 val refreshedState = storage.snapshot()
                 val failedSubscriptions = refresh.failedSubscriptions
-                val failedSourceUrls = failedSubscriptions.map { it.sourceUrl }.toSet()
-                val partialFailureMessage = backgroundRefreshFailureSummary(failedSubscriptions)
-                val selectedSourceFailed = state.selectedProfileSourceUrl.isNotBlank() &&
-                    state.selectedProfileSourceUrl in failedSourceUrls
-                val selectedMissing =
-                    if (refreshAll) {
-                        previousSelectedStored.isNotBlank() &&
-                            previousSelectedStored !in refreshedState.currentLocations
-                    } else {
-                        val activeLocations = refreshedState.subscriptions
-                            .firstOrNull { it.id == refreshedState.activeSubscriptionId }
-                            ?.cachedLocations
-                            .orEmpty()
-                        previousSelectedStored.isNotBlank() &&
-                            state.selectedProfileSourceUrl.isNotBlank() &&
-                            state.selectedProfileSourceUrl == state.profileUrl &&
-                            previousSelectedStored !in activeLocations
-                    }
+                val failedSubscriptionNames = failedSubscriptions.map { it.displayName }
+                val selectedSourceFailed = SubscriptionRefreshResultLogic.selectedSourceFailed(
+                    selectedProfileSourceUrl = state.selectedProfileSourceUrl,
+                    failures = failedSubscriptions,
+                )
+                val selectedMissing = SubscriptionRefreshResultLogic.selectedMissingAfterRefresh(
+                    refreshAll = refreshAll,
+                    previousState = state,
+                    refreshedState = refreshedState,
+                    previousSelectedStored = previousSelectedStored,
+                )
 
                 if (state.isVpnRunning && state.findBestAfterSubscriptionRefresh) {
                     if (state.appMode == AppMode.VPN && VpnService.prepare(applicationContext) != null) {
@@ -132,20 +126,12 @@ class SubscriptionRefreshWorker(
                                 state = refreshedState,
                             )
                             storage.updateStatus(
-                                buildString {
-                                    append("Subscriptions refreshed")
-                                    if (failedSubscriptions.isNotEmpty()) {
-                                        append(" with partial failures")
-                                    }
-                                    append(". Switched ${connectionLabel(state.appMode)} to ${selection.profile.remarks}")
-                                    winnerSource?.let {
-                                        append(" (best from $it)")
-                                    }
-                                    partialFailureMessage?.let {
-                                        append(". ")
-                                        append(it)
-                                    }
-                                },
+                                SubscriptionRefreshResultLogic.backgroundSwitchedMessage(
+                                    connectionLabel = connectionLabel(state.appMode),
+                                    selectedProfileName = selection.profile.remarks,
+                                    winnerSource = winnerSource,
+                                    failedSubscriptionNames = failedSubscriptionNames,
+                                ),
                             )
                             DiagnosticsLogger.append(
                                 applicationContext,
@@ -167,21 +153,13 @@ class SubscriptionRefreshWorker(
                         ?: replacement.exceptionOrNull()?.message
                         ?: "Failed to find a replacement location"
                     storage.updateStatus(
-                        buildString {
-                            append("Subscription refresh finished. ")
-                            append(failureMessage)
-                            partialFailureMessage?.let {
-                                append(". ")
-                                append(it)
-                            }
-                            if (selectedSourceFailed) {
-                                append(". Current ${connectionLabel(state.appMode)} location belongs to a subscription that did not refresh")
-                            }
-                            if (rollbackMessage.isNotBlank()) {
-                                append(" ")
-                                append(rollbackMessage)
-                            }
-                        }.trim(),
+                        SubscriptionRefreshResultLogic.backgroundReplacementFailedMessage(
+                            connectionLabel = connectionLabel(state.appMode),
+                            failureMessage = failureMessage,
+                            failedSubscriptionNames = failedSubscriptionNames,
+                            selectedSourceFailed = selectedSourceFailed,
+                            rollbackMessage = rollbackMessage,
+                        ),
                     )
                     DiagnosticsLogger.append(
                         applicationContext,
@@ -197,13 +175,10 @@ class SubscriptionRefreshWorker(
                         sourceUrlOverride = "",
                     )
                     storage.updateStatus(
-                        buildString {
-                            append("Active subscription changed, but the current ${connectionLabel(state.appMode)} location was kept as a fallback")
-                            partialFailureMessage?.let {
-                                append(". ")
-                                append(it)
-                            }
-                        },
+                        SubscriptionRefreshResultLogic.backgroundSelectedMissingMessage(
+                            connectionLabel = connectionLabel(state.appMode),
+                            failedSubscriptionNames = failedSubscriptionNames,
+                        ),
                     )
                     DiagnosticsLogger.append(
                         applicationContext,
@@ -214,20 +189,11 @@ class SubscriptionRefreshWorker(
 
                 if (state.isVpnRunning) {
                     storage.updateStatus(
-                        buildString {
-                            append("Subscriptions refreshed")
-                            if (failedSubscriptions.isNotEmpty()) {
-                                append(" with partial failures")
-                            }
-                            append(". Current ${connectionLabel(state.appMode)} location kept")
-                            if (selectedSourceFailed) {
-                                append(" from the previous cache")
-                            }
-                            partialFailureMessage?.let {
-                                append(". ")
-                                append(it)
-                            }
-                        },
+                        SubscriptionRefreshResultLogic.backgroundKeptCurrentMessage(
+                            connectionLabel = connectionLabel(state.appMode),
+                            failedSubscriptionNames = failedSubscriptionNames,
+                            selectedSourceFailed = selectedSourceFailed,
+                        ),
                     )
                 }
 
@@ -369,22 +335,6 @@ class SubscriptionRefreshWorker(
         return when (appMode) {
             AppMode.VPN -> "VPN"
             AppMode.PROXY_ONLY -> "proxy"
-        }
-    }
-
-    private fun backgroundRefreshFailureSummary(
-        failures: List<SubscriptionRefreshFailure>,
-    ): String? {
-        if (failures.isEmpty()) return null
-        val labels = failures
-            .map { it.displayName }
-            .distinct()
-        val visible = labels.take(2).joinToString(", ")
-        val overflow = (labels.size - 2).coerceAtLeast(0)
-        return if (overflow > 0) {
-            "Failed to refresh: $visible +$overflow more"
-        } else {
-            "Failed to refresh: $visible"
         }
     }
 

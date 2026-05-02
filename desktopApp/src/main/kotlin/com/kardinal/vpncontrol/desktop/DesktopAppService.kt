@@ -11,6 +11,7 @@ import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateProjector
 import com.kardinal.vpncontrol.MainUiStateTransitions
+import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
@@ -595,23 +596,21 @@ class DesktopAppService private constructor(
     suspend fun refreshAllSubscriptions() {
         refreshDesktopSubscriptions(
             subscriptionsToRefresh = state.subscriptions.filter { it.url.isNotBlank() },
-            statusPrefix = "Refreshing subscriptions...",
+            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(
+                state.subscriptions.count { it.url.isNotBlank() },
+            ),
         )
     }
 
     suspend fun refreshActiveSubscriptions() {
         val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
         if (refreshTargets.isEmpty()) {
-            updateState { it.withStatus("Set a remote source first") }
+            updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
             return
         }
         refreshDesktopSubscriptions(
             subscriptionsToRefresh = refreshTargets,
-            statusPrefix = if (refreshTargets.size == 1) {
-                "Refreshing subscription..."
-            } else {
-                "Refreshing subscriptions..."
-            },
+            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
         )
     }
 
@@ -742,7 +741,7 @@ class DesktopAppService private constructor(
         stopVpnIfSelectedRemoved: Boolean = true,
     ): Result<Int> {
         if (subscriptionsToRefresh.isEmpty()) {
-            updateState { it.withStatus("Set a remote source first") }
+            updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
             return Result.failure(IllegalStateException("No subscriptions to refresh"))
         }
 
@@ -927,11 +926,7 @@ class DesktopAppService private constructor(
             val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
             val refreshResult = refreshDesktopSubscriptions(
                 subscriptionsToRefresh = refreshTargets,
-                statusPrefix = if (refreshTargets.size == 1) {
-                    "Refreshing subscription..."
-                } else {
-                    "Refreshing subscriptions..."
-                },
+                statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
             )
             if (refreshResult.isFailure) {
                 return

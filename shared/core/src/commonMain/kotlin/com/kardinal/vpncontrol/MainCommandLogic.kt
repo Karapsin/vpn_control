@@ -112,20 +112,12 @@ object MainCommandLogic {
         totalCount: Int,
         defaultSuccess: String,
     ): String {
-        if (failedSubscriptions.isEmpty()) {
-            return defaultSuccess
-        }
-        val distinctFailures = failedSubscriptions.distinct()
-        val failedLabel = distinctFailures
-            .take(2)
-            .joinToString(", ")
-        val overflow = (distinctFailures.size - 2).coerceAtLeast(0)
-        val failedSuffix = if (overflow > 0) {
-            "$failedLabel +$overflow more"
-        } else {
-            failedLabel
-        }
-        return "Subscriptions refreshed: $refreshedCount/$totalCount. Failed: $failedSuffix"
+        return SubscriptionRefreshResultLogic.summary(
+            refreshedCount = refreshedCount,
+            failedSubscriptionNames = failedSubscriptions,
+            totalCount = totalCount,
+            defaultSuccess = defaultSuccess,
+        )
     }
 
     fun connectionNoun(appMode: AppMode): String {

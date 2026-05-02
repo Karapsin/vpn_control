@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.ResolvedRemoteSource
@@ -93,15 +93,10 @@ internal class DesktopSubscriptionService(
             }
         }
 
-        val summary = MainCommandLogic.formatRefreshSummaryMessage(
+        val summary = SubscriptionRefreshResultLogic.genericSummary(
             refreshedCount = loadedByUrl.size,
-            failedSubscriptions = failedLabels,
+            failedSubscriptionNames = failedLabels,
             totalCount = subscriptionsToRefresh.size,
-            defaultSuccess = if (loadedByUrl.size == 1 && subscriptionsToRefresh.size == 1) {
-                "Subscription refreshed"
-            } else {
-                "Subscriptions refreshed"
-            },
         )
         return Result.success(
             DesktopSubscriptionRefreshPayload(

@@ -388,37 +388,31 @@ class MainViewModel(
     fun refreshActiveSubscriptionCache() {
         viewModelScope.launch {
             if (_uiState.value.subscriptions.isEmpty()) {
-                repository.updateStatus("No subscriptions saved yet")
+                repository.updateStatus(SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE)
                 return@launch
             }
             setBusy(true)
             try {
+                val refreshAll = _uiState.value.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID
                 repository.updateStatus(
-                    if (_uiState.value.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID) {
-                        "Refreshing all subscriptions..."
-                    } else {
-                        "Refreshing active subscription..."
-                    },
+                    SubscriptionRefreshResultLogic.refreshStartMessage(
+                        targetCount = if (refreshAll) _uiState.value.subscriptions.size else 1,
+                    ),
                 )
                 val result = repository.refreshActiveSubscriptionCache()
                 repository.updateStatus(
                     result.fold(
                         onSuccess = { refresh ->
-                            if (_uiState.value.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID) {
-                                MainCommandLogic.formatRefreshSummaryMessage(
-                                    refreshedCount = refresh.refreshedCount,
-                                    failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
-                                    totalCount = _uiState.value.subscriptions.size,
-                                    defaultSuccess = "All subscriptions refreshed",
-                                )
-                            } else {
-                                MainCommandLogic.formatRefreshSummaryMessage(
-                                    refreshedCount = refresh.refreshedCount,
-                                    failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
-                                    totalCount = 1,
-                                    defaultSuccess = "Active subscription refreshed",
-                                )
-                            }
+                            SubscriptionRefreshResultLogic.manualSummary(
+                                scope = if (refreshAll) {
+                                    SubscriptionRefreshScope.ALL
+                                } else {
+                                    SubscriptionRefreshScope.ACTIVE
+                                },
+                                refreshedCount = refresh.refreshedCount,
+                                failedSubscriptionNames = refresh.failedSubscriptions.map { it.displayName },
+                                totalCount = if (refreshAll) _uiState.value.subscriptions.size else 1,
+                            )
                         },
                         onFailure = { it.message ?: "Failed to refresh the active subscription" },
                     ),
@@ -432,21 +426,25 @@ class MainViewModel(
     fun refreshAllSubscriptionsCaches() {
         viewModelScope.launch {
             if (_uiState.value.subscriptions.isEmpty()) {
-                repository.updateStatus("No subscriptions saved yet")
+                repository.updateStatus(SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE)
                 return@launch
             }
             setBusy(true)
             try {
-                repository.updateStatus("Refreshing all subscriptions...")
+                repository.updateStatus(
+                    SubscriptionRefreshResultLogic.refreshStartMessage(
+                        targetCount = _uiState.value.subscriptions.size,
+                    ),
+                )
                 val result = repository.refreshAllSubscriptionsCaches()
                 repository.updateStatus(
                     result.fold(
                         onSuccess = { refresh ->
-                            MainCommandLogic.formatRefreshSummaryMessage(
+                            SubscriptionRefreshResultLogic.manualSummary(
+                                scope = SubscriptionRefreshScope.ALL,
                                 refreshedCount = refresh.refreshedCount,
-                                failedSubscriptions = refresh.failedSubscriptions.map { it.displayName },
+                                failedSubscriptionNames = refresh.failedSubscriptions.map { it.displayName },
                                 totalCount = _uiState.value.subscriptions.size,
-                                defaultSuccess = "Subscriptions refreshed: ${refresh.refreshedCount}/${_uiState.value.subscriptions.size}",
                             )
                         },
                         onFailure = { it.message ?: "Failed to refresh subscriptions" },
