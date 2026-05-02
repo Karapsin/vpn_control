@@ -28,12 +28,14 @@ shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/
 Android owns platform operations that need Android APIs, permissions, WorkManager, app catalogs, or the Android VPN service:
 
 - `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/AndroidProfileActionsService.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/AndroidControllerEffectHandler.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/InstalledAppsCatalog.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt`
 
-Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects.
+Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService` and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
 
 ## Desktop Owns Desktop IO And Runtime Side Effects
 

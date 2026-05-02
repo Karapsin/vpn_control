@@ -9,11 +9,9 @@ import com.kardinal.vpncontrol.data.BenchmarkOrchestrator
 import com.kardinal.vpncontrol.data.DiagnosticsExporter
 import com.kardinal.vpncontrol.data.InstalledAppsCatalog
 import com.kardinal.vpncontrol.data.ImportPreference
-import com.kardinal.vpncontrol.data.IncomingImportResolver
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.ProfileStorage
-import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
@@ -48,6 +46,19 @@ class MainViewModel(
     private val _uiState = controller.mutableState
     val uiState: StateFlow<MainUiState> = controller.state
     private var activeBusyJob: Job? = null
+    private val controllerEffectHandler = AndroidControllerEffectHandler(
+        repository = repository,
+        launch = { block -> viewModelScope.launch { block() } },
+        ensureInstalledAppsLoaded = ::ensureInstalledAppsLoaded,
+        importRoutingRules = ::importRoutingRules,
+    )
+    private val profileActions = AndroidProfileActionsService(
+        controller = controller,
+        stateProvider = { _uiState.value },
+        effectSink = controllerEffectHandler,
+        launch = { block -> viewModelScope.launch { block() } },
+        updateStatus = repository::updateStatus,
+    )
     private val connectionLifecycle = AndroidConnectionLifecycleService(
         stateProvider = { _uiState.value },
         updateState = { transform -> _uiState.value = transform(_uiState.value) },
@@ -187,36 +198,31 @@ class MainViewModel(
     }
 
     fun onProfileDraftChanged(value: String) {
-        controller.onProfileDraftChanged(value)
+        profileActions.onProfileDraftChanged(value)
     }
 
     fun pasteSubscriptionDraft(raw: String) {
-        handleControllerEffects(controller.pasteSubscriptionDraft(raw))
+        profileActions.pasteSubscriptionDraft(raw)
     }
 
     fun toggleAddSubscriptionEditor() {
-        controller.toggleAddSubscriptionEditor()
+        profileActions.toggleAddSubscriptionEditor()
     }
 
     fun showProfileHistoryRenameDialog(source: String) {
-        val normalized = source.trim()
-        val currentName = _uiState.value.profileHistoryNames[normalized]
-            ?.takeIf { it.isNotBlank() }
-            ?: RemoteSourceResolver.preview(normalized)?.title
-            .orEmpty()
-        controller.showProfileHistoryRenameDialog(normalized, currentName)
+        profileActions.showProfileHistoryRenameDialog(source)
     }
 
     fun closeProfileHistoryRenameDialog() {
-        controller.closeProfileHistoryRenameDialog()
+        profileActions.closeProfileHistoryRenameDialog()
     }
 
     fun onProfileHistoryRenameDraftChanged(value: String) {
-        controller.onProfileHistoryRenameDraftChanged(value)
+        profileActions.onProfileHistoryRenameDraftChanged(value)
     }
 
     fun setProfileSourceMode(value: ProfileSourceMode) {
-        handleControllerEffects(controller.setProfileSourceMode(value))
+        profileActions.setProfileSourceMode(value)
     }
 
     fun setAppMode(value: AppMode) {
@@ -376,13 +382,11 @@ class MainViewModel(
     }
 
     fun saveProfile() {
-        handleControllerEffects(
-            controller.saveProfile(RemoteSourceResolver::validateProfileSource),
-        )
+        profileActions.saveProfile()
     }
 
     fun clearProfileSource() {
-        controller.clearProfileSource()
+        profileActions.clearProfileSource()
     }
 
     fun refreshActiveSubscriptionCache() {
@@ -457,40 +461,23 @@ class MainViewModel(
     }
 
     fun handleIncomingSharedText(raw: String) {
-        handleIncomingImportText(raw, ImportPreference.AUTO)
+        profileActions.handleIncomingSharedText(raw)
     }
 
     fun handleIncomingImportText(raw: String, preference: ImportPreference = ImportPreference.AUTO) {
-        val trimmed = raw.trim()
-        if (trimmed.isBlank()) return
-        viewModelScope.launch {
-            IncomingImportResolver.resolve(
-                raw = trimmed,
-                preference = preference,
-                validateSubscription = RemoteSourceResolver::validateProfileSource,
-            ).fold(
-                onSuccess = { payload ->
-                    handleControllerEffects(controller.handleIncomingImport(payload, preference))
-                },
-                onFailure = { error ->
-                    repository.updateStatus(
-                        error.message ?: "Shared text is not a supported import payload",
-                    )
-                },
-            )
-        }
+        profileActions.handleIncomingImportText(raw, preference)
     }
 
     fun useProfileHistoryEntry(subscriptionId: String) {
-        handleControllerEffects(controller.useProfileHistoryEntry(subscriptionId))
+        profileActions.useProfileHistoryEntry(subscriptionId)
     }
 
     fun deleteProfileHistoryEntry(source: String) {
-        handleControllerEffects(controller.deleteProfileHistoryEntry(source))
+        profileActions.deleteProfileHistoryEntry(source)
     }
 
     fun saveProfileHistoryRename() {
-        handleControllerEffects(controller.saveProfileHistoryRename())
+        profileActions.saveProfileHistoryRename()
     }
 
     fun saveSubscriptionRefreshPolicy() {
@@ -934,82 +921,7 @@ class MainViewModel(
     }
 
     private fun handleControllerEffects(effects: List<MainControllerEffect>) {
-        if (effects.isEmpty()) return
-        effects.forEach { effect ->
-            when (effect) {
-                MainControllerEffect.EnsureInstalledAppsLoaded -> ensureInstalledAppsLoaded()
-                is MainControllerEffect.UpdateStatus -> {
-                    viewModelScope.launch {
-                        repository.updateStatus(effect.message)
-                    }
-                }
-                is MainControllerEffect.UpdateProfileSourceMode -> {
-                    viewModelScope.launch {
-                        repository.updateProfileSourceMode(effect.mode)
-                    }
-                }
-                is MainControllerEffect.UpdateAppMode -> {
-                    viewModelScope.launch {
-                        repository.updateAppMode(effect.mode)
-                    }
-                }
-                is MainControllerEffect.UpdateAppLanguage -> {
-                    viewModelScope.launch {
-                        repository.updateAppLanguage(effect.language)
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.SelectActiveSubscription -> {
-                    viewModelScope.launch {
-                        repository.selectActiveSubscription(effect.subscriptionId)
-                    }
-                }
-                is MainControllerEffect.ImportRoutingRules -> importRoutingRules(effect.raw)
-                is MainControllerEffect.SaveProfileSource -> {
-                    viewModelScope.launch {
-                        repository.updateProfileSource(effect.value, effect.mode)
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.DeleteProfileHistoryEntry -> {
-                    viewModelScope.launch {
-                        repository.deleteProfileHistoryEntry(effect.source)
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.SaveProfileHistoryRename -> {
-                    viewModelScope.launch {
-                        repository.updateProfileHistoryName(effect.source, effect.normalizedName)
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.SaveSubscriptionRefreshPolicy -> {
-                    viewModelScope.launch {
-                        repository.updateSubscriptionRefreshPolicy(
-                            policy = effect.policy,
-                            customHours = effect.customHours,
-                            findBestAfterRefresh = effect.findBestAfterRefresh,
-                        )
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.SaveValidationSettings -> {
-                    viewModelScope.launch {
-                        repository.updateValidationSettings(effect.settings)
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-                is MainControllerEffect.SaveDns -> {
-                    viewModelScope.launch {
-                        repository.updateCustomDns(
-                            dns = effect.dns,
-                            enabled = effect.enabled,
-                        )
-                        repository.updateStatus(effect.statusMessage)
-                    }
-                }
-            }
-        }
+        controllerEffectHandler.handle(effects)
     }
 
     private fun setBusy(value: Boolean) {
