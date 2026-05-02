@@ -32,13 +32,15 @@ Android owns platform operations that need Android APIs, permissions, WorkManage
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidLocationActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidRoutingActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidSubscriptionRefreshActionsService.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/AndroidSettingsActionsService.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/AndroidDiagnosticsActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidControllerEffectHandler.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/InstalledAppsCatalog.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt`
 
-Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService`, location mutation/selection orchestration in `AndroidLocationActionsService`, routing draft/import/save orchestration in `AndroidRoutingActionsService`, manual subscription refresh orchestration in `AndroidSubscriptionRefreshActionsService`, and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
+Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService`, location mutation/selection orchestration in `AndroidLocationActionsService`, routing draft/import/save orchestration in `AndroidRoutingActionsService`, manual subscription refresh orchestration in `AndroidSubscriptionRefreshActionsService`, settings persistence in `AndroidSettingsActionsService`, diagnostics export orchestration in `AndroidDiagnosticsActionsService`, and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
 
 ## Desktop Owns Desktop IO And Runtime Side Effects
 

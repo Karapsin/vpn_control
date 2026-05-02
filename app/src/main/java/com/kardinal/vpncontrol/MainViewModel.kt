@@ -106,6 +106,24 @@ class MainViewModel(
         runActiveRefresh = repository::refreshActiveSubscriptionCache,
         runAllRefresh = repository::refreshAllSubscriptionsCaches,
     )
+    private val settingsActions = AndroidSettingsActionsService(
+        controller = controller,
+        effectSink = controllerEffectHandler,
+        launch = { block -> viewModelScope.launch { block() } },
+        updateStatus = repository::updateStatus,
+        updateSessionStatsEnabled = repository::updateSessionStatsEnabled,
+        updateLiveTrafficStatsEnabled = repository::updateLiveTrafficStatsEnabled,
+        updateProfileTotalsEnabled = repository::updateProfileTotalsEnabled,
+        updateLatencyHistoryEnabled = repository::updateLatencyHistoryEnabled,
+        updateConnectionLogEnabled = repository::updateConnectionLogEnabled,
+        updateConnectionTestToolsEnabled = repository::updateConnectionTestToolsEnabled,
+    )
+    private val diagnosticsActions = AndroidDiagnosticsActionsService(
+        launch = { block -> viewModelScope.launch { block() } },
+        setBusy = ::setBusy,
+        updateStatus = repository::updateStatus,
+        exportAndShare = diagnosticsExporter::exportAndShare,
+    )
 
     init {
         repository.state.onEach { persisted ->
@@ -118,91 +136,55 @@ class MainViewModel(
     }
 
     fun toggleDnsDialog() {
-        controller.toggleDnsDialog()
+        settingsActions.toggleDnsDialog()
     }
 
     fun toggleUiSettingsDialog() {
-        controller.toggleUiSettingsDialog()
+        settingsActions.toggleUiSettingsDialog()
     }
 
     fun setSessionStatsEnabled(enabled: Boolean) {
-        controller.setSessionStatsEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateSessionStatsEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Session stats enabled" else "Session stats hidden",
-            )
-        }
+        settingsActions.setSessionStatsEnabled(enabled)
     }
 
     fun setLiveTrafficStatsEnabled(enabled: Boolean) {
-        controller.setLiveTrafficStatsEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateLiveTrafficStatsEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Live traffic stats enabled" else "Live traffic stats hidden",
-            )
-        }
+        settingsActions.setLiveTrafficStatsEnabled(enabled)
     }
 
     fun setProfileTotalsEnabled(enabled: Boolean) {
-        controller.setProfileTotalsEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateProfileTotalsEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Per-profile totals enabled" else "Per-profile totals hidden",
-            )
-        }
+        settingsActions.setProfileTotalsEnabled(enabled)
     }
 
     fun setLatencyHistoryEnabled(enabled: Boolean) {
-        controller.setLatencyHistoryEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateLatencyHistoryEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Latency history enabled" else "Latency history hidden",
-            )
-        }
+        settingsActions.setLatencyHistoryEnabled(enabled)
     }
 
     fun setConnectionLogEnabled(enabled: Boolean) {
-        controller.setConnectionLogEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateConnectionLogEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Connection log enabled" else "Connection log hidden",
-            )
-        }
+        settingsActions.setConnectionLogEnabled(enabled)
     }
 
     fun setConnectionTestToolsEnabled(enabled: Boolean) {
-        controller.setConnectionTestToolsEnabled(enabled)
-        viewModelScope.launch {
-            repository.updateConnectionTestToolsEnabled(enabled)
-            repository.updateStatus(
-                if (enabled) "Connection test tools enabled" else "Connection test tools hidden",
-            )
-        }
+        settingsActions.setConnectionTestToolsEnabled(enabled)
     }
 
     fun toggleAppModeDialog() {
-        controller.toggleAppModeDialog()
+        settingsActions.toggleAppModeDialog()
     }
 
     fun toggleRefreshPolicyDialog() {
-        controller.toggleRefreshPolicyDialog()
+        settingsActions.toggleRefreshPolicyDialog()
     }
 
     fun toggleValidationSettingsDialog() {
-        controller.toggleValidationSettingsDialog()
+        settingsActions.toggleValidationSettingsDialog()
     }
 
     fun toggleLanguageDialog() {
-        controller.toggleLanguageDialog()
+        settingsActions.toggleLanguageDialog()
     }
 
     fun setAppLanguage(language: AppLanguage) {
-        handleControllerEffects(controller.setAppLanguage(language))
+        settingsActions.setAppLanguage(language)
     }
 
     fun openRoutingRules() {
@@ -258,43 +240,43 @@ class MainViewModel(
     }
 
     fun setAppMode(value: AppMode) {
-        handleControllerEffects(controller.setAppMode(value))
+        settingsActions.setAppMode(value)
     }
 
     fun onDnsDraftChanged(value: String) {
-        controller.onDnsDraftChanged(value)
+        settingsActions.onDnsDraftChanged(value)
     }
 
     fun onCustomDnsEnabledChanged(enabled: Boolean) {
-        controller.onCustomDnsEnabledChanged(enabled)
+        settingsActions.onCustomDnsEnabledChanged(enabled)
     }
 
     fun onSubscriptionRefreshPolicyDraftChanged(policy: SubscriptionRefreshPolicy) {
-        controller.onSubscriptionRefreshPolicyDraftChanged(policy)
+        settingsActions.onSubscriptionRefreshPolicyDraftChanged(policy)
     }
 
     fun onFindBestAfterSubscriptionRefreshDraftChanged(enabled: Boolean) {
-        controller.onFindBestAfterSubscriptionRefreshDraftChanged(enabled)
+        settingsActions.onFindBestAfterSubscriptionRefreshDraftChanged(enabled)
     }
 
     fun onSubscriptionRefreshCustomHoursDraftChanged(value: String) {
-        controller.onSubscriptionRefreshCustomHoursDraftChanged(value)
+        settingsActions.onSubscriptionRefreshCustomHoursDraftChanged(value)
     }
 
     fun onValidationPrimaryUrlDraftChanged(value: String) {
-        controller.onValidationPrimaryUrlDraftChanged(value)
+        settingsActions.onValidationPrimaryUrlDraftChanged(value)
     }
 
     fun onValidationSecondaryUrlDraftChanged(value: String) {
-        controller.onValidationSecondaryUrlDraftChanged(value)
+        settingsActions.onValidationSecondaryUrlDraftChanged(value)
     }
 
     fun onValidationBatchSizeDraftChanged(value: String) {
-        controller.onValidationBatchSizeDraftChanged(value)
+        settingsActions.onValidationBatchSizeDraftChanged(value)
     }
 
     fun onValidationRetryCountDraftChanged(value: String) {
-        controller.onValidationRetryCountDraftChanged(value)
+        settingsActions.onValidationRetryCountDraftChanged(value)
     }
 
     fun onRoutingIgnoreRulesDraftChanged(enabled: Boolean) {
@@ -442,11 +424,11 @@ class MainViewModel(
     }
 
     fun saveSubscriptionRefreshPolicy() {
-        handleControllerEffects(controller.saveSubscriptionRefreshPolicy())
+        settingsActions.saveSubscriptionRefreshPolicy()
     }
 
     fun saveValidationSettings() {
-        handleControllerEffects(controller.saveValidationSettings())
+        settingsActions.saveValidationSettings()
     }
 
     fun saveLocation() {
@@ -470,7 +452,7 @@ class MainViewModel(
     }
 
     fun saveDns() {
-        handleControllerEffects(controller.saveDns())
+        settingsActions.saveDns()
     }
 
     fun saveRoutingRules() {
@@ -494,9 +476,7 @@ class MainViewModel(
     }
 
     fun postStatus(message: String) {
-        viewModelScope.launch {
-            repository.updateStatus(message)
-        }
+        settingsActions.postStatus(message)
     }
 
     fun cancelActiveOperation() {
@@ -596,17 +576,7 @@ class MainViewModel(
     }
 
     fun exportDiagnostics() {
-        viewModelScope.launch {
-            setBusy(true)
-            val result = diagnosticsExporter.exportAndShare()
-            repository.updateStatus(
-                result.fold(
-                    onSuccess = { "Diagnostics export opened" },
-                    onFailure = { it.message ?: "Diagnostics export failed" },
-                ),
-            )
-            setBusy(false)
-        }
+        diagnosticsActions.exportDiagnostics()
     }
 
     private fun ensureInstalledAppsLoaded() {
