@@ -23,7 +23,6 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -98,6 +97,14 @@ class MainViewModel(
         setBusy = ::setBusy,
         updateRoutingRules = repository::updateRoutingRules,
         updateStatus = repository::updateStatus,
+    )
+    private val subscriptionRefreshActions = AndroidSubscriptionRefreshActionsService(
+        stateProvider = { _uiState.value },
+        launch = { block -> viewModelScope.launch { block() } },
+        setBusy = ::setBusy,
+        updateStatus = repository::updateStatus,
+        runActiveRefresh = repository::refreshActiveSubscriptionCache,
+        runAllRefresh = repository::refreshAllSubscriptionsCaches,
     )
 
     init {
@@ -407,74 +414,11 @@ class MainViewModel(
     }
 
     fun refreshActiveSubscriptionCache() {
-        viewModelScope.launch {
-            if (_uiState.value.subscriptions.isEmpty()) {
-                repository.updateStatus(SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE)
-                return@launch
-            }
-            setBusy(true)
-            try {
-                val refreshAll = _uiState.value.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID
-                repository.updateStatus(
-                    SubscriptionRefreshResultLogic.refreshStartMessage(
-                        targetCount = if (refreshAll) _uiState.value.subscriptions.size else 1,
-                    ),
-                )
-                val result = repository.refreshActiveSubscriptionCache()
-                repository.updateStatus(
-                    result.fold(
-                        onSuccess = { refresh ->
-                            SubscriptionRefreshResultLogic.manualSummary(
-                                scope = if (refreshAll) {
-                                    SubscriptionRefreshScope.ALL
-                                } else {
-                                    SubscriptionRefreshScope.ACTIVE
-                                },
-                                refreshedCount = refresh.refreshedCount,
-                                failedSubscriptionNames = refresh.failedSubscriptions.map { it.displayName },
-                                totalCount = if (refreshAll) _uiState.value.subscriptions.size else 1,
-                            )
-                        },
-                        onFailure = { it.message ?: "Failed to refresh the active subscription" },
-                    ),
-                )
-            } finally {
-                setBusy(false)
-            }
-        }
+        subscriptionRefreshActions.refreshActiveSubscriptionCache()
     }
 
     fun refreshAllSubscriptionsCaches() {
-        viewModelScope.launch {
-            if (_uiState.value.subscriptions.isEmpty()) {
-                repository.updateStatus(SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE)
-                return@launch
-            }
-            setBusy(true)
-            try {
-                repository.updateStatus(
-                    SubscriptionRefreshResultLogic.refreshStartMessage(
-                        targetCount = _uiState.value.subscriptions.size,
-                    ),
-                )
-                val result = repository.refreshAllSubscriptionsCaches()
-                repository.updateStatus(
-                    result.fold(
-                        onSuccess = { refresh ->
-                            SubscriptionRefreshResultLogic.manualSummary(
-                                scope = SubscriptionRefreshScope.ALL,
-                                refreshedCount = refresh.refreshedCount,
-                                failedSubscriptionNames = refresh.failedSubscriptions.map { it.displayName },
-                                totalCount = _uiState.value.subscriptions.size,
-                            )
-                        },
-                        onFailure = { it.message ?: "Failed to refresh subscriptions" },
-                    ),
-                )
-            } finally {
-                setBusy(false)
-            }
-        }
+        subscriptionRefreshActions.refreshAllSubscriptionsCaches()
     }
 
     fun handleIncomingSharedText(raw: String) {
