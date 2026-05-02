@@ -29,6 +29,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
 | Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
 | Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
+| Desktop subscription refresh orchestration | `./gradlew :desktopApp:test` |
 | Desktop per-location benchmark orchestration | `./gradlew :desktopApp:test` |
 | Desktop package metadata or bundled runtime extraction | Relevant package script and package smoke tests |
 | Linux packaging | `./scripts/package_linux_desktop.sh` |

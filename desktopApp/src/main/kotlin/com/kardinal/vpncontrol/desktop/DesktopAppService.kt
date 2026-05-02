@@ -5,12 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
-import com.kardinal.vpncontrol.AutoRefreshLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateProjector
 import com.kardinal.vpncontrol.MainUiStateTransitions
-import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
@@ -135,12 +133,25 @@ class DesktopAppService private constructor(
         },
         updateState = ::updateState,
     )
+    private val subscriptionRefreshService = DesktopSubscriptionRefreshService(
+        stateProvider = { state },
+        locationsProvider = { desktopLocations },
+        subscriptionService = subscriptionService,
+        isRuntimeRunning = { connectionLifecycle.isRuntimeRunning() },
+        stopConnection = { message -> connectionActions.stop(message) },
+        activeConnectionName = ::activeConnectionName,
+        findBestAfterRefresh = { autoRefreshBestSelectionAction(this) },
+        commitState = { nextState, nextLocations ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
+        updateState = ::updateState,
+    )
     private val findBestService = DesktopFindBestService(
         stateProvider = { state },
         visibleLocationsProvider = { locationService.visibleLocations() },
         locationsProvider = { desktopLocations },
         refreshSubscriptions = { subscriptions, statusPrefix ->
-            refreshDesktopSubscriptions(
+            subscriptionRefreshService.refresh(
                 subscriptionsToRefresh = subscriptions,
                 statusPrefix = statusPrefix,
             )
@@ -428,40 +439,15 @@ class DesktopAppService private constructor(
     }
 
     suspend fun refreshAllSubscriptions() {
-        refreshDesktopSubscriptions(
-            subscriptionsToRefresh = state.subscriptions.filter { it.url.isNotBlank() },
-            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(
-                state.subscriptions.count { it.url.isNotBlank() },
-            ),
-        )
+        subscriptionRefreshService.refreshAll()
     }
 
     suspend fun refreshActiveSubscriptions() {
-        val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
-        if (refreshTargets.isEmpty()) {
-            updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
-            return
-        }
-        refreshDesktopSubscriptions(
-            subscriptionsToRefresh = refreshTargets,
-            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
-        )
+        subscriptionRefreshService.refreshActive()
     }
 
     suspend fun runAutoRefreshCycle() {
-        val plan = AutoRefreshLogic.plan(
-            state = state,
-            isRuntimeRunning = connectionLifecycle.isRuntimeRunning(),
-        ) ?: return
-        val refreshResult = refreshDesktopSubscriptions(
-            subscriptionsToRefresh = plan.subscriptionsToRefresh,
-            statusPrefix = plan.statusPrefix,
-            stopVpnIfSelectedRemoved = plan.stopVpnIfSelectedRemoved,
-        )
-        if (refreshResult.isFailure) return
-        if (plan.shouldFindBestAfterRefresh) {
-            autoRefreshBestSelectionAction(this)
-        }
+        subscriptionRefreshService.runAutoRefreshCycle()
     }
 
     fun addSampleLocation() {
@@ -540,49 +526,11 @@ class DesktopAppService private constructor(
         statusPrefix: String,
         stopVpnIfSelectedRemoved: Boolean = true,
     ): Result<Int> {
-        if (subscriptionsToRefresh.isEmpty()) {
-            updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
-            return Result.failure(IllegalStateException("No subscriptions to refresh"))
-        }
-
-        updateState { it.copy(isBusy = true, isRefreshing = true).withStatus(statusPrefix) }
-
-        val refreshResult = subscriptionService.refreshSubscriptions(
-            state = state,
-            locations = desktopLocations,
+        return subscriptionRefreshService.refresh(
             subscriptionsToRefresh = subscriptionsToRefresh,
-            onProgress = { message ->
-                updateState { it.withStatus(message) }
-            },
+            statusPrefix = statusPrefix,
+            stopVpnIfSelectedRemoved = stopVpnIfSelectedRemoved,
         )
-        if (refreshResult.isFailure) {
-            updateState { it.copy(isBusy = false, isRefreshing = false) }
-            return Result.failure(refreshResult.exceptionOrNull() ?: IllegalStateException("Refresh failed"))
-        }
-        val refreshed = refreshResult.getOrThrow()
-
-        val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
-            refreshed.locations.none { it.matchesSelectedLocation(state) }
-        if (removedSelected && state.isVpnRunning && stopVpnIfSelectedRemoved) {
-            val stopResult = stopDesktopProxy("${activeConnectionName()} stopped. Refreshed subscriptions removed the selected location.")
-            if (stopResult.isFailure) {
-                updateState { it.copy(isBusy = false) }
-                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException("Failed to stop ${activeConnectionName()}"))
-            }
-        }
-
-        commitState(
-            nextLocations = refreshed.locations,
-            nextState = state.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
-                .copy(
-                    isBusy = false,
-                    isRefreshing = false,
-                    subscriptionHwid = refreshed.subscriptionHwid,
-                    subscriptions = refreshed.subscriptions,
-                )
-                .withStatus(refreshed.statusMessage),
-        )
-        return Result.success(refreshed.refreshedCount)
     }
 
     suspend fun importLocationsRaw(raw: String) {

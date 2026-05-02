@@ -52,13 +52,14 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManager.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionManagementService.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionRefreshService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopFindBestService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopLocationBenchmarkService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSettingsService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTrayController.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt`
 
-Desktop currently bypasses some `MainController` actions while its service owns persistence/runtime orchestration. Keep per-location benchmark orchestration in `DesktopLocationBenchmarkService`, broad Find Best selection in `DesktopFindBestService`, and connection command glue in `DesktopConnectionActionsService` instead of growing `DesktopAppService`. New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
+Desktop currently bypasses some `MainController` actions while its service owns persistence/runtime orchestration. Keep subscription refresh orchestration in `DesktopSubscriptionRefreshService`, per-location benchmark orchestration in `DesktopLocationBenchmarkService`, broad Find Best selection in `DesktopFindBestService`, and connection command glue in `DesktopConnectionActionsService` instead of growing `DesktopAppService`. New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 
 ## Patch Rules
 
