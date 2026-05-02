@@ -12,7 +12,6 @@ import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
-import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
 import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.AppMode
@@ -90,6 +89,15 @@ class MainViewModel(
         stopConnection = vpnManager::stop,
         benchmarkLocation = repository::benchmarkLocation,
         appendLatencyHistory = repository::appendLatencyHistory,
+    )
+    private val routingActions = AndroidRoutingActionsService(
+        controller = controller,
+        stateProvider = { _uiState.value },
+        effectSink = controllerEffectHandler,
+        launch = { block -> viewModelScope.launch { block() } },
+        setBusy = ::setBusy,
+        updateRoutingRules = repository::updateRoutingRules,
+        updateStatus = repository::updateStatus,
     )
 
     init {
@@ -283,63 +291,63 @@ class MainViewModel(
     }
 
     fun onRoutingIgnoreRulesDraftChanged(enabled: Boolean) {
-        controller.onRoutingIgnoreRulesDraftChanged(enabled)
+        routingActions.onRoutingIgnoreRulesDraftChanged(enabled)
     }
 
     fun onRoutingAppSearchChanged(value: String) {
-        controller.onRoutingAppSearchChanged(value)
+        routingActions.onRoutingAppSearchChanged(value)
     }
 
     fun onRoutingNationalDomainsDraftChanged(value: String) {
-        controller.onRoutingNationalDomainsDraftChanged(value)
+        routingActions.onRoutingNationalDomainsDraftChanged(value)
     }
 
     fun onRoutingDirectDomainsDraftChanged(value: String) {
-        controller.onRoutingDirectDomainsDraftChanged(value)
+        routingActions.onRoutingDirectDomainsDraftChanged(value)
     }
 
     fun showAddRuleSetDialog() {
-        controller.showAddRuleSetDialog()
+        routingActions.showAddRuleSetDialog()
     }
 
     fun editRuleSet(id: String) {
-        controller.editRuleSet(id)
+        routingActions.editRuleSet(id)
     }
 
     fun closeRuleSetDialog() {
-        controller.closeRuleSetDialog()
+        routingActions.closeRuleSetDialog()
     }
 
     fun onRuleSetNameDraftChanged(value: String) {
-        controller.onRuleSetNameDraftChanged(value)
+        routingActions.onRuleSetNameDraftChanged(value)
     }
 
     fun onRuleSetSourceDraftChanged(value: String) {
-        controller.onRuleSetSourceDraftChanged(value)
+        routingActions.onRuleSetSourceDraftChanged(value)
     }
 
     fun onRuleSetSourceTypeDraftChanged(value: RoutingRuleSetSourceType) {
-        controller.onRuleSetSourceTypeDraftChanged(value)
+        routingActions.onRuleSetSourceTypeDraftChanged(value)
     }
 
     fun onRuleSetFormatDraftChanged(value: RoutingRuleSetFormat) {
-        controller.onRuleSetFormatDraftChanged(value)
+        routingActions.onRuleSetFormatDraftChanged(value)
     }
 
     fun onRuleSetActionDraftChanged(value: RoutingRuleSetAction) {
-        controller.onRuleSetActionDraftChanged(value)
+        routingActions.onRuleSetActionDraftChanged(value)
     }
 
     fun onRuleSetUpdateHoursDraftChanged(value: String) {
-        controller.onRuleSetUpdateHoursDraftChanged(value)
+        routingActions.onRuleSetUpdateHoursDraftChanged(value)
     }
 
     fun saveRuleSet() {
-        handleControllerEffects(controller.saveRuleSet())
+        routingActions.saveRuleSet()
     }
 
     fun deleteRuleSet(id: String) {
-        handleControllerEffects(controller.deleteRuleSet(id))
+        routingActions.deleteRuleSet(id)
     }
 
     fun showAddLocationDialog() {
@@ -363,27 +371,27 @@ class MainViewModel(
     }
 
     fun toggleProxyRoutingApp(packageName: String) {
-        controller.toggleProxyRoutingApp(packageName)
+        routingActions.toggleProxyRoutingApp(packageName)
     }
 
     fun toggleDirectRoutingApp(packageName: String) {
-        controller.toggleDirectRoutingApp(packageName)
+        routingActions.toggleDirectRoutingApp(packageName)
     }
 
     fun selectAllVisibleProxyApps() {
-        controller.selectAllVisibleProxyApps(filteredRoutingPackages())
+        routingActions.selectAllVisibleProxyApps()
     }
 
     fun clearAllVisibleProxyApps() {
-        controller.clearAllVisibleProxyApps(filteredRoutingPackages())
+        routingActions.clearAllVisibleProxyApps()
     }
 
     fun selectAllVisibleDirectApps() {
-        controller.selectAllVisibleDirectApps(filteredRoutingPackages())
+        routingActions.selectAllVisibleDirectApps()
     }
 
     fun clearAllVisibleDirectApps() {
-        controller.clearAllVisibleDirectApps(filteredRoutingPackages())
+        routingActions.clearAllVisibleDirectApps()
     }
 
     fun onVpnPermissionGranted() {
@@ -522,31 +530,11 @@ class MainViewModel(
     }
 
     fun saveRoutingRules() {
-        val rules = MainDraftLogic.buildEditedRoutingRules(_uiState.value)
-        viewModelScope.launch {
-            setBusy(true)
-            val result = repository.updateRoutingRules(rules)
-            repository.updateStatus(
-                result.fold(
-                    onSuccess = {
-                        if (_uiState.value.isVpnRunning) {
-                            "Routing rules saved. Restart ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} to apply"
-                        } else {
-                            "Routing rules saved"
-                        }
-                    },
-                    onFailure = { it.message ?: "Failed to save routing rules" },
-                ),
-            )
-            if (result.isSuccess) {
-                navigateBack()
-            }
-            setBusy(false)
-        }
+        routingActions.saveRoutingRules()
     }
 
     fun buildRoutingRulesExport(): RoutingRulesExportDocument {
-        return RoutingRulesTransfer.export(MainDraftLogic.buildEditedRoutingRules(_uiState.value))
+        return routingActions.buildRoutingRulesExport()
     }
 
     fun buildLocationsExport(): LocationsExportDocument {
@@ -558,32 +546,7 @@ class MainViewModel(
     }
 
     fun importRoutingRules(raw: String) {
-        viewModelScope.launch {
-            setBusy(true)
-            val parsed = runCatching { RoutingRulesTransfer.import(raw) }
-            if (parsed.isFailure) {
-                repository.updateStatus(parsed.exceptionOrNull()?.message ?: "Failed to import routing rules")
-                setBusy(false)
-                return@launch
-            }
-
-            val rules = MainDraftLogic.sanitizeRoutingRules(parsed.getOrThrow())
-            val result = repository.updateRoutingRules(rules)
-            repository.updateStatus(
-                result.fold(
-                    onSuccess = {
-                        controller.applyImportedRoutingRules(rules)
-                        if (_uiState.value.isVpnRunning) {
-                            "Routing rules imported. Restart ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} to apply"
-                        } else {
-                            "Routing rules imported"
-                        }
-                    },
-                    onFailure = { it.message ?: "Failed to import routing rules" },
-                ),
-            )
-            setBusy(false)
-        }
+        routingActions.importRoutingRules(raw)
     }
 
     fun postStatus(message: String) {
@@ -768,19 +731,6 @@ class MainViewModel(
             }
         }
         activeBusyJob = job
-    }
-
-    private fun filteredRoutingPackages(): List<String> {
-        val query = _uiState.value.routingAppSearch.trim()
-        return _uiState.value.installedApps
-            .asSequence()
-            .filter { app ->
-                query.isBlank() ||
-                    app.label.contains(query, ignoreCase = true) ||
-                    app.packageName.contains(query, ignoreCase = true)
-            }
-            .map { it.packageName }
-            .toList()
     }
 
     companion object {
