@@ -80,7 +80,12 @@ class DesktopAppService internal constructor(
         locationsProvider = { desktopLocations },
         validateSubscriptionSource = DesktopSubscriptionSourceValidation::validate,
         stopConnection = { message -> connectionActions.stop(message) },
-        activeConnectionName = ::activeConnectionName,
+        activeConnectionName = {
+            DesktopConnectionNameLogic.activeConnectionName(
+                currentRuntimeMode = connectionLifecycle.currentRuntimeMode(),
+                configuredMode = state.appMode,
+            )
+        },
         commitState = { nextState, nextLocations ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
@@ -126,7 +131,12 @@ class DesktopAppService internal constructor(
         subscriptionService = subscriptionService,
         isRuntimeRunning = { connectionLifecycle.isRuntimeRunning() },
         stopConnection = { message -> connectionActions.stop(message) },
-        activeConnectionName = ::activeConnectionName,
+        activeConnectionName = {
+            DesktopConnectionNameLogic.activeConnectionName(
+                currentRuntimeMode = connectionLifecycle.currentRuntimeMode(),
+                configuredMode = state.appMode,
+            )
+        },
         findBestAfterRefresh = { autoRefreshBestSelectionAction(this) },
         commitState = { nextState, nextLocations ->
             commitState(nextState = nextState, nextLocations = nextLocations)
@@ -509,10 +519,6 @@ class DesktopAppService internal constructor(
         refreshSubscriptionsFirst: Boolean = true,
     ) {
         findBestService.findBestLocation(refreshSubscriptionsFirst)
-    }
-
-    private fun activeConnectionName(): String {
-        return MainCommandLogic.connectionDisplayName(connectionLifecycle.currentRuntimeMode() ?: state.appMode)
     }
 
     private fun commitState(
