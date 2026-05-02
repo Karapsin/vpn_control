@@ -145,10 +145,11 @@ data class ProxyProfile(
     val customConfigJson: String = "",
 )
 
+@Deprecated("Use ProxyProfile for protocol-agnostic code.", ReplaceWith("ProxyProfile"))
 typealias VlessProfile = ProxyProfile
 
 data class ProfileBenchmark(
-    val profile: VlessProfile,
+    val profile: ProxyProfile,
     val primaryStatus: String,
     val secondaryStatus: String,
     val primaryTotal: Double?,
@@ -158,7 +159,7 @@ data class ProfileBenchmark(
 )
 
 data class ProfileSelection(
-    val profile: VlessProfile,
+    val profile: ProxyProfile,
     val benchmark: ProfileBenchmark,
     val runtimeConfigJson: String,
     val sourceUrl: String = "",
@@ -387,6 +388,7 @@ object StatusMessages {
 
 data class PersistedState(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val subscriptionHwid: String = "",
     val profileUrl: String = "",
     val activeSubscriptionId: String = "",
     val subscriptions: List<SubscriptionSource> = emptyList(),

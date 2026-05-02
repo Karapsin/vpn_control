@@ -135,6 +135,23 @@ class DesktopAppServiceTest {
             val service = DesktopAppService.createForTesting(store = DesktopStateStore(tempDir))
 
             assertEquals(defaultDesktopAppMode(), service.state.appMode)
+            assertTrue(service.state.profileUrl.isBlank())
+            assertTrue(service.state.activeSubscriptionId.isBlank())
+            assertTrue(service.state.subscriptions.isEmpty())
+            assertTrue(service.state.profileHistory.isEmpty())
+            assertTrue(service.state.profileHistoryNames.isEmpty())
+            assertTrue(service.state.currentLocations.isEmpty())
+            assertTrue(service.state.selectedProfileRawLink.isBlank())
+            assertTrue(service.state.selectedProfileName.isBlank())
+            assertTrue(service.state.selectedProfileServer.isBlank())
+            assertTrue(service.state.selectedProfileSourceUrl.isBlank())
+            assertTrue(service.state.lastBenchmarkSummary.isBlank())
+            assertTrue(service.state.installedApps.isEmpty())
+            assertTrue(service.state.installedAppsLoaded)
+            assertTrue(service.state.connectionLog.isEmpty())
+            assertTrue(service.desktopLocations.isEmpty())
+            assertTrue(service.state.routingRules.ruleSets.isEmpty())
+            assertTrue(service.state.routingRules.proxyPackages.isEmpty())
             assertTrue(service.state.routingRules.nationalDomainSuffixes.isEmpty())
             assertTrue(service.state.routingRules.directDomainSuffixes.isEmpty())
             assertTrue(service.state.routingNationalDomainsDraft.isBlank())
@@ -383,7 +400,10 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-delete-subscription")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppService.createForTesting(
+                store = store,
+                initialWorkspace = desktopWorkspaceWithTwoSubscriptions(),
+            )
             val removed = service.state.subscriptions.first()
             val fallback = service.state.subscriptions[1]
 
@@ -405,6 +425,7 @@ class DesktopAppServiceTest {
             val store = DesktopStateStore(tempDir)
             val service = DesktopAppService.createForTesting(
                 store = store,
+                initialWorkspace = desktopWorkspaceWithSelectedLocation(),
                 forceRunningState = true,
             )
 
@@ -519,6 +540,72 @@ class DesktopAppServiceTest {
             assertEquals(1, service.state.subscriptions.single().cachedLocations.size)
             assertEquals(1, service.state.currentLocations.size)
             assertTrue(service.state.statusMessage.contains("Subscription refreshed"))
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun subscriptionRefreshSendsAndPersistsStableHwid() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-subscription-hwid")
+        try {
+            val subscription = SubscriptionSource(
+                id = "desktop-test-subscription",
+                url = "https://example.com/subscription.txt",
+                customName = "Example",
+            )
+            val workspace = DesktopWorkspace(
+                persistedState = PersistedState(
+                    profileUrl = subscription.url,
+                    activeSubscriptionId = subscription.id,
+                    subscriptions = listOf(subscription),
+                    profileHistory = listOf(subscription.url),
+                    profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+                    subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
+                ),
+                locations = emptyList(),
+            )
+            val fetcher = FakeSubscriptionContentFetcher(
+                mapOf(subscription.url to "socks://user:pass@127.0.0.1:1080#HWID"),
+            )
+            val store = DesktopStateStore(tempDir)
+            val service = DesktopAppService.createForTesting(
+                store = store,
+                initialWorkspace = workspace,
+                subscriptionContentFetcher = fetcher,
+            )
+
+            service.runAutoRefreshCycle()
+            service.runAutoRefreshCycle()
+
+            val hwid = fetcher.subscriptionHwids.distinct().single()
+            assertTrue(hwid.isNotBlank())
+            assertEquals(32, hwid.length)
+            assertEquals(hwid, service.state.subscriptionHwid)
+            val reloaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+            assertEquals(hwid, reloaded.persistedState.subscriptionHwid)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun setSubscriptionHwidPersistsManualOverride() {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-manual-hwid")
+        try {
+            val store = DesktopStateStore(tempDir)
+            val service = DesktopAppService.createForTesting(store = store)
+
+            service.setSubscriptionHwid("  authorized-device-id  ")
+
+            assertEquals("authorized-device-id", service.state.subscriptionHwid)
+            val reloaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            )
+            assertEquals("authorized-device-id", reloaded.persistedState.subscriptionHwid)
+            assertTrue(service.state.statusMessage.contains("Refresh the subscription"))
         } finally {
             tempDir.toFile().deleteRecursively()
         }
@@ -693,10 +780,89 @@ class DesktopAppServiceTest {
     }
 }
 
+private fun desktopWorkspaceWithTwoSubscriptions(): DesktopWorkspace {
+    val first = SubscriptionSource(
+        id = "sub-one",
+        url = "https://example.com/one.txt",
+        customName = "One",
+        cachedLocations = listOf("socks://user:pass@127.0.0.1:1080#One"),
+    )
+    val second = SubscriptionSource(
+        id = "sub-two",
+        url = "https://example.com/two.txt",
+        customName = "Two",
+        cachedLocations = listOf("socks://user:pass@127.0.0.2:1080#Two"),
+    )
+    return DesktopWorkspace(
+        persistedState = PersistedState(
+            profileUrl = first.url,
+            activeSubscriptionId = first.id,
+            subscriptions = listOf(first, second),
+            profileHistory = listOf(first.url, second.url),
+            profileHistoryNames = mapOf(first.url to first.customName, second.url to second.customName),
+            profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            currentLocations = first.cachedLocations,
+        ),
+        locations = listOf(
+            DesktopLocationRecord(
+                index = 0,
+                sourceUrl = first.url,
+                rawLink = first.cachedLocations.single(),
+                name = "One",
+                server = "127.0.0.1",
+                details = "SOCKS",
+                benchmarkDetail = "Imported • not checked yet",
+                isValid = true,
+            ),
+            DesktopLocationRecord(
+                index = 1,
+                sourceUrl = second.url,
+                rawLink = second.cachedLocations.single(),
+                name = "Two",
+                server = "127.0.0.2",
+                details = "SOCKS",
+                benchmarkDetail = "Imported • not checked yet",
+                isValid = true,
+            ),
+        ),
+    )
+}
+
+private fun desktopWorkspaceWithSelectedLocation(): DesktopWorkspace {
+    val rawLink = "socks://user:pass@127.0.0.1:1080#Selected"
+    return DesktopWorkspace(
+        persistedState = PersistedState(
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            appMode = AppMode.VPN,
+            currentLocations = listOf(rawLink),
+            selectedProfileName = "Selected",
+            selectedProfileServer = "127.0.0.1",
+            selectedProfileRawLink = rawLink,
+            isVpnRunning = true,
+        ),
+        locations = listOf(
+            DesktopLocationRecord(
+                index = 0,
+                sourceUrl = "",
+                rawLink = rawLink,
+                name = "Selected",
+                server = "127.0.0.1",
+                details = "SOCKS",
+                benchmarkDetail = "Imported • not checked yet",
+                isValid = true,
+                isSelected = true,
+            ),
+        ),
+    )
+}
+
 private class FakeSubscriptionContentFetcher(
     private val payloadsByUrl: Map<String, String>,
 ) : SubscriptionContentFetcher {
-    override suspend fun fetch(url: String): FetchedSubscriptionContent {
+    val subscriptionHwids = mutableListOf<String>()
+
+    override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
+        subscriptionHwids += subscriptionHwid
         return FetchedSubscriptionContent(
             body = payloadsByUrl[url] ?: error("Unexpected subscription fetch: $url"),
             contentType = "text/plain",

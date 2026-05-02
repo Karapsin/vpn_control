@@ -2,20 +2,29 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
+import com.kardinal.vpncontrol.shared.storageapi.SubscriptionRequestHeaders
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class DesktopSubscriptionDownloadClient : SubscriptionContentFetcher {
-    override suspend fun fetch(url: String): FetchedSubscriptionContent = withContext(Dispatchers.IO) {
+    override suspend fun fetch(
+        url: String,
+        subscriptionHwid: String,
+    ): FetchedSubscriptionContent = withContext(Dispatchers.IO) {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             requestMethod = "GET"
             connectTimeout = 10_000
             readTimeout = 15_000
-            setRequestProperty("User-Agent", "VPNControlDesktop/1.0")
-            setRequestProperty("Accept", "*/*")
+            SubscriptionRequestHeaders.build(
+                userAgent = "VPNControlDesktop/1.0",
+                accept = "*/*",
+                subscriptionHwid = subscriptionHwid,
+            ).forEach { (name, value) ->
+                setRequestProperty(name, value)
+            }
         }
         try {
             val statusCode = connection.responseCode
@@ -35,6 +44,10 @@ class DesktopSubscriptionDownloadClient : SubscriptionContentFetcher {
             FetchedSubscriptionContent(
                 body = body,
                 contentType = connection.contentType,
+                headers = connection.headerFields
+                    .filterKeys { it != null }
+                    .mapKeys { it.key.orEmpty() }
+                    .mapValues { (_, values) -> values.joinToString(",") },
             )
         } finally {
             connection.disconnect()

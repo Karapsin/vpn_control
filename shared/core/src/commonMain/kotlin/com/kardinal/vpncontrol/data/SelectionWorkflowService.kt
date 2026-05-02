@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.PersistedState
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 
@@ -12,11 +12,11 @@ data class SubscriptionSearchTarget(
 )
 
 data class LoadedSubscriptionProfiles(
-    val profilesById: Map<String, List<VlessProfile>>,
+    val profilesById: Map<String, List<ProxyProfile>>,
     val profileSourceTargets: Map<String, SubscriptionSearchTarget>,
     val failureMessages: List<String>,
 ) {
-    val allProfiles: List<VlessProfile>
+    val allProfiles: List<ProxyProfile>
         get() = profilesById.values.flatten()
 }
 
@@ -57,9 +57,9 @@ object SelectionWorkflowService {
     suspend fun loadProfilesForTargets(
         targets: List<SubscriptionSearchTarget>,
         onStatus: suspend (String) -> Unit,
-        loadProfiles: suspend (String) -> List<VlessProfile>,
+        loadProfiles: suspend (String) -> List<ProxyProfile>,
     ): LoadedSubscriptionProfiles {
-        val loadedProfilesById = linkedMapOf<String, List<VlessProfile>>()
+        val loadedProfilesById = linkedMapOf<String, List<ProxyProfile>>()
         val profileSourceTargets = linkedMapOf<String, SubscriptionSearchTarget>()
         val failureMessages = mutableListOf<String>()
 
@@ -104,7 +104,7 @@ object SelectionWorkflowService {
         rawSource: String,
         resolveSource: (String) -> ResolvedRemoteSource,
         fetchedContent: suspend (String) -> FetchedSubscriptionContent,
-    ): List<VlessProfile> {
+    ): List<ProxyProfile> {
         val resolved = resolveSource(rawSource)
         val fetchUrl = resolved.fetchUrl ?: error("Remote source did not produce any locations")
         val downloaded = fetchedContent(fetchUrl)
@@ -112,7 +112,7 @@ object SelectionWorkflowService {
             body = downloaded.body,
             contentType = downloaded.contentType,
         )?.let { error(it) }
-        return runCatching {
+        val profiles = runCatching {
             ProxyParser.parseSubscription(downloaded.body)
         }.getOrElse { error ->
             val baseMessage = SubscriptionPayloadInspector.invalidPayloadMessage(error)
@@ -124,5 +124,12 @@ object SelectionWorkflowService {
                 error,
             )
         }
+        SubscriptionPayloadInspector.parsedProfileError(
+            profiles = profiles,
+            responseHeaders = downloaded.headers,
+        )?.let { message ->
+            throw IllegalArgumentException(message)
+        }
+        return profiles
     }
 }

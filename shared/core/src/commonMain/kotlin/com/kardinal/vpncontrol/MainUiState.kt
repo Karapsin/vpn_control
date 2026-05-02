@@ -30,6 +30,7 @@ enum class AppScreen {
 data class MainUiState(
     val currentScreen: AppScreen = AppScreen.MAIN,
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val subscriptionHwid: String = "",
     val screenHistory: List<AppScreen> = emptyList(),
     val profileUrl: String = "",
     val activeSubscriptionId: String = "",
@@ -127,6 +128,7 @@ object MainUiStateProjector {
     ): MainUiState {
         return current.copy(
             appLanguage = persisted.appLanguage,
+            subscriptionHwid = persisted.subscriptionHwid,
             profileUrl = persisted.profileUrl,
             activeSubscriptionId = persisted.activeSubscriptionId,
             subscriptions = persisted.subscriptions,

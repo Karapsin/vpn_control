@@ -37,7 +37,7 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
@@ -489,6 +489,16 @@ class DesktopAppService private constructor(
         }
     }
 
+    fun setSubscriptionHwid(value: String) {
+        val normalized = value.trim()
+        val status = if (normalized.isBlank()) {
+            "Subscription x-hwid cleared. A new ID will be generated on the next refresh."
+        } else {
+            "Subscription x-hwid saved. Refresh the subscription to use it."
+        }
+        updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
+    }
+
     fun setValidationPrimaryUrlDraft(value: String) {
         updateState { it.copy(validationPrimaryUrlDraft = value) }
     }
@@ -913,7 +923,7 @@ class DesktopAppService private constructor(
         updateState { it.copy(isBusy = true, isRefreshing = true).withStatus(statusPrefix) }
 
         val now = System.currentTimeMillis()
-        val loadedByUrl = linkedMapOf<String, List<VlessProfile>>()
+        val loadedByUrl = linkedMapOf<String, List<ProxyProfile>>()
         val failedLabels = mutableListOf<String>()
         var currentSubscriptions = state.subscriptions
 
@@ -1375,7 +1385,8 @@ class DesktopAppService private constructor(
         }
     }
 
-    private suspend fun loadDesktopSubscriptionProfiles(rawSource: String): List<VlessProfile> {
+    private suspend fun loadDesktopSubscriptionProfiles(rawSource: String): List<ProxyProfile> {
+        val subscriptionHwid = ensureSubscriptionHwid()
         return SelectionWorkflowService.parseRemoteSourceLocations(
             rawSource = rawSource,
             resolveSource = { source ->
@@ -1388,13 +1399,22 @@ class DesktopAppService private constructor(
                     null -> error("Remote source must be a valid https:// URL")
                 }
             },
-            fetchedContent = subscriptionContentFetcher::fetch,
+            fetchedContent = { url -> subscriptionContentFetcher.fetch(url, subscriptionHwid) },
         )
+    }
+
+    private fun ensureSubscriptionHwid(): String {
+        val existing = state.subscriptionHwid.trim()
+        if (existing.isNotBlank()) return existing
+
+        val generated = generateSubscriptionHwid()
+        commitState(nextState = state.copy(subscriptionHwid = generated))
+        return generated
     }
 
     private fun profilesToDesktopLocations(
         sourceUrl: String,
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         existingLocations: List<DesktopLocationRecord>,
         startIndex: Int,
     ): Pair<List<DesktopLocationRecord>, Int> {
@@ -1463,57 +1483,15 @@ class DesktopAppService private constructor(
 }
 
 private fun defaultDesktopWorkspace(): DesktopWorkspace {
-    val now = System.currentTimeMillis()
-    val subscriptions = defaultSubscriptions()
-    val locations = defaultDesktopLocations()
     val appMode = defaultDesktopAppMode()
     val persisted = PersistedState(
-        profileUrl = subscriptions.first().url,
-        activeSubscriptionId = subscriptions.first().id,
-        subscriptions = subscriptions,
-        profileHistory = subscriptions.map(SubscriptionSource::url),
-        profileHistoryNames = subscriptions
-            .filter { it.customName.isNotBlank() }
-            .associate { it.url to it.customName },
-        profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
         appMode = appMode,
-        subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
-        findBestAfterSubscriptionRefresh = true,
-        subscriptionRefreshCustomHours = 0.5,
-        currentLocations = locations.map(DesktopLocationRecord::rawLink),
-        savedLocations = locations.map(DesktopLocationRecord::rawLink),
-        locationBenchmarkDetails = locations.associate { it.rawLink to it.benchmarkDetail },
         routingRules = RoutingRules(),
-        selectedProfileName = "Netherlands",
-        selectedProfileServer = "nl.example.net",
-        selectedProfileRawLink = "vless://desktop-nl",
-        selectedProfileSourceUrl = subscriptions.first().url,
-        lastBenchmarkSummary = "Desktop shell: Netherlands from Whitelists",
         statusMessage = StatusMessages.connectionReadyOnComputer(appMode),
-        isVpnRunning = false,
-        successfulStarts = 0,
-        successfulStops = 0,
-        connectionLog = listOf(
-            ConnectionLogEntry(
-                id = "desktop-log-1",
-                message = StatusMessages.desktopAppInitialized(),
-                createdAtEpochMillis = now - 10 * 60_000L,
-            ),
-            ConnectionLogEntry(
-                id = "desktop-log-2",
-                message = "Selected Netherlands from Whitelists",
-                createdAtEpochMillis = now - 7 * 60_000L,
-            ),
-            ConnectionLogEntry(
-                id = "desktop-log-3",
-                message = "${MainCommandLogic.connectionDisplayName(appMode)} mode available",
-                createdAtEpochMillis = now - 6 * 60_000L,
-            ),
-        ),
     )
     return DesktopWorkspace(
         persistedState = persisted,
-        locations = locations,
+        locations = emptyList(),
     )
 }
 
@@ -1524,7 +1502,7 @@ private fun restoreDesktopUiState(
     val base = MainUiStateProjector.mergePersistedState(
         current = MainUiState(
             currentScreen = AppScreen.MAIN,
-            installedApps = sampleInstalledApps(),
+            installedApps = emptyList(),
             installedAppsLoaded = true,
             hasVpnPermission = true,
         ),
@@ -1535,7 +1513,7 @@ private fun restoreDesktopUiState(
             subscriptionRefreshPolicyDraft = persistedState.subscriptionRefreshPolicy,
             findBestAfterSubscriptionRefreshDraft = persistedState.findBestAfterSubscriptionRefresh,
             subscriptionRefreshCustomHoursDraft = persistedState.subscriptionRefreshCustomHours.toString(),
-            installedApps = sampleInstalledApps(),
+            installedApps = emptyList(),
             installedAppsLoaded = true,
             installedAppsLoading = false,
             hasVpnPermission = true,
@@ -1558,71 +1536,8 @@ private fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopVa
     )
 }
 
-private fun defaultSubscriptions(): List<SubscriptionSource> {
-    val now = System.currentTimeMillis()
-    return listOf(
-        SubscriptionSource(
-            id = "desktop-sub-1",
-            url = "https://desktop.example.net/whitelists",
-            customName = "Whitelists",
-            cachedLocations = listOf("vless://desktop-nl", "trojan://desktop-de"),
-            lastRefreshedAtEpochMillis = now - 30 * 60_000L,
-            lastRefreshStatus = "2 locations refreshed",
-        ),
-        SubscriptionSource(
-            id = "desktop-sub-2",
-            url = "https://desktop.example.net/fallback",
-            customName = "Fallback",
-            cachedLocations = listOf("vless://desktop-us"),
-            lastRefreshedAtEpochMillis = now - 75 * 60_000L,
-            lastRefreshStatus = "1 location refreshed",
-        ),
-    )
-}
-
-private fun sampleInstalledApps(): List<InstalledApp> {
-    return listOf(
-        InstalledApp(packageName = "com.example.browser", label = "Browser", isSystemApp = false),
-        InstalledApp(packageName = "org.telegram.messenger", label = "Telegram", isSystemApp = false),
-        InstalledApp(packageName = "com.spotify.music", label = "Spotify", isSystemApp = false),
-        InstalledApp(packageName = "com.android.settings", label = "Settings", isSystemApp = true),
-    )
-}
-
-private fun defaultDesktopLocations(): List<DesktopLocationRecord> {
-    return listOf(
-        DesktopLocationRecord(
-            index = 0,
-            sourceUrl = "https://desktop.example.net/whitelists",
-            rawLink = "vless://desktop-nl",
-            name = "Netherlands",
-            server = "nl.example.net",
-            details = "VLESS Reality",
-            benchmarkDetail = "primary ok • secondary ok • 118 ms",
-            isValid = true,
-            isSelected = true,
-        ),
-        DesktopLocationRecord(
-            index = 1,
-            sourceUrl = "https://desktop.example.net/whitelists",
-            rawLink = "trojan://desktop-de",
-            name = "Germany",
-            server = "de.example.net",
-            details = "Trojan TLS",
-            benchmarkDetail = "primary ok • secondary ok • 132 ms",
-            isValid = true,
-        ),
-        DesktopLocationRecord(
-            index = 2,
-            sourceUrl = "https://desktop.example.net/fallback",
-            rawLink = "vless://desktop-us",
-            name = "United States",
-            server = "us.example.net",
-            details = "VLESS WS",
-            benchmarkDetail = "primary ok • secondary timeout • 188 ms",
-            isValid = true,
-        ),
-    )
+private fun generateSubscriptionHwid(): String {
+    return UUID.randomUUID().toString().replace("-", "")
 }
 
 private fun syncDesktopUiStateWithLocations(
@@ -1700,6 +1615,7 @@ private fun MainUiState.toPersistedState(
     )
     return PersistedState(
         appLanguage = synced.appLanguage,
+        subscriptionHwid = synced.subscriptionHwid,
         profileUrl = synced.profileUrl,
         activeSubscriptionId = synced.activeSubscriptionId,
         subscriptions = synced.subscriptions,
@@ -1788,7 +1704,7 @@ private fun nextLocationIndex(locations: List<DesktopLocationRecord>): Int {
     return (locations.maxOfOrNull(DesktopLocationRecord::index) ?: -1) + 1
 }
 
-private fun VlessProfile.desktopDetails(): String {
+private fun ProxyProfile.desktopDetails(): String {
     val protocolLabel = when (protocol) {
         ProxyProtocol.VLESS -> "VLESS"
         ProxyProtocol.TROJAN -> "Trojan"

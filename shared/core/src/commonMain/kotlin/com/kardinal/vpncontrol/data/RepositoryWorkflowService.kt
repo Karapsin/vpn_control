@@ -4,7 +4,7 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionSource
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.activeSubscriptionUrls
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 
@@ -27,7 +27,7 @@ object RepositoryWorkflowService {
     suspend fun refreshActiveSubscriptionCache(
         state: PersistedState,
         refreshAllSubscriptions: suspend () -> Result<SubscriptionRefreshBatchResult>,
-        fetchSubscriptionLocations: suspend (String) -> List<VlessProfile>,
+        fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,
         updateSubscriptionCache: suspend (subscriptionId: String, rawLinks: List<String>) -> Unit,
         updateRefreshStatus: suspend (subscriptionId: String, status: String) -> Unit,
     ): Result<SubscriptionRefreshBatchResult> {
@@ -59,7 +59,7 @@ object RepositoryWorkflowService {
 
     suspend fun refreshAllSubscriptionsCaches(
         state: PersistedState,
-        fetchSubscriptionLocations: suspend (String) -> List<VlessProfile>,
+        fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,
         updateSubscriptionCache: suspend (subscriptionId: String, rawLinks: List<String>) -> Unit,
         updateRefreshStatus: suspend (subscriptionId: String, status: String) -> Unit,
         displayLabel: (SubscriptionSource) -> String,
@@ -191,7 +191,7 @@ object RepositoryWorkflowService {
 
     private suspend fun refreshSingleSubscription(
         subscription: SubscriptionSource,
-        fetchSubscriptionLocations: suspend (String) -> List<VlessProfile>,
+        fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,
         updateSubscriptionCache: suspend (subscriptionId: String, rawLinks: List<String>) -> Unit,
         updateRefreshStatus: suspend (subscriptionId: String, status: String) -> Unit,
     ): Result<Unit> {

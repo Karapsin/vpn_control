@@ -2,7 +2,6 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.VlessProfile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.json.JsonArray
@@ -1328,11 +1327,11 @@ object ProxyParser {
 }
 
 object VlessParser {
-    fun parseSubscription(rawBody: String): List<VlessProfile> = ProxyParser.parseSubscription(rawBody)
+    fun parseSubscription(rawBody: String): List<ProxyProfile> = ProxyParser.parseSubscription(rawBody)
 
-    fun parseVlessLink(link: String): VlessProfile = ProxyParser.parseVlessLink(link)
+    fun parseVlessLink(link: String): ProxyProfile = ProxyParser.parseVlessLink(link)
 
-    fun encodeVlessLink(profile: VlessProfile): String = ProxyParser.encodeVlessLink(profile)
+    fun encodeVlessLink(profile: ProxyProfile): String = ProxyParser.encodeVlessLink(profile)
 }
 
 private val HEX_DIGITS = "0123456789ABCDEF"
