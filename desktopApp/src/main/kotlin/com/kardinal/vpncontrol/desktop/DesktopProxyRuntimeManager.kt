@@ -38,7 +38,7 @@ class DesktopProxyRuntimeManager(
     private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,
     private val windowsAdministratorOverride: Boolean? = null,
-) {
+) : DesktopRuntimeController {
     @Volatile
     private var process: Process? = null
 
@@ -57,7 +57,7 @@ class DesktopProxyRuntimeManager(
     @Volatile
     private var lastAttemptedConfigJson: String? = null
 
-    suspend fun start(
+    override suspend fun start(
         profile: ProxyProfile,
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
@@ -150,7 +150,7 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             stopActiveProcess()
             runtimeConfigStore.clearRuntimeConfig()
@@ -164,11 +164,11 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    fun isRunning(): Boolean = process?.isAlive == true
+    override fun isRunning(): Boolean = process?.isAlive == true
 
     fun currentPort(): Int? = if (isRunning()) listenPort else null
 
-    fun currentMode(): AppMode? = if (isRunning()) activeMode else null
+    override fun currentMode(): AppMode? = if (isRunning()) activeMode else null
 
     fun currentProcessId(): Long? = process?.takeIf { it.isAlive }?.pid()
 

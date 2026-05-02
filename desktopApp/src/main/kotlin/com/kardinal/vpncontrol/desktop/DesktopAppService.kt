@@ -21,7 +21,6 @@ import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
-import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -46,6 +45,7 @@ class DesktopAppService private constructor(
     private val desktopStore: DesktopStateStore,
     private val runtimeManager: DesktopProxyRuntimeManager,
     private val validationRuntime: DesktopProxyValidationRuntime,
+    private val connectionLifecycle: DesktopConnectionLifecycleService,
     private val subscriptionService: DesktopSubscriptionService,
     private val autostartManager: DesktopAutostartManager,
     private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
@@ -83,14 +83,16 @@ class DesktopAppService private constructor(
         fun default(): DesktopAppService {
             val store = DesktopStateStore.default()
             val validationDirectory = store.validationDirectory()
+            val runtimeManager = DesktopProxyRuntimeManager(
+                runtimeConfigStore = store,
+                baseDir = store.runtimeDirectory(),
+                directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(validationDirectory),
+            )
             return DesktopAppService(
                 desktopStore = store,
-                runtimeManager = DesktopProxyRuntimeManager(
-                    runtimeConfigStore = store,
-                    baseDir = store.runtimeDirectory(),
-                    directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(validationDirectory),
-                ),
+                runtimeManager = runtimeManager,
                 validationRuntime = DesktopProxyValidationRuntime(baseDir = validationDirectory),
+                connectionLifecycle = DesktopConnectionLifecycleService(runtimeManager),
                 subscriptionService = DesktopSubscriptionService(DesktopSubscriptionDownloadClient()),
                 autostartManager = DesktopAutostartManager.default(),
                 autoRefreshBestSelectionAction = { service ->
@@ -122,6 +124,7 @@ class DesktopAppService private constructor(
                 desktopStore = store,
                 runtimeManager = runtimeManager,
                 validationRuntime = validationRuntime,
+                connectionLifecycle = DesktopConnectionLifecycleService(runtimeManager),
                 subscriptionService = DesktopSubscriptionService(subscriptionContentFetcher),
                 autostartManager = autostartManager,
                 autoRefreshBestSelectionAction = autoRefreshBestSelectionAction,
@@ -606,7 +609,7 @@ class DesktopAppService private constructor(
 
     suspend fun runAutoRefreshCycle() {
         if (state.isBusy) return
-        val wasVpnRunning = state.isVpnRunning || runtimeManager.isRunning()
+        val wasVpnRunning = state.isVpnRunning || connectionLifecycle.isRuntimeRunning()
         val shouldFindBestAfterRefresh = wasVpnRunning && state.findBestAfterSubscriptionRefresh
         val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
         if (refreshTargets.isEmpty()) return
@@ -661,7 +664,7 @@ class DesktopAppService private constructor(
         val removed = desktopLocations.firstOrNull { it.index == index } ?: return
         val removedSelected = removed.rawLink == state.selectedProfileRawLink
         if (removedSelected && state.isVpnRunning) {
-            val stopResult = stopDesktopProxy(MainCommandLogic.stoppedConnectionLabel(runtimeManager.currentMode() ?: state.appMode))
+            val stopResult = stopDesktopProxy(MainCommandLogic.stoppedConnectionLabel(connectionLifecycle.currentRuntimeMode() ?: state.appMode))
             if (stopResult.isFailure) {
                 return
             }
@@ -772,137 +775,48 @@ class DesktopAppService private constructor(
     }
 
     suspend fun stopDesktopProxy(message: String? = null): Result<Unit> {
-        val wasRunning = state.isVpnRunning || runtimeManager.isRunning()
-        val stoppedMode = runtimeManager.currentMode() ?: state.appMode
-        resumeConnectionOnLaunch = false
-        if (!wasRunning) {
-            commitState(
-                nextState = state.copy(
-                    isBusy = false,
-                    isVpnRunning = false,
-                ).withStatus(message ?: MainCommandLogic.stoppedConnectionLabel(stoppedMode)),
-            )
-            return Result.success(Unit)
-        }
-        updateState { it.copy(isBusy = true) }
-        val result = runtimeManager.stop()
-        val stoppedAt = System.currentTimeMillis()
-        if (result.isSuccess) {
-            commitState(
-                nextState = state.copy(
-                    isBusy = false,
-                    isVpnRunning = false,
-                    sessionStoppedAtEpochMillis = stoppedAt,
-                    successfulStops = state.successfulStops + 1,
-                ).withStatus(message ?: MainCommandLogic.stoppedConnectionLabel(stoppedMode)),
-            )
-        } else {
-            updateState {
-                it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)}",
-                )
-            }
-        }
-        return result.map { Unit }
+        return connectionLifecycle.stopConnection(
+            state = state,
+            locations = desktopLocations,
+            message = message,
+            currentState = { state },
+            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
+            commitState = { nextLocations, nextState ->
+                commitState(nextState = nextState, nextLocations = nextLocations)
+            },
+            updateState = ::updateState,
+        )
     }
 
     private suspend fun stopRuntimeForAppExit(): Result<Unit> {
-        val wasRunning = state.isVpnRunning || runtimeManager.isRunning()
-        val stoppedMode = runtimeManager.currentMode() ?: state.appMode
-        resumeConnectionOnLaunch = wasRunning
-        if (!wasRunning) {
-            commitState(
-                nextState = state.copy(
-                    isBusy = false,
-                    isVpnRunning = false,
-                ).withStatus("App closed. VPN was off."),
-            )
-            return Result.success(Unit)
-        }
-
-        updateState { it.copy(isBusy = true) }
-        val result = runtimeManager.stop()
-        val stoppedAt = System.currentTimeMillis()
-        if (result.isSuccess) {
-            commitState(
-                nextState = state.copy(
-                    isBusy = false,
-                    isVpnRunning = false,
-                    sessionStoppedAtEpochMillis = stoppedAt,
-                ).withStatus("${MainCommandLogic.connectionDisplayName(stoppedMode)} stopped. Will reconnect on next launch."),
-            )
-        } else {
-            updateState {
-                it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: "Failed to stop ${MainCommandLogic.connectionDisplayName(stoppedMode)} before exit",
-                )
-            }
-        }
-        return result.map { Unit }
+        return connectionLifecycle.stopRuntimeForAppExit(
+            state = state,
+            locations = desktopLocations,
+            currentState = { state },
+            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
+            commitState = { nextLocations, nextState ->
+                commitState(nextState = nextState, nextLocations = nextLocations)
+            },
+            updateState = ::updateState,
+        )
     }
 
     suspend fun startDesktopProxy(
         location: DesktopLocationRecord,
         benchmarkSummary: String? = null,
     ): Result<Unit> {
-        val targetMode = state.appMode
-        val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
-        if (profile.isFailure) {
-            val error = profile.exceptionOrNull()?.message ?: "Invalid location config"
-            updateState { it.withStatus(error) }
-            return Result.failure(IllegalStateException(error))
-        }
-
-        val selectedLocations = desktopLocations.map { it.copy(isSelected = it.index == location.index) }
-        commitState(
-            nextLocations = selectedLocations,
-            nextState = state.copy(
-                isBusy = true,
-                selectedProfileName = location.name,
-                selectedProfileServer = location.server,
-                selectedProfileRawLink = location.rawLink,
-                selectedProfileSourceUrl = location.sourceUrl,
-            ).withStatus(MainCommandLogic.startingConnectionLabel(targetMode)),
+        return connectionLifecycle.startConnection(
+            state = state,
+            locations = desktopLocations,
+            location = location,
+            benchmarkSummary = benchmarkSummary,
+            currentState = { state },
+            setResumeConnectionOnLaunch = { resumeConnectionOnLaunch = it },
+            commitState = { nextLocations, nextState ->
+                commitState(nextState = nextState, nextLocations = nextLocations)
+            },
+            updateState = ::updateState,
         )
-
-        val result = runtimeManager.start(
-            profile = profile.getOrThrow(),
-            routingRules = MainDraftLogic.buildEditedRoutingRules(state),
-            dnsSettings = DesktopDnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            ),
-            appMode = targetMode,
-        )
-        if (result.isSuccess) {
-            val session = result.getOrThrow()
-            val startedAt = System.currentTimeMillis()
-            resumeConnectionOnLaunch = true
-            val startedMessage = when (targetMode) {
-                AppMode.PROXY_ONLY -> "Proxy started on 127.0.0.1:${session.listenPort}"
-                AppMode.VPN -> "VPN started on ${session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME}"
-            }
-            commitState(
-                nextLocations = selectedLocations,
-                nextState = state.copy(
-                    isBusy = false,
-                    isVpnRunning = true,
-                    hasVpnPermission = true,
-                    sessionStartedAtEpochMillis = startedAt,
-                    sessionStoppedAtEpochMillis = 0L,
-                    successfulStarts = state.successfulStarts + 1,
-                    lastBenchmarkSummary = benchmarkSummary ?: state.lastBenchmarkSummary,
-                ).withStatus(startedMessage),
-            )
-        } else {
-            updateState {
-                it.copy(
-                    isBusy = false,
-                    isVpnRunning = false,
-                ).withStatus(result.exceptionOrNull()?.message ?: "Failed to start ${MainCommandLogic.connectionDisplayName(targetMode)}")
-            }
-        }
-        return result.map { Unit }
     }
 
     suspend fun refreshDesktopSubscriptions(
@@ -1322,7 +1236,7 @@ class DesktopAppService private constructor(
     }
 
     private fun activeConnectionName(): String {
-        return MainCommandLogic.connectionDisplayName(runtimeManager.currentMode() ?: state.appMode)
+        return MainCommandLogic.connectionDisplayName(connectionLifecycle.currentRuntimeMode() ?: state.appMode)
     }
 
     private fun updateLocationBenchmarks(
@@ -1612,16 +1526,4 @@ internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid:
     }
 
     return previousIsValid
-}
-
-private fun MainUiState.withStatus(message: String): MainUiState {
-    val now = System.currentTimeMillis()
-    return copy(
-        statusMessage = message,
-        connectionLog = (connectionLog + ConnectionLogEntry(
-            id = "desktop-$now-${connectionLog.size}",
-            message = message,
-            createdAtEpochMillis = now,
-        )).takeLast(50),
-    )
 }
