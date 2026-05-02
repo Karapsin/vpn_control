@@ -2,6 +2,16 @@
 
 Use this matrix to choose the smallest useful validation set for a patch. Add more tests when the touched code crosses boundaries.
 
+## CI Shortcut
+
+The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual fast guardrail set for code changes:
+
+```bash
+./scripts/check_release_hygiene.sh
+./scripts/check_localization.py
+./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest
+```
+
 ## Quick Mapping
 
 | Touched Area | Run |
@@ -37,6 +47,14 @@ Shared core behavior patch:
 ```
 
 Subscription refresh behavior patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :app:testDebugUnitTest
+```
+
+Selection/remap behavior patch:
 
 ```bash
 ./gradlew :shared:core:desktopTest

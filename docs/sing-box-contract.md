@@ -93,7 +93,9 @@ Android and desktop should both evaluate subscription candidates using shared se
 Relevant tests:
 
 ```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/SelectionMappingLogicTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopDirectProbeRoutingTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopFindBestServiceTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/BenchmarkSearchLogicTest.kt
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/JsonSubscriptionParsingTest.kt
 ```
