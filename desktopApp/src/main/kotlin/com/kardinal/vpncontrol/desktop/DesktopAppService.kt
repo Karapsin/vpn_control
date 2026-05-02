@@ -7,7 +7,6 @@ import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.AutoRefreshLogic
 import com.kardinal.vpncontrol.MainCommandLogic
-import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateProjector
 import com.kardinal.vpncontrol.MainUiStateTransitions
@@ -27,7 +26,6 @@ import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
-import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
@@ -101,6 +99,13 @@ class DesktopAppService private constructor(
         stateProvider = { state },
         desktopStore = desktopStore,
         runtimeManager = runtimeManager,
+        updateState = ::updateState,
+    )
+    private val settingsService = DesktopSettingsService(
+        stateProvider = { state },
+        autostartManager = autostartManager,
+        stopConnection = { message -> stopDesktopProxy(message) },
+        commitState = { nextState -> commitState(nextState = nextState) },
         updateState = ::updateState,
     )
     private val findBestService = DesktopFindBestService(
@@ -325,161 +330,79 @@ class DesktopAppService private constructor(
     }
 
     fun toggleDnsDialog() {
-        updateState {
-            if (it.showDnsDialog) {
-                it.copy(showDnsDialog = false)
-            } else {
-                it.copy(
-                    showDnsDialog = true,
-                    customDnsDraft = it.customDns,
-                    useCustomDnsDraft = it.useCustomDns,
-                )
-            }
-        }
+        settingsService.toggleDnsDialog()
     }
 
     fun setUseCustomDnsDraft(enabled: Boolean) {
-        updateState { it.copy(useCustomDnsDraft = enabled) }
+        settingsService.setUseCustomDnsDraft(enabled)
     }
 
     fun setCustomDnsDraft(value: String) {
-        updateState { it.copy(customDnsDraft = value.take(80)) }
+        settingsService.setCustomDnsDraft(value)
     }
 
     fun saveDns() {
-        val plan = MainDraftLogic.resolveDnsSave(state)
-        commitState(
-            nextState = state.copy(
-                customDns = plan.dns,
-                customDnsDraft = plan.dns,
-                useCustomDns = plan.enabled,
-                useCustomDnsDraft = plan.enabled,
-                showDnsDialog = false,
-            ).withStatus(plan.statusMessage),
-        )
+        settingsService.saveDns()
     }
 
     fun setStartOnBootEnabled(enabled: Boolean) {
-        val result = autostartManager.setEnabled(enabled)
-        val actual = autostartManager.isEnabled()
-        val status = if (result.isSuccess) {
-            if (actual) {
-                "App will start automatically after login"
-            } else {
-                "App startup on login disabled"
-            }
-        } else {
-            result.exceptionOrNull()?.message ?: "Failed to update startup setting"
-        }
-        updateState { it.copy(startOnBootEnabled = actual).withStatus(status) }
+        settingsService.setStartOnBootEnabled(enabled)
     }
 
     fun toggleAppModeDialog() {
-        updateState { it.copy(showAppModeDialog = !it.showAppModeDialog) }
+        settingsService.toggleAppModeDialog()
     }
 
     fun toggleRefreshPolicyDialog() {
-        updateState(MainUiStateTransitions::toggleRefreshPolicyDialog)
+        settingsService.toggleRefreshPolicyDialog()
     }
 
     fun toggleValidationSettingsDialog() {
-        updateState(MainUiStateTransitions::toggleValidationSettingsDialog)
+        settingsService.toggleValidationSettingsDialog()
     }
 
     fun toggleLanguageDialog() {
-        updateState { it.copy(showLanguageDialog = !it.showLanguageDialog) }
+        settingsService.toggleLanguageDialog()
     }
 
     fun setAppLanguage(language: AppLanguage) {
-        updateState {
-            it.copy(appLanguage = language, showLanguageDialog = false).withStatus(
-                StatusMessages.languageSet(if (language == AppLanguage.SYSTEM) "" else language.nativeName),
-            )
-        }
+        settingsService.setAppLanguage(language)
     }
 
     fun setSubscriptionHwid(value: String) {
-        val normalized = value.trim()
-        val status = if (normalized.isBlank()) {
-            "Subscription x-hwid cleared. A new ID will be generated on the next refresh."
-        } else {
-            "Subscription x-hwid saved. Refresh the subscription to use it."
-        }
-        updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
+        settingsService.setSubscriptionHwid(value)
     }
 
     fun setValidationPrimaryUrlDraft(value: String) {
-        updateState { it.copy(validationPrimaryUrlDraft = value) }
+        settingsService.setValidationPrimaryUrlDraft(value)
     }
 
     fun setValidationSecondaryUrlDraft(value: String) {
-        updateState { it.copy(validationSecondaryUrlDraft = value) }
+        settingsService.setValidationSecondaryUrlDraft(value)
     }
 
     fun setValidationBatchSizeDraft(value: String) {
-        updateState { it.copy(validationBatchSizeDraft = value.filter(Char::isDigit).take(3)) }
+        settingsService.setValidationBatchSizeDraft(value)
     }
 
     fun setValidationRetryCountDraft(value: String) {
-        updateState { it.copy(validationRetryCountDraft = value.filter(Char::isDigit).take(3)) }
+        settingsService.setValidationRetryCountDraft(value)
     }
 
     fun saveValidationSettings() {
-        val plan = MainDraftLogic.resolveValidationSettingsSave(state)
-        val settings = plan.settings
-        commitState(
-            nextState = state.copy(
-                validationSettings = settings,
-                validationPrimaryUrlDraft = settings.primaryUrl,
-                validationSecondaryUrlDraft = settings.secondaryUrl,
-                validationBatchSizeDraft = settings.batchSize.toString(),
-                validationRetryCountDraft = settings.retryCount.toString(),
-                showValidationSettingsDialog = false,
-            ).withStatus(plan.statusMessage),
-        )
+        settingsService.saveValidationSettings()
     }
 
     fun saveSubscriptionRefreshPolicy() {
-        val resolution = MainCommandLogic.resolveSubscriptionRefreshPolicySave(state)
-        if (resolution.isFailure) {
-            updateState {
-                it.withStatus(
-                    resolution.exceptionOrNull()?.message ?: "Failed to save refresh settings",
-                )
-            }
-            return
-        }
-        val saved = resolution.getOrThrow()
-        commitState(
-            nextState = state.copy(
-                subscriptionRefreshPolicy = saved.policy,
-                subscriptionRefreshPolicyDraft = saved.policy,
-                findBestAfterSubscriptionRefresh = saved.findBestAfterRefresh,
-                findBestAfterSubscriptionRefreshDraft = saved.findBestAfterRefresh,
-                subscriptionRefreshCustomHours = saved.resolvedHours,
-                subscriptionRefreshCustomHoursDraft = formatSubscriptionRefreshHoursInput(saved.resolvedHours),
-                showRefreshPolicyDialog = false,
-            ).withStatus(saved.statusMessage),
-        )
+        settingsService.saveSubscriptionRefreshPolicy()
     }
 
     suspend fun setAppMode(mode: AppMode) {
-        if (state.isVpnRunning && mode != state.appMode) {
-            val stopResult = stopDesktopProxy("${MainCommandLogic.connectionDisplayName(state.appMode)} stopped. App mode: ${mode.name}")
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-        updateState { it.withStatus("App mode: ${mode.name}").copy(appMode = mode, showAppModeDialog = false) }
+        settingsService.setAppMode(mode)
     }
 
     suspend fun toggleAppMode() {
-        val nextMode = if (state.appMode == AppMode.VPN) {
-            AppMode.PROXY_ONLY
-        } else {
-            AppMode.VPN
-        }
-        setAppMode(nextMode)
+        settingsService.toggleAppMode()
     }
 
     suspend fun toggleSelectedLocationProxy() {
