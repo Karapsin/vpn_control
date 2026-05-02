@@ -14,11 +14,8 @@ import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
-import com.kardinal.vpncontrol.data.ResolvedRemoteSource
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
-import com.kardinal.vpncontrol.data.SelectionWorkflowService
 import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
-import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
@@ -28,7 +25,6 @@ import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
@@ -37,13 +33,12 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
-import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
-import java.util.UUID
 import java.nio.file.Path
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -51,7 +46,7 @@ class DesktopAppService private constructor(
     private val desktopStore: DesktopStateStore,
     private val runtimeManager: DesktopProxyRuntimeManager,
     private val validationRuntime: DesktopProxyValidationRuntime,
-    private val subscriptionContentFetcher: SubscriptionContentFetcher,
+    private val subscriptionService: DesktopSubscriptionService,
     private val autostartManager: DesktopAutostartManager,
     private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
     initialWorkspace: DesktopWorkspace,
@@ -96,7 +91,7 @@ class DesktopAppService private constructor(
                     directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(validationDirectory),
                 ),
                 validationRuntime = DesktopProxyValidationRuntime(baseDir = validationDirectory),
-                subscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
+                subscriptionService = DesktopSubscriptionService(DesktopSubscriptionDownloadClient()),
                 autostartManager = DesktopAutostartManager.default(),
                 autoRefreshBestSelectionAction = { service ->
                     service.findBestLocation(refreshSubscriptionsFirst = false)
@@ -127,7 +122,7 @@ class DesktopAppService private constructor(
                 desktopStore = store,
                 runtimeManager = runtimeManager,
                 validationRuntime = validationRuntime,
-                subscriptionContentFetcher = subscriptionContentFetcher,
+                subscriptionService = DesktopSubscriptionService(subscriptionContentFetcher),
                 autostartManager = autostartManager,
                 autoRefreshBestSelectionAction = autoRefreshBestSelectionAction,
                 initialWorkspace = initialWorkspace,
@@ -922,62 +917,22 @@ class DesktopAppService private constructor(
 
         updateState { it.copy(isBusy = true, isRefreshing = true).withStatus(statusPrefix) }
 
-        val now = System.currentTimeMillis()
-        val loadedByUrl = linkedMapOf<String, List<ProxyProfile>>()
-        val failedLabels = mutableListOf<String>()
-        var currentSubscriptions = state.subscriptions
-
-        for (subscription in subscriptionsToRefresh) {
-            updateState { it.withStatus("Refreshing ${subscriptionDisplayName(subscription)}...") }
-            val result = runCatching {
-                loadDesktopSubscriptionProfiles(subscription.url)
-            }
-            currentSubscriptions = currentSubscriptions.map { source ->
-                if (source.id != subscription.id) {
-                    source
-                } else {
-                    result.fold(
-                        onSuccess = { profiles ->
-                            loadedByUrl[source.url] = profiles
-                            source.copy(
-                                cachedLocations = profiles.map(LocationConfigs::encodeStoredLocation),
-                                lastRefreshedAtEpochMillis = now,
-                                lastRefreshStatus = "${profiles.size} locations refreshed",
-                            )
-                        },
-                        onFailure = { error ->
-                            failedLabels += subscriptionDisplayName(source)
-                            source.copy(
-                                lastRefreshedAtEpochMillis = now,
-                                lastRefreshStatus = error.message ?: "Refresh failed",
-                            )
-                        },
-                    )
-                }
-            }
+        val refreshResult = subscriptionService.refreshSubscriptions(
+            state = state,
+            locations = desktopLocations,
+            subscriptionsToRefresh = subscriptionsToRefresh,
+            onProgress = { message ->
+                updateState { it.withStatus(message) }
+            },
+        )
+        if (refreshResult.isFailure) {
+            updateState { it.copy(isBusy = false, isRefreshing = false) }
+            return Result.failure(refreshResult.exceptionOrNull() ?: IllegalStateException("Refresh failed"))
         }
-
-        val successfulUrls = loadedByUrl.keys
-        val preservedLocations = desktopLocations.filter { location ->
-            location.sourceUrl.isBlank() || location.sourceUrl !in successfulUrls
-        }
-        val rebuiltLocations = buildList {
-            addAll(preservedLocations)
-            var nextIndex = nextLocationIndex(preservedLocations)
-            loadedByUrl.forEach { (sourceUrl, profiles) ->
-                val (mapped, updatedNextIndex) = profilesToDesktopLocations(
-                    sourceUrl = sourceUrl,
-                    profiles = profiles,
-                    existingLocations = desktopLocations,
-                    startIndex = nextIndex,
-                )
-                addAll(mapped)
-                nextIndex = updatedNextIndex
-            }
-        }
+        val refreshed = refreshResult.getOrThrow()
 
         val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
-            rebuiltLocations.none { it.matchesSelectedLocation(state) }
+            refreshed.locations.none { it.matchesSelectedLocation(state) }
         if (removedSelected && state.isVpnRunning && stopVpnIfSelectedRemoved) {
             val stopResult = stopDesktopProxy("${activeConnectionName()} stopped. Refreshed subscriptions removed the selected location.")
             if (stopResult.isFailure) {
@@ -986,27 +941,18 @@ class DesktopAppService private constructor(
             }
         }
 
-        val summary = MainCommandLogic.formatRefreshSummaryMessage(
-            refreshedCount = loadedByUrl.size,
-            failedSubscriptions = failedLabels,
-            totalCount = subscriptionsToRefresh.size,
-            defaultSuccess = if (loadedByUrl.size == 1 && subscriptionsToRefresh.size == 1) {
-                "Subscription refreshed"
-            } else {
-                "Subscriptions refreshed"
-            },
-        )
         commitState(
-            nextLocations = rebuiltLocations,
+            nextLocations = refreshed.locations,
             nextState = state.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
                 .copy(
                     isBusy = false,
                     isRefreshing = false,
-                    subscriptions = currentSubscriptions,
+                    subscriptionHwid = refreshed.subscriptionHwid,
+                    subscriptions = refreshed.subscriptions,
                 )
-                .withStatus(summary),
+                .withStatus(refreshed.statusMessage),
         )
-        return Result.success(loadedByUrl.size)
+        return Result.success(refreshed.refreshedCount)
     }
 
     suspend fun importLocationsRaw(raw: String) {
@@ -1379,67 +1325,6 @@ class DesktopAppService private constructor(
         return MainCommandLogic.connectionDisplayName(runtimeManager.currentMode() ?: state.appMode)
     }
 
-    private fun subscriptionDisplayName(subscription: SubscriptionSource): String {
-        return subscription.customName.ifBlank {
-            displayRemoteSourceHost(subscription.url) ?: "Subscription"
-        }
-    }
-
-    private suspend fun loadDesktopSubscriptionProfiles(rawSource: String): List<ProxyProfile> {
-        val subscriptionHwid = ensureSubscriptionHwid()
-        return SelectionWorkflowService.parseRemoteSourceLocations(
-            rawSource = rawSource,
-            resolveSource = { source ->
-                when (val parsed = parseDirectRemoteSource(source)) {
-                    is DirectRemoteSourceResolution -> ResolvedRemoteSource(
-                        preview = parsed.preview,
-                        fetchUrl = parsed.url,
-                    )
-                    is UnsupportedRemoteSourceResolution -> error(parsed.errorMessage)
-                    null -> error("Remote source must be a valid https:// URL")
-                }
-            },
-            fetchedContent = { url -> subscriptionContentFetcher.fetch(url, subscriptionHwid) },
-        )
-    }
-
-    private fun ensureSubscriptionHwid(): String {
-        val existing = state.subscriptionHwid.trim()
-        if (existing.isNotBlank()) return existing
-
-        val generated = generateSubscriptionHwid()
-        commitState(nextState = state.copy(subscriptionHwid = generated))
-        return generated
-    }
-
-    private fun profilesToDesktopLocations(
-        sourceUrl: String,
-        profiles: List<ProxyProfile>,
-        existingLocations: List<DesktopLocationRecord>,
-        startIndex: Int,
-    ): Pair<List<DesktopLocationRecord>, Int> {
-        val existingByKey = existingLocations
-            .filter { it.sourceUrl == sourceUrl }
-            .associateBy { it.normalizedStorageKey() }
-        var nextIndex = startIndex
-        val mapped = profiles.map { profile ->
-            val rawLink = LocationConfigs.encodeStoredLocation(profile)
-            val existing = existingByKey[LocationConfigs.normalizeStoredReference(rawLink)]
-            DesktopLocationRecord(
-                index = existing?.index ?: nextIndex++,
-                sourceUrl = sourceUrl,
-                rawLink = rawLink,
-                name = profile.remarks,
-                server = profile.server,
-                details = profile.desktopDetails(),
-                benchmarkDetail = existing?.benchmarkDetail ?: "Refreshed • not checked yet",
-                isValid = existing?.isValid ?: true,
-                isSelected = existing?.isSelected ?: false,
-            )
-        }
-        return mapped to nextIndex
-    }
-
     private fun updateLocationBenchmarks(
         detailsByRawKey: Map<String, String>,
         winningRawKey: String? = null,
@@ -1534,10 +1419,6 @@ private fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopVa
         preflightConcurrency = concurrency,
         batchSize = normalized.batchSize,
     )
-}
-
-private fun generateSubscriptionHwid(): String {
-    return UUID.randomUUID().toString().replace("-", "")
 }
 
 private fun syncDesktopUiStateWithLocations(
@@ -1686,10 +1567,6 @@ private fun List<String>.toDesktopLocationRecords(startIndex: Int): List<Desktop
     }
 }
 
-private fun DesktopLocationRecord.normalizedStorageKey(): String {
-    return LocationConfigs.normalizeStoredReference(rawLink)
-}
-
 private fun DesktopLocationRecord.matchesSelectedLocation(state: MainUiState): Boolean {
     val selectedRaw = state.selectedProfileRawLink.takeIf(String::isNotBlank) ?: return false
     if (rawLink == selectedRaw) return true
@@ -1698,35 +1575,6 @@ private fun DesktopLocationRecord.matchesSelectedLocation(state: MainUiState): B
         sourceUrl == state.selectedProfileSourceUrl &&
         name == state.selectedProfileName &&
         server == state.selectedProfileServer
-}
-
-private fun nextLocationIndex(locations: List<DesktopLocationRecord>): Int {
-    return (locations.maxOfOrNull(DesktopLocationRecord::index) ?: -1) + 1
-}
-
-private fun ProxyProfile.desktopDetails(): String {
-    val protocolLabel = when (protocol) {
-        ProxyProtocol.VLESS -> "VLESS"
-        ProxyProtocol.TROJAN -> "Trojan"
-        ProxyProtocol.SHADOWSOCKS -> "Shadowsocks"
-        ProxyProtocol.VMESS -> "VMess"
-        ProxyProtocol.SOCKS -> "SOCKS"
-        ProxyProtocol.CUSTOM -> "Custom"
-    }
-    val tags = buildList {
-        security.takeIf { it.isNotBlank() && !it.equals("none", ignoreCase = true) }?.let {
-            add(it.uppercase())
-        }
-        network.takeIf { it.isNotBlank() && !it.equals("tcp", ignoreCase = true) }?.let {
-            add(it.uppercase())
-        }
-        if (protocol == ProxyProtocol.SHADOWSOCKS) {
-            method.takeIf { it.isNotBlank() }?.let(::add)
-        }
-    }
-    return (listOf(protocolLabel) + tags)
-        .joinToString(" ")
-        .trim()
 }
 
 private fun DesktopLocationRecord.toCompactBenchmarkMillis(): Double? {
