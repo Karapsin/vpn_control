@@ -463,6 +463,13 @@ class AppStringsCoverageTest {
             StatusMessages.bestLocationSearchTimedOut(),
             StatusMessages.noSuitableLocationFound(),
             StatusMessages.bestLocationNotMapped(),
+            StatusMessages.activatedAllSubscriptions(),
+            StatusMessages.activatedSubscription("Example"),
+            StatusMessages.profileSourceMode(ProfileSourceMode.SUBSCRIPTION),
+            StatusMessages.profileSourceMode(ProfileSourceMode.CURRENT_LOCATIONS),
+            StatusMessages.subscriptionNameReset(),
+            StatusMessages.subscriptionNameSaved(),
+            StatusMessages.subscriptionDeleted(),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)

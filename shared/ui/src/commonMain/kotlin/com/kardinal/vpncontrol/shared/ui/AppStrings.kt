@@ -406,6 +406,12 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
         StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT -> "Best location search timed out; keeping the current connection"
         StatusMessageKey.NO_SUITABLE_LOCATION_FOUND -> "No suitable location found"
         StatusMessageKey.BEST_LOCATION_NOT_MAPPED -> "Best location could not be mapped to the desktop list"
+        StatusMessageKey.ACTIVATED_ALL_SUBSCRIPTIONS -> "Activated all subscriptions"
+        StatusMessageKey.ACTIVATED_SUBSCRIPTION -> "Activated ${arg(0)}"
+        StatusMessageKey.PROFILE_SOURCE_MODE -> "Profile source mode: ${arg(0)}"
+        StatusMessageKey.SUBSCRIPTION_NAME_RESET -> "Subscription name reset"
+        StatusMessageKey.SUBSCRIPTION_NAME_SAVED -> "Subscription name saved"
+        StatusMessageKey.SUBSCRIPTION_DELETED -> "Subscription deleted"
     }
 }
 

@@ -32,7 +32,6 @@ import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.nio.file.Path
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class DesktopAppService private constructor(
@@ -77,6 +76,17 @@ class DesktopAppService private constructor(
         locationsProvider = { desktopLocations },
         currentRuntimeMode = { connectionLifecycle.currentRuntimeMode() },
         stopConnection = { message -> stopDesktopProxy(message) },
+        commitState = { nextState, nextLocations ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
+        updateState = ::updateState,
+    )
+    private val subscriptionManagementService = DesktopSubscriptionManagementService(
+        stateProvider = { state },
+        locationsProvider = { desktopLocations },
+        validateSubscriptionSource = ::validateDesktopSubscriptionSource,
+        stopConnection = { message -> stopDesktopProxy(message) },
+        activeConnectionName = ::activeConnectionName,
         commitState = { nextState, nextLocations ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
@@ -223,14 +233,7 @@ class DesktopAppService private constructor(
     }
 
     fun sourceLabelFor(url: String): String {
-        return state.subscriptions
-            .firstOrNull { it.url == url }
-            ?.customName
-            ?.takeIf(String::isNotBlank)
-            ?: url.takeIf(String::isNotBlank)
-                ?.substringAfter("://")
-                ?.substringBefore('/')
-            ?: "none"
+        return subscriptionManagementService.sourceLabelFor(url)
     }
 
     fun runtimeStatusDetails(): List<String> {
@@ -264,178 +267,47 @@ class DesktopAppService private constructor(
     }
 
     fun activateSelection(targetId: String) {
-        updateState {
-            it.withStatus(
-                if (targetId == ALL_SUBSCRIPTIONS_ID) {
-                    "Activated all subscriptions"
-                } else {
-                    "Activated ${sourceLabelFor(it.subscriptions.first { subscription -> subscription.id == targetId }.url)}"
-                },
-            ).copy(
-                activeSubscriptionId = targetId,
-                profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
-                profileUrl = if (targetId == ALL_SUBSCRIPTIONS_ID) {
-                    it.profileUrl
-                } else {
-                    it.subscriptions.first { subscription -> subscription.id == targetId }.url
-                },
-            )
-        }
+        subscriptionManagementService.activateSelection(targetId)
     }
 
     fun setSourceMode(mode: ProfileSourceMode) {
-        updateState { it.withStatus("Profile source mode: ${mode.name}").copy(profileSourceMode = mode) }
+        subscriptionManagementService.setSourceMode(mode)
     }
 
     fun toggleAddSubscriptionEditor() {
-        updateState { current ->
-            current.copy(
-                showAddSubscriptionEditor = !current.showAddSubscriptionEditor,
-                profileDraft = if (current.showAddSubscriptionEditor) current.profileDraft else current.profileUrl,
-            )
-        }
+        subscriptionManagementService.toggleAddSubscriptionEditor()
     }
 
     fun setProfileDraft(value: String) {
-        updateState { it.copy(profileDraft = value) }
+        subscriptionManagementService.setProfileDraft(value)
     }
 
     fun clearProfileDraft() {
-        updateState { it.copy(profileDraft = "") }
+        subscriptionManagementService.clearProfileDraft()
     }
 
     fun showSubscriptionRenameDialog(subscriptionId: String) {
-        val target = state.subscriptions.firstOrNull { it.id == subscriptionId } ?: return
-        updateState {
-            it.copy(
-                showProfileHistoryRenameDialog = true,
-                profileHistoryRenameSource = target.url,
-                profileHistoryRenameDraft = target.customName,
-            )
-        }
+        subscriptionManagementService.showSubscriptionRenameDialog(subscriptionId)
     }
 
     fun closeSubscriptionRenameDialog() {
-        updateState {
-            it.copy(
-                showProfileHistoryRenameDialog = false,
-                profileHistoryRenameSource = "",
-                profileHistoryRenameDraft = "",
-            )
-        }
+        subscriptionManagementService.closeSubscriptionRenameDialog()
     }
 
     fun setSubscriptionRenameDraft(value: String) {
-        updateState { it.copy(profileHistoryRenameDraft = value.take(80)) }
+        subscriptionManagementService.setSubscriptionRenameDraft(value)
     }
 
     fun saveSubscriptionRename() {
-        val source = state.profileHistoryRenameSource.trim()
-        if (source.isBlank()) {
-            closeSubscriptionRenameDialog()
-            return
-        }
-        val normalizedName = state.profileHistoryRenameDraft.trim()
-        val updatedSubscriptions = state.subscriptions.map { subscription ->
-            if (subscription.url == source) {
-                subscription.copy(customName = normalizedName)
-            } else {
-                subscription
-            }
-        }
-        commitState(
-            nextState = state.copy(
-                subscriptions = updatedSubscriptions,
-                showProfileHistoryRenameDialog = false,
-                profileHistoryRenameSource = "",
-                profileHistoryRenameDraft = "",
-            ).withStatus(
-                if (normalizedName.isBlank()) {
-                    "Subscription name reset"
-                } else {
-                    "Subscription name saved"
-                },
-            ),
-        )
+        subscriptionManagementService.saveSubscriptionRename()
     }
 
     fun saveSubscriptionDraft() {
-        val trimmed = state.profileDraft.trim()
-        val validation = MainCommandLogic.validateProfileSourceSave(
-            value = trimmed,
-            mode = ProfileSourceMode.SUBSCRIPTION,
-            validateSubscription = ::validateDesktopSubscriptionSource,
-        )
-        if (validation.isFailure) {
-            updateState {
-                it.withStatus(validation.exceptionOrNull()?.message ?: "Invalid subscription URL")
-            }
-            return
-        }
-
-        val existingIndex = state.subscriptions.indexOfFirst { it.url == trimmed }
-        val existing = state.subscriptions.getOrNull(existingIndex)
-        val target = existing ?: SubscriptionSource(
-            id = UUID.randomUUID().toString(),
-            url = trimmed,
-            customName = state.profileHistoryNames[trimmed].orEmpty(),
-        )
-        val updatedSubscriptions = buildList {
-            add(target)
-            state.subscriptions.forEachIndexed { index, subscription ->
-                if (index != existingIndex) {
-                    add(subscription)
-                }
-            }
-        }
-        commitState(
-            nextState = state.copy(
-                profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
-                activeSubscriptionId = target.id,
-                profileUrl = target.url,
-                subscriptions = updatedSubscriptions,
-                profileDraft = target.url,
-                showAddSubscriptionEditor = false,
-            ).withStatus(validation.getOrThrow()),
-        )
+        subscriptionManagementService.saveSubscriptionDraft()
     }
 
     suspend fun deleteSubscription(subscriptionId: String) {
-        val target = state.subscriptions.firstOrNull { it.id == subscriptionId } ?: return
-        val nextSubscriptions = state.subscriptions.filterNot { it.id == subscriptionId }
-        val nextLocations = desktopLocations.filterNot { it.sourceUrl == target.url }
-        val removedSelected = state.selectedProfileSourceUrl == target.url ||
-            (state.selectedProfileRawLink.isNotBlank() && nextLocations.none { it.rawLink == state.selectedProfileRawLink })
-
-        if (removedSelected && state.isVpnRunning) {
-            val stopResult = stopDesktopProxy("${activeConnectionName()} stopped. Deleted subscription removed the selected location.")
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-
-        val nextActiveId = when {
-            nextSubscriptions.isEmpty() -> ""
-            isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions) &&
-                nextSubscriptions.size > 1 -> ALL_SUBSCRIPTIONS_ID
-            state.activeSubscriptionId == subscriptionId -> nextSubscriptions.first().id
-            else -> state.activeSubscriptionId
-        }
-
-        commitState(
-            nextLocations = nextLocations,
-            nextState = state.clearSelectedLocationIf(removedSelected).copy(
-                subscriptions = nextSubscriptions,
-                activeSubscriptionId = nextActiveId,
-                profileUrl = when {
-                    nextActiveId.isBlank() -> ""
-                    isAllSubscriptionsGroupActive(nextActiveId, nextSubscriptions) -> ""
-                    else -> nextSubscriptions.firstOrNull { it.id == nextActiveId }?.url.orEmpty()
-                },
-                profileDraft = if (state.profileDraft.trim() == target.url) "" else state.profileDraft,
-                showAddSubscriptionEditor = if (state.profileDraft.trim() == target.url) false else state.showAddSubscriptionEditor,
-            ).withStatus("Subscription deleted"),
-        )
+        subscriptionManagementService.deleteSubscription(subscriptionId)
     }
 
     fun setSubscriptionRefreshPolicyDraft(policy: SubscriptionRefreshPolicy) {

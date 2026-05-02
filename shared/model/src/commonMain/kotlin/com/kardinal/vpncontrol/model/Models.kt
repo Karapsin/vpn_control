@@ -226,6 +226,12 @@ enum class StatusMessageKey {
     BEST_LOCATION_SEARCH_TIMED_OUT,
     NO_SUITABLE_LOCATION_FOUND,
     BEST_LOCATION_NOT_MAPPED,
+    ACTIVATED_ALL_SUBSCRIPTIONS,
+    ACTIVATED_SUBSCRIPTION,
+    PROFILE_SOURCE_MODE,
+    SUBSCRIPTION_NAME_RESET,
+    SUBSCRIPTION_NAME_SAVED,
+    SUBSCRIPTION_DELETED,
 }
 
 data class StructuredStatusMessage(
@@ -348,6 +354,24 @@ object StatusMessages {
 
     fun bestLocationNotMapped(): String =
         encode(StatusMessageKey.BEST_LOCATION_NOT_MAPPED)
+
+    fun activatedAllSubscriptions(): String =
+        encode(StatusMessageKey.ACTIVATED_ALL_SUBSCRIPTIONS)
+
+    fun activatedSubscription(label: String): String =
+        encode(StatusMessageKey.ACTIVATED_SUBSCRIPTION, label)
+
+    fun profileSourceMode(mode: ProfileSourceMode): String =
+        encode(StatusMessageKey.PROFILE_SOURCE_MODE, mode.name)
+
+    fun subscriptionNameReset(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_NAME_RESET)
+
+    fun subscriptionNameSaved(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_NAME_SAVED)
+
+    fun subscriptionDeleted(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_DELETED)
 
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->
