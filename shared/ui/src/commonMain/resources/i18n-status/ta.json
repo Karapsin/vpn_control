@@ -1,0 +1,1382 @@
+{
+  "dynamic": {
+    "findingSubscription": "சந்தாவிலிருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது...",
+    "findingSaved": "சேமித்த இருப்பிடங்களில் இருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது...",
+    "testingFastestCandidates": "வேகமான வேட்பாளர்களை தொகுதிகளாகச் சோதிக்கிறது...",
+    "checkingLocations": "{count} இருப்பிடங்களைச் சோதிக்கிறது...",
+    "testingLocationsRange": "{total} இல் {start}-{end} இருப்பிடங்களைச் சோதிக்கிறது...",
+    "refreshIntervalMinutes": "{count} நிமி",
+    "refreshIntervalHours": "{count} மணி",
+    "refreshIntervalHoursMinutes": "{hours} மணி {minutes} நிமி",
+    "refreshIntervalEvery": "ஒவ்வொரு {interval}",
+    "refreshIntervalEveryHour": "ஒவ்வொரு மணிநேரமும்"
+  },
+  "benchmark": {
+    "best": "சிறந்தது: ",
+    "primary": "முதன்மை ",
+    "secondary": "இரண்டாம் நிலை ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "தடுக்கப்பட்டது",
+      "cached": "கேச் செய்யப்பட்டது",
+      "challenge": "சவால்",
+      "custom_config_manual_only": "தனிப்பயன் கட்டமைப்பு - கைமுறை மட்டும்",
+      "error": "பிழை",
+      "manual": "கைமுறை",
+      "ok": "சரி",
+      "partial": "பகுதி",
+      "tcp_error": "TCP பிழை",
+      "tcp_timeout": "TCP நேரம் முடிந்தது",
+      "timeout": "நேரம் முடிந்தது",
+      "unreachable": "அணுக முடியாது",
+      "validation_timeout": "சரிபார்ப்பு நேரம் முடிந்தது"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "சந்தா URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "படிக்க முடியாத சந்தா URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "பாதுகாப்பற்ற HTTP சந்தாக்கள் ஆதரிக்கப்படவில்லை"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// சந்தா URL-ஐ பயன்படுத்தவும்."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL-ல் செல்லுபடியான HTTPS host இருக்க வேண்டும்"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "செல்லுபடியான https:// சந்தா URL-ஐ ஒட்டவும்."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "நேரடி தொலை மூலம்"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box இறக்குமதி இணைப்பு"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "படிக்க முடியாத sing-box இறக்குமதி இணைப்பு"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "செல்லுபடியான HTTPS தொலை URL-கள் மட்டுமே ஆதரிக்கப்படுகின்றன"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "செல்லுபடியான https:// URL-ஆக தீர்மானிக்கும் sing-box இறக்குமதி இணைப்பைப் பயன்படுத்தவும்."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "உள்ளமைக்கப்பட்ட URL-லிருந்து தொலை உள்ளடக்கத்தைப் பெறும்"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "தொலை உள்ளடக்கத்தைப் பெறும் இடம்: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "இறக்குமதி இணைப்பைப் பகுப்பாய்வு செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "செல்லுபடியான sing-box remote-profile இறக்குமதி இணைப்பு அல்லது நேரடி சந்தா URL-ஐ ஒட்டவும்."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN இறக்குமதி இணைப்பு"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "படிக்க முடியாத VPN இறக்குமதி இணைப்பு"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "ஆதரிக்கப்படாத வழங்குநர் இறக்குமதி"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia மற்றும் பிற vpn:// இறக்குமதிகள் ஆதரிக்கப்படவில்லை. சாதாரண சந்தா URL-ஐ பயன்படுத்தவும் அல்லது இருப்பிடங்களை கைமுறையாகச் சேர்க்கவும்."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "இறக்குமதி payload-ஐ decode செய்ய முடியவில்லை"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// இறக்குமதிகள் ஆதரிக்கப்படவில்லை. சாதாரண சந்தா URL-ஐ பயன்படுத்தவும் அல்லது இருப்பிடங்களை கைமுறையாகச் சேர்க்கவும்."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP சந்தா URL-கள் ஆதரிக்கப்படவில்லை. பதிலாக https://-ஐ பயன்படுத்தவும்."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "தொலை மூலம் https:// URL அல்லது ஆதரிக்கப்படும் இறக்குமதி இணைப்பாக இருக்க வேண்டும்"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "தொலை மூலம் காலியாக உள்ளது"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "தொலை மூலம் host உடைய செல்லுபடியான https:// URL ஆக இருக்க வேண்டும்."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "இந்த sing-box இறக்குமதி செல்லாத அல்லது HTTPS அல்லாத URL-ஆக தீர்மானிக்கிறது. அதற்கு பதிலாக செல்லுபடியான https:// URL-ஐ பயன்படுத்தவும்."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "தேர்ந்தெடுத்த இருப்பிடத்தைப் பயன்படுத்துகிறது..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "புதுப்பிக்கப்பட்ட தேர்ந்தெடுத்த இருப்பிடத்தைப் பயன்படுத்துகிறது..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "சிறந்த இருப்பிடத் தேடலின் நேரம் முடிந்தது; தற்போதைய இணைப்பை வைத்திருக்கிறது"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "கிளிப்போர்டு காலியாக உள்ளது"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "இணைப்பு பதிவு இயக்கப்பட்டது"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "இணைப்பு பதிவு மறைக்கப்பட்டது"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "இணைப்பு சோதனை கருவிகள் இயக்கப்பட்டன"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "இணைப்பு சோதனை கருவிகள் மறைக்கப்பட்டன"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ஏற்றுமதி இலக்கைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "தேர்ந்தெடுத்த கோப்பைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "தேர்ந்தெடுத்த இருப்பிடங்கள் கோப்பைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "தேர்ந்தெடுத்த விதிகள் கோப்பைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "டெஸ்க்டாப் shell: Whitelists-இலிருந்து நெதர்லாந்து"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "டெஸ்க்டாப் செயலி தொடங்கப்பட்டது"
+    },
+    {
+      "source": "App initialized",
+      "target": "செயலி தொடங்கப்பட்டது"
+    },
+    {
+      "source": "Export Locations",
+      "target": "இருப்பிடங்களை ஏற்றுமதி செய்"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "புதுப்பிக்கப்பட்ட தேர்ந்தெடுத்த இருப்பிடத்தைப் பயன்படுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "பிழையறிதல் விவரங்களை ஏற்றுமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "இருப்பிடங்களை ஏற்றுமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "வழிச்செலுத்தல் விதிகளை ஏற்றுமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "மாற்று இருப்பிடத்தைக் கண்டறிய முடியவில்லை"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "கோப்பை இறக்குமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "பிழையறிதல் இலக்கைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "புதுப்பிப்பு அமைப்புகளைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "தொடக்க அமைப்பைப் புதுப்பிக்க முடியவில்லை"
+    },
+    {
+      "source": "Import canceled",
+      "target": "இறக்குமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "தவறான சந்தா URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "தாமத வரலாறு இயக்கப்பட்டது"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "தாமத வரலாறு மறைக்கப்பட்டது"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "நேரடி போக்குவரத்து புள்ளிவிவரங்கள் இயக்கப்பட்டன"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "நேரடி போக்குவரத்து புள்ளிவிவரங்கள் மறைக்கப்பட்டன"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "இருப்பிடச் சோதனை ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Location check failed",
+      "target": "இருப்பிடச் சோதனை தோல்வியடைந்தது"
+    },
+    {
+      "source": "Locations exported",
+      "target": "இருப்பிடங்கள் ஏற்றுமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "இருப்பிட இறக்குமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "benchmark செய்ய இருப்பிடங்கள் இல்லை"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "புதுப்பிக்க சந்தாக்கள் இல்லை"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "பொருத்தமான இருப்பிடம் எதுவும் கிடைக்கவில்லை"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "ஒவ்வொரு சுயவிவரத்திற்குமான மொத்தங்கள் இயக்கப்பட்டன"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "ஒவ்வொரு சுயவிவரத்திற்குமான மொத்தங்கள் மறைக்கப்பட்டன"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "முந்தைய VPN அமர்வு மீட்டெடுக்கப்படும்"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR ஸ்கேன் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "வழிச்செலுத்தல் விதிகள் ஏற்றுமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "வழிச்செலுத்தல் விதிகள் இறக்குமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "அமர்வு புள்ளிவிவரங்கள் இயக்கப்பட்டன"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "அமர்வு புள்ளிவிவரங்கள் மறைக்கப்பட்டன"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "பகிரப்பட்ட உரை ஆதரிக்கப்படும் இறக்குமதி payload அல்ல"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "சந்தா நீக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "சந்தா புதுப்பிப்பு முடிந்தது, ஆனால் பின்னணியில் மாற VPN அனுமதி தேவை. முந்தைய VPN இருப்பிடம் மாற்று ஆதரவாக வைத்திருக்கப்பட்டது."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "சந்தா புதுப்பிப்பு முடிந்தது. சிறந்த இருப்பிடத்தைக் கண்டறிகிறது..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "சந்தா புதுப்பிப்பு முடிந்தது. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "இயக்கநேர முறை: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "உள்ளூர் ப்ராக்ஸி: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "இயக்கநேர பதிவு: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN முறை முன்-சோதனை வெற்றிகரமாக முடிந்தது"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ப்ராக்ஸி-மட்டும் முறை முன்-சோதனை வெற்றிகரமாக முடிந்தது"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN முறை முன்-சோதனை தோல்வியடைந்தது: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ப்ராக்ஸி-மட்டும் முறை முன்-சோதனை தோல்வியடைந்தது: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN முறை கிடைக்கவில்லை: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "ப்ராக்ஸி-மட்டும் முறை கிடைக்கவில்லை: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "டெஸ்க்டாப் VPN திறன்: தயார்"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "டெஸ்க்டாப் VPN திறன்: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN முறை கிடைக்கிறது"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "ப்ராக்ஸி முறை கிடைக்கிறது"
+    },
+    {
+      "source": "not ready",
+      "target": "தயார் இல்லை"
+    },
+    {
+      "source": " checks",
+      "target": " சோதனைகள்"
+    },
+    {
+      "source": " check",
+      "target": " சோதனை"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN சாதன தோல்வி: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "நெட்வொர்க் உரிமைகள் தோல்வி: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS கருவிகள் தோல்வி: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN சாதனம்"
+    },
+    {
+      "source": "network privileges",
+      "target": "நெட்வொர்க் உரிமைகள்"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS கருவிகள்"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN சாதனம் /dev/net/tun இல் இல்லை. முயற்சி: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "டெஸ்க்டாப் VPN முறைக்கு CAP_NET_ADMIN தேவை. root ஆக இயக்கவும் அல்லது sing-box திறன்களை வழங்கவும்: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows வழி/DNS கருவிகள் கிடைக்கவில்லை. VPN முறைக்கு netsh.exe மற்றும் DNS client-க்கான PowerShell கட்டளைகள் தேவை."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "இந்த கணினியில் VPN தயார்"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "இந்த கணினியில் ப்ராக்ஸி தயார்"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "செயலற்றது"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN தொடங்கியது"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN நிறுத்தப்பட்டது"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ப்ராக்ஸி தொடங்கியது"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ப்ராக்ஸி நிறுத்தப்பட்டது"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "உள்ளூர் ப்ராக்ஸி தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "சிறந்த இருப்பிடத்துடன் VPN தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "சிறந்த இருப்பிடத்துடன் உள்ளூர் ப்ராக்ஸி தொடங்குகிறது..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "சந்தாவிலிருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "சேமித்த இருப்பிடங்களில் இருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "இருப்பிடத் தேடல் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Location search failed",
+      "target": "இருப்பிடத் தேடல் தோல்வியடைந்தது"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN அனுமதி அளித்து மீண்டும் முயற்சிக்கவும்"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "முதலில் தொலை மூலத்தை அமைக்கவும்"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "முதலில் குறைந்தது ஒரு சேமித்த இருப்பிடத்தைச் சேர்க்கவும்"
+    },
+    {
+      "source": "Select a location first",
+      "target": "முதலில் ஒரு இருப்பிடத்தைத் தேர்ந்தெடுக்கவும்"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "இன்னும் சந்தாக்கள் சேமிக்கப்படவில்லை"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "அனைத்து சந்தாக்களையும் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "செயலில் உள்ள சந்தாவைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "சந்தாவைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "சந்தாக்களைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "சந்தா தானாகப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "சந்தாக்கள் தானாகப் புதுப்பிக்கின்றன..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "சந்தா புதுப்பிக்கப்பட்டது"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "சந்தாக்கள் புதுப்பிக்கப்பட்டன"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "செயலில் உள்ள சந்தா புதுப்பிக்கப்பட்டது"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "அனைத்து சந்தாக்களும் புதுப்பிக்கப்பட்டன"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "புதுப்பிப்பு தோல்வியடைந்தது"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "சுயவிவர மூலம் சந்தாவாக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "சுயவிவர மூலம் சேமித்த இருப்பிடங்களாக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "இணைப்பு முறை VPN ஆக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "இணைப்பு முறை ப்ராக்ஸி மட்டும் என அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "இணைப்பு முறையை மாற்ற முதலில் துண்டிக்கவும்"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "வரலாறு பதிவு நீக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "சந்தா பெயர் மீட்டமைக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "சந்தா பெயர் சேமிக்கப்பட்டது"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "மொழி கணினி இயல்புநிலைக்கு அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "தனிப்பயன் DNS சேமிக்கப்பட்டது"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "தனிப்பயன் DNS முடக்கப்பட்டது"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "வழிச்செலுத்தல் விதிகள் இறக்குமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Locations imported",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன. தேர்ந்தெடுத்த இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "இருப்பிடங்களை இறக்குமதி செய்ய சேமித்த இருப்பிடங்களுக்கு மாறவும்"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "இருப்பிடங்களை கைமுறையாகச் சேர்க்க சேமித்த இருப்பிடங்களுக்கு மாறவும்"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "தவறான இருப்பிட கட்டமைப்பு"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "திருத்த வேண்டிய இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "பிழையறிதல் ஏற்றுமதி திறக்கப்பட்டது"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "பிழையறிதல் ஏற்றுமதி தோல்வியடைந்தது"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "பிழையறிதல் ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "முந்தைய VPN இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "செயலி மூடப்பட்டது. VPN அணைந்திருந்தது."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "அனைத்து சந்தாக்களும் செயல்படுத்தப்பட்டன"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "அனைத்து சந்தாக்களும் தேர்ந்தெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "சந்தா தேர்ந்தெடுக்கப்பட்டது"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "இருப்பிடங்கள் கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "இருப்பிட ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "வழிச்செலுத்தல் விதிகள் கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "வழிச்செலுத்தல் விதிகள் ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "சுயவிவர மூலம் முறை: சந்தா"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "சுயவிவர மூலம் முறை: சேமித்த இருப்பிடங்கள்"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "புதிய சிறந்த இருப்பிடத்துடன் VPN தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "புதிய சிறந்த இருப்பிடத்துடன் proxy தொடங்குகிறது..."
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows வழி/DNS கருவிகள் கிடைக்கவில்லை. VPN முறைக்கு netsh.exe மற்றும் DNS client-க்கான PowerShell கட்டளைகள் தேவை."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "சந்தா இருப்பிடங்கள் படிக்க-மட்டும். திருத்தங்களைச் சேமிக்க சேமித்த இருப்பிடங்களுக்கு மாறவும்."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "சந்தா இருப்பிடங்கள் படிக்க-மட்டும். அவற்றை நீக்க சேமித்த இருப்பிடங்களுக்கு மாறவும்."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "சந்தா பெறப்பட்டது. சுயவிவரம் தாவலில் அதை மதிப்பாய்வு செய்து சேமிக்கவும்."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "சந்தா இணைப்பு பெறப்பட்டது. சுயவிவரம் தாவலில் அதை மதிப்பாய்வு செய்து சேமிக்கவும்."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "இருப்பிட கட்டமைப்பு பெறப்பட்டது. இருப்பிடங்கள் தாவலில் அதை மதிப்பாய்வு செய்து சேமிக்கவும்."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "சிறந்த இருப்பிடத்துடன் உள்ளூர் ப்ராக்ஸி தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "சிறந்த இருப்பிடத்துடன் VPN தொடங்குகிறது..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "சந்தாவிலிருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "சேமித்த இருப்பிடங்களில் இருந்து சிறந்த இருப்பிடத்தைக் கண்டறிகிறது..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன. தேர்ந்தெடுத்த இருப்பிடம் இனி கிடைக்கவில்லை, ப்ராக்ஸி நிறுத்தப்பட்டது"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன. தேர்ந்தெடுத்த இருப்பிடம் இனி கிடைக்கவில்லை, VPN நிறுத்தப்பட்டது"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன. தேர்ந்தெடுத்த இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் பயன்படுத்தப்பட்டது, ஆனால் அதைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ப்ராக்ஸியை நிறுத்த முடியாததால் இருப்பிட நீக்கம் மீளமைக்கப்பட்டது"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN-ஐ நிறுத்த முடியாததால் இருப்பிட நீக்கம் மீளமைக்கப்பட்டது"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ப்ராக்ஸியை நிறுத்த முடியாததால் இருப்பிட இறக்குமதி மீளமைக்கப்பட்டது"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN-ஐ நிறுத்த முடியாததால் இருப்பிட இறக்குமதி மீளமைக்கப்பட்டது"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN நிறுத்தப்பட்டது. புதுப்பிக்கப்பட்ட சந்தாக்கள் தேர்ந்தெடுத்த இருப்பிடத்தை நீக்கியுள்ளன."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "ப்ராக்ஸி நிறுத்தப்பட்டது. புதுப்பிக்கப்பட்ட சந்தாக்கள் தேர்ந்தெடுத்த இருப்பிடத்தை நீக்கியுள்ளன."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN நிறுத்தப்பட்டது. அடுத்த தொடக்கத்தில் மீண்டும் இணைக்கும்."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "ப்ராக்ஸி நிறுத்தப்பட்டது. அடுத்த தொடக்கத்தில் மீண்டும் இணைக்கும்."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன. பயன்படுத்த VPN-ஐ மறுதொடங்கு"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன. பயன்படுத்த ப்ராக்ஸியை மறுதொடங்கு"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "வழிச்செலுத்தல் விதிகள் இறக்குமதி செய்யப்பட்டன. பயன்படுத்த VPN-ஐ மறுதொடங்கு"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "வழிச்செலுத்தல் விதிகள் இறக்குமதி செய்யப்பட்டன. பயன்படுத்த ப்ராக்ஸியை மறுதொடங்கு"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் நீக்கப்பட்டது. VPN நிறுத்தப்பட்டது: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் நீக்கப்பட்டது. ப்ராக்ஸி நிறுத்தப்பட்டது: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "சிறந்த இருப்பிடம் தேர்ந்தெடுக்கப்பட்டு VPN தொடங்கியது: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "சிறந்த இருப்பிடம் தேர்ந்தெடுக்கப்பட்டு ப்ராக்ஸி தொடங்கியது: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN தொடங்கியது, ஆனால் தேர்ந்தெடுத்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "ப்ராக்ஸி தொடங்கியது, ஆனால் தேர்ந்தெடுத்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN தொடங்கியது, ஆனால் சிறந்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "ப்ராக்ஸி தொடங்கியது, ஆனால் சிறந்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "சிறந்த இருப்பிடத்துடன் VPN-ஐ தொடங்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "சிறந்த இருப்பிடத்துடன் ப்ராக்ஸியை தொடங்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "தேர்ந்தெடுத்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "தேர்ந்தெடுத்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "சிறந்த இருப்பிடத்தைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "தேர்ந்தெடுத்த இருப்பிடத்தைப் பயன்படுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "இருப்பிடத்தைத் தேர்ந்தெடுக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "வெளியேறும் முன் VPN-ஐ நிறுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "வெளியேறும் முன் ப்ராக்ஸியை நிறுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN-ஐ நிறுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "ப்ராக்ஸியை நிறுத்த முடியவில்லை"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN-ஐ தொடங்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "ப்ராக்ஸியை தொடங்க முடியவில்லை"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN-ஐ தயாரிக்க முடியவில்லை"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "ப்ராக்ஸியை தயாரிக்க முடியவில்லை"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN தயாராகிறது"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "ப்ராக்ஸி தயாராகிறது"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN தொடக்கம் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "ப்ராக்ஸி தொடக்கம் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN நிறுத்தம் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "ப்ராக்ஸி நிறுத்தம் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "உள்ளூர் ப்ராக்ஸி தொடங்குகிறது..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN தொடங்குகிறது..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "அனைத்து சந்தாக்களையும் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "செயலில் உள்ள சந்தாவைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "சந்தாக்களைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "சந்தாவைப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "சந்தாக்கள் தானாகப் புதுப்பிக்கின்றன..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "சந்தா தானாகப் புதுப்பிக்கிறது..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "அனைத்து சந்தாக்களும் புதுப்பிக்கப்பட்டன"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "செயலில் உள்ள சந்தா புதுப்பிக்கப்பட்டது"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "சந்தாக்கள் புதுப்பிக்கப்பட்டன"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "சந்தா புதுப்பிக்கப்பட்டது"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "புதுப்பிப்பு தோல்வியடைந்தது"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "இருப்பிடத் தேடல் ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Location search failed",
+      "target": "இருப்பிடத் தேடல் தோல்வியடைந்தது"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN அனுமதி அளித்து மீண்டும் முயற்சிக்கவும்"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "முதலில் தொலை மூலத்தை அமைக்கவும்"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "முதலில் குறைந்தது ஒரு சேமித்த இருப்பிடத்தைச் சேர்க்கவும்"
+    },
+    {
+      "source": "Select a location first",
+      "target": "முதலில் ஒரு இருப்பிடத்தைத் தேர்ந்தெடுக்கவும்"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "இன்னும் சந்தாக்கள் சேமிக்கப்படவில்லை"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "சுயவிவர மூலம் சந்தாவாக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "சுயவிவர மூலம் சேமித்த இருப்பிடங்களாக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "இணைப்பு முறை VPN ஆக அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "இணைப்பு முறை ப்ராக்ஸி மட்டும் என அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "இணைப்பு முறையை மாற்ற முதலில் துண்டிக்கவும்"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "வரலாறு பதிவு நீக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "சந்தா பெயர் மீட்டமைக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "சந்தா பெயர் சேமிக்கப்பட்டது"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "மொழி கணினி இயல்புநிலைக்கு அமைக்கப்பட்டது"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "தனிப்பயன் DNS சேமிக்கப்பட்டது"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "தனிப்பயன் DNS முடக்கப்பட்டது"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "வழிச்செலுத்தல் விதிகள் இறக்குமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Locations imported",
+      "target": "இருப்பிடங்கள் இறக்குமதி செய்யப்பட்டன"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "இருப்பிடங்களை இறக்குமதி செய்ய சேமித்த இருப்பிடங்களுக்கு மாறவும்"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "இருப்பிடங்களை கைமுறையாகச் சேர்க்க சேமித்த இருப்பிடங்களுக்கு மாறவும்"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "தவறான இருப்பிட கட்டமைப்பு"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "திருத்த வேண்டிய இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "பிழையறிதல் ஏற்றுமதி திறக்கப்பட்டது"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "பிழையறிதல் ஏற்றுமதி தோல்வியடைந்தது"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "பிழையறிதல் ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "முந்தைய VPN இருப்பிடம் இனி கிடைக்கவில்லை"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "செயலி மூடப்பட்டது. VPN அணைந்திருந்தது."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "அனைத்து சந்தாக்களும் செயல்படுத்தப்பட்டன"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "அனைத்து சந்தாக்களும் தேர்ந்தெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "சந்தா தேர்ந்தெடுக்கப்பட்டது"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "சந்தா சேமிக்கப்பட்டது"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "இருப்பிடங்கள் கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "இருப்பிட ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "வழிச்செலுத்தல் விதிகள் கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டன"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "வழிச்செலுத்தல் விதிகள் ஏற்றுமதி ரத்து செய்யப்பட்டது"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "கிளிப்போர்டை வாசிக்க முடியவில்லை"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ஏற்றுமதி செய்ய இருப்பிடங்கள் இல்லை"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "செயலிகளை ஏற்ற முடியவில்லை"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "சந்தாக்களைப் புதுப்பிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "செயலில் உள்ள சந்தாவைப் புதுப்பிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "வழிச்செலுத்தல் விதிகளை இறக்குமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "வழிச்செலுத்தல் விதிகளைச் சேமிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "இருப்பிடங்களை இறக்குமதி செய்ய முடியவில்லை"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "இருப்பிடங்கள் கோப்பைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "இருப்பிடங்கள் கோப்பைப் படிக்க முடியவில்லை"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "வழிச்செலுத்தல் விதிகள் கோப்பைத் திறக்க முடியவில்லை"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "சிறந்த இருப்பிடத்தை டெஸ்க்டாப் பட்டியலுடன் பொருத்த முடியவில்லை"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "இந்த கணினியில் VPN தயார்"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "இந்த கணினியில் ப்ராக்ஸி தயார்"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "டெஸ்க்டாப் VPN shell தயார்"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "டெஸ்க்டாப் ப்ராக்ஸி shell தயார்"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN தொடங்கிய இடம்: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "ப்ராக்ஸி தொடங்கிய இடம்: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN நிறுத்தப்பட்டது. செயலி முறை: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "ப்ராக்ஸி நிறுத்தப்பட்டது. செயலி முறை: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "மொழி அமைக்கப்பட்டது: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "சந்தா தானியங்கு புதுப்பிப்பு அமைக்கப்பட்டது: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "சரிபார்ப்பு அமைப்புகள் சேமிக்கப்பட்டன: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் மாறவில்லை: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் நீக்கப்பட்டது: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "தேர்ந்தெடுத்த இருப்பிடம் அமைக்கப்பட்டது: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "இருப்பிடம் புதுப்பிக்கப்பட்டு இணைக்கப்பட்டது: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "இருப்பிடம் ஏற்கனவே சேமிக்கப்பட்டுள்ளது: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "இருப்பிடம் புதுப்பிக்கப்பட்டது: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "இருப்பிடம் நீக்கப்பட்டது: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "இருப்பிடம் சேர்க்கப்பட்டது: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "சந்தாக்கள் புதுப்பிக்கப்பட்டன: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "தோல்வி: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN மீட்டெடுக்கிறது: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "புதுப்பிக்கிறது "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "இருப்பிடங்கள் ஏற்றுமதி செய்யப்பட்ட இடம்: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "வழிச்செலுத்தல் விதிகள் ஏற்றுமதி செய்யப்பட்ட இடம்: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "பிழையறிதல் விவரங்கள் ஏற்றுமதி செய்யப்பட்ட இடம்: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "benchmark செய்ய முடியவில்லை: "
+    },
+    {
+      "source": "Activated ",
+      "target": "செயல்படுத்தப்பட்டது "
+    },
+    {
+      "source": "Added ",
+      "target": "சேர்க்கப்பட்டது "
+    },
+    {
+      "source": "Deleted ",
+      "target": "நீக்கப்பட்டது "
+    },
+    {
+      "source": "Selected ",
+      "target": "தேர்ந்தெடுக்கப்பட்டது "
+    },
+    {
+      "source": "Edited location #",
+      "target": "திருத்தப்பட்ட இருப்பிடம் #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "செயலி முறை: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " இருப்பிடங்கள் புதுப்பிக்கப்பட்டன"
+    },
+    {
+      "source": " location refreshed",
+      "target": " இருப்பிடம் புதுப்பிக்கப்பட்டது"
+    },
+    {
+      "source": " • batch ",
+      "target": " • தொகுதி "
+    },
+    {
+      "source": " • retries ",
+      "target": " • மீண்டும் முயற்சிகள் "
+    },
+    {
+      "source": "custom interval",
+      "target": "தனிப்பயன் இடைவெளி"
+    },
+    {
+      "source": "every hour",
+      "target": "ஒவ்வொரு மணிநேரமும்"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "அனைத்து சந்தாக்கள்"
+    },
+    {
+      "source": "selected subscription",
+      "target": "தேர்ந்தெடுத்த சந்தா"
+    },
+    {
+      "source": "proxy only",
+      "target": "ப்ராக்ஸி மட்டும்"
+    },
+    {
+      "source": "off",
+      "target": "அணை"
+    },
+    {
+      "source": "Idle",
+      "target": "செயலற்றது"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN தொடங்கியது"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN நிறுத்தப்பட்டது"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ப்ராக்ஸி தொடங்கியது"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ப்ராக்ஸி நிறுத்தப்பட்டது"
+    }
+  ]
+}

@@ -1,790 +1,1378 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
-    "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "findingSubscription": "Բաժանորդագրությունից լավագույն տեղադրության որոնում...",
+    "findingSaved": "Պահպանված տեղադրություններից լավագույն տեղադրության որոնում...",
+    "testingFastestCandidates": "Ամենաարագ թեկնածուների խմբային ստուգում...",
+    "checkingLocations": "Ստուգվում է {count} տեղադրություն...",
+    "testingLocationsRange": "Ստուգվում են {start}-{end} տեղադրությունները {total}-ից...",
+    "refreshIntervalMinutes": "{count} րոպե",
+    "refreshIntervalHours": "{count} ժ",
+    "refreshIntervalHoursMinutes": "{hours} ժ {minutes} րոպե",
+    "refreshIntervalEvery": "ամեն {interval}",
+    "refreshIntervalEveryHour": "ամեն ժամ"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
-    "millisUnit": "мс",
+    "best": "Լավագույնը՝ ",
+    "primary": "հիմնական ",
+    "secondary": "երկրորդային ",
+    "tcp": "tcp ",
+    "millisUnit": "մվ",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "blocked": "արգելափակված",
+      "cached": "քեշավորված",
+      "challenge": "մարտահրավեր",
+      "custom_config_manual_only": "միայն ձեռքով հատուկ կազմաձևում",
+      "error": "սխալ",
+      "manual": "ձեռքով",
+      "ok": "լավ",
+      "partial": "մասնակի",
+      "tcp_error": "tcp սխալ",
+      "tcp_timeout": "tcp սպասման ժամանակը սպառվեց",
+      "timeout": "սպասման ժամանակը սպառվեց",
+      "unreachable": "անհասանելի",
+      "validation_timeout": "վավերացման սպասման ժամանակը սպառվեց"
     }
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "Բաժանորդագրության URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Անընթեռնելի բաժանորդագրության URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Անապահով HTTP բաժանորդագրությունները չեն աջակցվում"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "Օգտագործեք https:// բաժանորդագրության URL։"
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL-ը պետք է պարունակի վավեր HTTPS host"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Տեղադրեք վավեր https:// բաժանորդագրության URL։"
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Ուղիղ հեռավոր աղբյուր"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "sing-box ներմուծման հղում"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Անընթեռնելի sing-box ներմուծման հղում"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Աջակցվում են միայն վավեր հեռավոր HTTPS URL-ներ"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Օգտագործեք sing-box ներմուծման հղում, որը հանգում է վավեր https:// URL-ի։"
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Ներբեռնում է հեռավոր բովանդակությունը ներկառուցված URL-ից"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Ներբեռնում է հեռավոր բովանդակությունը այստեղից՝ "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Ներմուծման հղումը չհաջողվեց վերլուծել"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Տեղադրեք վավեր sing-box remote-profile ներմուծման հղում կամ ուղիղ բաժանորդագրության URL։"
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "VPN ներմուծման հղում"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Անընթեռնելի VPN ներմուծման հղում"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Մատակարարի ներմուծումը չի աջակցվում"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia և այլ vpn:// ներմուծումները չեն աջակցվում։ Օգտագործեք սովորական բաժանորդագրության URL կամ ավելացրեք տեղադրությունները ձեռքով։"
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Ներմուծման բովանդակությունը չհաջողվեց ապակոդավորել"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// ներմուծումները չեն աջակցվում։ Օգտագործեք սովորական բաժանորդագրության URL կամ ավելացրեք տեղադրությունները ձեռքով։"
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP բաժանորդագրության URL-ները չեն աջակցվում։ Փոխարենը օգտագործեք https://։"
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Հեռավոր աղբյուրը պետք է լինի https:// URL կամ աջակցվող ներմուծման հղում"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Հեռավոր աղբյուրը դատարկ է"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Հեռավոր աղբյուրը պետք է լինի վավեր https:// URL՝ host-ով։"
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Այս sing-box ներմուծումը հանգում է անվավեր կամ ոչ HTTPS URL-ի։ Փոխարենը օգտագործեք վավեր https:// URL։"
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Ընտրված տեղադրության կիրառում..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Թարմացված ընտրված տեղադրության կիրառում..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Լավագույն տեղադրության որոնման ժամանակը սպառվեց. ընթացիկ կապը պահվում է"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Սեղմատախտակը դատարկ է"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Կապի մատյանը միացված է"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Կապի մատյանը թաքցված է"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Կապի ստուգման գործիքները միացված են"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Կապի ստուգման գործիքները թաքցված են"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Չհաջողվեց բացել արտահանման նպատակակետը"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Չհաջողվեց բացել ընտրված ֆայլը"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Չհաջողվեց բացել ընտրված տեղադրությունների ֆայլը"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Չհաջողվեց բացել ընտրված կանոնների ֆայլը"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Սեղանի պատյան՝ Նիդերլանդներ թույլատրված ցուցակներից"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Desktop հավելվածը սկզբնավորվեց"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
-    },
-    {
-      "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
-    },
-    {
-      "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Հավելվածը սկզբնավորվեց"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Արտահանել տեղադրությունները"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Չհաջողվեց կիրառել թարմացված ընտրված տեղադրությունը"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Չհաջողվեց արտահանել ախտորոշումը"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Չհաջողվեց արտահանել տեղադրությունները"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Չհաջողվեց արտահանել երթուղավորման կանոնները"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Չհաջողվեց գտնել փոխարինող տեղադրություն"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Չհաջողվեց ներմուծել ֆայլը"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Չհաջողվեց բացել ախտորոշման նպատակակետը"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Չհաջողվեց պահել թարմացման կարգավորումները"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Չհաջողվեց թարմացնել գործարկման կարգավորումը"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Ներմուծումը չեղարկվեց"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Անվավեր բաժանորդագրության URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Հապաղման պատմությունը միացված է"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Հապաղման պատմությունը թաքցված է"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Կենդանի տրաֆիկի վիճակագրությունը միացված է"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Կենդանի տրաֆիկի վիճակագրությունը թաքցված է"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Տեղադրության ստուգումը չեղարկվեց"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Տեղադրության ստուգումը ձախողվեց"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Տեղադրություններն արտահանվեցին"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Տեղադրությունների ներմուծումը չեղարկվեց"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Չկան տեղադրություններ չափման համար"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Թարմացնելու բաժանորդագրություններ չկան"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Հարմար տեղադրություն չի գտնվել"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Ըստ պրոֆիլի ամփոփները միացված են"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Ըստ պրոֆիլի ամփոփները թաքցված են"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Նախորդ VPN սեսիան կվերականգնվի"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR սկանավորումը չեղարկվեց"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Երթուղավորման կանոններն արտահանվեցին"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Երթուղավորման կանոնների ներմուծումը չեղարկվեց"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Երթուղավորման կանոնները պահպանվեցին"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Սեսիայի վիճակագրությունը միացված է"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Սեսիայի վիճակագրությունը թաքցված է"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Կիսված տեքստը աջակցվող ներմուծման բովանդակություն չէ"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Բաժանորդագրությունը ջնջվեց"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Բաժանորդագրության թարմացումն ավարտվեց, բայց ֆոնային անցման համար պահանջվում է VPN թույլտվություն։ Նախորդ VPN տեղադրությունը պահվեց որպես պահուստային։"
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Բաժանորդագրության թարմացումն ավարտվեց։ Լավագույն տեղադրության որոնում..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Բաժանորդագրության թարմացումն ավարտվեց։ "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Գործարկման ռեժիմ՝ "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Տեղական proxy՝ "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Գործարկման մատյան՝ "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "VPN ռեժիմի նախնական ստուգումն անցավ"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Proxy-only ռեժիմի նախնական ստուգումն անցավ"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "VPN ռեժիմի նախնական ստուգումը ձախողվեց՝ "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Proxy-only ռեժիմի նախնական ստուգումը ձախողվեց՝ "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN ռեժիմը հասանելի չէ՝ "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Proxy-only ռեժիմը հասանելի չէ՝ "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Սեղանի VPN հնարավորությունը պատրաստ է"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Սեղանի VPN հնարավորություն՝ "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN ռեժիմը հասանելի է"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Proxy ռեժիմը հասանելի է"
     },
     {
       "source": "not ready",
-      "target": "не готово"
-    },
-    {
-      "source": " check",
-      "target": " проверка"
+      "target": "պատրաստ չէ"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " ստուգում"
+    },
+    {
+      "source": " check",
+      "target": " ստուգում"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "TUN սարքի ձախողում՝ "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "ցանցային արտոնությունների ձախողում՝ "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "route/DNS գործիքների ձախողում՝ "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN սարք"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "ցանցային արտոնություններ"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "route/DNS գործիքներ"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linux TUN սարքը բացակայում է /dev/net/tun հասցեում։ Փորձեք՝ sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Սեղանի VPN ռեժիմին պետք է CAP_NET_ADMIN։ Գործարկեք root-ով կամ տվեք sing-box-ին հնարավորություններ՝ sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Windows route/DNS գործիքները հասանելի չեն։ VPN ռեժիմին պետք են netsh.exe և DNS client PowerShell cmdlet-ներ։"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN-ը պատրաստ է այս համակարգչում"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy-ն պատրաստ է այս համակարգչում"
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Սպասում"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN-ը գործարկվել է"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN-ը կանգնեցվել է"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Proxy-ն գործարկվել է"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Proxy-ն կանգնեցվել է"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "VPN-ի գործարկում..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Տեղական proxy-ի գործարկում..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "VPN-ի գործարկում լավագույն տեղադրությամբ..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Տեղական proxy-ի գործարկում լավագույն տեղադրությամբ..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Բաժանորդագրությունից լավագույն տեղադրության որոնում..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Պահպանված տեղադրություններից լավագույն տեղադրության որոնում..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Տեղադրության որոնումը չեղարկվեց"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Տեղադրության որոնումը ձախողվեց"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Տվեք VPN թույլտվություն և կրկին փորձեք"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Նախ սահմանեք հեռավոր աղբյուր"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Նախ ավելացրեք առնվազն մեկ պահպանված տեղադրություն"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Նախ ընտրեք տեղադրություն"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Պահպանված բաժանորդագրություններ դեռ չկան"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Բոլոր բաժանորդագրությունների թարմացում..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Ակտիվ բաժանորդագրության թարմացում..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Բաժանորդագրության թարմացում..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Բաժանորդագրությունների թարմացում..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Բաժանորդագրության ավտոթարմացում..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Բաժանորդագրությունների ավտոթարմացում..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Բաժանորդագրությունը թարմացվեց"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Բաժանորդագրությունները թարմացվեցին"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Ակտիվ բաժանորդագրությունը թարմացվեց"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Բոլոր բաժանորդագրությունները թարմացվեցին"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Թարմացումը ձախողվեց"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Պրոֆիլի աղբյուրը սահմանվեց բաժանորդագրություն"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Պրոֆիլի աղբյուրը սահմանվեց պահպանված տեղադրություններ"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Կապի ռեժիմը սահմանվեց VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Կապի ռեժիմը սահմանվեց միայն proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Կապի ռեժիմը փոխելու համար նախ անջատվեք"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Պատմության գրառումը ջնջվեց"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Բաժանորդագրության անունը զրոյացվեց"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Բաժանորդագրության անունը պահպանվեց"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Լեզուն սահմանվեց համակարգային լռելյայն"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Հատուկ DNS-ը պահպանվեց"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Հատուկ DNS-ը անջատվեց"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Երթուղավորման կանոնները պահպանվեցին"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Երթուղավորման կանոնները ներմուծվեցին"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Տեղադրությունները ներմուծվեցին"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Տեղադրությունները ներմուծվեցին։ Ընտրված տեղադրությունն այլևս հասանելի չէ"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Տեղադրություններ ներմուծելու համար անցեք «Պահպանված տեղադրություններ»"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Տեղադրությունները ձեռքով ավելացնելու համար անցեք «Պահպանված տեղադրություններ»"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Անվավեր տեղադրության կազմաձևում"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Խմբագրվող տեղադրությունն այլևս հասանելի չէ"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Ախտորոշման արտահանումը բացվեց"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Ախտորոշման արտահանումը ձախողվեց"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Ախտորոշման արտահանումը չեղարկվեց"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Նախորդ VPN տեղադրությունն այլևս հասանելի չէ"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Հավելվածը փակվեց։ VPN-ը անջատված էր։"
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Բոլոր բաժանորդագրություններն ակտիվացվեցին"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Բոլոր բաժանորդագրություններն ընտրվեցին"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Բաժանորդագրությունն ընտրվեց"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Տեղադրությունները պատճենվեցին սեղմատախտակին"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Տեղադրությունների արտահանումը չեղարկվեց"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Երթուղավորման կանոնները պատճենվեցին սեղմատախտակին"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Երթուղավորման կանոնների արտահանումը չեղարկվեց"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Պրոֆիլի աղբյուրի ռեժիմ՝ բաժանորդագրություն"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Պրոֆիլի աղբյուրի ռեժիմ՝ ընթացիկ տեղադրություններ"
     }
   ],
   "legacyReplacements": [
     {
-      "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Բաժանորդագրության տեղադրությունները միայն կարդալու են։ Խմբագրումները պահելու համար անցեք «Պահպանված տեղադրություններ»։"
     },
     {
-      "source": " location refreshed",
-      "target": " локация обновлена"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Բաժանորդագրության տեղադրությունները միայն կարդալու են։ Դրանք ջնջելու համար անցեք «Պահպանված տեղադրություններ»։"
     },
     {
-      "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Բաժանորդագրությունը ստացվեց։ Ստուգեք և պահեք այն «Պրոֆիլ» ներդիրում։"
     },
     {
-      "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Բաժանորդագրության հղումը ստացվեց։ Ստուգեք և պահեք այն «Պրոֆիլ» ներդիրում։"
     },
     {
-      "source": " • batch ",
-      "target": " • группа "
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Տեղադրության կազմաձևումը ստացվեց։ Ստուգեք և պահեք այն «Տեղադրություններ» ներդիրում։"
     },
     {
-      "source": " • retries ",
-      "target": " • повторные попытки "
+      "source": "Starting local proxy with the best location...",
+      "target": "Տեղական proxy-ի գործարկում լավագույն տեղադրությամբ..."
     },
     {
-      "source": "off",
-      "target": "выключено"
-    },
-    {
-      "source": "custom interval",
-      "target": "свой интервал"
-    },
-    {
-      "source": "all subscriptions",
-      "target": "все подписки"
-    },
-    {
-      "source": "selected subscription",
-      "target": "выбранная подписка"
-    },
-    {
-      "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
-    },
-    {
-      "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
-    },
-    {
-      "source": "VPN started on ",
-      "target": "VPN запущен на "
-    },
-    {
-      "source": "Proxy started on ",
-      "target": "Прокси запущен на "
-    },
-    {
-      "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
-    },
-    {
-      "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Refreshing ",
-      "target": "Обновление "
+      "source": "Starting VPN with the best location...",
+      "target": "VPN-ի գործարկում լավագույն տեղադրությամբ..."
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "VPN-ը մեկնարկում է նոր լավագույն տեղադրությամբ..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Պրոքսին մեկնարկում է նոր լավագույն տեղադրությամբ..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Բաժանորդագրությունից լավագույն տեղադրության որոնում..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Պահպանված տեղադրություններից լավագույն տեղադրության որոնում..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Տեղադրությունները ներմուծվեցին։ Ընտրված տեղադրությունն այլևս հասանելի չէ, proxy-ն կանգնեցվեց"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Տեղադրությունները ներմուծվեցին։ Ընտրված տեղադրությունն այլևս հասանելի չէ, VPN-ը կանգնեցվեց"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Տեղադրությունները ներմուծվեցին։ Ընտրված տեղադրությունն այլևս հասանելի չէ"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Ընտրված տեղադրությունը կիրառվեց, բայց այն պահել չհաջողվեց"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Տեղադրության հեռացումը հետ շրջվեց, քանի որ proxy-ն չհաջողվեց կանգնեցնել"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Տեղադրության հեռացումը հետ շրջվեց, քանի որ VPN-ը չհաջողվեց կանգնեցնել"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Տեղադրությունների ներմուծումը հետ շրջվեց, քանի որ proxy-ն չհաջողվեց կանգնեցնել"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Տեղադրությունների ներմուծումը հետ շրջվեց, քանի որ VPN-ը չհաջողվեց կանգնեցնել"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN-ը կանգնեցվեց։ Թարմացված բաժանորդագրությունները հեռացրել են ընտրված տեղադրությունը։"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy-ն կանգնեցվեց։ Թարմացված բաժանորդագրությունները հեռացրել են ընտրված տեղադրությունը։"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN-ը կանգնեցվեց։ Կվերամիանա հաջորդ գործարկման ժամանակ։"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy-ն կանգնեցվեց։ Կվերամիանա հաջորդ գործարկման ժամանակ։"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Երթուղավորման կանոնները պահպանվեցին։ Կիրառելու համար վերագործարկեք VPN-ը"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Երթուղավորման կանոնները պահպանվեցին։ Կիրառելու համար վերագործարկեք proxy-ն"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Երթուղավորման կանոնները ներմուծվեցին։ Կիրառելու համար վերագործարկեք VPN-ը"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Երթուղավորման կանոնները ներմուծվեցին։ Կիրառելու համար վերագործարկեք proxy-ն"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Ընտրված տեղադրությունը հեռացվեց։ VPN-ը կանգնեցվեց՝ "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Ընտրված տեղադրությունը հեռացվեց։ Proxy-ն կանգնեցվեց՝ "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Լավագույն տեղադրությունն ընտրվեց, և VPN-ը գործարկվեց՝ "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Լավագույն տեղադրությունն ընտրվեց, և proxy-ն գործարկվեց՝ "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN-ը գործարկվեց, բայց ընտրված տեղադրությունը պահել չհաջողվեց"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy-ն գործարկվեց, բայց ընտրված տեղադրությունը պահել չհաջողվեց"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN-ը գործարկվեց, բայց լավագույն տեղադրությունը պահել չհաջողվեց"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy-ն գործարկվեց, բայց լավագույն տեղադրությունը պահել չհաջողվեց"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Չհաջողվեց գործարկել VPN-ը լավագույն տեղադրությամբ"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Չհաջողվեց գործարկել proxy-ն լավագույն տեղադրությամբ"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Չհաջողվեց պահել ընտրված տեղադրությունը"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Չհաջողվեց պահել ընտրված տեղադրությունը"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Չհաջողվեց պահել լավագույն տեղադրությունը"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Չհաջողվեց կիրառել ընտրված տեղադրությունը"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Չհաջողվեց ընտրել տեղադրությունը"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Չհաջողվեց կանգնեցնել VPN-ը ելքից առաջ"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Չհաջողվեց կանգնեցնել Proxy-ն ելքից առաջ"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Չհաջողվեց կանգնեցնել VPN-ը"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Չհաջողվեց կանգնեցնել proxy-ն"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Չհաջողվեց գործարկել VPN-ը"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Չհաջողվեց գործարկել proxy-ն"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Չհաջողվեց պատրաստել VPN-ը"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Չհաջողվեց պատրաստել proxy-ն"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN-ի պատրաստում"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Proxy-ի պատրաստում"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN-ի գործարկումը չեղարկվեց"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy-ի գործարկումը չեղարկվեց"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN-ի կանգնեցումը չեղարկվեց"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy-ի կանգնեցումը չեղարկվեց"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Տեղական proxy-ի գործարկում..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN-ի գործարկում..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Բոլոր բաժանորդագրությունների թարմացում..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Ակտիվ բաժանորդագրության թարմացում..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Բաժանորդագրությունների թարմացում..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Բաժանորդագրության թարմացում..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Բաժանորդագրությունների ավտոթարմացում..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Բաժանորդագրության ավտոթարմացում..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Բոլոր բաժանորդագրությունները թարմացվեցին"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Ակտիվ բաժանորդագրությունը թարմացվեց"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Բաժանորդագրությունները թարմացվեցին"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Բաժանորդագրությունը թարմացվեց"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Թարմացումը ձախողվեց"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Տեղադրության որոնումը չեղարկվեց"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Տեղադրության որոնումը ձախողվեց"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Տվեք VPN թույլտվություն և կրկին փորձեք"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Նախ սահմանեք հեռավոր աղբյուր"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Նախ ավելացրեք առնվազն մեկ պահպանված տեղադրություն"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Նախ ընտրեք տեղադրություն"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Պահպանված բաժանորդագրություններ դեռ չկան"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Պրոֆիլի աղբյուրը սահմանվեց բաժանորդագրություն"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Պրոֆիլի աղբյուրը սահմանվեց պահպանված տեղադրություններ"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Կապի ռեժիմը սահմանվեց VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Կապի ռեժիմը սահմանվեց միայն proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Կապի ռեժիմը փոխելու համար նախ անջատվեք"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Պատմության գրառումը ջնջվեց"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Բաժանորդագրության անունը զրոյացվեց"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Բաժանորդագրության անունը պահպանվեց"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Լեզուն սահմանվեց համակարգային լռելյայն"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Հատուկ DNS-ը պահպանվեց"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Հատուկ DNS-ը անջատվեց"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Երթուղավորման կանոնները պահպանվեցին"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Երթուղավորման կանոնները ներմուծվեցին"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Տեղադրությունները ներմուծվեցին"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Տեղադրություններ ներմուծելու համար անցեք «Պահպանված տեղադրություններ»"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Տեղադրությունները ձեռքով ավելացնելու համար անցեք «Պահպանված տեղադրություններ»"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Անվավեր տեղադրության կազմաձևում"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Խմբագրվող տեղադրությունն այլևս հասանելի չէ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Ախտորոշման արտահանումը բացվեց"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Ախտորոշման արտահանումը ձախողվեց"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Ախտորոշման արտահանումը չեղարկվեց"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Նախորդ VPN տեղադրությունն այլևս հասանելի չէ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Հավելվածը փակվեց։ VPN-ը անջատված էր։"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Բոլոր բաժանորդագրություններն ակտիվացվեցին"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Բոլոր բաժանորդագրություններն ընտրվեցին"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Բաժանորդագրությունն ընտրվեց"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Բաժանորդագրությունը պահպանվեց"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Տեղադրությունները պատճենվեցին սեղմատախտակին"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Տեղադրությունների արտահանումը չեղարկվեց"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Երթուղավորման կանոնները պատճենվեցին սեղմատախտակին"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Երթուղավորման կանոնների արտահանումը չեղարկվեց"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Չհաջողվեց կարդալ սեղմատախտակը"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Արտահանելու տեղադրություններ չկան"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Չհաջողվեց բեռնել հավելվածները"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Չհաջողվեց թարմացնել բաժանորդագրությունները"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Չհաջողվեց թարմացնել ակտիվ բաժանորդագրությունը"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Չհաջողվեց ներմուծել երթուղավորման կանոնները"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Չհաջողվեց պահել երթուղավորման կանոնները"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Չհաջողվեց ներմուծել տեղադրությունները"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Չհաջողվեց բացել տեղադրությունների ֆայլը"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Չհաջողվեց կարդալ տեղադրությունների ֆայլը"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Չհաջողվեց բացել երթուղավորման կանոնների ֆայլը"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Լավագույն տեղադրությունը չհաջողվեց համապատասխանեցնել desktop ցանկին"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN-ը պատրաստ է այս համակարգչում"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy-ն պատրաստ է այս համակարգչում"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Սեղանի VPN պատյանը պատրաստ է"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Սեղանի Proxy պատյանը պատրաստ է"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN-ը գործարկվեց այստեղ՝ "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy-ն գործարկվեց այստեղ՝ "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN-ը կանգնեցվեց։ Հավելվածի ռեժիմ՝ "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy-ն կանգնեցվեց։ Հավելվածի ռեժիմ՝ "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Լեզուն սահմանվեց՝ "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Բաժանորդագրության ավտոթարմացումը սահմանվեց՝ "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Վավերացման կարգավորումները պահպանվեցին՝ "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Ընտրված տեղադրությունը չի փոխվել՝ "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Ընտրված տեղադրությունը հեռացվեց՝ "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Ընտրված տեղադրությունը սահմանվեց՝ "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Տեղադրությունը թարմացվեց և միավորվեց՝ "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Տեղադրությունն արդեն պահպանված է՝ "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Տեղադրությունը թարմացվեց՝ "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Տեղադրությունը հեռացվեց՝ "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Տեղադրությունն ավելացվեց՝ "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Բաժանորդագրությունները թարմացվեցին՝ "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Ձախողվեց՝ "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN-ի վերականգնում՝ "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Թարմացում՝ "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Տեղադրություններն արտահանվեցին այստեղ՝ "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Երթուղավորման կանոններն արտահանվեցին այստեղ՝ "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Ախտորոշումն արտահանվեց այստեղ՝ "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Չհաջողվեց չափել՝ "
+    },
+    {
+      "source": "Activated ",
+      "target": "Ակտիվացվեց՝ "
+    },
+    {
+      "source": "Added ",
+      "target": "Ավելացվեց՝ "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Ջնջվեց՝ "
+    },
+    {
+      "source": "Selected ",
+      "target": "Ընտրվեց՝ "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Խմբագրվեց տեղադրություն #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Հավելվածի ռեժիմ՝ "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " տեղադրություն թարմացվեց"
+    },
+    {
+      "source": " location refreshed",
+      "target": " տեղադրություն թարմացվեց"
+    },
+    {
+      "source": " • batch ",
+      "target": " • խումբ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • կրկնափորձեր "
+    },
+    {
+      "source": "custom interval",
+      "target": "հատուկ միջակայք"
+    },
+    {
+      "source": "every hour",
+      "target": "ամեն ժամ"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "բոլոր բաժանորդագրությունները"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ընտրված բաժանորդագրությունը"
+    },
+    {
+      "source": "proxy only",
+      "target": "միայն proxy"
+    },
+    {
+      "source": "off",
+      "target": "անջատված"
+    },
+    {
+      "source": "Idle",
+      "target": "Սպասում"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN-ը գործարկվել է"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN-ը կանգնեցվել է"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy-ն գործարկվել է"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy-ն կանգնեցվել է"
     }
   ]
 }

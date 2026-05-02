@@ -1,0 +1,1398 @@
+{
+  "dynamic": {
+    "findingSubscription": "Beste locatie uit het abonnement zoeken...",
+    "findingSaved": "Beste locatie uit opgeslagen locaties zoeken...",
+    "testingFastestCandidates": "Snelste kandidaten in groepen testen...",
+    "checkingLocations": "{count} locaties controleren...",
+    "testingLocationsRange": "Locaties {start}-{end} van {total} testen...",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} u",
+    "refreshIntervalHoursMinutes": "{hours} u {minutes} min.",
+    "refreshIntervalEvery": "elke {interval}",
+    "refreshIntervalEveryHour": "elk uur"
+  },
+  "benchmark": {
+    "best": "Beste: ",
+    "primary": "primair ",
+    "secondary": "secundair ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "geblokkeerd",
+      "cached": "in cache",
+      "challenge": "challenge vereist",
+      "custom_config_manual_only": "aangepaste configuratie, alleen handmatig",
+      "error": "fout",
+      "manual": "handmatig",
+      "ok": "in orde",
+      "partial": "gedeeltelijk",
+      "tcp_error": "TCP-fout",
+      "tcp_timeout": "TCP-time-out",
+      "timeout": "time-out",
+      "unreachable": "onbereikbaar",
+      "validation_timeout": "validatie-time-out"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "Abonnements-URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Onleesbare abonnements-URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Onveilige HTTP-abonnementen worden niet ondersteund"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Gebruik een https://-abonnements-URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "De URL moet een geldige HTTPS-host bevatten"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Plak een geldige https://-abonnements-URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Directe externe bron"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box-importlink"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Onleesbare sing-box-importlink"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Alleen geldige externe HTTPS-URL's worden ondersteund"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Gebruik een sing-box-importlink die naar een geldige https://-URL verwijst."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Haalt externe inhoud op uit de ingesloten URL"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Haalt externe inhoud op uit "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "De importlink kon niet worden verwerkt"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Plak een geldige sing-box remote-profile-importlink of een directe abonnements-URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN-importlink"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Onleesbare VPN-importlink"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Niet-ondersteunde providerimport"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia en andere vpn://-imports worden niet ondersteund. Gebruik een normale abonnements-URL of voeg locaties handmatig toe."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "De importinhoud kon niet worden gedecodeerd"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn://-imports worden niet ondersteund. Gebruik een normale abonnements-URL of voeg locaties handmatig toe."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP-abonnements-URL's worden niet ondersteund. Gebruik in plaats daarvan https://."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Externe bron moet een https://-URL of een ondersteunde importlink zijn"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Externe bron is leeg"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Externe bron moet een geldige https://-URL met host zijn."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Deze sing-box-import verwijst naar een ongeldige of niet-HTTPS-URL. Gebruik in plaats daarvan een geldige https://-URL."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Geselecteerde locatie toepassen..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Bijgewerkte geselecteerde locatie toepassen..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Zoeken naar beste locatie is verlopen; huidige verbinding wordt behouden"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Klembord is leeg"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Verbindingslogboek ingeschakeld"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Verbindingslogboek verborgen"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Verbindingstesttools ingeschakeld"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Verbindingstesttools verborgen"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Kon exportbestemming niet openen"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Kon geselecteerd bestand niet openen"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Kon geselecteerd locatiebestand niet openen"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Kon geselecteerd regelbestand niet openen"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop-shell: Nederland uit Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktop-app gestart"
+    },
+    {
+      "source": "App initialized",
+      "target": "App gestart"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Locaties exporteren"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Bijgewerkte geselecteerde locatie toepassen mislukt"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Exporteren van diagnostiek mislukt"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Exporteren van locaties mislukt"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Exporteren van routeringsregels mislukt"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Vervangende locatie zoeken mislukt"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Bestand importeren mislukt"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Kon diagnostiekbestemming niet openen"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Vernieuwingsinstellingen opslaan mislukt"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Opstartinstelling bijwerken mislukt"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import geannuleerd"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Ongeldige abonnements-URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latentiegeschiedenis ingeschakeld"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latentiegeschiedenis verborgen"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live verkeersstatistieken ingeschakeld"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live verkeersstatistieken verborgen"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Locatiecontrole geannuleerd"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Locatiecontrole mislukt"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Locaties geexporteerd"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Import van locaties geannuleerd"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Geen locaties beschikbaar voor benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Geen abonnementen om te vernieuwen"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Geen geschikte locatie gevonden"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totalen per profiel ingeschakeld"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totalen per profiel verborgen"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Vorige VPN-sessie wordt hersteld"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR-scan geannuleerd"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Routeringsregels geexporteerd"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Import van routeringsregels geannuleerd"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Routeringsregels opgeslagen"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Sessiestatistieken ingeschakeld"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Sessiestatistieken verborgen"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Gedeelde tekst is geen ondersteunde importinhoud"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Abonnement verwijderd"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Abonnement vernieuwen voltooid, maar VPN-toestemming is vereist om op de achtergrond te wisselen. Vorige VPN-locatie behouden als terugvaloptie."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Abonnement vernieuwen voltooid. Beste locatie zoeken..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Abonnement vernieuwen voltooid. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Runtime-modus: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokale proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Runtimelogboek: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN-moduscontrole geslaagd"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Alleen-proxymoduscontrole geslaagd"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN-moduscontrole mislukt: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Alleen-proxymoduscontrole mislukt: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN-modus niet beschikbaar: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Alleen-proxymodus niet beschikbaar: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Desktop-VPN-mogelijkheid: gereed"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Desktop-VPN-mogelijkheid: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN-modus beschikbaar"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxymodus beschikbaar"
+    },
+    {
+      "source": "not ready",
+      "target": "niet gereed"
+    },
+    {
+      "source": " checks",
+      "target": " controles"
+    },
+    {
+      "source": " check",
+      "target": " controle"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "fout TUN-apparaat: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "fout netwerkrechten: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "fout route-/DNS-tools: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN-apparaat"
+    },
+    {
+      "source": "network privileges",
+      "target": "netwerkrechten"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route-/DNS-tools"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN-apparaat ontbreekt op /dev/net/tun. Probeer: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-modus op de computer vereist CAP_NET_ADMIN. Voer uit met rootrechten of geef sing-box rechten: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route-/DNS-tools zijn niet beschikbaar. VPN-modus vereist netsh.exe en DNS-client-PowerShell-cmdlets."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN gereed op deze computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy gereed op deze computer"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Inactief"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN gestart"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN gestopt"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy gestart"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy gestopt"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN starten..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Lokale proxy starten..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN starten met de beste locatie..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Lokale proxy starten met de beste locatie..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Beste locatie uit het abonnement zoeken..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Beste locatie uit opgeslagen locaties zoeken..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Locatiezoekopdracht geannuleerd"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Locatiezoekopdracht mislukt"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Geef VPN-toestemming en probeer opnieuw"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Stel eerst een externe bron in"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Voeg eerst ten minste een opgeslagen locatie toe"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Selecteer eerst een locatie"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Nog geen abonnementen opgeslagen"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Alle abonnementen vernieuwen..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Actief abonnement vernieuwen..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Abonnement vernieuwen..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Abonnementen vernieuwen..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Abonnement automatisch vernieuwen..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Abonnementen automatisch vernieuwen..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement vernieuwd"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementen vernieuwd"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Actief abonnement vernieuwd"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementen vernieuwd"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Vernieuwen mislukt"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profielbron ingesteld op abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profielbron ingesteld op opgeslagen locaties"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Verbindingsmodus ingesteld op VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Verbindingsmodus ingesteld op alleen proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Verbreek eerst de verbinding om de verbindingsmodus te wijzigen"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Geschiedenisitem verwijderd"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnaam teruggezet"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnaam opgeslagen"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Taal ingesteld op systeemstandaard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Aangepaste DNS opgeslagen"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Aangepaste DNS uitgeschakeld"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routeringsregels opgeslagen"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routeringsregels geimporteerd"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Locaties geimporteerd"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Schakel over naar Opgeslagen locaties om locaties te importeren"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Schakel over naar Opgeslagen locaties om locaties handmatig toe te voegen"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ongeldige locatieconfiguratie"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Te bewerken locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostiekexport geopend"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostiekexport mislukt"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostiekexport geannuleerd"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Vorige VPN-locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "App gesloten. VPN was uit."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alle abonnementen geactiveerd"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementen geselecteerd"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement geselecteerd"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Locaties naar klembord gekopieerd"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Locatie-export geannuleerd"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routeringsregels naar klembord gekopieerd"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export van routeringsregels geannuleerd"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profielbronmodus: abonnement"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profielbronmodus: opgeslagen locaties"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "VPN starten met de nieuwe beste locatie..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Proxy starten met de nieuwe beste locatie..."
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN-moduscontrole geslaagd"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Alleen-proxymoduscontrole geslaagd"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN-moduscontrole mislukt: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Alleen-proxymoduscontrole mislukt: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-modus op de computer vereist CAP_NET_ADMIN. Voer uit met rootrechten of geef sing-box rechten: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Abonnementslocaties zijn alleen-lezen. Schakel over naar Opgeslagen locaties om bewerkingen op te slaan."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Abonnementslocaties zijn alleen-lezen. Schakel over naar Opgeslagen locaties om ze te verwijderen."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Abonnement ontvangen. Controleer en sla het op op het tabblad Profiel."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Abonnementslink ontvangen. Controleer en sla deze op op het tabblad Profiel."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Locatieconfiguratie ontvangen. Controleer en sla deze op op het tabblad Locaties."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Lokale proxy starten met de beste locatie..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN starten met de beste locatie..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Beste locatie uit het abonnement zoeken..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Beste locatie uit opgeslagen locaties zoeken..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, proxy gestopt"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, VPN gestopt"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Geselecteerde locatie toegepast, maar opslaan is mislukt"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Locatieverwijdering teruggedraaid omdat de proxy niet kon worden gestopt"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Locatieverwijdering teruggedraaid omdat de VPN niet kon worden gestopt"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Locatie-import teruggedraaid omdat de proxy niet kon worden gestopt"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Locatie-import teruggedraaid omdat de VPN niet kon worden gestopt"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN gestopt. Vernieuwde abonnementen hebben de geselecteerde locatie verwijderd."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy gestopt. Vernieuwde abonnementen hebben de geselecteerde locatie verwijderd."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN gestopt. Er wordt opnieuw verbonden bij de volgende start."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy gestopt. Er wordt opnieuw verbonden bij de volgende start."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Routeringsregels opgeslagen. Herstart VPN om toe te passen"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Routeringsregels opgeslagen. Herstart proxy om toe te passen"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Routeringsregels geimporteerd. Herstart VPN om toe te passen"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Routeringsregels geimporteerd. Herstart proxy om toe te passen"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Geselecteerde locatie verwijderd. VPN gestopt: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Geselecteerde locatie verwijderd. Proxy gestopt: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Beste locatie geselecteerd en VPN gestart: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Beste locatie geselecteerd en proxy gestart: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN gestart, maar opslaan van de geselecteerde locatie is mislukt"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy gestart, maar opslaan van de geselecteerde locatie is mislukt"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN gestart, maar opslaan van de beste locatie is mislukt"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy gestart, maar opslaan van de beste locatie is mislukt"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "VPN starten met de beste locatie mislukt"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Proxy starten met de beste locatie mislukt"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Opslaan van de geselecteerde locatie mislukt"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Opslaan van geselecteerde locatie mislukt"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Opslaan van de beste locatie mislukt"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Toepassen van geselecteerde locatie mislukt"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Locatie selecteren mislukt"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "VPN stoppen voor afsluiten mislukt"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Proxy stoppen voor afsluiten mislukt"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN stoppen mislukt"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Proxy stoppen mislukt"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN starten mislukt"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Proxy starten mislukt"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Kon VPN niet voorbereiden"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Kon proxy niet voorbereiden"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN voorbereiden"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Proxy voorbereiden"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN-start geannuleerd"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy-start geannuleerd"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN-stop geannuleerd"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy-stop geannuleerd"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Lokale proxy starten..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN starten..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Alle abonnementen vernieuwen..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Actief abonnement vernieuwen..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Abonnementen vernieuwen..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Abonnement vernieuwen..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Abonnementen automatisch vernieuwen..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Abonnement automatisch vernieuwen..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementen vernieuwd"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Actief abonnement vernieuwd"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementen vernieuwd"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement vernieuwd"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Vernieuwen mislukt"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Locatiezoekopdracht geannuleerd"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Locatiezoekopdracht mislukt"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Geef VPN-toestemming en probeer opnieuw"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Stel eerst een externe bron in"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Voeg eerst ten minste een opgeslagen locatie toe"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Selecteer eerst een locatie"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Nog geen abonnementen opgeslagen"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profielbron ingesteld op abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profielbron ingesteld op opgeslagen locaties"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Verbindingsmodus ingesteld op VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Verbindingsmodus ingesteld op alleen proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Verbreek eerst de verbinding om de verbindingsmodus te wijzigen"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Geschiedenisitem verwijderd"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnaam teruggezet"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnaam opgeslagen"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Taal ingesteld op systeemstandaard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Aangepaste DNS opgeslagen"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Aangepaste DNS uitgeschakeld"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routeringsregels opgeslagen"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routeringsregels geimporteerd"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Locaties geimporteerd"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Schakel over naar Opgeslagen locaties om locaties te importeren"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Schakel over naar Opgeslagen locaties om locaties handmatig toe te voegen"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ongeldige locatieconfiguratie"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Te bewerken locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostiekexport geopend"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostiekexport mislukt"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostiekexport geannuleerd"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Vorige VPN-locatie is niet meer beschikbaar"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "App gesloten. VPN was uit."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alle abonnementen geactiveerd"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementen geselecteerd"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement geselecteerd"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonnement opgeslagen"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Locaties naar klembord gekopieerd"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Locatie-export geannuleerd"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routeringsregels naar klembord gekopieerd"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export van routeringsregels geannuleerd"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Klembord lezen mislukt"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Geen locaties om te exporteren"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Apps laden mislukt"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Abonnementen vernieuwen mislukt"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Actief abonnement vernieuwen mislukt"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Routeringsregels importeren mislukt"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Routeringsregels opslaan mislukt"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Locaties importeren mislukt"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Locatiebestand openen mislukt"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Locatiebestand lezen mislukt"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Bestand met routeringsregels openen mislukt"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Beste locatie kon niet aan de desktoplijst worden gekoppeld"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN gereed op deze computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy gereed op deze computer"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Desktop-VPN-shell gereed"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktop-Proxy-shell gereed"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN gestart op "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy gestart op "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN gestopt. App-modus: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy gestopt. App-modus: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Taal ingesteld op "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatisch vernieuwen van abonnement ingesteld op "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Validatie-instellingen opgeslagen: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Geselecteerde locatie ongewijzigd: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Geselecteerde locatie verwijderd: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Geselecteerde locatie ingesteld: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Locatie bijgewerkt en samengevoegd: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Locatie al opgeslagen: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Locatie bijgewerkt: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Locatie verwijderd: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Locatie toegevoegd: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonnementen vernieuwd: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Mislukt: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN herstellen: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Vernieuwen van "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Locaties geexporteerd naar "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Routeringsregels geexporteerd naar "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostiek geexporteerd naar "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Benchmarken mislukt voor "
+    },
+    {
+      "source": "Activated ",
+      "target": "Geactiveerd "
+    },
+    {
+      "source": "Added ",
+      "target": "Toegevoegd "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Verwijderd "
+    },
+    {
+      "source": "Selected ",
+      "target": "Geselecteerd "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Locatie bewerkt #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "App-modus: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " locaties vernieuwd"
+    },
+    {
+      "source": " location refreshed",
+      "target": " locatie vernieuwd"
+    },
+    {
+      "source": " • batch ",
+      "target": " • reeks "
+    },
+    {
+      "source": " • retries ",
+      "target": " • pogingen "
+    },
+    {
+      "source": "custom interval",
+      "target": "aangepast interval"
+    },
+    {
+      "source": "every hour",
+      "target": "elk uur"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "alle abonnementen"
+    },
+    {
+      "source": "selected subscription",
+      "target": "geselecteerd abonnement"
+    },
+    {
+      "source": "proxy only",
+      "target": "alleen proxy"
+    },
+    {
+      "source": "off",
+      "target": "uit"
+    },
+    {
+      "source": "Idle",
+      "target": "Inactief"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN gestart"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN gestopt"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy gestart"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy gestopt"
+    }
+  ]
+}

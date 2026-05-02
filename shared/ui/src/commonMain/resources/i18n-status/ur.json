@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "سبسکرپشن سے بہترین مقام تلاش کیا جا رہا ہے...",
+    "findingSaved": "محفوظ مقامات سے بہترین مقام تلاش کیا جا رہا ہے...",
+    "testingFastestCandidates": "تیز ترین امیدواروں کو بیچز میں ٹیسٹ کیا جا رہا ہے...",
+    "checkingLocations": "{count} مقامات چیک کیے جا رہے ہیں...",
+    "testingLocationsRange": "{total} میں سے مقامات {start}-{end} ٹیسٹ کیے جا رہے ہیں...",
+    "refreshIntervalMinutes": "{count} منٹ",
+    "refreshIntervalHours": "{count} گھنٹے",
+    "refreshIntervalHoursMinutes": "{hours} گھنٹے {minutes} منٹ",
+    "refreshIntervalEvery": "ہر {interval}",
+    "refreshIntervalEveryHour": "ہر گھنٹے"
+  },
+  "benchmark": {
+    "best": "بہترین: ",
+    "primary": "بنیادی ",
+    "secondary": "ثانوی ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "بلاک شدہ",
+      "cached": "کیش شدہ",
+      "challenge": "چیلنج",
+      "custom_config_manual_only": "حسب ضرورت کنفگ، صرف دستی",
+      "error": "خرابی",
+      "manual": "دستی",
+      "ok": "ٹھیک",
+      "partial": "جزوی",
+      "tcp_error": "TCP خرابی",
+      "tcp_timeout": "TCP ٹائم آؤٹ",
+      "timeout": "ٹائم آؤٹ",
+      "unreachable": "ناقابل رسائی",
+      "validation_timeout": "توثیق ٹائم آؤٹ"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "سبسکرپشن URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "پڑھا نہ جا سکنے والا سبسکرپشن URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "غیر محفوظ HTTP سبسکرپشنز سپورٹ نہیں ہیں"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// سبسکرپشن URL استعمال کریں۔"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL میں درست HTTPS ہوسٹ شامل ہونا چاہیے"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "درست https:// سبسکرپشن URL پیسٹ کریں۔"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "براہ راست ریموٹ ماخذ"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box امپورٹ لنک"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "پڑھا نہ جا سکنے والا sing-box امپورٹ لنک"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "صرف درست HTTPS ریموٹ URLs سپورٹ ہیں"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "ایسا sing-box امپورٹ لنک استعمال کریں جو درست https:// URL پر حل ہو۔"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ایمبیڈڈ URL سے ریموٹ مواد حاصل کرتا ہے"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "ریموٹ مواد یہاں سے حاصل کرتا ہے "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "امپورٹ لنک پارس نہیں ہو سکا"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "درست sing-box remote-profile امپورٹ لنک یا براہ راست سبسکرپشن URL پیسٹ کریں۔"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN امپورٹ لنک"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "پڑھا نہ جا سکنے والا VPN امپورٹ لنک"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "غیر معاون فراہم کنندہ امپورٹ"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia اور دیگر vpn:// امپورٹس سپورٹ نہیں ہیں۔ عام سبسکرپشن URL استعمال کریں یا مقامات دستی طور پر شامل کریں۔"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "امپورٹ پے لوڈ ڈی کوڈ نہیں ہو سکا"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// امپورٹس سپورٹ نہیں ہیں۔ عام سبسکرپشن URL استعمال کریں یا مقامات دستی طور پر شامل کریں۔"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP سبسکرپشن URLs سپورٹ نہیں ہیں۔ اس کے بجائے https:// استعمال کریں۔"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "ریموٹ ماخذ https:// URL یا معاون امپورٹ لنک ہونا چاہیے"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "ریموٹ ماخذ خالی ہے"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "ریموٹ ماخذ ہوسٹ کے ساتھ درست https:// URL ہونا چاہیے۔"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "یہ sing-box امپورٹ غلط یا غیر HTTPS URL پر حل ہوتا ہے۔ اس کے بجائے درست https:// URL استعمال کریں۔"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "منتخب مقام لاگو کیا جا رہا ہے..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "اپ ڈیٹ شدہ منتخب مقام لاگو کیا جا رہا ہے..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "بہترین مقام کی تلاش ٹائم آؤٹ ہو گئی؛ موجودہ کنکشن برقرار رکھا جا رہا ہے"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "کلپ بورڈ خالی ہے"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "کنکشن لاگ فعال"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "کنکشن لاگ چھپا دیا گیا"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "کنکشن ٹیسٹ ٹولز فعال"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "کنکشن ٹیسٹ ٹولز چھپا دیے گئے"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ایکسپورٹ منزل نہیں کھل سکی"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "منتخب فائل نہیں کھل سکی"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "منتخب مقامات فائل نہیں کھل سکی"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "منتخب قواعد فائل نہیں کھل سکی"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "ڈیسک ٹاپ شیل: Whitelists سے نیدرلینڈز"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "ڈیسک ٹاپ ایپ شروع ہو گئی"
+    },
+    {
+      "source": "App initialized",
+      "target": "ایپ شروع ہو گئی"
+    },
+    {
+      "source": "Export Locations",
+      "target": "مقامات ایکسپورٹ کریں"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "اپ ڈیٹ شدہ منتخب مقام لاگو کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "تشخیصی معلومات ایکسپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "مقامات ایکسپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "روٹنگ قواعد ایکسپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "متبادل مقام تلاش کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "فائل امپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "تشخیصی منزل کھولنے میں ناکامی"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "ریفریش ترتیبات محفوظ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "اسٹارٹ اپ ترتیب اپ ڈیٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Import canceled",
+      "target": "امپورٹ منسوخ"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "غلط سبسکرپشن URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "لیٹنسی تاریخ فعال"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "لیٹنسی تاریخ چھپا دی گئی"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "لائیو ٹریفک اعداد و شمار فعال"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "لائیو ٹریفک اعداد و شمار چھپا دیے گئے"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "مقام چیک منسوخ"
+    },
+    {
+      "source": "Location check failed",
+      "target": "مقام چیک ناکام"
+    },
+    {
+      "source": "Locations exported",
+      "target": "مقامات ایکسپورٹ ہو گئے"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "مقامات امپورٹ منسوخ"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "بینچ مارکنگ کے لیے کوئی مقامات دستیاب نہیں"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "ریفریش کرنے کے لیے کوئی سبسکرپشنز نہیں"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "کوئی موزوں مقام نہیں ملا"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "فی پروفائل کل فعال"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "فی پروفائل کل چھپا دیے گئے"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "پچھلا VPN سیشن بحال کیا جائے گا"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR اسکین منسوخ"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "روٹنگ قواعد ایکسپورٹ ہو گئے"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "روٹنگ قواعد امپورٹ منسوخ"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "محفوظ روٹنگ قواعد"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "سیشن اعداد و شمار فعال"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "سیشن اعداد و شمار چھپا دیے گئے"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "شیئر کیا گیا متن معاون امپورٹ پے لوڈ نہیں ہے"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "سبسکرپشن حذف ہو گئی"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "سبسکرپشن ریفریش مکمل ہوا، لیکن پس منظر میں سوئچ کرنے کے لیے VPN اجازت درکار ہے۔ پچھلا VPN مقام متبادل کے طور پر رکھا گیا۔"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "سبسکرپشن ریفریش مکمل ہوا۔ بہترین مقام تلاش کیا جا رہا ہے..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "سبسکرپشن ریفریش مکمل ہوا۔ "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "رن ٹائم موڈ: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "مقامی پراکسی: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "رن ٹائم لاگ: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN موڈ ابتدائی چیک کامیاب"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "صرف پراکسی موڈ ابتدائی چیک کامیاب"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN موڈ ابتدائی چیک ناکام: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "صرف پراکسی موڈ ابتدائی چیک ناکام: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN موڈ دستیاب نہیں: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "صرف پراکسی موڈ دستیاب نہیں: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ڈیسک ٹاپ VPN صلاحیت: تیار"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ڈیسک ٹاپ VPN صلاحیت: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN موڈ دستیاب"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "پراکسی موڈ دستیاب"
+    },
+    {
+      "source": "not ready",
+      "target": "تیار نہیں"
+    },
+    {
+      "source": " checks",
+      "target": " چیکس"
+    },
+    {
+      "source": " check",
+      "target": " چیک"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN ڈیوائس ناکام: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "نیٹ ورک مراعات ناکام: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS ٹولنگ ناکام: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN ڈیوائس"
+    },
+    {
+      "source": "network privileges",
+      "target": "نیٹ ورک مراعات"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS ٹولنگ"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN device /dev/net/tun پر موجود نہیں ہے۔ آزمائیں: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ڈیسک ٹاپ VPN موڈ کو CAP_NET_ADMIN چاہیے۔ root کے طور پر چلائیں یا sing-box صلاحیتیں دیں: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route/DNS ٹولنگ دستیاب نہیں۔ VPN موڈ کو netsh.exe اور DNS کلائنٹ PowerShell cmdlets درکار ہیں۔"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "اس کمپیوٹر پر VPN تیار ہے"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "اس کمپیوٹر پر پراکسی تیار ہے"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "فارغ"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN شروع ہو گیا"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN بند ہو گیا"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پراکسی شروع ہو گئی"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پراکسی بند ہو گئی"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN شروع کیا جا رہا ہے..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "مقامی پراکسی شروع کی جا رہی ہے..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "بہترین مقام کے ساتھ VPN شروع کیا جا رہا ہے..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "بہترین مقام کے ساتھ مقامی پراکسی شروع کی جا رہی ہے..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "سبسکرپشن سے بہترین مقام تلاش کیا جا رہا ہے..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "محفوظ مقامات سے بہترین مقام تلاش کیا جا رہا ہے..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "مقام تلاش منسوخ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "مقام تلاش ناکام"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN اجازت دیں اور دوبارہ کوشش کریں"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "پہلے ریموٹ ماخذ سیٹ کریں"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "پہلے کم از کم ایک محفوظ مقام شامل کریں"
+    },
+    {
+      "source": "Select a location first",
+      "target": "پہلے مقام منتخب کریں"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ابھی کوئی سبسکرپشن محفوظ نہیں"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "تمام سبسکرپشنز ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "فعال سبسکرپشن ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "سبسکرپشن ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "سبسکرپشنز ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "سبسکرپشن خودکار طور پر ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "سبسکرپشنز خودکار طور پر ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "سبسکرپشن ریفریش ہو گئی"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "سبسکرپشنز ریفریش ہو گئیں"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "فعال سبسکرپشن ریفریش ہو گئی"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "تمام سبسکرپشنز ریفریش ہو گئیں"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ریفریش ناکام"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "پروفائل ماخذ سبسکرپشن پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "پروفائل ماخذ محفوظ مقامات پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "کنکشن موڈ VPN پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "کنکشن موڈ صرف پراکسی پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "کنکشن موڈ بدلنے کے لیے پہلے منقطع کریں"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "تاریخ کا اندراج حذف ہو گیا"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "سبسکرپشن نام ری سیٹ ہو گیا"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "سبسکرپشن نام محفوظ ہو گیا"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "زبان سسٹم ڈیفالٹ پر سیٹ ہو گئی"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "حسب ضرورت DNS محفوظ ہو گیا"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "حسب ضرورت DNS غیر فعال ہو گیا"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "روٹنگ قواعد محفوظ ہو گئے"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "روٹنگ قواعد امپورٹ ہو گئے"
+    },
+    {
+      "source": "Locations imported",
+      "target": "مقامات امپورٹ ہو گئے"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "مقامات امپورٹ ہو گئے۔ منتخب مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "مقامات امپورٹ کرنے کے لیے محفوظ مقامات پر سوئچ کریں"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "مقامات دستی طور پر شامل کرنے کے لیے محفوظ مقامات پر سوئچ کریں"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "غلط مقام کنفگ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ترمیم کے لیے مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "تشخیصی ایکسپورٹ کھل گیا"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "تشخیصی ایکسپورٹ ناکام"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "تشخیصی ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "پچھلا VPN مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ایپ بند ہو گئی۔ VPN بند تھا۔"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "تمام سبسکرپشنز فعال ہو گئیں"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "تمام سبسکرپشنز منتخب ہو گئیں"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "سبسکرپشن منتخب ہو گئی"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "مقامات کلپ بورڈ میں کاپی ہو گئے"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "مقامات ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "روٹنگ قواعد کلپ بورڈ میں کاپی ہو گئے"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "روٹنگ قواعد ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "پروفائل ماخذ موڈ: رکنیت"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "پروفائل ماخذ موڈ: محفوظ مقامات"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "نئے بہترین مقام کے ساتھ VPN شروع ہو رہا ہے..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "نئے بہترین مقام کے ساتھ پراکسی شروع ہو رہی ہے..."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "سبسکرپشن مقامات صرف پڑھنے کے لیے ہیں۔ ترامیم محفوظ کرنے کے لیے محفوظ مقامات پر سوئچ کریں۔"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "سبسکرپشن مقامات صرف پڑھنے کے لیے ہیں۔ انہیں حذف کرنے کے لیے محفوظ مقامات پر سوئچ کریں۔"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "سبسکرپشن موصول ہوئی۔ پروفائل ٹیب پر اس کا جائزہ لے کر محفوظ کریں۔"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "سبسکرپشن لنک موصول ہوا۔ پروفائل ٹیب پر اس کا جائزہ لے کر محفوظ کریں۔"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "مقام کنفگ موصول ہوا۔ مقامات ٹیب پر اس کا جائزہ لے کر محفوظ کریں۔"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "بہترین مقام کے ساتھ مقامی پراکسی شروع کی جا رہی ہے..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "بہترین مقام کے ساتھ VPN شروع کیا جا رہا ہے..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "سبسکرپشن سے بہترین مقام تلاش کیا جا رہا ہے..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "محفوظ مقامات سے بہترین مقام تلاش کیا جا رہا ہے..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "مقامات امپورٹ ہو گئے۔ منتخب مقام اب دستیاب نہیں، پراکسی بند ہو گئی"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "مقامات امپورٹ ہو گئے۔ منتخب مقام اب دستیاب نہیں، VPN بند ہو گیا"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "مقامات امپورٹ ہو گئے۔ منتخب مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "منتخب مقام لاگو ہو گیا، لیکن اسے محفوظ کرنے میں ناکامی ہوئی"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "مقام حذف کرنا واپس پلٹا دیا گیا کیونکہ پراکسی بند نہیں ہو سکی"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "مقام حذف کرنا واپس پلٹا دیا گیا کیونکہ VPN بند نہیں ہو سکا"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "مقامات امپورٹ واپس پلٹا دی گئی کیونکہ پراکسی بند نہیں ہو سکی"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "مقامات امپورٹ واپس پلٹا دی گئی کیونکہ VPN بند نہیں ہو سکا"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN بند ہو گیا۔ ریفریش شدہ سبسکرپشنز نے منتخب مقام ہٹا دیا۔"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "پراکسی بند ہو گئی۔ ریفریش شدہ سبسکرپشنز نے منتخب مقام ہٹا دیا۔"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN بند ہو گیا۔ اگلی لانچ پر دوبارہ کنیکٹ ہو گا۔"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "پراکسی بند ہو گئی۔ اگلی لانچ پر دوبارہ کنیکٹ ہو گی۔"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "روٹنگ قواعد محفوظ ہو گئے۔ لاگو کرنے کے لیے VPN دوبارہ شروع کریں"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "روٹنگ قواعد محفوظ ہو گئے۔ لاگو کرنے کے لیے پراکسی دوبارہ شروع کریں"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "روٹنگ قواعد امپورٹ ہو گئے۔ لاگو کرنے کے لیے VPN دوبارہ شروع کریں"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "روٹنگ قواعد امپورٹ ہو گئے۔ لاگو کرنے کے لیے پراکسی دوبارہ شروع کریں"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "منتخب مقام ہٹا دیا گیا۔ VPN بند ہو گیا: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "منتخب مقام ہٹا دیا گیا۔ پراکسی بند ہو گئی: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "بہترین مقام منتخب ہوا اور VPN شروع ہو گیا: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "بہترین مقام منتخب ہوا اور پراکسی شروع ہو گئی: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN شروع ہو گیا، لیکن منتخب مقام محفوظ کرنے میں ناکامی ہوئی"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "پراکسی شروع ہو گئی، لیکن منتخب مقام محفوظ کرنے میں ناکامی ہوئی"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN شروع ہو گیا، لیکن بہترین مقام محفوظ کرنے میں ناکامی ہوئی"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "پراکسی شروع ہو گئی، لیکن بہترین مقام محفوظ کرنے میں ناکامی ہوئی"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "بہترین مقام کے ساتھ VPN شروع کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "بہترین مقام کے ساتھ پراکسی شروع کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "منتخب مقام محفوظ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "منتخب مقام محفوظ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "بہترین مقام محفوظ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "منتخب مقام لاگو کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "مقام منتخب کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "باہر نکلنے سے پہلے VPN بند کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "باہر نکلنے سے پہلے پراکسی بند کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN بند کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "پراکسی بند کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN شروع کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "پراکسی شروع کرنے میں ناکامی"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN تیار نہیں کیا جا سکا"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "پراکسی تیار نہیں کی جا سکی"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN تیار کیا جا رہا ہے"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "پراکسی تیار کی جا رہی ہے"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN آغاز منسوخ"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "پراکسی آغاز منسوخ"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN بند کرنا منسوخ"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "پراکسی بند کرنا منسوخ"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "مقامی پراکسی شروع کی جا رہی ہے..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN شروع کیا جا رہا ہے..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "تمام سبسکرپشنز ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "فعال سبسکرپشن ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "سبسکرپشنز ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "سبسکرپشن ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "سبسکرپشنز خودکار طور پر ریفریش کی جا رہی ہیں..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "سبسکرپشن خودکار طور پر ریفریش کی جا رہی ہے..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "تمام سبسکرپشنز ریفریش ہو گئیں"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "فعال سبسکرپشن ریفریش ہو گئی"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "سبسکرپشنز ریفریش ہو گئیں"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "سبسکرپشن ریفریش ہو گئی"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ریفریش ناکام"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "مقام تلاش منسوخ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "مقام تلاش ناکام"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN اجازت دیں اور دوبارہ کوشش کریں"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "پہلے ریموٹ ماخذ سیٹ کریں"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "پہلے کم از کم ایک محفوظ مقام شامل کریں"
+    },
+    {
+      "source": "Select a location first",
+      "target": "پہلے مقام منتخب کریں"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ابھی کوئی سبسکرپشن محفوظ نہیں"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "پروفائل ماخذ سبسکرپشن پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "پروفائل ماخذ محفوظ مقامات پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "کنکشن موڈ VPN پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "کنکشن موڈ صرف پراکسی پر سیٹ ہو گیا"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "کنکشن موڈ بدلنے کے لیے پہلے منقطع کریں"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "تاریخ کا اندراج حذف ہو گیا"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "سبسکرپشن نام ری سیٹ ہو گیا"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "سبسکرپشن نام محفوظ ہو گیا"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "زبان سسٹم ڈیفالٹ پر سیٹ ہو گئی"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "حسب ضرورت DNS محفوظ ہو گیا"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "حسب ضرورت DNS غیر فعال ہو گیا"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "روٹنگ قواعد محفوظ ہو گئے"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "روٹنگ قواعد امپورٹ ہو گئے"
+    },
+    {
+      "source": "Locations imported",
+      "target": "مقامات امپورٹ ہو گئے"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "مقامات امپورٹ کرنے کے لیے محفوظ مقامات پر سوئچ کریں"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "مقامات دستی طور پر شامل کرنے کے لیے محفوظ مقامات پر سوئچ کریں"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "غلط مقام کنفگ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ترمیم کے لیے مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "تشخیصی ایکسپورٹ کھل گیا"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "تشخیصی ایکسپورٹ ناکام"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "تشخیصی ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "پچھلا VPN مقام اب دستیاب نہیں"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ایپ بند ہو گئی۔ VPN بند تھا۔"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "تمام سبسکرپشنز فعال ہو گئیں"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "تمام سبسکرپشنز منتخب ہو گئیں"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "سبسکرپشن منتخب ہو گئی"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "سبسکرپشن محفوظ ہو گئی"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "مقامات کلپ بورڈ میں کاپی ہو گئے"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "مقامات ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "روٹنگ قواعد کلپ بورڈ میں کاپی ہو گئے"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "روٹنگ قواعد ایکسپورٹ منسوخ"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "کلپ بورڈ پڑھنے میں ناکامی"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ایکسپورٹ کے لیے کوئی مقامات نہیں"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "ایپس لوڈ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "سبسکرپشنز ریفریش کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "فعال سبسکرپشن ریفریش کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "روٹنگ قواعد امپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "روٹنگ قواعد محفوظ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "مقامات امپورٹ کرنے میں ناکامی"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "مقامات فائل کھولنے میں ناکامی"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "مقامات فائل پڑھنے میں ناکامی"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "روٹنگ قواعد فائل کھولنے میں ناکامی"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "بہترین مقام ڈیسک ٹاپ فہرست سے میپ نہیں ہو سکا"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "اس کمپیوٹر پر VPN تیار ہے"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "اس کمپیوٹر پر پراکسی تیار ہے"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ڈیسک ٹاپ VPN شیل تیار ہے"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ڈیسک ٹاپ پراکسی شیل تیار ہے"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN شروع ہوا: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "پراکسی شروع ہوئی: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN بند ہو گیا۔ ایپ موڈ: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "پراکسی بند ہو گئی۔ ایپ موڈ: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "زبان سیٹ ہوئی: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "سبسکرپشن خودکار ریفریش سیٹ ہوا: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "توثیق ترتیبات محفوظ ہو گئیں: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "منتخب مقام تبدیل نہیں ہوا: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "منتخب مقام ہٹا دیا گیا: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "منتخب مقام سیٹ ہو گیا: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "مقام اپ ڈیٹ اور ضم ہو گیا: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "مقام پہلے ہی محفوظ ہے: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "مقام اپ ڈیٹ ہو گیا: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "مقام ہٹا دیا گیا: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "مقام شامل ہو گیا: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "سبسکرپشنز ریفریش ہو گئیں: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ناکام: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN بحال کیا جا رہا ہے: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "ریفریش کیا جا رہا ہے: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "مقامات ایکسپورٹ ہوئے: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "روٹنگ قواعد ایکسپورٹ ہوئے: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "تشخیصی معلومات ایکسپورٹ ہوئیں: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "بینچ مارک کرنے میں ناکامی: "
+    },
+    {
+      "source": "Activated ",
+      "target": "فعال کیا گیا: "
+    },
+    {
+      "source": "Added ",
+      "target": "شامل کیا گیا: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "حذف کیا گیا: "
+    },
+    {
+      "source": "Selected ",
+      "target": "منتخب کیا گیا: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "ترمیم شدہ مقام #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "ایپ موڈ: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " مقامات ریفریش ہو گئے"
+    },
+    {
+      "source": " location refreshed",
+      "target": " مقام ریفریش ہو گیا"
+    },
+    {
+      "source": " • batch ",
+      "target": " • بیچ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • دوبارہ کوششیں "
+    },
+    {
+      "source": "custom interval",
+      "target": "حسب ضرورت وقفہ"
+    },
+    {
+      "source": "every hour",
+      "target": "ہر گھنٹے"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "تمام سبسکرپشنز"
+    },
+    {
+      "source": "selected subscription",
+      "target": "منتخب سبسکرپشن"
+    },
+    {
+      "source": "proxy only",
+      "target": "صرف پراکسی"
+    },
+    {
+      "source": "off",
+      "target": "بند"
+    },
+    {
+      "source": "Idle",
+      "target": "فارغ"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN شروع ہو گیا"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN بند ہو گیا"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پراکسی شروع ہو گئی"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پراکسی بند ہو گئی"
+    }
+  ]
+}

@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "Hľadá sa najlepšia lokalita z predplatného...",
+    "findingSaved": "Hľadá sa najlepšia lokalita z uložených lokalít...",
+    "testingFastestCandidates": "Najrýchlejší kandidáti sa testujú po dávkach...",
+    "checkingLocations": "Kontroluje sa {count} lokalít...",
+    "testingLocationsRange": "Testujú sa lokality {start}-{end} z {total}...",
+    "refreshIntervalMinutes": "{count} minút",
+    "refreshIntervalHours": "{count} hod.",
+    "refreshIntervalHoursMinutes": "{hours} hod. {minutes} min",
+    "refreshIntervalEvery": "každých {interval}",
+    "refreshIntervalEveryHour": "každú hodinu"
+  },
+  "benchmark": {
+    "best": "Najlepšie: ",
+    "primary": "primárne ",
+    "secondary": "sekundárne ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blokované",
+      "cached": "z vyrovnávacej pamäte",
+      "challenge": "výzva",
+      "custom_config_manual_only": "vlastná konfigurácia, iba manuálne",
+      "error": "chyba",
+      "manual": "manuálne",
+      "ok": "v poriadku",
+      "partial": "čiastočné",
+      "tcp_error": "chyba TCP",
+      "tcp_timeout": "časový limit TCP",
+      "timeout": "časový limit",
+      "unreachable": "nedostupné",
+      "validation_timeout": "časový limit overenia"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL predplatného"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Nečitateľná URL predplatného"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Nezabezpečené HTTP predplatné nie je podporované"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Použite URL predplatného https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL musí obsahovať platný HTTPS hostiteľ"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Vložte platnú URL predplatného https://."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Priamy vzdialený zdroj"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "importný odkaz sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Nečitateľný importný odkaz sing-box"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Podporované sú iba platné vzdialené URL adresy HTTPS"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Použite importný odkaz sing-box, ktorý sa preloží na platnú URL adresu https://."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Načíta vzdialený obsah z vloženej URL adresy"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Načíta vzdialený obsah z "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Importný odkaz sa nepodarilo analyzovať"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Vložte platný importný odkaz vzdialeného profilu sing-box alebo priamu URL predplatného."
+    },
+    {
+      "source": "VPN import link",
+      "target": "importný odkaz VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Nečitateľný importný odkaz VPN"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Nepodporovaný import poskytovateľa"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Importy Amnezia a iné vpn:// importy nie sú podporované. Použite bežnú URL predplatného alebo pridajte lokality manuálne."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Importný obsah sa nepodarilo dekódovať"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Importy vpn:// nie sú podporované. Použite bežnú URL predplatného alebo pridajte lokality manuálne."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP URL predplatného nie sú podporované. Namiesto toho použite https://."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Vzdialený zdroj musí byť URL https:// alebo podporovaný importný odkaz"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Vzdialený zdroj je prázdny"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Vzdialený zdroj musí byť platná URL https:// s hostiteľom."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Tento import sing-box sa prekladá na neplatnú alebo nie HTTPS URL. Namiesto toho použite platnú URL https://."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Používa sa vybraná lokalita..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Používa sa aktualizovaná vybraná lokalita..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Hľadanie najlepšej lokality vypršalo; ponecháva sa aktuálne pripojenie"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Schránka je prázdna"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Denník pripojenia zapnutý"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Denník pripojenia skrytý"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Nástroje na testovanie pripojenia zapnuté"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Nástroje na testovanie pripojenia skryté"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Nepodarilo sa otvoriť cieľ exportu"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Nepodarilo sa otvoriť vybraný súbor"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Nepodarilo sa otvoriť vybraný súbor lokalít"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Nepodarilo sa otvoriť vybraný súbor pravidiel"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktopové rozhranie: Holandsko z Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktopová aplikácia inicializovaná"
+    },
+    {
+      "source": "App initialized",
+      "target": "Aplikácia inicializovaná"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Exportovať lokality"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Nepodarilo sa použiť aktualizovanú vybranú lokalitu"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Nepodarilo sa exportovať diagnostiku"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Nepodarilo sa exportovať lokality"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Nepodarilo sa exportovať smerovacie pravidlá"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Nepodarilo sa nájsť náhradnú lokalitu"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Nepodarilo sa importovať súbor"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Nepodarilo sa otvoriť cieľ diagnostiky"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Nepodarilo sa uložiť nastavenia obnovy"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Nepodarilo sa aktualizovať nastavenie spustenia"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import zrušený"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Neplatná URL predplatného"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "História latencie zapnutá"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "História latencie skrytá"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Živé štatistiky premávky zapnuté"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Živé štatistiky premávky skryté"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Kontrola lokality zrušená"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Kontrola lokality zlyhala"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Lokality exportované"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Import lokalít zrušený"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Nie sú dostupné žiadne lokality na benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Žiadne predplatné zdroje na obnovenie"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Nenašla sa žiadna vhodná lokalita"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Súčty podľa profilu zapnuté"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Súčty podľa profilu skryté"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Predchádzajúca relácia VPN bude obnovená"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "Skenovanie QR kódu zrušené"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Smerovacie pravidlá exportované"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Import smerovacích pravidiel zrušený"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Smerovacie pravidlá uložené"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Štatistiky relácie zapnuté"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Štatistiky relácie skryté"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Zdieľaný text nie je podporovaný importný obsah"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Predplatné odstránené"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Obnova predplatného sa dokončila, ale na prepnutie na pozadí sa vyžaduje povolenie VPN. Predchádzajúca lokalita VPN bola ponechaná ako záloha."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Obnova predplatného sa dokončila. Hľadá sa najlepšia lokalita..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Obnova predplatného sa dokončila. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Režim behu: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokálny proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Denník behu: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Predbežná kontrola režimu VPN prešla"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Predbežná kontrola režimu iba proxy prešla"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Predbežná kontrola režimu VPN zlyhala: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Predbežná kontrola režimu iba proxy zlyhala: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Režim VPN nedostupný: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Režim iba proxy nedostupný: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Schopnosť desktopovej VPN: pripravené"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Schopnosť desktopovej VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "Režim VPN dostupný"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Režim proxy dostupný"
+    },
+    {
+      "source": "not ready",
+      "target": "nepripravené"
+    },
+    {
+      "source": " checks",
+      "target": " kontrol"
+    },
+    {
+      "source": " check",
+      "target": " kontrola"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "zlyhalo zariadenie TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "zlyhali sieťové oprávnenia: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "zlyhali nástroje route/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "zariadenie TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "sieťové oprávnenia"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "nástroje route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Zariadenie Linux TUN chýba v /dev/net/tun. Skúste: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Režim desktopovej VPN potrebuje CAP_NET_ADMIN. Spustite ako root alebo udeľte schopnosti sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Nástroje route/DNS vo Windows nie sú dostupné. Režim VPN potrebuje netsh.exe a cmdlety PowerShell klienta DNS."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN je na tomto počítači pripravená"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy je na tomto počítači pripravený"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Nečinné"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN spustená"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN zastavená"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy spustený"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy zastavený"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Spúšťa sa VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Spúšťa sa lokálny proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Spúšťa sa VPN s najlepšou lokalitou..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Spúšťa sa lokálny proxy s najlepšou lokalitou..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hľadá sa najlepšia lokalita z predplatného..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hľadá sa najlepšia lokalita z uložených lokalít..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Hľadanie lokality zrušené"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Hľadanie lokality zlyhalo"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Povoľte VPN a akciu zopakujte"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Najprv nastavte vzdialený zdroj"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Najprv pridajte aspoň jednu uloženú lokalitu"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Najprv vyberte lokalitu"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Zatiaľ nie sú uložené žiadne predplatné zdroje"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Obnovujú sa všetky predplatné zdroje..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Obnovuje sa aktívne predplatné..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Obnovuje sa predplatné..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Obnovujú sa predplatné zdroje..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Automaticky sa obnovuje predplatné..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Automaticky sa obnovujú predplatné zdroje..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Predplatné obnovené"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Predplatné zdroje obnovené"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktívne predplatné obnovené"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Všetky predplatné zdroje obnovené"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Obnova zlyhala"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Zdroj profilu nastavený na predplatné"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Zdroj profilu nastavený na uložené lokality"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Režim pripojenia nastavený na VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Režim pripojenia nastavený na iba proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Ak chcete zmeniť režim pripojenia, najprv sa odpojte"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Záznam histórie odstránený"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Názov predplatného resetovaný"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Názov predplatného uložený"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Jazyk nastavený na systémové predvolené nastavenie"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Vlastné DNS uložené"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Vlastné DNS vypnuté"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Smerovacie pravidlá uložené"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Smerovacie pravidlá importované"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokality importované"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokality importované. Vybraná lokalita už nie je dostupná"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Ak chcete importovať lokality, prepnite na Uložené lokality"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Ak chcete manuálne pridať lokality, prepnite na Uložené lokality"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Neplatná konfigurácia lokality"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokalita na úpravu už nie je dostupná"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Export diagnostiky otvorený"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Export diagnostiky zlyhal"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Export diagnostiky zrušený"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Predchádzajúca lokalita VPN už nie je dostupná"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikácia zatvorená. VPN bola vypnutá."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Aktivované všetky predplatné zdroje"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Vybrané všetky predplatné zdroje"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Predplatné vybrané"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokality skopírované do schránky"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Export lokalít zrušený"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Smerovacie pravidlá skopírované do schránky"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export smerovacích pravidiel zrušený"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Režim zdroja profilu: predplatné"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Režim zdroja profilu: uložené lokality"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Spúšťa sa VPN s novou najlepšou polohou..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Spúšťa sa proxy s novou najlepšou polohou..."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Lokality z predplatného sú iba na čítanie. Ak chcete uložiť úpravy, prepnite na Uložené lokality."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Lokality z predplatného sú iba na čítanie. Ak ich chcete odstrániť, prepnite na Uložené lokality."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Predplatné prijaté. Skontrolujte ho a uložte na karte Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Odkaz predplatného prijatý. Skontrolujte ho a uložte na karte Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Konfigurácia lokality prijatá. Skontrolujte ju a uložte na karte Lokality."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Spúšťa sa lokálny proxy s najlepšou lokalitou..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Spúšťa sa VPN s najlepšou lokalitou..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hľadá sa najlepšia lokalita z predplatného..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hľadá sa najlepšia lokalita z uložených lokalít..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Lokality importované. Vybraná lokalita už nie je dostupná, proxy zastavený"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Lokality importované. Vybraná lokalita už nie je dostupná, VPN zastavená"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokality importované. Vybraná lokalita už nie je dostupná"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Vybraná lokalita bola použitá, ale nepodarilo sa ju uložiť"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Odstránenie lokality bolo vrátené späť, pretože proxy sa nepodarilo zastaviť"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Odstránenie lokality bolo vrátené späť, pretože VPN sa nepodarilo zastaviť"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Import lokalít bol vrátený späť, pretože proxy sa nepodarilo zastaviť"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Import lokalít bol vrátený späť, pretože VPN sa nepodarilo zastaviť"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN zastavená. Obnovené predplatné zdroje odstránili vybranú lokalitu."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy zastavený. Obnovené predplatné zdroje odstránili vybranú lokalitu."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN zastavená. Pri ďalšom spustení sa znova pripojí."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy zastavený. Pri ďalšom spustení sa znova pripojí."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Smerovacie pravidlá uložené. Použijú sa po reštarte VPN"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Smerovacie pravidlá uložené. Použijú sa po reštarte proxy"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Smerovacie pravidlá importované. Použijú sa po reštarte VPN"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Smerovacie pravidlá importované. Použijú sa po reštarte proxy"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Vybraná lokalita odstránená. VPN zastavená: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Vybraná lokalita odstránená. Proxy zastavený: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Najlepšia lokalita vybraná a VPN spustená: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Najlepšia lokalita vybraná a proxy spustený: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN spustená, ale vybranú lokalitu sa nepodarilo uložiť"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy spustený, ale vybranú lokalitu sa nepodarilo uložiť"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN spustená, ale najlepšiu lokalitu sa nepodarilo uložiť"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy spustený, ale najlepšiu lokalitu sa nepodarilo uložiť"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Nepodarilo sa spustiť VPN s najlepšou lokalitou"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Nepodarilo sa spustiť proxy s najlepšou lokalitou"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Nepodarilo sa uložiť vybranú lokalitu"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Nepodarilo sa uložiť vybranú lokalitu"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Nepodarilo sa uložiť najlepšiu lokalitu"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Nepodarilo sa použiť vybranú lokalitu"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Nepodarilo sa vybrať lokalitu"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Nepodarilo sa zastaviť VPN pred ukončením"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Nepodarilo sa zastaviť proxy pred ukončením"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Nepodarilo sa zastaviť VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Nepodarilo sa zastaviť proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Nepodarilo sa spustiť VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Nepodarilo sa spustiť proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Nepodarilo sa pripraviť VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Nepodarilo sa pripraviť proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Pripravuje sa VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Pripravuje sa proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Spustenie VPN zrušené"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Spustenie proxy zrušené"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Zastavenie VPN zrušené"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Zastavenie proxy zrušené"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Spúšťa sa lokálny proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Spúšťa sa VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Obnovujú sa všetky predplatné zdroje..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Obnovuje sa aktívne predplatné..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Obnovujú sa predplatné zdroje..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Obnovuje sa predplatné..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Automaticky sa obnovujú predplatné zdroje..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Automaticky sa obnovuje predplatné..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Všetky predplatné zdroje obnovené"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktívne predplatné obnovené"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Predplatné zdroje obnovené"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Predplatné obnovené"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Obnova zlyhala"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Hľadanie lokality zrušené"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Hľadanie lokality zlyhalo"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Povoľte VPN a akciu zopakujte"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Najprv nastavte vzdialený zdroj"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Najprv pridajte aspoň jednu uloženú lokalitu"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Najprv vyberte lokalitu"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Zatiaľ nie sú uložené žiadne predplatné zdroje"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Zdroj profilu nastavený na predplatné"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Zdroj profilu nastavený na uložené lokality"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Režim pripojenia nastavený na VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Režim pripojenia nastavený na iba proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Ak chcete zmeniť režim pripojenia, najprv sa odpojte"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Záznam histórie odstránený"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Názov predplatného resetovaný"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Názov predplatného uložený"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Jazyk nastavený na systémové predvolené nastavenie"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Vlastné DNS uložené"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Vlastné DNS vypnuté"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Smerovacie pravidlá uložené"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Smerovacie pravidlá importované"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokality importované"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Ak chcete importovať lokality, prepnite na Uložené lokality"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Ak chcete manuálne pridať lokality, prepnite na Uložené lokality"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Neplatná konfigurácia lokality"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokalita na úpravu už nie je dostupná"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Export diagnostiky otvorený"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Export diagnostiky zlyhal"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Export diagnostiky zrušený"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Predchádzajúca lokalita VPN už nie je dostupná"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikácia zatvorená. VPN bola vypnutá."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Aktivované všetky predplatné zdroje"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Vybrané všetky predplatné zdroje"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Predplatné vybrané"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Predplatné uložené"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokality skopírované do schránky"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Export lokalít zrušený"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Smerovacie pravidlá skopírované do schránky"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export smerovacích pravidiel zrušený"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Čítanie schránky zlyhalo"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Žiadne lokality na export"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Nepodarilo sa načítať aplikácie"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Nepodarilo sa obnoviť predplatné zdroje"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Nepodarilo sa obnoviť aktívne predplatné"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Nepodarilo sa importovať smerovacie pravidlá"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Nepodarilo sa uložiť smerovacie pravidlá"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Nepodarilo sa importovať lokality"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Nepodarilo sa otvoriť súbor lokalít"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Nepodarilo sa prečítať súbor lokalít"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Nepodarilo sa otvoriť súbor smerovacích pravidiel"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Najlepšiu lokalitu sa nepodarilo namapovať na desktopový zoznam"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN je na tomto počítači pripravená"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy je na tomto počítači pripravený"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Desktopové rozhranie VPN pripravené"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktopové rozhranie proxy pripravené"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN spustená na "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy spustený na "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN zastavená. Režim aplikácie: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy zastavený. Režim aplikácie: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Jazyk nastavený na "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatická obnova predplatného nastavená na "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Nastavenia overenia uložené: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Vybraná lokalita nezmenená: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Vybraná lokalita odstránená: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Vybraná lokalita nastavená: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Lokalita aktualizovaná a zlúčená: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Lokalita už uložená: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Lokalita aktualizovaná: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Lokalita odstránená: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Lokalita pridaná: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Predplatné zdroje obnovené: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Zlyhalo: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Obnovuje sa VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Obnovuje sa "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Lokality exportované do "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Smerovacie pravidlá exportované do "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostika exportovaná do "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Nepodarilo sa benchmarkovať "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktivované "
+    },
+    {
+      "source": "Added ",
+      "target": "Pridané "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Odstránené "
+    },
+    {
+      "source": "Selected ",
+      "target": "Vybrané "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Upravená lokalita č."
+    },
+    {
+      "source": "App mode: ",
+      "target": "Režim aplikácie: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " lokalít obnovených"
+    },
+    {
+      "source": " location refreshed",
+      "target": " lokalita obnovená"
+    },
+    {
+      "source": " • batch ",
+      "target": " • dávka "
+    },
+    {
+      "source": " • retries ",
+      "target": " • opakovania "
+    },
+    {
+      "source": "custom interval",
+      "target": "vlastný interval"
+    },
+    {
+      "source": "every hour",
+      "target": "každú hodinu"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "všetky predplatné zdroje"
+    },
+    {
+      "source": "selected subscription",
+      "target": "vybrané predplatné"
+    },
+    {
+      "source": "proxy only",
+      "target": "iba proxy"
+    },
+    {
+      "source": "off",
+      "target": "vypnuté"
+    },
+    {
+      "source": "Idle",
+      "target": "Nečinné"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN spustená"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN zastavená"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy spustený"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy zastavený"
+    }
+  ]
+}

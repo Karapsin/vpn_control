@@ -1,1378 +1,1378 @@
 {
   "dynamic": {
-    "findingSubscription": "Abonelikten en iyi konum aranıyor...",
-    "findingSaved": "Kayıtlı konumlardan en iyi konum aranıyor...",
-    "testingFastestCandidates": "En hızlı adaylar gruplar halinde test ediliyor...",
-    "checkingLocations": "{count} konum kontrol ediliyor...",
-    "testingLocationsRange": "{total} konumdan {start}-{end} test ediliyor...",
-    "refreshIntervalMinutes": "{count} dk",
-    "refreshIntervalHours": "{count} sa",
-    "refreshIntervalHoursMinutes": "{hours} sa {minutes} dk",
-    "refreshIntervalEvery": "her {interval}",
-    "refreshIntervalEveryHour": "her saat"
+    "findingSubscription": "Abunəlikdən ən yaxşı məkan tapılır...",
+    "findingSaved": "Saxlanmış məkanlardan ən yaxşı məkan tapılır...",
+    "testingFastestCandidates": "Ən sürətli namizədlər paketlərlə test edilir...",
+    "checkingLocations": "{count} məkan yoxlanılır...",
+    "testingLocationsRange": "{total} məkandan {start}-{end} test edilir...",
+    "refreshIntervalMinutes": "{count} dəq",
+    "refreshIntervalHours": "{count} saat",
+    "refreshIntervalHoursMinutes": "{hours} saat {minutes} dəq",
+    "refreshIntervalEvery": "hər {interval}",
+    "refreshIntervalEveryHour": "hər saat"
   },
   "benchmark": {
-    "best": "En iyi: ",
-    "primary": "birincil ",
+    "best": "Ən yaxşı: ",
+    "primary": "əsas ",
     "secondary": "ikincil ",
-    "tcp": "TCP ",
+    "tcp": "tcp ",
     "millisUnit": "ms",
     "statuses": {
-      "blocked": "engelli",
-      "cached": "önbellek",
-      "challenge": "doğrulama",
-      "custom_config_manual_only": "elle",
-      "error": "hata",
-      "manual": "elle",
-      "ok": "tamam",
-      "partial": "kısmi",
-      "tcp_error": "tcp_hatası",
-      "tcp_timeout": "tcp_zaman_aşımı",
-      "timeout": "zaman aşımı",
-      "unreachable": "erişilemez",
-      "validation_timeout": "doğrulama_zaman_aşımı"
+      "blocked": "bloklanıb",
+      "cached": "keşlənib",
+      "challenge": "yoxlama",
+      "custom_config_manual_only": "yalnız_əl_ilə_fərdi_konfiq",
+      "error": "xəta",
+      "manual": "əl_ilə",
+      "ok": "ok",
+      "partial": "qismən",
+      "tcp_error": "tcp_xətası",
+      "tcp_timeout": "tcp_vaxt_bitdi",
+      "timeout": "vaxt_bitdi",
+      "unreachable": "əlçatmaz",
+      "validation_timeout": "validasiya_vaxtı_bitdi"
     }
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "Abonelik URL’si"
+      "target": "Abunəlik URL-i"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Okunamayan abonelik URL’si"
+      "target": "Oxunmayan abunəlik URL-i"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Güvenli olmayan HTTP abonelikleri desteklenmez"
+      "target": "Təhlükəsiz olmayan HTTP abunəlikləri dəstəklənmir"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "https:// abonelik URL’si kullanın."
+      "target": "https:// abunəlik URL-i istifadə edin."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL geçerli bir HTTPS ana makinesi içermelidir"
+      "target": "URL etibarlı HTTPS hostu ehtiva etməlidir"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Geçerli bir https:// abonelik URL’si yapıştırın."
+      "target": "Etibarlı https:// abunəlik URL-i yapışdırın."
     },
     {
       "source": "Direct remote source",
-      "target": "Doğrudan uzak kaynak"
+      "target": "Birbaşa uzaq mənbə"
     },
     {
       "source": "sing-box import link",
-      "target": "sing-box içe aktarma bağlantısı"
+      "target": "sing-box idxal linki"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Okunamayan sing-box içe aktarma bağlantısı"
+      "target": "Oxunmayan sing-box idxal linki"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Yalnızca geçerli HTTPS uzak URL’leri desteklenir"
+      "target": "Yalnız etibarlı HTTPS uzaq URL-ləri dəstəklənir"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Geçerli bir https:// URL’sine çözümlenen sing-box içe aktarma bağlantısı kullanın."
+      "target": "Etibarlı https:// URL-ə açılan sing-box idxal linki istifadə edin."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Gömülü URL’den uzak içeriği alır"
+      "target": "Daxil edilmiş URL-dən uzaq məzmunu alır"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Uzak içeriği şuradan alır: "
+      "target": "Uzaq məzmunu buradan alır: "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "İçe aktarma bağlantısı ayrıştırılamadı"
+      "target": "İdxal linki təhlil edilə bilmədi"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Geçerli bir sing-box remote-profile içe aktarma bağlantısı veya doğrudan abonelik URL’si yapıştırın."
+      "target": "Etibarlı sing-box remote-profile idxal linki və ya birbaşa abunəlik URL-i yapışdırın."
     },
     {
       "source": "VPN import link",
-      "target": "VPN içe aktarma bağlantısı"
+      "target": "VPN idxal linki"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Okunamayan VPN içe aktarma bağlantısı"
+      "target": "Oxunmayan VPN idxal linki"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Desteklenmeyen sağlayıcı içe aktarması"
+      "target": "Dəstəklənməyən provayder idxalı"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia ve diğer vpn:// içe aktarmaları desteklenmez. Normal abonelik URL’si kullanın veya konumları elle ekleyin."
+      "target": "Amnezia və digər vpn:// idxalları dəstəklənmir. Normal abunəlik URL-i istifadə edin və ya məkanları əl ilə əlavə edin."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "İçe aktarma verisi çözülemedi"
+      "target": "İdxal məzmunu dekodlana bilmədi"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "vpn:// içe aktarmaları desteklenmez. Normal abonelik URL’si kullanın veya konumları elle ekleyin."
+      "target": "vpn:// idxalları dəstəklənmir. Normal abunəlik URL-i istifadə edin və ya məkanları əl ilə əlavə edin."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP abonelik URL’leri desteklenmez. Bunun yerine https:// kullanın."
+      "target": "HTTP abunəlik URL-ləri dəstəklənmir. Əvəzində https:// istifadə edin."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Uzak kaynak bir https:// URL’si veya desteklenen içe aktarma bağlantısı olmalıdır"
+      "target": "Uzaq mənbə https:// URL-i və ya dəstəklənən idxal linki olmalıdır"
     },
     {
       "source": "Remote source is empty",
-      "target": "Uzak kaynak boş"
+      "target": "Uzaq mənbə boşdur"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Uzak kaynak, ana makinesi olan geçerli bir https:// URL’si olmalıdır."
+      "target": "Uzaq mənbə hostu olan etibarlı https:// URL-i olmalıdır."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Bu sing-box içe aktarması geçersiz veya HTTPS olmayan bir URL’ye çözümleniyor. Bunun yerine geçerli bir https:// URL’si kullanın."
+      "target": "Bu sing-box idxalı yanlış və ya HTTPS olmayan URL-ə açılır. Əvəzində etibarlı https:// URL istifadə edin."
     },
     {
       "source": "Applying selected location...",
-      "target": "Seçili konum uygulanıyor..."
+      "target": "Seçilmiş məkan tətbiq edilir..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Güncellenen seçili konum uygulanıyor..."
+      "target": "Yenilənmiş seçilmiş məkan tətbiq edilir..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "En iyi konum araması zaman aşımına uğradı; geçerli bağlantı korunuyor"
+      "target": "Ən yaxşı məkan axtarışının vaxtı bitdi; cari bağlantı saxlanılır"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Pano boş"
+      "target": "Mübadilə buferi boşdur"
     },
     {
       "source": "Connection log enabled",
-      "target": "Bağlantı günlüğü etkin"
+      "target": "Bağlantı jurnalı aktiv edildi"
     },
     {
       "source": "Connection log hidden",
-      "target": "Bağlantı günlüğü gizlendi"
+      "target": "Bağlantı jurnalı gizlədildi"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Bağlantı test araçları etkin"
+      "target": "Bağlantı test alətləri aktiv edildi"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Bağlantı test araçları gizlendi"
+      "target": "Bağlantı test alətləri gizlədildi"
     },
     {
       "source": "Could not open export destination",
-      "target": "Dosya açılamadı"
+      "target": "İxrac təyinatı açıla bilmədi"
     },
     {
       "source": "Could not open selected file",
-      "target": "Dosya açılamadı"
+      "target": "Seçilmiş fayl açıla bilmədi"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Dosya açılamadı"
+      "target": "Seçilmiş məkanlar faylı açıla bilmədi"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Dosya açılamadı"
+      "target": "Seçilmiş qaydalar faylı açıla bilmədi"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Masaüstü kabuğu: Whitelists içinden Hollanda"
+      "target": "Masaüstü qabığı: icazə verilən siyahılardan Niderland"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Masaüstü uygulaması başlatıldı"
+      "target": "Desktop tətbiqi başladıldı"
     },
     {
       "source": "App initialized",
-      "target": "Uygulama başlatıldı"
+      "target": "Tətbiq başladıldı"
     },
     {
       "source": "Export Locations",
-      "target": "Dışa aktar Konumlar"
+      "target": "Məkanları ixrac et"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "İşlem başarısız"
+      "target": "Yenilənmiş seçilmiş məkanı tətbiq etmək alınmadı"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "İşlem başarısız"
+      "target": "Diaqnostikanı ixrac etmək alınmadı"
     },
     {
       "source": "Failed to export locations",
-      "target": "İşlem başarısız"
+      "target": "Məkanları ixrac etmək alınmadı"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönləndirmə qaydalarını ixrac etmək alınmadı"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "İşlem başarısız"
+      "target": "Əvəzedici məkan tapmaq alınmadı"
     },
     {
       "source": "Failed to import file",
-      "target": "İşlem başarısız"
+      "target": "Faylı idxal etmək alınmadı"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "İşlem başarısız"
+      "target": "Diaqnostika təyinatını açmaq alınmadı"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "İşlem başarısız"
+      "target": "Yeniləmə ayarlarını saxlamaq alınmadı"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "İşlem başarısız"
+      "target": "Başlanğıc ayarını yeniləmək alınmadı"
     },
     {
       "source": "Import canceled",
-      "target": "İçe aktarma iptal edildi"
+      "target": "İdxal ləğv edildi"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəlik URL-i yanlışdır"
     },
     {
       "source": "Latency history enabled",
-      "target": "Gecikme geçmişi etkinleştirildi"
+      "target": "Gecikmə tarixçəsi aktiv edildi"
     },
     {
       "source": "Latency history hidden",
-      "target": "Gecikme geçmişi gizlendi"
+      "target": "Gecikmə tarixçəsi gizlədildi"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Canlı trafik istatistikleri etkinleştirildi"
+      "target": "Canlı trafik statistikası aktiv edildi"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Canlı trafik istatistikleri gizlendi"
+      "target": "Canlı trafik statistikası gizlədildi"
     },
     {
       "source": "Location check cancelled",
-      "target": "Konum güncellendi"
+      "target": "Məkan yoxlaması ləğv edildi"
     },
     {
       "source": "Location check failed",
-      "target": "Konum güncellendi"
+      "target": "Məkan yoxlaması alınmadı"
     },
     {
       "source": "Locations exported",
-      "target": "Konumlar dışa aktarıldı"
+      "target": "Məkanlar ixrac edildi"
     },
     {
       "source": "Locations import canceled",
-      "target": "Konumlar güncellendi"
+      "target": "Məkan idxalı ləğv edildi"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Konumlar güncellendi"
+      "target": "Benchmark üçün əlçatan məkan yoxdur"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Abonelik güncellendi"
+      "target": "Yenilənəcək abunəlik yoxdur"
     },
     {
       "source": "No suitable location found",
-      "target": "Konum güncellendi"
+      "target": "Uyğun məkan tapılmadı"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Profil başına toplamlar etkin"
+      "target": "Profil üzrə yekunlar aktiv edildi"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Profil başına toplamlar gizlendi"
+      "target": "Profil üzrə yekunlar gizlədildi"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Önceki VPN oturumu geri yüklenecek"
+      "target": "Əvvəlki VPN sessiyası bərpa ediləcək"
     },
     {
       "source": "QR scan canceled",
-      "target": "QR taraması iptal edildi"
+      "target": "QR skanı ləğv edildi"
     },
     {
       "source": "Routing rules exported",
-      "target": "Yönlendirme kurallar dışa aktarıldı"
+      "target": "Yönləndirmə qaydaları ixrac edildi"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydalarının idxalı ləğv edildi"
     },
     {
       "source": "Saved routing rules",
-      "target": "Saved routing kurallar"
+      "target": "Yönləndirmə qaydaları saxlandı"
     },
     {
       "source": "Session stats enabled",
-      "target": "Oturum istatistikleri etkinleştirildi"
+      "target": "Sessiya statistikası aktiv edildi"
     },
     {
       "source": "Session stats hidden",
-      "target": "Oturum istatistikleri gizlendi"
+      "target": "Sessiya statistikası gizlədildi"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Paylaşılan metin desteklenen bir içe aktarma verisi değil"
+      "target": "Paylaşılmış mətn dəstəklənən idxal məzmunu deyil"
     },
     {
       "source": "Subscription deleted",
-      "target": "Abonelik silindi"
+      "target": "Abunəlik silindi"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəlik yeniləməsi bitdi, amma arxa planda keçid üçün VPN icazəsi tələb olunur. Əvvəlki VPN məkanı ehtiyat kimi saxlandı."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Abonelik yenilemesi tamamlandı. En iyi konum aranıyor..."
+      "target": "Abunəlik yeniləməsi bitdi. Ən yaxşı məkan tapılır..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Abonelik yenileme tamamlandı. "
+      "target": "Abunəlik yeniləməsi bitdi. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Çalışma modu: "
+      "target": "İşləmə rejimi: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Yerel vekil: "
+      "target": "Yerli proxy: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Çalışma günlüğü: "
+      "target": "İşləmə jurnalı: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "VPN modu ön kontrolleri geçti"
+      "target": "VPN rejimi ilkin yoxlamadan keçdi"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Vekil modu ön kontrolleri geçti"
+      "target": "Yalnız proxy rejimi ilkin yoxlamadan keçdi"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "VPN modu ön kontrolleri başarısız: "
+      "target": "VPN rejimi ilkin yoxlaması alınmadı: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Yalnızca proxy modu ön denetim başarısız: "
+      "target": "Yalnız proxy rejimi ilkin yoxlaması alınmadı: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "VPN modu kullanılamıyor: "
+      "target": "VPN rejimi əlçatan deyil: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Yalnızca proxy modu kullanılamaz: "
+      "target": "Yalnız proxy rejimi əlçatan deyil: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "Masaüstü VPN hazır"
+      "target": "Masaüstü VPN imkanı: hazırdır"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "Masaüstü VPN: "
+      "target": "Masaüstü VPN imkanı: "
     },
     {
       "source": "VPN mode available",
-      "target": "VPN modu kullanılabilir"
+      "target": "VPN rejimi əlçatandır"
     },
     {
       "source": "Proxy mode available",
-      "target": "Proxy modu kullanılabilir"
+      "target": "Proxy rejimi əlçatandır"
     },
     {
       "source": "not ready",
-      "target": "hazır değil"
+      "target": "hazır deyil"
     },
     {
       "source": " checks",
-      "target": " denetim"
+      "target": " yoxlama"
     },
     {
       "source": " check",
-      "target": " denetim"
+      "target": " yoxlama"
     },
     {
       "source": "fail TUN device: ",
-      "target": "TUN aygıtı hatası: "
+      "target": "TUN cihazı xətası: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "ağ yetkisi hatası: "
+      "target": "şəbəkə imtiyazları xətası: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "route/DNS araç hatası: "
+      "target": "route/DNS alətləri xətası: "
     },
     {
       "source": "TUN device",
-      "target": "TUN aygıtı"
+      "target": "TUN cihazı"
     },
     {
       "source": "network privileges",
-      "target": "Ağ yetkileri"
+      "target": "şəbəkə imtiyazları"
     },
     {
       "source": "route/DNS tooling",
-      "target": "route/DNS araçları"
+      "target": "route/DNS alətləri"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN aygıtı /dev/net/tun konumunda yok. Deneyin: sudo modprobe tun"
+      "target": "Linux TUN cihazı /dev/net/tun ünvanında yoxdur. Sınayın: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Masaüstü VPN modu CAP_NET_ADMIN gerektirir. Kök kullanıcı olarak çalıştırın veya sing-box yetkilerini verin: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Masaüstü VPN rejimi CAP_NET_ADMIN tələb edir. root kimi işə salın və ya sing-box imkanlarını verin: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Windows route/DNS araçları kullanılamıyor. VPN modu netsh.exe ve DNS istemcisi PowerShell cmdlet'leri gerektirir."
+      "target": "Windows route/DNS alətləri əlçatan deyil. VPN rejimi üçün netsh.exe və DNS müştərisi PowerShell cmdlet-ləri lazımdır."
     },
     {
       "source": "VPN ready on this computer",
-      "target": "Bu bilgisayarda VPN hazır"
+      "target": "Bu kompüterdə VPN hazırdır"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Bu bilgisayarda vekil hazır"
+      "target": "Bu kompüterdə proxy hazırdır"
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Boşta"
+      "target": "Boşdur"
     },
     {
       "source": "VPN started",
-      "target": "VPN başlatıldı"
+      "target": "VPN başladıldı"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN durduruldu"
+      "target": "VPN dayandırıldı"
     },
     {
       "source": "Proxy started",
-      "target": "Proxy başlatıldı"
+      "target": "Proxy başladıldı"
     },
     {
       "source": "Proxy stopped",
-      "target": "Proxy durduruldu"
+      "target": "Proxy dayandırıldı"
     },
     {
       "source": "Starting VPN...",
-      "target": "VPN başlatılıyor..."
+      "target": "VPN başladılır..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Yerel vekil başlatılıyor..."
+      "target": "Yerli proxy başladılır..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "VPN en iyi konumla başlatılıyor..."
+      "target": "VPN ən yaxşı məkanla başladılır..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Yerel vekil en iyi konumla başlatılıyor..."
+      "target": "Yerli proxy ən yaxşı məkanla başladılır..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Abonelikten en iyi konum aranıyor..."
+      "target": "Abunəlikdən ən yaxşı məkan tapılır..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Kayıtlı konumlardan en iyi konum aranıyor..."
+      "target": "Saxlanmış məkanlardan ən yaxşı məkan tapılır..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Konum arama iptal edildi"
+      "target": "Məkan axtarışı ləğv edildi"
     },
     {
       "source": "Location search failed",
-      "target": "Konum arama başarısız"
+      "target": "Məkan axtarışı alınmadı"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "VPN izni verip yeniden deneyin"
+      "target": "VPN icazəsi verin və yenidən cəhd edin"
     },
     {
       "source": "Set a remote source first",
-      "target": "Önce uzak kaynak ayarlayın"
+      "target": "Əvvəlcə uzaq mənbə təyin edin"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Önce en az bir kayıtlı konum ekleyin"
+      "target": "Əvvəlcə ən azı bir saxlanmış məkan əlavə edin"
     },
     {
       "source": "Select a location first",
-      "target": "Seç a konum first"
+      "target": "Əvvəlcə məkan seçin"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Henüz kayıtlı abonelik yok"
+      "target": "Hələ saxlanmış abunəlik yoxdur"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Abonelik güncellendi"
+      "target": "Bütün abunəliklər yenilənir..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Yenileniyor active abonelik..."
+      "target": "Aktiv abunəlik yenilənir..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Yenileniyor abonelik..."
+      "target": "Abunəlik yenilənir..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Yenileniyor abonelikler..."
+      "target": "Abunəliklər yenilənir..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Abonelik otomatik yenileniyor..."
+      "target": "Abunəlik avtomatik yenilənir..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Abonelikler otomatik yenileniyor..."
+      "target": "Abunəliklər avtomatik yenilənir..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəlik yeniləndi"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəliklər yeniləndi"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Aktiv abunəlik yeniləndi"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Bütün abunəliklər yeniləndi"
     },
     {
       "source": "Refresh failed",
-      "target": "Yenileme başarısız"
+      "target": "Yeniləmə alınmadı"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Profil kaynağı aboneliğe ayarlandı"
+      "target": "Profil mənbəyi abunəliyə təyin edildi"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Profil kaynağı kayıtlı konumlara ayarlandı"
+      "target": "Profil mənbəyi saxlanmış məkanlara təyin edildi"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Bağlantı modu VPN olarak ayarlandı"
+      "target": "Bağlantı rejimi VPN olaraq təyin edildi"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Bağlantı modu yalnızca proxy olarak ayarlandı"
+      "target": "Bağlantı rejimi yalnız proxy olaraq təyin edildi"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Bağlantı modunu değiştirmek için önce bağlantıyı kesin"
+      "target": "Bağlantı rejimini dəyişmək üçün əvvəlcə bağlantını kəsin"
     },
     {
       "source": "History entry deleted",
-      "target": "Geçmiş girdisi silindi"
+      "target": "Tarixçə qeydi silindi"
     },
     {
       "source": "Subscription name reset",
-      "target": "Abonelik ad sıfırlandı"
+      "target": "Abunəlik adı sıfırlandı"
     },
     {
       "source": "Subscription name saved",
-      "target": "Abonelik ad kaydedildi"
+      "target": "Abunəlik adı saxlandı"
     },
     {
       "source": "Language set to system default",
-      "target": "Dil sistem varsayılanına ayarlandı"
+      "target": "Dil sistem standartına təyin edildi"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Custom DNS kaydedildi"
+      "target": "Fərdi DNS saxlandı"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Özel DNS devre dışı bırakıldı"
+      "target": "Fərdi DNS deaktiv edildi"
     },
     {
       "source": "Routing rules saved",
-      "target": "Yönlendirme kurallar kaydedildi"
+      "target": "Yönləndirmə qaydaları saxlandı"
     },
     {
       "source": "Routing rules imported",
-      "target": "Yönlendirme kurallar içe aktarıldı"
+      "target": "Yönləndirmə qaydaları idxal edildi"
     },
     {
       "source": "Locations imported",
-      "target": "Konumlar içe aktarıldı"
+      "target": "Məkanlar idxal edildi"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Seçili konum artık kullanılamıyor"
+      "target": "Məkanlar idxal edildi. Seçilmiş məkan artıq əlçatan deyil"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Konumları içe aktarmak için Kayıtlı Konumlara geçin"
+      "target": "Məkanları idxal etmək üçün Saxlanmış məkanlara keçin"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Konumları elle eklemek için Kayıtlı Konumlara geçin"
+      "target": "Məkanları əl ilə əlavə etmək üçün Saxlanmış məkanlara keçin"
     },
     {
       "source": "Invalid location config",
-      "target": "Konum yapılandırması geçersiz"
+      "target": "Məkan konfiqurasiyası yanlışdır"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Düzenlenecek konum artık kullanılamıyor"
+      "target": "Redaktə ediləcək məkan artıq əlçatan deyil"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Tanılama dışa aktarımı açıldı"
+      "target": "Diaqnostika ixracı açıldı"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Tanılama dışa aktarımı başarısız"
+      "target": "Diaqnostika ixracı alınmadı"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Tanılama dışa aktarımı iptal edildi"
+      "target": "Diaqnostika ixracı ləğv edildi"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Önceki VPN konumu artık kullanılamıyor"
+      "target": "Əvvəlki VPN məkanı artıq əlçatan deyil"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Uygulama kapandı. VPN kapalıydı."
+      "target": "Tətbiq bağlandı. VPN deaktiv idi."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Etkinleştirildi all abonelikler"
+      "target": "Bütün abunəliklər aktiv edildi"
     },
     {
       "source": "All subscriptions selected",
-      "target": "All abonelikler seçili"
+      "target": "Bütün abunəliklər seçildi"
     },
     {
       "source": "Subscription selected",
-      "target": "Abonelik seçili"
+      "target": "Abunəlik seçildi"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Konumlar panoya kopyalandı"
+      "target": "Məkanlar mübadilə buferinə kopyalandı"
     },
     {
       "source": "Locations export canceled",
-      "target": "Konum dışa aktarımı iptal edildi"
+      "target": "Məkan ixracı ləğv edildi"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Kurallar panoya kopyalandı"
+      "target": "Yönləndirmə qaydaları mübadilə buferinə kopyalandı"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Kural dışa aktarımı iptal edildi"
+      "target": "Yönləndirmə qaydalarının ixracı ləğv edildi"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Profil kaynağı modu: abonelik"
+      "target": "Profil mənbəyi rejimi: ABUNƏLİK"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Profil kaynağı modu: geçerli konumlar"
+      "target": "Profil mənbəyi rejimi: CARİ_MƏKANLAR"
     }
   ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
-      "target": "Abonelik konumları salt okunur. Düzenlemeleri kaydetmek için Kayıtlı Konumlara geçin."
+      "target": "Abunəlik məkanları yalnız oxunandır. Düzəlişləri saxlamaq üçün Saxlanmış məkanlara keçin."
     },
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
-      "target": "Abonelik konumları salt okunur. Silmek için Kayıtlı Konumlara geçin."
+      "target": "Abunəlik məkanları yalnız oxunandır. Onları silmək üçün Saxlanmış məkanlara keçin."
     },
     {
       "source": "Subscription received. Review and save it on the Profile tab.",
-      "target": "Abonelik alındı. Profil sekmesinde gözden geçirip kaydedin."
+      "target": "Abunəlik alındı. Profil tabında nəzərdən keçirib saxlayın."
     },
     {
       "source": "Subscription link received. Review and save it on the Profile tab.",
-      "target": "Abonelik bağlantısı alındı. Profil sekmesinde gözden geçirip kaydedin."
+      "target": "Abunəlik linki alındı. Profil tabında nəzərdən keçirib saxlayın."
     },
     {
       "source": "Location config received. Review and save it on the Locations tab.",
-      "target": "Konum yapılandırması alındı. Konumlar sekmesinde gözden geçirip kaydedin."
+      "target": "Məkan konfiqurasiyası alındı. Məkanlar tabında nəzərdən keçirib saxlayın."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Yerel vekil en iyi konumla başlatılıyor..."
+      "target": "Yerli proxy ən yaxşı məkanla başladılır..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "VPN en iyi konumla başlatılıyor..."
+      "target": "VPN ən yaxşı məkanla başladılır..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Abonelikten en iyi konum aranıyor..."
+      "target": "Abunəlikdən ən yaxşı məkan tapılır..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Kayıtlı konumlardan en iyi konum aranıyor..."
+      "target": "Saxlanmış məkanlardan ən yaxşı məkan tapılır..."
     },
     {
       "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Konumlar içe aktarıldı. Seçili konum artık yok, proxy durduruldu"
+      "target": "Məkanlar idxal edildi. Seçilmiş məkan artıq əlçatan deyil, proxy dayandırıldı"
     },
     {
       "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Konumlar içe aktarıldı. Seçili konum artık yok, VPN durduruldu"
+      "target": "Məkanlar idxal edildi. Seçilmiş məkan artıq əlçatan deyil, VPN dayandırıldı"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Seçili konum artık kullanılamıyor"
+      "target": "Məkanlar idxal edildi. Seçilmiş məkan artıq əlçatan deyil"
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Konum güncellendi"
+      "target": "Seçilmiş məkan tətbiq edildi, amma onu saxlamaq alınmadı"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Proxy durdurulamadığı için konum değişikliği geri alındı"
+      "target": "Proxy dayandırıla bilmədiyi üçün məkan silinməsi geri alındı"
     },
     {
       "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "VPN durdurulamadığı için konum değişikliği geri alındı"
+      "target": "VPN dayandırıla bilmədiyi üçün məkan silinməsi geri alındı"
     },
     {
       "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Proxy durdurulamadığı için konum değişikliği geri alındı"
+      "target": "Proxy dayandırıla bilmədiyi üçün məkan idxalı geri alındı"
     },
     {
       "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "VPN durdurulamadığı için konum değişikliği geri alındı"
+      "target": "VPN dayandırıla bilmədiyi üçün məkan idxalı geri alındı"
     },
     {
       "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "VPN durduruldu. Yenilenen abonelikler seçili konumu kaldırdı."
+      "target": "VPN dayandırıldı. Yenilənmiş abunəliklər seçilmiş məkanı sildi."
     },
     {
       "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Proxy durduruldu. Yenilenen abonelikler seçili konumu kaldırdı."
+      "target": "Proxy dayandırıldı. Yenilənmiş abunəliklər seçilmiş məkanı sildi."
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN durdu. Sonraki açılışta yeniden bağlanacak."
+      "target": "VPN dayandırıldı. Növbəti işə salmada yenidən qoşulacaq."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Vekil durdu. Sonraki açılışta yeniden bağlanacak."
+      "target": "Proxy dayandırıldı. Növbəti işə salmada yenidən qoşulacaq."
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydaları saxlandı. Tətbiq etmək üçün VPN-i yenidən başladın"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydaları saxlandı. Tətbiq etmək üçün proxy-ni yenidən başladın"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydaları idxal edildi. Tətbiq etmək üçün VPN-i yenidən başladın"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydaları idxal edildi. Tətbiq etmək üçün proxy-ni yenidən başladın"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
-      "target": "Seçili konum kaldırıldı. VPN durduruldu: "
+      "target": "Seçilmiş məkan silindi. VPN dayandırıldı: "
     },
     {
       "source": "Selected location removed. Proxy stopped: ",
-      "target": "Seçili konum kaldırıldı. Proxy durduruldu: "
+      "target": "Seçilmiş məkan silindi. Proxy dayandırıldı: "
     },
     {
       "source": "Best location selected and vpn started: ",
-      "target": "En iyi konum seçildi ve VPN başlatıldı: "
+      "target": "Ən yaxşı məkan seçildi və VPN başladıldı: "
     },
     {
       "source": "Best location selected and proxy started: ",
-      "target": "En iyi konum seçildi ve proxy başlatıldı: "
+      "target": "Ən yaxşı məkan seçildi və proxy başladıldı: "
     },
     {
       "source": "VPN started, but failed to save the selected location",
-      "target": "VPN başlatıldı, ancak seçili konum kaydedilemedi"
+      "target": "VPN başladıldı, amma seçilmiş məkanı saxlamaq alınmadı"
     },
     {
       "source": "Proxy started, but failed to save the selected location",
-      "target": "Proxy başlatıldı, ancak seçili konum kaydedilemedi"
+      "target": "Proxy başladıldı, amma seçilmiş məkanı saxlamaq alınmadı"
     },
     {
       "source": "VPN started, but failed to save the best location",
-      "target": "VPN başlatıldı, ancak en iyi konum kaydedilemedi"
+      "target": "VPN başladıldı, amma ən yaxşı məkanı saxlamaq alınmadı"
     },
     {
       "source": "Proxy started, but failed to save the best location",
-      "target": "Proxy başlatıldı, ancak en iyi konum kaydedilemedi"
+      "target": "Proxy başladıldı, amma ən yaxşı məkanı saxlamaq alınmadı"
     },
     {
       "source": "Failed to start VPN with the best location",
-      "target": "VPN en iyi konumla başlatılamadı"
+      "target": "VPN-i ən yaxşı məkanla başlatmaq alınmadı"
     },
     {
       "source": "Failed to start proxy with the best location",
-      "target": "Proxy en iyi konumla başlatılamadı"
+      "target": "Proxy-ni ən yaxşı məkanla başlatmaq alınmadı"
     },
     {
       "source": "Failed to save the selected location",
-      "target": "Seçili konum kaydedilemedi"
+      "target": "Seçilmiş məkanı saxlamaq alınmadı"
     },
     {
       "source": "Failed to save selected location",
-      "target": "Seçili konum kaydedilemedi"
+      "target": "Seçilmiş məkanı saxlamaq alınmadı"
     },
     {
       "source": "Failed to save the best location",
-      "target": "En iyi konum kaydedilemedi"
+      "target": "Ən yaxşı məkanı saxlamaq alınmadı"
     },
     {
       "source": "Failed to apply selected location",
-      "target": "İşlem başarısız"
+      "target": "Seçilmiş məkanı tətbiq etmək alınmadı"
     },
     {
       "source": "Failed to select location",
-      "target": "İşlem başarısız"
+      "target": "Məkanı seçmək alınmadı"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "İşlem başarısız"
+      "target": "Çıxışdan əvvəl VPN-i dayandırmaq alınmadı"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "İşlem başarısız"
+      "target": "Çıxışdan əvvəl Proxy-ni dayandırmaq alınmadı"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "İşlem başarısız"
+      "target": "VPN-i dayandırmaq alınmadı"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "İşlem başarısız"
+      "target": "Proxy-ni dayandırmaq alınmadı"
     },
     {
       "source": "Failed to start VPN",
-      "target": "İşlem başarısız"
+      "target": "VPN-i başlatmaq alınmadı"
     },
     {
       "source": "Failed to start proxy",
-      "target": "İşlem başarısız"
+      "target": "Proxy-ni başlatmaq alınmadı"
     },
     {
       "source": "Could not prepare VPN",
-      "target": "VPN hazırlanamadı"
+      "target": "VPN hazırlana bilmədi"
     },
     {
       "source": "Could not prepare proxy",
-      "target": "Proxy hazırlanamadı"
+      "target": "Proxy hazırlana bilmədi"
     },
     {
       "source": "Preparing VPN",
-      "target": "Hazırlanıyor VPN"
+      "target": "VPN hazırlanır"
     },
     {
       "source": "Preparing proxy",
-      "target": "Hazırlanıyor proxy"
+      "target": "Proxy hazırlanır"
     },
     {
       "source": "VPN start cancelled",
-      "target": "VPN başlat iptal edildi"
+      "target": "VPN başlatma ləğv edildi"
     },
     {
       "source": "Proxy start cancelled",
-      "target": "Proxy başlat iptal edildi"
+      "target": "Proxy başlatma ləğv edildi"
     },
     {
       "source": "VPN stop cancelled",
-      "target": "VPN durdur iptal edildi"
+      "target": "VPN dayandırma ləğv edildi"
     },
     {
       "source": "Proxy stop cancelled",
-      "target": "Proxy durdur iptal edildi"
+      "target": "Proxy dayandırma ləğv edildi"
     },
     {
       "source": "Starting local proxy...",
-      "target": "Yerel vekil başlatılıyor..."
+      "target": "Yerli proxy başladılır..."
     },
     {
       "source": "Starting VPN...",
-      "target": "VPN başlatılıyor..."
+      "target": "VPN başladılır..."
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Abonelik güncellendi"
+      "target": "Bütün abunəliklər yenilənir..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Yenileniyor active abonelik..."
+      "target": "Aktiv abunəlik yenilənir..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Yenileniyor abonelikler..."
+      "target": "Abunəliklər yenilənir..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Yenileniyor abonelik..."
+      "target": "Abunəlik yenilənir..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Abonelikler otomatik yenileniyor..."
+      "target": "Abunəliklər avtomatik yenilənir..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Abonelik otomatik yenileniyor..."
+      "target": "Abunəlik avtomatik yenilənir..."
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Bütün abunəliklər yeniləndi"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Aktiv abunəlik yeniləndi"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəliklər yeniləndi"
     },
     {
       "source": "Subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəlik yeniləndi"
     },
     {
       "source": "Refresh failed",
-      "target": "Yenileme başarısız"
+      "target": "Yeniləmə alınmadı"
     },
     {
       "source": "Location search cancelled",
-      "target": "Konum arama iptal edildi"
+      "target": "Məkan axtarışı ləğv edildi"
     },
     {
       "source": "Location search failed",
-      "target": "Konum arama başarısız"
+      "target": "Məkan axtarışı alınmadı"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "VPN izni verip yeniden deneyin"
+      "target": "VPN icazəsi verin və yenidən cəhd edin"
     },
     {
       "source": "Set a remote source first",
-      "target": "Önce uzak kaynak ayarlayın"
+      "target": "Əvvəlcə uzaq mənbə təyin edin"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Önce en az bir kayıtlı konum ekleyin"
+      "target": "Əvvəlcə ən azı bir saxlanmış məkan əlavə edin"
     },
     {
       "source": "Select a location first",
-      "target": "Seç a konum first"
+      "target": "Əvvəlcə məkan seçin"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Henüz kayıtlı abonelik yok"
+      "target": "Hələ saxlanmış abunəlik yoxdur"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Profil kaynağı aboneliğe ayarlandı"
+      "target": "Profil mənbəyi abunəliyə təyin edildi"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Profil kaynağı kayıtlı konumlara ayarlandı"
+      "target": "Profil mənbəyi saxlanmış məkanlara təyin edildi"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Bağlantı modu VPN olarak ayarlandı"
+      "target": "Bağlantı rejimi VPN olaraq təyin edildi"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Bağlantı modu yalnızca proxy olarak ayarlandı"
+      "target": "Bağlantı rejimi yalnız proxy olaraq təyin edildi"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Bağlantı modunu değiştirmek için önce bağlantıyı kesin"
+      "target": "Bağlantı rejimini dəyişmək üçün əvvəlcə bağlantını kəsin"
     },
     {
       "source": "History entry deleted",
-      "target": "Geçmiş girdisi silindi"
+      "target": "Tarixçə qeydi silindi"
     },
     {
       "source": "Subscription name reset",
-      "target": "Abonelik ad sıfırlandı"
+      "target": "Abunəlik adı sıfırlandı"
     },
     {
       "source": "Subscription name saved",
-      "target": "Abonelik ad kaydedildi"
+      "target": "Abunəlik adı saxlandı"
     },
     {
       "source": "Language set to system default",
-      "target": "Dil sistem varsayılanına ayarlandı"
+      "target": "Dil sistem standartına təyin edildi"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Custom DNS kaydedildi"
+      "target": "Fərdi DNS saxlandı"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Özel DNS devre dışı bırakıldı"
+      "target": "Fərdi DNS deaktiv edildi"
     },
     {
       "source": "Routing rules saved",
-      "target": "Yönlendirme kurallar kaydedildi"
+      "target": "Yönləndirmə qaydaları saxlandı"
     },
     {
       "source": "Routing rules imported",
-      "target": "Yönlendirme kurallar içe aktarıldı"
+      "target": "Yönləndirmə qaydaları idxal edildi"
     },
     {
       "source": "Locations imported",
-      "target": "Konumlar içe aktarıldı"
+      "target": "Məkanlar idxal edildi"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Konumları içe aktarmak için Kayıtlı Konumlara geçin"
+      "target": "Məkanları idxal etmək üçün Saxlanmış məkanlara keçin"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Konumları elle eklemek için Kayıtlı Konumlara geçin"
+      "target": "Məkanları əl ilə əlavə etmək üçün Saxlanmış məkanlara keçin"
     },
     {
       "source": "Invalid location config",
-      "target": "Konum yapılandırması geçersiz"
+      "target": "Məkan konfiqurasiyası yanlışdır"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Düzenlenecek konum artık kullanılamıyor"
+      "target": "Redaktə ediləcək məkan artıq əlçatan deyil"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Tanılama dışa aktarımı açıldı"
+      "target": "Diaqnostika ixracı açıldı"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Tanılama dışa aktarımı başarısız"
+      "target": "Diaqnostika ixracı alınmadı"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Tanılama dışa aktarımı iptal edildi"
+      "target": "Diaqnostika ixracı ləğv edildi"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Önceki VPN konumu artık kullanılamıyor"
+      "target": "Əvvəlki VPN məkanı artıq əlçatan deyil"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Uygulama kapandı. VPN kapalıydı."
+      "target": "Tətbiq bağlandı. VPN deaktiv idi."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Etkinleştirildi all abonelikler"
+      "target": "Bütün abunəliklər aktiv edildi"
     },
     {
       "source": "All subscriptions selected",
-      "target": "All abonelikler seçili"
+      "target": "Bütün abunəliklər seçildi"
     },
     {
       "source": "Subscription selected",
-      "target": "Abonelik seçili"
+      "target": "Abunəlik seçildi"
     },
     {
       "source": "Subscription saved",
-      "target": "Abonelik kaydedildi"
+      "target": "Abunəlik saxlandı"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Konumlar panoya kopyalandı"
+      "target": "Məkanlar mübadilə buferinə kopyalandı"
     },
     {
       "source": "Locations export canceled",
-      "target": "Konum dışa aktarımı iptal edildi"
+      "target": "Məkan ixracı ləğv edildi"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Kurallar panoya kopyalandı"
+      "target": "Yönləndirmə qaydaları mübadilə buferinə kopyalandı"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Kural dışa aktarımı iptal edildi"
+      "target": "Yönləndirmə qaydalarının ixracı ləğv edildi"
     },
     {
       "source": "Clipboard read failed",
-      "target": "Pano oku başarısız"
+      "target": "Mübadilə buferini oxumaq alınmadı"
     },
     {
       "source": "No locations to export",
-      "target": "Konumlar güncellendi"
+      "target": "İxrac ediləcək məkan yoxdur"
     },
     {
       "source": "Failed to load apps",
-      "target": "İşlem başarısız"
+      "target": "Tətbiqləri yükləmək alınmadı"
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "İşlem başarısız"
+      "target": "Abunəlikləri yeniləmək alınmadı"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "İşlem başarısız"
+      "target": "Aktiv abunəliyi yeniləmək alınmadı"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönləndirmə qaydalarını idxal etmək alınmadı"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönləndirmə qaydalarını saxlamaq alınmadı"
     },
     {
       "source": "Failed to import locations",
-      "target": "İşlem başarısız"
+      "target": "Məkanları idxal etmək alınmadı"
     },
     {
       "source": "Failed to open locations file",
-      "target": "İşlem başarısız"
+      "target": "Məkanlar faylını açmaq alınmadı"
     },
     {
       "source": "Failed to read locations file",
-      "target": "İşlem başarısız"
+      "target": "Məkanlar faylını oxumaq alınmadı"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "İşlem başarısız"
+      "target": "Yönləndirmə qaydaları faylını açmaq alınmadı"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
-      "target": "En iyi konum masaüstü listesiyle eşleştirilemedi"
+      "target": "Ən yaxşı məkan desktop siyahısına uyğunlaşdırıla bilmədi"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "Bu bilgisayarda VPN hazır"
+      "target": "Bu kompüterdə VPN hazırdır"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Bu bilgisayarda vekil hazır"
+      "target": "Bu kompüterdə proxy hazırdır"
     },
     {
       "source": "Desktop VPN shell ready",
-      "target": "Masaüstü VPN kabuğu hazır"
+      "target": "Masaüstü VPN qabığı hazırdır"
     },
     {
       "source": "Desktop Proxy shell ready",
-      "target": "Masaüstü proxy kabuğu hazır"
+      "target": "Masaüstü Proxy qabığı hazırdır"
     },
     {
       "source": "VPN started on ",
-      "target": "VPN başlatıldı: "
+      "target": "VPN bu məkanda başladıldı: "
     },
     {
       "source": "Proxy started on ",
-      "target": "Vekil başlatıldı: "
+      "target": "Proxy bu məkanda başladıldı: "
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN durduruldu. Uygulama modu: "
+      "target": "VPN dayandırıldı. Tətbiq rejimi: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Proxy durduruldu. Uygulama modu: "
+      "target": "Proxy dayandırıldı. Tətbiq rejimi: "
     },
     {
       "source": "Language set to ",
-      "target": "Dil ayarlandı: "
+      "target": "Dil təyin edildi: "
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Abonelik otomatik yenileme ayarı: "
+      "target": "Abunəliyin avtomatik yenilənməsi təyin edildi: "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Doğrulama ayarları kaydedildi: "
+      "target": "Validasiya ayarları saxlandı: "
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Seçili konum unchanged: "
+      "target": "Seçilmiş məkan dəyişməyib: "
     },
     {
       "source": "Selected location removed: ",
-      "target": "Seçili konum kaldırıldı: "
+      "target": "Seçilmiş məkan silindi: "
     },
     {
       "source": "Selected location set: ",
-      "target": "Seçili konum set: "
+      "target": "Seçilmiş məkan təyin edildi: "
     },
     {
       "source": "Location updated and merged: ",
-      "target": "Konum güncellendi ve birleştirildi: "
+      "target": "Məkan yeniləndi və birləşdirildi: "
     },
     {
       "source": "Location already saved: ",
-      "target": "Konum alhazır kaydedildi: "
+      "target": "Məkan artıq saxlanıb: "
     },
     {
       "source": "Location updated: ",
-      "target": "Konum güncellendi: "
+      "target": "Məkan yeniləndi: "
     },
     {
       "source": "Location removed: ",
-      "target": "Konum kaldırıldı: "
+      "target": "Məkan silindi: "
     },
     {
       "source": "Location added: ",
-      "target": "Konum eklendi: "
+      "target": "Məkan əlavə edildi: "
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Abonelik güncellendi"
+      "target": "Abunəliklər yeniləndi: "
     },
     {
       "source": "Failed: ",
-      "target": "Başarısız: "
+      "target": "Alınmadı: "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "VPN geri yükleniyor: "
+      "target": "VPN bərpa edilir: "
     },
     {
       "source": "Refreshing ",
-      "target": "Yenileniyor "
+      "target": "Yenilənir: "
     },
     {
       "source": "Locations exported to ",
-      "target": "Konumlar güncellendi"
+      "target": "Məkanlar buraya ixrac edildi: "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Kurallar güncellendi"
+      "target": "Yönləndirmə qaydaları buraya ixrac edildi: "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Tanılama dışa aktarıldı: "
+      "target": "Diaqnostika buraya ixrac edildi: "
     },
     {
       "source": "Failed to benchmark ",
-      "target": "İşlem başarısız"
+      "target": "Benchmark etmək alınmadı: "
     },
     {
       "source": "Activated ",
-      "target": "Etkinleştirildi "
+      "target": "Aktiv edildi: "
     },
     {
       "source": "Added ",
-      "target": "Eklendi "
+      "target": "Əlavə edildi: "
     },
     {
       "source": "Deleted ",
-      "target": "Silindi "
+      "target": "Silindi: "
     },
     {
       "source": "Selected ",
-      "target": "Seçili "
+      "target": "Seçildi: "
     },
     {
       "source": "Edited location #",
-      "target": "Düzenlendi konum #"
+      "target": "Məkan redaktə edildi #"
     },
     {
       "source": "App mode: ",
-      "target": "Uygulama modu: "
+      "target": "Tətbiq rejimi: "
     },
     {
       "source": " locations refreshed",
-      "target": " konum yenilendi"
+      "target": " məkan yeniləndi"
     },
     {
       "source": " location refreshed",
-      "target": " konum yenilendi"
+      "target": " məkan yeniləndi"
     },
     {
       "source": " • batch ",
-      "target": " • grup "
+      "target": " • paket "
     },
     {
       "source": " • retries ",
-      "target": " • yeniden deneme "
+      "target": " • təkrar cəhd "
     },
     {
       "source": "custom interval",
-      "target": "özel aralık"
+      "target": "fərdi interval"
     },
     {
       "source": "every hour",
-      "target": "her saat"
+      "target": "hər saat"
     },
     {
       "source": "all subscriptions",
-      "target": "all abonelikler"
+      "target": "bütün abunəliklər"
     },
     {
       "source": "selected subscription",
-      "target": "seçili abonelik"
+      "target": "seçilmiş abunəlik"
     },
     {
       "source": "proxy only",
-      "target": "yalnızca proxy"
+      "target": "yalnız proxy"
     },
     {
       "source": "off",
-      "target": "kapalı"
+      "target": "söndürülüb"
     },
     {
       "source": "Idle",
-      "target": "Boşta"
+      "target": "Boşdur"
     },
     {
       "source": "VPN started",
-      "target": "VPN başlatıldı"
+      "target": "VPN başladıldı"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN durduruldu"
+      "target": "VPN dayandırıldı"
     },
     {
       "source": "Proxy started",
-      "target": "Proxy başlatıldı"
+      "target": "Proxy başladıldı"
     },
     {
       "source": "Proxy stopped",
-      "target": "Proxy durduruldu"
+      "target": "Proxy dayandırıldı"
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "VPN yeni en iyi konumla başlatılıyor..."
+      "target": "VPN yeni ən yaxşı məkanla başladılır..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Vekil yeni en iyi konumla başlatılıyor..."
+      "target": "Proxy yeni ən yaxşı məkanla başladılır..."
     }
   ]
 }

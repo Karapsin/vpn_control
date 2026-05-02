@@ -1,0 +1,1422 @@
+{
+  "dynamic": {
+    "findingSubscription": "Hinahanap ang pinakamainam na lokasyon mula sa subscription...",
+    "findingSaved": "Hinahanap ang pinakamainam na lokasyon mula sa mga naka-save na lokasyon...",
+    "testingFastestCandidates": "Sinusubok ang pinakamabilis na kandidato nang pa-batch...",
+    "checkingLocations": "Sinusuri ang {count} lokasyon...",
+    "testingLocationsRange": "Sinusubok ang mga lokasyon {start}-{end} ng {total}...",
+    "refreshIntervalMinutes": "{count} minuto",
+    "refreshIntervalHours": "{count} oras",
+    "refreshIntervalHoursMinutes": "{hours} oras {minutes} minuto",
+    "refreshIntervalEvery": "bawat {interval}",
+    "refreshIntervalEveryHour": "bawat oras"
+  },
+  "benchmark": {
+    "best": "Pinakamainam: ",
+    "primary": "pangunahing ",
+    "secondary": "pangalawa ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "na-block",
+      "cached": "naka-cache",
+      "challenge": "hamon",
+      "custom_config_manual_only": "custom config, manu-mano lang",
+      "error": "may error",
+      "manual": "manu-mano",
+      "ok": "ayos",
+      "partial": "bahagya",
+      "tcp_error": "error sa TCP",
+      "tcp_timeout": "timeout sa TCP",
+      "timeout": "nag-timeout",
+      "unreachable": "hindi maabot",
+      "validation_timeout": "timeout sa validation"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL ng subscription"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Hindi mabasang subscription URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Hindi sinusuportahan ang hindi secure na HTTP subscriptions"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Gumamit ng https:// subscription URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "Dapat may valid na HTTPS host ang URL"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Mag-paste ng valid na https:// subscription URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direktang remote source"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "import link ng sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Hindi mabasang sing-box import link"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Mga valid na HTTPS remote URL lang ang sinusuportahan"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Gumamit ng sing-box import link na nagre-resolve sa valid na https:// URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Kinukuha ang remote content mula sa naka-embed na URL"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Kinukuha ang remote content mula sa "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Hindi ma-parse ang import link"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Mag-paste ng valid na sing-box remote-profile import link o direktang subscription URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "Import link ng VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Hindi mabasang VPN import link"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Hindi sinusuportahang provider import"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Hindi sinusuportahan ang Amnezia at iba pang vpn:// import. Gumamit ng normal na subscription URL o manu-manong magdagdag ng mga lokasyon."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Hindi ma-decode ang import payload"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Hindi sinusuportahan ang vpn:// imports. Gumamit ng normal na subscription URL o manu-manong magdagdag ng mga lokasyon."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "Hindi sinusuportahan ang HTTP subscription URLs. Gamitin ang https:// sa halip."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Dapat ay https:// URL o sinusuportahang import link ang remote source"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Walang laman ang remote source"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Dapat ay valid na https:// URL na may host ang remote source."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Ang sing-box import na ito ay nagre-resolve sa invalid o hindi HTTPS na URL. Gumamit ng valid na https:// URL sa halip."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Inilalapat ang napiling lokasyon..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Inilalapat ang na-update na napiling lokasyon..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Nag-timeout ang paghahanap ng pinakamainam na lokasyon; pananatilihin ang kasalukuyang koneksyon"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Walang laman ang clipboard"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Naka-enable ang connection log"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Nakatago ang connection log"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Naka-enable ang connection test tools"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Nakatago ang connection test tools"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Hindi mabuksan ang export destination"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Hindi mabuksan ang napiling file"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Hindi mabuksan ang napiling locations file"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Hindi mabuksan ang napiling rules file"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop shell: Netherlands mula sa Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Na-initialize ang desktop app"
+    },
+    {
+      "source": "App initialized",
+      "target": "Na-initialize ang app"
+    },
+    {
+      "source": "Export Locations",
+      "target": "I-export ang Mga Lokasyon"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Nabigong ilapat ang na-update na napiling lokasyon"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Nabigong i-export ang diagnostics"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Nabigong i-export ang mga lokasyon"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Nabigong i-export ang routing rules"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Nabigong maghanap ng kapalit na lokasyon"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Nabigong mag-import ng file"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Nabigong buksan ang diagnostics destination"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Nabigong i-save ang mga setting ng refresh"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Nabigong i-update ang startup setting"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Kinansela ang import"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Invalid na subscription URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Naka-enable ang latency history"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Nakatago ang latency history"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Naka-enable ang live traffic stats"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Nakatago ang live traffic stats"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Kinansela ang pagsuri sa lokasyon"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Nabigo ang pagsuri sa lokasyon"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Na-export ang mga lokasyon"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Kinansela ang import ng mga lokasyon"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Walang available na lokasyon para sa benchmarking"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Walang subscription na ire-refresh"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Walang nahanap na angkop na lokasyon"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Naka-enable ang totals per profile"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Nakatago ang totals per profile"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Ire-restore ang nakaraang VPN session"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "Kinansela ang QR scan"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Na-export ang routing rules"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Kinansela ang import ng routing rules"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Na-save ang routing rules"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Naka-enable ang session stats"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Nakatago ang session stats"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Ang shared text ay hindi sinusuportahang import payload"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Tinanggal ang subscription"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Tapos na ang subscription refresh, pero kailangan ang pahintulot sa VPN upang lumipat sa background. Pinanatili bilang fallback ang nakaraang lokasyon ng VPN."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Tapos na ang subscription refresh. Hinahanap ang pinakamainam na lokasyon..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Tapos na ang subscription refresh. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Mode ng runtime: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokal na proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Log ng runtime: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Pumasa ang pagsusuri ng VPN mode"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Pumasa ang pagsusuri ng proxy-only mode"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Nabigo ang pagsusuri ng VPN mode: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Nabigo ang pagsusuri ng proxy-only mode: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Hindi available ang VPN mode: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Hindi available ang proxy-only mode: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Kakayahan ng VPN sa computer: handa"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Kakayahan ng VPN sa computer: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "Available ang VPN mode"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Available ang proxy mode"
+    },
+    {
+      "source": "not ready",
+      "target": "hindi handa"
+    },
+    {
+      "source": " checks",
+      "target": " pagsusuri"
+    },
+    {
+      "source": " check",
+      "target": " pagsusuri"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "nabigo ang TUN device: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "nabigo ang network privileges: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "nabigo ang route/DNS tooling: "
+    },
+    {
+      "source": "TUN device",
+      "target": "device na TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "mga pribilehiyo sa network"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "tooling sa route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Wala ang Linux TUN device sa /dev/net/tun. Subukan: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Kailangan ng CAP_NET_ADMIN para sa VPN sa computer. Patakbuhin na may root na karapatan o bigyan ng pahintulot ang sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Hindi magamit ang mga kasangkapan sa ruta/DNS ng Windows. Para sa VPN mode, kailangan ang netsh.exe at mga utos sa PowerShell para sa DNS client."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "Handa ang VPN sa computer na ito"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Handa ang Proxy sa computer na ito"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Walang ginagawa"
+    },
+    {
+      "source": "VPN started",
+      "target": "Nagsimula ang VPN"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "Huminto ang VPN"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Nagsimula ang Proxy"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Huminto ang Proxy"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Sinisimulan ang VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Sinisimulan ang lokal na proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Sinisimulan ang VPN gamit ang pinakamainam na lokasyon..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Sinisimulan ang lokal na proxy gamit ang pinakamainam na lokasyon..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hinahanap ang pinakamainam na lokasyon mula sa subscription..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hinahanap ang pinakamainam na lokasyon mula sa mga naka-save na lokasyon..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Kinansela ang paghahanap ng lokasyon"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Nabigo ang paghahanap ng lokasyon"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Magbigay ng pahintulot sa VPN at subukang muli"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Magtakda muna ng remote source"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Magdagdag muna ng kahit isang naka-save na lokasyon"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pumili muna ng lokasyon"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Wala pang naka-save na subscription"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Nire-refresh ang lahat ng subscription..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Nire-refresh ang aktibong subscription..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Nire-refresh ang subscription..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Nire-refresh ang mga subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Awtomatikong nire-refresh ang subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Awtomatikong nire-refresh ang mga subscription..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Na-refresh ang subscription"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Na-refresh ang mga subscription"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Na-refresh ang aktibong subscription"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Na-refresh ang lahat ng subscription"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Nabigo ang refresh"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Nakatakda ang profile source sa subscription"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Nakatakda ang profile source sa mga naka-save na lokasyon"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Nakatakda ang connection mode sa VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Nakatakda ang connection mode sa proxy only"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Magdiskonekta muna upang baguhin ang connection mode"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Tinanggal ang entry sa kasaysayan"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Ni-reset ang pangalan ng subscription"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Na-save ang pangalan ng subscription"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Nakatakda ang wika sa system default"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Na-save ang custom DNS"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Na-disable ang custom DNS"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Na-save ang routing rules"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Na-import ang routing rules"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Na-import ang mga lokasyon"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Na-import ang mga lokasyon. Hindi na available ang napiling lokasyon"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Lumipat sa Mga Naka-save na Lokasyon upang mag-import ng mga lokasyon"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Lumipat sa Mga Naka-save na Lokasyon upang manu-manong magdagdag ng mga lokasyon"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid na config ng lokasyon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Hindi na available ang lokasyong ie-edit"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Binuksan ang diagnostics export"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Nabigo ang diagnostics export"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Kinansela ang diagnostics export"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Hindi na available ang nakaraang lokasyon ng VPN"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Isinara ang app. Naka-off ang VPN."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Na-activate ang lahat ng subscription"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Napili ang lahat ng subscription"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Napili ang subscription"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Nakopya sa clipboard ang mga lokasyon"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Kinansela ang export ng mga lokasyon"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Nakopya sa clipboard ang routing rules"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Kinansela ang export ng routing rules"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Mode ng pinagmulan ng profile: listahan mula sa provider"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Mode ng pinagmulan ng profile: mga naka-save na lokasyon"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Sinisimulan ang VPN gamit ang bagong pinakamagandang lokasyon..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Sinisimulan ang proxy gamit ang bagong pinakamagandang lokasyon..."
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Pumasa ang pagsusuri ng VPN mode"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Pumasa ang pagsusuri ng proxy-only mode"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Nabigo ang pagsusuri ng VPN mode: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Nabigo ang pagsusuri ng proxy-only mode: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Kakayahan ng VPN sa computer: handa"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Kakayahan ng VPN sa computer: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Kailangan ng CAP_NET_ADMIN para sa VPN sa computer. Patakbuhin na may root na karapatan o bigyan ng pahintulot ang sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Hindi magamit ang mga kasangkapan sa ruta/DNS ng Windows. Para sa VPN mode, kailangan ang netsh.exe at mga utos sa PowerShell para sa DNS client."
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Handa ang shell ng VPN sa computer"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Handa ang shell ng proxy sa computer"
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Na-save ang mga setting ng pagsusuri: "
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Read-only ang mga lokasyon ng subscription. Lumipat sa Mga Naka-save na Lokasyon upang i-save ang mga pagbabago."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Read-only ang mga lokasyon ng subscription. Lumipat sa Mga Naka-save na Lokasyon upang tanggalin ang mga ito."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Natanggap ang subscription. Suriin at i-save ito sa tab na Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Natanggap ang subscription link. Suriin at i-save ito sa tab na Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Natanggap ang config ng lokasyon. Suriin at i-save ito sa tab na Mga Lokasyon."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Sinisimulan ang lokal na proxy gamit ang pinakamainam na lokasyon..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Sinisimulan ang VPN gamit ang pinakamainam na lokasyon..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hinahanap ang pinakamainam na lokasyon mula sa subscription..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hinahanap ang pinakamainam na lokasyon mula sa mga naka-save na lokasyon..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Na-import ang mga lokasyon. Hindi na available ang napiling lokasyon, hininto ang proxy"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Na-import ang mga lokasyon. Hindi na available ang napiling lokasyon, hininto ang VPN"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Na-import ang mga lokasyon. Hindi na available ang napiling lokasyon"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Nailapat ang napiling lokasyon, pero nabigong i-save ito"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Ibinalik ang pagtanggal ng lokasyon dahil hindi maihinto ang proxy"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Ibinalik ang pagtanggal ng lokasyon dahil hindi maihinto ang VPN"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Ibinalik ang import ng mga lokasyon dahil hindi maihinto ang proxy"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Ibinalik ang import ng mga lokasyon dahil hindi maihinto ang VPN"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Hininto ang VPN. Inalis ng na-refresh na subscriptions ang napiling lokasyon."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Hininto ang Proxy. Inalis ng na-refresh na subscriptions ang napiling lokasyon."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "Hininto ang VPN. Kokonekta muli sa susunod na paglunsad."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Hininto ang Proxy. Kokonekta muli sa susunod na paglunsad."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Na-save ang routing rules. I-restart ang VPN upang mailapat"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Na-save ang routing rules. I-restart ang proxy upang mailapat"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Na-import ang routing rules. I-restart ang VPN upang mailapat"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Na-import ang routing rules. I-restart ang proxy upang mailapat"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Inalis ang napiling lokasyon. Hininto ang VPN: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Inalis ang napiling lokasyon. Hininto ang Proxy: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Napili ang pinakamainam na lokasyon at nagsimula ang VPN: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Napili ang pinakamainam na lokasyon at nagsimula ang proxy: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "Nagsimula ang VPN, pero nabigong i-save ang napiling lokasyon"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Nagsimula ang Proxy, pero nabigong i-save ang napiling lokasyon"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "Nagsimula ang VPN, pero nabigong i-save ang pinakamainam na lokasyon"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Nagsimula ang Proxy, pero nabigong i-save ang pinakamainam na lokasyon"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Nabigong simulan ang VPN gamit ang pinakamainam na lokasyon"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Nabigong simulan ang proxy gamit ang pinakamainam na lokasyon"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Nabigong i-save ang napiling lokasyon"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Nabigong i-save ang napiling lokasyon"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Nabigong i-save ang pinakamainam na lokasyon"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Nabigong ilapat ang napiling lokasyon"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Nabigong pumili ng lokasyon"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Nabigong ihinto ang VPN bago lumabas"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Nabigong ihinto ang Proxy bago lumabas"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Nabigong ihinto ang VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Nabigong ihinto ang proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Nabigong simulan ang VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Nabigong simulan ang proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Hindi maihanda ang VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Hindi maihanda ang proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Inihahanda ang VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Inihahanda ang proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Kinansela ang pagsisimula ng VPN"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Kinansela ang pagsisimula ng Proxy"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Kinansela ang paghinto ng VPN"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Kinansela ang paghinto ng Proxy"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Sinisimulan ang lokal na proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Sinisimulan ang VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Nire-refresh ang lahat ng subscription..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Nire-refresh ang aktibong subscription..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Nire-refresh ang mga subscription..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Nire-refresh ang subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Awtomatikong nire-refresh ang mga subscription..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Awtomatikong nire-refresh ang subscription..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Na-refresh ang lahat ng subscription"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Na-refresh ang aktibong subscription"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Na-refresh ang mga subscription"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Na-refresh ang subscription"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Nabigo ang refresh"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Kinansela ang paghahanap ng lokasyon"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Nabigo ang paghahanap ng lokasyon"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Magbigay ng pahintulot sa VPN at subukang muli"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Magtakda muna ng remote source"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Magdagdag muna ng kahit isang naka-save na lokasyon"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pumili muna ng lokasyon"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Wala pang naka-save na subscription"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Nakatakda ang profile source sa subscription"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Nakatakda ang profile source sa mga naka-save na lokasyon"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Nakatakda ang connection mode sa VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Nakatakda ang connection mode sa proxy only"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Magdiskonekta muna upang baguhin ang connection mode"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Tinanggal ang entry sa kasaysayan"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Ni-reset ang pangalan ng subscription"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Na-save ang pangalan ng subscription"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Nakatakda ang wika sa system default"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Na-save ang custom DNS"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Na-disable ang custom DNS"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Na-save ang routing rules"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Na-import ang routing rules"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Na-import ang mga lokasyon"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Lumipat sa Mga Naka-save na Lokasyon upang mag-import ng mga lokasyon"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Lumipat sa Mga Naka-save na Lokasyon upang manu-manong magdagdag ng mga lokasyon"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Invalid na config ng lokasyon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Hindi na available ang lokasyong ie-edit"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Binuksan ang diagnostics export"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Nabigo ang diagnostics export"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Kinansela ang diagnostics export"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Hindi na available ang nakaraang lokasyon ng VPN"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Isinara ang app. Naka-off ang VPN."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Na-activate ang lahat ng subscription"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Napili ang lahat ng subscription"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Napili ang subscription"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Na-save ang subscription"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Nakopya sa clipboard ang mga lokasyon"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Kinansela ang export ng mga lokasyon"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Nakopya sa clipboard ang routing rules"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Kinansela ang export ng routing rules"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Nabigong basahin ang clipboard"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Walang lokasyong ie-export"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Nabigong i-load ang apps"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Nabigong i-refresh ang mga subscription"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Nabigong i-refresh ang aktibong subscription"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Nabigong i-import ang routing rules"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Nabigong i-save ang routing rules"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Nabigong i-import ang mga lokasyon"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Nabigong buksan ang locations file"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Nabigong basahin ang locations file"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Nabigong buksan ang routing rules file"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Hindi ma-map ang pinakamainam na lokasyon sa desktop list"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "Handa ang VPN sa computer na ito"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Handa ang Proxy sa computer na ito"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Handa ang shell ng VPN sa computer"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Handa ang shell ng proxy sa computer"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "Nagsimula ang VPN sa "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Nagsimula ang Proxy sa "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "Huminto ang VPN. App mode: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Huminto ang Proxy. App mode: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Nakatakda ang wika sa "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Nakatakda ang auto-refresh ng subscription sa "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Na-save ang mga setting ng pagsusuri: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Hindi nagbago ang napiling lokasyon: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Inalis ang napiling lokasyon: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Itinakda ang napiling lokasyon: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Na-update at na-merge ang lokasyon: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Naka-save na ang lokasyon: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Na-update ang lokasyon: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Inalis ang lokasyon: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Idinagdag ang lokasyon: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Na-refresh ang mga subscription: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Nabigo: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Nire-restore ang VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Nire-refresh ang "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Na-export ang mga lokasyon sa "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Na-export ang routing rules sa "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Na-export ang diagnostics sa "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Nabigong i-benchmark ang "
+    },
+    {
+      "source": "Activated ",
+      "target": "Na-activate ang "
+    },
+    {
+      "source": "Added ",
+      "target": "Idinagdag ang "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Tinanggal ang "
+    },
+    {
+      "source": "Selected ",
+      "target": "Napili ang "
+    },
+    {
+      "source": "Edited location #",
+      "target": "In-edit ang lokasyon #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Mode ng app: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " lokasyon ang na-refresh"
+    },
+    {
+      "source": " location refreshed",
+      "target": " lokasyon ang na-refresh"
+    },
+    {
+      "source": " • batch ",
+      "target": " • batch na "
+    },
+    {
+      "source": " • retries ",
+      "target": " • retry "
+    },
+    {
+      "source": "custom interval",
+      "target": "custom na interval"
+    },
+    {
+      "source": "every hour",
+      "target": "bawat oras"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "lahat ng subscription"
+    },
+    {
+      "source": "selected subscription",
+      "target": "napiling subscription"
+    },
+    {
+      "source": "proxy only",
+      "target": "proxy lamang"
+    },
+    {
+      "source": "off",
+      "target": "naka-off"
+    },
+    {
+      "source": "Idle",
+      "target": "Walang ginagawa"
+    },
+    {
+      "source": "VPN started",
+      "target": "Nagsimula ang VPN"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "Huminto ang VPN"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Nagsimula ang Proxy"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Huminto ang Proxy"
+    }
+  ]
+}

@@ -152,7 +152,7 @@
     },
     {
       "source": "Clipboard is empty",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Το πρόχειρο είναι άδειο"
     },
     {
       "source": "Connection log enabled",
@@ -188,7 +188,7 @@
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Κέλυφος επιφάνειας εργασίας: Ολλανδία από λίστες επιτρεπόμενων"
     },
     {
       "source": "Desktop app initialized",

@@ -1,0 +1,1382 @@
+{
+  "dynamic": {
+    "findingSubscription": "له ګډون څخه غوره ځای موندل کېږي...",
+    "findingSaved": "له خوندي ځایونو څخه غوره ځای موندل کېږي...",
+    "testingFastestCandidates": "تر ټولو چټک نوماندان په ډلو کې ازمویل کېږي...",
+    "checkingLocations": "{count} ځایونه کتل کېږي...",
+    "testingLocationsRange": "د {total} له ډلې {start}-{end} ځایونه ازمویل کېږي...",
+    "refreshIntervalMinutes": "{count} دقیقې",
+    "refreshIntervalHours": "{count} ساعته",
+    "refreshIntervalHoursMinutes": "{hours} ساعته {minutes} دقیقې",
+    "refreshIntervalEvery": "هر {interval}",
+    "refreshIntervalEveryHour": "هر ساعت"
+  },
+  "benchmark": {
+    "best": "غوره: ",
+    "primary": "لومړنی ",
+    "secondary": "دویم ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "بند شوی",
+      "cached": "زېرمه شوی",
+      "challenge": "چلېنج",
+      "custom_config_manual_only": "دودیز_سازونه_یوازې_لاسي",
+      "error": "تېروتنه",
+      "manual": "لاسي",
+      "ok": "سم",
+      "partial": "جزوي",
+      "tcp_error": "TCP_تېروتنه",
+      "tcp_timeout": "TCP_وخت_پای",
+      "timeout": "وخت_پای",
+      "unreachable": "نه_رسېدونکی",
+      "validation_timeout": "د_اعتبار_وخت_پای"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "د ګډون URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "د ګډون URL د لوستلو نه دی"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "ناامنه HTTP ګډونونه نه ملاتړ کېږي"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "د https:// ګډون URL وکاروئ."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL باید معتبر HTTPS کوربه ولري"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "معتبر https:// ګډون URL ولګوئ."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "مستقیمه لرې سرچینه"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "د sing-box واردولو لینک"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "د sing-box واردولو لینک د لوستلو نه دی"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "یوازې معتبر لرې HTTPS URLونه ملاتړ کېږي"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "د sing-box واردولو داسې لینک وکاروئ چې معتبر https:// URL ته حل شي."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "له ځای پر ځای شوي URL څخه لرې منځپانګه اخلي"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "لرې منځپانګه اخلي له "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "د واردولو لینک شنل کېدای نه شو"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "معتبر sing-box remote-profile واردولو لینک یا مستقیم ګډون URL ولګوئ."
+    },
+    {
+      "source": "VPN import link",
+      "target": "د VPN واردولو لینک"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "د VPN واردولو لینک د لوستلو نه دی"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "د نه ملاتړ شوي برابرونکي واردول"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "د Amnezia او نورو vpn:// واردول نه ملاتړ کېږي. عادي ګډون URL وکاروئ یا ځایونه په لاس زیات کړئ."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "د واردولو بار کوډ پرانیستل کېدای نه شو"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "د vpn:// واردول نه ملاتړ کېږي. عادي ګډون URL وکاروئ یا ځایونه په لاس زیات کړئ."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "د HTTP ګډون URLونه نه ملاتړ کېږي. پر ځای یې https:// وکاروئ."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "لرې سرچینه باید https:// URL یا ملاتړ شوی واردولو لینک وي"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "لرې سرچینه تشه ده"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "لرې سرچینه باید له کوربه سره معتبر https:// URL وي."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "دا sing-box واردول نامعتبر یا غیر HTTPS URL ته حل کېږي. پر ځای یې معتبر https:// URL وکاروئ."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "ټاکل شوی ځای پلي کېږي..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "تازه ټاکل شوی ځای پلي کېږي..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "د غوره ځای لټون وخت پای ته ورسېد؛ اوسنۍ نښلونه ساتل کېږي"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "کلیپبورډ تش دی"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "د نښلونې لاګ فعال شو"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "د نښلونې لاګ پټ شو"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "د نښلونې ازموینې وسیلې فعالې شوې"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "د نښلونې ازموینې وسیلې پټې شوې"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "د صادرولو مقصد پرانیستل کېدای نه شو"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ټاکل شوی فایل پرانیستل کېدای نه شو"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "د ټاکل شوو ځایونو فایل پرانیستل کېدای نه شو"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "د ټاکل شوو قاعدو فایل پرانیستل کېدای نه شو"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "د ډېسکټاپ شیل: هالنډ له سپین لېستونو څخه"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "ډېسکټاپ اپ پیل شو"
+    },
+    {
+      "source": "App initialized",
+      "target": "اپ پیل شو"
+    },
+    {
+      "source": "Export Locations",
+      "target": "ځایونه صادرول"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "د تازه ټاکل شوي ځای پلي کول ناکام شول"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "د تشخیصي معلوماتو صادرول ناکام شول"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "د ځایونو صادرول ناکام شول"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "د روټنګ قاعدو صادرول ناکام شول"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "بدیل ځای ونه موندل شو"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "د فایل واردول ناکام شول"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "د تشخیصي معلوماتو مقصد پرانیستل ناکام شول"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "د تازه کولو امستنو خوندي کول ناکام شول"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "د پیل امستنې تازه کول ناکام شول"
+    },
+    {
+      "source": "Import canceled",
+      "target": "واردول لغوه شول"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "ناسم ګډون URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "د ځنډ تاریخ فعال شو"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "د ځنډ تاریخ پټ شو"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "د ژوندۍ ټرافیک احصایې فعالې شوې"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "د ژوندۍ ټرافیک احصایې پټې شوې"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "د ځای کتنه لغوه شوه"
+    },
+    {
+      "source": "Location check failed",
+      "target": "د ځای کتنه ناکامه شوه"
+    },
+    {
+      "source": "Locations exported",
+      "target": "ځایونه صادر شول"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "د ځایونو واردول لغوه شول"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "د بنچمارک لپاره ځایونه نشته"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "د تازه کولو لپاره ګډونونه نشته"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "مناسب ځای ونه موندل شو"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "د هر پروفایل ټولیزې شمېرې فعالې شوې"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "د هر پروفایل ټولیزې شمېرې پټې شوې"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "مخکینۍ VPN ناسته به بېرته راوګرځول شي"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "د QR سکن لغوه شو"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "د روټنګ قاعدې صادرې شوې"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "د روټنګ قاعدو واردول لغوه شول"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "د روټنګ قاعدې خوندي شوې"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "د ناستې احصایې فعالې شوې"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "د ناستې احصایې پټې شوې"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "شریک شوی متن ملاتړ شوی د واردولو بار نه دی"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "ګډون ړنګ شو"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "د ګډون تازه کول پای ته ورسېدل، خو په شالید کې د بدلولو لپاره د VPN اجازه اړینه ده. مخکینی VPN ځای د بدیل په توګه وساتل شو."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "د ګډون تازه کول پای ته ورسېدل. غوره ځای موندل کېږي..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "د ګډون تازه کول پای ته ورسېدل. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "د چلولو حالت: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "ځايي پراکسي: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "د چلولو لاګ: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "د VPN حالت مخکېنی چک بریالی شو"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "د یوازې پراکسي حالت مخکېنی چک بریالی شو"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "د VPN حالت مخکېنی چک ناکام شو: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "د یوازې پراکسي حالت مخکېنی چک ناکام شو: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "د VPN حالت شتون نه لري: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "د یوازې پراکسي حالت شتون نه لري: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "د ډېسکټاپ VPN وړتیا: چمتو"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "د ډېسکټاپ VPN وړتیا: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "د VPN حالت شته"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "د پراکسي حالت شته"
+    },
+    {
+      "source": "not ready",
+      "target": "چمتو نه دی"
+    },
+    {
+      "source": " checks",
+      "target": " چکونه"
+    },
+    {
+      "source": " check",
+      "target": " چک"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "د TUN وسیلې ناکامي: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "د شبکې امتیازاتو ناکامي: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "د route/DNS وسیلو ناکامي: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN وسیله"
+    },
+    {
+      "source": "network privileges",
+      "target": "د شبکې امتیازات"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "د route/DNS وسیلې"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "په Linux کې TUN وسیله په /dev/net/tun کې نشته. هڅه وکړئ: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "د ډېسکټاپ VPN حالت CAP_NET_ADMIN ته اړتیا لري. د root په توګه یې وچلوئ یا sing-box ته وړتیاوې ورکړئ: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "د Windows د لارې/DNS وسیلې نشته. د VPN حالت netsh.exe او د DNS پېرن لپاره PowerShell امرونه غواړي."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN پر دې کمپیوټر چمتو دی"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "پراکسي پر دې کمپیوټر چمتو دی"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "بېکاره"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN پیل شو"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ودرېد"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پراکسي پیل شوه"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پراکسي ودرېده"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN پیلېږي..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ځايي پراکسي پیلېږي..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN له غوره ځای سره پیلېږي..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ځايي پراکسي له غوره ځای سره پیلېږي..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "له ګډون څخه غوره ځای موندل کېږي..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "له خوندي ځایونو څخه غوره ځای موندل کېږي..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "د ځای لټون لغوه شو"
+    },
+    {
+      "source": "Location search failed",
+      "target": "د ځای لټون ناکام شو"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "د VPN اجازه ورکړئ او بیا هڅه وکړئ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "لومړی لرې سرچینه وټاکئ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "لومړی لږ تر لږه یو خوندي ځای زیات کړئ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "لومړی یو ځای وټاکئ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "تر اوسه ګډونونه نه دي خوندي شوي"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "ټول ګډونونه تازه کېږي..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "فعال ګډون تازه کېږي..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "ګډون تازه کېږي..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "ګډونونه تازه کېږي..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "ګډون په اتومات ډول تازه کېږي..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "ګډونونه په اتومات ډول تازه کېږي..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ګډون تازه شو"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ګډونونه تازه شول"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "فعال ګډون تازه شو"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ټول ګډونونه تازه شول"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "تازه کول ناکام شول"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "د پروفایل سرچینه ګډون ته وټاکل شوه"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "د پروفایل سرچینه خوندي ځایونو ته وټاکل شوه"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "د نښلونې حالت VPN ته وټاکل شو"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "د نښلونې حالت یوازې پراکسي ته وټاکل شو"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "د نښلونې حالت بدلولو لپاره لومړی پرېکون وکړئ"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "د تاریخ ننوتنه ړنګه شوه"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "د ګډون نوم بیا تنظیم شو"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "د ګډون نوم خوندي شو"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ژبه د سیسټم تلوالې ته وټاکل شوه"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "دودیز DNS خوندي شو"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "دودیز DNS غیرفعال شو"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "د روټنګ قاعدې خوندي شوې"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "د روټنګ قاعدې واردې شوې"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ځایونه وارد شول"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ځایونه وارد شول. ټاکل شوی ځای نور شتون نه لري"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "د ځایونو واردولو لپاره خوندي ځایونو ته واوړئ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "په لاس د ځایونو زیاتولو لپاره خوندي ځایونو ته واوړئ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "د ځای ناسمه سازونه"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "د سمولو ځای نور شتون نه لري"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "د تشخیصي معلوماتو صادرول پرانیستل شول"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "د تشخیصي معلوماتو صادرول ناکام شول"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "د تشخیصي معلوماتو صادرول لغوه شول"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "مخکینی VPN ځای نور شتون نه لري"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "اپ وتړل شو. VPN بند و."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "ټول ګډونونه فعال شول"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "ټول ګډونونه وټاکل شول"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "ګډون وټاکل شو"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ځایونه کلیپبورډ ته کاپي شول"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "د ځایونو صادرول لغوه شول"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "د روټنګ قاعدې کلیپبورډ ته کاپي شوې"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "د روټنګ قاعدو صادرول لغوه شول"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "د پروفایل سرچینې حالت: ګډون"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "د پروفایل سرچینې حالت: ساتل شوي ځایونه"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "VPN د نوي غوره ځای سره پيلېږي..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "proxy د نوي غوره ځای سره پيلېږي..."
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "د Windows د لارې/DNS وسیلې نشته. د VPN حالت netsh.exe او د DNS پېرن لپاره PowerShell امرونه غواړي."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "د ګډون ځایونه یوازې لوستني دي. د سمونونو خوندي کولو لپاره خوندي ځایونو ته واوړئ."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "د ګډون ځایونه یوازې لوستني دي. د ړنګولو لپاره خوندي ځایونو ته واوړئ."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "ګډون ترلاسه شو. د پروفایل په ټب کې یې وګورئ او خوندي یې کړئ."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "د ګډون لینک ترلاسه شو. د پروفایل په ټب کې یې وګورئ او خوندي یې کړئ."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "د ځای سازونه ترلاسه شوه. د ځایونو په ټب کې یې وګورئ او خوندي یې کړئ."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ځايي پراکسي له غوره ځای سره پیلېږي..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN له غوره ځای سره پیلېږي..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "له ګډون څخه غوره ځای موندل کېږي..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "له خوندي ځایونو څخه غوره ځای موندل کېږي..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "ځایونه وارد شول. ټاکل شوی ځای نور شتون نه لري، پراکسي ودرېده"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "ځایونه وارد شول. ټاکل شوی ځای نور شتون نه لري، VPN ودرېد"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ځایونه وارد شول. ټاکل شوی ځای نور شتون نه لري"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ټاکل شوی ځای پلي شو، خو خوندي کول یې ناکام شول"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "د ځای لرې کول بېرته وګرځول شول ځکه پراکسي نه شو درول کېدای"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "د ځای لرې کول بېرته وګرځول شول ځکه VPN نه شو درول کېدای"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "د ځایونو واردول بېرته وګرځول شول ځکه پراکسي نه شو درول کېدای"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "د ځایونو واردول بېرته وګرځول شول ځکه VPN نه شو درول کېدای"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN ودرېد. تازه شوو ګډونونو ټاکل شوی ځای لرې کړ."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "پراکسي ودرېده. تازه شوو ګډونونو ټاکل شوی ځای لرې کړ."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN ودرېد. په بل پیل کې به بیا ونښلي."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "پراکسي ودرېده. په بل پیل کې به بیا ونښلي."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "د روټنګ قاعدې خوندي شوې. د پلي کولو لپاره VPN بیا پیل کړئ"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "د روټنګ قاعدې خوندي شوې. د پلي کولو لپاره پراکسي بیا پیل کړئ"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "د روټنګ قاعدې واردې شوې. د پلي کولو لپاره VPN بیا پیل کړئ"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "د روټنګ قاعدې واردې شوې. د پلي کولو لپاره پراکسي بیا پیل کړئ"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "ټاکل شوی ځای لرې شو. VPN ودرېد: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "ټاکل شوی ځای لرې شو. پراکسي ودرېده: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "غوره ځای وټاکل شو او VPN پیل شو: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "غوره ځای وټاکل شو او پراکسي پیل شوه: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN پیل شو، خو ټاکل شوی ځای خوندي نه شو"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "پراکسي پیل شوه، خو ټاکل شوی ځای خوندي نه شو"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN پیل شو، خو غوره ځای خوندي نه شو"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "پراکسي پیل شوه، خو غوره ځای خوندي نه شو"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "له غوره ځای سره د VPN پیلول ناکام شول"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "له غوره ځای سره د پراکسي پیلول ناکام شول"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "د ټاکل شوي ځای خوندي کول ناکام شول"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "ټاکل شوی ځای خوندي نه شو"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "د غوره ځای خوندي کول ناکام شول"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "د ټاکل شوي ځای پلي کول ناکام شول"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "د ځای ټاکل ناکام شول"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "له وتلو مخکې د VPN درول ناکام شول"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "له وتلو مخکې د پراکسي درول ناکام شول"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "د VPN درول ناکام شول"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "د پراکسي درول ناکام شول"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "د VPN پیلول ناکام شول"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "د پراکسي پیلول ناکام شول"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN چمتو نه شو"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "پراکسي چمتو نه شوه"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN چمتو کېږي"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "پراکسي چمتو کېږي"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "د VPN پیل لغوه شو"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "د پراکسي پیل لغوه شو"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "د VPN درول لغوه شول"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "د پراکسي درول لغوه شول"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ځايي پراکسي پیلېږي..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN پیلېږي..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "ټول ګډونونه تازه کېږي..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "فعال ګډون تازه کېږي..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "ګډونونه تازه کېږي..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "ګډون تازه کېږي..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "ګډونونه په اتومات ډول تازه کېږي..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "ګډون په اتومات ډول تازه کېږي..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ټول ګډونونه تازه شول"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "فعال ګډون تازه شو"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ګډونونه تازه شول"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ګډون تازه شو"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "تازه کول ناکام شول"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "د ځای لټون لغوه شو"
+    },
+    {
+      "source": "Location search failed",
+      "target": "د ځای لټون ناکام شو"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "د VPN اجازه ورکړئ او بیا هڅه وکړئ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "لومړی لرې سرچینه وټاکئ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "لومړی لږ تر لږه یو خوندي ځای زیات کړئ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "لومړی یو ځای وټاکئ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "تر اوسه ګډونونه نه دي خوندي شوي"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "د پروفایل سرچینه ګډون ته وټاکل شوه"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "د پروفایل سرچینه خوندي ځایونو ته وټاکل شوه"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "د نښلونې حالت VPN ته وټاکل شو"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "د نښلونې حالت یوازې پراکسي ته وټاکل شو"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "د نښلونې حالت بدلولو لپاره لومړی پرېکون وکړئ"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "د تاریخ ننوتنه ړنګه شوه"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "د ګډون نوم بیا تنظیم شو"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "د ګډون نوم خوندي شو"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ژبه د سیسټم تلوالې ته وټاکل شوه"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "دودیز DNS خوندي شو"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "دودیز DNS غیرفعال شو"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "د روټنګ قاعدې خوندي شوې"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "د روټنګ قاعدې واردې شوې"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ځایونه وارد شول"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "د ځایونو واردولو لپاره خوندي ځایونو ته واوړئ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "په لاس د ځایونو زیاتولو لپاره خوندي ځایونو ته واوړئ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "د ځای ناسمه سازونه"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "د سمولو ځای نور شتون نه لري"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "د تشخیصي معلوماتو صادرول پرانیستل شول"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "د تشخیصي معلوماتو صادرول ناکام شول"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "د تشخیصي معلوماتو صادرول لغوه شول"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "مخکینی VPN ځای نور شتون نه لري"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "اپ وتړل شو. VPN بند و."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "ټول ګډونونه فعال شول"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "ټول ګډونونه وټاکل شول"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "ګډون وټاکل شو"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "ګډون خوندي شو"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ځایونه کلیپبورډ ته کاپي شول"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "د ځایونو صادرول لغوه شول"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "د روټنګ قاعدې کلیپبورډ ته کاپي شوې"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "د روټنګ قاعدو صادرول لغوه شول"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "د کلیپبورډ لوستل ناکام شول"
+    },
+    {
+      "source": "No locations to export",
+      "target": "د صادرولو لپاره ځایونه نشته"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "د اپونو بارول ناکام شول"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "د ګډونونو تازه کول ناکام شول"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "د فعال ګډون تازه کول ناکام شول"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "د روټنګ قاعدو واردول ناکام شول"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "د روټنګ قاعدو خوندي کول ناکام شول"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "د ځایونو واردول ناکام شول"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "د ځایونو فایل پرانیستل ناکام شول"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "د ځایونو فایل لوستل ناکام شول"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "د روټنګ قاعدو فایل پرانیستل ناکام شول"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "غوره ځای د ډېسکټاپ لېست سره نه شو برابرېدای"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN پر دې کمپیوټر چمتو دی"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "پراکسي پر دې کمپیوټر چمتو دی"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "د ډېسکټاپ VPN شیل چمتو دی"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "د ډېسکټاپ پراکسي شیل چمتو دی"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN په دې ځای کې پیل شو: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "پراکسي په دې ځای کې پیل شوه: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN ودرېد. د اپ حالت: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "پراکسي ودرېده. د اپ حالت: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "ژبه وټاکل شوه: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "د ګډون اتومات تازه کول وټاکل شول: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "د اعتبارسنجۍ امستنې خوندي شوې: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ټاکل شوی ځای بدل نه شو: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ټاکل شوی ځای لرې شو: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "ټاکل شوی ځای وټاکل شو: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "ځای تازه او ګډ شو: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ځای لا مخکې خوندي دی: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "ځای تازه شو: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ځای لرې شو: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "ځای زیات شو: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "ګډونونه تازه شول: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ناکام شو: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN بېرته راوګرځول کېږي: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "تازه کېږي: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ځایونه صادر شول دلته: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "د روټنګ قاعدې صادرې شوې دلته: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "تشخیصي معلومات صادر شول دلته: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "بنچمارک ناکام شو: "
+    },
+    {
+      "source": "Activated ",
+      "target": "فعال شول: "
+    },
+    {
+      "source": "Added ",
+      "target": "زیات شول: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "ړنګ شول: "
+    },
+    {
+      "source": "Selected ",
+      "target": "وټاکل شول: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "ځای سم شو #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "د اپ حالت: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ځایونه تازه شول"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ځای تازه شو"
+    },
+    {
+      "source": " • batch ",
+      "target": " • ډله "
+    },
+    {
+      "source": " • retries ",
+      "target": " • بیا هڅې "
+    },
+    {
+      "source": "custom interval",
+      "target": "دودیز واټن"
+    },
+    {
+      "source": "every hour",
+      "target": "هر ساعت"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "ټول ګډونونه"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ټاکل شوی ګډون"
+    },
+    {
+      "source": "proxy only",
+      "target": "یوازې پراکسي"
+    },
+    {
+      "source": "off",
+      "target": "بند"
+    },
+    {
+      "source": "Idle",
+      "target": "بېکاره"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN پیل شو"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ودرېد"
+    },
+    {
+      "source": "Proxy started",
+      "target": "پراکسي پیل شوه"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "پراکسي ودرېده"
+    }
+  ]
+}

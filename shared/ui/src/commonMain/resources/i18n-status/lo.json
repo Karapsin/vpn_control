@@ -1,0 +1,1402 @@
+{
+  "dynamic": {
+    "findingSubscription": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກການສະໝັກ...",
+    "findingSaved": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກຕຳແໜ່ງທີ່ບັນທຶກ...",
+    "testingFastestCandidates": "ກຳລັງທົດສອບຕົວເລືອກທີ່ໄວທີ່ສຸດເປັນຊຸດ...",
+    "checkingLocations": "ກຳລັງກວດສອບ {count} ຕຳແໜ່ງ...",
+    "testingLocationsRange": "ກຳລັງທົດສອບຕຳແໜ່ງ {start}-{end} ຈາກ {total}...",
+    "refreshIntervalMinutes": "{count} ນາທີ",
+    "refreshIntervalHours": "{count} ຊມ.",
+    "refreshIntervalHoursMinutes": "{hours} ຊມ. {minutes} ນາທີ",
+    "refreshIntervalEvery": "ທຸກ {interval}",
+    "refreshIntervalEveryHour": "ທຸກຊົ່ວໂມງ"
+  },
+  "benchmark": {
+    "best": "ດີທີ່ສຸດ: ",
+    "primary": "ຫຼັກ ",
+    "secondary": "ສຳຮອງ ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "ຖືກບລັອກ",
+      "cached": "ໃນແຄຊ",
+      "challenge": "ການທ້າທາຍ",
+      "custom_config_manual_only": "ການຕັ້ງຄ່າກຳນົດເອງໃຊ້ດ້ວຍຕົນເອງເທົ່ານັ້ນ",
+      "error": "ຂໍ້ຜິດພາດ",
+      "manual": "ດ້ວຍຕົນເອງ",
+      "ok": "ປົກກະຕິ",
+      "partial": "ບາງສ່ວນ",
+      "tcp_error": "ຂໍ້ຜິດພາດ TCP",
+      "tcp_timeout": "TCP ໝົດເວລາ",
+      "timeout": "ໝົດເວລາ",
+      "unreachable": "ເຂົ້າບໍ່ເຖິງ",
+      "validation_timeout": "ການກວດຢືນຢັນໝົດເວລາ"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL ການສະໝັກ"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "ອ່ານ URL ການສະໝັກບໍ່ໄດ້"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "ບໍ່ຮອງຮັບການສະໝັກ HTTP ທີ່ບໍ່ປອດໄພ"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "ໃຊ້ URL ການສະໝັກ https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL ຕ້ອງມີ host HTTPS ທີ່ຖືກຕ້ອງ"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "ວາງ URL ການສະໝັກ https:// ທີ່ຖືກຕ້ອງ."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "ແຫຼ່ງທາງໄກໂດຍກົງ"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "ລິ້ງນຳເຂົ້າ sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "ອ່ານລິ້ງນຳເຂົ້າ sing-box ບໍ່ໄດ້"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "ຮອງຮັບສະເພາະ URL ທາງໄກ HTTPS ທີ່ຖືກຕ້ອງ"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "ໃຊ້ລິ້ງນຳເຂົ້າ sing-box ທີ່ຊີ້ໄປຫາ URL https:// ທີ່ຖືກຕ້ອງ."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ດຶງເນື້ອຫາທາງໄກຈາກ URL ທີ່ຝັງໄວ້"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "ດຶງເນື້ອຫາທາງໄກຈາກ "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "ບໍ່ສາມາດວິເຄາະລິ້ງນຳເຂົ້າ"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "ວາງລິ້ງນຳເຂົ້າ remote-profile ຂອງ sing-box ທີ່ຖືກຕ້ອງ ຫຼື URL ການສະໝັກໂດຍກົງ."
+    },
+    {
+      "source": "VPN import link",
+      "target": "ລິ້ງນຳເຂົ້າ VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "ອ່ານລິ້ງນຳເຂົ້າ VPN ບໍ່ໄດ້"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "ບໍ່ຮອງຮັບການນຳເຂົ້າຈາກຜູ້ໃຫ້ບໍລິການນີ້"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ບໍ່ຮອງຮັບການນຳເຂົ້າ Amnezia ແລະ vpn:// ອື່ນໆ. ໃຊ້ URL ການສະໝັກປົກກະຕິ ຫຼືເພີ່ມຕຳແໜ່ງດ້ວຍຕົນເອງ."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "ບໍ່ສາມາດຖອດລະຫັດ payload ນຳເຂົ້າ"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ບໍ່ຮອງຮັບການນຳເຂົ້າ vpn://. ໃຊ້ URL ການສະໝັກປົກກະຕິ ຫຼືເພີ່ມຕຳແໜ່ງດ້ວຍຕົນເອງ."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "ບໍ່ຮອງຮັບ URL ການສະໝັກ HTTP. ໃຊ້ https:// ແທນ."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "ແຫຼ່ງທາງໄກຕ້ອງເປັນ URL https:// ຫຼືລິ້ງນຳເຂົ້າທີ່ຮອງຮັບ"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "ແຫຼ່ງທາງໄກຫວ່າງເປົ່າ"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "ແຫຼ່ງທາງໄກຕ້ອງເປັນ URL https:// ທີ່ຖືກຕ້ອງແລະມີ host."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "ການນຳເຂົ້າ sing-box ນີ້ຊີ້ໄປຫາ URL ທີ່ບໍ່ຖືກຕ້ອງ ຫຼືບໍ່ແມ່ນ HTTPS. ໃຊ້ URL https:// ທີ່ຖືກຕ້ອງແທນ."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "ກຳລັງນຳໃຊ້ຕຳແໜ່ງທີ່ເລືອກ..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "ກຳລັງນຳໃຊ້ຕຳແໜ່ງທີ່ເລືອກທີ່ອັບເດດແລ້ວ..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "ການຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດໝົດເວລາ; ຮັກສາການເຊື່ອມຕໍ່ປັດຈຸບັນໄວ້"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "ຄລິບບອດຫວ່າງເປົ່າ"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "ເປີດໃຊ້ບັນທຶກການເຊື່ອມຕໍ່ແລ້ວ"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "ເຊື່ອງບັນທຶກການເຊື່ອມຕໍ່ແລ້ວ"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "ເປີດໃຊ້ເຄື່ອງມືທົດສອບການເຊື່ອມຕໍ່ແລ້ວ"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "ເຊື່ອງເຄື່ອງມືທົດສອບການເຊື່ອມຕໍ່ແລ້ວ"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ບໍ່ສາມາດເປີດປາຍທາງສົ່ງອອກ"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ບໍ່ສາມາດເປີດໄຟລ໌ທີ່ເລືອກ"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "ບໍ່ສາມາດເປີດໄຟລ໌ຕຳແໜ່ງທີ່ເລືອກ"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "ບໍ່ສາມາດເປີດໄຟລ໌ກົດທີ່ເລືອກ"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "ເຊວເດັສກ໌ທັອບ: ເນເທີແລນ ຈາກ Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "ເລີ່ມຕົ້ນແອັບເດັສກ໌ທັອບແລ້ວ"
+    },
+    {
+      "source": "App initialized",
+      "target": "ເລີ່ມຕົ້ນແອັບແລ້ວ"
+    },
+    {
+      "source": "Export Locations",
+      "target": "ສົ່ງອອກຕຳແໜ່ງ"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "ນຳໃຊ້ຕຳແໜ່ງທີ່ເລືອກທີ່ອັບເດດແລ້ວບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "ສົ່ງອອກຂໍ້ມູນວິນິດໄສບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "ສົ່ງອອກຕຳແໜ່ງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "ສົ່ງອອກກົດການກຳນົດເສັ້ນທາງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "ບໍ່ສາມາດພົບຕຳແໜ່ງທົດແທນ"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "ນຳເຂົ້າໄຟລ໌ບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "ເປີດປາຍທາງຂໍ້ມູນວິນິດໄສບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "ບັນທຶກການຕັ້ງຄ່າຣີເຟຣຊບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "ອັບເດດການຕັ້ງຄ່າເລີ່ມຕົ້ນບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Import canceled",
+      "target": "ຍົກເລີກການນຳເຂົ້າແລ້ວ"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL ການສະໝັກບໍ່ຖືກຕ້ອງ"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "ເປີດໃຊ້ປະຫວັດ latency ແລ້ວ"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "ເຊື່ອງປະຫວັດ latency ແລ້ວ"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "ເປີດໃຊ້ສະຖິຕິການຈະລາຈອນສົດແລ້ວ"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "ເຊື່ອງສະຖິຕິການຈະລາຈອນສົດແລ້ວ"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "ຍົກເລີກການກວດຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Location check failed",
+      "target": "ການກວດຕຳແໜ່ງລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Locations exported",
+      "target": "ສົ່ງອອກຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "ຍົກເລີກການນຳເຂົ້າຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "ບໍ່ມີຕຳແໜ່ງສຳລັບ benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "ບໍ່ມີການສະໝັກໃຫ້ຣີເຟຣຊ"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "ບໍ່ພົບຕຳແໜ່ງທີ່ເໝາະສົມ"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "ເປີດໃຊ້ຍອດລວມຕາມໂປຣໄຟລ໌ແລ້ວ"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "ເຊື່ອງຍອດລວມຕາມໂປຣໄຟລ໌ແລ້ວ"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "ຈະກູ້ຄືນເຊດຊັນ VPN ກ່ອນໜ້າ"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "ຍົກເລີກການສະແກນ QR ແລ້ວ"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "ສົ່ງອອກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "ຍົກເລີກການນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "ເປີດໃຊ້ສະຖິຕິເຊດຊັນແລ້ວ"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "ເຊື່ອງສະຖິຕິເຊດຊັນແລ້ວ"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "ຂໍ້ຄວາມທີ່ແບ່ງປັນບໍ່ແມ່ນ payload ນຳເຂົ້າທີ່ຮອງຮັບ"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "ລຶບການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "ຣີເຟຣຊການສະໝັກສຳເລັດແລ້ວ, ແຕ່ຕ້ອງການສິດອະນຸຍາດ VPN ເພື່ອປ່ຽນໃນພື້ນຫຼັງ. ຮັກສາຕຳແໜ່ງ VPN ກ່ອນໜ້າເປັນ fallback."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "ຣີເຟຣຊການສະໝັກສຳເລັດແລ້ວ. ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດ..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "ຣີເຟຣຊການສະໝັກສຳເລັດແລ້ວ. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "ໂໝດ runtime: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Proxy ທ້ອງຖິ່ນ: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "ບັນທຶກ runtime: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "ການກວດໂໝດ VPN ສຳເລັດ"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ການກວດໂໝດ proxy ເທົ່ານັ້ນສຳເລັດ"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "ການກວດໂໝດ VPN ລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ການກວດໂໝດ proxy ເທົ່ານັ້ນລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "ໂໝດ VPN ໃຊ້ບໍ່ໄດ້: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "ໂໝດ Proxy ເທົ່ານັ້ນໃຊ້ບໍ່ໄດ້: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ຄວາມສາມາດ VPN ເດັສກ໌ທັອບ: ພ້ອມ"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ຄວາມສາມາດ VPN ເດັສກ໌ທັອບ: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "ໂໝດ VPN ໃຊ້ໄດ້"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "ໂໝດ Proxy ໃຊ້ໄດ້"
+    },
+    {
+      "source": "not ready",
+      "target": "ບໍ່ພ້ອມ"
+    },
+    {
+      "source": " checks",
+      "target": " ການກວດສອບ"
+    },
+    {
+      "source": " check",
+      "target": " ການກວດສອບ"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "ອຸປະກອນ TUN ລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "ສິດເຄືອຂ່າຍລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "ເຄື່ອງມື route/DNS ລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "TUN device",
+      "target": "ອຸປະກອນ TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "ສິດເຄືອຂ່າຍ"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "ເຄື່ອງມື route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "ບໍ່ພົບອຸປະກອນ TUN ຂອງ Linux ທີ່ /dev/net/tun. ລອງ: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ໂໝດ VPN ໃນຄອມພິວເຕີຕ້ອງການ CAP_NET_ADMIN. ເຮັດວຽກດ້ວຍສິດ root ຫຼືໃຫ້ສິດແກ່ sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "ເຄື່ອງມືເສັ້ນທາງ/DNS ຂອງ Windows ໃຊ້ບໍ່ໄດ້. ໂໝດ VPN ຕ້ອງການ netsh.exe ແລະຄຳສັ່ງ PowerShell ສຳລັບ DNS client."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN ພ້ອມໃຊ້ໃນຄອມພິວເຕີນີ້"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy ພ້ອມໃຊ້ໃນຄອມພິວເຕີນີ້"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "ວ່າງ"
+    },
+    {
+      "source": "VPN started",
+      "target": "ເລີ່ມ VPN ແລ້ວ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "ຢຸດ VPN ແລ້ວ"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ເລີ່ມ Proxy ແລ້ວ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ຢຸດ Proxy ແລ້ວ"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "ກຳລັງເລີ່ມ VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ກຳລັງເລີ່ມ Proxy ທ້ອງຖິ່ນ..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "ກຳລັງເລີ່ມ VPN ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດ..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ກຳລັງເລີ່ມ Proxy ທ້ອງຖິ່ນດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດ..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກການສະໝັກ..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກຕຳແໜ່ງທີ່ບັນທຶກ..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ຍົກເລີກການຄົ້ນຫາຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ການຄົ້ນຫາຕຳແໜ່ງລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ໃຫ້ສິດອະນຸຍາດ VPN ແລ້ວລອງອີກຄັ້ງ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ຕັ້ງແຫຼ່ງທາງໄກກ່ອນ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ເພີ່ມຕຳແໜ່ງທີ່ບັນທຶກຢ່າງໜ້ອຍໜຶ່ງກ່ອນ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ເລືອກຕຳແໜ່ງກ່ອນ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ຍັງບໍ່ມີການສະໝັກທີ່ບັນທຶກ"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກທັງໝົດ..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກທີ່ໃຊ້ງານ..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກ..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກ..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກອັດຕະໂນມັດ..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກອັດຕະໂນມັດ..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກທີ່ໃຊ້ງານແລ້ວ"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ຣີເຟຣຊລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ຕັ້ງແຫຼ່ງໂປຣໄຟລ໌ເປັນການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ຕັ້ງແຫຼ່ງໂປຣໄຟລ໌ເປັນຕຳແໜ່ງທີ່ບັນທຶກແລ້ວ"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ຕັ້ງໂໝດການເຊື່ອມຕໍ່ເປັນ VPN ແລ້ວ"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ຕັ້ງໂໝດການເຊື່ອມຕໍ່ເປັນ Proxy ເທົ່ານັ້ນແລ້ວ"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ຕັດການເຊື່ອມຕໍ່ກ່ອນເພື່ອປ່ຽນໂໝດການເຊື່ອມຕໍ່"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ລຶບລາຍການປະຫວັດແລ້ວ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "ຣີເຊັດຊື່ການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "ບັນທຶກຊື່ການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ຕັ້ງພາສາເປັນຄ່າເລີ່ມຕົ້ນຂອງລະບົບແລ້ວ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "ບັນທຶກ DNS ກຳນົດເອງແລ້ວ"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "ປິດ DNS ກຳນົດເອງແລ້ວ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ. ຕຳແໜ່ງທີ່ເລືອກບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອນຳເຂົ້າຕຳແໜ່ງ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອເພີ່ມຕຳແໜ່ງດ້ວຍຕົນເອງ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ການຕັ້ງຄ່າຕຳແໜ່ງບໍ່ຖືກຕ້ອງ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ຕຳແໜ່ງທີ່ຈະແກ້ໄຂບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ເປີດການສົ່ງອອກຂໍ້ມູນວິນິດໄສແລ້ວ"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ການສົ່ງອອກຂໍ້ມູນວິນິດໄສລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກຂໍ້ມູນວິນິດໄສແລ້ວ"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ຕຳແໜ່ງ VPN ກ່ອນໜ້າບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ປິດແອັບແລ້ວ. VPN ປິດຢູ່."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "ເປີດໃຊ້ການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "ເລືອກການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "ເລືອກການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ສຳເນົາຕຳແໜ່ງໄປຄລິບບອດແລ້ວ"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ສຳເນົາກົດການກຳນົດເສັ້ນທາງໄປຄລິບບອດແລ້ວ"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "ໂໝດແຫຼ່ງໂປຣໄຟລ໌: ການສະໝັກ"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "ໂໝດແຫຼ່ງໂປຣໄຟລ໌: ຕຳແໜ່ງທີ່ບັນທຶກ"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "ກຳລັງເລີ່ມ VPN ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດໃໝ່..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "ກຳລັງເລີ່ມ proxy ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດໃໝ່..."
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "ການກວດໂໝດ VPN ສຳເລັດ"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ການກວດໂໝດ proxy ເທົ່ານັ້ນສຳເລັດ"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "ການກວດໂໝດ VPN ລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ການກວດໂໝດ proxy ເທົ່ານັ້ນລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ໂໝດ VPN ໃນຄອມພິວເຕີຕ້ອງການ CAP_NET_ADMIN. ເຮັດວຽກດ້ວຍສິດ root ຫຼືໃຫ້ສິດແກ່ sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "ເຄື່ອງມືເສັ້ນທາງ/DNS ຂອງ Windows ໃຊ້ບໍ່ໄດ້. ໂໝດ VPN ຕ້ອງການ netsh.exe ແລະຄຳສັ່ງ PowerShell ສຳລັບ DNS client."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "ຕຳແໜ່ງຈາກການສະໝັກເປັນອ່ານຢ່າງດຽວ. ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອບັນທຶກການແກ້ໄຂ."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "ຕຳແໜ່ງຈາກການສະໝັກເປັນອ່ານຢ່າງດຽວ. ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອລຶບມັນ."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "ໄດ້ຮັບການສະໝັກແລ້ວ. ກວດເບິ່ງ ແລະບັນທຶກມັນໃນແຖບໂປຣໄຟລ໌."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "ໄດ້ຮັບລິ້ງການສະໝັກແລ້ວ. ກວດເບິ່ງ ແລະບັນທຶກມັນໃນແຖບໂປຣໄຟລ໌."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "ໄດ້ຮັບການຕັ້ງຄ່າຕຳແໜ່ງແລ້ວ. ກວດເບິ່ງ ແລະບັນທຶກມັນໃນແຖບຕຳແໜ່ງ."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ກຳລັງເລີ່ມ Proxy ທ້ອງຖິ່ນດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດ..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "ກຳລັງເລີ່ມ VPN ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດ..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກການສະໝັກ..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "ກຳລັງຄົ້ນຫາຕຳແໜ່ງທີ່ດີທີ່ສຸດຈາກຕຳແໜ່ງທີ່ບັນທຶກ..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ. ຕຳແໜ່ງທີ່ເລືອກບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ, proxy ຢຸດແລ້ວ"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ. ຕຳແໜ່ງທີ່ເລືອກບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ, vpn ຢຸດແລ້ວ"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ. ຕຳແໜ່ງທີ່ເລືອກບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ນຳໃຊ້ຕຳແໜ່ງທີ່ເລືອກແລ້ວ, ແຕ່ບັນທຶກມັນບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ຍ້ອນກັບການລຶບຕຳແໜ່ງເນື່ອງຈາກ proxy ບໍ່ສາມາດຢຸດໄດ້"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "ຍ້ອນກັບການລຶບຕຳແໜ່ງເນື່ອງຈາກ VPN ບໍ່ສາມາດຢຸດໄດ້"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ຍ້ອນກັບການນຳເຂົ້າຕຳແໜ່ງເນື່ອງຈາກ proxy ບໍ່ສາມາດຢຸດໄດ້"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "ຍ້ອນກັບການນຳເຂົ້າຕຳແໜ່ງເນື່ອງຈາກ VPN ບໍ່ສາມາດຢຸດໄດ້"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN ຢຸດແລ້ວ. ການສະໝັກທີ່ຣີເຟຣຊໄດ້ລຶບຕຳແໜ່ງທີ່ເລືອກ."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy ຢຸດແລ້ວ. ການສະໝັກທີ່ຣີເຟຣຊໄດ້ລຶບຕຳແໜ່ງທີ່ເລືອກ."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN ຢຸດແລ້ວ. ຈະເຊື່ອມຕໍ່ໃໝ່ໃນການເປີດຄັ້ງຕໍ່ໄປ."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy ຢຸດແລ້ວ. ຈະເຊື່ອມຕໍ່ໃໝ່ໃນການເປີດຄັ້ງຕໍ່ໄປ."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ. ຣີສະຕາດ VPN ເພື່ອນຳໃຊ້"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ. ຣີສະຕາດ proxy ເພື່ອນຳໃຊ້"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "ນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງແລ້ວ. ຣີສະຕາດ VPN ເພື່ອນຳໃຊ້"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "ນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງແລ້ວ. ຣີສະຕາດ proxy ເພື່ອນຳໃຊ້"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "ລຶບຕຳແໜ່ງທີ່ເລືອກແລ້ວ. VPN ຢຸດແລ້ວ: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "ລຶບຕຳແໜ່ງທີ່ເລືອກແລ້ວ. Proxy ຢຸດແລ້ວ: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "ເລືອກຕຳແໜ່ງທີ່ດີທີ່ສຸດ ແລະເລີ່ມ vpn ແລ້ວ: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "ເລືອກຕຳແໜ່ງທີ່ດີທີ່ສຸດ ແລະເລີ່ມ proxy ແລ້ວ: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "ເລີ່ມ VPN ແລ້ວ, ແຕ່ບັນທຶກຕຳແໜ່ງທີ່ເລືອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "ເລີ່ມ Proxy ແລ້ວ, ແຕ່ບັນທຶກຕຳແໜ່ງທີ່ເລືອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "ເລີ່ມ VPN ແລ້ວ, ແຕ່ບັນທຶກຕຳແໜ່ງທີ່ດີທີ່ສຸດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "ເລີ່ມ Proxy ແລ້ວ, ແຕ່ບັນທຶກຕຳແໜ່ງທີ່ດີທີ່ສຸດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "ເລີ່ມ VPN ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "ເລີ່ມ proxy ດ້ວຍຕຳແໜ່ງທີ່ດີທີ່ສຸດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "ບັນທຶກຕຳແໜ່ງທີ່ເລືອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "ບັນທຶກຕຳແໜ່ງທີ່ເລືອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "ບັນທຶກຕຳແໜ່ງທີ່ດີທີ່ສຸດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "ນຳໃຊ້ຕຳແໜ່ງທີ່ເລືອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "ເລືອກຕຳແໜ່ງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "ຢຸດ VPN ກ່ອນອອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "ຢຸດ Proxy ກ່ອນອອກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "ຢຸດ VPN ບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "ຢຸດ proxy ບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "ເລີ່ມ VPN ບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "ເລີ່ມ proxy ບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "ບໍ່ສາມາດກະກຽມ VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "ບໍ່ສາມາດກະກຽມ proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "ກຳລັງກະກຽມ VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "ກຳລັງກະກຽມ proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "ຍົກເລີກການເລີ່ມ VPN ແລ້ວ"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "ຍົກເລີກການເລີ່ມ Proxy ແລ້ວ"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "ຍົກເລີກການຢຸດ VPN ແລ້ວ"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "ຍົກເລີກການຢຸດ Proxy ແລ້ວ"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ກຳລັງເລີ່ມ Proxy ທ້ອງຖິ່ນ..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "ກຳລັງເລີ່ມ VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກທັງໝົດ..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກທີ່ໃຊ້ງານ..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກ..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກ..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກອັດຕະໂນມັດ..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "ກຳລັງຣີເຟຣຊການສະໝັກອັດຕະໂນມັດ..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກທີ່ໃຊ້ງານແລ້ວ"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ຣີເຟຣຊການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ຣີເຟຣຊລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ຍົກເລີກການຄົ້ນຫາຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ການຄົ້ນຫາຕຳແໜ່ງລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ໃຫ້ສິດອະນຸຍາດ VPN ແລ້ວລອງອີກຄັ້ງ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ຕັ້ງແຫຼ່ງທາງໄກກ່ອນ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ເພີ່ມຕຳແໜ່ງທີ່ບັນທຶກຢ່າງໜ້ອຍໜຶ່ງກ່ອນ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ເລືອກຕຳແໜ່ງກ່ອນ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ຍັງບໍ່ມີການສະໝັກທີ່ບັນທຶກ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ຕັ້ງແຫຼ່ງໂປຣໄຟລ໌ເປັນການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ຕັ້ງແຫຼ່ງໂປຣໄຟລ໌ເປັນຕຳແໜ່ງທີ່ບັນທຶກແລ້ວ"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ຕັ້ງໂໝດການເຊື່ອມຕໍ່ເປັນ VPN ແລ້ວ"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ຕັ້ງໂໝດການເຊື່ອມຕໍ່ເປັນ Proxy ເທົ່ານັ້ນແລ້ວ"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ຕັດການເຊື່ອມຕໍ່ກ່ອນເພື່ອປ່ຽນໂໝດການເຊື່ອມຕໍ່"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ລຶບລາຍການປະຫວັດແລ້ວ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "ຣີເຊັດຊື່ການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "ບັນທຶກຊື່ການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ຕັ້ງພາສາເປັນຄ່າເລີ່ມຕົ້ນຂອງລະບົບແລ້ວ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "ບັນທຶກ DNS ກຳນົດເອງແລ້ວ"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "ປິດ DNS ກຳນົດເອງແລ້ວ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອນຳເຂົ້າຕຳແໜ່ງ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ປ່ຽນໄປຕຳແໜ່ງທີ່ບັນທຶກເພື່ອເພີ່ມຕຳແໜ່ງດ້ວຍຕົນເອງ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ການຕັ້ງຄ່າຕຳແໜ່ງບໍ່ຖືກຕ້ອງ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ຕຳແໜ່ງທີ່ຈະແກ້ໄຂບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ເປີດການສົ່ງອອກຂໍ້ມູນວິນິດໄສແລ້ວ"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ການສົ່ງອອກຂໍ້ມູນວິນິດໄສລົ້ມເຫຼວ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກຂໍ້ມູນວິນິດໄສແລ້ວ"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ຕຳແໜ່ງ VPN ກ່ອນໜ້າບໍ່ມີໃຫ້ໃຊ້ອີກແລ້ວ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "ປິດແອັບແລ້ວ. VPN ປິດຢູ່."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "ເປີດໃຊ້ການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "ເລືອກການສະໝັກທັງໝົດແລ້ວ"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "ເລືອກການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "ບັນທຶກການສະໝັກແລ້ວ"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ສຳເນົາຕຳແໜ່ງໄປຄລິບບອດແລ້ວ"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກຕຳແໜ່ງແລ້ວ"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ສຳເນົາກົດການກຳນົດເສັ້ນທາງໄປຄລິບບອດແລ້ວ"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ຍົກເລີກການສົ່ງອອກກົດການກຳນົດເສັ້ນທາງແລ້ວ"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "ອ່ານຄລິບບອດບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ບໍ່ມີຕຳແໜ່ງໃຫ້ສົ່ງອອກ"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "ໂຫຼດແອັບບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "ຣີເຟຣຊການສະໝັກບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "ຣີເຟຣຊການສະໝັກທີ່ໃຊ້ງານບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "ນຳເຂົ້າກົດການກຳນົດເສັ້ນທາງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "ນຳເຂົ້າຕຳແໜ່ງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "ເປີດໄຟລ໌ຕຳແໜ່ງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "ອ່ານໄຟລ໌ຕຳແໜ່ງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "ເປີດໄຟລ໌ກົດການກຳນົດເສັ້ນທາງບໍ່ສຳເລັດ"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "ບໍ່ສາມາດຈັບຄູ່ຕຳແໜ່ງທີ່ດີທີ່ສຸດກັບລາຍຊື່ເດັສກ໌ທັອບ"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN ພ້ອມໃຊ້ໃນຄອມພິວເຕີນີ້"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy ພ້ອມໃຊ້ໃນຄອມພິວເຕີນີ້"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ເຊວ VPN ເດັສກ໌ທັອບພ້ອມແລ້ວ"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ເຊວ Proxy ເດັສກ໌ທັອບພ້ອມແລ້ວ"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "ເລີ່ມ VPN ທີ່ "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "ເລີ່ມ Proxy ທີ່ "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN ຢຸດແລ້ວ. ໂໝດແອັບ: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy ຢຸດແລ້ວ. ໂໝດແອັບ: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "ຕັ້ງພາສາເປັນ "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "ຕັ້ງການຣີເຟຣຊການສະໝັກອັດຕະໂນມັດເປັນ "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "ບັນທຶກການຕັ້ງຄ່າກວດຢືນຢັນແລ້ວ: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ຕຳແໜ່ງທີ່ເລືອກບໍ່ປ່ຽນແປງ: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ລຶບຕຳແໜ່ງທີ່ເລືອກແລ້ວ: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "ຕັ້ງຕຳແໜ່ງທີ່ເລືອກແລ້ວ: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "ອັບເດດ ແລະລວມຕຳແໜ່ງແລ້ວ: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ຕຳແໜ່ງຖືກບັນທຶກໄວ້ແລ້ວ: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "ອັບເດດຕຳແໜ່ງແລ້ວ: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ລຶບຕຳແໜ່ງແລ້ວ: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "ເພີ່ມຕຳແໜ່ງແລ້ວ: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "ຣີເຟຣຊການສະໝັກແລ້ວ: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "ລົ້ມເຫຼວ: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "ກຳລັງກູ້ຄືນ VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "ກຳລັງຣີເຟຣຊ "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ສົ່ງອອກຕຳແໜ່ງໄປທີ່ "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "ສົ່ງອອກກົດການກຳນົດເສັ້ນທາງໄປທີ່ "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "ສົ່ງອອກຂໍ້ມູນວິນິດໄສໄປທີ່ "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "benchmark ບໍ່ສຳເລັດ "
+    },
+    {
+      "source": "Activated ",
+      "target": "ເປີດໃຊ້ "
+    },
+    {
+      "source": "Added ",
+      "target": "ເພີ່ມ "
+    },
+    {
+      "source": "Deleted ",
+      "target": "ລຶບ "
+    },
+    {
+      "source": "Selected ",
+      "target": "ເລືອກ "
+    },
+    {
+      "source": "Edited location #",
+      "target": "ແກ້ໄຂຕຳແໜ່ງ #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "ໂໝດແອັບ: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ຕຳແໜ່ງຖືກຣີເຟຣຊ"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ຕຳແໜ່ງຖືກຣີເຟຣຊ"
+    },
+    {
+      "source": " • batch ",
+      "target": " • ຊຸດ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • ລອງໃໝ່ "
+    },
+    {
+      "source": "custom interval",
+      "target": "ຊ່ວງເວລາກຳນົດເອງ"
+    },
+    {
+      "source": "every hour",
+      "target": "ທຸກຊົ່ວໂມງ"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "ການສະໝັກທັງໝົດ"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ການສະໝັກທີ່ເລືອກ"
+    },
+    {
+      "source": "proxy only",
+      "target": "Proxy ເທົ່ານັ້ນ"
+    },
+    {
+      "source": "off",
+      "target": "ປິດ"
+    },
+    {
+      "source": "Idle",
+      "target": "ວ່າງ"
+    },
+    {
+      "source": "VPN started",
+      "target": "ເລີ່ມ VPN ແລ້ວ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "ຢຸດ VPN ແລ້ວ"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ເລີ່ມ Proxy ແລ້ວ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ຢຸດ Proxy ແລ້ວ"
+    }
+  ]
+}

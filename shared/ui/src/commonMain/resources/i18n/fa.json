@@ -65,7 +65,7 @@
   "DNS_APPLIES_NEW_DESKTOP_SESSIONS": "برای نشست‌های جدید پروکسی دسکتاپ یا VPN اعمال می‌شود.",
   "DNS_IP_ADDRESS": "نشانی IP DNS",
   "APP_MODE_ANDROID_DESCRIPTION": "حالت پیش‌فرض VPN است. برای اجرای پروکسی ترکیبی محلی HTTP/SOCKS به‌جای Android VPN، فقط پروکسی را روشن کنید.",
-  "APP_MODE_DESKTOP_DESCRIPTION": "حالت VPN روی Linux یا Windows از sing-box TUN استفاده می‌کند. macOS تا زمان پیاده‌سازی helper دارای مجوز، فقط حالت پروکسی را پشتیبانی می‌کند.",
+  "APP_MODE_DESKTOP_DESCRIPTION": "حالت VPN روی Linux یا Windows از sing-box TUN استفاده می‌کند. macOS تا زمان پیاده‌سازی کمک‌برنامهٔ دارای مجوز، فقط حالت پروکسی را پشتیبانی می‌کند.",
   "VPN": "VPN",
   "VPN_MODE_LABEL": "حالت VPN",
   "PROXY_ONLY": "فقط پراکسی",

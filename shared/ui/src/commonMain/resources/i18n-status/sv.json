@@ -1,0 +1,1382 @@
+{
+  "dynamic": {
+    "findingSubscription": "Hittar bästa platsen från prenumerationen...",
+    "findingSaved": "Hittar bästa platsen från sparade platser...",
+    "testingFastestCandidates": "Testar de snabbaste kandidaterna i omgångar...",
+    "checkingLocations": "Kontrollerar {count} platser...",
+    "testingLocationsRange": "Testar platser {start}-{end} av {total}...",
+    "refreshIntervalMinutes": "{count} minuter",
+    "refreshIntervalHours": "{count} tim",
+    "refreshIntervalHoursMinutes": "{hours} tim {minutes} min",
+    "refreshIntervalEvery": "var {interval}",
+    "refreshIntervalEveryHour": "varje timme"
+  },
+  "benchmark": {
+    "best": "Bäst: ",
+    "primary": "primär ",
+    "secondary": "sekundär ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blockerad",
+      "cached": "cachelagrad",
+      "challenge": "utmaning",
+      "custom_config_manual_only": "anpassad konfiguration, endast manuellt",
+      "error": "fel",
+      "manual": "manuell",
+      "ok": "OK",
+      "partial": "delvis",
+      "tcp_error": "TCP-fel",
+      "tcp_timeout": "TCP-timeout",
+      "timeout": "tidsgräns",
+      "unreachable": "oåtkomlig",
+      "validation_timeout": "valideringstimeout"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "Prenumerations-URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Oläsbar prenumerations-URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Osäkra HTTP-prenumerationer stöds inte"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Använd en https://-prenumerations-URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL:en måste innehålla en giltig HTTPS-värd"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Klistra in en giltig https://-prenumerations-URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direkt fjärrkälla"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box-importlänk"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Oläsbar sing-box-importlänk"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Endast giltiga HTTPS-fjärr-URL:er stöds"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Använd en sing-box-importlänk som pekar på en giltig https://-URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Hämtar fjärrinnehåll från den inbäddade URL:en"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Hämtar fjärrinnehåll från "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Importlänken kunde inte tolkas"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Klistra in en giltig sing-box-importlänk för remote-profile eller en direkt prenumerations-URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN-importlänk"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Oläsbar VPN-importlänk"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Providerimport stöds inte"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia och andra vpn://-importer stöds inte. Använd en vanlig prenumerations-URL eller lägg till platser manuellt."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Importinnehållet kunde inte avkodas"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn://-importer stöds inte. Använd en vanlig prenumerations-URL eller lägg till platser manuellt."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP-prenumerations-URL:er stöds inte. Använd https:// i stället."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Fjärrkällan måste vara en https://-URL eller en importlänk som stöds"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Fjärrkällan är tom"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Fjärrkällan måste vara en giltig https://-URL med en värd."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Den här sing-box-importen pekar på en ogiltig URL eller en URL utan HTTPS. Använd en giltig https://-URL i stället."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Tillämpar vald plats..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Tillämpar uppdaterad vald plats..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Sökningen efter bästa platsen nådde tidsgränsen; behåller den aktuella anslutningen"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Urklipp är tomt"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Anslutningslogg aktiverad"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Anslutningslogg dold"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Verktyg för anslutningstest aktiverade"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Verktyg för anslutningstest dolda"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Kunde inte öppna exportdestinationen"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Kunde inte öppna vald fil"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Kunde inte öppna vald platsfil"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Kunde inte öppna vald regelfil"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktopskal: Nederländerna från Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktopappen initierad"
+    },
+    {
+      "source": "App initialized",
+      "target": "Appen initierad"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Exportera platser"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Misslyckades att tillämpa uppdaterad vald plats"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Misslyckades att exportera diagnostik"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Misslyckades att exportera platser"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Misslyckades att exportera routningsregler"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Misslyckades att hitta en ersättningsplats"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Misslyckades att importera filen"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Misslyckades att öppna diagnostikdestinationen"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Misslyckades att spara uppdateringsinställningar"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Misslyckades att uppdatera startinställning"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import avbruten"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Ogiltig prenumerations-URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latenshistorik aktiverad"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latenshistorik dold"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live-trafikstatistik aktiverad"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live-trafikstatistik dold"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Platskontroll avbruten"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Platskontroll misslyckades"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Platser exporterade"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Import av platser avbruten"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Inga platser tillgängliga för benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Inga prenumerationer att uppdatera"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Ingen lämplig plats hittades"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totalsummor per profil aktiverade"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totalsummor per profil dolda"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Föregående VPN-session kommer att återställas"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR-skanning avbruten"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Routningsregler exporterade"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Import av routningsregler avbruten"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Routningsregler sparade"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Sessionsstatistik aktiverad"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Sessionsstatistik dold"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Den delade texten är inte ett importinnehåll som stöds"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Prenumeration borttagen"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Prenumerationsuppdateringen är klar, men VPN-behörighet krävs för att byta i bakgrunden. Föregående VPN-plats behålls som reserv."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Prenumerationsuppdateringen är klar. Hittar bästa platsen..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Prenumerationsuppdateringen är klar. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Körningsläge: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokal proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Körningslogg: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Förhandskontroll för VPN-läge godkänd"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Förhandskontroll för läget Endast proxy godkänd"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Förhandskontroll för VPN-läge misslyckades: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Förhandskontroll för läget Endast proxy misslyckades: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN-läge otillgängligt: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Läget Endast proxy otillgängligt: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Desktop-VPN-kapacitet: redo"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Desktop-VPN-kapacitet: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN-läge tillgängligt"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxyläge tillgängligt"
+    },
+    {
+      "source": "not ready",
+      "target": "inte redo"
+    },
+    {
+      "source": " checks",
+      "target": " kontroller"
+    },
+    {
+      "source": " check",
+      "target": " kontroll"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "fel på TUN-enhet: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "fel på nätverksbehörigheter: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "fel på route/DNS-verktyg: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN-enhet"
+    },
+    {
+      "source": "network privileges",
+      "target": "nätverksbehörigheter"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS-verktyg"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN-enhet saknas på /dev/net/tun. Försök med: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-läge på datorn kräver CAP_NET_ADMIN. Kör med rooträttigheter eller ge sing-box rättigheter: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route/DNS-verktyg är inte tillgängliga. VPN-läget kräver netsh.exe och DNS-klientens PowerShell-cmdlets."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN redo på den här datorn"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy redo på den här datorn"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startad"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppad"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startad"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppad"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Startar VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Startar lokal proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Startar VPN med bästa platsen..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Startar lokal proxy med bästa platsen..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hittar bästa platsen från prenumerationen..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hittar bästa platsen från sparade platser..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Platssökning avbruten"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Platssökning misslyckades"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Ge VPN-behörighet och försök igen"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Ange en fjärrkälla först"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Lägg först till minst en sparad plats"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Välj en plats först"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Inga prenumerationer sparade ännu"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Uppdaterar alla prenumerationer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Uppdaterar aktiv prenumeration..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Uppdaterar prenumeration..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Uppdaterar prenumerationer..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Uppdaterar prenumeration automatiskt..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Uppdaterar prenumerationer automatiskt..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Prenumeration uppdaterad"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Prenumerationer uppdaterade"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktiv prenumeration uppdaterad"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alla prenumerationer uppdaterade"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Uppdatering misslyckades"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkälla inställd på prenumeration"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkälla inställd på sparade platser"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Anslutningsläge inställt på VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Anslutningsläge inställt på endast proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Koppla från först för att ändra anslutningsläge"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikpost raderad"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Prenumerationsnamn återställt"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Prenumerationsnamn sparat"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Språk inställt på systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Anpassad DNS sparad"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Anpassad DNS inaktiverad"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routningsregler sparade"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routningsregler importerade"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Platser importerade"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Platser importerade. Vald plats är inte längre tillgänglig"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Växla till Sparade platser för att importera platser"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Växla till Sparade platser för att lägga till platser manuellt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ogiltig platskonfiguration"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Platsen som ska redigeras är inte längre tillgänglig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikexport öppnad"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikexport misslyckades"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikexport avbruten"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Föregående VPN-plats är inte längre tillgänglig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen stängdes. VPN var avstängt."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alla prenumerationer aktiverade"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alla prenumerationer valda"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Prenumeration vald"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Platser kopierade till urklipp"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Platsexport avbruten"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routningsregler kopierade till urklipp"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export av routningsregler avbruten"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profilkällans läge: prenumeration"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profilkällans läge: sparade platser"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Startar VPN med den nya bästa platsen..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Startar proxy med den nya bästa platsen..."
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-läge på datorn kräver CAP_NET_ADMIN. Kör med rooträttigheter eller ge sing-box rättigheter: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Prenumerationsplatser är skrivskyddade. Växla till Sparade platser för att spara ändringar."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Prenumerationsplatser är skrivskyddade. Växla till Sparade platser för att ta bort dem."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Prenumeration mottagen. Granska och spara den på fliken Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Prenumerationslänk mottagen. Granska och spara den på fliken Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Platskonfiguration mottagen. Granska och spara den på fliken Platser."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Startar lokal proxy med bästa platsen..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Startar VPN med bästa platsen..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Hittar bästa platsen från prenumerationen..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Hittar bästa platsen från sparade platser..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Platser importerade. Vald plats är inte längre tillgänglig, proxy stoppad"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Platser importerade. Vald plats är inte längre tillgänglig, VPN stoppad"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Platser importerade. Vald plats är inte längre tillgänglig"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Vald plats tillämpades, men kunde inte sparas"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Borttagning av plats rullades tillbaka eftersom proxyn inte kunde stoppas"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Borttagning av plats rullades tillbaka eftersom VPN inte kunde stoppas"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Import av platser rullades tillbaka eftersom proxyn inte kunde stoppas"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Import av platser rullades tillbaka eftersom VPN inte kunde stoppas"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN stoppad. Uppdaterade prenumerationer tog bort den valda platsen."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy stoppad. Uppdaterade prenumerationer tog bort den valda platsen."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN stoppad. Ansluter igen vid nästa start."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy stoppad. Ansluter igen vid nästa start."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Routningsregler sparade. Starta om VPN för att tillämpa"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Routningsregler sparade. Starta om proxy för att tillämpa"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Routningsregler importerade. Starta om VPN för att tillämpa"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Routningsregler importerade. Starta om proxy för att tillämpa"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Vald plats borttagen. VPN stoppad: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Vald plats borttagen. Proxy stoppad: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Bästa platsen vald och VPN startad: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Bästa platsen vald och proxy startad: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN startades, men den valda platsen kunde inte sparas"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy startades, men den valda platsen kunde inte sparas"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN startades, men bästa platsen kunde inte sparas"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy startades, men bästa platsen kunde inte sparas"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Misslyckades att starta VPN med bästa platsen"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Misslyckades att starta proxy med bästa platsen"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Misslyckades att spara den valda platsen"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Misslyckades att spara vald plats"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Misslyckades att spara bästa platsen"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Misslyckades att tillämpa vald plats"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Misslyckades att välja plats"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Misslyckades att stoppa VPN före avslut"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Misslyckades att stoppa proxy före avslut"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Misslyckades att stoppa VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Misslyckades att stoppa proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Misslyckades att starta VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Misslyckades att starta proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Kunde inte förbereda VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Kunde inte förbereda proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Förbereder VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Förbereder proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN-start avbruten"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxystart avbruten"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN-stopp avbrutet"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxystopp avbrutet"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Startar lokal proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Startar VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Uppdaterar alla prenumerationer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Uppdaterar aktiv prenumeration..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Uppdaterar prenumerationer..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Uppdaterar prenumeration..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Uppdaterar prenumerationer automatiskt..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Uppdaterar prenumeration automatiskt..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alla prenumerationer uppdaterade"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktiv prenumeration uppdaterad"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Prenumerationer uppdaterade"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Prenumeration uppdaterad"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Uppdatering misslyckades"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Platssökning avbruten"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Platssökning misslyckades"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Ge VPN-behörighet och försök igen"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Ange en fjärrkälla först"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Lägg först till minst en sparad plats"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Välj en plats först"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Inga prenumerationer sparade ännu"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkälla inställd på prenumeration"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkälla inställd på sparade platser"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Anslutningsläge inställt på VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Anslutningsläge inställt på endast proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Koppla från först för att ändra anslutningsläge"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikpost raderad"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Prenumerationsnamn återställt"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Prenumerationsnamn sparat"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Språk inställt på systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Anpassad DNS sparad"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Anpassad DNS inaktiverad"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routningsregler sparade"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routningsregler importerade"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Platser importerade"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Växla till Sparade platser för att importera platser"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Växla till Sparade platser för att lägga till platser manuellt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ogiltig platskonfiguration"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Platsen som ska redigeras är inte längre tillgänglig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikexport öppnad"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikexport misslyckades"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikexport avbruten"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Föregående VPN-plats är inte längre tillgänglig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen stängdes. VPN var avstängt."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alla prenumerationer aktiverade"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alla prenumerationer valda"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Prenumeration vald"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Prenumeration sparad"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Platser kopierade till urklipp"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Platsexport avbruten"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routningsregler kopierade till urklipp"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Export av routningsregler avbruten"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Läsning från urklipp misslyckades"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Inga platser att exportera"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Misslyckades att läsa in appar"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Misslyckades att uppdatera prenumerationer"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Misslyckades att uppdatera den aktiva prenumerationen"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Misslyckades att importera routningsregler"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Misslyckades att spara routningsregler"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Misslyckades att importera platser"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Misslyckades att öppna platsfilen"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Misslyckades att läsa platsfilen"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Misslyckades att öppna routningsregelfilen"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Bästa platsen kunde inte matchas mot desktoplistan"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN redo på den här datorn"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy redo på den här datorn"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Desktop-VPN-skal redo"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktop-proxyskal redo"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN startad på "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy startad på "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN stoppad. Appläge: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy stoppad. Appläge: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Språk inställt på "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatisk prenumerationsuppdatering inställd på "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Valideringsinställningar sparade: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Vald plats oförändrad: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Vald plats borttagen: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Vald plats inställd: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Plats uppdaterad och sammanslagen: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Plats redan sparad: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Plats uppdaterad: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Plats borttagen: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Plats tillagd: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Prenumerationer uppdaterade: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Misslyckades: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Återställer VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Uppdaterar "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Platser exporterade till "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Routningsregler exporterade till "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostik exporterad till "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Misslyckades med att prestandatesta "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktiverade "
+    },
+    {
+      "source": "Added ",
+      "target": "Lade till "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Raderade "
+    },
+    {
+      "source": "Selected ",
+      "target": "Valde "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Redigerade plats #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Appläge: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " platser uppdaterade"
+    },
+    {
+      "source": " location refreshed",
+      "target": " plats uppdaterad"
+    },
+    {
+      "source": " • batch ",
+      "target": " • omgång "
+    },
+    {
+      "source": " • retries ",
+      "target": " • återförsök "
+    },
+    {
+      "source": "custom interval",
+      "target": "anpassat intervall"
+    },
+    {
+      "source": "every hour",
+      "target": "varje timme"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "alla prenumerationer"
+    },
+    {
+      "source": "selected subscription",
+      "target": "vald prenumeration"
+    },
+    {
+      "source": "proxy only",
+      "target": "endast proxy"
+    },
+    {
+      "source": "off",
+      "target": "av"
+    },
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startad"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppad"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startad"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppad"
+    }
+  ]
+}

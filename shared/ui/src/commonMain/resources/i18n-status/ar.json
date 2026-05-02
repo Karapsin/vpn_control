@@ -26,11 +26,11 @@
       "manual": "يدوي",
       "ok": "جيد",
       "partial": "جزئي",
-      "tcp_error": "خطأ_tcp",
-      "tcp_timeout": "مهلة_tcp",
+      "tcp_error": "خطأ TCP",
+      "tcp_timeout": "انتهت مهلة TCP",
       "timeout": "مهلة",
       "unreachable": "غير متاح",
-      "validation_timeout": "مهلة_التحقق"
+      "validation_timeout": "انتهت مهلة التحقق"
     }
   },
   "freeformReplacements": [
@@ -188,7 +188,7 @@
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "سطح المكتب: هولندا من Whitelists"
+      "target": "غلاف سطح المكتب: هولندا من قوائم السماح"
     },
     {
       "source": "Desktop app initialized",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Subscription refreshed",
-      "target": "الاشتراك التحديثed"
+      "target": "تم تحديث الاشتراك"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "الاشتراكs التحديثed"
+      "target": "تم تحديث الاشتراكات"
     },
     {
       "source": "Active subscription refreshed",
@@ -964,11 +964,11 @@
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "الاشتراكs التحديثed"
+      "target": "تم تحديث الاشتراكات"
     },
     {
       "source": "Subscription refreshed",
-      "target": "الاشتراك التحديثed"
+      "target": "تم تحديث الاشتراك"
     },
     {
       "source": "Refresh failed",
@@ -1236,7 +1236,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "الموقع alجاهز محفوظ: "
+      "target": "الموقع محفوظ بالفعل: "
     },
     {
       "source": "Location updated: ",
@@ -1252,7 +1252,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "الاشتراكs التحديثed: "
+      "target": "تم تحديث الاشتراكات: "
     },
     {
       "source": "Failed: ",
@@ -1296,7 +1296,7 @@
     },
     {
       "source": "Selected ",
-      "target": "اخترed "
+      "target": "تم التحديد "
     },
     {
       "source": "Edited location #",

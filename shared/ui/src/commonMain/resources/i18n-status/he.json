@@ -1,0 +1,1378 @@
+{
+  "dynamic": {
+    "findingSubscription": "מחפש את המיקום הטוב ביותר מהמנוי...",
+    "findingSaved": "מחפש את המיקום הטוב ביותר מהמיקומים השמורים...",
+    "testingFastestCandidates": "בודק את המועמדים המהירים ביותר באצוות...",
+    "checkingLocations": "בודק {count} מיקומים...",
+    "testingLocationsRange": "בודק מיקומים {start}-{end} מתוך {total}...",
+    "refreshIntervalMinutes": "{count} דק׳",
+    "refreshIntervalHours": "{count} ש׳",
+    "refreshIntervalHoursMinutes": "{hours} ש׳ {minutes} דק׳",
+    "refreshIntervalEvery": "כל {interval}",
+    "refreshIntervalEveryHour": "כל שעה"
+  },
+  "benchmark": {
+    "best": "הטוב ביותר: ",
+    "primary": "ראשי ",
+    "secondary": "משני ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "חסום",
+      "cached": "במטמון",
+      "challenge": "אתגר",
+      "custom_config_manual_only": "תצורה מותאמת ידנית בלבד",
+      "error": "שגיאה",
+      "manual": "ידני",
+      "ok": "תקין",
+      "partial": "חלקי",
+      "tcp_error": "שגיאת TCP",
+      "tcp_timeout": "פסק זמן TCP",
+      "timeout": "פסק זמן",
+      "unreachable": "לא נגיש",
+      "validation_timeout": "פסק זמן אימות"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL של מנוי"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL מנוי לא קריא"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "מנויי HTTP לא מאובטחים אינם נתמכים"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "השתמש ב-URL מנוי מסוג https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "ה-URL חייב לכלול מארח HTTPS תקין"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "הדבק URL מנוי תקין מסוג https://."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "מקור מרוחק ישיר"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "קישור ייבוא של sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "קישור ייבוא sing-box לא קריא"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "נתמכות רק כתובות URL מרוחקות תקינות מסוג HTTPS"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "השתמש בקישור ייבוא של sing-box שמוביל ל-URL תקין מסוג https://."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "מאחזר תוכן מרוחק מה-URL המוטמע"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "מאחזר תוכן מרוחק מ-"
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "לא ניתן היה לנתח את קישור הייבוא"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "הדבק קישור ייבוא remote-profile תקין של sing-box או URL מנוי ישיר."
+    },
+    {
+      "source": "VPN import link",
+      "target": "קישור ייבוא VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "קישור ייבוא VPN לא קריא"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "ייבוא ספק לא נתמך"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ייבואי Amnezia ו-vpn:// אחרים אינם נתמכים. השתמש ב-URL מנוי רגיל או הוסף מיקומים ידנית."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "לא ניתן היה לפענח את מטען הייבוא"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "ייבואי vpn:// אינם נתמכים. השתמש ב-URL מנוי רגיל או הוסף מיקומים ידנית."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "כתובות URL של מנויי HTTP אינן נתמכות. השתמש ב-https:// במקום זאת."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "מקור מרוחק חייב להיות URL מסוג https:// או קישור ייבוא נתמך"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "המקור המרוחק ריק"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "מקור מרוחק חייב להיות URL תקין מסוג https:// עם מארח."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "ייבוא sing-box זה מוביל ל-URL לא תקין או שאינו HTTPS. השתמש במקום זאת ב-URL תקין מסוג https://."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "מחיל את המיקום הנבחר..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "מחיל את המיקום הנבחר המעודכן..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "חיפוש המיקום הטוב ביותר חרג ממגבלת הזמן; החיבור הנוכחי נשמר"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "הלוח ריק"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "יומן החיבור הופעל"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "יומן החיבור הוסתר"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "כלי בדיקת החיבור הופעלו"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "כלי בדיקת החיבור הוסתרו"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "לא ניתן היה לפתוח את יעד הייצוא"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "לא ניתן היה לפתוח את הקובץ הנבחר"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "לא ניתן היה לפתוח את קובץ המיקומים הנבחר"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "לא ניתן היה לפתוח את קובץ הכללים הנבחר"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "מעטפת שולחן עבודה: הולנד מ-Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "אפליקציית שולחן העבודה אותחלה"
+    },
+    {
+      "source": "App initialized",
+      "target": "האפליקציה אותחלה"
+    },
+    {
+      "source": "Export Locations",
+      "target": "ייצוא מיקומים"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "החלת המיקום הנבחר המעודכן נכשלה"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "ייצוא האבחון נכשל"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "ייצוא המיקומים נכשל"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "ייצוא כללי הניתוב נכשל"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "מציאת מיקום חלופי נכשלה"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "ייבוא הקובץ נכשל"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "פתיחת יעד האבחון נכשלה"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "שמירת הגדרות הרענון נכשלה"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "עדכון הגדרת ההפעלה נכשל"
+    },
+    {
+      "source": "Import canceled",
+      "target": "הייבוא בוטל"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL מנוי לא תקין"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "היסטוריית שיהוי הופעלה"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "היסטוריית שיהוי הוסתרה"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "סטטיסטיקות תעבורה בזמן אמת הופעלו"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "סטטיסטיקות תעבורה בזמן אמת הוסתרו"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "בדיקת המיקום בוטלה"
+    },
+    {
+      "source": "Location check failed",
+      "target": "בדיקת המיקום נכשלה"
+    },
+    {
+      "source": "Locations exported",
+      "target": "המיקומים יוצאו"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "ייבוא המיקומים בוטל"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "אין מיקומים זמינים למדידת ביצועים"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "אין מנויים לרענון"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "לא נמצא מיקום מתאים"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "סיכומים לפי פרופיל הופעלו"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "סיכומים לפי פרופיל הוסתרו"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "הפעלת ה-VPN הקודמת תשוחזר"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "סריקת QR בוטלה"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "כללי הניתוב יוצאו"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "ייבוא כללי הניתוב בוטל"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "כללי ניתוב שמורים"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "סטטיסטיקות הפעלה הופעלו"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "סטטיסטיקות הפעלה הוסתרו"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "הטקסט ששותף אינו מטען ייבוא נתמך"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "המנוי נמחק"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "רענון המנוי הסתיים, אך נדרשת הרשאת VPN כדי לעבור ברקע. מיקום ה-VPN הקודם נשמר כגיבוי."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "רענון המנוי הסתיים. מחפש את המיקום הטוב ביותר..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "רענון המנוי הסתיים. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "מצב זמן ריצה: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "פרוקסי מקומי: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "יומן זמן ריצה: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "בדיקת קדם של מצב VPN עברה"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "בדיקת קדם של מצב פרוקסי בלבד עברה"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "בדיקת קדם של מצב VPN נכשלה: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "בדיקת קדם של מצב פרוקסי בלבד נכשלה: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "מצב VPN אינו זמין: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "מצב פרוקסי בלבד אינו זמין: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "יכולת VPN שולחני: מוכנה"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "יכולת VPN שולחני: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "מצב VPN זמין"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "מצב פרוקסי זמין"
+    },
+    {
+      "source": "not ready",
+      "target": "לא מוכן"
+    },
+    {
+      "source": " checks",
+      "target": " בדיקות"
+    },
+    {
+      "source": " check",
+      "target": " בדיקה"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "כשל בהתקן TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "כשל בהרשאות רשת: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "כשל בכלי route/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "התקן TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "הרשאות רשת"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "כלי route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "התקן TUN של Linux חסר ב-/dev/net/tun. נסה: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "מצב VPN שולחני דורש CAP_NET_ADMIN. הרץ כ-root או הענק יכולות ל-sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "כלי route/DNS של Windows אינם זמינים. מצב VPN דורש netsh.exe ו-cmdlets של לקוח DNS ב-PowerShell."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN מוכן במחשב זה"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "פרוקסי מוכן במחשב זה"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "לא פעיל"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN הופעל"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN נעצר"
+    },
+    {
+      "source": "Proxy started",
+      "target": "פרוקסי הופעל"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "פרוקסי נעצר"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "מפעיל VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "מפעיל פרוקסי מקומי..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "מפעיל VPN עם המיקום הטוב ביותר..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "מפעיל פרוקסי מקומי עם המיקום הטוב ביותר..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "מחפש את המיקום הטוב ביותר מהמנוי..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "מחפש את המיקום הטוב ביותר מהמיקומים השמורים..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "חיפוש המיקום בוטל"
+    },
+    {
+      "source": "Location search failed",
+      "target": "חיפוש המיקום נכשל"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "הענק הרשאת VPN ונסה שוב"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "הגדר תחילה מקור מרוחק"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "הוסף תחילה לפחות מיקום שמור אחד"
+    },
+    {
+      "source": "Select a location first",
+      "target": "בחר תחילה מיקום"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "עדיין לא נשמרו מנויים"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "מרענן את כל המנויים..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "מרענן את המנוי הפעיל..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "מרענן מנוי..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "מרענן מנויים..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "מרענן מנוי אוטומטית..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "מרענן מנויים אוטומטית..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "המנוי רוענן"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "המנויים רועננו"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "המנוי הפעיל רוענן"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "כל המנויים רועננו"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "הרענון נכשל"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "מקור הפרופיל הוגדר למנוי"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "מקור הפרופיל הוגדר למיקומים שמורים"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "מצב החיבור הוגדר ל-VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "מצב החיבור הוגדר לפרוקסי בלבד"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "התנתק תחילה כדי לשנות את מצב החיבור"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "רשומת ההיסטוריה נמחקה"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "שם המנוי אופס"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "שם המנוי נשמר"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "השפה הוגדרה לברירת המחדל של המערכת"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS מותאם אישית נשמר"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS מותאם אישית הושבת"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "כללי הניתוב נשמרו"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "כללי הניתוב יובאו"
+    },
+    {
+      "source": "Locations imported",
+      "target": "המיקומים יובאו"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "המיקומים יובאו. המיקום הנבחר אינו זמין עוד"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "עבור למיקומים שמורים כדי לייבא מיקומים"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "עבור למיקומים שמורים כדי להוסיף מיקומים ידנית"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "תצורת מיקום לא תקינה"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "המיקום לעריכה אינו זמין עוד"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ייצוא האבחון נפתח"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ייצוא האבחון נכשל"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ייצוא האבחון בוטל"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "מיקום ה-VPN הקודם אינו זמין עוד"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "האפליקציה נסגרה. ה-VPN היה כבוי."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "כל המנויים הופעלו"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "כל המנויים נבחרו"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "המנוי נבחר"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "המיקומים הועתקו ללוח"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ייצוא המיקומים בוטל"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "כללי הניתוב הועתקו ללוח"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ייצוא כללי הניתוב בוטל"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "מצב מקור פרופיל: מנוי"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "מצב מקור פרופיל: מיקומים שמורים"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "מתחיל VPN עם המיקום הטוב החדש..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "מתחיל פרוקסי עם המיקום הטוב החדש..."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "מיקומי המנוי הם לקריאה בלבד. עבור למיקומים שמורים כדי לשמור עריכות."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "מיקומי המנוי הם לקריאה בלבד. עבור למיקומים שמורים כדי למחוק אותם."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "התקבל מנוי. בדוק ושמור אותו בכרטיסיית הפרופיל."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "התקבל קישור מנוי. בדוק ושמור אותו בכרטיסיית הפרופיל."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "התקבלה תצורת מיקום. בדוק ושמור אותה בכרטיסיית המיקומים."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "מפעיל פרוקסי מקומי עם המיקום הטוב ביותר..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "מפעיל VPN עם המיקום הטוב ביותר..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "מחפש את המיקום הטוב ביותר מהמנוי..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "מחפש את המיקום הטוב ביותר מהמיקומים השמורים..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "המיקומים יובאו. המיקום הנבחר אינו זמין עוד, הפרוקסי נעצר"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "המיקומים יובאו. המיקום הנבחר אינו זמין עוד, ה-VPN נעצר"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "המיקומים יובאו. המיקום הנבחר אינו זמין עוד"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "המיקום הנבחר הוחל, אך שמירתו נכשלה"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "הסרת המיקום הוחזרה לאחור כי לא ניתן היה לעצור את הפרוקסי"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "הסרת המיקום הוחזרה לאחור כי לא ניתן היה לעצור את ה-VPN"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ייבוא המיקומים הוחזר לאחור כי לא ניתן היה לעצור את הפרוקסי"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "ייבוא המיקומים הוחזר לאחור כי לא ניתן היה לעצור את ה-VPN"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "ה-VPN נעצר. מנויים שרועננו הסירו את המיקום הנבחר."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "הפרוקסי נעצר. מנויים שרועננו הסירו את המיקום הנבחר."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "ה-VPN נעצר. יתחבר מחדש בהפעלה הבאה."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "הפרוקסי נעצר. יתחבר מחדש בהפעלה הבאה."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "כללי הניתוב נשמרו. הפעל מחדש את ה-VPN כדי להחיל"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "כללי הניתוב נשמרו. הפעל מחדש את הפרוקסי כדי להחיל"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "כללי הניתוב יובאו. הפעל מחדש את ה-VPN כדי להחיל"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "כללי הניתוב יובאו. הפעל מחדש את הפרוקסי כדי להחיל"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "המיקום הנבחר הוסר. ה-VPN נעצר: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "המיקום הנבחר הוסר. הפרוקסי נעצר: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "המיקום הטוב ביותר נבחר וה-VPN הופעל: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "המיקום הטוב ביותר נבחר והפרוקסי הופעל: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "ה-VPN הופעל, אך שמירת המיקום הנבחר נכשלה"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "הפרוקסי הופעל, אך שמירת המיקום הנבחר נכשלה"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "ה-VPN הופעל, אך שמירת המיקום הטוב ביותר נכשלה"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "הפרוקסי הופעל, אך שמירת המיקום הטוב ביותר נכשלה"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "הפעלת VPN עם המיקום הטוב ביותר נכשלה"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "הפעלת פרוקסי עם המיקום הטוב ביותר נכשלה"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "שמירת המיקום הנבחר נכשלה"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "שמירת המיקום הנבחר נכשלה"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "שמירת המיקום הטוב ביותר נכשלה"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "החלת המיקום הנבחר נכשלה"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "בחירת המיקום נכשלה"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "עצירת ה-VPN לפני יציאה נכשלה"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "עצירת הפרוקסי לפני יציאה נכשלה"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "עצירת ה-VPN נכשלה"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "עצירת הפרוקסי נכשלה"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "הפעלת VPN נכשלה"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "הפעלת פרוקסי נכשלה"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "לא ניתן היה להכין VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "לא ניתן היה להכין פרוקסי"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "מכין VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "מכין פרוקסי"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "הפעלת VPN בוטלה"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "הפעלת פרוקסי בוטלה"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "עצירת VPN בוטלה"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "עצירת פרוקסי בוטלה"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "מפעיל פרוקסי מקומי..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "מפעיל VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "מרענן את כל המנויים..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "מרענן את המנוי הפעיל..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "מרענן מנויים..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "מרענן מנוי..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "מרענן מנויים אוטומטית..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "מרענן מנוי אוטומטית..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "כל המנויים רועננו"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "המנוי הפעיל רוענן"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "המנויים רועננו"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "המנוי רוענן"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "הרענון נכשל"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "חיפוש המיקום בוטל"
+    },
+    {
+      "source": "Location search failed",
+      "target": "חיפוש המיקום נכשל"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "הענק הרשאת VPN ונסה שוב"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "הגדר תחילה מקור מרוחק"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "הוסף תחילה לפחות מיקום שמור אחד"
+    },
+    {
+      "source": "Select a location first",
+      "target": "בחר תחילה מיקום"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "עדיין לא נשמרו מנויים"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "מקור הפרופיל הוגדר למנוי"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "מקור הפרופיל הוגדר למיקומים שמורים"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "מצב החיבור הוגדר ל-VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "מצב החיבור הוגדר לפרוקסי בלבד"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "התנתק תחילה כדי לשנות את מצב החיבור"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "רשומת ההיסטוריה נמחקה"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "שם המנוי אופס"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "שם המנוי נשמר"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "השפה הוגדרה לברירת המחדל של המערכת"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS מותאם אישית נשמר"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS מותאם אישית הושבת"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "כללי הניתוב נשמרו"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "כללי הניתוב יובאו"
+    },
+    {
+      "source": "Locations imported",
+      "target": "המיקומים יובאו"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "עבור למיקומים שמורים כדי לייבא מיקומים"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "עבור למיקומים שמורים כדי להוסיף מיקומים ידנית"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "תצורת מיקום לא תקינה"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "המיקום לעריכה אינו זמין עוד"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ייצוא האבחון נפתח"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ייצוא האבחון נכשל"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ייצוא האבחון בוטל"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "מיקום ה-VPN הקודם אינו זמין עוד"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "האפליקציה נסגרה. ה-VPN היה כבוי."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "כל המנויים הופעלו"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "כל המנויים נבחרו"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "המנוי נבחר"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "המנוי נשמר"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "המיקומים הועתקו ללוח"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ייצוא המיקומים בוטל"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "כללי הניתוב הועתקו ללוח"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ייצוא כללי הניתוב בוטל"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "קריאת הלוח נכשלה"
+    },
+    {
+      "source": "No locations to export",
+      "target": "אין מיקומים לייצוא"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "טעינת אפליקציות נכשלה"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "רענון המנויים נכשל"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "רענון המנוי הפעיל נכשל"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "ייבוא כללי הניתוב נכשל"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "שמירת כללי הניתוב נכשלה"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "ייבוא המיקומים נכשל"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "פתיחת קובץ המיקומים נכשלה"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "קריאת קובץ המיקומים נכשלה"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "פתיחת קובץ כללי הניתוב נכשלה"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "לא ניתן היה למפות את המיקום הטוב ביותר לרשימת שולחן העבודה"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN מוכן במחשב זה"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "פרוקסי מוכן במחשב זה"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "מעטפת VPN שולחני מוכנה"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "מעטפת פרוקסי שולחני מוכנה"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN הופעל ב-"
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "פרוקסי הופעל ב-"
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN נעצר. מצב אפליקציה: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "פרוקסי נעצר. מצב אפליקציה: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "השפה הוגדרה ל-"
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "רענון אוטומטי של מנוי הוגדר ל-"
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "הגדרות האימות נשמרו: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "המיקום הנבחר לא השתנה: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "המיקום הנבחר הוסר: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "המיקום הנבחר הוגדר: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "המיקום עודכן ומוזג: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "המיקום כבר שמור: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "המיקום עודכן: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "המיקום הוסר: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "המיקום נוסף: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "המנויים רועננו: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "נכשל: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "משחזר VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "מרענן "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "המיקומים יוצאו אל "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "כללי הניתוב יוצאו אל "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "האבחון יוצא אל "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "מדידת הביצועים נכשלה עבור "
+    },
+    {
+      "source": "Activated ",
+      "target": "הופעל: "
+    },
+    {
+      "source": "Added ",
+      "target": "נוסף: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "נמחק: "
+    },
+    {
+      "source": "Selected ",
+      "target": "נבחר: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "נערך מיקום #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "מצב אפליקציה: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " מיקומים רועננו"
+    },
+    {
+      "source": " location refreshed",
+      "target": " מיקום רוענן"
+    },
+    {
+      "source": " • batch ",
+      "target": " • אצווה "
+    },
+    {
+      "source": " • retries ",
+      "target": " • ניסיונות חוזרים "
+    },
+    {
+      "source": "custom interval",
+      "target": "מרווח מותאם אישית"
+    },
+    {
+      "source": "every hour",
+      "target": "כל שעה"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "כל המנויים"
+    },
+    {
+      "source": "selected subscription",
+      "target": "המנוי הנבחר"
+    },
+    {
+      "source": "proxy only",
+      "target": "פרוקסי בלבד"
+    },
+    {
+      "source": "off",
+      "target": "כבוי"
+    },
+    {
+      "source": "Idle",
+      "target": "לא פעיל"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN הופעל"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN נעצר"
+    },
+    {
+      "source": "Proxy started",
+      "target": "פרוקסי הופעל"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "פרוקסי נעצר"
+    }
+  ]
+}

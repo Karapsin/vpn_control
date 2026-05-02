@@ -26,11 +26,11 @@
       "manual": "pilihan pengguna",
       "ok": "baik",
       "partial": "sebagian",
-      "tcp_error": "galat_tcp",
-      "tcp_timeout": "waktu_habis_tcp",
+      "tcp_error": "galat TCP",
+      "tcp_timeout": "waktu habis TCP",
       "timeout": "waktu habis",
       "unreachable": "tidak terjangkau",
-      "validation_timeout": "validasi_waktu_habis"
+      "validation_timeout": "waktu habis validasi"
     }
   },
   "freeformReplacements": [
@@ -188,7 +188,7 @@
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Shell desktop: Belanda dari Whitelists"
+      "target": "Cangkang desktop: Belanda dari daftar izin"
     },
     {
       "source": "Desktop app initialized",
@@ -244,7 +244,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Invalid langganan URL"
+      "target": "URL langganan tidak valid"
     },
     {
       "source": "Latency history enabled",
@@ -642,7 +642,7 @@
     },
     {
       "source": "Invalid location config",
-      "target": "Invalid lokasi config"
+      "target": "Konfigurasi lokasi tidak valid"
     },
     {
       "source": "Location to edit is no longer available",
@@ -650,7 +650,7 @@
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Diagnostik export bukaed"
+      "target": "Ekspor diagnostik dibuka"
     },
     {
       "source": "Diagnostics export failed",
@@ -670,7 +670,7 @@
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Diaktifkan all langganan"
+      "target": "Semua langganan diaktifkan"
     },
     {
       "source": "All subscriptions selected",
@@ -1068,7 +1068,7 @@
     },
     {
       "source": "Invalid location config",
-      "target": "Invalid lokasi config"
+      "target": "Konfigurasi lokasi tidak valid"
     },
     {
       "source": "Location to edit is no longer available",
@@ -1076,7 +1076,7 @@
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Diagnostik export bukaed"
+      "target": "Ekspor diagnostik dibuka"
     },
     {
       "source": "Diagnostics export failed",
@@ -1096,7 +1096,7 @@
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Diaktifkan all langganan"
+      "target": "Semua langganan diaktifkan"
     },
     {
       "source": "All subscriptions selected",
@@ -1220,7 +1220,7 @@
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Terpilih lokasi unchanged: "
+      "target": "Lokasi terpilih tidak berubah: "
     },
     {
       "source": "Selected location removed: ",
@@ -1236,7 +1236,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "Lokasi alsiap tersimpan: "
+      "target": "Lokasi sudah tersimpan: "
     },
     {
       "source": "Location updated: ",
@@ -1252,7 +1252,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Langganan diperbarui"
+      "target": "Langganan diperbarui: "
     },
     {
       "source": "Failed: ",
@@ -1332,7 +1332,7 @@
     },
     {
       "source": "all subscriptions",
-      "target": "all langganan"
+      "target": "semua langganan"
     },
     {
       "source": "selected subscription",
@@ -1340,7 +1340,7 @@
     },
     {
       "source": "proxy only",
-      "target": "proksi only"
+      "target": "hanya proksi"
     },
     {
       "source": "off",

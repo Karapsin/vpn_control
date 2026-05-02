@@ -1,0 +1,1402 @@
+{
+  "dynamic": {
+    "findingSubscription": "កំពុងរកទីតាំងល្អបំផុតពីការជាវ...",
+    "findingSaved": "កំពុងរកទីតាំងល្អបំផុតពីទីតាំងដែលបានរក្សាទុក...",
+    "testingFastestCandidates": "កំពុងសាកល្បងបេក្ខជនលឿនបំផុតជាកញ្ចប់...",
+    "checkingLocations": "កំពុងពិនិត្យទីតាំង {count}...",
+    "testingLocationsRange": "កំពុងសាកល្បងទីតាំង {start}-{end} ក្នុងចំណោម {total}...",
+    "refreshIntervalMinutes": "{count} នាទី",
+    "refreshIntervalHours": "{count} ម៉ោង",
+    "refreshIntervalHoursMinutes": "{hours} ម៉ោង {minutes} នាទី",
+    "refreshIntervalEvery": "រៀងរាល់ {interval}",
+    "refreshIntervalEveryHour": "រៀងរាល់ម៉ោង"
+  },
+  "benchmark": {
+    "best": "ល្អបំផុត៖ ",
+    "primary": "ចម្បង ",
+    "secondary": "បន្ទាប់បន្សំ ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "បានរារាំង",
+      "cached": "បាន cache",
+      "challenge": "ត្រូវការការផ្ទៀងផ្ទាត់ challenge",
+      "custom_config_manual_only": "ការកំណត់ផ្ទាល់ខ្លួនតែដោយដៃ",
+      "error": "កំហុស",
+      "manual": "ដោយដៃ",
+      "ok": "យល់ព្រម",
+      "partial": "មួយផ្នែក",
+      "tcp_error": "កំហុស TCP",
+      "tcp_timeout": "TCP អស់ពេល",
+      "timeout": "អស់ពេល",
+      "unreachable": "មិនអាចចូលដល់",
+      "validation_timeout": "ការផ្ទៀងផ្ទាត់អស់ពេល"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL ការជាវ"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "មិនអាចអាន URL ការជាវបានទេ"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "មិនគាំទ្រការជាវ HTTP ដែលមិនមានសុវត្ថិភាពទេ"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "ប្រើ URL ការជាវ https://។"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL ត្រូវតែមាន host HTTPS ត្រឹមត្រូវ"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "បិទភ្ជាប់ URL ការជាវ https:// ត្រឹមត្រូវ។"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "ប្រភពពីចម្ងាយដោយផ្ទាល់"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "តំណនាំចូល sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "មិនអាចអានតំណនាំចូល sing-box បានទេ"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "គាំទ្រតែ URL ពីចម្ងាយ HTTPS ដែលត្រឹមត្រូវប៉ុណ្ណោះ"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "ប្រើតំណនាំចូល sing-box ដែលដោះស្រាយទៅជា URL https:// ត្រឹមត្រូវ។"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ទាញយកមាតិកាពីចម្ងាយពី URL ដែលបានបង្កប់"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "ទាញយកមាតិកាពីចម្ងាយពី "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "មិនអាច parse តំណនាំចូលបានទេ"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "បិទភ្ជាប់តំណនាំចូល remote-profile របស់ sing-box ត្រឹមត្រូវ ឬ URL ការជាវដោយផ្ទាល់។"
+    },
+    {
+      "source": "VPN import link",
+      "target": "តំណនាំចូល VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "មិនអាចអានតំណនាំចូល VPN បានទេ"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "ការនាំចូលពីអ្នកផ្តល់សេវាមិនត្រូវបានគាំទ្រ"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "មិនគាំទ្រការនាំចូល Amnezia និង vpn:// ផ្សេងទៀតទេ។ ប្រើ URL ការជាវធម្មតា ឬបន្ថែមទីតាំងដោយដៃ។"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "មិនអាច decode payload នាំចូលបានទេ"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "មិនគាំទ្រការនាំចូល vpn:// ទេ។ ប្រើ URL ការជាវធម្មតា ឬបន្ថែមទីតាំងដោយដៃ។"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "មិនគាំទ្រ URL ការជាវ HTTP ទេ។ ប្រើ https:// ជំនួស។"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "ប្រភពពីចម្ងាយត្រូវតែជា URL https:// ឬតំណនាំចូលដែលគាំទ្រ"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "ប្រភពពីចម្ងាយទទេ"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "ប្រភពពីចម្ងាយត្រូវតែជា URL https:// ត្រឹមត្រូវដែលមាន host។"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "ការនាំចូល sing-box នេះដោះស្រាយទៅជា URL មិនត្រឹមត្រូវ ឬមិនមែន HTTPS។ ប្រើ URL https:// ត្រឹមត្រូវជំនួស។"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "កំពុងអនុវត្តទីតាំងដែលបានជ្រើស..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "កំពុងអនុវត្តទីតាំងដែលបានជ្រើសដែលបានធ្វើបច្ចុប្បន្នភាព..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "ការស្វែងរកទីតាំងល្អបំផុតអស់ពេល។ កំពុងរក្សាការតភ្ជាប់បច្ចុប្បន្ន"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "ក្តារតម្បៀតខ្ទាស់ទទេ"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "បានបើកកំណត់ត្រាការតភ្ជាប់"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "បានលាក់កំណត់ត្រាការតភ្ជាប់"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "បានបើកឧបករណ៍សាកល្បងការតភ្ជាប់"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "បានលាក់ឧបករណ៍សាកល្បងការតភ្ជាប់"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "មិនអាចបើកគោលដៅនាំចេញបានទេ"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "មិនអាចបើកឯកសារដែលបានជ្រើសបានទេ"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "មិនអាចបើកឯកសារទីតាំងដែលបានជ្រើសបានទេ"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "មិនអាចបើកឯកសារច្បាប់ដែលបានជ្រើសបានទេ"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "សែលផ្ទៃតុ៖ ហូឡង់ ពី Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "កម្មវិធីផ្ទៃតុបានចាប់ផ្តើម"
+    },
+    {
+      "source": "App initialized",
+      "target": "កម្មវិធីបានចាប់ផ្តើម"
+    },
+    {
+      "source": "Export Locations",
+      "target": "នាំចេញទីតាំង"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "បរាជ័យក្នុងការអនុវត្តទីតាំងដែលបានជ្រើសដែលបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "បរាជ័យក្នុងការនាំចេញរោគវិនិច្ឆ័យ"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "បរាជ័យក្នុងការនាំចេញទីតាំង"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "បរាជ័យក្នុងការនាំចេញច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "បរាជ័យក្នុងការរកទីតាំងជំនួស"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "បរាជ័យក្នុងការនាំចូលឯកសារ"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "បរាជ័យក្នុងការបើកគោលដៅរោគវិនិច្ឆ័យ"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "បរាជ័យក្នុងការរក្សាទុកការកំណត់ធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាពការកំណត់ចាប់ផ្តើម"
+    },
+    {
+      "source": "Import canceled",
+      "target": "ការនាំចូលបានបោះបង់"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL ការជាវមិនត្រឹមត្រូវ"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "បានបើកប្រវត្តិ latency"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "បានលាក់ប្រវត្តិ latency"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "បានបើកស្ថិតិចរាចរណ៍ផ្ទាល់"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "បានលាក់ស្ថិតិចរាចរណ៍ផ្ទាល់"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "ការពិនិត្យទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "Location check failed",
+      "target": "ការពិនិត្យទីតាំងបរាជ័យ"
+    },
+    {
+      "source": "Locations exported",
+      "target": "បាននាំចេញទីតាំង"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "ការនាំចូលទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "គ្មានទីតាំងសម្រាប់ benchmark ទេ"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "គ្មានការជាវដើម្បីធ្វើបច្ចុប្បន្នភាពទេ"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "រកមិនឃើញទីតាំងសមស្របទេ"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "បានបើកសរុបតាមកម្រងព័ត៌មាន"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "បានលាក់សរុបតាមកម្រងព័ត៌មាន"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "សម័យ VPN មុននឹងត្រូវបានស្ដារ"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "ការស្កេន QR បានបោះបង់"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "បាននាំចេញច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "ការនាំចូលច្បាប់បញ្ជូនផ្លូវបានបោះបង់"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "បានរក្សាទុកច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "បានបើកស្ថិតិសម័យ"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "បានលាក់ស្ថិតិសម័យ"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "អត្ថបទដែលបានចែករំលែកមិនមែនជា payload នាំចូលដែលគាំទ្រទេ"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "បានលុបការជាវ"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "ការធ្វើបច្ចុប្បន្នភាពការជាវបានបញ្ចប់ ប៉ុន្តែត្រូវការសិទ្ធិ VPN ដើម្បីប្ដូរនៅផ្ទៃខាងក្រោយ។ ទីតាំង VPN មុនត្រូវបានរក្សាទុកជាជម្រើសបម្រុង។"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "ការធ្វើបច្ចុប្បន្នភាពការជាវបានបញ្ចប់។ កំពុងរកទីតាំងល្អបំផុត..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "ការធ្វើបច្ចុប្បន្នភាពការជាវបានបញ្ចប់។ "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "របៀប runtime៖ "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "ប្រូកស៊ីមូលដ្ឋាន៖ "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "កំណត់ត្រា runtime៖ "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "ការត្រួតពិនិត្យមុនដំណើរការរបៀប VPN បានជោគជ័យ"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ការត្រួតពិនិត្យមុនដំណើរការរបៀបតែប្រូកស៊ីបានជោគជ័យ"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "ការត្រួតពិនិត្យមុនដំណើរការរបៀប VPN បរាជ័យ៖ "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ការត្រួតពិនិត្យមុនដំណើរការរបៀបតែប្រូកស៊ីបរាជ័យ៖ "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "របៀប VPN មិនអាចប្រើបាន៖ "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "របៀបតែប្រូកស៊ីមិនអាចប្រើបាន៖ "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "សមត្ថភាព VPN លើកុំព្យូទ័រ៖ រួចរាល់"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "សមត្ថភាព VPN លើកុំព្យូទ័រ៖ "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "របៀប VPN អាចប្រើបាន"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "របៀបប្រូកស៊ីអាចប្រើបាន"
+    },
+    {
+      "source": "not ready",
+      "target": "មិនទាន់រួចរាល់"
+    },
+    {
+      "source": " checks",
+      "target": " ការពិនិត្យ"
+    },
+    {
+      "source": " check",
+      "target": " ការពិនិត្យ"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "បរាជ័យឧបករណ៍ TUN៖ "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "បរាជ័យសិទ្ធិបណ្តាញ៖ "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "បរាជ័យឧបករណ៍ route/DNS៖ "
+    },
+    {
+      "source": "TUN device",
+      "target": "ឧបករណ៍ TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "សិទ្ធិបណ្តាញ"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "ឧបករណ៍ route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "ឧបករណ៍ Linux TUN បាត់នៅ /dev/net/tun។ សាកល្បង៖ sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "របៀប VPN លើកុំព្យូទ័រ ត្រូវការ CAP_NET_ADMIN។ ដំណើរការជាមួយសិទ្ធិ root ឬផ្តល់សិទ្ធិឱ្យ sing-box៖ sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "មិនអាចប្រើឧបករណ៍ផ្លូវ/DNS របស់ Windows បានទេ។ របៀប VPN ត្រូវការ netsh.exe និងពាក្យបញ្ជា PowerShell សម្រាប់ DNS client។"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN រួចរាល់នៅលើកុំព្យូទ័រនេះ"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ប្រូកស៊ីរួចរាល់នៅលើកុំព្យូទ័រនេះ"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "ទំនេរ"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN បានចាប់ផ្តើម"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN បានបញ្ឈប់"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ប្រូកស៊ីបានចាប់ផ្តើម"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ប្រូកស៊ីបានបញ្ឈប់"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "កំពុងចាប់ផ្តើម VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "កំពុងចាប់ផ្តើមប្រូកស៊ីមូលដ្ឋាន..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "កំពុងចាប់ផ្តើម VPN ជាមួយទីតាំងល្អបំផុត..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "កំពុងចាប់ផ្តើមប្រូកស៊ីមូលដ្ឋានជាមួយទីតាំងល្អបំផុត..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "កំពុងរកទីតាំងល្អបំផុតពីការជាវ..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "កំពុងរកទីតាំងល្អបំផុតពីទីតាំងដែលបានរក្សាទុក..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ការស្វែងរកទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ការស្វែងរកទីតាំងបរាជ័យ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ផ្តល់សិទ្ធិ VPN ហើយសាកល្បងម្តងទៀត"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "កំណត់ប្រភពពីចម្ងាយជាមុន"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "បន្ថែមទីតាំងដែលបានរក្សាទុកយ៉ាងហោចណាស់មួយជាមុន"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ជ្រើសទីតាំងមួយជាមុន"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "មិនទាន់មានការជាវដែលបានរក្សាទុកទេ"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវទាំងអស់..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវសកម្ម..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវ..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវ..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិ..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិ..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ការជាវបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ការជាវបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "ការជាវសកម្មបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ការជាវទាំងអស់បានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ការធ្វើបច្ចុប្បន្នភាពបរាជ័យ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "បានកំណត់ប្រភពកម្រងព័ត៌មានទៅការជាវ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "បានកំណត់ប្រភពកម្រងព័ត៌មានទៅទីតាំងដែលបានរក្សាទុក"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "បានកំណត់របៀបការតភ្ជាប់ទៅ VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "បានកំណត់របៀបការតភ្ជាប់ទៅតែប្រូកស៊ី"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ផ្តាច់ជាមុន ដើម្បីប្តូររបៀបការតភ្ជាប់"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "បានលុបធាតុប្រវត្តិ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "ឈ្មោះការជាវបានកំណត់ឡើងវិញ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "ឈ្មោះការជាវបានរក្សាទុក"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "បានកំណត់ភាសាទៅលំនាំដើមប្រព័ន្ធ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS ផ្ទាល់ខ្លួនបានរក្សាទុក"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS ផ្ទាល់ខ្លួនបានបិទ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានរក្សាទុក"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបាននាំចូល"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ទីតាំងបាននាំចូល"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ទីតាំងបាននាំចូល។ ទីតាំងដែលបានជ្រើសមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីនាំចូលទីតាំង"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីបន្ថែមទីតាំងដោយដៃ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ការកំណត់រចនាសម្ព័ន្ធទីតាំងមិនត្រឹមត្រូវ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ទីតាំងដែលត្រូវកែសម្រួលមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបានបើក"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបរាជ័យ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបានបោះបង់"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ទីតាំង VPN មុនមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "កម្មវិធីបានបិទ។ VPN បានបិទ។"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "បានធ្វើឱ្យការជាវទាំងអស់សកម្ម"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "បានជ្រើសការជាវទាំងអស់"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "បានជ្រើសការជាវ"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ទីតាំងបានចម្លងទៅក្តារតម្បៀតខ្ទាស់"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ការនាំចេញទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានចម្លងទៅក្តារតម្បៀតខ្ទាស់"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ការនាំចេញច្បាប់បញ្ជូនផ្លូវបានបោះបង់"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "របៀបប្រភពកម្រងព័ត៌មាន៖ ការជាវ"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "របៀបប្រភពកម្រងព័ត៌មាន៖ ទីតាំងដែលបានរក្សាទុក"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "កំពុងចាប់ផ្តើម VPN ជាមួយទីតាំងល្អបំផុតថ្មី..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "កំពុងចាប់ផ្តើម proxy ជាមួយទីតាំងល្អបំផុតថ្មី..."
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "សមត្ថភាព VPN លើកុំព្យូទ័រ៖ រួចរាល់"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "សមត្ថភាព VPN លើកុំព្យូទ័រ៖ "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "របៀប VPN លើកុំព្យូទ័រ ត្រូវការ CAP_NET_ADMIN។ ដំណើរការជាមួយសិទ្ធិ root ឬផ្តល់សិទ្ធិឱ្យ sing-box៖ sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "មិនអាចប្រើឧបករណ៍ផ្លូវ/DNS របស់ Windows បានទេ។ របៀប VPN ត្រូវការ netsh.exe និងពាក្យបញ្ជា PowerShell សម្រាប់ DNS client។"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "សែល VPN លើកុំព្យូទ័រ រួចរាល់"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "សែល proxy លើកុំព្យូទ័រ រួចរាល់"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "ទីតាំងការជាវអានតែប៉ុណ្ណោះ។ ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីរក្សាទុកការកែសម្រួល។"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "ទីតាំងការជាវអានតែប៉ុណ្ណោះ។ ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីលុបវា។"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "បានទទួលការជាវ។ ពិនិត្យ ហើយរក្សាទុកវានៅផ្ទាំងកម្រងព័ត៌មាន។"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "បានទទួលតំណការជាវ។ ពិនិត្យ ហើយរក្សាទុកវានៅផ្ទាំងកម្រងព័ត៌មាន។"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "បានទទួលការកំណត់រចនាសម្ព័ន្ធទីតាំង។ ពិនិត្យ ហើយរក្សាទុកវានៅផ្ទាំងទីតាំង។"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "កំពុងចាប់ផ្តើមប្រូកស៊ីមូលដ្ឋានជាមួយទីតាំងល្អបំផុត..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "កំពុងចាប់ផ្តើម VPN ជាមួយទីតាំងល្អបំផុត..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "កំពុងរកទីតាំងល្អបំផុតពីការជាវ..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "កំពុងរកទីតាំងល្អបំផុតពីទីតាំងដែលបានរក្សាទុក..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "ទីតាំងបាននាំចូល។ ទីតាំងដែលបានជ្រើសមិនអាចប្រើបានទៀតទេ ប្រូកស៊ីបានបញ្ឈប់"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "ទីតាំងបាននាំចូល។ ទីតាំងដែលបានជ្រើសមិនអាចប្រើបានទៀតទេ VPN បានបញ្ឈប់"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ទីតាំងបាននាំចូល។ ទីតាំងដែលបានជ្រើសមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ទីតាំងដែលបានជ្រើសត្រូវបានអនុវត្ត ប៉ុន្តែបរាជ័យក្នុងការរក្សាទុកវា"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ការលុបទីតាំងត្រូវបានបង្វិលត្រឡប់ ព្រោះមិនអាចបញ្ឈប់ប្រូកស៊ីបាន"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "ការលុបទីតាំងត្រូវបានបង្វិលត្រឡប់ ព្រោះមិនអាចបញ្ឈប់ VPN បាន"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ការនាំចូលទីតាំងត្រូវបានបង្វិលត្រឡប់ ព្រោះមិនអាចបញ្ឈប់ប្រូកស៊ីបាន"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "ការនាំចូលទីតាំងត្រូវបានបង្វិលត្រឡប់ ព្រោះមិនអាចបញ្ឈប់ VPN បាន"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN បានបញ្ឈប់។ ការជាវដែលបានធ្វើបច្ចុប្បន្នភាពបានលុបទីតាំងដែលបានជ្រើស។"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "ប្រូកស៊ីបានបញ្ឈប់។ ការជាវដែលបានធ្វើបច្ចុប្បន្នភាពបានលុបទីតាំងដែលបានជ្រើស។"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN បានបញ្ឈប់។ នឹងភ្ជាប់ឡើងវិញនៅពេលចាប់ផ្តើមបន្ទាប់។"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "ប្រូកស៊ីបានបញ្ឈប់។ នឹងភ្ជាប់ឡើងវិញនៅពេលចាប់ផ្តើមបន្ទាប់។"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានរក្សាទុក។ ចាប់ផ្តើម VPN ឡើងវិញ ដើម្បីអនុវត្ត"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានរក្សាទុក។ ចាប់ផ្តើមប្រូកស៊ីឡើងវិញ ដើម្បីអនុវត្ត"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបាននាំចូល។ ចាប់ផ្តើម VPN ឡើងវិញ ដើម្បីអនុវត្ត"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបាននាំចូល។ ចាប់ផ្តើមប្រូកស៊ីឡើងវិញ ដើម្បីអនុវត្ត"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "បានលុបទីតាំងដែលបានជ្រើស។ VPN បានបញ្ឈប់៖ "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "បានលុបទីតាំងដែលបានជ្រើស។ ប្រូកស៊ីបានបញ្ឈប់៖ "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "បានជ្រើសទីតាំងល្អបំផុត ហើយ VPN បានចាប់ផ្តើម៖ "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "បានជ្រើសទីតាំងល្អបំផុត ហើយប្រូកស៊ីបានចាប់ផ្តើម៖ "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN បានចាប់ផ្តើម ប៉ុន្តែបរាជ័យក្នុងការរក្សាទុកទីតាំងដែលបានជ្រើស"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "ប្រូកស៊ីបានចាប់ផ្តើម ប៉ុន្តែបរាជ័យក្នុងការរក្សាទុកទីតាំងដែលបានជ្រើស"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN បានចាប់ផ្តើម ប៉ុន្តែបរាជ័យក្នុងការរក្សាទុកទីតាំងល្អបំផុត"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "ប្រូកស៊ីបានចាប់ផ្តើម ប៉ុន្តែបរាជ័យក្នុងការរក្សាទុកទីតាំងល្អបំផុត"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "បរាជ័យក្នុងការចាប់ផ្តើម VPN ជាមួយទីតាំងល្អបំផុត"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "បរាជ័យក្នុងការចាប់ផ្តើមប្រូកស៊ីជាមួយទីតាំងល្អបំផុត"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "បរាជ័យក្នុងការរក្សាទុកទីតាំងដែលបានជ្រើស"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "បរាជ័យក្នុងការរក្សាទុកទីតាំងដែលបានជ្រើស"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "បរាជ័យក្នុងការរក្សាទុកទីតាំងល្អបំផុត"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "បរាជ័យក្នុងការអនុវត្តទីតាំងដែលបានជ្រើស"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "បរាជ័យក្នុងការជ្រើសទីតាំង"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "បរាជ័យក្នុងការបញ្ឈប់ VPN មុនចេញ"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "បរាជ័យក្នុងការបញ្ឈប់ប្រូកស៊ីមុនចេញ"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "បរាជ័យក្នុងការបញ្ឈប់ VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "បរាជ័យក្នុងការបញ្ឈប់ប្រូកស៊ី"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "បរាជ័យក្នុងការចាប់ផ្តើម VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "បរាជ័យក្នុងការចាប់ផ្តើមប្រូកស៊ី"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "មិនអាចរៀបចំ VPN បានទេ"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "មិនអាចរៀបចំប្រូកស៊ីបានទេ"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "កំពុងរៀបចំ VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "កំពុងរៀបចំប្រូកស៊ី"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "ការចាប់ផ្តើម VPN បានបោះបង់"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "ការចាប់ផ្តើមប្រូកស៊ីបានបោះបង់"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "ការបញ្ឈប់ VPN បានបោះបង់"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "ការបញ្ឈប់ប្រូកស៊ីបានបោះបង់"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "កំពុងចាប់ផ្តើមប្រូកស៊ីមូលដ្ឋាន..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "កំពុងចាប់ផ្តើម VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវទាំងអស់..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវសកម្ម..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវ..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវ..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិ..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិ..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "ការជាវទាំងអស់បានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "ការជាវសកម្មបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "ការជាវបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "ការជាវបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ការធ្វើបច្ចុប្បន្នភាពបរាជ័យ"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ការស្វែងរកទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ការស្វែងរកទីតាំងបរាជ័យ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "ផ្តល់សិទ្ធិ VPN ហើយសាកល្បងម្តងទៀត"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "កំណត់ប្រភពពីចម្ងាយជាមុន"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "បន្ថែមទីតាំងដែលបានរក្សាទុកយ៉ាងហោចណាស់មួយជាមុន"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ជ្រើសទីតាំងមួយជាមុន"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "មិនទាន់មានការជាវដែលបានរក្សាទុកទេ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "បានកំណត់ប្រភពកម្រងព័ត៌មានទៅការជាវ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "បានកំណត់ប្រភពកម្រងព័ត៌មានទៅទីតាំងដែលបានរក្សាទុក"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "បានកំណត់របៀបការតភ្ជាប់ទៅ VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "បានកំណត់របៀបការតភ្ជាប់ទៅតែប្រូកស៊ី"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ផ្តាច់ជាមុន ដើម្បីប្តូររបៀបការតភ្ជាប់"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "បានលុបធាតុប្រវត្តិ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "ឈ្មោះការជាវបានកំណត់ឡើងវិញ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "ឈ្មោះការជាវបានរក្សាទុក"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "បានកំណត់ភាសាទៅលំនាំដើមប្រព័ន្ធ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS ផ្ទាល់ខ្លួនបានរក្សាទុក"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS ផ្ទាល់ខ្លួនបានបិទ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានរក្សាទុក"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបាននាំចូល"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ទីតាំងបាននាំចូល"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីនាំចូលទីតាំង"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ប្ដូរទៅទីតាំងដែលបានរក្សាទុក ដើម្បីបន្ថែមទីតាំងដោយដៃ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "ការកំណត់រចនាសម្ព័ន្ធទីតាំងមិនត្រឹមត្រូវ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ទីតាំងដែលត្រូវកែសម្រួលមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបានបើក"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបរាជ័យ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "ការនាំចេញរោគវិនិច្ឆ័យបានបោះបង់"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ទីតាំង VPN មុនមិនអាចប្រើបានទៀតទេ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "កម្មវិធីបានបិទ។ VPN បានបិទ។"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "បានធ្វើឱ្យការជាវទាំងអស់សកម្ម"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "បានជ្រើសការជាវទាំងអស់"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "បានជ្រើសការជាវ"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "ការជាវបានរក្សាទុក"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ទីតាំងបានចម្លងទៅក្តារតម្បៀតខ្ទាស់"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ការនាំចេញទីតាំងបានបោះបង់"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបានចម្លងទៅក្តារតម្បៀតខ្ទាស់"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "ការនាំចេញច្បាប់បញ្ជូនផ្លូវបានបោះបង់"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "ការអានក្តារតម្បៀតខ្ទាស់បរាជ័យ"
+    },
+    {
+      "source": "No locations to export",
+      "target": "គ្មានទីតាំងដើម្បីនាំចេញទេ"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "បរាជ័យក្នុងការផ្ទុកកម្មវិធី"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាពការជាវ"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាពការជាវសកម្ម"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "បរាជ័យក្នុងការនាំចូលច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "បរាជ័យក្នុងការរក្សាទុកច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "បរាជ័យក្នុងការនាំចូលទីតាំង"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "បរាជ័យក្នុងការបើកឯកសារទីតាំង"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "បរាជ័យក្នុងការអានឯកសារទីតាំង"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "បរាជ័យក្នុងការបើកឯកសារច្បាប់បញ្ជូនផ្លូវ"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "មិនអាចផ្គូផ្គងទីតាំងល្អបំផុតទៅបញ្ជីផ្ទៃតុបានទេ"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN រួចរាល់នៅលើកុំព្យូទ័រនេះ"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ប្រូកស៊ីរួចរាល់នៅលើកុំព្យូទ័រនេះ"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "សែល VPN លើកុំព្យូទ័រ រួចរាល់"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "សែល proxy លើកុំព្យូទ័រ រួចរាល់"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN បានចាប់ផ្តើមនៅលើ "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "ប្រូកស៊ីបានចាប់ផ្តើមនៅលើ "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN បានបញ្ឈប់។ របៀបកម្មវិធី៖ "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "ប្រូកស៊ីបានបញ្ឈប់។ របៀបកម្មវិធី៖ "
+    },
+    {
+      "source": "Language set to ",
+      "target": "បានកំណត់ភាសាទៅ "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "បានកំណត់ការធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិទៅ "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "ការកំណត់ផ្ទៀងផ្ទាត់បានរក្សាទុក៖ "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ទីតាំងដែលបានជ្រើសមិនផ្លាស់ប្តូរ៖ "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ទីតាំងដែលបានជ្រើសបានលុប៖ "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "បានកំណត់ទីតាំងដែលបានជ្រើស៖ "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "ទីតាំងបានធ្វើបច្ចុប្បន្នភាព និងបញ្ចូលគ្នា៖ "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ទីតាំងបានរក្សាទុករួចហើយ៖ "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "ទីតាំងបានធ្វើបច្ចុប្បន្នភាព៖ "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ទីតាំងបានលុប៖ "
+    },
+    {
+      "source": "Location added: ",
+      "target": "ទីតាំងបានបន្ថែម៖ "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "ការជាវបានធ្វើបច្ចុប្បន្នភាព៖ "
+    },
+    {
+      "source": "Failed: ",
+      "target": "បរាជ័យ៖ "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "កំពុងស្ដារ VPN៖ "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "កំពុងធ្វើបច្ចុប្បន្នភាព "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ទីតាំងបាននាំចេញទៅ "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "ច្បាប់បញ្ជូនផ្លូវបាននាំចេញទៅ "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "រោគវិនិច្ឆ័យបាននាំចេញទៅ "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "បរាជ័យក្នុងការ benchmark "
+    },
+    {
+      "source": "Activated ",
+      "target": "បានធ្វើឱ្យសកម្ម "
+    },
+    {
+      "source": "Added ",
+      "target": "បានបន្ថែម "
+    },
+    {
+      "source": "Deleted ",
+      "target": "បានលុប "
+    },
+    {
+      "source": "Selected ",
+      "target": "បានជ្រើស "
+    },
+    {
+      "source": "Edited location #",
+      "target": "បានកែសម្រួលទីតាំង #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "របៀបកម្មវិធី៖ "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ទីតាំងបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ទីតាំងបានធ្វើបច្ចុប្បន្នភាព"
+    },
+    {
+      "source": " • batch ",
+      "target": " • កញ្ចប់ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • សាកល្បងឡើងវិញ "
+    },
+    {
+      "source": "custom interval",
+      "target": "ចន្លោះពេលផ្ទាល់ខ្លួន"
+    },
+    {
+      "source": "every hour",
+      "target": "រៀងរាល់ម៉ោង"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "ការជាវទាំងអស់"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ការជាវដែលបានជ្រើស"
+    },
+    {
+      "source": "proxy only",
+      "target": "តែប្រូកស៊ី"
+    },
+    {
+      "source": "off",
+      "target": "បិទ"
+    },
+    {
+      "source": "Idle",
+      "target": "ទំនេរ"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN បានចាប់ផ្តើម"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN បានបញ្ឈប់"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ប្រូកស៊ីបានចាប់ផ្តើម"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ប្រូកស៊ីបានបញ្ឈប់"
+    }
+  ]
+}

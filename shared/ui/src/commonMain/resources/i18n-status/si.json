@@ -1,0 +1,1386 @@
+{
+  "dynamic": {
+    "findingSubscription": "දායකත්වයෙන් හොඳම ස්ථානය සොයමින්...",
+    "findingSaved": "සුරැකි ස්ථානවලින් හොඳම ස්ථානය සොයමින්...",
+    "testingFastestCandidates": "වේගවත්ම අපේක්ෂකයන් කාණ්ඩවලින් පරීක්ෂා කරමින්...",
+    "checkingLocations": "ස්ථාන {count}ක් පරීක්ෂා කරමින්...",
+    "testingLocationsRange": "මුළු {total}න් {start}-{end} ස්ථාන පරීක්ෂා කරමින්...",
+    "refreshIntervalMinutes": "{count} විනා",
+    "refreshIntervalHours": "{count} පැ",
+    "refreshIntervalHoursMinutes": "{hours} පැ {minutes} විනා",
+    "refreshIntervalEvery": "සෑම {interval}කට වරක්",
+    "refreshIntervalEveryHour": "සෑම පැයකට වරක්"
+  },
+  "benchmark": {
+    "best": "හොඳම: ",
+    "primary": "ප්‍රධාන ",
+    "secondary": "ද්විතීයික ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "අවහිර",
+      "cached": "cache කළ",
+      "challenge": "අභියෝගය",
+      "custom_config_manual_only": "අභිරුචි වින්‍යාසය අතින් පමණි",
+      "error": "දෝෂය",
+      "manual": "අතින්",
+      "ok": "හරි",
+      "partial": "අර්ධ",
+      "tcp_error": "TCP දෝෂය",
+      "tcp_timeout": "TCP කාලය ඉක්මවීම",
+      "timeout": "කාලය ඉක්මවීම",
+      "unreachable": "ළඟා විය නොහැක",
+      "validation_timeout": "වලංගුකරණ කාලය ඉක්මවීම"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "දායකත්ව URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "කියවිය නොහැකි දායකත්ව URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "අනාරක්ෂිත HTTP දායකත්ව සඳහා සහාය නොදක්වයි"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// දායකත්ව URL එකක් භාවිත කරන්න."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL හි වලංගු HTTPS host එකක් තිබිය යුතුය"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "වලංගු https:// දායකත්ව URL එකක් අලවන්න."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "සෘජු දුරස්ථ මූලාශ්‍රය"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box ආනයන සබැඳිය"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "කියවිය නොහැකි sing-box ආනයන සබැඳිය"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "වලංගු HTTPS දුරස්ථ URL සඳහා පමණක් සහාය දක්වයි"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "වලංගු https:// URL එකකට විසඳෙන sing-box ආනයන සබැඳියක් භාවිත කරන්න."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ඇතුළත් කළ URL වෙතින් දුරස්ථ අන්තර්ගතය ලබාගනී"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "දුරස්ථ අන්තර්ගතය ලබාගන්නේ "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "ආනයන සබැඳිය විග්‍රහ කළ නොහැකි විය"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "වලංගු sing-box remote-profile ආනයන සබැඳියක් හෝ සෘජු දායකත්ව URL එකක් අලවන්න."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN ආනයන සබැඳිය"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "කියවිය නොහැකි VPN ආනයන සබැඳිය"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "සහාය නොදක්වන provider ආනයනය"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia සහ අනෙකුත් vpn:// ආනයන සඳහා සහාය නොදක්වයි. සාමාන්‍ය දායකත්ව URL එකක් භාවිත කරන්න හෝ ස්ථාන අතින් එක් කරන්න."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "ආනයන payload එක decode කළ නොහැකි විය"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// ආනයන සඳහා සහාය නොදක්වයි. සාමාන්‍ය දායකත්ව URL එකක් භාවිත කරන්න හෝ ස්ථාන අතින් එක් කරන්න."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP දායකත්ව URL සඳහා සහාය නොදක්වයි. ඒ වෙනුවට https:// භාවිත කරන්න."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "දුරස්ථ මූලාශ්‍රය https:// URL එකක් හෝ සහාය දක්වන ආනයන සබැඳියක් විය යුතුය"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "දුරස්ථ මූලාශ්‍රය හිස්ය"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "දුරස්ථ මූලාශ්‍රය host එකක් සහිත වලංගු https:// URL එකක් විය යුතුය."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "මෙම sing-box ආනයනය වලංගු නොවන හෝ HTTPS නොවන URL එකකට විසඳේ. ඒ වෙනුවට වලංගු https:// URL එකක් භාවිත කරන්න."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "තෝරාගත් ස්ථානය යොදමින්..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "යාවත්කාලීන කළ තෝරාගත් ස්ථානය යොදමින්..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "හොඳම ස්ථානය සෙවීමේ කාලය ඉක්මවා ගියේය; වත්මන් සම්බන්ධතාව තබාගනී"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "ක්ලිප්බෝඩ් හිස්ය"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "සම්බන්ධතා ලොගය සක්‍රියයි"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "සම්බන්ධතා ලොගය සඟවා ඇත"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "සම්බන්ධතා පරීක්ෂණ මෙවලම් සක්‍රියයි"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "සම්බන්ධතා පරීක්ෂණ මෙවලම් සඟවා ඇත"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "අපනයන ගමනාන්තය විවෘත කළ නොහැකි විය"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "තෝරාගත් ගොනුව විවෘත කළ නොහැකි විය"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "තෝරාගත් ස්ථාන ගොනුව විවෘත කළ නොහැකි විය"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "තෝරාගත් නීති ගොනුව විවෘත කළ නොහැකි විය"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "ඩෙස්ක්ටොප් shell: Whitelists වෙතින් Netherlands"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "ඩෙස්ක්ටොප් යෙදුම ආරම්භ කෙරිණි"
+    },
+    {
+      "source": "App initialized",
+      "target": "යෙදුම ආරම්භ කෙරිණි"
+    },
+    {
+      "source": "Export Locations",
+      "target": "ස්ථාන අපනයනය කරන්න"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "යාවත්කාලීන කළ තෝරාගත් ස්ථානය යෙදීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "රෝගනිර්ණ දත්ත අපනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "ස්ථාන අපනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "routing නීති අපනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "විකල්ප ස්ථානයක් සොයා ගැනීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "ගොනුව ආනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "රෝගනිර්ණ ගමනාන්තය විවෘත කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "නැවුම් කිරීමේ සැකසුම් සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "ආරම්භක සැකසුම යාවත්කාලීන කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Import canceled",
+      "target": "ආනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "වලංගු නොවන දායකත්ව URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "ප්‍රමාද ඉතිහාසය සක්‍රියයි"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "ප්‍රමාද ඉතිහාසය සඟවා ඇත"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "සජීවී ගමනාගමන සංඛ්‍යාලේඛන සක්‍රියයි"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "සජීවී ගමනාගමන සංඛ්‍යාලේඛන සඟවා ඇත"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "ස්ථාන පරීක්ෂාව අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Location check failed",
+      "target": "ස්ථාන පරීක්ෂාව අසමත් විය"
+    },
+    {
+      "source": "Locations exported",
+      "target": "ස්ථාන අපනයනය විය"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "ස්ථාන ආනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "benchmark කිරීමට ස්ථාන නොමැත"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "නැවුම් කිරීමට දායකත්ව නැත"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "සුදුසු ස්ථානයක් හමු නොවීය"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "පැතිකඩ-වශයෙන් එකතුව සක්‍රියයි"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "පැතිකඩ-වශයෙන් එකතුව සඟවා ඇත"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "පෙර VPN සැසිය ප්‍රතිස්ථාපනය කෙරේ"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR scan කිරීම අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "routing නීති අපනයනය විය"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "routing නීති ආනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "routing නීති සුරැකිණි"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "සැසි සංඛ්‍යාලේඛන සක්‍රියයි"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "සැසි සංඛ්‍යාලේඛන සඟවා ඇත"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "බෙදාගත් පාඨය සහාය දක්වන ආනයන payload එකක් නොවේ"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "දායකත්වය මකා දමන ලදී"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "දායකත්ව නැවුම් කිරීම අවසන්, නමුත් පසුබිමේ මාරු වීමට VPN අවසරය අවශ්‍යයි. fallback ලෙස පෙර VPN ස්ථානය තබාගෙන ඇත."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "දායකත්ව නැවුම් කිරීම අවසන්. හොඳම ස්ථානය සොයමින්..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "දායකත්ව නැවුම් කිරීම අවසන්. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "ධාවන ප්‍රකාරය: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "දේශීය ප්‍රොක්සි: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Runtime ලොගය: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN ප්‍රකාර පෙර-පරීක්ෂාව සමත් විය"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ප්‍රොක්සි-පමණක් ප්‍රකාර පෙර-පරීක්ෂාව සමත් විය"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN ප්‍රකාර පෙර-පරීක්ෂාව අසමත් විය: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ප්‍රොක්සි-පමණක් ප්‍රකාර පෙර-පරීක්ෂාව අසමත් විය: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN ප්‍රකාරය ලබාගත නොහැක: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "ප්‍රොක්සි-පමණක් ප්‍රකාරය ලබාගත නොහැක: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ඩෙස්ක්ටොප් VPN හැකියාව: සූදානම්"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ඩෙස්ක්ටොප් VPN හැකියාව: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN ප්‍රකාරය ලබාගත හැක"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "ප්‍රොක්සි ප්‍රකාරය ලබාගත හැක"
+    },
+    {
+      "source": "not ready",
+      "target": "සූදානම් නැත"
+    },
+    {
+      "source": " checks",
+      "target": " පරීක්ෂාවන්"
+    },
+    {
+      "source": " check",
+      "target": " පරීක්ෂාව"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN උපාංගය අසමත්: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "ජාල වරප්‍රසාද අසමත්: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS tooling අසමත්: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN උපාංගය"
+    },
+    {
+      "source": "network privileges",
+      "target": "ජාල වරප්‍රසාද"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS මෙවලම්"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN උපාංගය /dev/net/tun හි නොමැත. උත්සාහ කරන්න: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "පරිගණකයේ VPN ප්‍රකාරයට CAP_NET_ADMIN අවශ්‍යයි. root අයිතිවාසිකම් සමඟ ධාවනය කරන්න හෝ sing-box වෙත අවසර දෙන්න: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows මාර්ග/DNS මෙවලම් ලබාගත නොහැක. VPN ප්‍රකාරයට netsh.exe සහ DNS සේවාලාභියා සඳහා PowerShell විධාන අවශ්‍යයි."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "මෙම පරිගණකයේ VPN සූදානම්"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "මෙම පරිගණකයේ ප්‍රොක්සි සූදානම්"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "නිෂ්ක්‍රීය"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN ආරම්භ විය"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN නවත්වන ලදී"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ප්‍රොක්සි ආරම්භ විය"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ප්‍රොක්සි නවත්වන ලදී"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "දේශීය ප්‍රොක්සි ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "හොඳම ස්ථානය සමඟ VPN ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "හොඳම ස්ථානය සමඟ දේශීය ප්‍රොක්සි ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "දායකත්වයෙන් හොඳම ස්ථානය සොයමින්..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "සුරැකි ස්ථානවලින් හොඳම ස්ථානය සොයමින්..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ස්ථාන සෙවීම අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ස්ථාන සෙවීම අසමත් විය"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN අවසරය ලබාදී නැවත උත්සාහ කරන්න"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "පළමුව දුරස්ථ මූලාශ්‍රයක් සකසන්න"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "පළමුව අවම වශයෙන් එක් සුරැකි ස්ථානයක් එක් කරන්න"
+    },
+    {
+      "source": "Select a location first",
+      "target": "පළමුව ස්ථානයක් තෝරන්න"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "තවම සුරැකි දායකත්ව නැත"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "සියලු දායකත්ව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "සක්‍රිය දායකත්වය නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "දායකත්වය නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "දායකත්ව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "දායකත්වය ස්වයංක්‍රීයව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "දායකත්ව ස්වයංක්‍රීයව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "දායකත්වය නැවුම් විය"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "දායකත්ව නැවුම් විය"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "සක්‍රිය දායකත්වය නැවුම් විය"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "සියලු දායකත්ව නැවුම් විය"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "නැවුම් කිරීම අසමත් විය"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "පැතිකඩ මූලාශ්‍රය දායකත්වයට සකසා ඇත"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "පැතිකඩ මූලාශ්‍රය සුරැකි ස්ථානවලට සකසා ඇත"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "සම්බන්ධතා ප්‍රකාරය VPN ලෙස සකසා ඇත"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "සම්බන්ධතා ප්‍රකාරය ප්‍රොක්සි පමණි ලෙස සකසා ඇත"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "සම්බන්ධතා ප්‍රකාරය වෙනස් කිරීමට පළමුව විසන්ධි කරන්න"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ඉතිහාස සටහන මකා ඇත"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "දායකත්ව නම යළි සකසා ඇත"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "දායකත්ව නම සුරැකිණි"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "භාෂාව පද්ධති පෙරනිමියට සකසා ඇත"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "අභිරුචි DNS සුරැකිණි"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "අභිරුචි DNS අක්‍රිය කෙරිණි"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "routing නීති සුරැකිණි"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "routing නීති ආනයනය විය"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ස්ථාන ආනයනය විය"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ස්ථාන ආනයනය විය. තෝරාගත් ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ස්ථාන ආනයනය කිරීමට සුරැකි ස්ථාන වෙත මාරු වන්න"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ස්ථාන අතින් එක් කිරීමට සුරැකි ස්ථාන වෙත මාරු වන්න"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "වලංගු නොවන ස්ථාන වින්‍යාසය"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "සංස්කරණය කිරීමට තිබූ ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "රෝගනිර්ණ අපනයනය විවෘත විය"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "රෝගනිර්ණ අපනයනය අසමත් විය"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "රෝගනිර්ණ අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "පෙර VPN ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "යෙදුම වසා ඇත. VPN අක්‍රියව තිබුණි."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "සියලු දායකත්ව සක්‍රිය කෙරිණි"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "සියලු දායකත්ව තෝරා ඇත"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "දායකත්වය තෝරා ඇත"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ස්ථාන ක්ලිප්බෝඩ් වෙත පිටපත් විය"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ස්ථාන අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "routing නීති ක්ලිප්බෝඩ් වෙත පිටපත් විය"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "routing නීති අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "පැතිකඩ මූලාශ්‍ර ප්‍රකාරය: දායකත්වය"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "පැතිකඩ මූලාශ්‍ර ප්‍රකාරය: සුරකින ලද ස්ථාන"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "නව හොඳම ස්ථානය සමඟ VPN ආරම්භ වේ..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "නව හොඳම ස්ථානය සමඟ proxy ආරම්භ වේ..."
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "පරිගණකයේ VPN ප්‍රකාරයට CAP_NET_ADMIN අවශ්‍යයි. root අයිතිවාසිකම් සමඟ ධාවනය කරන්න හෝ sing-box වෙත අවසර දෙන්න: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows මාර්ග/DNS මෙවලම් ලබාගත නොහැක. VPN ප්‍රකාරයට netsh.exe සහ DNS සේවාලාභියා සඳහා PowerShell විධාන අවශ්‍යයි."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "දායකත්ව ස්ථාන කියවීම-පමණි. සංස්කරණ සුරැකීමට සුරැකි ස්ථාන වෙත මාරු වන්න."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "දායකත්ව ස්ථාන කියවීම-පමණි. ඒවා මැකීමට සුරැකි ස්ථාන වෙත මාරු වන්න."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "දායකත්වය ලැබුණි. පැතිකඩ ටැබයේ එය සමාලෝචනය කර සුරකින්න."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "දායකත්ව සබැඳිය ලැබුණි. පැතිකඩ ටැබයේ එය සමාලෝචනය කර සුරකින්න."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "ස්ථාන වින්‍යාසය ලැබුණි. ස්ථාන ටැබයේ එය සමාලෝචනය කර සුරකින්න."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "හොඳම ස්ථානය සමඟ දේශීය ප්‍රොක්සි ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "හොඳම ස්ථානය සමඟ VPN ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "දායකත්වයෙන් හොඳම ස්ථානය සොයමින්..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "සුරැකි ස්ථානවලින් හොඳම ස්ථානය සොයමින්..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "ස්ථාන ආනයනය විය. තෝරාගත් ස්ථානය තවදුරටත් ලබාගත නොහැක, ප්‍රොක්සි නවත්වා ඇත"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "ස්ථාන ආනයනය විය. තෝරාගත් ස්ථානය තවදුරටත් ලබාගත නොහැක, VPN නවත්වා ඇත"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "ස්ථාන ආනයනය විය. තෝරාගත් ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "තෝරාගත් ස්ථානය යෙදූ නමුත් එය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ප්‍රොක්සි නවත්විය නොහැකි වූ නිසා ස්ථානය ඉවත් කිරීම rollback කෙරිණි"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN නවත්විය නොහැකි වූ නිසා ස්ථානය ඉවත් කිරීම rollback කෙරිණි"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ප්‍රොක්සි නවත්විය නොහැකි වූ නිසා ස්ථාන ආනයනය rollback කෙරිණි"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN නවත්විය නොහැකි වූ නිසා ස්ථාන ආනයනය rollback කෙරිණි"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN නවත්වා ඇත. නැවුම් කළ දායකත්ව තෝරාගත් ස්ථානය ඉවත් කළේය."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "ප්‍රොක්සි නවත්වා ඇත. නැවුම් කළ දායකත්ව තෝරාගත් ස්ථානය ඉවත් කළේය."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN නවත්වා ඇත. ඊළඟ ආරම්භයේදී නැවත සම්බන්ධ වේ."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "ප්‍රොක්සි නවත්වා ඇත. ඊළඟ ආරම්භයේදී නැවත සම්බන්ධ වේ."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "routing නීති සුරැකිණි. යෙදීමට VPN නැවත ආරම්භ කරන්න"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "routing නීති සුරැකිණි. යෙදීමට ප්‍රොක්සි නැවත ආරම්භ කරන්න"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "routing නීති ආනයනය විය. යෙදීමට VPN නැවත ආරම්භ කරන්න"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "routing නීති ආනයනය විය. යෙදීමට ප්‍රොක්සි නැවත ආරම්භ කරන්න"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "තෝරාගත් ස්ථානය ඉවත් විය. VPN නවත්වා ඇත: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "තෝරාගත් ස්ථානය ඉවත් විය. ප්‍රොක්සි නවත්වා ඇත: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "හොඳම ස්ථානය තෝරා VPN ආරම්භ විය: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "හොඳම ස්ථානය තෝරා ප්‍රොක්සි ආරම්භ විය: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN ආරම්භ විය, නමුත් තෝරාගත් ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "ප්‍රොක්සි ආරම්භ විය, නමුත් තෝරාගත් ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN ආරම්භ විය, නමුත් හොඳම ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "ප්‍රොක්සි ආරම්භ විය, නමුත් හොඳම ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "හොඳම ස්ථානය සමඟ VPN ආරම්භ කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "හොඳම ස්ථානය සමඟ ප්‍රොක්සි ආරම්භ කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "තෝරාගත් ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "තෝරාගත් ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "හොඳම ස්ථානය සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "තෝරාගත් ස්ථානය යෙදීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "ස්ථානය තෝරා ගැනීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "පිටවීමට පෙර VPN නවත්වීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "පිටවීමට පෙර ප්‍රොක්සි නවත්වීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN නවත්වීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "ප්‍රොක්සි නවත්වීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN ආරම්භ කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "ප්‍රොක්සි ආරම්භ කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN සූදානම් කළ නොහැකි විය"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "ප්‍රොක්සි සූදානම් කළ නොහැකි විය"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN සූදානම් කරමින්"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "ප්‍රොක්සි සූදානම් කරමින්"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN ආරම්භය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "ප්‍රොක්සි ආරම්භය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN නැවැත්වීම අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "ප්‍රොක්සි නැවැත්වීම අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "දේශීය ප්‍රොක්සි ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN ආරම්භ කරමින්..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "සියලු දායකත්ව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "සක්‍රිය දායකත්වය නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "දායකත්ව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "දායකත්වය නැවුම් කරමින්..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "දායකත්ව ස්වයංක්‍රීයව නැවුම් කරමින්..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "දායකත්වය ස්වයංක්‍රීයව නැවුම් කරමින්..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "සියලු දායකත්ව නැවුම් විය"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "සක්‍රිය දායකත්වය නැවුම් විය"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "දායකත්ව නැවුම් විය"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "දායකත්වය නැවුම් විය"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "නැවුම් කිරීම අසමත් විය"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "ස්ථාන සෙවීම අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Location search failed",
+      "target": "ස්ථාන සෙවීම අසමත් විය"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN අවසරය ලබාදී නැවත උත්සාහ කරන්න"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "පළමුව දුරස්ථ මූලාශ්‍රයක් සකසන්න"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "පළමුව අවම වශයෙන් එක් සුරැකි ස්ථානයක් එක් කරන්න"
+    },
+    {
+      "source": "Select a location first",
+      "target": "පළමුව ස්ථානයක් තෝරන්න"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "තවම සුරැකි දායකත්ව නැත"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "පැතිකඩ මූලාශ්‍රය දායකත්වයට සකසා ඇත"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "පැතිකඩ මූලාශ්‍රය සුරැකි ස්ථානවලට සකසා ඇත"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "සම්බන්ධතා ප්‍රකාරය VPN ලෙස සකසා ඇත"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "සම්බන්ධතා ප්‍රකාරය ප්‍රොක්සි පමණි ලෙස සකසා ඇත"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "සම්බන්ධතා ප්‍රකාරය වෙනස් කිරීමට පළමුව විසන්ධි කරන්න"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "ඉතිහාස සටහන මකා ඇත"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "දායකත්ව නම යළි සකසා ඇත"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "දායකත්ව නම සුරැකිණි"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "භාෂාව පද්ධති පෙරනිමියට සකසා ඇත"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "අභිරුචි DNS සුරැකිණි"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "අභිරුචි DNS අක්‍රිය කෙරිණි"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "routing නීති සුරැකිණි"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "routing නීති ආනයනය විය"
+    },
+    {
+      "source": "Locations imported",
+      "target": "ස්ථාන ආනයනය විය"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "ස්ථාන ආනයනය කිරීමට සුරැකි ස්ථාන වෙත මාරු වන්න"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "ස්ථාන අතින් එක් කිරීමට සුරැකි ස්ථාන වෙත මාරු වන්න"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "වලංගු නොවන ස්ථාන වින්‍යාසය"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "සංස්කරණය කිරීමට තිබූ ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "රෝගනිර්ණ අපනයනය විවෘත විය"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "රෝගනිර්ණ අපනයනය අසමත් විය"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "රෝගනිර්ණ අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "පෙර VPN ස්ථානය තවදුරටත් ලබාගත නොහැක"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "යෙදුම වසා ඇත. VPN අක්‍රියව තිබුණි."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "සියලු දායකත්ව සක්‍රිය කෙරිණි"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "සියලු දායකත්ව තෝරා ඇත"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "දායකත්වය තෝරා ඇත"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "දායකත්වය සුරැකිණි"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "ස්ථාන ක්ලිප්බෝඩ් වෙත පිටපත් විය"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "ස්ථාන අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "routing නීති ක්ලිප්බෝඩ් වෙත පිටපත් විය"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "routing නීති අපනයනය අවලංගු කෙරිණි"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "ක්ලිප්බෝඩ් කියවීම අසමත් විය"
+    },
+    {
+      "source": "No locations to export",
+      "target": "අපනයනය කිරීමට ස්ථාන නැත"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "යෙදුම් පූරණය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "දායකත්ව නැවුම් කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "සක්‍රිය දායකත්වය නැවුම් කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "routing නීති ආනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "routing නීති සුරැකීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "ස්ථාන ආනයනය කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "ස්ථාන ගොනුව විවෘත කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "ස්ථාන ගොනුව කියවීමට අසමත් විය"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "routing නීති ගොනුව විවෘත කිරීමට අසමත් විය"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "හොඳම ස්ථානය ඩෙස්ක්ටොප් ලැයිස්තුවට map කළ නොහැකි විය"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "මෙම පරිගණකයේ VPN සූදානම්"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "මෙම පරිගණකයේ ප්‍රොක්සි සූදානම්"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ඩෙස්ක්ටොප් VPN shell සූදානම්"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ඩෙස්ක්ටොප් ප්‍රොක්සි shell සූදානම්"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN ආරම්භ වූයේ "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "ප්‍රොක්සි ආරම්භ වූයේ "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN නවත්වා ඇත. යෙදුම් ප්‍රකාරය: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "ප්‍රොක්සි නවත්වා ඇත. යෙදුම් ප්‍රකාරය: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "භාෂාව සකසා ඇත්තේ "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "දායකත්ව ස්වයං-නැවුම් කිරීම සකසා ඇත්තේ "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "වලංගුකරණ සැකසුම් සුරැකිණි: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "තෝරාගත් ස්ථානය නොවෙනස්ව ඇත: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "තෝරාගත් ස්ථානය ඉවත් විය: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "තෝරාගත් ස්ථානය සකසා ඇත: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "ස්ථානය යාවත්කාලීන කර ඒකාබද්ධ විය: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "ස්ථානය දැනටමත් සුරැකි ඇත: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "ස්ථානය යාවත්කාලීන විය: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "ස්ථානය ඉවත් විය: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "ස්ථානය එක් විය: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "දායකත්ව නැවුම් විය: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "අසමත්: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN ප්‍රතිස්ථාපනය කරමින්: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "නැවුම් කරමින් "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "ස්ථාන අපනයනය කළේ "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "routing නීති අපනයනය කළේ "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "රෝගනිර්ණ දත්ත අපනයනය කළේ "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "benchmark කිරීමට අසමත් විය "
+    },
+    {
+      "source": "Activated ",
+      "target": "සක්‍රිය කළේ "
+    },
+    {
+      "source": "Added ",
+      "target": "එක් කළේ "
+    },
+    {
+      "source": "Deleted ",
+      "target": "මකා දැමුවේ "
+    },
+    {
+      "source": "Selected ",
+      "target": "තෝරාගත්තේ "
+    },
+    {
+      "source": "Edited location #",
+      "target": "සංස්කරණය කළ ස්ථානය #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "යෙදුම් ප්‍රකාරය: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ස්ථාන නැවුම් විය"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ස්ථානය නැවුම් විය"
+    },
+    {
+      "source": " • batch ",
+      "target": " • කාණ්ඩය "
+    },
+    {
+      "source": " • retries ",
+      "target": " • නැවත උත්සාහ "
+    },
+    {
+      "source": "custom interval",
+      "target": "අභිරුචි අන්තරාලය"
+    },
+    {
+      "source": "every hour",
+      "target": "සෑම පැයකට වරක්"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "සියලු දායකත්ව"
+    },
+    {
+      "source": "selected subscription",
+      "target": "තෝරාගත් දායකත්වය"
+    },
+    {
+      "source": "proxy only",
+      "target": "ප්‍රොක්සි පමණි"
+    },
+    {
+      "source": "off",
+      "target": "අක්‍රිය"
+    },
+    {
+      "source": "Idle",
+      "target": "නිෂ්ක්‍රීය"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN ආරම්භ විය"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN නවත්වන ලදී"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ප්‍රොක්සි ආරම්භ විය"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ප්‍රොක්සි නවත්වන ලදී"
+    }
+  ]
+}

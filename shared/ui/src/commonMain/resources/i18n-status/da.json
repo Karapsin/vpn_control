@@ -1,0 +1,1382 @@
+{
+  "dynamic": {
+    "findingSubscription": "Finder den bedste placering fra abonnementet...",
+    "findingSaved": "Finder den bedste placering blandt gemte placeringer...",
+    "testingFastestCandidates": "Tester de hurtigste kandidater i grupper...",
+    "checkingLocations": "Kontrollerer {count} placeringer...",
+    "testingLocationsRange": "Tester placeringer {start}-{end} af {total}...",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} t",
+    "refreshIntervalHoursMinutes": "{hours} t {minutes} min.",
+    "refreshIntervalEvery": "hver {interval}",
+    "refreshIntervalEveryHour": "hver time"
+  },
+  "benchmark": {
+    "best": "Bedste: ",
+    "primary": "primær ",
+    "secondary": "sekundær ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blokeret",
+      "cached": "cachelagret",
+      "challenge": "udfordring",
+      "custom_config_manual_only": "brugerdefineret konfiguration, kun manuelt",
+      "error": "fejl",
+      "manual": "manuel",
+      "ok": "OK",
+      "partial": "delvis",
+      "tcp_error": "TCP-fejl",
+      "tcp_timeout": "TCP-timeout",
+      "timeout": "tidsudløb",
+      "unreachable": "utilgængelig",
+      "validation_timeout": "valideringstimeout"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "Abonnements-URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Ulæselig abonnements-URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Usikre HTTP-abonnementer understøttes ikke"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Brug en https://-abonnements-URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL'en skal indeholde en gyldig HTTPS-vært"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Indsæt en gyldig https://-abonnements-URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direkte ekstern kilde"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box-importlink"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Ulæseligt sing-box-importlink"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Kun gyldige eksterne HTTPS-URL'er understøttes"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Brug et sing-box-importlink, der peger på en gyldig https://-URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Henter eksternt indhold fra den indlejrede URL"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Henter eksternt indhold fra "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Importlinket kunne ikke fortolkes"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Indsæt et gyldigt sing-box remote-profile-importlink eller en direkte abonnements-URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN-importlink"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Ulæseligt VPN-importlink"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Udbyderimport understøttes ikke"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia og andre vpn://-importer understøttes ikke. Brug en almindelig abonnements-URL, eller tilføj placeringer manuelt."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Importindholdet kunne ikke afkodes"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn://-importer understøttes ikke. Brug en almindelig abonnements-URL, eller tilføj placeringer manuelt."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP-abonnements-URL'er understøttes ikke. Brug https:// i stedet."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Ekstern kilde skal være en https://-URL eller et understøttet importlink"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Ekstern kilde er tom"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Ekstern kilde skal være en gyldig https://-URL med en vært."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Denne sing-box-import peger på en ugyldig eller ikke-HTTPS-URL. Brug en gyldig https://-URL i stedet."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Anvender valgt placering..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Anvender opdateret valgt placering..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Søgningen efter bedste placering overskred tidsgrænsen; beholder den aktuelle forbindelse"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Udklipsholderen er tom"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Forbindelseslog aktiveret"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Forbindelseslog skjult"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Forbindelsestestværktøjer aktiveret"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Forbindelsestestværktøjer skjult"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Kunne ikke åbne eksportdestinationen"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Kunne ikke åbne den valgte fil"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Kunne ikke åbne den valgte placeringsfil"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Kunne ikke åbne den valgte regelfil"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop-shell: Nederlandene fra Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktopapp initialiseret"
+    },
+    {
+      "source": "App initialized",
+      "target": "App initialiseret"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Eksportér placeringer"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Kunne ikke anvende opdateret valgt placering"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Kunne ikke eksportere diagnostik"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Kunne ikke eksportere placeringer"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Kunne ikke eksportere routingregler"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Kunne ikke finde en erstatningsplacering"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Kunne ikke importere filen"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Kunne ikke åbne diagnostikdestinationen"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Kunne ikke gemme opdateringsindstillinger"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Kunne ikke opdatere startindstilling"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import annulleret"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Ugyldig abonnements-URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latenshistorik aktiveret"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latenshistorik skjult"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live-trafikstatistik aktiveret"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live-trafikstatistik skjult"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Placeringskontrol annulleret"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Placeringskontrol mislykkedes"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Placeringer eksporteret"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Import af placeringer annulleret"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Ingen placeringer tilgængelige til benchmarking"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Ingen abonnementer at opdatere"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Ingen egnet placering fundet"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totaler pr. profil aktiveret"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totaler pr. profil skjult"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Forrige VPN-session gendannes"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR-scanning annulleret"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Routingregler eksporteret"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Import af routingregler annulleret"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Routingregler gemt"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Sessionsstatistik aktiveret"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Sessionsstatistik skjult"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Delt tekst er ikke et understøttet importindhold"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Abonnement slettet"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Abonnementsopdatering færdig, men VPN-tilladelse kræves for at skifte i baggrunden. Forrige VPN-placering beholdes som reserve."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Abonnementsopdatering færdig. Finder den bedste placering..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Abonnementsopdatering færdig. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Kørselstilstand: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokal proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Kørselslog: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Forhåndskontrol af VPN-tilstand bestået"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Forhåndskontrol af kun proxy-tilstand bestået"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Forhåndskontrol af VPN-tilstand mislykkedes: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Forhåndskontrol af kun proxy-tilstand mislykkedes: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN-tilstand ikke tilgængelig: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Kun proxy-tilstand ikke tilgængelig: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Desktop-VPN-funktion: klar"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Desktop-VPN-funktion: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN-tilstand tilgængelig"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxytilstand tilgængelig"
+    },
+    {
+      "source": "not ready",
+      "target": "ikke klar"
+    },
+    {
+      "source": " checks",
+      "target": " kontroller"
+    },
+    {
+      "source": " check",
+      "target": " kontrol"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "fejl ved TUN-enhed: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "fejl ved netværksrettigheder: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "fejl ved route/DNS-værktøjer: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN-enhed"
+    },
+    {
+      "source": "network privileges",
+      "target": "netværksrettigheder"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS-værktøjer"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN-enhed mangler på /dev/net/tun. Prøv: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-tilstand på computeren kræver CAP_NET_ADMIN. Kør med rootrettigheder, eller giv sing-box rettigheder: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route/DNS-værktøjer er ikke tilgængelige. VPN-tilstand kræver netsh.exe og DNS-klientens PowerShell-cmdlets."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN klar på denne computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy klar på denne computer"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startet"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppet"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startet"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppet"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starter VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starter lokal proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starter VPN med den bedste placering..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starter lokal proxy med den bedste placering..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finder den bedste placering fra abonnementet..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finder den bedste placering blandt gemte placeringer..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Placeringssøgning annulleret"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Placeringssøgning mislykkedes"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Giv VPN-tilladelse, og prøv igen"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Angiv først en ekstern kilde"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Tilføj først mindst én gemt placering"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Vælg først en placering"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Ingen abonnementer gemt endnu"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Opdaterer alle abonnementer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Opdaterer aktivt abonnement..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Opdaterer abonnement..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Opdaterer abonnementer..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Opdaterer abonnement automatisk..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Opdaterer abonnementer automatisk..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement opdateret"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementer opdateret"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivt abonnement opdateret"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementer opdateret"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Opdatering mislykkedes"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkilde sat til abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkilde sat til gemte placeringer"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Forbindelsestilstand sat til VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Forbindelsestilstand sat til kun proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Afbryd først forbindelsen for at ændre forbindelsestilstand"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikpost slettet"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnavn nulstillet"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnavn gemt"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Sprog sat til systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Brugerdefineret DNS gemt"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Brugerdefineret DNS deaktiveret"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routingregler gemt"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routingregler importeret"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Placeringer importeret"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Placeringer importeret. Valgt placering er ikke længere tilgængelig"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Skift til Gemte placeringer for at importere placeringer"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Skift til Gemte placeringer for at tilføje placeringer manuelt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ugyldig placeringskonfiguration"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Placeringen, der skal redigeres, er ikke længere tilgængelig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikeksport åbnet"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikeksport mislykkedes"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikeksport annulleret"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Forrige VPN-placering er ikke længere tilgængelig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen blev lukket. VPN var slået fra."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alle abonnementer aktiveret"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementer valgt"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement valgt"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Placeringer kopieret til udklipsholder"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Eksport af placeringer annulleret"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routingregler kopieret til udklipsholder"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksport af routingregler annulleret"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profilkildetilstand: abonnement"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profilkildetilstand: gemte placeringer"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Starter VPN med den nye bedste placering..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Starter proxy med den nye bedste placering..."
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-tilstand på computeren kræver CAP_NET_ADMIN. Kør med rootrettigheder, eller giv sing-box rettigheder: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Abonnementsplaceringer er skrivebeskyttede. Skift til Gemte placeringer for at gemme ændringer."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Abonnementsplaceringer er skrivebeskyttede. Skift til Gemte placeringer for at slette dem."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Abonnement modtaget. Gennemgå og gem det på fanen Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Abonnementslink modtaget. Gennemgå og gem det på fanen Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Placeringskonfiguration modtaget. Gennemgå og gem den på fanen Placeringer."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starter lokal proxy med den bedste placering..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starter VPN med den bedste placering..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finder den bedste placering fra abonnementet..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finder den bedste placering blandt gemte placeringer..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Placeringer importeret. Valgt placering er ikke længere tilgængelig, proxy stoppet"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Placeringer importeret. Valgt placering er ikke længere tilgængelig, VPN stoppet"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Placeringer importeret. Valgt placering er ikke længere tilgængelig"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Valgt placering anvendt, men den kunne ikke gemmes"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Fjernelse af placering blev rullet tilbage, fordi proxyen ikke kunne stoppes"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Fjernelse af placering blev rullet tilbage, fordi VPN'en ikke kunne stoppes"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Import af placeringer blev rullet tilbage, fordi proxyen ikke kunne stoppes"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Import af placeringer blev rullet tilbage, fordi VPN'en ikke kunne stoppes"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN stoppet. Opdaterede abonnementer fjernede den valgte placering."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy stoppet. Opdaterede abonnementer fjernede den valgte placering."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN stoppet. Der forbindes igen ved næste start."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy stoppet. Der forbindes igen ved næste start."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Routingregler gemt. Genstart VPN for at anvende dem"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Routingregler gemt. Genstart proxy for at anvende dem"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Routingregler importeret. Genstart VPN for at anvende dem"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Routingregler importeret. Genstart proxy for at anvende dem"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Valgt placering fjernet. VPN stoppet: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Valgt placering fjernet. Proxy stoppet: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Bedste placering valgt og VPN startet: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Bedste placering valgt og proxy startet: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN startet, men den valgte placering kunne ikke gemmes"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy startet, men den valgte placering kunne ikke gemmes"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN startet, men den bedste placering kunne ikke gemmes"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy startet, men den bedste placering kunne ikke gemmes"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Kunne ikke starte VPN med den bedste placering"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Kunne ikke starte proxy med den bedste placering"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Kunne ikke gemme den valgte placering"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Kunne ikke gemme valgt placering"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Kunne ikke gemme den bedste placering"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Kunne ikke anvende valgt placering"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Kunne ikke vælge placering"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Kunne ikke stoppe VPN før afslutning"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Kunne ikke stoppe proxy før afslutning"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Kunne ikke stoppe VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Kunne ikke stoppe proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Kunne ikke starte VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Kunne ikke starte proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Kunne ikke forberede VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Kunne ikke forberede proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Forbereder VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Forbereder proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN-start annulleret"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy-start annulleret"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN-stop annulleret"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy-stop annulleret"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starter lokal proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starter VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Opdaterer alle abonnementer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Opdaterer aktivt abonnement..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Opdaterer abonnementer..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Opdaterer abonnement..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Opdaterer abonnementer automatisk..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Opdaterer abonnement automatisk..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementer opdateret"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivt abonnement opdateret"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementer opdateret"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement opdateret"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Opdatering mislykkedes"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Placeringssøgning annulleret"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Placeringssøgning mislykkedes"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Giv VPN-tilladelse, og prøv igen"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Angiv først en ekstern kilde"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Tilføj først mindst én gemt placering"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Vælg først en placering"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Ingen abonnementer gemt endnu"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkilde sat til abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkilde sat til gemte placeringer"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Forbindelsestilstand sat til VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Forbindelsestilstand sat til kun proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Afbryd først forbindelsen for at ændre forbindelsestilstand"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikpost slettet"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnavn nulstillet"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnavn gemt"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Sprog sat til systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Brugerdefineret DNS gemt"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Brugerdefineret DNS deaktiveret"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Routingregler gemt"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Routingregler importeret"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Placeringer importeret"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Skift til Gemte placeringer for at importere placeringer"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Skift til Gemte placeringer for at tilføje placeringer manuelt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ugyldig placeringskonfiguration"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Placeringen, der skal redigeres, er ikke længere tilgængelig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikeksport åbnet"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikeksport mislykkedes"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikeksport annulleret"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Forrige VPN-placering er ikke længere tilgængelig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen blev lukket. VPN var slået fra."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Alle abonnementer aktiveret"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementer valgt"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement valgt"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonnement gemt"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Placeringer kopieret til udklipsholder"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Eksport af placeringer annulleret"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Routingregler kopieret til udklipsholder"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksport af routingregler annulleret"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Læsning af udklipsholder mislykkedes"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Ingen placeringer at eksportere"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Kunne ikke indlæse apps"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Kunne ikke opdatere abonnementer"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Kunne ikke opdatere det aktive abonnement"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Kunne ikke importere routingregler"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Kunne ikke gemme routingregler"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Kunne ikke importere placeringer"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Kunne ikke åbne placeringsfil"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Kunne ikke læse placeringsfil"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Kunne ikke åbne fil med routingregler"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Bedste placering kunne ikke matches med desktoplisten"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN klar på denne computer"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy klar på denne computer"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Desktop-VPN-shell klar"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Desktop-proxy-shell klar"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN startet på "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy startet på "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN stoppet. Apptilstand: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy stoppet. Apptilstand: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Sprog sat til "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatisk abonnementsopdatering sat til "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Valideringsindstillinger gemt: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Valgt placering uændret: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Valgt placering fjernet: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Valgt placering sat: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Placering opdateret og flettet: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Placering allerede gemt: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Placering opdateret: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Placering fjernet: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Placering tilføjet: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonnementer opdateret: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Mislykkedes: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Gendanner VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Opdaterer "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Placeringer eksporteret til "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Routingregler eksporteret til "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostik eksporteret til "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Kunne ikke benchmarke "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktiverede "
+    },
+    {
+      "source": "Added ",
+      "target": "Tilføjede "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Slettede "
+    },
+    {
+      "source": "Selected ",
+      "target": "Valgte "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Redigerede placering #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Apptilstand: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " placeringer opdateret"
+    },
+    {
+      "source": " location refreshed",
+      "target": " placering opdateret"
+    },
+    {
+      "source": " • batch ",
+      "target": " • batchnr. "
+    },
+    {
+      "source": " • retries ",
+      "target": " • genforsøg "
+    },
+    {
+      "source": "custom interval",
+      "target": "brugerdefineret interval"
+    },
+    {
+      "source": "every hour",
+      "target": "hver time"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "alle abonnementer"
+    },
+    {
+      "source": "selected subscription",
+      "target": "valgt abonnement"
+    },
+    {
+      "source": "proxy only",
+      "target": "kun proxy"
+    },
+    {
+      "source": "off",
+      "target": "fra"
+    },
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startet"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppet"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startet"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppet"
+    }
+  ]
+}

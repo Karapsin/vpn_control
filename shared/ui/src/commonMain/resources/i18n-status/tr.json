@@ -188,7 +188,7 @@
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Masaüstü kabuğu: Whitelists içinden Hollanda"
+      "target": "Masaüstü kabuğu: izin verilen listelerden Hollanda"
     },
     {
       "source": "Desktop app initialized",
@@ -1220,7 +1220,7 @@
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Seçili konum unchanged: "
+      "target": "Seçili konum değişmedi: "
     },
     {
       "source": "Selected location removed: ",

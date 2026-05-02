@@ -1,0 +1,1398 @@
+{
+  "dynamic": {
+    "findingSubscription": "Traži se najbolja lokacija iz pretplate...",
+    "findingSaved": "Traži se najbolja lokacija iz sačuvanih lokacija...",
+    "testingFastestCandidates": "Testiraju se najbrži kandidati u serijama...",
+    "checkingLocations": "Provjerava se {count} lokacija...",
+    "testingLocationsRange": "Testiraju se lokacije {start}-{end} od {total}...",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} sati",
+    "refreshIntervalHoursMinutes": "{hours} h {minutes} min.",
+    "refreshIntervalEvery": "svakih {interval}",
+    "refreshIntervalEveryHour": "svakog sata"
+  },
+  "benchmark": {
+    "best": "Najbolje: ",
+    "primary": "primarno ",
+    "secondary": "sekundarno ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blokirano",
+      "cached": "keširano",
+      "challenge": "izazov",
+      "custom_config_manual_only": "samo_ručna_prilagođena_konfiguracija",
+      "error": "greška",
+      "manual": "ručno",
+      "ok": "u redu",
+      "partial": "djelimično",
+      "tcp_error": "tcp_greška",
+      "tcp_timeout": "tcp_istek",
+      "timeout": "istek",
+      "unreachable": "nedostupno",
+      "validation_timeout": "istek_validacije"
+    }
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL pretplate"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL pretplate nije čitljiv"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Nesigurne HTTP pretplate nisu podržane"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Koristite https:// URL pretplate."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL mora sadržavati ispravan HTTPS host"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Zalijepite ispravan https:// URL pretplate."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direktni udaljeni izvor"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box link za uvoz"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "sing-box link za uvoz nije čitljiv"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Podržani su samo ispravni udaljeni HTTPS URL-ovi"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Koristite sing-box link za uvoz koji se razrješava u ispravan https:// URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Preuzima udaljeni sadržaj iz ugrađenog URL-a"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Preuzima udaljeni sadržaj iz "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Link za uvoz nije moguće parsirati"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Zalijepite ispravan sing-box link za uvoz udaljenog profila ili direktni URL pretplate."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN link za uvoz"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "VPN link za uvoz nije čitljiv"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Uvoz ovog pružaoca nije podržan"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia i drugi vpn:// uvozi nisu podržani. Koristite običan URL pretplate ili ručno dodajte lokacije."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Sadržaj uvoza nije moguće dekodirati"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// uvozi nisu podržani. Koristite običan URL pretplate ili ručno dodajte lokacije."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP URL-ovi pretplate nisu podržani. Umjesto toga koristite https://."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Udaljeni izvor mora biti https:// URL ili podržani link za uvoz"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Udaljeni izvor je prazan"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Udaljeni izvor mora biti ispravan https:// URL s hostom."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Ovaj sing-box uvoz razrješava se u neispravan URL ili URL koji nije HTTPS. Umjesto toga koristite ispravan https:// URL."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Primjenjuje se odabrana lokacija..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Primjenjuje se ažurirana odabrana lokacija..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Pretraga najbolje lokacije je istekla; zadržava se trenutna veza"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Međuspremnik je prazan"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Dnevnik veze je omogućen"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Dnevnik veze je sakriven"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Alati za testiranje veze su omogućeni"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Alati za testiranje veze su sakriveni"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Nije moguće otvoriti odredište izvoza"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Nije moguće otvoriti odabranu datoteku"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Nije moguće otvoriti odabranu datoteku lokacija"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Nije moguće otvoriti odabranu datoteku pravila"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop shell: Nizozemska iz lista dozvoljenih"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktop aplikacija je inicijalizirana"
+    },
+    {
+      "source": "App initialized",
+      "target": "Aplikacija je inicijalizirana"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Izvezi lokacije"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Primjena ažurirane odabrane lokacije nije uspjela"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Izvoz dijagnostike nije uspio"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Izvoz lokacija nije uspio"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Izvoz pravila usmjeravanja nije uspio"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Nije pronađena zamjenska lokacija"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Uvoz datoteke nije uspio"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Nije moguće otvoriti odredište dijagnostike"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Čuvanje postavki osvježavanja nije uspjelo"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Ažuriranje postavke pokretanja nije uspjelo"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Uvoz je otkazan"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Neispravan URL pretplate"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Historija latencije je omogućena"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Historija latencije je sakrivena"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Statistika saobraćaja uživo je omogućena"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Statistika saobraćaja uživo je sakrivena"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Provjera lokacije je otkazana"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Provjera lokacije nije uspjela"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Lokacije su izvezene"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Uvoz lokacija je otkazan"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Nema dostupnih lokacija za benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Nema pretplata za osvježavanje"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Nije pronađena odgovarajuća lokacija"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Ukupni iznosi po profilu su omogućeni"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Ukupni iznosi po profilu su sakriveni"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Prethodna VPN sesija će biti vraćena"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR skeniranje je otkazano"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Pravila usmjeravanja su izvezena"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Uvoz pravila usmjeravanja je otkazan"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Pravila usmjeravanja su sačuvana"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Statistika sesije je omogućena"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Statistika sesije je sakrivena"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Podijeljeni tekst nije podržani sadržaj za uvoz"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Pretplata je izbrisana"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Osvježavanje pretplate je završeno, ali je za prebacivanje u pozadini potrebna VPN dozvola. Prethodna VPN lokacija je zadržana kao rezerva."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Osvježavanje pretplate je završeno. Traži se najbolja lokacija..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Osvježavanje pretplate je završeno. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Način izvršavanja: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokalni proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Dnevnik izvršavanja: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Predprovjera VPN načina je prošla"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Predprovjera načina samo proxyja je prošla"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Predprovjera VPN načina nije uspjela: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Predprovjera načina samo proxyja nije uspjela: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN način nije dostupan: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Način samo proxyja nije dostupan: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN mogućnost računara: spremno"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "VPN mogućnost računara: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN način je dostupan"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxy način je dostupan"
+    },
+    {
+      "source": "not ready",
+      "target": "nije spremno"
+    },
+    {
+      "source": " checks",
+      "target": " provjere"
+    },
+    {
+      "source": " check",
+      "target": " provjera"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "neuspjeh TUN uređaja: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "neuspjeh mrežnih privilegija: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "neuspjeh alata za usmjeravanje/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN uređaj"
+    },
+    {
+      "source": "network privileges",
+      "target": "mrežne privilegije"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "alati za usmjeravanje/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN uređaj nedostaje na /dev/net/tun. Pokušajte: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN način na računaru zahtijeva CAP_NET_ADMIN. Pokrenite s root ovlastima ili dodijelite sing-box ovlasti: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows alati za usmjeravanje/DNS nisu dostupni. VPN način zahtijeva netsh.exe i PowerShell cmdlete DNS klijenta."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN je spreman na ovom računaru"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy je spreman na ovom računaru"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Mirovanje"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN je pokrenut"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN je zaustavljen"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy je pokrenut"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy je zaustavljen"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Pokreće se VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Pokreće se lokalni proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Pokreće se VPN s najboljom lokacijom..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Pokreće se lokalni proxy s najboljom lokacijom..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Traži se najbolja lokacija iz pretplate..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Traži se najbolja lokacija iz sačuvanih lokacija..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Pretraga lokacije je otkazana"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Pretraga lokacije nije uspjela"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Dodijelite VPN dozvolu i pokušajte ponovo"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Najprije postavite udaljeni izvor"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Najprije dodajte barem jednu sačuvanu lokaciju"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Najprije odaberite lokaciju"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Još nema sačuvanih pretplata"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Osvježavaju se sve pretplate..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Osvježava se aktivna pretplata..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Osvježava se pretplata..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Osvježavaju se pretplate..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Automatski se osvježava pretplata..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Automatski se osvježavaju pretplate..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Pretplata je osvježena"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Pretplate su osvježene"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivna pretplata je osvježena"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Sve pretplate su osvježene"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Osvježavanje nije uspjelo"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Izvor profila postavljen je na pretplatu"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Izvor profila postavljen je na sačuvane lokacije"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Način veze postavljen je na VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Način veze postavljen je na samo proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Najprije prekinite vezu za promjenu načina veze"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Stavka historije je izbrisana"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Naziv pretplate je resetovan"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Naziv pretplate je sačuvan"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Jezik je postavljen na zadani jezik sistema"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Prilagođeni DNS je sačuvan"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Prilagođeni DNS je onemogućen"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Pravila usmjeravanja su sačuvana"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Pravila usmjeravanja su uvezena"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokacije su uvezene"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokacije su uvezene. Odabrana lokacija više nije dostupna"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Prebacite se na Sačuvane lokacije za uvoz lokacija"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Prebacite se na Sačuvane lokacije za ručno dodavanje lokacija"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Neispravna konfiguracija lokacije"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokacija za uređivanje više nije dostupna"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Izvoz dijagnostike je otvoren"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Izvoz dijagnostike nije uspio"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Izvoz dijagnostike je otkazan"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Prethodna VPN lokacija više nije dostupna"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikacija je zatvorena. VPN je bio isključen."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Sve pretplate su aktivirane"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Sve pretplate su odabrane"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Pretplata je odabrana"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokacije su kopirane u međuspremnik"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Izvoz lokacija je otkazan"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Pravila usmjeravanja su kopirana u međuspremnik"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Izvoz pravila usmjeravanja je otkazan"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Način izvora profila: pretplata"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Način izvora profila: sačuvane lokacije"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Pokretanje VPN-a s novom najboljom lokacijom..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Pokretanje proxyja s novom najboljom lokacijom..."
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "VPN mogućnost računara: spremno"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "VPN mogućnost računara: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN način na računaru zahtijeva CAP_NET_ADMIN. Pokrenite s root ovlastima ili dodijelite sing-box ovlasti: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "VPN ljuska računara je spremna"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Proxy ljuska računara je spremna"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Lokacije iz pretplate su samo za čitanje. Prebacite se na Sačuvane lokacije da sačuvate izmjene."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Lokacije iz pretplate su samo za čitanje. Prebacite se na Sačuvane lokacije da ih izbrišete."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Pretplata je primljena. Pregledajte je i sačuvajte na kartici Profil."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Primljen je link pretplate. Pregledajte ga i sačuvajte na kartici Profil."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Primljena je konfiguracija lokacije. Pregledajte je i sačuvajte na kartici Lokacije."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Pokreće se lokalni proxy s najboljom lokacijom..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Pokreće se VPN s najboljom lokacijom..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Traži se najbolja lokacija iz pretplate..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Traži se najbolja lokacija iz sačuvanih lokacija..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Lokacije su uvezene. Odabrana lokacija više nije dostupna, proxy je zaustavljen"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Lokacije su uvezene. Odabrana lokacija više nije dostupna, VPN je zaustavljen"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokacije su uvezene. Odabrana lokacija više nije dostupna"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Odabrana lokacija je primijenjena, ali čuvanje nije uspjelo"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Uklanjanje lokacije je vraćeno jer proxy nije bilo moguće zaustaviti"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Uklanjanje lokacije je vraćeno jer VPN nije bilo moguće zaustaviti"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Uvoz lokacija je vraćen jer proxy nije bilo moguće zaustaviti"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Uvoz lokacija je vraćen jer VPN nije bilo moguće zaustaviti"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN je zaustavljen. Osvježene pretplate uklonile su odabranu lokaciju."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy je zaustavljen. Osvježene pretplate uklonile su odabranu lokaciju."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN je zaustavljen. Ponovo će se povezati pri sljedećem pokretanju."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy je zaustavljen. Ponovo će se povezati pri sljedećem pokretanju."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Pravila usmjeravanja su sačuvana. Ponovo pokrenite VPN za primjenu"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Pravila usmjeravanja su sačuvana. Ponovo pokrenite proxy za primjenu"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Pravila usmjeravanja su uvezena. Ponovo pokrenite VPN za primjenu"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Pravila usmjeravanja su uvezena. Ponovo pokrenite proxy za primjenu"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Odabrana lokacija je uklonjena. VPN je zaustavljen: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Odabrana lokacija je uklonjena. Proxy je zaustavljen: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Odabrana je najbolja lokacija i VPN je pokrenut: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Odabrana je najbolja lokacija i proxy je pokrenut: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN je pokrenut, ali čuvanje odabrane lokacije nije uspjelo"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy je pokrenut, ali čuvanje odabrane lokacije nije uspjelo"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN je pokrenut, ali čuvanje najbolje lokacije nije uspjelo"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy je pokrenut, ali čuvanje najbolje lokacije nije uspjelo"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Pokretanje VPN-a s najboljom lokacijom nije uspjelo"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Pokretanje proxyja s najboljom lokacijom nije uspjelo"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Čuvanje odabrane lokacije nije uspjelo"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Čuvanje odabrane lokacije nije uspjelo"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Čuvanje najbolje lokacije nije uspjelo"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Primjena odabrane lokacije nije uspjela"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Odabir lokacije nije uspio"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Zaustavljanje VPN-a prije izlaza nije uspjelo"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Zaustavljanje Proxyja prije izlaza nije uspjelo"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Zaustavljanje VPN-a nije uspjelo"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Zaustavljanje proxyja nije uspjelo"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Pokretanje VPN-a nije uspjelo"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Pokretanje proxyja nije uspjelo"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Nije moguće pripremiti VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Nije moguće pripremiti proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Priprema se VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Priprema se proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Pokretanje VPN-a je otkazano"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Pokretanje proxyja je otkazano"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Zaustavljanje VPN-a je otkazano"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Zaustavljanje proxyja je otkazano"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Pokreće se lokalni proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Pokreće se VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Osvježavaju se sve pretplate..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Osvježava se aktivna pretplata..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Osvježavaju se pretplate..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Osvježava se pretplata..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Automatski se osvježavaju pretplate..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Automatski se osvježava pretplata..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Sve pretplate su osvježene"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivna pretplata je osvježena"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Pretplate su osvježene"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Pretplata je osvježena"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Osvježavanje nije uspjelo"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Pretraga lokacije je otkazana"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Pretraga lokacije nije uspjela"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Dodijelite VPN dozvolu i pokušajte ponovo"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Najprije postavite udaljeni izvor"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Najprije dodajte barem jednu sačuvanu lokaciju"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Najprije odaberite lokaciju"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Još nema sačuvanih pretplata"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Izvor profila postavljen je na pretplatu"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Izvor profila postavljen je na sačuvane lokacije"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Način veze postavljen je na VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Način veze postavljen je na samo proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Najprije prekinite vezu za promjenu načina veze"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Stavka historije je izbrisana"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Naziv pretplate je resetovan"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Naziv pretplate je sačuvan"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Jezik je postavljen na zadani jezik sistema"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Prilagođeni DNS je sačuvan"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Prilagođeni DNS je onemogućen"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Pravila usmjeravanja su sačuvana"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Pravila usmjeravanja su uvezena"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokacije su uvezene"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Prebacite se na Sačuvane lokacije za uvoz lokacija"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Prebacite se na Sačuvane lokacije za ručno dodavanje lokacija"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Neispravna konfiguracija lokacije"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokacija za uređivanje više nije dostupna"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Izvoz dijagnostike je otvoren"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Izvoz dijagnostike nije uspio"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Izvoz dijagnostike je otkazan"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Prethodna VPN lokacija više nije dostupna"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikacija je zatvorena. VPN je bio isključen."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Sve pretplate su aktivirane"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Sve pretplate su odabrane"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Pretplata je odabrana"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Pretplata je sačuvana"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokacije su kopirane u međuspremnik"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Izvoz lokacija je otkazan"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Pravila usmjeravanja su kopirana u međuspremnik"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Izvoz pravila usmjeravanja je otkazan"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Čitanje međuspremnika nije uspjelo"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Nema lokacija za izvoz"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Učitavanje aplikacija nije uspjelo"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Osvježavanje pretplata nije uspjelo"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Osvježavanje aktivne pretplate nije uspjelo"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Uvoz pravila usmjeravanja nije uspio"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Čuvanje pravila usmjeravanja nije uspjelo"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Uvoz lokacija nije uspio"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Otvaranje datoteke lokacija nije uspjelo"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Čitanje datoteke lokacija nije uspjelo"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Otvaranje datoteke pravila usmjeravanja nije uspjelo"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Najbolju lokaciju nije bilo moguće mapirati na desktop listu"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN je spreman na ovom računaru"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy je spreman na ovom računaru"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "VPN ljuska računara je spremna"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Proxy ljuska računara je spremna"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN je pokrenut na "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy je pokrenut na "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN je zaustavljen. Način aplikacije: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy je zaustavljen. Način aplikacije: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Jezik je postavljen na "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatsko osvježavanje pretplate postavljeno je na "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Postavke validacije su sačuvane: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Odabrana lokacija je nepromijenjena: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Odabrana lokacija je uklonjena: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Odabrana lokacija je postavljena: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Lokacija je ažurirana i objedinjena: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Lokacija je već sačuvana: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Lokacija je ažurirana: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Lokacija je uklonjena: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Lokacija je dodana: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Pretplate su osvježene: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Neuspjelo: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Vraća se VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Osvježava se "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Lokacije su izvezene u "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Pravila usmjeravanja su izvezena u "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Dijagnostika je izvezena u "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Benchmarkiranje nije uspjelo za "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktivirano: "
+    },
+    {
+      "source": "Added ",
+      "target": "Dodano: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Izbrisano: "
+    },
+    {
+      "source": "Selected ",
+      "target": "Odabrano: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Uređena lokacija #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Način aplikacije: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " lokacija osvježeno"
+    },
+    {
+      "source": " location refreshed",
+      "target": " lokacija osvježena"
+    },
+    {
+      "source": " • batch ",
+      "target": " • serija "
+    },
+    {
+      "source": " • retries ",
+      "target": " • pokušaji "
+    },
+    {
+      "source": "custom interval",
+      "target": "prilagođeni interval"
+    },
+    {
+      "source": "every hour",
+      "target": "svakog sata"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "sve pretplate"
+    },
+    {
+      "source": "selected subscription",
+      "target": "odabrana pretplata"
+    },
+    {
+      "source": "proxy only",
+      "target": "samo proxy"
+    },
+    {
+      "source": "off",
+      "target": "isključeno"
+    },
+    {
+      "source": "Idle",
+      "target": "Mirovanje"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN je pokrenut"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN je zaustavljen"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy je pokrenut"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy je zaustavljen"
+    }
+  ]
+}

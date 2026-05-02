@@ -1,790 +1,790 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
-    "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "findingSubscription": "Ieškoma geriausios vietos iš prenumeratos...",
+    "findingSaved": "Ieškoma geriausios vietos iš išsaugotų vietų...",
+    "testingFastestCandidates": "Greičiausi kandidatai tikrinami partijomis...",
+    "checkingLocations": "Tikrinama vietų: {count}...",
+    "testingLocationsRange": "Tikrinamos vietos {start}-{end} iš {total}...",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} val.",
+    "refreshIntervalHoursMinutes": "{hours} val. {minutes} min.",
+    "refreshIntervalEvery": "kas {interval}",
+    "refreshIntervalEveryHour": "kas valandą"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
-    "millisUnit": "мс",
+    "best": "Geriausia: ",
+    "primary": "pirminis ",
+    "secondary": "antrinis ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "ok": "gerai",
+      "timeout": "baigėsi laikas",
+      "error": "klaida",
+      "partial": "dalinis",
+      "blocked": "užblokuota",
+      "challenge": "patikra",
+      "manual": "rankinis",
+      "cached": "iš talpyklos",
+      "unreachable": "nepasiekiama",
+      "validation_timeout": "patikros laikas baigėsi",
+      "tcp_timeout": "TCP laikas baigėsi",
+      "tcp_error": "TCP klaida",
+      "custom_config_manual_only": "tik rankinė patikra"
     }
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "Prenumeratos URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Nenuskaitomas prenumeratos URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Nesaugios HTTP prenumeratos nepalaikomos"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "Naudokite https:// prenumeratos URL."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL turi turėti tinkamą HTTPS pagrindinį kompiuterį"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Įklijuokite tinkamą https:// prenumeratos URL."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Tiesioginis nuotolinis šaltinis"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "sing-box importo nuoroda"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Nenuskaitoma sing-box importo nuoroda"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Palaikomi tik tinkami nuotoliniai HTTPS URL"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Naudokite sing-box importo nuorodą, kuri nurodo tinkamą https:// URL."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Atsisiunčia nuotolinį turinį iš įterpto URL"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Atsisiunčia nuotolinį turinį iš "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Importo nuorodos nepavyko išanalizuoti"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Įklijuokite tinkamą sing-box remote-profile importo nuorodą arba tiesioginį prenumeratos URL."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "VPN importo nuoroda"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Nenuskaitoma VPN importo nuoroda"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Nepalaikomas teikėjo importas"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia ir kiti vpn:// importai nepalaikomi. Naudokite įprastą prenumeratos URL arba pridėkite vietas rankiniu būdu."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Importo duomenų nepavyko dekoduoti"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// importai nepalaikomi. Naudokite įprastą prenumeratos URL arba pridėkite vietas rankiniu būdu."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP prenumeratų URL nepalaikomi. Vietoj jų naudokite https://."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Nuotolinis šaltinis turi būti https:// URL arba palaikoma importo nuoroda"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Nuotolinis šaltinis tuščias"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Nuotolinis šaltinis turi būti tinkamas https:// URL su pagrindiniu kompiuteriu."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Šis sing-box importas nurodo netinkamą arba ne HTTPS URL. Vietoj jo naudokite tinkamą https:// URL."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Taikoma pasirinkta vieta..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Taikoma atnaujinta pasirinkta vieta..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Geriausios vietos paieškos laikas baigėsi; dabartinis ryšys paliekamas"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Iškarpinė tuščia"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Ryšio žurnalas įjungtas"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Ryšio žurnalas paslėptas"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Ryšio testavimo įrankiai įjungti"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Ryšio testavimo įrankiai paslėpti"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Nepavyko atidaryti eksportavimo paskirties vietos"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Nepavyko atidaryti pasirinkto failo"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Nepavyko atidaryti pasirinkto vietų failo"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Nepavyko atidaryti pasirinkto taisyklių failo"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Darbalaukio apvalkalas: Nyderlandai iš leidžiamųjų sąrašų"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Desktop programa inicijuota"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Programa inicijuota"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
+      "target": "VPN šiame kompiuteryje paruoštas"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Proxy šiame kompiuteryje paruoštas"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Eksportuoti vietas"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Nepavyko pritaikyti atnaujintos pasirinktos vietos"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Nepavyko eksportuoti diagnostikos"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Nepavyko eksportuoti vietų"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Nepavyko eksportuoti maršrutizavimo taisyklių"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Nepavyko rasti pakaitinės vietos"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Nepavyko importuoti failo"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Nepavyko atidaryti diagnostikos paskirties vietos"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Nepavyko išsaugoti atnaujinimo nustatymų"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Nepavyko atnaujinti paleidimo nustatymo"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Importas atšauktas"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Netinkamas prenumeratos URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Delsos istorija įjungta"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Delsos istorija paslėpta"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Tiesioginė srauto statistika įjungta"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Tiesioginė srauto statistika paslėpta"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Vietos patikra atšaukta"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Vietos patikra nepavyko"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Vietos eksportuotos"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Vietų importas atšauktas"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Nėra vietų testavimui"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Nėra prenumeratų, kurias reikėtų atnaujinti"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Tinkama vieta nerasta"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Suvestinės pagal profilį įjungtos"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Suvestinės pagal profilį paslėptos"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Ankstesnis VPN seansas bus atkurtas"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR nuskaitymas atšauktas"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Maršrutizavimo taisyklės eksportuotos"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Maršrutizavimo taisyklių importas atšauktas"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Maršrutizavimo taisyklės išsaugotos"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Seanso statistika įjungta"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Seanso statistika paslėpta"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Bendrinamas tekstas nėra palaikomas importo turinys"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Prenumerata ištrinta"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Prenumeratos atnaujinimas baigtas, bet norint perjungti fone reikalingas VPN leidimas. Ankstesnė VPN vieta palikta kaip atsarginė."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Prenumeratos atnaujinimas baigtas. Ieškoma geriausios vietos..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Prenumeratos atnaujinimas baigtas. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Vykdymo režimas: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Vietinis proxy: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Vykdymo žurnalas: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "VPN režimo išankstinė patikra sėkminga"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Proxy-only režimo išankstinė patikra sėkminga"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "VPN režimo išankstinė patikra nepavyko: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Proxy-only režimo išankstinė patikra nepavyko: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN režimas nepasiekiamas: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Proxy-only režimas nepasiekiamas: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Darbalaukio VPN galimybė: paruošta"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Darbalaukio VPN galimybė: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN režimas pasiekiamas"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Proxy režimas pasiekiamas"
     },
     {
       "source": "not ready",
-      "target": "не готово"
+      "target": "neparuošta"
     },
     {
       "source": " check",
-      "target": " проверка"
+      "target": " patikra"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " patikros"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "TUN įrenginio klaida: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "tinklo privilegijų klaida: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "maršrutų/DNS įrankių klaida: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN įrenginys"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "tinklo privilegijos"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "maršrutų/DNS įrankiai"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linux TUN įrenginio nėra ties /dev/net/tun. Pabandykite: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Darbalaukio VPN režimui reikia CAP_NET_ADMIN. Paleiskite kaip root arba suteikite sing-box galimybes: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Windows maršrutų/DNS įrankiai nepasiekiami. VPN režimui reikia netsh.exe ir DNS kliento PowerShell cmdlet komandų."
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Neveikla"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN paleistas"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN sustabdytas"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Proxy paleistas"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Proxy sustabdytas"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "Paleidžiamas VPN..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Paleidžiamas vietinis proxy..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "Paleidžiamas VPN su geriausia vieta..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Paleidžiamas vietinis proxy su geriausia vieta..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Ieškoma geriausios vietos iš prenumeratos..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Ieškoma geriausios vietos iš išsaugotų vietų..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Vietos paieška atšaukta"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Vietos paieška nepavyko"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Suteikite VPN leidimą ir bandykite dar kartą"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Pirmiausia nustatykite nuotolinį šaltinį"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Pirmiausia pridėkite bent vieną išsaugotą vietą"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Pirmiausia pasirinkite vietą"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Dar nėra išsaugotų prenumeratų"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Atnaujinamos visos prenumeratos..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Atnaujinama aktyvi prenumerata..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Atnaujinama prenumerata..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Atnaujinamos prenumeratos..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Automatiškai atnaujinama prenumerata..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Automatiškai atnaujinamos prenumeratos..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Prenumerata atnaujinta"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Prenumeratos atnaujintos"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Aktyvi prenumerata atnaujinta"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Visos prenumeratos atnaujintos"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Atnaujinimas nepavyko"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Profilio šaltinis nustatytas į prenumeratą"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Profilio šaltinis nustatytas į išsaugotas vietas"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Ryšio režimas nustatytas į VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Ryšio režimas nustatytas į tik proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Norėdami pakeisti ryšio režimą, pirmiausia atsijunkite"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Istorijos įrašas ištrintas"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Prenumeratos pavadinimas nustatytas iš naujo"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Prenumeratos pavadinimas išsaugotas"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Kalba nustatyta į sistemos numatytąją"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Pasirinktinis DNS išsaugotas"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Pasirinktinis DNS išjungtas"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Maršrutizavimo taisyklės išsaugotos"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Maršrutizavimo taisyklės importuotos"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Vietos importuotos"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Vietos importuotos. Pasirinkta vieta nebepasiekiama"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Perjunkite į Išsaugotas vietas, kad importuotumėte vietas"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Perjunkite į Išsaugotas vietas, kad pridėtumėte vietas rankiniu būdu"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Netinkama vietos konfigūracija"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Redaguojama vieta nebepasiekiama"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Diagnostikos eksportas atidarytas"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Diagnostikos eksportas nepavyko"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Diagnostikos eksportas atšauktas"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Ankstesnė VPN vieta nebepasiekiama"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Programa uždaryta. VPN buvo išjungtas."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Aktyvintos visos prenumeratos"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Pasirinktos visos prenumeratos"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Prenumerata pasirinkta"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Vietos nukopijuotos į iškarpinę"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Vietų eksportas atšauktas"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Maršrutizavimo taisyklės nukopijuotos į iškarpinę"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Maršrutizavimo taisyklių eksportas atšauktas"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Profilio šaltinio režimas: PRENUMERATA"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Profilio šaltinio režimas: DABARTINĖS_VIETOS"
     }
   ],
   "legacyReplacements": [
     {
       "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "target": " vietų atnaujinta"
     },
     {
       "source": " location refreshed",
-      "target": " локация обновлена"
+      "target": " vieta atnaujinta"
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "target": "Automatinis prenumeratos atnaujinimas nustatytas į "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "target": "Patikros nustatymai išsaugoti: "
     },
     {
       "source": " • batch ",
-      "target": " • группа "
+      "target": " • partija "
     },
     {
       "source": " • retries ",
-      "target": " • повторные попытки "
+      "target": " • pakartojimai "
     },
     {
       "source": "off",
-      "target": "выключено"
+      "target": "išjungta"
     },
     {
       "source": "custom interval",
-      "target": "свой интервал"
+      "target": "pasirinktinis intervalas"
     },
     {
       "source": "all subscriptions",
-      "target": "все подписки"
+      "target": "visos prenumeratos"
     },
     {
       "source": "selected subscription",
-      "target": "выбранная подписка"
+      "target": "pasirinkta prenumerata"
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
+      "target": "VPN sustabdytas. Programos režimas: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
+      "target": "Proxy sustabdytas. Programos režimas: "
     },
     {
       "source": "VPN started on ",
-      "target": "VPN запущен на "
+      "target": "VPN paleistas vietoje "
     },
     {
       "source": "Proxy started on ",
-      "target": "Прокси запущен на "
+      "target": "Proxy paleistas vietoje "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
+      "target": "Atkuriamas VPN: "
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "VPN sustabdytas. Prisijungs iš naujo kitą kartą paleidus."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "Proxy sustabdytas. Prisijungs iš naujo kitą kartą paleidus."
     },
     {
       "source": "Refreshing ",
-      "target": "Обновление "
+      "target": "Atnaujinama "
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "Paleidžiamas VPN su nauja geriausia vieta..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Paleidžiamas proxy su nauja geriausia vieta..."
     }
   ]
 }

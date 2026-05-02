@@ -152,7 +152,7 @@
     },
     {
       "source": "Clipboard is empty",
-      "target": "状態を更新しました"
+      "target": "クリップボードが空です"
     },
     {
       "source": "Connection log enabled",
@@ -188,7 +188,7 @@
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "状態を更新しました"
+      "target": "デスクトップシェル: 許可リストのオランダ"
     },
     {
       "source": "Desktop app initialized",

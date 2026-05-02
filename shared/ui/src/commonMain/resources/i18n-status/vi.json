@@ -1,1378 +1,1378 @@
 {
   "dynamic": {
-    "findingSubscription": "Mencari lokasi terbaik dari langganan...",
-    "findingSaved": "Mencari lokasi terbaik dari lokasi tersimpan...",
-    "testingFastestCandidates": "Menguji kandidat tercepat dalam kelompok...",
-    "checkingLocations": "Memeriksa {count} lokasi...",
-    "testingLocationsRange": "Menguji lokasi {start}-{end} dari {total}...",
-    "refreshIntervalMinutes": "{count} mnt",
-    "refreshIntervalHours": "{count} jam",
-    "refreshIntervalHoursMinutes": "{hours} jam {minutes} mnt",
-    "refreshIntervalEvery": "setiap {interval}",
-    "refreshIntervalEveryHour": "setiap jam"
+    "findingSubscription": "Đang tìm vị trí tốt nhất từ đăng ký...",
+    "findingSaved": "Đang tìm vị trí tốt nhất từ vị trí đã lưu...",
+    "testingFastestCandidates": "Đang kiểm tra các ứng viên nhanh nhất theo lô...",
+    "checkingLocations": "Đang kiểm tra {count} vị trí...",
+    "testingLocationsRange": "Đang kiểm tra vị trí {start}-{end} trong tổng số {total}...",
+    "refreshIntervalMinutes": "{count} phút",
+    "refreshIntervalHours": "{count} giờ",
+    "refreshIntervalHoursMinutes": "{hours} giờ {minutes} phút",
+    "refreshIntervalEvery": "mỗi {interval}",
+    "refreshIntervalEveryHour": "mỗi giờ"
   },
   "benchmark": {
-    "best": "Terbaik: ",
-    "primary": "utama ",
-    "secondary": "cadangan ",
-    "tcp": "TCP ",
+    "best": "Tốt nhất: ",
+    "primary": "chính ",
+    "secondary": "phụ ",
+    "tcp": "tcp ",
     "millisUnit": "ms",
     "statuses": {
-      "blocked": "diblokir",
-      "cached": "cache",
-      "challenge": "tantangan",
-      "custom_config_manual_only": "manual",
-      "error": "galat",
-      "manual": "pilihan pengguna",
-      "ok": "baik",
-      "partial": "sebagian",
-      "tcp_error": "galat_tcp",
-      "tcp_timeout": "waktu_habis_tcp",
-      "timeout": "waktu habis",
-      "unreachable": "tidak terjangkau",
-      "validation_timeout": "validasi_waktu_habis"
+      "blocked": "bị chặn",
+      "cached": "đã lưu đệm",
+      "challenge": "thử thách",
+      "custom_config_manual_only": "cấu_hình_tùy_chỉnh_chỉ_thủ_công",
+      "error": "lỗi",
+      "manual": "thủ công",
+      "ok": "ok",
+      "partial": "một phần",
+      "tcp_error": "lỗi_tcp",
+      "tcp_timeout": "hết_giờ_tcp",
+      "timeout": "hết giờ",
+      "unreachable": "không thể truy cập",
+      "validation_timeout": "hết_giờ_xác_thực"
     }
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL langganan"
+      "target": "URL đăng ký"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "URL langganan tidak dapat dibaca"
+      "target": "Không đọc được URL đăng ký"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Langganan HTTP tidak aman tidak didukung"
+      "target": "Không hỗ trợ đăng ký HTTP không an toàn"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Gunakan URL langganan https://."
+      "target": "Dùng URL đăng ký https://."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL harus berisi host HTTPS yang valid"
+      "target": "URL phải bao gồm máy chủ HTTPS hợp lệ"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Tempel URL langganan https:// yang valid."
+      "target": "Dán URL đăng ký https:// hợp lệ."
     },
     {
       "source": "Direct remote source",
-      "target": "Sumber jarak jauh langsung"
+      "target": "Nguồn từ xa trực tiếp"
     },
     {
       "source": "sing-box import link",
-      "target": "Tautan impor sing-box"
+      "target": "Liên kết nhập sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Tautan impor sing-box tidak dapat dibaca"
+      "target": "Không đọc được liên kết nhập sing-box"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Hanya URL jarak jauh HTTPS yang valid yang didukung"
+      "target": "Chỉ hỗ trợ URL từ xa HTTPS hợp lệ"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Gunakan tautan impor sing-box yang mengarah ke URL https:// yang valid."
+      "target": "Dùng liên kết nhập sing-box trỏ tới URL https:// hợp lệ."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Mengambil konten jarak jauh dari URL tertanam"
+      "target": "Tải nội dung từ xa từ URL nhúng"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Mengambil konten jarak jauh dari "
+      "target": "Tải nội dung từ xa từ "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Tautan impor tidak dapat diurai"
+      "target": "Không thể phân tích liên kết nhập"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Tempel tautan impor profil jarak jauh sing-box yang valid atau URL langganan langsung."
+      "target": "Dán liên kết nhập remote-profile sing-box hợp lệ hoặc URL đăng ký trực tiếp."
     },
     {
       "source": "VPN import link",
-      "target": "Tautan impor VPN"
+      "target": "Liên kết nhập VPN"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Tautan impor VPN tidak dapat dibaca"
+      "target": "Không đọc được liên kết nhập VPN"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Impor penyedia tidak didukung"
+      "target": "Không hỗ trợ nhập từ nhà cung cấp này"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Impor Amnezia dan vpn:// lain tidak didukung. Gunakan URL langganan biasa atau tambah lokasi secara manual."
+      "target": "Không hỗ trợ nhập Amnezia và các vpn:// khác. Hãy dùng URL đăng ký thông thường hoặc thêm vị trí thủ công."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Payload impor tidak dapat didekode"
+      "target": "Không thể giải mã nội dung nhập"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Impor vpn:// tidak didukung. Gunakan URL langganan biasa atau tambah lokasi secara manual."
+      "target": "Không hỗ trợ nhập vpn://. Hãy dùng URL đăng ký thông thường hoặc thêm vị trí thủ công."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "URL langganan HTTP tidak didukung. Gunakan https:// sebagai gantinya."
+      "target": "Không hỗ trợ URL đăng ký HTTP. Hãy dùng https:// thay thế."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Sumber jarak jauh harus berupa URL https:// atau tautan impor yang didukung"
+      "target": "Nguồn từ xa phải là URL https:// hoặc liên kết nhập được hỗ trợ"
     },
     {
       "source": "Remote source is empty",
-      "target": "Sumber jarak jauh kosong"
+      "target": "Nguồn từ xa đang trống"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Sumber jarak jauh harus berupa URL https:// valid dengan host."
+      "target": "Nguồn từ xa phải là URL https:// hợp lệ có máy chủ."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Impor sing-box ini mengarah ke URL tidak valid atau bukan HTTPS. Gunakan URL https:// yang valid."
+      "target": "Liên kết nhập sing-box này trỏ tới URL không hợp lệ hoặc không phải HTTPS. Hãy dùng URL https:// hợp lệ thay thế."
     },
     {
       "source": "Applying selected location...",
-      "target": "Menerapkan lokasi terpilih..."
+      "target": "Đang áp dụng vị trí đã chọn..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Menerapkan lokasi terpilih yang diperbarui..."
+      "target": "Đang áp dụng vị trí đã chọn đã cập nhật..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Pencarian lokasi terbaik habis waktu; koneksi saat ini dipertahankan"
+      "target": "Tìm vị trí tốt nhất đã hết giờ; giữ kết nối hiện tại"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Clipboard kosong"
+      "target": "Bảng nhớ tạm trống"
     },
     {
       "source": "Connection log enabled",
-      "target": "Log koneksi diaktifkan"
+      "target": "Đã bật nhật ký kết nối"
     },
     {
       "source": "Connection log hidden",
-      "target": "Log koneksi disembunyikan"
+      "target": "Đã ẩn nhật ký kết nối"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Alat uji koneksi diaktifkan"
+      "target": "Đã bật công cụ kiểm tra kết nối"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Alat uji koneksi disembunyikan"
+      "target": "Đã ẩn công cụ kiểm tra kết nối"
     },
     {
       "source": "Could not open export destination",
-      "target": "Tujuan ekspor tidak dapat dibuka"
+      "target": "Không thể mở đích xuất"
     },
     {
       "source": "Could not open selected file",
-      "target": "File terpilih tidak dapat dibuka"
+      "target": "Không thể mở tệp đã chọn"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "File lokasi terpilih tidak dapat dibuka"
+      "target": "Không thể mở tệp vị trí đã chọn"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "File aturan terpilih tidak dapat dibuka"
+      "target": "Không thể mở tệp quy tắc đã chọn"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Shell desktop: Belanda dari Whitelists"
+      "target": "Giao diện máy tính để bàn: Hà Lan từ danh sách cho phép"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Aplikasi desktop dimulai"
+      "target": "Ứng dụng desktop đã khởi tạo"
     },
     {
       "source": "App initialized",
-      "target": "Aplikasi dimulai"
+      "target": "Ứng dụng đã khởi tạo"
     },
     {
       "source": "Export Locations",
-      "target": "Ekspor Lokasi"
+      "target": "Xuất vị trí"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Gagal menerapkan lokasi terpilih yang diperbarui"
+      "target": "Không thể áp dụng vị trí đã chọn đã cập nhật"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Gagal mengekspor diagnostik"
+      "target": "Không thể xuất chẩn đoán"
     },
     {
       "source": "Failed to export locations",
-      "target": "Gagal mengekspor lokasi"
+      "target": "Không thể xuất vị trí"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Gagal mengekspor aturan perutean"
+      "target": "Không thể xuất quy tắc định tuyến"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Gagal menemukan lokasi pengganti"
+      "target": "Không tìm được vị trí thay thế"
     },
     {
       "source": "Failed to import file",
-      "target": "Gagal mengimpor file"
+      "target": "Không thể nhập tệp"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Gagal membuka tujuan diagnostik"
+      "target": "Không thể mở đích chẩn đoán"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Gagal menyimpan pengaturan penyegaran"
+      "target": "Không thể lưu cài đặt làm mới"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Gagal memperbarui pengaturan mulai otomatis"
+      "target": "Không thể cập nhật cài đặt khởi động"
     },
     {
       "source": "Import canceled",
-      "target": "Import dibatalkan"
+      "target": "Đã hủy nhập"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Invalid langganan URL"
+      "target": "URL đăng ký không hợp lệ"
     },
     {
       "source": "Latency history enabled",
-      "target": "Riwayat latensi diaktifkan"
+      "target": "Đã bật lịch sử độ trễ"
     },
     {
       "source": "Latency history hidden",
-      "target": "Riwayat latensi disembunyikan"
+      "target": "Đã ẩn lịch sử độ trễ"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Statistik trafik langsung diaktifkan"
+      "target": "Đã bật thống kê lưu lượng trực tiếp"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Statistik trafik langsung disembunyikan"
+      "target": "Đã ẩn thống kê lưu lượng trực tiếp"
     },
     {
       "source": "Location check cancelled",
-      "target": "Lokasi check dibatalkan"
+      "target": "Đã hủy kiểm tra vị trí"
     },
     {
       "source": "Location check failed",
-      "target": "Lokasi check gagal"
+      "target": "Kiểm tra vị trí thất bại"
     },
     {
       "source": "Locations exported",
-      "target": "Lokasi diekspor"
+      "target": "Đã xuất vị trí"
     },
     {
       "source": "Locations import canceled",
-      "target": "Lokasi import dibatalkan"
+      "target": "Đã hủy nhập vị trí"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "No lokasi tersedia for ujiing"
+      "target": "Không có vị trí để đo kiểm"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Tidak ada langganan untuk disegarkan"
+      "target": "Không có đăng ký để làm mới"
     },
     {
       "source": "No suitable location found",
-      "target": "Lokasi diperbarui"
+      "target": "Không tìm thấy vị trí phù hợp"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Total per profil diaktifkan"
+      "target": "Đã bật tổng theo hồ sơ"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Total per profil disembunyikan"
+      "target": "Đã ẩn tổng theo hồ sơ"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Sesi VPN sebelumnya akan dipulihkan"
+      "target": "Phiên VPN trước sẽ được khôi phục"
     },
     {
       "source": "QR scan canceled",
-      "target": "QR scan dibatalkan"
+      "target": "Đã hủy quét QR"
     },
     {
       "source": "Routing rules exported",
-      "target": "Perutean aturan diekspor"
+      "target": "Đã xuất quy tắc định tuyến"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Perutean aturan import dibatalkan"
+      "target": "Đã hủy nhập quy tắc định tuyến"
     },
     {
       "source": "Saved routing rules",
-      "target": "Saved perutean aturan"
+      "target": "Đã lưu quy tắc định tuyến"
     },
     {
       "source": "Session stats enabled",
-      "target": "Statistik sesi diaktifkan"
+      "target": "Đã bật thống kê phiên"
     },
     {
       "source": "Session stats hidden",
-      "target": "Statistik sesi disembunyikan"
+      "target": "Đã ẩn thống kê phiên"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Teks yang dibagikan bukan payload impor yang didukung"
+      "target": "Văn bản được chia sẻ không phải nội dung nhập được hỗ trợ"
     },
     {
       "source": "Subscription deleted",
-      "target": "Langganan dihapus"
+      "target": "Đã xóa đăng ký"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Penyegaran langganan selesai, tetapi izin VPN diperlukan untuk beralih di latar belakang. Lokasi VPN sebelumnya dipertahankan sebagai cadangan."
+      "target": "Đã làm mới đăng ký, nhưng cần quyền VPN để chuyển trong nền. Vị trí VPN trước được giữ làm phương án dự phòng."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Penyegaran langganan selesai. Mencari lokasi terbaik..."
+      "target": "Đã làm mới đăng ký. Đang tìm vị trí tốt nhất..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Penyegaran langganan selesai. "
+      "target": "Đã làm mới đăng ký. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Mode runtime: "
+      "target": "Chế độ runtime: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Proksi lokal: "
+      "target": "Proxy cục bộ: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Log runtime: "
+      "target": "Nhật ký runtime: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Pemeriksaan mode VPN berhasil"
+      "target": "Kiểm tra trước chế độ VPN đã đạt"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Pemeriksaan mode proksi berhasil"
+      "target": "Kiểm tra trước chế độ chỉ proxy đã đạt"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Pemeriksaan mode VPN gagal: "
+      "target": "Kiểm tra trước chế độ VPN thất bại: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Mode hanya proksi pemeriksaan awal gagal: "
+      "target": "Kiểm tra trước chế độ chỉ proxy thất bại: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Mode VPN tidak tersedia: "
+      "target": "Chế độ VPN không khả dụng: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Mode hanya proksi tidak tersedia: "
+      "target": "Chế độ chỉ proxy không khả dụng: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN desktop siap"
+      "target": "Khả năng VPN desktop: sẵn sàng"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN desktop: "
+      "target": "Khả năng VPN desktop: "
     },
     {
       "source": "VPN mode available",
-      "target": "VPN mode tersedia"
+      "target": "Chế độ VPN khả dụng"
     },
     {
       "source": "Proxy mode available",
-      "target": "Proksi mode tersedia"
+      "target": "Chế độ proxy khả dụng"
     },
     {
       "source": "not ready",
-      "target": "belum siap"
+      "target": "chưa sẵn sàng"
     },
     {
       "source": " checks",
-      "target": " pemeriksaan"
+      "target": " kiểm tra"
     },
     {
       "source": " check",
-      "target": " pemeriksaan"
+      "target": " kiểm tra"
     },
     {
       "source": "fail TUN device: ",
-      "target": "galat perangkat TUN: "
+      "target": "lỗi thiết bị TUN: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "galat izin jaringan: "
+      "target": "lỗi đặc quyền mạng: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "galat alat route/DNS: "
+      "target": "lỗi công cụ định tuyến/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "Perangkat TUN"
+      "target": "thiết bị TUN"
     },
     {
       "source": "network privileges",
-      "target": "Hak jaringan"
+      "target": "đặc quyền mạng"
     },
     {
       "source": "route/DNS tooling",
-      "target": "Alat route/DNS"
+      "target": "công cụ định tuyến/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Perangkat TUN Linux tidak ada di /dev/net/tun. Coba: sudo modprobe tun"
+      "target": "Thiếu thiết bị TUN của Linux tại /dev/net/tun. Thử: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Mode VPN desktop memerlukan CAP_NET_ADMIN. Jalankan sebagai root atau beri kemampuan sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Chế độ VPN desktop cần CAP_NET_ADMIN. Chạy bằng root hoặc cấp capability cho sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Alat rute/DNS Windows tidak tersedia. Mode VPN memerlukan netsh.exe dan cmdlet PowerShell klien DNS."
+      "target": "Công cụ định tuyến/DNS của Windows không khả dụng. Chế độ VPN cần netsh.exe và các cmdlet DNS client PowerShell."
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN siap di komputer ini"
+      "target": "VPN đã sẵn sàng trên máy tính này"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Proksi siap di komputer ini"
+      "target": "Proxy đã sẵn sàng trên máy tính này"
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Siaga"
+      "target": "Rảnh"
     },
     {
       "source": "VPN started",
-      "target": "VPN dimulai"
+      "target": "VPN đã bật"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN dihentikan"
+      "target": "VPN đã tắt"
     },
     {
       "source": "Proxy started",
-      "target": "Proksi dimulai"
+      "target": "Proxy đã bật"
     },
     {
       "source": "Proxy stopped",
-      "target": "Proksi dihentikan"
+      "target": "Proxy đã tắt"
     },
     {
       "source": "Starting VPN...",
-      "target": "Memulai VPN..."
+      "target": "Đang bật VPN..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Memulai proksi lokal..."
+      "target": "Đang bật proxy cục bộ..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Memulai VPN dengan lokasi terbaik..."
+      "target": "Đang bật VPN với vị trí tốt nhất..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Memulai proksi lokal dengan lokasi terbaik..."
+      "target": "Đang bật proxy cục bộ với vị trí tốt nhất..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Mencari lokasi terbaik dari langganan..."
+      "target": "Đang tìm vị trí tốt nhất từ đăng ký..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Mencari lokasi terbaik dari lokasi tersimpan..."
+      "target": "Đang tìm vị trí tốt nhất từ vị trí đã lưu..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Lokasi pencarian dibatalkan"
+      "target": "Đã hủy tìm kiếm vị trí"
     },
     {
       "source": "Location search failed",
-      "target": "Lokasi pencarian gagal"
+      "target": "Tìm kiếm vị trí thất bại"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Berikan izin VPN lalu coba lagi"
+      "target": "Cấp quyền VPN rồi thử lại"
     },
     {
       "source": "Set a remote source first",
-      "target": "Atur sumber jarak jauh terlebih dahulu"
+      "target": "Đặt nguồn từ xa trước"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Tambahkan minimal satu lokasi tersimpan terlebih dahulu"
+      "target": "Thêm ít nhất một vị trí đã lưu trước"
     },
     {
       "source": "Select a location first",
-      "target": "Pilih a lokasi first"
+      "target": "Chọn một vị trí trước"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "No langganan tersimpan yet"
+      "target": "Chưa lưu đăng ký nào"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Langganan diperbarui"
+      "target": "Đang làm mới tất cả đăng ký..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Menyegarkan active langganan..."
+      "target": "Đang làm mới đăng ký đang hoạt động..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Menyegarkan langganan..."
+      "target": "Đang làm mới đăng ký..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Menyegarkan langganan..."
+      "target": "Đang làm mới đăng ký..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Menyegarkan langganan secara otomatis..."
+      "target": "Đang tự động làm mới đăng ký..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Menyegarkan langganan secara otomatis..."
+      "target": "Đang tự động làm mới đăng ký..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký đang hoạt động"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới tất cả đăng ký"
     },
     {
       "source": "Refresh failed",
-      "target": "Penyegaran gagal"
+      "target": "Làm mới thất bại"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Sumber profil diatur ke langganan"
+      "target": "Nguồn hồ sơ đã đặt thành đăng ký"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Sumber profil diatur ke lokasi tersimpan"
+      "target": "Nguồn hồ sơ đã đặt thành vị trí đã lưu"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Mode koneksi diatur ke VPN"
+      "target": "Chế độ kết nối đã đặt thành VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Mode koneksi diatur ke proxy saja"
+      "target": "Chế độ kết nối đã đặt thành chỉ proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Putuskan koneksi dulu untuk mengubah mode koneksi"
+      "target": "Ngắt kết nối trước để đổi chế độ kết nối"
     },
     {
       "source": "History entry deleted",
-      "target": "Entri riwayat dihapus"
+      "target": "Đã xóa mục lịch sử"
     },
     {
       "source": "Subscription name reset",
-      "target": "Langganan nama direset"
+      "target": "Đã đặt lại tên đăng ký"
     },
     {
       "source": "Subscription name saved",
-      "target": "Langganan nama tersimpan"
+      "target": "Đã lưu tên đăng ký"
     },
     {
       "source": "Language set to system default",
-      "target": "Bahasa disetel ke bawaan sistem"
+      "target": "Ngôn ngữ đã đặt theo mặc định hệ thống"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Custom DNS tersimpan"
+      "target": "Đã lưu DNS tùy chỉnh"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "DNS khusus dinonaktifkan"
+      "target": "Đã tắt DNS tùy chỉnh"
     },
     {
       "source": "Routing rules saved",
-      "target": "Perutean aturan tersimpan"
+      "target": "Đã lưu quy tắc định tuyến"
     },
     {
       "source": "Routing rules imported",
-      "target": "Perutean aturan diimpor"
+      "target": "Đã nhập quy tắc định tuyến"
     },
     {
       "source": "Locations imported",
-      "target": "Lokasi diimpor"
+      "target": "Đã nhập vị trí"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Lokasi yang dipilih tidak tersedia lagi"
+      "target": "Đã nhập vị trí. Vị trí đã chọn không còn khả dụng"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Beralih ke Lokasi Tersimpan untuk mengimpor lokasi"
+      "target": "Chuyển sang Vị trí đã lưu để nhập vị trí"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Beralih ke Lokasi Tersimpan untuk menambahkan lokasi manual"
+      "target": "Chuyển sang Vị trí đã lưu để thêm vị trí thủ công"
     },
     {
       "source": "Invalid location config",
-      "target": "Invalid lokasi config"
+      "target": "Cấu hình vị trí không hợp lệ"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Lokasi yang akan diedit tidak tersedia lagi"
+      "target": "Vị trí cần sửa không còn khả dụng"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Diagnostik export bukaed"
+      "target": "Đã mở bản xuất chẩn đoán"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Diagnostik export gagal"
+      "target": "Xuất chẩn đoán thất bại"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Diagnostik export dibatalkan"
+      "target": "Đã hủy xuất chẩn đoán"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Lokasi VPN sebelumnya tidak tersedia lagi"
+      "target": "Vị trí VPN trước không còn khả dụng"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Aplikasi ditutup. VPN sedang mati."
+      "target": "Ứng dụng đã đóng. VPN đã tắt."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Diaktifkan all langganan"
+      "target": "Đã kích hoạt tất cả đăng ký"
     },
     {
       "source": "All subscriptions selected",
-      "target": "All langganan terpilih"
+      "target": "Đã chọn tất cả đăng ký"
     },
     {
       "source": "Subscription selected",
-      "target": "Langganan terpilih"
+      "target": "Đã chọn đăng ký"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Lokasi disalin ke clipboard"
+      "target": "Đã sao chép vị trí vào bảng nhớ tạm"
     },
     {
       "source": "Locations export canceled",
-      "target": "Lokasi export dibatalkan"
+      "target": "Đã hủy xuất vị trí"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Aturan perutean disalin ke clipboard"
+      "target": "Đã sao chép quy tắc định tuyến vào bảng nhớ tạm"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Perutean aturan export dibatalkan"
+      "target": "Đã hủy xuất quy tắc định tuyến"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Mode sumber profil: langganan"
+      "target": "Chế độ nguồn hồ sơ: đăng ký"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Mode sumber profil: lokasi saat ini"
+      "target": "Chế độ nguồn hồ sơ: vị trí hiện tại"
     }
   ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
-      "target": "Lokasi langganan bersifat baca-saja. Beralih ke Lokasi Tersimpan untuk menyimpan perubahan."
+      "target": "Vị trí từ đăng ký chỉ đọc. Chuyển sang Vị trí đã lưu để lưu chỉnh sửa."
     },
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
-      "target": "Lokasi langganan bersifat baca-saja. Beralih ke Lokasi Tersimpan untuk menghapusnya."
+      "target": "Vị trí từ đăng ký chỉ đọc. Chuyển sang Vị trí đã lưu để xóa chúng."
     },
     {
       "source": "Subscription received. Review and save it on the Profile tab.",
-      "target": "Langganan diterima. Tinjau dan simpan di tab Profil."
+      "target": "Đã nhận đăng ký. Xem lại và lưu trong tab Hồ sơ."
     },
     {
       "source": "Subscription link received. Review and save it on the Profile tab.",
-      "target": "Tautan langganan diterima. Tinjau dan simpan di tab Profil."
+      "target": "Đã nhận liên kết đăng ký. Xem lại và lưu trong tab Hồ sơ."
     },
     {
       "source": "Location config received. Review and save it on the Locations tab.",
-      "target": "Konfigurasi lokasi diterima. Tinjau dan simpan di tab Lokasi."
+      "target": "Đã nhận cấu hình vị trí. Xem lại và lưu trong tab Vị trí."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Memulai proksi lokal dengan lokasi terbaik..."
+      "target": "Đang bật proxy cục bộ với vị trí tốt nhất..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Memulai VPN dengan lokasi terbaik..."
+      "target": "Đang bật VPN với vị trí tốt nhất..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Mencari lokasi terbaik dari langganan..."
+      "target": "Đang tìm vị trí tốt nhất từ đăng ký..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Mencari lokasi terbaik dari lokasi tersimpan..."
+      "target": "Đang tìm vị trí tốt nhất từ vị trí đã lưu..."
     },
     {
       "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Lokasi diimpor. Lokasi yang dipilih tidak tersedia lagi, proxy dihentikan"
+      "target": "Đã nhập vị trí. Vị trí đã chọn không còn khả dụng, proxy đã dừng"
     },
     {
       "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Lokasi diimpor. Lokasi yang dipilih tidak tersedia lagi, VPN dihentikan"
+      "target": "Đã nhập vị trí. Vị trí đã chọn không còn khả dụng, VPN đã dừng"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Lokasi yang dipilih tidak tersedia lagi"
+      "target": "Đã nhập vị trí. Vị trí đã chọn không còn khả dụng"
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Lokasi terpilih diterapkan, tetapi gagal menyimpannya"
+      "target": "Đã áp dụng vị trí đã chọn, nhưng không thể lưu"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Perubahan lokasi dibatalkan karena proxy tidak dapat dihentikan"
+      "target": "Đã hoàn tác xóa vị trí vì không thể dừng proxy"
     },
     {
       "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "Perubahan lokasi dibatalkan karena VPN tidak dapat dihentikan"
+      "target": "Đã hoàn tác xóa vị trí vì không thể dừng VPN"
     },
     {
       "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Perubahan lokasi dibatalkan karena proxy tidak dapat dihentikan"
+      "target": "Đã hoàn tác nhập vị trí vì không thể dừng proxy"
     },
     {
       "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "Perubahan lokasi dibatalkan karena VPN tidak dapat dihentikan"
+      "target": "Đã hoàn tác nhập vị trí vì không thể dừng VPN"
     },
     {
       "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "VPN dihentikan. Langganan yang disegarkan menghapus lokasi terpilih."
+      "target": "VPN đã dừng. Đăng ký sau khi làm mới đã xóa vị trí đã chọn."
     },
     {
       "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Proksi dihentikan. Langganan yang disegarkan menghapus lokasi terpilih."
+      "target": "Proxy đã dừng. Đăng ký sau khi làm mới đã xóa vị trí đã chọn."
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN berhenti. Akan tersambung lagi saat peluncuran berikutnya."
+      "target": "VPN đã dừng. Sẽ kết nối lại ở lần khởi chạy tiếp theo."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Proksi berhenti. Akan tersambung lagi saat peluncuran berikutnya."
+      "target": "Proxy đã dừng. Sẽ kết nối lại ở lần khởi chạy tiếp theo."
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Aturan diperbarui"
+      "target": "Đã lưu quy tắc định tuyến. Khởi động lại VPN để áp dụng"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Aturan diperbarui"
+      "target": "Đã lưu quy tắc định tuyến. Khởi động lại proxy để áp dụng"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Aturan diperbarui"
+      "target": "Đã nhập quy tắc định tuyến. Khởi động lại VPN để áp dụng"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Aturan diperbarui"
+      "target": "Đã nhập quy tắc định tuyến. Khởi động lại proxy để áp dụng"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
-      "target": "Lokasi terpilih dihapus. VPN dihentikan: "
+      "target": "Đã xóa vị trí đã chọn. VPN đã dừng: "
     },
     {
       "source": "Selected location removed. Proxy stopped: ",
-      "target": "Lokasi terpilih dihapus. Proksi dihentikan: "
+      "target": "Đã xóa vị trí đã chọn. Proxy đã dừng: "
     },
     {
       "source": "Best location selected and vpn started: ",
-      "target": "Lokasi terbaik dipilih dan VPN dimulai: "
+      "target": "Đã chọn vị trí tốt nhất và VPN đã bật: "
     },
     {
       "source": "Best location selected and proxy started: ",
-      "target": "Lokasi terbaik dipilih dan proxy dimulai: "
+      "target": "Đã chọn vị trí tốt nhất và proxy đã bật: "
     },
     {
       "source": "VPN started, but failed to save the selected location",
-      "target": "VPN dimulai, tetapi lokasi terpilih gagal disimpan"
+      "target": "VPN đã bật, nhưng không thể lưu vị trí đã chọn"
     },
     {
       "source": "Proxy started, but failed to save the selected location",
-      "target": "Proksi dimulai, tetapi lokasi terpilih gagal disimpan"
+      "target": "Proxy đã bật, nhưng không thể lưu vị trí đã chọn"
     },
     {
       "source": "VPN started, but failed to save the best location",
-      "target": "VPN dimulai, tetapi lokasi terbaik gagal disimpan"
+      "target": "VPN đã bật, nhưng không thể lưu vị trí tốt nhất"
     },
     {
       "source": "Proxy started, but failed to save the best location",
-      "target": "Proksi dimulai, tetapi lokasi terbaik gagal disimpan"
+      "target": "Proxy đã bật, nhưng không thể lưu vị trí tốt nhất"
     },
     {
       "source": "Failed to start VPN with the best location",
-      "target": "Gagal memulai VPN dengan lokasi terbaik"
+      "target": "Không thể bật VPN với vị trí tốt nhất"
     },
     {
       "source": "Failed to start proxy with the best location",
-      "target": "Gagal memulai proksi dengan lokasi terbaik"
+      "target": "Không thể bật proxy với vị trí tốt nhất"
     },
     {
       "source": "Failed to save the selected location",
-      "target": "Gagal menyimpan lokasi terpilih"
+      "target": "Không thể lưu vị trí đã chọn"
     },
     {
       "source": "Failed to save selected location",
-      "target": "Gagal menyimpan lokasi terpilih"
+      "target": "Không thể lưu vị trí đã chọn"
     },
     {
       "source": "Failed to save the best location",
-      "target": "Gagal menyimpan lokasi terbaik"
+      "target": "Không thể lưu vị trí tốt nhất"
     },
     {
       "source": "Failed to apply selected location",
-      "target": "Gagal menerapkan lokasi yang dipilih"
+      "target": "Không thể áp dụng vị trí đã chọn"
     },
     {
       "source": "Failed to select location",
-      "target": "Gagal memilih lokasi"
+      "target": "Không thể chọn vị trí"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "Gagal menghentikan VPN sebelum keluar"
+      "target": "Không thể dừng VPN trước khi thoát"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "Gagal menghentikan proksi sebelum keluar"
+      "target": "Không thể dừng Proxy trước khi thoát"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "Gagal menghentikan VPN"
+      "target": "Không thể dừng VPN"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "Gagal menghentikan proksi"
+      "target": "Không thể dừng proxy"
     },
     {
       "source": "Failed to start VPN",
-      "target": "Gagal memulai VPN"
+      "target": "Không thể bật VPN"
     },
     {
       "source": "Failed to start proxy",
-      "target": "Gagal memulai proksi"
+      "target": "Không thể bật proxy"
     },
     {
       "source": "Could not prepare VPN",
-      "target": "VPN tidak dapat disiapkan"
+      "target": "Không thể chuẩn bị VPN"
     },
     {
       "source": "Could not prepare proxy",
-      "target": "Proksi tidak dapat disiapkan"
+      "target": "Không thể chuẩn bị proxy"
     },
     {
       "source": "Preparing VPN",
-      "target": "Menyiapkan VPN"
+      "target": "Đang chuẩn bị VPN"
     },
     {
       "source": "Preparing proxy",
-      "target": "Menyiapkan proksi"
+      "target": "Đang chuẩn bị proxy"
     },
     {
       "source": "VPN start cancelled",
-      "target": "VPN mulai dibatalkan"
+      "target": "Đã hủy bật VPN"
     },
     {
       "source": "Proxy start cancelled",
-      "target": "Proksi mulai dibatalkan"
+      "target": "Đã hủy bật proxy"
     },
     {
       "source": "VPN stop cancelled",
-      "target": "VPN hentikan dibatalkan"
+      "target": "Đã hủy tắt VPN"
     },
     {
       "source": "Proxy stop cancelled",
-      "target": "Proksi hentikan dibatalkan"
+      "target": "Đã hủy tắt proxy"
     },
     {
       "source": "Starting local proxy...",
-      "target": "Memulai proksi lokal..."
+      "target": "Đang bật proxy cục bộ..."
     },
     {
       "source": "Starting VPN...",
-      "target": "Memulai VPN..."
+      "target": "Đang bật VPN..."
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Langganan diperbarui"
+      "target": "Đang làm mới tất cả đăng ký..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Menyegarkan active langganan..."
+      "target": "Đang làm mới đăng ký đang hoạt động..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Menyegarkan langganan..."
+      "target": "Đang làm mới đăng ký..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Menyegarkan langganan..."
+      "target": "Đang làm mới đăng ký..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Menyegarkan langganan secara otomatis..."
+      "target": "Đang tự động làm mới đăng ký..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Menyegarkan langganan secara otomatis..."
+      "target": "Đang tự động làm mới đăng ký..."
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới tất cả đăng ký"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký đang hoạt động"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký"
     },
     {
       "source": "Subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký"
     },
     {
       "source": "Refresh failed",
-      "target": "Penyegaran gagal"
+      "target": "Làm mới thất bại"
     },
     {
       "source": "Location search cancelled",
-      "target": "Lokasi pencarian dibatalkan"
+      "target": "Đã hủy tìm kiếm vị trí"
     },
     {
       "source": "Location search failed",
-      "target": "Lokasi pencarian gagal"
+      "target": "Tìm kiếm vị trí thất bại"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Berikan izin VPN lalu coba lagi"
+      "target": "Cấp quyền VPN rồi thử lại"
     },
     {
       "source": "Set a remote source first",
-      "target": "Atur sumber jarak jauh terlebih dahulu"
+      "target": "Đặt nguồn từ xa trước"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Tambahkan minimal satu lokasi tersimpan terlebih dahulu"
+      "target": "Thêm ít nhất một vị trí đã lưu trước"
     },
     {
       "source": "Select a location first",
-      "target": "Pilih a lokasi first"
+      "target": "Chọn một vị trí trước"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "No langganan tersimpan yet"
+      "target": "Chưa lưu đăng ký nào"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Sumber profil diatur ke langganan"
+      "target": "Nguồn hồ sơ đã đặt thành đăng ký"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Sumber profil diatur ke lokasi tersimpan"
+      "target": "Nguồn hồ sơ đã đặt thành vị trí đã lưu"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Mode koneksi diatur ke VPN"
+      "target": "Chế độ kết nối đã đặt thành VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Mode koneksi diatur ke proxy saja"
+      "target": "Chế độ kết nối đã đặt thành chỉ proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Putuskan koneksi dulu untuk mengubah mode koneksi"
+      "target": "Ngắt kết nối trước để đổi chế độ kết nối"
     },
     {
       "source": "History entry deleted",
-      "target": "Entri riwayat dihapus"
+      "target": "Đã xóa mục lịch sử"
     },
     {
       "source": "Subscription name reset",
-      "target": "Langganan nama direset"
+      "target": "Đã đặt lại tên đăng ký"
     },
     {
       "source": "Subscription name saved",
-      "target": "Langganan nama tersimpan"
+      "target": "Đã lưu tên đăng ký"
     },
     {
       "source": "Language set to system default",
-      "target": "Bahasa disetel ke bawaan sistem"
+      "target": "Ngôn ngữ đã đặt theo mặc định hệ thống"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Custom DNS tersimpan"
+      "target": "Đã lưu DNS tùy chỉnh"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "DNS khusus dinonaktifkan"
+      "target": "Đã tắt DNS tùy chỉnh"
     },
     {
       "source": "Routing rules saved",
-      "target": "Perutean aturan tersimpan"
+      "target": "Đã lưu quy tắc định tuyến"
     },
     {
       "source": "Routing rules imported",
-      "target": "Perutean aturan diimpor"
+      "target": "Đã nhập quy tắc định tuyến"
     },
     {
       "source": "Locations imported",
-      "target": "Lokasi diimpor"
+      "target": "Đã nhập vị trí"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Beralih ke Lokasi Tersimpan untuk mengimpor lokasi"
+      "target": "Chuyển sang Vị trí đã lưu để nhập vị trí"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Beralih ke Lokasi Tersimpan untuk menambahkan lokasi manual"
+      "target": "Chuyển sang Vị trí đã lưu để thêm vị trí thủ công"
     },
     {
       "source": "Invalid location config",
-      "target": "Invalid lokasi config"
+      "target": "Cấu hình vị trí không hợp lệ"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Lokasi yang akan diedit tidak tersedia lagi"
+      "target": "Vị trí cần sửa không còn khả dụng"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Diagnostik export bukaed"
+      "target": "Đã mở bản xuất chẩn đoán"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Diagnostik export gagal"
+      "target": "Xuất chẩn đoán thất bại"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Diagnostik export dibatalkan"
+      "target": "Đã hủy xuất chẩn đoán"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Lokasi VPN sebelumnya tidak tersedia lagi"
+      "target": "Vị trí VPN trước không còn khả dụng"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Aplikasi ditutup. VPN sedang mati."
+      "target": "Ứng dụng đã đóng. VPN đã tắt."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Diaktifkan all langganan"
+      "target": "Đã kích hoạt tất cả đăng ký"
     },
     {
       "source": "All subscriptions selected",
-      "target": "All langganan terpilih"
+      "target": "Đã chọn tất cả đăng ký"
     },
     {
       "source": "Subscription selected",
-      "target": "Langganan terpilih"
+      "target": "Đã chọn đăng ký"
     },
     {
       "source": "Subscription saved",
-      "target": "Langganan tersimpan"
+      "target": "Đã lưu đăng ký"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Lokasi disalin ke clipboard"
+      "target": "Đã sao chép vị trí vào bảng nhớ tạm"
     },
     {
       "source": "Locations export canceled",
-      "target": "Lokasi export dibatalkan"
+      "target": "Đã hủy xuất vị trí"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Aturan perutean disalin ke clipboard"
+      "target": "Đã sao chép quy tắc định tuyến vào bảng nhớ tạm"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Perutean aturan export dibatalkan"
+      "target": "Đã hủy xuất quy tắc định tuyến"
     },
     {
       "source": "Clipboard read failed",
-      "target": "Clipboard baca gagal"
+      "target": "Không thể đọc bảng nhớ tạm"
     },
     {
       "source": "No locations to export",
-      "target": "Tidak ada lokasi untuk diekspor"
+      "target": "Không có vị trí để xuất"
     },
     {
       "source": "Failed to load apps",
-      "target": "Gagal memuat aplikasi"
+      "target": "Không thể tải ứng dụng"
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "Gagal menyegarkan langganan"
+      "target": "Không thể làm mới đăng ký"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "Gagal menyegarkan langganan aktif"
+      "target": "Không thể làm mới đăng ký đang hoạt động"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "Gagal mengimpor aturan perutean"
+      "target": "Không thể nhập quy tắc định tuyến"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "Gagal menyimpan aturan perutean"
+      "target": "Không thể lưu quy tắc định tuyến"
     },
     {
       "source": "Failed to import locations",
-      "target": "Gagal mengimpor lokasi"
+      "target": "Không thể nhập vị trí"
     },
     {
       "source": "Failed to open locations file",
-      "target": "Gagal membuka file lokasi"
+      "target": "Không thể mở tệp vị trí"
     },
     {
       "source": "Failed to read locations file",
-      "target": "Gagal membaca file lokasi"
+      "target": "Không thể đọc tệp vị trí"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "Gagal membuka file aturan perutean"
+      "target": "Không thể mở tệp quy tắc định tuyến"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
-      "target": "Lokasi terbaik tidak dapat dicocokkan dengan daftar desktop"
+      "target": "Không thể ánh xạ vị trí tốt nhất vào danh sách desktop"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN siap di komputer ini"
+      "target": "VPN đã sẵn sàng trên máy tính này"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Proksi siap di komputer ini"
+      "target": "Proxy đã sẵn sàng trên máy tính này"
     },
     {
       "source": "Desktop VPN shell ready",
-      "target": "Shell VPN desktop siap"
+      "target": "Shell VPN desktop đã sẵn sàng"
     },
     {
       "source": "Desktop Proxy shell ready",
-      "target": "Desktop Proksi shell siap"
+      "target": "Shell Proxy desktop đã sẵn sàng"
     },
     {
       "source": "VPN started on ",
-      "target": "VPN dimulai di "
+      "target": "VPN đã bật trên "
     },
     {
       "source": "Proxy started on ",
-      "target": "Proksi dimulai di "
+      "target": "Proxy đã bật trên "
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN dihentikan. Aplikasi mode: "
+      "target": "VPN đã tắt. Chế độ ứng dụng: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Proksi dihentikan. Aplikasi mode: "
+      "target": "Proxy đã tắt. Chế độ ứng dụng: "
     },
     {
       "source": "Language set to ",
-      "target": "Bahasa disetel ke "
+      "target": "Ngôn ngữ đã đặt thành "
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Penyegaran otomatis langganan diatur ke "
+      "target": "Tự động làm mới đăng ký đã đặt thành "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Pengaturan validasi tersimpan: "
+      "target": "Đã lưu cài đặt xác thực: "
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Terpilih lokasi unchanged: "
+      "target": "Vị trí đã chọn không đổi: "
     },
     {
       "source": "Selected location removed: ",
-      "target": "Lokasi terpilih dihapus: "
+      "target": "Đã xóa vị trí đã chọn: "
     },
     {
       "source": "Selected location set: ",
-      "target": "Terpilih lokasi set: "
+      "target": "Đã đặt vị trí đã chọn: "
     },
     {
       "source": "Location updated and merged: ",
-      "target": "Lokasi diperbarui dan digabung: "
+      "target": "Đã cập nhật và hợp nhất vị trí: "
     },
     {
       "source": "Location already saved: ",
-      "target": "Lokasi alsiap tersimpan: "
+      "target": "Vị trí đã được lưu: "
     },
     {
       "source": "Location updated: ",
-      "target": "Lokasi diperbarui: "
+      "target": "Đã cập nhật vị trí: "
     },
     {
       "source": "Location removed: ",
-      "target": "Lokasi dihapus: "
+      "target": "Đã xóa vị trí: "
     },
     {
       "source": "Location added: ",
-      "target": "Lokasi ditambahkan: "
+      "target": "Đã thêm vị trí: "
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Langganan diperbarui"
+      "target": "Đã làm mới đăng ký: "
     },
     {
       "source": "Failed: ",
-      "target": "Gagal: "
+      "target": "Thất bại: "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Memulihkan VPN: "
+      "target": "Đang khôi phục VPN: "
     },
     {
       "source": "Refreshing ",
-      "target": "Menyegarkan "
+      "target": "Đang làm mới "
     },
     {
       "source": "Locations exported to ",
-      "target": "Lokasi diekspor ke "
+      "target": "Đã xuất vị trí tới "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Aturan perutean diekspor ke "
+      "target": "Đã xuất quy tắc định tuyến tới "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Diagnostik diekspor ke "
+      "target": "Đã xuất chẩn đoán tới "
     },
     {
       "source": "Failed to benchmark ",
-      "target": "Gagal menguji "
+      "target": "Không thể đo kiểm "
     },
     {
       "source": "Activated ",
-      "target": "Diaktifkan "
+      "target": "Đã kích hoạt "
     },
     {
       "source": "Added ",
-      "target": "Ditambahkan "
+      "target": "Đã thêm "
     },
     {
       "source": "Deleted ",
-      "target": "Dihapus "
+      "target": "Đã xóa "
     },
     {
       "source": "Selected ",
-      "target": "Terpilih "
+      "target": "Đã chọn "
     },
     {
       "source": "Edited location #",
-      "target": "Diedit lokasi #"
+      "target": "Đã sửa vị trí #"
     },
     {
       "source": "App mode: ",
-      "target": "Aplikasi mode: "
+      "target": "Chế độ ứng dụng: "
     },
     {
       "source": " locations refreshed",
-      "target": " lokasi disegarkan"
+      "target": " vị trí đã làm mới"
     },
     {
       "source": " location refreshed",
-      "target": " lokasi disegarkan"
+      "target": " vị trí đã làm mới"
     },
     {
       "source": " • batch ",
-      "target": " • grup "
+      "target": " • lô "
     },
     {
       "source": " • retries ",
-      "target": " • percobaan ulang "
+      "target": " • thử lại "
     },
     {
       "source": "custom interval",
-      "target": "interval khusus"
+      "target": "khoảng tùy chỉnh"
     },
     {
       "source": "every hour",
-      "target": "setiap jam"
+      "target": "mỗi giờ"
     },
     {
       "source": "all subscriptions",
-      "target": "all langganan"
+      "target": "tất cả đăng ký"
     },
     {
       "source": "selected subscription",
-      "target": "terpilih langganan"
+      "target": "đăng ký đã chọn"
     },
     {
       "source": "proxy only",
-      "target": "proksi only"
+      "target": "chỉ proxy"
     },
     {
       "source": "off",
-      "target": "mati"
+      "target": "tắt"
     },
     {
       "source": "Idle",
-      "target": "Siaga"
+      "target": "Rảnh"
     },
     {
       "source": "VPN started",
-      "target": "VPN dimulai"
+      "target": "VPN đã bật"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN dihentikan"
+      "target": "VPN đã tắt"
     },
     {
       "source": "Proxy started",
-      "target": "Proksi dimulai"
+      "target": "Proxy đã bật"
     },
     {
       "source": "Proxy stopped",
-      "target": "Proksi dihentikan"
+      "target": "Proxy đã tắt"
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Memulai VPN dengan lokasi terbaik baru..."
+      "target": "Đang bật VPN với vị trí tốt nhất mới..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Memulai proksi dengan lokasi terbaik baru..."
+      "target": "Đang bật proxy với vị trí tốt nhất mới..."
     }
   ]
 }
