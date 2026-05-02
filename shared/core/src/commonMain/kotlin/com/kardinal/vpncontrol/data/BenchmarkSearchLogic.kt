@@ -2,7 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlin.math.round
 
 data class BenchmarkUrls(
@@ -16,7 +16,7 @@ data class ProxyRunResult(
 )
 
 data class PreflightResult(
-    val profile: VlessProfile,
+    val profile: ProxyProfile,
     val connectMillis: Double?,
     val detail: String,
     val resolvedServerAddress: String? = null,
@@ -40,7 +40,7 @@ data class SearchEvaluation(
 
 object BenchmarkSearchLogic {
     fun evaluateProfilesForSelection(
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         preflightResults: List<PreflightResult>,
         candidateBenchmarks: List<ProfileBenchmark>,
         winner: ProfileBenchmark?,
@@ -138,7 +138,7 @@ object BenchmarkSearchLogic {
     }
 
     fun failedBenchmark(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         candidate: PreflightResult,
         reason: String,
     ): ProfileBenchmark {

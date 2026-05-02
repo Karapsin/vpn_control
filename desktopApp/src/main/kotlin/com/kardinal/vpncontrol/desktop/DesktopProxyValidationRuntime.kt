@@ -9,7 +9,7 @@ import com.kardinal.vpncontrol.data.SearchEvaluation
 import com.kardinal.vpncontrol.data.ValidationWalkResult
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
@@ -59,7 +59,7 @@ class DesktopProxyValidationRuntime(
     private val preflightThreadCounter = AtomicInteger()
 
     suspend fun benchmarkLocation(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         dnsSettings: DesktopDnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
@@ -75,7 +75,7 @@ class DesktopProxyValidationRuntime(
     }
 
     suspend fun evaluateProfiles(
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         dnsSettings: DesktopDnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
@@ -116,7 +116,7 @@ class DesktopProxyValidationRuntime(
     }
 
     private suspend fun preflightProfiles(
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         settings: DesktopValidationSettings,
     ): List<PreflightResult> {
         val concurrency = settings.preflightConcurrency.coerceAtLeast(1)
@@ -168,7 +168,7 @@ class DesktopProxyValidationRuntime(
     }
 
     private fun preflightProfile(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         settings: DesktopValidationSettings,
     ): PreflightResult {
         val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -387,7 +387,7 @@ class DesktopProxyValidationRuntime(
     }
 }
 
-internal fun VlessProfile.withResolvedValidationServer(resolvedServerAddress: String?): VlessProfile {
+internal fun ProxyProfile.withResolvedValidationServer(resolvedServerAddress: String?): ProxyProfile {
     val resolvedServer = resolvedServerAddress
         ?.trim()
         ?.takeIf { it.isNotEmpty() && it != server }
@@ -404,7 +404,7 @@ internal fun VlessProfile.withResolvedValidationServer(resolvedServerAddress: St
     )
 }
 
-private fun VlessProfile.usesTlsForValidation(): Boolean {
+private fun ProxyProfile.usesTlsForValidation(): Boolean {
     return when (protocol) {
         ProxyProtocol.VLESS,
         ProxyProtocol.VMESS -> security.isNotBlank()

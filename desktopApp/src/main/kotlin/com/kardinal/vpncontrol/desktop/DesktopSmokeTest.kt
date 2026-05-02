@@ -5,7 +5,7 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
@@ -112,7 +112,7 @@ internal object DesktopSmokeTest {
         return null
     }
 
-    private fun smokeProfile(): VlessProfile = VlessProfile(
+    private fun smokeProfile(): ProxyProfile = ProxyProfile(
         protocol = ProxyProtocol.VLESS,
         remarks = "Smoke",
         server = "example.com",

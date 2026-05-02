@@ -3,7 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.StatusMessages
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -58,7 +58,7 @@ class DesktopProxyRuntimeManager(
     private var lastAttemptedConfigJson: String? = null
 
     suspend fun start(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,

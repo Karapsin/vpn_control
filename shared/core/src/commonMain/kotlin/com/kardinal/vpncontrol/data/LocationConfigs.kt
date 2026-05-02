@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlinx.datetime.Clock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -25,7 +25,7 @@ object LocationConfigs {
     private const val CUSTOM_CONFIG_TYPE = "custom"
     private const val CUSTOM_CONFIG_FALLBACK_SERVER = "custom-config"
 
-    fun parseLocationInput(raw: String): VlessProfile {
+    fun parseLocationInput(raw: String): ProxyProfile {
         val trimmed = raw.trim()
         require(trimmed.isNotBlank()) { "Location config is empty" }
         require(!isUnsupportedVpnImport(trimmed)) {
@@ -41,7 +41,7 @@ object LocationConfigs {
         }
     }
 
-    fun decodeStoredLocation(raw: String): VlessProfile {
+    fun decodeStoredLocation(raw: String): ProxyProfile {
         val trimmed = raw.trim()
         require(trimmed.isNotBlank()) { "Stored location is empty" }
         return if (trimmed.startsWith("{")) {
@@ -67,7 +67,7 @@ object LocationConfigs {
         }
     }
 
-    fun encodeStoredLocation(profile: VlessProfile): String =
+    fun encodeStoredLocation(profile: ProxyProfile): String =
         CompactJson.encodeToString(JsonObject.serializer(), profileToJson(profile))
 
     fun prettyStoredLocation(raw: String): String {
@@ -145,7 +145,7 @@ object LocationConfigs {
             "rawLink" in root
     }
 
-    private fun parseProfileJson(root: JsonObject): VlessProfile {
+    private fun parseProfileJson(root: JsonObject): ProxyProfile {
         if (looksLikeCustomConfig(root)) {
             val embedded = root.string("custom_config_json")
                 .ifBlank { root.string("customConfigJson") }
@@ -153,7 +153,7 @@ object LocationConfigs {
             val customConfigJson = embedded.ifBlank {
                 PrettyJson.encodeToString(JsonObject.serializer(), root)
             }
-            return VlessProfile(
+            return ProxyProfile(
                 protocol = ProxyProtocol.CUSTOM,
                 remarks = root.string("remarks")
                     .ifBlank { root.string("name") }
@@ -211,7 +211,7 @@ object LocationConfigs {
             ProxyProtocol.CUSTOM -> error("Custom configs must use custom JSON format")
         }
 
-        return VlessProfile(
+        return ProxyProfile(
             protocol = protocol,
             remarks = root.string("remarks")
                 .ifBlank { root.string("name") }
@@ -247,7 +247,7 @@ object LocationConfigs {
         )
     }
 
-    private fun profileToJson(profile: VlessProfile): JsonObject {
+    private fun profileToJson(profile: ProxyProfile): JsonObject {
         if (profile.protocol == ProxyProtocol.CUSTOM) {
             return buildJsonObject {
                 put("type", JsonPrimitive(CUSTOM_CONFIG_TYPE))
