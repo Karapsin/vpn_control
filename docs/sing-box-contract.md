@@ -29,9 +29,16 @@ Non-custom outbound/TLS/transport JSON is built in shared core:
 shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilder.kt
 ```
 
+Common DNS, route rules, direct CIDRs, domain bypass rules, rule-set definitions, and remote rule-set cache wiring are built in shared core:
+
+```text
+shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt
+```
+
 Primary coverage:
 
 ```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilderTest.kt
 app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
 app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
 ```
@@ -46,12 +53,13 @@ Desktop config generation lives in:
 desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt
 ```
 
-Desktop uses the same shared outbound builder as Android for non-custom profiles. Platform factories still own inbounds, route rules, DNS, direct probe routing, and runtime-specific wrappers.
+Desktop uses the same shared outbound builder as Android for non-custom profiles. It also uses the shared route/DNS builder for common DNS, direct CIDR, domain bypass, and rule-set behavior. Platform factories still own inbounds, direct probe routing, app-assignment behavior where applicable, and runtime-specific wrappers.
 
 Primary coverage:
 
 ```text
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilderTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManagerTest.kt
@@ -119,8 +127,10 @@ Use this checklist for protocol work:
 3. Android config
 
    - Update `SingBoxOutboundBuilder.kt` for shared outbound/TLS/transport behavior.
-   - Update `SingBoxConfigFactory.kt` for Android inbounds, DNS, route rules, or VPN-only behavior.
+   - Update `SingBoxRouteDnsBuilder.kt` for shared DNS, route rules, domain bypass, or rule-set behavior.
+   - Update `SingBoxConfigFactory.kt` for Android inbounds, app assignments, or VPN-only behavior.
    - Add assertions in `SingBoxOutboundBuilderTest`.
+   - Add assertions in `SingBoxRouteDnsBuilderTest` when route/DNS behavior changes.
    - Add or update parity assertions in `SingBoxConfigFactoryParityTest`.
    - Add assertions in `SingBoxConfigFactoryInstrumentedTest`.
    - Check VPN routing behavior if the protocol interacts with app assignments or domain bypass rules.
@@ -128,8 +138,10 @@ Use this checklist for protocol work:
 4. Desktop config
 
    - Update `SingBoxOutboundBuilder.kt` for shared outbound/TLS/transport behavior.
-   - Update `DesktopProxyConfigFactory.kt` for desktop inbounds, DNS, route rules, direct probes, or VPN-only behavior.
+   - Update `SingBoxRouteDnsBuilder.kt` for shared DNS, route rules, domain bypass, or rule-set behavior.
+   - Update `DesktopProxyConfigFactory.kt` for desktop inbounds, direct probes, or VPN-only behavior.
    - Add assertions in `SingBoxOutboundBuilderTest`.
+   - Add assertions in `SingBoxRouteDnsBuilderTest` when route/DNS behavior changes.
    - Add assertions in `DesktopProxyConfigFactoryTest`.
    - Add or update parity assertions in `DesktopProxyConfigParityTest`.
    - Check proxy-only and VPN mode where the platform supports them.

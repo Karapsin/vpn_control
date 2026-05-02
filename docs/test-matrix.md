@@ -65,6 +65,16 @@ desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigPar
 app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
 ```
 
+If the patch changes shared DNS, route rules, domain bypass, direct CIDRs, or rule-set generation, also update or inspect:
+
+```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilderTest.kt
+app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
+app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
+```
+
 Import/export UI patch:
 
 ```bash

@@ -3,16 +3,12 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.data.SingBoxOutboundBuilder
+import com.kardinal.vpncontrol.data.SingBoxRouteDnsBuilder
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.RoutingRuleSet
-import com.kardinal.vpncontrol.model.RoutingRuleSetAction
-import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
-import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -25,20 +21,12 @@ data class DesktopDnsSettings(
 )
 
 object DesktopProxyConfigFactory {
-    private const val DEFAULT_DNS_SERVER = "1.1.1.1"
     const val DEFAULT_VPN_INTERFACE_NAME = "vpn-control"
     private val json = Json {
         explicitNulls = false
         prettyPrint = true
         prettyPrintIndent = "  "
     }
-    private val localDirectCidrs = listOf(
-        "127.0.0.0/8",
-        "10.0.0.0/8",
-        "172.16.0.0/12",
-        "192.168.0.0/16",
-        "169.254.0.0/16",
-    )
 
     fun buildProxyOnlyConfig(
         profile: ProxyProfile,
@@ -49,51 +37,12 @@ object DesktopProxyConfigFactory {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop proxy runtime yet"
         }
-        val customDnsEnabled = dns.enabled && dns.value.isNotBlank()
-        val dnsServerTag = if (customDnsEnabled) "custom-dns" else "remote-dns"
-        val directCidrs = localDirectCidrs + listOfNotNull(
-            dns.value.takeIf { customDnsEnabled }?.let { "$it/32" },
+        val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsEnabled = dns.enabled,
+            dnsValue = dns.value,
+            routingRules = routingRules,
+            leadingRouteRules = listOf(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "mixed-in")),
         )
-
-        val routeRules = buildJsonArray {
-            add(
-                buildJsonObject {
-                    put("inbound", "mixed-in")
-                    put("action", "sniff")
-                    put("timeout", "1s")
-                },
-            )
-            add(
-                buildJsonObject {
-                    put("ip_cidr", directCidrs.asJsonArray())
-                    put("action", "route")
-                    put("outbound", "direct")
-                },
-            )
-            if (!routingRules.ignoreRules && routingRules.allDirectDomainSuffixes.isNotEmpty()) {
-                add(
-                    buildJsonObject {
-                        put("domain_suffix", routingRules.allDirectDomainSuffixes.asJsonArray())
-                        put("action", "route")
-                        put("outbound", "direct")
-                    },
-                )
-            }
-            if (!routingRules.ignoreRules) {
-                buildRuleSetRouteRules(routingRules.ruleSets).forEach(::add)
-            }
-        }
-
-        val route = buildJsonObject {
-            put("auto_detect_interface", true)
-            put("default_domain_resolver", dnsServerTag)
-            put("final", "proxy")
-            put("rules", routeRules)
-            val definitions = buildRuleSetDefinitions(routingRules.ruleSets)
-            if (!routingRules.ignoreRules && definitions.isNotEmpty()) {
-                put("rule_set", JsonArray(definitions))
-            }
-        }
 
         val root = buildJsonObject {
             put(
@@ -105,44 +54,7 @@ object DesktopProxyConfigFactory {
             )
             put(
                 "dns",
-                buildJsonObject {
-                    put(
-                        "servers",
-                        buildJsonArray {
-                            add(
-                                if (customDnsEnabled) {
-                                    buildJsonObject {
-                                        put("type", "udp")
-                                        put("tag", "custom-dns")
-                                        put("server", dns.value)
-                                        put("server_port", 53)
-                                    }
-                                } else {
-                                    buildJsonObject {
-                                        put("type", "udp")
-                                        put("tag", "remote-dns")
-                                        put("server", DEFAULT_DNS_SERVER)
-                                        put("server_port", 53)
-                                    }
-                                },
-                            )
-                        },
-                    )
-                    put(
-                        "rules",
-                        buildJsonArray {
-                            add(
-                                buildJsonObject {
-                                    put("action", "route")
-                                    put("server", dnsServerTag)
-                                },
-                            )
-                        },
-                    )
-                    put("final", dnsServerTag)
-                    put("strategy", "prefer_ipv4")
-                    put("independent_cache", true)
-                },
+                routeDns.dns,
             )
             put(
                 "inbounds",
@@ -165,20 +77,8 @@ object DesktopProxyConfigFactory {
                     add(buildJsonObject { put("type", "block"); put("tag", "block") })
                 },
             )
-            put("route", route)
-            if (!routingRules.ignoreRules && routingRules.ruleSets.any { it.sourceType == RoutingRuleSetSourceType.REMOTE }) {
-                put(
-                    "experimental",
-                    buildJsonObject {
-                        put(
-                            "cache_file",
-                            buildJsonObject {
-                                put("enabled", true)
-                            },
-                        )
-                    },
-                )
-            }
+            put("route", routeDns.route)
+            routeDns.experimental?.let { put("experimental", it) }
         }
         return json.encodeToString(JsonObject.serializer(), root)
     }
@@ -193,65 +93,14 @@ object DesktopProxyConfigFactory {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop VPN runtime yet"
         }
-        val customDnsEnabled = dns.enabled && dns.value.isNotBlank()
-        val dnsServerTag = if (customDnsEnabled) "custom-dns" else "remote-dns"
-        val directCidrs = localDirectCidrs + listOfNotNull(
-            dns.value.takeIf { customDnsEnabled }?.let { "$it/32" },
+        val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsEnabled = dns.enabled,
+            dnsValue = dns.value,
+            routingRules = routingRules,
+            leadingRouteRules = listOf(SingBoxRouteDnsBuilder.sniffRouteRule()) +
+                buildDirectProbeRouteRules(directProbeRouting) +
+                listOf(SingBoxRouteDnsBuilder.dnsHijackRouteRule()),
         )
-
-        val routeRules = buildJsonArray {
-            add(
-                buildJsonObject {
-                    put("action", "sniff")
-                    put("timeout", "1s")
-                },
-            )
-            buildDirectProbeRouteRules(directProbeRouting).forEach(::add)
-            add(
-                buildJsonObject {
-                    put("type", "logical")
-                    put("mode", "or")
-                    put(
-                        "rules",
-                        buildJsonArray {
-                            add(buildJsonObject { put("protocol", "dns") })
-                            add(buildJsonObject { put("port", 53) })
-                        },
-                    )
-                    put("action", "hijack-dns")
-                },
-            )
-            add(
-                buildJsonObject {
-                    put("ip_cidr", directCidrs.asJsonArray())
-                    put("action", "route")
-                    put("outbound", "direct")
-                },
-            )
-            if (!routingRules.ignoreRules && routingRules.allDirectDomainSuffixes.isNotEmpty()) {
-                add(
-                    buildJsonObject {
-                        put("domain_suffix", routingRules.allDirectDomainSuffixes.asJsonArray())
-                        put("action", "route")
-                        put("outbound", "direct")
-                    },
-                )
-            }
-            if (!routingRules.ignoreRules) {
-                buildRuleSetRouteRules(routingRules.ruleSets).forEach(::add)
-            }
-        }
-
-        val route = buildJsonObject {
-            put("auto_detect_interface", true)
-            put("default_domain_resolver", dnsServerTag)
-            put("final", "proxy")
-            put("rules", routeRules)
-            val definitions = buildRuleSetDefinitions(routingRules.ruleSets)
-            if (!routingRules.ignoreRules && definitions.isNotEmpty()) {
-                put("rule_set", JsonArray(definitions))
-            }
-        }
 
         val root = buildJsonObject {
             put(
@@ -263,44 +112,7 @@ object DesktopProxyConfigFactory {
             )
             put(
                 "dns",
-                buildJsonObject {
-                    put(
-                        "servers",
-                        buildJsonArray {
-                            add(
-                                if (customDnsEnabled) {
-                                    buildJsonObject {
-                                        put("type", "udp")
-                                        put("tag", "custom-dns")
-                                        put("server", dns.value)
-                                        put("server_port", 53)
-                                    }
-                                } else {
-                                    buildJsonObject {
-                                        put("type", "udp")
-                                        put("tag", "remote-dns")
-                                        put("server", DEFAULT_DNS_SERVER)
-                                        put("server_port", 53)
-                                    }
-                                },
-                            )
-                        },
-                    )
-                    put(
-                        "rules",
-                        buildJsonArray {
-                            add(
-                                buildJsonObject {
-                                    put("action", "route")
-                                    put("server", dnsServerTag)
-                                },
-                            )
-                        },
-                    )
-                    put("final", dnsServerTag)
-                    put("strategy", "prefer_ipv4")
-                    put("independent_cache", true)
-                },
+                routeDns.dns,
             )
             put(
                 "inbounds",
@@ -327,20 +139,8 @@ object DesktopProxyConfigFactory {
                     add(buildJsonObject { put("type", "block"); put("tag", "block") })
                 },
             )
-            put("route", route)
-            if (!routingRules.ignoreRules && routingRules.ruleSets.any { it.sourceType == RoutingRuleSetSourceType.REMOTE }) {
-                put(
-                    "experimental",
-                    buildJsonObject {
-                        put(
-                            "cache_file",
-                            buildJsonObject {
-                                put("enabled", true)
-                            },
-                        )
-                    },
-                )
-            }
+            put("route", routeDns.route)
+            routeDns.experimental?.let { put("experimental", it) }
         }
         return json.encodeToString(JsonObject.serializer(), root)
     }
@@ -350,27 +150,6 @@ object DesktopProxyConfigFactory {
             profile = profile,
             customConfigErrorMessage = "Custom configs are not supported by the desktop proxy runtime yet",
         )
-    }
-
-    private fun buildRuleSetDefinitions(ruleSets: List<RoutingRuleSet>): List<JsonObject> {
-        return ruleSets.map { ruleSet ->
-            val tag = ruleSetTag(ruleSet)
-            when (ruleSet.sourceType) {
-                RoutingRuleSetSourceType.INLINE -> buildJsonObject {
-                    put("type", "inline")
-                    put("tag", tag)
-                    put("rules", inlineRuleArray(ruleSet.source))
-                }
-                RoutingRuleSetSourceType.REMOTE -> buildJsonObject {
-                    put("type", "remote")
-                    put("tag", tag)
-                    put("format", ruleSet.format.label())
-                    put("url", ruleSet.source)
-                    put("download_detour", "direct")
-                    put("update_interval", "${ruleSet.updateIntervalHours.coerceAtLeast(1)}h")
-                }
-            }
-        }
     }
 
     private fun buildDirectProbeRouteRules(routing: DesktopDirectProbeRouting): List<JsonObject> {
@@ -401,51 +180,6 @@ object DesktopProxyConfigFactory {
                     },
                 )
             }
-        }
-    }
-
-    private fun buildRuleSetRouteRules(ruleSets: List<RoutingRuleSet>): List<JsonObject> {
-        return ruleSets.map { ruleSet ->
-            buildJsonObject {
-                put("rule_set", buildJsonArray { add(JsonPrimitive(ruleSetTag(ruleSet))) })
-                put("action", "route")
-                put(
-                    "outbound",
-                    when (ruleSet.action) {
-                        RoutingRuleSetAction.DIRECT -> "direct"
-                        RoutingRuleSetAction.PROXY -> "proxy"
-                        RoutingRuleSetAction.BLOCK -> "block"
-                    },
-                )
-            }
-        }
-    }
-
-    private fun inlineRuleArray(raw: String): JsonArray {
-        val trimmed = raw.trim()
-        val parsed = json.parseToJsonElement(trimmed)
-        return when (parsed) {
-            is JsonArray -> parsed
-            is JsonObject -> parsed["rules"] as? JsonArray
-                ?: error("Inline rule-set JSON must contain a rules array")
-            else -> error("Inline rule-set JSON must contain a rules array")
-        }
-    }
-
-    private fun ruleSetTag(ruleSet: RoutingRuleSet): String {
-        val slug = ruleSet.name
-            .lowercase()
-            .replace(Regex("[^a-z0-9]+"), "-")
-            .trim('-')
-            .ifBlank { "ruleset" }
-        val suffix = ruleSet.id.filter { it.isLetterOrDigit() }.takeLast(8).ifBlank { "set" }
-        return "ruleset-$slug-$suffix"
-    }
-
-    private fun RoutingRuleSetFormat.label(): String {
-        return when (this) {
-            RoutingRuleSetFormat.SOURCE -> "source"
-            RoutingRuleSetFormat.BINARY -> "binary"
         }
     }
 
