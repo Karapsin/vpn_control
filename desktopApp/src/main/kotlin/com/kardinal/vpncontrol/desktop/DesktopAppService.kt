@@ -7,9 +7,6 @@ import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
-import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
-import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
-import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -81,7 +78,7 @@ class DesktopAppService internal constructor(
     private val subscriptionManagementService = DesktopSubscriptionManagementService(
         stateProvider = { state },
         locationsProvider = { desktopLocations },
-        validateSubscriptionSource = ::validateDesktopSubscriptionSource,
+        validateSubscriptionSource = DesktopSubscriptionSourceValidation::validate,
         stopConnection = { message -> connectionActions.stop(message) },
         activeConnectionName = ::activeConnectionName,
         commitState = { nextState, nextLocations ->
@@ -512,16 +509,6 @@ class DesktopAppService internal constructor(
         refreshSubscriptionsFirst: Boolean = true,
     ) {
         findBestService.findBestLocation(refreshSubscriptionsFirst)
-    }
-
-    private fun validateDesktopSubscriptionSource(raw: String): Result<Unit> {
-        return runCatching {
-            when (val parsed = parseDirectRemoteSource(raw)) {
-                is DirectRemoteSourceResolution -> Unit
-                is UnsupportedRemoteSourceResolution -> error(parsed.errorMessage)
-                null -> error("Paste a valid https:// subscription URL")
-            }
-        }
     }
 
     private fun activeConnectionName(): String {
