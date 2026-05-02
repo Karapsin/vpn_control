@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProxyProfile
@@ -68,6 +69,80 @@ class DesktopConnectionActionsServiceTest {
         assertEquals("Selected", state.selectedProfileName)
     }
 
+    @Test
+    fun toggleSelectedLocationProxyStopsRunningConnection() = runTest {
+        val location = desktopConnectionLocation()
+        val runtime = FakeConnectionActionsRuntime()
+        var state = MainUiState(
+            appMode = AppMode.VPN,
+            isVpnRunning = true,
+            currentLocations = listOf(location.rawLink),
+            selectedProfileRawLink = location.rawLink,
+        )
+        var locations = listOf(location.copy(isSelected = true))
+        val actions = service(
+            lifecycle = DesktopConnectionLifecycleService(runtime),
+            stateProvider = { state },
+            locationsProvider = { locations },
+            updateState = { transform -> state = transform(state) },
+            commitState = { nextLocations, nextState ->
+                locations = nextLocations
+                state = nextState
+            },
+        )
+
+        val result = actions.toggleSelectedLocationProxy()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, runtime.stopCalls)
+        assertFalse(state.isVpnRunning)
+    }
+
+    @Test
+    fun toggleSelectedLocationProxyReportsMissingSelection() = runTest {
+        var state = MainUiState()
+        val actions = service(
+            stateProvider = { state },
+            locationsProvider = { emptyList() },
+            updateState = { transform -> state = transform(state) },
+            commitState = { _, nextState -> state = nextState },
+        )
+
+        val result = actions.toggleSelectedLocationProxy()
+
+        assertTrue(result.isFailure)
+        assertEquals(LocationStatusLogic.selectLocationFirst(), state.statusMessage)
+    }
+
+    @Test
+    fun toggleSelectedLocationProxyStartsSelectedLocation() = runTest {
+        val location = desktopConnectionLocation()
+        val runtime = FakeConnectionActionsRuntime()
+        var state = MainUiState(
+            appMode = AppMode.PROXY_ONLY,
+            currentLocations = listOf(location.rawLink),
+            selectedProfileRawLink = location.rawLink,
+        )
+        var locations = listOf(location)
+        val actions = service(
+            lifecycle = DesktopConnectionLifecycleService(runtime),
+            stateProvider = { state },
+            locationsProvider = { locations },
+            updateState = { transform -> state = transform(state) },
+            commitState = { nextLocations, nextState ->
+                locations = nextLocations
+                state = nextState
+            },
+        )
+
+        val result = actions.toggleSelectedLocationProxy()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, runtime.startCalls)
+        assertTrue(state.isVpnRunning)
+        assertEquals("Selected", state.selectedProfileName)
+    }
+
     private fun service(
         lifecycle: DesktopConnectionLifecycleService = DesktopConnectionLifecycleService(FakeConnectionActionsRuntime()),
         stateProvider: () -> MainUiState,
@@ -108,6 +183,7 @@ class DesktopConnectionActionsServiceTest {
 
 private class FakeConnectionActionsRuntime : DesktopRuntimeController {
     var startCalls = 0
+    var stopCalls = 0
     private var running = false
     private var mode: AppMode? = null
 
@@ -133,6 +209,7 @@ private class FakeConnectionActionsRuntime : DesktopRuntimeController {
     }
 
     override suspend fun stop(): Result<Unit> {
+        stopCalls += 1
         running = false
         mode = null
         return Result.success(Unit)

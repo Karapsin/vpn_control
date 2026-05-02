@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
-import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
@@ -354,16 +353,7 @@ class DesktopAppService internal constructor(
     }
 
     suspend fun toggleSelectedLocationProxy() {
-        if (state.isVpnRunning) {
-            stopDesktopProxy()
-        } else {
-            val location = selectedDesktopLocation()
-            if (location == null) {
-                updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }
-            } else {
-                startDesktopProxy(location)
-            }
-        }
+        connectionActions.toggleSelectedLocationProxy()
     }
 
     suspend fun refreshAllSubscriptions() {

@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
 
 internal class DesktopConnectionActionsService(
@@ -45,6 +46,19 @@ internal class DesktopConnectionActionsService(
 
     suspend fun shutdownForExit() {
         stopRuntimeForAppExit()
+    }
+
+    suspend fun toggleSelectedLocationProxy(): Result<Unit> {
+        if (stateProvider().isVpnRunning) {
+            return stop()
+        }
+        val location = selectedDesktopLocation()
+        return if (location == null) {
+            updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }
+            Result.failure(IllegalStateException("Select a location first"))
+        } else {
+            start(location)
+        }
     }
 
     suspend fun stop(message: String? = null): Result<Unit> {
