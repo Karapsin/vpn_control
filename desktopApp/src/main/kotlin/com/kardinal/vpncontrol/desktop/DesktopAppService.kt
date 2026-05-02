@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
+import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateTransitions
@@ -424,7 +425,7 @@ class DesktopAppService private constructor(
         } else {
             val location = selectedDesktopLocation()
             if (location == null) {
-                updateState { it.withStatus("Select a location first") }
+                updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }
             } else {
                 startDesktopProxy(location)
             }

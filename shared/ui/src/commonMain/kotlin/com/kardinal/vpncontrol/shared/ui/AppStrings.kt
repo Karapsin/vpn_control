@@ -359,7 +359,24 @@ private fun localizedStructuredStatusMessage(
 ): String {
     val english = englishStructuredStatusMessage(status)
     if (language == AppLanguage.ENGLISH || language == AppLanguage.SYSTEM) return english
+    localizedLocationStatusMessage(language, status)?.let { return it }
     return localizedGeneratedStatusMessage(language, english) ?: english
+}
+
+private fun localizedLocationStatusMessage(
+    language: AppLanguage,
+    status: StructuredStatusMessage,
+): String? {
+    val words = generatedStatusTranslations[language]?.dynamic ?: return null
+    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
+    return when (status.key) {
+        StatusMessageKey.SELECT_LOCATION_FIRST -> words.selectLocationFirst
+        StatusMessageKey.CHECKING_LOCATION -> words.checkingLocation.replace("{name}", arg(0))
+        StatusMessageKey.TESTING_LOCATION -> words.testingLocation.replace("{name}", arg(0))
+        StatusMessageKey.LOCATION_CHECK_CANCELLED -> words.locationCheckCancelled
+        StatusMessageKey.NO_LOCATIONS_TO_EXPORT -> words.noLocationsToExport
+        else -> null
+    }
 }
 
 private fun englishStructuredStatusMessage(status: StructuredStatusMessage): String {
@@ -412,6 +429,21 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
         StatusMessageKey.SUBSCRIPTION_NAME_RESET -> "Subscription name reset"
         StatusMessageKey.SUBSCRIPTION_NAME_SAVED -> "Subscription name saved"
         StatusMessageKey.SUBSCRIPTION_DELETED -> "Subscription deleted"
+        StatusMessageKey.SELECT_LOCATION_FIRST ->
+            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.selectLocationFirst
+                ?: "Select a location first"
+        StatusMessageKey.CHECKING_LOCATION ->
+            (generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.checkingLocation
+                ?: "Checking {name}...").replace("{name}", arg(0))
+        StatusMessageKey.TESTING_LOCATION ->
+            (generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.testingLocation
+                ?: "Testing {name}...").replace("{name}", arg(0))
+        StatusMessageKey.LOCATION_CHECK_CANCELLED ->
+            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.locationCheckCancelled
+                ?: "Location check cancelled"
+        StatusMessageKey.NO_LOCATIONS_TO_EXPORT ->
+            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.noLocationsToExport
+                ?: "No locations to export"
     }
 }
 

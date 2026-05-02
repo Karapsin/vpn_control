@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.LocationConfigs
@@ -29,7 +30,7 @@ internal class DesktopLocationBenchmarkService(
         }
 
         val state = stateProvider()
-        updateState { it.copy(isBusy = true).withStatus("Testing ${location.name}...") }
+        updateState { it.copy(isBusy = true).withStatus(LocationStatusLogic.testingLocation(location.name)) }
         val validationSettings = state.validationSettings.normalized()
         val benchmark = benchmarkLocation(
             profile.getOrThrow(),

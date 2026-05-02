@@ -470,6 +470,11 @@ class AppStringsCoverageTest {
             StatusMessages.subscriptionNameReset(),
             StatusMessages.subscriptionNameSaved(),
             StatusMessages.subscriptionDeleted(),
+            StatusMessages.selectLocationFirst(),
+            StatusMessages.checkingLocation("Germany"),
+            StatusMessages.testingLocation("Germany"),
+            StatusMessages.locationCheckCancelled(),
+            StatusMessages.noLocationsToExport(),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
@@ -486,6 +491,25 @@ class AppStringsCoverageTest {
         }
 
         assertTrue(rawLeaks.isEmpty(), "Structured status localization leaks: $rawLeaks")
+        val locationStatusEnglishLeaks = nonEnglishLanguages.flatMap { language ->
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.selectLocationFirst(),
+                StatusMessages.checkingLocation("Germany"),
+                StatusMessages.testingLocation("Germany"),
+                StatusMessages.locationCheckCancelled(),
+                StatusMessages.noLocationsToExport(),
+            ).flatMap { message ->
+                val localized = strings.statusMessage(message)
+                listOf("Select a location", "Checking", "Testing", "Location check", "No locations").mapNotNull { fragment ->
+                    if (localized.contains(fragment, ignoreCase = true)) "$language: $fragment in $localized" else null
+                }
+            }
+        }
+        assertTrue(
+            locationStatusEnglishLeaks.isEmpty(),
+            "Structured location status messages still contain English fragments: $locationStatusEnglishLeaks",
+        )
         assertTrue(
             AppStrings(AppLanguage.RUSSIAN)
                 .statusMessage(StatusMessages.validationSettingsSaved(BenchmarkValidationSettings(batchSize = 4, retryCount = 2)))

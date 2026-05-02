@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.ImportLocationsDecision
+import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.LocationMutationLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
@@ -140,7 +141,7 @@ internal class DesktopLocationService(
     fun exportToClipboard() {
         val state = stateProvider()
         if (state.currentLocations.isEmpty()) {
-            updateState { it.withStatus("No locations to export") }
+            updateState { it.withStatus(LocationStatusLogic.noLocationsToExport()) }
             return
         }
         val document = LocationConfigs.export(state.currentLocations)
@@ -158,7 +159,7 @@ internal class DesktopLocationService(
     ) {
         val state = stateProvider()
         if (state.currentLocations.isEmpty()) {
-            updateState { it.withStatus("No locations to export") }
+            updateState { it.withStatus(LocationStatusLogic.noLocationsToExport()) }
             return
         }
         val document = LocationConfigs.export(state.currentLocations)

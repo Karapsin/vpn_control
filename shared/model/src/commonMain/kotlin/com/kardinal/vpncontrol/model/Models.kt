@@ -232,6 +232,11 @@ enum class StatusMessageKey {
     SUBSCRIPTION_NAME_RESET,
     SUBSCRIPTION_NAME_SAVED,
     SUBSCRIPTION_DELETED,
+    SELECT_LOCATION_FIRST,
+    CHECKING_LOCATION,
+    TESTING_LOCATION,
+    LOCATION_CHECK_CANCELLED,
+    NO_LOCATIONS_TO_EXPORT,
 }
 
 data class StructuredStatusMessage(
@@ -372,6 +377,21 @@ object StatusMessages {
 
     fun subscriptionDeleted(): String =
         encode(StatusMessageKey.SUBSCRIPTION_DELETED)
+
+    fun selectLocationFirst(): String =
+        encode(StatusMessageKey.SELECT_LOCATION_FIRST)
+
+    fun checkingLocation(remarks: String): String =
+        encode(StatusMessageKey.CHECKING_LOCATION, remarks)
+
+    fun testingLocation(remarks: String): String =
+        encode(StatusMessageKey.TESTING_LOCATION, remarks)
+
+    fun locationCheckCancelled(): String =
+        encode(StatusMessageKey.LOCATION_CHECK_CANCELLED)
+
+    fun noLocationsToExport(): String =
+        encode(StatusMessageKey.NO_LOCATIONS_TO_EXPORT)
 
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->

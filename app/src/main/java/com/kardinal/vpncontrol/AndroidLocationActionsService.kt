@@ -172,7 +172,7 @@ internal class AndroidLocationActionsService(
         }
         if (rawLink.isBlank()) {
             launch {
-                updateStatus("Select a location first")
+                updateStatus(LocationStatusLogic.selectLocationFirst())
             }
             return
         }
@@ -308,7 +308,7 @@ internal class AndroidLocationActionsService(
             try {
                 val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
                     .getOrDefault("Location")
-                updateStatus("Checking $remarks...")
+                updateStatus(LocationStatusLogic.checkingLocation(remarks))
                 val result = benchmarkLocation(rawLink)
                 result.onSuccess { benchmark ->
                     appendLatencyHistory(benchmark.toLatencyHistoryEntry())
@@ -321,7 +321,7 @@ internal class AndroidLocationActionsService(
                 )
             } catch (_: CancellationException) {
                 withContext(NonCancellable) {
-                    updateStatus("Location check cancelled")
+                    updateStatus(LocationStatusLogic.locationCheckCancelled())
                 }
             } finally {
                 setRefreshing(false)
