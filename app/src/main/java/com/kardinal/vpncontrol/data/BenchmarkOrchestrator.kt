@@ -6,7 +6,7 @@ import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.sourceUrlForStoredLocation
 import com.kardinal.vpncontrol.shared.storageapi.SearchStateStore
@@ -194,7 +194,7 @@ class BenchmarkOrchestrator(
         }
     }
 
-    suspend fun fetchSubscriptionLocations(rawSource: String): Result<List<VlessProfile>> = withContext(Dispatchers.IO) {
+    suspend fun fetchSubscriptionLocations(rawSource: String): Result<List<ProxyProfile>> = withContext(Dispatchers.IO) {
         runCatching { loadRemoteSourceLocations(rawSource) }
     }
 
@@ -341,7 +341,7 @@ class BenchmarkOrchestrator(
     }
 
     private suspend fun evaluateProfilesForSelection(
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         validationSettings: com.kardinal.vpncontrol.model.BenchmarkValidationSettings,
         dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
@@ -380,10 +380,10 @@ class BenchmarkOrchestrator(
         )
     }
 
-    private fun cachedProfile(state: PersistedState): VlessProfile {
+    private fun cachedProfile(state: PersistedState): ProxyProfile {
         val name = state.selectedProfileName.ifBlank { "Cached selection" }
         val server = state.selectedProfileServer.ifBlank { "cached" }
-        return VlessProfile(
+        return ProxyProfile(
             remarks = name,
             uuid = "",
             server = server,
@@ -404,7 +404,7 @@ class BenchmarkOrchestrator(
     }
 
     private fun buildRuntimeConfig(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         state: PersistedState,
         dnsSettings: DnsSettings,
     ): String {
@@ -426,16 +426,23 @@ class BenchmarkOrchestrator(
         }
     }
 
-    private suspend fun loadRemoteSourceLocations(rawSource: String): List<VlessProfile> {
+    private suspend fun loadRemoteSourceLocations(rawSource: String): List<ProxyProfile> {
         storage.updateStatus("Downloading remote source...")
+        val subscriptionHwid = storage.ensureSubscriptionHwid()
         return SelectionWorkflowService.parseRemoteSourceLocations(
             rawSource = rawSource,
             resolveSource = RemoteSourceResolver::resolveForFetch,
-            fetchedContent = { url -> downloadClient.fetch(url, settings.subscriptionMaxTimeSeconds) },
+            fetchedContent = { url ->
+                downloadClient.fetch(
+                    url = url,
+                    timeoutSeconds = settings.subscriptionMaxTimeSeconds,
+                    subscriptionHwid = subscriptionHwid,
+                )
+            },
         )
     }
 
-    private fun decodeStoredLocations(storedLocations: List<String>): List<VlessProfile> {
+    private fun decodeStoredLocations(storedLocations: List<String>): List<ProxyProfile> {
         return storedLocations.mapIndexed { index, stored ->
             runCatching { LocationConfigs.decodeStoredLocation(stored) }
                 .getOrElse { error("Invalid saved location #${index + 1}: ${it.message}") }

@@ -190,7 +190,7 @@ class MainController(
     fun pasteSubscriptionDraft(raw: String): List<MainControllerEffect> {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) {
-            return listOf(MainControllerEffect.UpdateStatus("Clipboard is empty"))
+            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.clipboardEmpty()))
         }
         _state.value = MainUiStateTransitions.navigateToScreen(_state.value, AppScreen.PROFILE).copy(
             profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
@@ -199,7 +199,7 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION),
-            MainControllerEffect.UpdateStatus("Subscription text loaded into the Profile tab"),
+            MainControllerEffect.UpdateStatus(StatusMessages.subscriptionTextLoadedIntoProfile()),
         )
     }
 
@@ -252,18 +252,13 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateProfileSourceMode(value),
-            MainControllerEffect.UpdateStatus(
-                when (value) {
-                    ProfileSourceMode.SUBSCRIPTION -> "Profile source set to subscription"
-                    ProfileSourceMode.CURRENT_LOCATIONS -> "Profile source set to saved locations"
-                },
-            ),
+            MainControllerEffect.UpdateStatus(StatusMessages.profileSourceSet(value)),
         )
     }
 
     fun setAppMode(value: AppMode): List<MainControllerEffect> {
         if (_state.value.isVpnRunning) {
-            return listOf(MainControllerEffect.UpdateStatus("Disconnect first to change connection mode"))
+            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode()))
         }
         _state.value = _state.value.copy(
             appMode = value,
@@ -271,12 +266,7 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateAppMode(value),
-            MainControllerEffect.UpdateStatus(
-                when (value) {
-                    AppMode.VPN -> "Connection mode set to VPN"
-                    AppMode.PROXY_ONLY -> "Connection mode set to proxy only"
-                },
-            ),
+            MainControllerEffect.UpdateStatus(StatusMessages.connectionModeSet(value)),
         )
     }
 
@@ -412,12 +402,12 @@ class MainController(
             showRuleSetDialog = if (_state.value.editingRuleSetId == id) false else _state.value.showRuleSetDialog,
             editingRuleSetId = if (_state.value.editingRuleSetId == id) "" else _state.value.editingRuleSetId,
         )
-        return listOf(MainControllerEffect.UpdateStatus("Rule-set removed"))
+        return listOf(MainControllerEffect.UpdateStatus(StatusMessages.ruleSetRemoved()))
     }
 
     fun showAddLocationDialog(): List<MainControllerEffect> {
         if (_state.value.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
-            return listOf(MainControllerEffect.UpdateStatus("Switch to Saved Locations to add locations manually"))
+            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.switchToSavedLocationsToAddLocations()))
         }
         _state.value = _state.value.copy(
             showLocationDialog = true,
@@ -561,7 +551,7 @@ class MainController(
         return listOf(
             MainControllerEffect.DeleteProfileHistoryEntry(
                 source = trimmed,
-                statusMessage = "History entry deleted",
+                statusMessage = StatusMessages.historyEntryDeleted(),
             ),
         )
     }

@@ -1,790 +1,1043 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
+    "findingSubscription": "Жазылымнан ең жақсы локация ізделуде...",
+    "findingSaved": "Сақталған локациялардан ең жақсысы ізделуде...",
+    "testingFastestCandidates": "Ең жылдам кандидаттар топтармен тексерілуде...",
+    "checkingLocations": "{count} локация тексерілуде...",
+    "testingLocationsRange": "{total} ішінен {start}-{end} локациялар тексерілуде...",
+    "selectLocationFirst": "Алдымен орынды таңдаңыз",
+    "checkingLocation": "{name} тексерілуде...",
+    "testingLocation": "{name} сыналуда...",
+    "locationCheckCancelled": "Орынды тексеру тоқтатылды",
+    "noLocationsToExport": "Экспорттауға орын жоқ",
     "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "refreshIntervalHours": "{count} сағ",
+    "refreshIntervalHoursMinutes": "{hours} сағ {minutes} мин",
+    "refreshIntervalEvery": "әр {interval}",
+    "refreshIntervalEveryHour": "әр сағат сайын"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
+    "best": "Ең жақсы: ",
+    "primary": "негізгі ",
+    "secondary": "қосымша ",
+    "tcp": "TCP ",
     "millisUnit": "мс",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "ok": "жақсы",
+      "timeout": "уақыт бітті",
+      "error": "қате",
+      "partial": "ішінара",
+      "blocked": "бұғатталған",
+      "challenge": "тексеру сұрауы",
+      "manual": "қолмен",
+      "cached": "кэштелген",
+      "unreachable": "қолжетімсіз",
+      "validation_timeout": "тексеру уақыты бітті",
+      "tcp_timeout": "tcp уақыты бітті",
+      "tcp_error": "tcp қатесі",
+      "custom_config_manual_only": "пайдаланушы конфигурациясы, тек қолмен"
     }
+  },
+  "structured": {
+    "IDLE": "Бос тұр",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Жазылымды авто-жаңарту орнатылды: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Тексеру баптаулары сақталды: {0} • {1} • топ {2} • қайталау {3}",
+    "CUSTOM_DNS_SAVED": "Пайдаланушы DNS сақталды",
+    "CUSTOM_DNS_DISABLED": "Пайдаланушы DNS өшірілді",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Жазылымнан ең жақсы локация ізделуде...",
+    "FIND_BEST_FROM_SAVED": "Сақталған локациялардан ең жақсысы ізделуде...",
+    "STARTING_CONNECTION.VPN": "VPN іске қосылуда...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Жергілікті proxy іске қосылуда...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "VPN ең жақсы локациямен іске қосылуда...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Жергілікті proxy ең жақсы локациямен іске қосылуда...",
+    "CONNECTION_STARTED.VPN": "VPN іске қосылды",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy іске қосылды",
+    "CONNECTION_STOPPED.VPN": "VPN тоқтатылды",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy тоқтатылды",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "Бұл компьютерде VPN дайын",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Бұл компьютерде Proxy дайын",
+    "DESKTOP_APP_INITIALIZED": "Қолданба іске қосылды",
+    "RUNTIME_MODE.VPN": "Runtime режимі: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Runtime режимі: Proxy",
+    "LOCAL_PROXY": "Жергілікті proxy: {0}",
+    "RUNTIME_LOG": "Runtime журналы: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN режимінің алдын ала тексеруі өтті",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Тек Proxy режимінің алдын ала тексеруі өтті",
+    "PREFLIGHT_FAILED.VPN": "VPN режимінің алдын ала тексеруі сәтсіз: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Тек Proxy режимінің алдын ала тексеруі сәтсіз: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Жұмыс үстелі VPN мүмкіндігі: дайын",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Жұмыс үстелі VPN мүмкіндігі: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Жұмыс үстелі VPN мүмкіндігі: дайын емес",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Бенчмарк үшін қолжетімді локациялар жоқ",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Ең жақсы локацияны іздеу уақыты бітті; ағымдағы қосылым сақталады",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Локация іздеу тоқтатылды",
+    "LOCATION_SEARCH_FAILED": "Локация іздеу сәтсіз аяқталды",
+    "VPN_PERMISSION_REQUIRED": "VPN рұқсатын беріп, қайта көріңіз",
+    "SELECTED_LOCATION_SAVE_FAILED": "Таңдалған локацияны сақтау мүмкін болмады",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN іске қосылды, бірақ таңдалған локация сақталмады",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Прокси іске қосылды, бірақ таңдалған локация сақталмады",
+    "BEST_LOCATION_START_FAILED.VPN": "Ең жақсы локациямен VPN іске қосылмады",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Ең жақсы локациямен прокси іске қосылмады",
+    "BEST_LOCATION_SAVE_FAILED": "Ең жақсы локацияны сақтау мүмкін болмады",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN іске қосылды, бірақ ең жақсы локация сақталмады",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Прокси іске қосылды, бірақ ең жақсы локация сақталмады",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Жазылымды жаңарту аяқталды. Ең жақсы локация ізделуде...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Жазылымды жаңарту аяқталды, бірақ фонда ауысу үшін VPN рұқсаты қажет. Бұрынғы VPN локациясы қосалқы нұсқа ретінде сақталды.",
+    "NO_SUITABLE_LOCATION_FOUND": "Жарамды локация табылмады",
+    "BEST_LOCATION_NOT_MAPPED": "Ең жақсы локацияны жұмыс үстелі тізімімен сәйкестендіру мүмкін болмады",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Барлық жазылымдар белсендірілді",
+    "ACTIVATED_SUBSCRIPTION": "{0} белсендірілді",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Жазылым атауы қалпына келтірілді",
+    "SUBSCRIPTION_NAME_SAVED": "Жазылым атауы сақталды",
+    "SUBSCRIPTION_DELETED": "Жазылым жойылды",
+    "SELECT_LOCATION_FIRST": "Алдымен орынды таңдаңыз",
+    "CHECKING_LOCATION": "{0} тексерілуде...",
+    "TESTING_LOCATION": "{0} сыналуда...",
+    "LOCATION_CHECK_CANCELLED": "Орынды тексеру тоқтатылды",
+    "NO_LOCATIONS_TO_EXPORT": "Экспорттауға орын жоқ",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Сеанс статистикасы қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Сеанс статистикасы жасырылды",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Нақты уақыттағы трафик статистикасы қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Нақты уақыттағы трафик статистикасы жасырылды",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Профиль бойынша қорытындылар қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Профиль бойынша қорытындылар жасырылды",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Кідіріс тарихы қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Кідіріс тарихы жасырылды",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Қосылым журналы қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Қосылым журналы жасырылды",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Қосылымды тексеру құралдары қосылды",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Қосылымды тексеру құралдары жасырылды",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Жазылым локациялары тек оқуға арналған. Өзгерістерді сақтау үшін сақталған локацияларға ауысыңыз.",
+    "INVALID_LOCATION_CONFIG": "Локация конфигурациясы жарамсыз",
+    "LOCATION_ALREADY_SAVED": "Локация бұрын сақталған: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Өңделетін локация енді қолжетімді емес",
+    "LOCATION_ADDED": "Локация қосылды: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Локация жаңартылып біріктірілді: {0}",
+    "LOCATION_UPDATED": "Локация жаңартылды: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Жазылым локациялары тек оқуға арналған. Оларды жою үшін сақталған локацияларға ауысыңыз.",
+    "SELECTED_LOCATION_REMOVED": "Таңдалған локация жойылды: {0}",
+    "LOCATION_REMOVED": "Локация жойылды: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Таңдалған локация жойылды. VPN тоқтатылды: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Таңдалған локация жойылды. Proxy тоқтатылды: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPN тоқтатылмағандықтан локацияны жою қайтарылды",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Proxy тоқтатылмағандықтан локацияны жою қайтарылды",
+    "IMPORT_LOCATIONS_BLOCKED": "Локацияларды импорттау үшін Сақталған локацияларға ауысыңыз",
+    "IMPORT_LOCATIONS_FAILED": "Локацияларды импорттау сәтсіз аяқталды",
+    "LOCATIONS_IMPORTED": "Локациялар импортталды",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, VPN тоқтатылды",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, proxy тоқтатылды",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "VPN тоқтатылмағандықтан локация импорты қайтарылды",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Proxy тоқтатылмағандықтан локация импорты қайтарылды",
+    "CLIPBOARD_EMPTY": "Алмасу буфері бос",
+    "CLIPBOARD_READ_FAILED": "Алмасу буферін оқу сәтсіз аяқталды",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Жазылым мәтіні «Профиль» қойындысына жүктелді",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Қосылым режимін өзгерту үшін алдымен ажыратыңыз",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Ережелер жинағы жойылды",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Локацияларды қолмен қосу үшін Сақталған локацияларға ауысыңыз",
+    "HISTORY_ENTRY_DELETED": "Тарих жазбасы жойылды",
+    "SELECTED_LOCATION_UNCHANGED": "Таңдалған локация өзгермеді: {0}",
+    "SELECTED_LOCATION_SET": "Таңдалған локация орнатылды: {0}",
+    "LOCATION_CHECKED": "Локация тексерілді: {0}",
+    "LOCATION_CHECK_FAILED": "Локацияны тексеру сәтсіз аяқталды",
+    "LOCATION_EDITED": "#{0} локациясы өңделді",
+    "SAMPLE_RULE_SET_ADDED": "Үлгі ережелер жинағы қосылды",
+    "RULE_SET_DELETED": "{0} ережелер жинағы жойылды",
+    "ROUTING_RULES_SAVED": "Маршруттау ережелері сақталды",
+    "ROUTING_RULES_IMPORTED": "Маршруттау ережелері импортталды",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Маршруттау ережелері импортталды. Қолдану үшін VPN қайта іске қосыңыз",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Маршруттау ережелері импортталды. Қолдану үшін proxy қайта іске қосыңыз",
+    "ROUTING_RULES_IMPORT_FAILED": "Маршруттау ережелерін импорттау сәтсіз аяқталды",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Маршруттау ережелері алмасу буферіне көшірілді",
+    "ROUTING_RULES_EXPORT_CANCELED": "Маршруттау ережелерінің экспорты тоқтатылды",
+    "ROUTING_RULES_EXPORTED_TO": "Маршруттау ережелері {0} ішіне экспортталды",
+    "ROUTING_RULES_EXPORT_FAILED": "Маршруттау ережелерін экспорттау мүмкін болмады",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Маршруттау ережелері файлын ашу мүмкін болмады",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Локациялар алмасу буферіне көшірілді",
+    "LOCATIONS_EXPORT_CANCELED": "Локациялар экспорты тоқтатылды",
+    "LOCATIONS_EXPORTED_TO": "Локациялар {0} ішіне экспортталды",
+    "LOCATIONS_EXPORT_FAILED": "Локацияларды экспорттау мүмкін болмады",
+    "LOCATIONS_FILE_OPEN_FAILED": "Локациялар файлын ашу мүмкін болмады",
+    "LOCATIONS_FILE_READ_FAILED": "Локациялар файлын оқу мүмкін болмады",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Диагностика экспорты тоқтатылды",
+    "DIAGNOSTICS_EXPORTED_TO": "Диагностика {0} ішіне экспортталды",
+    "DIAGNOSTICS_EXPORT_FAILED": "Диагностиканы экспорттау мүмкін болмады",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Диагностика сақтау орнын ашу мүмкін болмады",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Жаңартатын жазылымдар жоқ",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Автоіске қосу баптауын жаңарту мүмкін болмады",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Автоіске қосу баптауын жаңарту мүмкін болмады: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Жаңарту баптауларын сақтау мүмкін болмады",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Жаңарту баптауларын сақтау мүмкін болмады: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Алдыңғы VPN сеансы қалпына келтіріледі",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Алдыңғы VPN локациясы енді қолжетімді емес",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN қалпына келтірілуде: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN мына жерде іске қосылды: {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy мына жерде іске қосылды: {1}",
+    "CONNECTION_START_FAILED.VPN": "VPN іске қосу мүмкін болмады",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Proxy іске қосу мүмкін болмады",
+    "CONNECTION_STOP_FAILED.VPN": "VPN тоқтату мүмкін болмады",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Proxy тоқтату мүмкін болмады",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Қолданба жабылды. VPN өшірулі болды.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN тоқтатылды. Келесі іске қосқанда қайта қосылады.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy тоқтатылды. Келесі іске қосқанда қайта қосылады.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Шығу алдында VPN тоқтату мүмкін болмады",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Шығу алдында Proxy тоқтату мүмкін болмады"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "Жазылым URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Оқылмайтын жазылым URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Қауіпсіз емес HTTP жазылымдарына қолдау көрсетілмейді"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "https:// жазылым URL пайдаланыңыз."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL ішінде жарамды HTTPS хост болуы керек"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Жарамды https:// жазылым URL қойыңыз."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Тікелей қашықтағы дереккөз"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "sing-box импорт сілтемесі"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Оқылмайтын sing-box импорт сілтемесі"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Тек жарамды қашықтағы HTTPS URL мекенжайларына қолдау көрсетіледі"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Жарамды https:// URL мекенжайына апаратын sing-box импорт сілтемесін пайдаланыңыз."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Ендірілген URL мекенжайынан қашықтағы мазмұнды жүктейді"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Қашықтағы мазмұнды мына жерден жүктейді: "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Импорт сілтемесін талдау мүмкін болмады"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Жарамды sing-box remote-profile импорт сілтемесін немесе тікелей жазылым URL қойыңыз."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "VPN импорт сілтемесі"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Оқылмайтын VPN импорт сілтемесі"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Провайдер импортын қолдау жоқ"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia және басқа vpn:// импорттарына қолдау көрсетілмейді. Қалыпты жазылым URL пайдаланыңыз немесе локацияларды қолмен қосыңыз."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Импорт деректерін декодтау мүмкін болмады"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// импорттарына қолдау көрсетілмейді. Қалыпты жазылым URL пайдаланыңыз немесе локацияларды қолмен қосыңыз."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP жазылым URL мекенжайларына қолдау көрсетілмейді. Оның орнына https:// пайдаланыңыз."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Қашықтағы дереккөз https:// URL немесе қолдау көрсетілетін импорт сілтемесі болуы керек"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Қашықтағы дереккөз бос"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Қашықтағы дереккөз хосты бар жарамды https:// URL болуы керек."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Бұл sing-box импорты жарамсыз немесе HTTPS емес URL мекенжайына апарады. Оның орнына жарамды https:// URL пайдаланыңыз."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Таңдалған локация қолданылуда..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Жаңартылған таңдалған локация қолданылуда..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Ең жақсы локацияны іздеу уақыты бітті; ағымдағы қосылым сақталады"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Алмасу буфері бос"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Қосылым журналы қосылды"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Қосылым журналы жасырылды"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Қосылымды тексеру құралдары қосылды"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Қосылымды тексеру құралдары жасырылды"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Экспорттау орнын ашу мүмкін болмады"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Таңдалған файлды ашу мүмкін болмады"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Таңдалған локациялар файлын ашу мүмкін болмады"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Таңдалған ережелер файлын ашу мүмкін болмады"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Жұмыс үстелі қабығы: рұқсат тізімдерінен Нидерланд"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Desktop қолданбасы іске қосылды"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Қолданба іске қосылды"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
+      "target": "Бұл компьютерде VPN дайын"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Бұл компьютерде Proxy дайын"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Локацияларды экспорттау"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Жаңартылған таңдалған локацияны қолдану мүмкін болмады"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Диагностиканы экспорттау мүмкін болмады"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Локацияларды экспорттау мүмкін болмады"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Маршруттау ережелерін экспорттау мүмкін болмады"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Ауыстыратын локацияны табу мүмкін болмады"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Файлды импорттау мүмкін болмады"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Диагностика сақтау орнын ашу мүмкін болмады"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Жаңарту баптауларын сақтау мүмкін болмады"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Автоіске қосу баптауын жаңарту мүмкін болмады"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Импорттау тоқтатылды"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Жазылым URL жарамсыз"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Кідіріс тарихы қосылды"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Кідіріс тарихы жасырылды"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Нақты уақыттағы трафик статистикасы қосылды"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Нақты уақыттағы трафик статистикасы жасырылды"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Локацияны тексеру тоқтатылды"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Локацияны тексеру сәтсіз аяқталды"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Локациялар экспортталды"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Локацияларды импорттау тоқтатылды"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Бенчмарк үшін қолжетімді локациялар жоқ"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Жаңартатын жазылымдар жоқ"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Жарамды локация табылмады"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Профиль бойынша қорытындылар қосылды"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Профиль бойынша қорытындылар жасырылды"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Алдыңғы VPN сеансы қалпына келтіріледі"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR сканерлеу тоқтатылды"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Маршруттау ережелері экспортталды"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Маршруттау ережелерін импорттау тоқтатылды"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Маршруттау ережелері сақталды"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Сеанс статистикасы қосылды"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Сеанс статистикасы жасырылды"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Бөлісілген мәтін қолдау көрсетілетін импорт дерегі емес"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Жазылым жойылды"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Жазылымды жаңарту аяқталды, бірақ фонда ауысу үшін VPN рұқсаты қажет. Бұрынғы VPN локациясы қосалқы нұсқа ретінде сақталды."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Жазылымды жаңарту аяқталды. Ең жақсы локация ізделуде..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Жазылымды жаңарту аяқталды. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Runtime режимі: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Жергілікті proxy: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Runtime журналы: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "VPN режимінің алдын ала тексеруі өтті"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Тек Proxy режимінің алдын ала тексеруі өтті"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "VPN режимінің алдын ала тексеруі сәтсіз: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Тек Proxy режимінің алдын ала тексеруі сәтсіз: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN режимі қолжетімсіз: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Тек Proxy режимі қолжетімсіз: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Жұмыс үстелі VPN мүмкіндігі: дайын"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Жұмыс үстелі VPN мүмкіндігі: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN режимі қолжетімді"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Proxy режимі қолжетімді"
     },
     {
       "source": "not ready",
-      "target": "не готово"
+      "target": "дайын емес"
     },
     {
       "source": " check",
-      "target": " проверка"
+      "target": " тексеру"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " тексеру"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "TUN құрылғысы сәтсіз: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "желі артықшылықтары сәтсіз: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "маршруттау/DNS құралдары сәтсіз: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN құрылғысы"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "желі артықшылықтары"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "маршруттау/DNS құралдары"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linux TUN құрылғысы /dev/net/tun мекенжайында жоқ. Байқап көріңіз: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Жұмыс үстелі VPN режиміне CAP_NET_ADMIN қажет. root ретінде іске қосыңыз немесе sing-box мүмкіндіктерін беріңіз: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Windows маршруттау/DNS құралдары қолжетімсіз. VPN режиміне netsh.exe және DNS client PowerShell cmdlet-тері қажет."
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Бос тұр"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN іске қосылды"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN тоқтатылды"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Proxy іске қосылды"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Proxy тоқтатылды"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "VPN іске қосылуда..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Жергілікті proxy іске қосылуда..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "VPN ең жақсы локациямен іске қосылуда..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Жергілікті proxy ең жақсы локациямен іске қосылуда..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Жазылымнан ең жақсы локация ізделуде..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Сақталған локациялардан ең жақсысы ізделуде..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Локация іздеу тоқтатылды"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Локация іздеу сәтсіз аяқталды"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "VPN рұқсатын беріп, қайта көріңіз"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Алдымен қашықтағы дереккөзді орнатыңыз"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Алдымен кемінде бір сақталған локация қосыңыз"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Алдымен локация таңдаңыз"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Әзірге сақталған жазылымдар жоқ"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Барлық жазылымдар жаңартылуда..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Белсенді жазылым жаңартылуда..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Жазылым жаңартылуда..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Жазылымдар жаңартылуда..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Жазылым авто-жаңартылуда..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Жазылымдар авто-жаңартылуда..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Жазылым жаңартылды"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Жазылымдар жаңартылды"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Белсенді жазылым жаңартылды"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Барлық жазылымдар жаңартылды"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Жаңарту сәтсіз аяқталды"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Профиль дереккөзі жазылымға орнатылды"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Профиль дереккөзі сақталған локацияларға орнатылды"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Қосылым режимі VPN болып орнатылды"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Қосылым режимі тек proxy болып орнатылды"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Қосылым режимін өзгерту үшін алдымен ажыратыңыз"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Тарих жазбасы жойылды"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Жазылым атауы қалпына келтірілді"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Жазылым атауы сақталды"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Тіл жүйелік әдепкі мәнге орнатылды"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Пайдаланушы DNS сақталды"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Пайдаланушы DNS өшірілді"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Маршруттау ережелері сақталды"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Маршруттау ережелері импортталды"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Локациялар импортталды"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Локацияларды импорттау үшін Сақталған локацияларға ауысыңыз"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Локацияларды қолмен қосу үшін Сақталған локацияларға ауысыңыз"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Локация конфигурациясы жарамсыз"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Өңделетін локация енді қолжетімді емес"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Диагностика экспорты ашылды"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Диагностика экспорты сәтсіз аяқталды"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Диагностика экспорты тоқтатылды"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Алдыңғы VPN локациясы енді қолжетімді емес"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Қолданба жабылды. VPN өшірулі болды."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Барлық жазылымдар белсендірілді"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Барлық жазылымдар таңдалды"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Жазылым таңдалды"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Локациялар алмасу буферіне көшірілді"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Локациялар экспорты тоқтатылды"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Маршруттау ережелері алмасу буферіне көшірілді"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Маршруттау ережелерінің экспорты тоқтатылды"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Профиль дереккөзі режимі: жазылым"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Профиль дереккөзі режимі: ағымдағы локациялар"
     }
   ],
   "legacyReplacements": [
     {
       "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "target": " локация жаңартылды"
     },
     {
       "source": " location refreshed",
-      "target": " локация обновлена"
+      "target": " локация жаңартылды"
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "target": "Жазылымды авто-жаңарту орнатылды: "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "target": "Тексеру баптаулары сақталды: "
     },
     {
       "source": " • batch ",
-      "target": " • группа "
+      "target": " • топ "
     },
     {
       "source": " • retries ",
-      "target": " • повторные попытки "
+      "target": " • қайталау "
     },
     {
       "source": "off",
-      "target": "выключено"
+      "target": "өшірулі"
     },
     {
       "source": "custom interval",
-      "target": "свой интервал"
+      "target": "пайдаланушы аралығы"
     },
     {
       "source": "all subscriptions",
-      "target": "все подписки"
+      "target": "барлық жазылымдар"
     },
     {
       "source": "selected subscription",
-      "target": "выбранная подписка"
+      "target": "таңдалған жазылым"
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
+      "target": "VPN тоқтатылды. Қолданба режимі: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
+      "target": "Proxy тоқтатылды. Қолданба режимі: "
     },
     {
       "source": "VPN started on ",
-      "target": "VPN запущен на "
+      "target": "VPN мына жерде іске қосылды: "
     },
     {
       "source": "Proxy started on ",
-      "target": "Прокси запущен на "
+      "target": "Proxy мына жерде іске қосылды: "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
+      "target": "VPN қалпына келтірілуде: "
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "VPN тоқтатылды. Келесі іске қосқанда қайта қосылады."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "Proxy тоқтатылды. Келесі іске қосқанда қайта қосылады."
     },
     {
       "source": "Refreshing ",
-      "target": "Обновление "
+      "target": "Жаңартылуда: "
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "VPN жаңа ең жақсы локациямен іске қосылуда..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Proxy жаңа ең жақсы локациямен іске қосылуда..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Жазылым локациялары тек оқуға арналған. Өзгерістерді сақтау үшін сақталған локацияларға ауысыңыз."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Жазылым локациялары тек оқуға арналған. Оларды жою үшін сақталған локацияларға ауысыңыз."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Локация конфигурациясы жарамсыз"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Өңделетін локация енді қолжетімді емес"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Локация бұрын сақталған: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Локация қосылды: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Локация жаңартылып біріктірілді: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Локация жаңартылды: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Таңдалған локация жойылды. VPN тоқтатылды: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Таңдалған локация жойылды. Proxy тоқтатылды: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Таңдалған локация жойылды: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Локация жойылды: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Proxy тоқтатылмағандықтан локацияны жою қайтарылды"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN тоқтатылмағандықтан локацияны жою қайтарылды"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Локацияларды импорттау сәтсіз аяқталды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, proxy тоқтатылды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес, VPN тоқтатылды"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локациялар импортталды. Таңдалған локация енді қолжетімді емес"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локациялар импортталды"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Proxy тоқтатылмағандықтан локация импорты қайтарылды"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN тоқтатылмағандықтан локация импорты қайтарылды"
     }
   ]
 }

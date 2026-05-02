@@ -1,1130 +1,1547 @@
 {
   "dynamic": {
-    "findingSubscription": "Bester Standort aus dem Abo wird gesucht...",
-    "findingSaved": "Bester gespeicherter Standort wird gesucht...",
-    "testingFastestCandidates": "Schnellste Kandidaten werden gruppenweise geprüft...",
-    "checkingLocations": "Prüfe {count} Standorte...",
-    "testingLocationsRange": "Standorte {start}-{end} von {total} werden getestet...",
-    "refreshIntervalMinutes": "{count} Min.",
-    "refreshIntervalHours": "{count} Std.",
-    "refreshIntervalHoursMinutes": "{hours} Std. {minutes} Min.",
-    "refreshIntervalEvery": "alle {interval}",
-    "refreshIntervalEveryHour": "jede Stunde"
+    "findingSubscription": "Legjobb hely keresése az előfizetésből...",
+    "findingSaved": "Legjobb hely keresése a mentett helyekből...",
+    "testingFastestCandidates": "A leggyorsabb jelöltek tesztelése kötegekben...",
+    "checkingLocations": "{count} hely ellenőrzése...",
+    "testingLocationsRange": "Helyek tesztelése: {start}-{end} / {total}...",
+    "selectLocationFirst": "Először válasszon helyet",
+    "checkingLocation": "{name} ellenőrzése...",
+    "testingLocation": "{name} tesztelése...",
+    "locationCheckCancelled": "Helyellenőrzés megszakítva",
+    "noLocationsToExport": "Nincs exportálható hely",
+    "refreshIntervalMinutes": "{count} perc",
+    "refreshIntervalHours": "{count} óra",
+    "refreshIntervalHoursMinutes": "{hours} óra {minutes} perc",
+    "refreshIntervalEvery": "minden {interval}",
+    "refreshIntervalEveryHour": "óránként"
   },
   "benchmark": {
-    "best": "Bester Standort: ",
-    "primary": "Primärtest: ",
-    "secondary": "Sekundärtest: ",
-    "tcp": "TCP: ",
+    "best": "Legjobb: ",
+    "primary": "elsődleges ",
+    "secondary": "másodlagos ",
+    "tcp": "tcp ",
     "millisUnit": "ms",
     "statuses": {
-      "ok": "OK",
-      "timeout": "Zeitlimit",
-      "error": "Fehler",
-      "partial": "teilweise",
-      "blocked": "blockiert",
-      "challenge": "Prüfung",
-      "manual": "manuell",
-      "cached": "aus Cache",
-      "unreachable": "nicht erreichbar",
-      "validation_timeout": "Validierungszeitlimit",
-      "tcp_timeout": "TCP-Zeitlimit",
-      "tcp_error": "TCP-Fehler",
-      "custom_config_manual_only": "nur manuelle Prüfung"
+      "blocked": "blokkolva",
+      "cached": "gyorsítótárazva",
+      "challenge": "ellenőrzés",
+      "custom_config_manual_only": "csak kézi ellenőrzés",
+      "error": "hiba",
+      "manual": "kézi",
+      "ok": "rendben",
+      "partial": "részleges",
+      "tcp_error": "TCP-hiba",
+      "tcp_timeout": "TCP-időtúllépés",
+      "timeout": "időtúllépés",
+      "unreachable": "nem érhető el",
+      "validation_timeout": "ellenőrzési időtúllépés"
     }
+  },
+  "structured": {
+    "IDLE": "Tétlen",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Előfizetés automatikus frissítése beállítva: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Ellenőrzési beállítások mentve: {0} • {1} • köteg {2} • újrapróbálkozások {3}",
+    "CUSTOM_DNS_SAVED": "Egyéni DNS mentve",
+    "CUSTOM_DNS_DISABLED": "Egyéni DNS letiltva",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Legjobb hely keresése az előfizetésből...",
+    "FIND_BEST_FROM_SAVED": "Legjobb hely keresése a mentett helyekből...",
+    "STARTING_CONNECTION.VPN": "VPN indítása...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Helyi proxy indítása...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "VPN indítása a legjobb hellyel...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Helyi proxy indítása a legjobb hellyel...",
+    "CONNECTION_STARTED.VPN": "VPN elindítva",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy elindítva",
+    "CONNECTION_STOPPED.VPN": "VPN leállítva",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy leállítva",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "A VPN készen áll ezen a számítógépen",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "A proxy készen áll ezen a számítógépen",
+    "DESKTOP_APP_INITIALIZED": "Alkalmazás inicializálva",
+    "RUNTIME_MODE.VPN": "Futási mód: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Futási mód: Proxy",
+    "LOCAL_PROXY": "Helyi proxy: {0}",
+    "RUNTIME_LOG": "Futási napló: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN mód előzetes ellenőrzése sikeres",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Csak proxy mód előzetes ellenőrzése sikeres",
+    "PREFLIGHT_FAILED.VPN": "VPN mód előzetes ellenőrzése sikertelen: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Csak proxy mód előzetes ellenőrzése sikertelen: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Asztali VPN-képesség: kész",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Asztali VPN-képesség: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Asztali VPN-képesség: nem kész",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Nincs elérhető hely a méréshez",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "A legjobb hely keresése időtúllépéssel leállt; az aktuális kapcsolat megmarad",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Helykeresés megszakítva",
+    "LOCATION_SEARCH_FAILED": "Helykeresés sikertelen",
+    "VPN_PERMISSION_REQUIRED": "Adj VPN-engedélyt, majd próbáld újra",
+    "SELECTED_LOCATION_SAVE_FAILED": "Nem sikerült menteni a kiválasztott helyet",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN elindítva, de a kiválasztott hely mentése sikertelen",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy elindítva, de a kiválasztott hely mentése sikertelen",
+    "BEST_LOCATION_START_FAILED.VPN": "Nem sikerült elindítani a VPN-t a legjobb hellyel",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Nem sikerült elindítani a proxyt a legjobb hellyel",
+    "BEST_LOCATION_SAVE_FAILED": "Nem sikerült menteni a legjobb helyet",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN elindítva, de a legjobb hely mentése sikertelen",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy elindítva, de a legjobb hely mentése sikertelen",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Az előfizetés frissítése befejeződött. Legjobb hely keresése...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Az előfizetés frissítése befejeződött, de a háttérben történő váltáshoz VPN-engedély szükséges. Az előző VPN-hely tartalékként megmarad.",
+    "NO_SUITABLE_LOCATION_FOUND": "Nem található megfelelő hely",
+    "BEST_LOCATION_NOT_MAPPED": "A legjobb hely nem illeszthető az asztali listához",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Összes előfizetés aktiválva",
+    "ACTIVATED_SUBSCRIPTION": "Aktiválva: {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Előfizetés neve visszaállítva",
+    "SUBSCRIPTION_NAME_SAVED": "Előfizetés neve mentve",
+    "SUBSCRIPTION_DELETED": "Előfizetés törölve",
+    "SELECT_LOCATION_FIRST": "Először válasszon helyet",
+    "CHECKING_LOCATION": "{0} ellenőrzése...",
+    "TESTING_LOCATION": "{0} tesztelése...",
+    "LOCATION_CHECK_CANCELLED": "Helyellenőrzés megszakítva",
+    "NO_LOCATIONS_TO_EXPORT": "Nincs exportálható hely",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Munkamenet-statisztika engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Munkamenet-statisztika elrejtve",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Élő forgalmi statisztika engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Élő forgalmi statisztika elrejtve",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Profilonkénti összesítések engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Profilonkénti összesítések elrejtve",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Késleltetési előzmények engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Késleltetési előzmények elrejtve",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Kapcsolati napló engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Kapcsolati napló elrejtve",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Kapcsolattesztelő eszközök engedélyezve",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Kapcsolattesztelő eszközök elrejtve",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Az előfizetésből származó helyek csak olvashatók. A módosítások mentéséhez válts Mentett helyekre.",
+    "INVALID_LOCATION_CONFIG": "Érvénytelen helykonfiguráció",
+    "LOCATION_ALREADY_SAVED": "Hely már mentve: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "A szerkesztendő hely már nem érhető el",
+    "LOCATION_ADDED": "Hely hozzáadva: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Hely frissítve és egyesítve: {0}",
+    "LOCATION_UPDATED": "Hely frissítve: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Az előfizetésből származó helyek csak olvashatók. A törlésükhöz válts Mentett helyekre.",
+    "SELECTED_LOCATION_REMOVED": "Kiválasztott hely eltávolítva: {0}",
+    "LOCATION_REMOVED": "Hely eltávolítva: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Kiválasztott hely eltávolítva. VPN leállítva: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Kiválasztott hely eltávolítva. Proxy leállítva: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "A hely eltávolítása vissza lett vonva, mert a VPN nem állítható le",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "A hely eltávolítása vissza lett vonva, mert a proxy nem állítható le",
+    "IMPORT_LOCATIONS_BLOCKED": "Helyek importálásához válts Mentett helyekre",
+    "IMPORT_LOCATIONS_FAILED": "Nem sikerült importálni a helyeket",
+    "LOCATIONS_IMPORTED": "Helyek importálva",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Helyek importálva. A kiválasztott hely már nem érhető el",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Helyek importálva. A kiválasztott hely már nem érhető el, a VPN leállt",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Helyek importálva. A kiválasztott hely már nem érhető el, a proxy leállt",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "A helyek importálása vissza lett vonva, mert a VPN nem állítható le",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "A helyek importálása vissza lett vonva, mert a proxy nem állítható le",
+    "CLIPBOARD_EMPTY": "A vágólap üres",
+    "CLIPBOARD_READ_FAILED": "Vágólap olvasása sikertelen",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Az előfizetés szövege betöltve a Profil lapra",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "A kapcsolati mód váltásához előbb válaszd le a kapcsolatot",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Szabálykészlet eltávolítva",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Helyek kézi hozzáadásához válts Mentett helyekre",
+    "HISTORY_ENTRY_DELETED": "Előzménybejegyzés törölve",
+    "SELECTED_LOCATION_UNCHANGED": "Kiválasztott hely változatlan: {0}",
+    "SELECTED_LOCATION_SET": "Kiválasztott hely beállítva: {0}",
+    "LOCATION_CHECKED": "Location ellenőrzésed: {0}",
+    "LOCATION_CHECK_FAILED": "Helyellenőrzés sikertelen",
+    "LOCATION_EDITED": "Szerkesztett hely #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Hozzáadva: a sample rule-set",
+    "RULE_SET_DELETED": "Törölve: rule-set {0}",
+    "ROUTING_RULES_SAVED": "Útválasztási szabályok mentve",
+    "ROUTING_RULES_IMPORTED": "Útválasztási szabályok importálva",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Útválasztási szabályok importálva. Az alkalmazáshoz indítsd újra a VPN-t",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Útválasztási szabályok importálva. Az alkalmazáshoz indítsd újra a proxyt",
+    "ROUTING_RULES_IMPORT_FAILED": "Nem sikerült importálni az útválasztási szabályokat",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Útválasztási szabályok a vágólapra másolva",
+    "ROUTING_RULES_EXPORT_CANCELED": "Útválasztási szabályok exportálása megszakítva",
+    "ROUTING_RULES_EXPORTED_TO": "Útválasztási szabályok exportálva ide: {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Nem sikerült exportálni az útválasztási szabályokat",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Nem sikerült megnyitni az útválasztási szabályfájlt",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Helyek a vágólapra másolva",
+    "LOCATIONS_EXPORT_CANCELED": "Helyek exportálása megszakítva",
+    "LOCATIONS_EXPORTED_TO": "Helyek exportálva ide: {0}",
+    "LOCATIONS_EXPORT_FAILED": "Nem sikerült exportálni a helyeket",
+    "LOCATIONS_FILE_OPEN_FAILED": "Nem sikerült megnyitni a helyfájlt",
+    "LOCATIONS_FILE_READ_FAILED": "Nem sikerült olvasni a helyfájlt",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Diagnosztikai export megszakítva",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnosztika exportálva ide: {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Nem sikerült exportálni a diagnosztikát",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Nem sikerült megnyitni a diagnosztikai célt",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Nincs frissíthető előfizetés",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Nem sikerült frissíteni az indítási beállítást",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Nem sikerült frissíteni az indítási beállítást: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Nem sikerült menteni a frissítési beállításokat",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Nem sikerült menteni a frissítési beállításokat: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Az előző VPN-munkamenet vissza lesz állítva",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Az előző VPN-hely már nem érhető el",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN visszaállítása: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN elindítva itt: {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy elindítva itt: {1}",
+    "CONNECTION_START_FAILED.VPN": "Nem sikerült elindítani a VPN-t",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Nem sikerült elindítani a proxyt",
+    "CONNECTION_STOP_FAILED.VPN": "Nem sikerült leállítani a VPN-t",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Nem sikerült leállítani a proxyt",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Az alkalmazás bezárva. A VPN ki volt kapcsolva.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN leállítva. A következő indításkor újracsatlakozik.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy leállítva. A következő indításkor újracsatlakozik.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Kilépés előtt nem sikerült leállítani a VPN-t",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Kilépés előtt nem sikerült leállítani a proxyt"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "Abo-URL"
+      "target": "Előfizetés URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Unlesbare Abo-URL"
+      "target": "Nem olvasható előfizetés URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Unsichere HTTP-Abos werden nicht unterstützt"
+      "target": "A nem biztonságos HTTP előfizetések nem támogatottak"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Verwenden Sie eine https://-Abo-URL."
+      "target": "Használj https:// előfizetés URL-t."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "Die URL muss einen gültigen HTTPS-Host enthalten"
+      "target": "Az URL-nek érvényes HTTPS gazdagépet kell tartalmaznia"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Fügen Sie eine gültige https://-Abo-URL ein."
+      "target": "Illessz be egy érvényes https:// előfizetés URL-t."
     },
     {
       "source": "Direct remote source",
-      "target": "Direkte entfernte Quelle"
+      "target": "Közvetlen távoli forrás"
     },
     {
       "source": "sing-box import link",
-      "target": "sing-box-Import-Link"
+      "target": "sing-box importhivatkozás"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Unlesbarer sing-box-Import-Link"
+      "target": "Nem olvasható sing-box importhivatkozás"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Nur gültige entfernte HTTPS-URLs werden unterstützt"
+      "target": "Csak érvényes távoli HTTPS URL-ek támogatottak"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Verwenden Sie einen sing-box-Import-Link, der auf eine gültige https://-URL verweist."
+      "target": "Olyan sing-box importhivatkozást használj, amely érvényes https:// URL-re mutat."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Lädt entfernten Inhalt aus der eingebetteten URL"
+      "target": "Távoli tartalmat tölt le a beágyazott URL-ből"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Lädt entfernten Inhalt von "
+      "target": "Távoli tartalmat tölt le innen: "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Der Import-Link konnte nicht gelesen werden"
+      "target": "Az importhivatkozás nem értelmezhető"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Fügen Sie einen gültigen sing-box remote-profile Import-Link oder eine direkte Abo-URL ein."
+      "target": "Illessz be egy érvényes sing-box remote-profile importhivatkozást vagy közvetlen előfizetés URL-t."
     },
     {
       "source": "VPN import link",
-      "target": "VPN-Import-Link"
+      "target": "VPN importhivatkozás"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Unlesbarer VPN-Import-Link"
+      "target": "Nem olvasható VPN importhivatkozás"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Nicht unterstützter Anbieter-Import"
+      "target": "Nem támogatott szolgáltatói import"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia und andere vpn://-Importe werden nicht unterstützt. Verwenden Sie eine normale Abo-URL oder fügen Sie Standorte manuell hinzu."
+      "target": "Az Amnezia és más vpn:// importok nem támogatottak. Használj normál előfizetés URL-t, vagy adj hozzá helyeket kézzel."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Die Importdaten konnten nicht dekodiert werden"
+      "target": "Az import tartalma nem dekódolható"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "vpn://-Importe werden nicht unterstützt. Verwenden Sie eine normale Abo-URL oder fügen Sie Standorte manuell hinzu."
+      "target": "A vpn:// importok nem támogatottak. Használj normál előfizetés URL-t, vagy adj hozzá helyeket kézzel."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP-Abo-URLs werden nicht unterstützt. Verwenden Sie stattdessen https://."
+      "target": "A HTTP előfizetés URL-ek nem támogatottak. Használj helyette https:// címet."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Die entfernte Quelle muss eine https://-URL oder ein unterstützter Import-Link sein"
+      "target": "A távoli forrásnak https:// URL-nek vagy támogatott importhivatkozásnak kell lennie"
     },
     {
       "source": "Remote source is empty",
-      "target": "Die entfernte Quelle ist leer"
+      "target": "A távoli forrás üres"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Die entfernte Quelle muss eine gültige https://-URL mit Host sein."
+      "target": "A távoli forrásnak érvényes, gazdagépet tartalmazó https:// URL-nek kell lennie."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Dieser sing-box-Import verweist auf eine ungültige oder nicht-HTTPS-URL. Verwenden Sie stattdessen eine gültige https://-URL."
+      "target": "Ez a sing-box import érvénytelen vagy nem HTTPS URL-re mutat. Használj helyette érvényes https:// URL-t."
     },
     {
       "source": "Applying selected location...",
-      "target": "Ausgewählter Standort wird angewendet..."
+      "target": "Kiválasztott hely alkalmazása..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Aktualisierter ausgewählter Standort wird angewendet..."
+      "target": "Frissített kiválasztott hely alkalmazása..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Suche nach bestem Standort hat das Zeitlimit erreicht; aktuelle Verbindung bleibt aktiv"
+      "target": "A legjobb hely keresése időtúllépéssel leállt; az aktuális kapcsolat megmarad"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Zwischenablage ist leer"
+      "target": "A vágólap üres"
     },
     {
       "source": "Connection log enabled",
-      "target": "Verbindungsprotokoll aktiviert"
+      "target": "Kapcsolati napló engedélyezve"
     },
     {
       "source": "Connection log hidden",
-      "target": "Verbindungsprotokoll ausgeblendet"
+      "target": "Kapcsolati napló elrejtve"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Verbindungstest-Werkzeuge aktiviert"
+      "target": "Kapcsolattesztelő eszközök engedélyezve"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Verbindungstest-Werkzeuge ausgeblendet"
+      "target": "Kapcsolattesztelő eszközök elrejtve"
     },
     {
       "source": "Could not open export destination",
-      "target": "Exportziel konnte nicht geöffnet werden"
+      "target": "Nem sikerült megnyitni az exportálási célt"
     },
     {
       "source": "Could not open selected file",
-      "target": "Ausgewählte Datei konnte nicht geöffnet werden"
+      "target": "Nem sikerült megnyitni a kiválasztott fájlt"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Ausgewählte Standortdatei konnte nicht geöffnet werden"
+      "target": "Nem sikerült megnyitni a kiválasztott helyfájlt"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Ausgewählte Regeldatei konnte nicht geöffnet werden"
+      "target": "Nem sikerült megnyitni a kiválasztott szabályfájlt"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Niederlande aus Whitelists"
+      "target": "Asztali felület: Hollandia az engedélyezési listákból"
     },
     {
       "source": "Desktop app initialized",
-      "target": "App gestartet"
+      "target": "Asztali alkalmazás inicializálva"
     },
     {
       "source": "App initialized",
-      "target": "App gestartet"
+      "target": "Alkalmazás inicializálva"
     },
     {
       "source": "Export Locations",
-      "target": "Standorte exportieren"
+      "target": "Helyek exportálása"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Aktualisierter ausgewählter Standort konnte nicht angewendet werden"
+      "target": "Nem sikerült alkalmazni a frissített kiválasztott helyet"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Diagnose konnte nicht exportiert werden"
+      "target": "Nem sikerült exportálni a diagnosztikát"
     },
     {
       "source": "Failed to export locations",
-      "target": "Standorte konnten nicht exportiert werden"
+      "target": "Nem sikerült exportálni a helyeket"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Routing-Regeln konnten nicht exportiert werden"
+      "target": "Nem sikerült exportálni az útválasztási szabályokat"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Ersatzstandort konnte nicht gefunden werden"
+      "target": "Nem sikerült helyettesítő helyet találni"
     },
     {
       "source": "Failed to import file",
-      "target": "Datei konnte nicht importiert werden"
+      "target": "Nem sikerült importálni a fájlt"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Diagnoseziel konnte nicht geöffnet werden"
+      "target": "Nem sikerült megnyitni a diagnosztikai célt"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Aktualisierungseinstellungen konnten nicht gespeichert werden"
+      "target": "Nem sikerült menteni a frissítési beállításokat"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Startoption konnte nicht aktualisiert werden"
+      "target": "Nem sikerült frissíteni az indítási beállítást"
     },
     {
       "source": "Import canceled",
-      "target": "Import abgebrochen"
+      "target": "Importálás megszakítva"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Ungültige Abo-URL"
+      "target": "Érvénytelen előfizetés URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "Latenzverlauf aktiviert"
+      "target": "Késleltetési előzmények engedélyezve"
     },
     {
       "source": "Latency history hidden",
-      "target": "Latenzverlauf ausgeblendet"
+      "target": "Késleltetési előzmények elrejtve"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Echtzeit-Datenverkehrsstatistik aktiviert"
+      "target": "Élő forgalmi statisztika engedélyezve"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Echtzeit-Datenverkehrsstatistik ausgeblendet"
+      "target": "Élő forgalmi statisztika elrejtve"
     },
     {
       "source": "Location check cancelled",
-      "target": "Standortprüfung abgebrochen"
+      "target": "Helyellenőrzés megszakítva"
     },
     {
       "source": "Location check failed",
-      "target": "Standortprüfung fehlgeschlagen"
+      "target": "Helyellenőrzés sikertelen"
     },
     {
       "source": "Locations exported",
-      "target": "Standorte exportiert"
+      "target": "Helyek exportálva"
     },
     {
       "source": "Locations import canceled",
-      "target": "Standortimport abgebrochen"
+      "target": "Helyek importálása megszakítva"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Keine Standorte für den Test verfügbar"
+      "target": "Nincs elérhető hely a méréshez"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Keine Abos zum Aktualisieren"
+      "target": "Nincs frissíthető előfizetés"
     },
     {
       "source": "No suitable location found",
-      "target": "Kein geeigneter Standort gefunden"
+      "target": "Nem található megfelelő hely"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Summen pro Profil aktiviert"
+      "target": "Profilonkénti összesítések engedélyezve"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Summen pro Profil ausgeblendet"
+      "target": "Profilonkénti összesítések elrejtve"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Vorherige VPN-Sitzung wird wiederhergestellt"
+      "target": "Az előző VPN-munkamenet vissza lesz állítva"
     },
     {
       "source": "QR scan canceled",
-      "target": "QR-Scan abgebrochen"
+      "target": "QR-beolvasás megszakítva"
     },
     {
       "source": "Routing rules exported",
-      "target": "Routing-Regeln exportiert"
+      "target": "Útválasztási szabályok exportálva"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Import der Routing-Regeln abgebrochen"
+      "target": "Útválasztási szabályok importálása megszakítva"
     },
     {
       "source": "Saved routing rules",
-      "target": "Routing-Regeln gespeichert"
+      "target": "Útválasztási szabályok mentve"
     },
     {
       "source": "Session stats enabled",
-      "target": "Sitzungsstatistik aktiviert"
+      "target": "Munkamenet-statisztika engedélyezve"
     },
     {
       "source": "Session stats hidden",
-      "target": "Sitzungsstatistik ausgeblendet"
+      "target": "Munkamenet-statisztika elrejtve"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Geteilter Text ist kein unterstützter Importinhalt"
+      "target": "A megosztott szöveg nem támogatott importtartalom"
     },
     {
       "source": "Subscription deleted",
-      "target": "Abo gelöscht"
+      "target": "Előfizetés törölve"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Abo-Aktualisierung abgeschlossen, aber zum Wechseln im Hintergrund ist eine VPN-Berechtigung erforderlich. Vorheriger VPN-Standort bleibt als Fallback erhalten."
+      "target": "Az előfizetés frissítése befejeződött, de a háttérben történő váltáshoz VPN-engedély szükséges. Az előző VPN-hely tartalékként megmarad."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Abo-Aktualisierung abgeschlossen. Bester Standort wird gesucht..."
+      "target": "Az előfizetés frissítése befejeződött. Legjobb hely keresése..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Abo-Aktualisierung abgeschlossen. "
+      "target": "Az előfizetés frissítése befejeződött. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Aktiver Modus: "
+      "target": "Futási mód: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Lokaler Proxy: "
+      "target": "Helyi proxy: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Protokolldatei: "
+      "target": "Futási napló: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Prüfung für VPN-Modus bestanden"
+      "target": "VPN mód előzetes ellenőrzése sikeres"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Prüfung für Nur-Proxy-Modus bestanden"
+      "target": "Csak proxy mód előzetes ellenőrzése sikeres"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Prüfung für VPN-Modus fehlgeschlagen: "
+      "target": "VPN mód előzetes ellenőrzése sikertelen: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Prüfung für Nur-Proxy-Modus fehlgeschlagen: "
+      "target": "Csak proxy mód előzetes ellenőrzése sikertelen: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "VPN-Modus nicht verfügbar: "
+      "target": "VPN mód nem érhető el: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Nur-Proxy-Modus nicht verfügbar: "
+      "target": "Csak proxy mód nem érhető el: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN auf diesem Computer: bereit"
+      "target": "Asztali VPN-képesség: kész"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN auf diesem Computer: "
+      "target": "Asztali VPN-képesség: "
     },
     {
       "source": "VPN mode available",
-      "target": "VPN-Modus verfügbar"
+      "target": "VPN mód elérhető"
     },
     {
       "source": "Proxy mode available",
-      "target": "Proxy-Modus verfügbar"
+      "target": "Proxy mód elérhető"
     },
     {
       "source": "not ready",
-      "target": "nicht bereit"
+      "target": "nem kész"
     },
     {
       "source": " checks",
-      "target": " Prüfungen"
+      "target": " ellenőrzés"
     },
     {
       "source": " check",
-      "target": " Prüfung"
+      "target": " ellenőrzés"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Fehler TUN-Gerät: "
+      "target": "TUN eszköz hiba: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Fehler Netzwerkrechte: "
+      "target": "hálózati jogosultsági hiba: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Fehler Routing-/DNS-Werkzeuge: "
+      "target": "útvonal-/DNS-eszköz hiba: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-Gerät"
+      "target": "TUN eszköz"
     },
     {
       "source": "network privileges",
-      "target": "Netzwerkrechte"
+      "target": "hálózati jogosultságok"
     },
     {
       "source": "route/DNS tooling",
-      "target": "Routing-/DNS-Werkzeuge"
+      "target": "útvonal-/DNS-eszközök"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux-TUN-Gerät fehlt unter /dev/net/tun. Versuchen Sie: sudo modprobe tun"
+      "target": "A Linux TUN eszköz hiányzik itt: /dev/net/tun. Próbáld: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Desktop-VPN-Modus benötigt CAP_NET_ADMIN. Als root starten oder sing-box-Berechtigungen setzen: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Az asztali VPN módhoz CAP_NET_ADMIN szükséges. Futtasd rootként, vagy adj sing-box képességeket: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Windows-Routing-/DNS-Werkzeuge sind nicht verfügbar. VPN-Modus benötigt netsh.exe und DNS-Client-PowerShell-Cmdlets."
+      "target": "A Windows útvonal-/DNS-eszközök nem érhetők el. A VPN módhoz netsh.exe és DNS-kliens PowerShell parancsmagok szükségesek."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "A VPN készen áll ezen a számítógépen"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "A proxy készen áll ezen a számítógépen"
     }
   ],
   "legacyExact": [
     {
+      "source": "Idle",
+      "target": "Tétlen"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN elindítva"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN leállítva"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy elindítva"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy leállítva"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN indítása..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Helyi proxy indítása..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN indítása a legjobb hellyel..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Helyi proxy indítása a legjobb hellyel..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Legjobb hely keresése az előfizetésből..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Legjobb hely keresése a mentett helyekből..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Helykeresés megszakítva"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Helykeresés sikertelen"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Adj VPN-engedélyt, majd próbáld újra"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Előbb állíts be távoli forrást"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Előbb adj hozzá legalább egy mentett helyet"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Előbb válassz ki egy helyet"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Még nincs mentett előfizetés"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Összes előfizetés frissítése..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Aktív előfizetés frissítése..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Előfizetés frissítése..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Előfizetések frissítése..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Előfizetés automatikus frissítése..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Előfizetések automatikus frissítése..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Előfizetés frissítve"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Előfizetések frissítve"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktív előfizetés frissítve"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Összes előfizetés frissítve"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Frissítés sikertelen"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilforrás előfizetésre állítva"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilforrás mentett helyekre állítva"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Kapcsolati mód VPN-re állítva"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Kapcsolati mód csak proxyra állítva"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "A kapcsolati mód váltásához előbb válaszd le a kapcsolatot"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Előzménybejegyzés törölve"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Előfizetés neve visszaállítva"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Előfizetés neve mentve"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Nyelv a rendszer alapértelmezésére állítva"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Egyéni DNS mentve"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Egyéni DNS letiltva"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Útválasztási szabályok mentve"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Útválasztási szabályok importálva"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Helyek importálva"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Helyek importálva. A kiválasztott hely már nem érhető el"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Helyek importálásához válts Mentett helyekre"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Helyek kézi hozzáadásához válts Mentett helyekre"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Érvénytelen helykonfiguráció"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "A szerkesztendő hely már nem érhető el"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnosztikai export megnyitva"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnosztikai export sikertelen"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnosztikai export megszakítva"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Az előző VPN-hely már nem érhető el"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Az alkalmazás bezárva. A VPN ki volt kapcsolva."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Összes előfizetés aktiválva"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Összes előfizetés kiválasztva"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Előfizetés kiválasztva"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Helyek a vágólapra másolva"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Helyek exportálása megszakítva"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Útválasztási szabályok a vágólapra másolva"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Útválasztási szabályok exportálása megszakítva"
+    },
+    {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Profilquelle: Abo"
+      "target": "Profilforrás mód: ELŐFIZETÉS"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Profilquelle: gespeicherte Standorte"
+      "target": "Profilforrás mód: AKTUÁLIS_HELYEK"
     }
   ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
-      "target": "Abo-Standorte sind schreibgeschützt. Wechseln Sie zu Gespeicherte Standorte, um Änderungen zu speichern."
+      "target": "Az előfizetésből származó helyek csak olvashatók. A módosítások mentéséhez válts Mentett helyekre."
     },
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
-      "target": "Abo-Standorte sind schreibgeschützt. Wechseln Sie zu Gespeicherte Standorte, um sie zu löschen."
+      "target": "Az előfizetésből származó helyek csak olvashatók. A törlésükhöz válts Mentett helyekre."
     },
     {
       "source": "Subscription received. Review and save it on the Profile tab.",
-      "target": "Abo empfangen. Prüfen und speichern Sie es im Tab Profil."
+      "target": "Előfizetés érkezett. Ellenőrizd és mentsd a Profil lapon."
     },
     {
       "source": "Subscription link received. Review and save it on the Profile tab.",
-      "target": "Abo-Link empfangen. Prüfen und speichern Sie ihn im Tab Profil."
+      "target": "Előfizetési hivatkozás érkezett. Ellenőrizd és mentsd a Profil lapon."
     },
     {
       "source": "Location config received. Review and save it on the Locations tab.",
-      "target": "Standortkonfiguration empfangen. Prüfen und speichern Sie sie im Tab Standorte."
+      "target": "Helykonfiguráció érkezett. Ellenőrizd és mentsd a Helyek lapon."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Lokaler Proxy mit bestem Standort wird gestartet..."
+      "target": "Helyi proxy indítása a legjobb hellyel..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "VPN mit bestem Standort wird gestartet..."
-    },
-    {
-      "source": "Finding the best location from the subscription...",
-      "target": "Bester Standort aus dem Abo wird gesucht..."
-    },
-    {
-      "source": "Finding the best location from saved locations...",
-      "target": "Bester gespeicherter Standort wird gesucht..."
-    },
-    {
-      "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Standorte importiert. Der ausgewählte Standort ist nicht mehr verfügbar, Proxy gestoppt"
-    },
-    {
-      "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Standorte importiert. Der ausgewählte Standort ist nicht mehr verfügbar, VPN gestoppt"
-    },
-    {
-      "source": "Locations imported. Selected location is no longer available",
-      "target": "Standorte importiert. Der ausgewählte Standort ist nicht mehr verfügbar"
-    },
-    {
-      "source": "Selected location applied, but failed to save it",
-      "target": "Ausgewählter Standort angewendet, konnte aber nicht gespeichert werden"
-    },
-    {
-      "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Entfernen des Standorts zurückgerollt, weil der Proxy nicht gestoppt werden konnte"
-    },
-    {
-      "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "Entfernen des Standorts zurückgerollt, weil das VPN nicht gestoppt werden konnte"
-    },
-    {
-      "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Import der Standorte zurückgerollt, weil der Proxy nicht gestoppt werden konnte"
-    },
-    {
-      "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "Import der Standorte zurückgerollt, weil das VPN nicht gestoppt werden konnte"
-    },
-    {
-      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "VPN gestoppt. Aktualisierte Abos haben den ausgewählten Standort entfernt."
-    },
-    {
-      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Proxy gestoppt. Aktualisierte Abos haben den ausgewählten Standort entfernt."
-    },
-    {
-      "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN gestoppt. Verbindung wird beim nächsten Start wiederhergestellt."
-    },
-    {
-      "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Proxy gestoppt. Verbindung wird beim nächsten Start wiederhergestellt."
-    },
-    {
-      "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Routing-Regeln gespeichert. Starten Sie das VPN neu, um sie anzuwenden"
-    },
-    {
-      "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Routing-Regeln gespeichert. Starten Sie den Proxy neu, um sie anzuwenden"
-    },
-    {
-      "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Routing-Regeln importiert. Starten Sie das VPN neu, um sie anzuwenden"
-    },
-    {
-      "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Routing-Regeln importiert. Starten Sie den Proxy neu, um sie anzuwenden"
-    },
-    {
-      "source": "Selected location removed. VPN stopped: ",
-      "target": "Ausgewählter Standort entfernt. VPN gestoppt: "
-    },
-    {
-      "source": "Selected location removed. Proxy stopped: ",
-      "target": "Ausgewählter Standort entfernt. Proxy gestoppt: "
-    },
-    {
-      "source": "Best location selected and vpn started: ",
-      "target": "Bester Standort ausgewählt und VPN gestartet: "
-    },
-    {
-      "source": "Best location selected and proxy started: ",
-      "target": "Bester Standort ausgewählt und Proxy gestartet: "
-    },
-    {
-      "source": "VPN started, but failed to save the selected location",
-      "target": "VPN gestartet, aber der ausgewählte Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Proxy started, but failed to save the selected location",
-      "target": "Proxy gestartet, aber der ausgewählte Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "VPN started, but failed to save the best location",
-      "target": "VPN gestartet, aber der beste Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Proxy started, but failed to save the best location",
-      "target": "Proxy gestartet, aber der beste Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Failed to start VPN with the best location",
-      "target": "VPN konnte mit dem besten Standort nicht gestartet werden"
-    },
-    {
-      "source": "Failed to start proxy with the best location",
-      "target": "Proxy konnte mit dem besten Standort nicht gestartet werden"
-    },
-    {
-      "source": "Failed to save the selected location",
-      "target": "Ausgewählter Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Failed to save selected location",
-      "target": "Ausgewählter Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Failed to save the best location",
-      "target": "Bester Standort konnte nicht gespeichert werden"
-    },
-    {
-      "source": "Failed to apply selected location",
-      "target": "Ausgewählter Standort konnte nicht angewendet werden"
-    },
-    {
-      "source": "Failed to select location",
-      "target": "Standort konnte nicht ausgewählt werden"
-    },
-    {
-      "source": "Failed to stop VPN before exit",
-      "target": "VPN konnte vor dem Beenden nicht gestoppt werden"
-    },
-    {
-      "source": "Failed to stop Proxy before exit",
-      "target": "Proxy konnte vor dem Beenden nicht gestoppt werden"
-    },
-    {
-      "source": "Failed to stop VPN",
-      "target": "VPN konnte nicht gestoppt werden"
-    },
-    {
-      "source": "Failed to stop proxy",
-      "target": "Proxy konnte nicht gestoppt werden"
-    },
-    {
-      "source": "Failed to start VPN",
-      "target": "VPN konnte nicht gestartet werden"
-    },
-    {
-      "source": "Failed to start proxy",
-      "target": "Proxy konnte nicht gestartet werden"
-    },
-    {
-      "source": "Could not prepare VPN",
-      "target": "VPN konnte nicht vorbereitet werden"
-    },
-    {
-      "source": "Could not prepare proxy",
-      "target": "Proxy konnte nicht vorbereitet werden"
-    },
-    {
-      "source": "Preparing VPN",
-      "target": "VPN wird vorbereitet"
-    },
-    {
-      "source": "Preparing proxy",
-      "target": "Proxy wird vorbereitet"
-    },
-    {
-      "source": "VPN start cancelled",
-      "target": "VPN-Start abgebrochen"
-    },
-    {
-      "source": "Proxy start cancelled",
-      "target": "Proxy-Start abgebrochen"
-    },
-    {
-      "source": "VPN stop cancelled",
-      "target": "VPN-Stopp abgebrochen"
-    },
-    {
-      "source": "Proxy stop cancelled",
-      "target": "Proxy-Stopp abgebrochen"
-    },
-    {
-      "source": "Starting local proxy...",
-      "target": "Lokaler Proxy wird gestartet..."
-    },
-    {
-      "source": "Starting VPN...",
-      "target": "VPN wird gestartet..."
-    },
-    {
-      "source": "Refreshing all subscriptions...",
-      "target": "Alle Abos werden aktualisiert..."
-    },
-    {
-      "source": "Refreshing active subscription...",
-      "target": "Aktives Abo wird aktualisiert..."
-    },
-    {
-      "source": "Refreshing subscriptions...",
-      "target": "Abos werden aktualisiert..."
-    },
-    {
-      "source": "Refreshing subscription...",
-      "target": "Abo wird aktualisiert..."
-    },
-    {
-      "source": "Auto-refreshing subscriptions...",
-      "target": "Abos werden automatisch aktualisiert..."
-    },
-    {
-      "source": "Auto-refreshing subscription...",
-      "target": "Abo wird automatisch aktualisiert..."
-    },
-    {
-      "source": "All subscriptions refreshed",
-      "target": "Alle Abos aktualisiert"
-    },
-    {
-      "source": "Active subscription refreshed",
-      "target": "Aktives Abo aktualisiert"
-    },
-    {
-      "source": "Subscriptions refreshed",
-      "target": "Abos aktualisiert"
-    },
-    {
-      "source": "Subscription refreshed",
-      "target": "Abo aktualisiert"
-    },
-    {
-      "source": "Refresh failed",
-      "target": "Aktualisierung fehlgeschlagen"
-    },
-    {
-      "source": "Location search cancelled",
-      "target": "Standortsuche abgebrochen"
-    },
-    {
-      "source": "Location search failed",
-      "target": "Standortsuche fehlgeschlagen"
-    },
-    {
-      "source": "Grant VPN permission and try again",
-      "target": "VPN-Berechtigung erteilen und erneut versuchen"
-    },
-    {
-      "source": "Set a remote source first",
-      "target": "Zuerst eine entfernte Quelle festlegen"
-    },
-    {
-      "source": "Add at least one saved location first",
-      "target": "Zuerst mindestens einen gespeicherten Standort hinzufügen"
-    },
-    {
-      "source": "Select a location first",
-      "target": "Zuerst einen Standort auswählen"
-    },
-    {
-      "source": "No subscriptions saved yet",
-      "target": "Noch keine Abos gespeichert"
-    },
-    {
-      "source": "Profile source set to subscription",
-      "target": "Profilquelle auf Abo gesetzt"
-    },
-    {
-      "source": "Profile source set to saved locations",
-      "target": "Profilquelle auf gespeicherte Standorte gesetzt"
-    },
-    {
-      "source": "Connection mode set to VPN",
-      "target": "Verbindungsmodus auf VPN gesetzt"
-    },
-    {
-      "source": "Connection mode set to proxy only",
-      "target": "Verbindungsmodus auf Nur Proxy gesetzt"
-    },
-    {
-      "source": "Disconnect first to change connection mode",
-      "target": "Zum Ändern des Verbindungsmodus zuerst trennen"
-    },
-    {
-      "source": "History entry deleted",
-      "target": "Verlaufseintrag gelöscht"
-    },
-    {
-      "source": "Subscription name reset",
-      "target": "Abo-Name zurückgesetzt"
-    },
-    {
-      "source": "Subscription name saved",
-      "target": "Abo-Name gespeichert"
-    },
-    {
-      "source": "Language set to system default",
-      "target": "Sprache auf Systemstandard gesetzt"
-    },
-    {
-      "source": "Custom DNS saved",
-      "target": "Benutzerdefiniertes DNS gespeichert"
-    },
-    {
-      "source": "Custom DNS disabled",
-      "target": "Benutzerdefiniertes DNS deaktiviert"
-    },
-    {
-      "source": "Routing rules saved",
-      "target": "Routing-Regeln gespeichert"
-    },
-    {
-      "source": "Routing rules imported",
-      "target": "Routing-Regeln importiert"
-    },
-    {
-      "source": "Locations imported",
-      "target": "Standorte importiert"
-    },
-    {
-      "source": "Switch to Saved Locations to import locations",
-      "target": "Zum Importieren von Standorten zu Gespeicherte Standorte wechseln"
-    },
-    {
-      "source": "Switch to Saved Locations to add locations manually",
-      "target": "Zum manuellen Hinzufügen von Standorten zu Gespeicherte Standorte wechseln"
-    },
-    {
-      "source": "Invalid location config",
-      "target": "Ungültige Standortkonfiguration"
-    },
-    {
-      "source": "Location to edit is no longer available",
-      "target": "Zu bearbeitender Standort ist nicht mehr verfügbar"
-    },
-    {
-      "source": "Diagnostics export opened",
-      "target": "Diagnoseexport geöffnet"
-    },
-    {
-      "source": "Diagnostics export failed",
-      "target": "Diagnoseexport fehlgeschlagen"
-    },
-    {
-      "source": "Diagnostics export canceled",
-      "target": "Diagnoseexport abgebrochen"
-    },
-    {
-      "source": "Previous VPN location is no longer available",
-      "target": "Vorheriger VPN-Standort ist nicht mehr verfügbar"
-    },
-    {
-      "source": "App closed. VPN was off.",
-      "target": "App geschlossen. VPN war aus."
-    },
-    {
-      "source": "Activated all subscriptions",
-      "target": "Alle Abos aktiviert"
-    },
-    {
-      "source": "All subscriptions selected",
-      "target": "Alle Abos ausgewählt"
-    },
-    {
-      "source": "Subscription selected",
-      "target": "Abo ausgewählt"
-    },
-    {
-      "source": "Subscription saved",
-      "target": "Abo gespeichert"
-    },
-    {
-      "source": "Locations copied to clipboard",
-      "target": "Standorte in die Zwischenablage kopiert"
-    },
-    {
-      "source": "Locations export canceled",
-      "target": "Standortexport abgebrochen"
-    },
-    {
-      "source": "Routing rules copied to clipboard",
-      "target": "Routing-Regeln in die Zwischenablage kopiert"
-    },
-    {
-      "source": "Routing rules export canceled",
-      "target": "Export der Routing-Regeln abgebrochen"
-    },
-    {
-      "source": "Clipboard read failed",
-      "target": "Zwischenablage konnte nicht gelesen werden"
-    },
-    {
-      "source": "No locations to export",
-      "target": "Keine Standorte zum Exportieren"
-    },
-    {
-      "source": "Failed to load apps",
-      "target": "Apps konnten nicht geladen werden"
-    },
-    {
-      "source": "Failed to refresh subscriptions",
-      "target": "Abos konnten nicht aktualisiert werden"
-    },
-    {
-      "source": "Failed to refresh the active subscription",
-      "target": "Aktives Abo konnte nicht aktualisiert werden"
-    },
-    {
-      "source": "Failed to import routing rules",
-      "target": "Routing-Regeln konnten nicht importiert werden"
-    },
-    {
-      "source": "Failed to save routing rules",
-      "target": "Routing-Regeln konnten nicht gespeichert werden"
-    },
-    {
-      "source": "Failed to import locations",
-      "target": "Standorte konnten nicht importiert werden"
-    },
-    {
-      "source": "Failed to open locations file",
-      "target": "Standortdatei konnte nicht geöffnet werden"
-    },
-    {
-      "source": "Failed to read locations file",
-      "target": "Standortdatei konnte nicht gelesen werden"
-    },
-    {
-      "source": "Failed to open routing rules file",
-      "target": "Datei mit Routing-Regeln konnte nicht geöffnet werden"
-    },
-    {
-      "source": "Best location could not be mapped to the desktop list",
-      "target": "Bester Standort konnte nicht der Liste auf diesem Computer zugeordnet werden"
-    },
-    {
-      "source": "VPN ready on this computer",
-      "target": "VPN auf diesem Computer bereit"
-    },
-    {
-      "source": "Proxy ready on this computer",
-      "target": "Proxy auf diesem Computer bereit"
-    },
-    {
-      "source": "Desktop VPN shell ready",
-      "target": "VPN auf diesem Computer bereit"
-    },
-    {
-      "source": "Desktop Proxy shell ready",
-      "target": "Proxy auf diesem Computer bereit"
-    },
-    {
-      "source": "VPN started on ",
-      "target": "VPN gestartet auf "
-    },
-    {
-      "source": "Proxy started on ",
-      "target": "Proxy gestartet auf "
-    },
-    {
-      "source": "VPN stopped. App mode: ",
-      "target": "VPN gestoppt. App-Modus: "
-    },
-    {
-      "source": "Proxy stopped. App mode: ",
-      "target": "Proxy gestoppt. App-Modus: "
-    },
-    {
-      "source": "Language set to ",
-      "target": "Sprache: "
-    },
-    {
-      "source": "Subscription auto-refresh set to ",
-      "target": "Abo-Autoaktualisierung: "
-    },
-    {
-      "source": "Validation settings saved: ",
-      "target": "Testeinstellungen gespeichert: "
-    },
-    {
-      "source": "Selected location unchanged: ",
-      "target": "Ausgewählter Standort unverändert: "
-    },
-    {
-      "source": "Selected location removed: ",
-      "target": "Ausgewählter Standort entfernt: "
-    },
-    {
-      "source": "Selected location set: ",
-      "target": "Ausgewählter Standort: "
-    },
-    {
-      "source": "Location updated and merged: ",
-      "target": "Standort aktualisiert und zusammengeführt: "
-    },
-    {
-      "source": "Location already saved: ",
-      "target": "Standort bereits gespeichert: "
-    },
-    {
-      "source": "Location updated: ",
-      "target": "Standort aktualisiert: "
-    },
-    {
-      "source": "Location removed: ",
-      "target": "Standort entfernt: "
-    },
-    {
-      "source": "Location added: ",
-      "target": "Standort hinzugefügt: "
-    },
-    {
-      "source": "Subscriptions refreshed: ",
-      "target": "Abos aktualisiert: "
-    },
-    {
-      "source": "Failed: ",
-      "target": "Fehlgeschlagen: "
-    },
-    {
-      "source": "Restoring VPN: ",
-      "target": "VPN wird wiederhergestellt: "
-    },
-    {
-      "source": "Refreshing ",
-      "target": "Aktualisiere "
-    },
-    {
-      "source": "Locations exported to ",
-      "target": "Standorte exportiert nach "
-    },
-    {
-      "source": "Routing rules exported to ",
-      "target": "Routing-Regeln exportiert nach "
-    },
-    {
-      "source": "Diagnostics exported to ",
-      "target": "Diagnose exportiert nach "
-    },
-    {
-      "source": "Failed to benchmark ",
-      "target": "Benchmark fehlgeschlagen für "
-    },
-    {
-      "source": "Activated ",
-      "target": "Aktiviert: "
-    },
-    {
-      "source": "Added ",
-      "target": "Hinzugefügt: "
-    },
-    {
-      "source": "Deleted ",
-      "target": "Gelöscht: "
-    },
-    {
-      "source": "Selected ",
-      "target": "Ausgewählt: "
-    },
-    {
-      "source": "Edited location #",
-      "target": "Standort # bearbeitet: "
-    },
-    {
-      "source": "App mode: ",
-      "target": "App-Modus: "
-    },
-    {
-      "source": " locations refreshed",
-      "target": " Standorte aktualisiert"
-    },
-    {
-      "source": " location refreshed",
-      "target": " Standort aktualisiert"
-    },
-    {
-      "source": " • batch ",
-      "target": " • Gruppe "
-    },
-    {
-      "source": " • retries ",
-      "target": " • Wiederholungen "
-    },
-    {
-      "source": "custom interval",
-      "target": "benutzerdefiniertes Intervall"
-    },
-    {
-      "source": "every hour",
-      "target": "jede Stunde"
-    },
-    {
-      "source": "all subscriptions",
-      "target": "alle Abos"
-    },
-    {
-      "source": "selected subscription",
-      "target": "ausgewähltes Abo"
-    },
-    {
-      "source": "proxy only",
-      "target": "nur Proxy"
-    },
-    {
-      "source": "off",
-      "target": "aus"
-    },
-    {
-      "source": "Idle",
-      "target": "Bereit"
-    },
-    {
-      "source": "VPN started",
-      "target": "VPN gestartet"
-    },
-    {
-      "source": "VPN stopped",
-      "target": "VPN gestoppt"
-    },
-    {
-      "source": "Proxy started",
-      "target": "Proxy gestartet"
-    },
-    {
-      "source": "Proxy stopped",
-      "target": "Proxy gestoppt"
+      "target": "VPN indítása a legjobb hellyel..."
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "VPN mit neuem bestem Standort wird gestartet..."
+      "target": "VPN indítása az új legjobb hellyel..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Proxy mit neuem bestem Standort wird gestartet..."
+      "target": "Proxy indítása az új legjobb hellyel..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Legjobb hely keresése az előfizetésből..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Legjobb hely keresése a mentett helyekből..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Helyek importálva. A kiválasztott hely már nem érhető el, a proxy leállt"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Helyek importálva. A kiválasztott hely már nem érhető el, a VPN leállt"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Helyek importálva. A kiválasztott hely már nem érhető el"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "A kiválasztott hely alkalmazva, de nem sikerült menteni"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "A hely eltávolítása vissza lett vonva, mert a proxy nem állítható le"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "A hely eltávolítása vissza lett vonva, mert a VPN nem állítható le"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "A helyek importálása vissza lett vonva, mert a proxy nem állítható le"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "A helyek importálása vissza lett vonva, mert a VPN nem állítható le"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN leállítva. A frissített előfizetések eltávolították a kiválasztott helyet."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy leállítva. A frissített előfizetések eltávolították a kiválasztott helyet."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN leállítva. A következő indításkor újracsatlakozik."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy leállítva. A következő indításkor újracsatlakozik."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Útválasztási szabályok mentve. Az alkalmazáshoz indítsd újra a VPN-t"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Útválasztási szabályok mentve. Az alkalmazáshoz indítsd újra a proxyt"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Útválasztási szabályok importálva. Az alkalmazáshoz indítsd újra a VPN-t"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Útválasztási szabályok importálva. Az alkalmazáshoz indítsd újra a proxyt"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Kiválasztott hely eltávolítva. VPN leállítva: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Kiválasztott hely eltávolítva. Proxy leállítva: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Legjobb hely kiválasztva, VPN elindítva: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Legjobb hely kiválasztva, proxy elindítva: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN elindítva, de a kiválasztott hely mentése sikertelen"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy elindítva, de a kiválasztott hely mentése sikertelen"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN elindítva, de a legjobb hely mentése sikertelen"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy elindítva, de a legjobb hely mentése sikertelen"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Nem sikerült elindítani a VPN-t a legjobb hellyel"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Nem sikerült elindítani a proxyt a legjobb hellyel"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Nem sikerült menteni a kiválasztott helyet"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Nem sikerült menteni a kiválasztott helyet"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Nem sikerült menteni a legjobb helyet"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Nem sikerült alkalmazni a kiválasztott helyet"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Nem sikerült kiválasztani a helyet"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Kilépés előtt nem sikerült leállítani a VPN-t"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Kilépés előtt nem sikerült leállítani a proxyt"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Nem sikerült leállítani a VPN-t"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Nem sikerült leállítani a proxyt"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Nem sikerült elindítani a VPN-t"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Nem sikerült elindítani a proxyt"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Nem sikerült előkészíteni a VPN-t"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Nem sikerült előkészíteni a proxyt"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN előkészítése"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Proxy előkészítése"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN indítása megszakítva"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy indítása megszakítva"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN leállítása megszakítva"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy leállítása megszakítva"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Helyi proxy indítása..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN indítása..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Összes előfizetés frissítése..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Aktív előfizetés frissítése..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Előfizetések frissítése..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Előfizetés frissítése..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Előfizetések automatikus frissítése..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Előfizetés automatikus frissítése..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Összes előfizetés frissítve"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktív előfizetés frissítve"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Előfizetések frissítve"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Előfizetés frissítve"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Frissítés sikertelen"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Helykeresés megszakítva"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Helykeresés sikertelen"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Adj VPN-engedélyt, majd próbáld újra"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Előbb állíts be távoli forrást"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Előbb adj hozzá legalább egy mentett helyet"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Előbb válassz ki egy helyet"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Még nincs mentett előfizetés"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilforrás előfizetésre állítva"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilforrás mentett helyekre állítva"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Kapcsolati mód VPN-re állítva"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Kapcsolati mód csak proxyra állítva"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "A kapcsolati mód váltásához előbb válaszd le a kapcsolatot"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Előzménybejegyzés törölve"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Előfizetés neve visszaállítva"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Előfizetés neve mentve"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Nyelv a rendszer alapértelmezésére állítva"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Egyéni DNS mentve"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Egyéni DNS letiltva"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Útválasztási szabályok mentve"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Útválasztási szabályok importálva"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Helyek importálva"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Helyek importálásához válts Mentett helyekre"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Helyek kézi hozzáadásához válts Mentett helyekre"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Érvénytelen helykonfiguráció"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "A szerkesztendő hely már nem érhető el"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnosztikai export megnyitva"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnosztikai export sikertelen"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnosztikai export megszakítva"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Az előző VPN-hely már nem érhető el"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Az alkalmazás bezárva. A VPN ki volt kapcsolva."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Összes előfizetés aktiválva"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Összes előfizetés kiválasztva"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Előfizetés kiválasztva"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Előfizetés mentve"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Helyek a vágólapra másolva"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Helyek exportálása megszakítva"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Útválasztási szabályok a vágólapra másolva"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Útválasztási szabályok exportálása megszakítva"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Vágólap olvasása sikertelen"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Nincs exportálható hely"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Nem sikerült betölteni az alkalmazásokat"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Nem sikerült frissíteni az előfizetéseket"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Nem sikerült frissíteni az aktív előfizetést"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Nem sikerült importálni az útválasztási szabályokat"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Nem sikerült menteni az útválasztási szabályokat"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Nem sikerült importálni a helyeket"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Nem sikerült megnyitni a helyfájlt"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Nem sikerült olvasni a helyfájlt"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Nem sikerült megnyitni az útválasztási szabályfájlt"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "A legjobb hely nem illeszthető az asztali listához"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "A VPN készen áll ezen a számítógépen"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "A proxy készen áll ezen a számítógépen"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Asztali VPN-felület kész"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Asztali proxyfelület kész"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN elindítva itt: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy elindítva itt: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN leállítva. Alkalmazásmód: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy leállítva. Alkalmazásmód: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Nyelv beállítva: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Előfizetés automatikus frissítése beállítva: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Ellenőrzési beállítások mentve: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Kiválasztott hely változatlan: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Kiválasztott hely eltávolítva: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Kiválasztott hely beállítva: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Hely frissítve és egyesítve: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Hely már mentve: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Hely frissítve: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Hely eltávolítva: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Hely hozzáadva: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Előfizetések frissítve: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Sikertelen: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN visszaállítása: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Frissítés: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Helyek exportálva ide: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Útválasztási szabályok exportálva ide: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnosztika exportálva ide: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Nem sikerült mérni: "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktiválva: "
+    },
+    {
+      "source": "Added ",
+      "target": "Hozzáadva: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Törölve: "
+    },
+    {
+      "source": "Selected ",
+      "target": "Kiválasztva: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Szerkesztett hely #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Alkalmazásmód: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " hely frissítve"
+    },
+    {
+      "source": " location refreshed",
+      "target": " hely frissítve"
+    },
+    {
+      "source": " • batch ",
+      "target": " • köteg "
+    },
+    {
+      "source": " • retries ",
+      "target": " • újrapróbálkozások "
+    },
+    {
+      "source": "custom interval",
+      "target": "egyéni időköz"
+    },
+    {
+      "source": "every hour",
+      "target": "óránként"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "minden előfizetés"
+    },
+    {
+      "source": "selected subscription",
+      "target": "kiválasztott előfizetés"
+    },
+    {
+      "source": "proxy only",
+      "target": "csak proxy"
+    },
+    {
+      "source": "off",
+      "target": "ki"
+    },
+    {
+      "source": "Idle",
+      "target": "Tétlen"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN elindítva"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN leállítva"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy elindítva"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy leállítva"
     }
   ]
 }

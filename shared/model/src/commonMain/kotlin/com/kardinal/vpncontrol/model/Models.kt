@@ -145,10 +145,11 @@ data class ProxyProfile(
     val customConfigJson: String = "",
 )
 
+@Deprecated("Use ProxyProfile for protocol-agnostic code.", ReplaceWith("ProxyProfile"))
 typealias VlessProfile = ProxyProfile
 
 data class ProfileBenchmark(
-    val profile: VlessProfile,
+    val profile: ProxyProfile,
     val primaryStatus: String,
     val secondaryStatus: String,
     val primaryTotal: Double?,
@@ -158,7 +159,7 @@ data class ProfileBenchmark(
 )
 
 data class ProfileSelection(
-    val profile: VlessProfile,
+    val profile: ProxyProfile,
     val benchmark: ProfileBenchmark,
     val runtimeConfigJson: String,
     val sourceUrl: String = "",
@@ -199,6 +200,15 @@ data class ConnectionLogEntry(
     val createdAtEpochMillis: Long = 0L,
 )
 
+enum class UiSettingsStatusItem {
+    SESSION_STATS,
+    LIVE_TRAFFIC_STATS,
+    PROFILE_TOTALS,
+    LATENCY_HISTORY,
+    CONNECTION_LOG,
+    CONNECTION_TEST_TOOLS,
+}
+
 enum class StatusMessageKey {
     IDLE,
     LANGUAGE_SET,
@@ -221,6 +231,104 @@ enum class StatusMessageKey {
     PREFLIGHT_FAILED,
     DESKTOP_VPN_CAPABILITY_READY,
     DESKTOP_VPN_CAPABILITY_ERROR,
+    NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING,
+    BEST_LOCATION_SEARCH_TIMED_OUT,
+    RETRYING_BEST_LOCATION_SEARCH,
+    LOCATION_SEARCH_CANCELLED,
+    LOCATION_SEARCH_FAILED,
+    VPN_PERMISSION_REQUIRED,
+    NO_SUITABLE_LOCATION_FOUND,
+    BEST_LOCATION_NOT_MAPPED,
+    ACTIVATED_ALL_SUBSCRIPTIONS,
+    ACTIVATED_SUBSCRIPTION,
+    PROFILE_SOURCE_MODE,
+    SUBSCRIPTION_NAME_RESET,
+    SUBSCRIPTION_NAME_SAVED,
+    SUBSCRIPTION_DELETED,
+    SELECT_LOCATION_FIRST,
+    CHECKING_LOCATION,
+    TESTING_LOCATION,
+    LOCATION_CHECK_CANCELLED,
+    NO_LOCATIONS_TO_EXPORT,
+    UI_SETTING_VISIBILITY_CHANGED,
+    SUBSCRIPTION_LOCATION_SAVE_READ_ONLY,
+    INVALID_LOCATION_CONFIG,
+    LOCATION_ALREADY_SAVED,
+    LOCATION_EDIT_UNAVAILABLE,
+    LOCATION_ADDED,
+    LOCATION_UPDATED_AND_MERGED,
+    LOCATION_UPDATED,
+    SUBSCRIPTION_LOCATION_DELETE_READ_ONLY,
+    SELECTED_LOCATION_REMOVED,
+    LOCATION_REMOVED,
+    SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED,
+    LOCATION_REMOVAL_ROLLBACK_FAILED,
+    IMPORT_LOCATIONS_BLOCKED,
+    IMPORT_LOCATIONS_FAILED,
+    LOCATIONS_IMPORTED,
+    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE,
+    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED,
+    LOCATIONS_IMPORT_ROLLBACK_FAILED,
+    CLIPBOARD_EMPTY,
+    CLIPBOARD_READ_FAILED,
+    SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE,
+    PROFILE_SOURCE_SET,
+    DISCONNECT_FIRST_CHANGE_CONNECTION_MODE,
+    CONNECTION_MODE_SET,
+    RULE_SET_REMOVED,
+    SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS,
+    HISTORY_ENTRY_DELETED,
+    SELECTED_LOCATION_UNCHANGED,
+    SELECTED_LOCATION_SET,
+    LOCATION_CHECKED,
+    LOCATION_CHECK_FAILED,
+    LOCATION_EDITED,
+    SAMPLE_RULE_SET_ADDED,
+    RULE_SET_DELETED,
+    ROUTING_RULES_SAVED,
+    ROUTING_RULES_IMPORTED,
+    ROUTING_RULES_IMPORTED_RESTART_REQUIRED,
+    ROUTING_RULES_IMPORT_FAILED,
+    ROUTING_RULES_COPIED_TO_CLIPBOARD,
+    ROUTING_RULES_EXPORT_CANCELED,
+    ROUTING_RULES_EXPORTED_TO,
+    ROUTING_RULES_EXPORT_FAILED,
+    ROUTING_RULES_FILE_OPEN_FAILED,
+    LOCATIONS_COPIED_TO_CLIPBOARD,
+    LOCATIONS_EXPORT_CANCELED,
+    LOCATIONS_EXPORTED_TO,
+    LOCATIONS_EXPORT_FAILED,
+    LOCATIONS_FILE_OPEN_FAILED,
+    LOCATIONS_FILE_READ_FAILED,
+    DIAGNOSTICS_EXPORT_CANCELED,
+    DIAGNOSTICS_EXPORTED_TO,
+    DIAGNOSTICS_EXPORT_FAILED,
+    DIAGNOSTICS_DESTINATION_OPEN_FAILED,
+    NO_SUBSCRIPTIONS_TO_REFRESH,
+    START_ON_LOGIN_ENABLED,
+    START_ON_LOGIN_DISABLED,
+    STARTUP_SETTING_UPDATE_FAILED,
+    SUBSCRIPTION_HWID_CLEARED,
+    SUBSCRIPTION_HWID_SAVED,
+    REFRESH_SETTINGS_SAVE_FAILED,
+    APP_MODE_CHANGED,
+    CONNECTION_STOPPED_FOR_APP_MODE,
+    PREVIOUS_CONNECTION_RESTORE_PENDING,
+    PREVIOUS_LOCATION_UNAVAILABLE,
+    RESTORING_PREVIOUS_CONNECTION,
+    CONNECTION_STARTED_ON_TARGET,
+    CONNECTION_START_FAILED,
+    CONNECTION_STOP_FAILED,
+    SELECTED_LOCATION_SAVE_FAILED,
+    SELECTED_LOCATION_STARTED_SAVE_FAILED,
+    BEST_LOCATION_START_FAILED,
+    BEST_LOCATION_SAVE_FAILED,
+    BEST_LOCATION_STARTED_SAVE_FAILED,
+    BACKGROUND_REFRESH_FINDING_BEST,
+    BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS,
+    APP_CLOSED_CONNECTION_WAS_OFF,
+    CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
+    CONNECTION_STOP_BEFORE_EXIT_FAILED,
 }
 
 data class StructuredStatusMessage(
@@ -332,6 +440,313 @@ object StatusMessages {
     fun desktopVpnCapabilityError(detail: String): String =
         encode(StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR, detail)
 
+    fun noLocationsAvailableForBenchmarking(): String =
+        encode(StatusMessageKey.NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING)
+
+    fun bestLocationSearchTimedOut(): String =
+        encode(StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT)
+
+    fun retryingBestLocationSearch(attempt: Int, total: Int): String =
+        encode(
+            StatusMessageKey.RETRYING_BEST_LOCATION_SEARCH,
+            attempt.coerceAtLeast(1).toString(),
+            total.coerceAtLeast(1).toString(),
+        )
+
+    fun locationSearchCancelled(): String =
+        encode(StatusMessageKey.LOCATION_SEARCH_CANCELLED)
+
+    fun locationSearchFailed(): String =
+        encode(StatusMessageKey.LOCATION_SEARCH_FAILED)
+
+    fun vpnPermissionRequired(): String =
+        encode(StatusMessageKey.VPN_PERMISSION_REQUIRED)
+
+    fun noSuitableLocationFound(): String =
+        encode(StatusMessageKey.NO_SUITABLE_LOCATION_FOUND)
+
+    fun bestLocationNotMapped(): String =
+        encode(StatusMessageKey.BEST_LOCATION_NOT_MAPPED)
+
+    fun activatedAllSubscriptions(): String =
+        encode(StatusMessageKey.ACTIVATED_ALL_SUBSCRIPTIONS)
+
+    fun activatedSubscription(label: String): String =
+        encode(StatusMessageKey.ACTIVATED_SUBSCRIPTION, label)
+
+    fun profileSourceMode(mode: ProfileSourceMode): String =
+        encode(StatusMessageKey.PROFILE_SOURCE_MODE, mode.name)
+
+    fun subscriptionNameReset(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_NAME_RESET)
+
+    fun subscriptionNameSaved(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_NAME_SAVED)
+
+    fun subscriptionDeleted(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_DELETED)
+
+    fun selectLocationFirst(): String =
+        encode(StatusMessageKey.SELECT_LOCATION_FIRST)
+
+    fun checkingLocation(remarks: String): String =
+        encode(StatusMessageKey.CHECKING_LOCATION, remarks)
+
+    fun testingLocation(remarks: String): String =
+        encode(StatusMessageKey.TESTING_LOCATION, remarks)
+
+    fun locationCheckCancelled(): String =
+        encode(StatusMessageKey.LOCATION_CHECK_CANCELLED)
+
+    fun noLocationsToExport(): String =
+        encode(StatusMessageKey.NO_LOCATIONS_TO_EXPORT)
+
+    fun uiSettingVisibilityChanged(
+        item: UiSettingsStatusItem,
+        enabled: Boolean,
+    ): String = encode(StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED, item.name, enabled.toString())
+
+    fun subscriptionLocationSaveReadOnly(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_LOCATION_SAVE_READ_ONLY)
+
+    fun invalidLocationConfig(): String =
+        encode(StatusMessageKey.INVALID_LOCATION_CONFIG)
+
+    fun locationAlreadySaved(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_ALREADY_SAVED, remarks)
+
+    fun locationEditUnavailable(): String =
+        encode(StatusMessageKey.LOCATION_EDIT_UNAVAILABLE)
+
+    fun locationAdded(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_ADDED, remarks)
+
+    fun locationUpdatedAndMerged(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_UPDATED_AND_MERGED, remarks)
+
+    fun locationUpdated(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_UPDATED, remarks)
+
+    fun subscriptionLocationDeleteReadOnly(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_LOCATION_DELETE_READ_ONLY)
+
+    fun selectedLocationRemoved(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_REMOVED, remarks)
+
+    fun locationRemoved(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_REMOVED, remarks)
+
+    fun selectedLocationRemovedConnectionStopped(
+        appMode: AppMode,
+        remarks: String,
+    ): String = encode(StatusMessageKey.SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED, appMode.name, remarks)
+
+    fun locationRemovalRollbackFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATION_REMOVAL_ROLLBACK_FAILED, appMode.name)
+
+    fun importLocationsBlocked(): String =
+        encode(StatusMessageKey.IMPORT_LOCATIONS_BLOCKED)
+
+    fun importLocationsFailed(): String =
+        encode(StatusMessageKey.IMPORT_LOCATIONS_FAILED)
+
+    fun locationsImported(removedSelected: Boolean): String =
+        encode(
+            if (removedSelected) {
+                StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE
+            } else {
+                StatusMessageKey.LOCATIONS_IMPORTED
+            },
+        )
+
+    fun locationsImportedSelectedUnavailableConnectionStopped(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED, appMode.name)
+
+    fun locationsImportRollbackFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED, appMode.name)
+
+    fun clipboardEmpty(): String =
+        encode(StatusMessageKey.CLIPBOARD_EMPTY)
+
+    fun clipboardReadFailed(): String =
+        encode(StatusMessageKey.CLIPBOARD_READ_FAILED)
+
+    fun subscriptionTextLoadedIntoProfile(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE)
+
+    fun profileSourceSet(mode: ProfileSourceMode): String =
+        encode(StatusMessageKey.PROFILE_SOURCE_SET, mode.name)
+
+    fun disconnectFirstChangeConnectionMode(): String =
+        encode(StatusMessageKey.DISCONNECT_FIRST_CHANGE_CONNECTION_MODE)
+
+    fun connectionModeSet(mode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_MODE_SET, mode.name)
+
+    fun ruleSetRemoved(): String =
+        encode(StatusMessageKey.RULE_SET_REMOVED)
+
+    fun switchToSavedLocationsToAddLocations(): String =
+        encode(StatusMessageKey.SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS)
+
+    fun historyEntryDeleted(): String =
+        encode(StatusMessageKey.HISTORY_ENTRY_DELETED)
+
+    fun selectedLocationUnchanged(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_UNCHANGED, remarks)
+
+    fun selectedLocationSet(remarks: String): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_SET, remarks)
+
+    fun locationChecked(remarks: String): String =
+        encode(StatusMessageKey.LOCATION_CHECKED, remarks)
+
+    fun locationCheckFailed(): String =
+        encode(StatusMessageKey.LOCATION_CHECK_FAILED)
+
+    fun locationEdited(index: Int): String =
+        encode(StatusMessageKey.LOCATION_EDITED, index.toString())
+
+    fun sampleRuleSetAdded(): String =
+        encode(StatusMessageKey.SAMPLE_RULE_SET_ADDED)
+
+    fun ruleSetDeleted(id: String): String =
+        encode(StatusMessageKey.RULE_SET_DELETED, id)
+
+    fun routingRulesSaved(): String =
+        encode(StatusMessageKey.ROUTING_RULES_SAVED)
+
+    fun routingRulesImported(): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORTED)
+
+    fun routingRulesImportedRestartRequired(appMode: AppMode): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORTED_RESTART_REQUIRED, appMode.name)
+
+    fun routingRulesImportFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_IMPORT_FAILED)
+
+    fun routingRulesCopiedToClipboard(): String =
+        encode(StatusMessageKey.ROUTING_RULES_COPIED_TO_CLIPBOARD)
+
+    fun routingRulesExportCanceled(): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORT_CANCELED)
+
+    fun routingRulesExportedTo(path: String): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORTED_TO, path)
+
+    fun routingRulesExportFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_EXPORT_FAILED)
+
+    fun routingRulesFileOpenFailed(): String =
+        encode(StatusMessageKey.ROUTING_RULES_FILE_OPEN_FAILED)
+
+    fun locationsCopiedToClipboard(): String =
+        encode(StatusMessageKey.LOCATIONS_COPIED_TO_CLIPBOARD)
+
+    fun locationsExportCanceled(): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORT_CANCELED)
+
+    fun locationsExportedTo(path: String): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORTED_TO, path)
+
+    fun locationsExportFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_EXPORT_FAILED)
+
+    fun locationsFileOpenFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_FILE_OPEN_FAILED)
+
+    fun locationsFileReadFailed(): String =
+        encode(StatusMessageKey.LOCATIONS_FILE_READ_FAILED)
+
+    fun diagnosticsExportCanceled(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORT_CANCELED)
+
+    fun diagnosticsExportedTo(path: String): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORTED_TO, path)
+
+    fun diagnosticsExportFailed(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_EXPORT_FAILED)
+
+    fun diagnosticsDestinationOpenFailed(): String =
+        encode(StatusMessageKey.DIAGNOSTICS_DESTINATION_OPEN_FAILED)
+
+    fun noSubscriptionsToRefresh(): String =
+        encode(StatusMessageKey.NO_SUBSCRIPTIONS_TO_REFRESH)
+
+    fun startOnLoginEnabled(): String =
+        encode(StatusMessageKey.START_ON_LOGIN_ENABLED)
+
+    fun startOnLoginDisabled(): String =
+        encode(StatusMessageKey.START_ON_LOGIN_DISABLED)
+
+    fun startupSettingUpdateFailed(detail: String = ""): String =
+        encode(StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED, detail)
+
+    fun subscriptionHwidCleared(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_HWID_CLEARED)
+
+    fun subscriptionHwidSaved(): String =
+        encode(StatusMessageKey.SUBSCRIPTION_HWID_SAVED)
+
+    fun refreshSettingsSaveFailed(detail: String = ""): String =
+        encode(StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED, detail)
+
+    fun appModeChanged(mode: AppMode): String =
+        encode(StatusMessageKey.APP_MODE_CHANGED, mode.name)
+
+    fun connectionStoppedForAppMode(
+        stoppedMode: AppMode,
+        nextMode: AppMode,
+    ): String = encode(StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE, stoppedMode.name, nextMode.name)
+
+    fun previousConnectionRestorePending(): String =
+        encode(StatusMessageKey.PREVIOUS_CONNECTION_RESTORE_PENDING)
+
+    fun previousLocationUnavailable(): String =
+        encode(StatusMessageKey.PREVIOUS_LOCATION_UNAVAILABLE)
+
+    fun restoringPreviousConnection(locationName: String): String =
+        encode(StatusMessageKey.RESTORING_PREVIOUS_CONNECTION, locationName)
+
+    fun connectionStartedOnTarget(appMode: AppMode, target: String): String =
+        encode(StatusMessageKey.CONNECTION_STARTED_ON_TARGET, appMode.name, target)
+
+    fun connectionStartFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_START_FAILED, appMode.name)
+
+    fun connectionStopFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOP_FAILED, appMode.name)
+
+    fun selectedLocationSaveFailed(): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_SAVE_FAILED)
+
+    fun selectedLocationStartedSaveFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_STARTED_SAVE_FAILED, appMode.name)
+
+    fun bestLocationStartFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.BEST_LOCATION_START_FAILED, appMode.name)
+
+    fun bestLocationSaveFailed(): String =
+        encode(StatusMessageKey.BEST_LOCATION_SAVE_FAILED)
+
+    fun bestLocationStartedSaveFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.BEST_LOCATION_STARTED_SAVE_FAILED, appMode.name)
+
+    fun backgroundRefreshFindingBest(): String =
+        encode(StatusMessageKey.BACKGROUND_REFRESH_FINDING_BEST)
+
+    fun backgroundVpnPermissionRequiredKeepingPrevious(): String =
+        encode(StatusMessageKey.BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS)
+
+    fun appClosedConnectionWasOff(): String =
+        encode(StatusMessageKey.APP_CLOSED_CONNECTION_WAS_OFF)
+
+    fun connectionStoppedReconnectOnNextLaunch(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH, appMode.name)
+
+    fun connectionStopBeforeExitFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED, appMode.name)
+
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->
             when (char) {
@@ -387,6 +802,7 @@ object StatusMessages {
 
 data class PersistedState(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val subscriptionHwid: String = "",
     val profileUrl: String = "",
     val activeSubscriptionId: String = "",
     val subscriptions: List<SubscriptionSource> = emptyList(),

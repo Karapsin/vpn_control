@@ -46,6 +46,7 @@ object DesktopDiagnosticsExporter {
             appendLine("runtime_process_id=${runtimeProcessId ?: "none"}")
             appendLine("profile_source_mode=${state.profileSourceMode}")
             appendLine("is_runtime_running=${state.isVpnRunning}")
+            appendLine("subscription_hwid_present=${state.subscriptionHwid.isNotBlank()}")
             appendLine("active_subscription_id=${state.activeSubscriptionId}")
             appendLine("selected_profile_name=${state.selectedProfileName}")
             appendLine("selected_profile_server=${state.selectedProfileServer}")

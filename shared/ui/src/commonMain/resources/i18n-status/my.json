@@ -1,0 +1,1583 @@
+{
+  "dynamic": {
+    "findingSubscription": "စာရင်းသွင်းမှုမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်...",
+    "findingSaved": "သိမ်းထားသော တည်နေရာများမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်...",
+    "testingFastestCandidates": "အမြန်ဆုံး candidate များကို batch များဖြင့် စမ်းသပ်နေသည်...",
+    "checkingLocations": "တည်နေရာ {count} ခုကို စစ်ဆေးနေသည်...",
+    "testingLocationsRange": "တည်နေရာ {start}-{end} / {total} ကို စမ်းသပ်နေသည်...",
+    "selectLocationFirst": "တည်နေရာတစ်ခုကို အရင်ရွေးပါ",
+    "checkingLocation": "{name} ကို စစ်ဆေးနေသည်...",
+    "testingLocation": "{name} ကို စမ်းသပ်နေသည်...",
+    "locationCheckCancelled": "တည်နေရာစစ်ဆေးမှု ပယ်ဖျက်ပြီး",
+    "noLocationsToExport": "ထုတ်ရန် တည်နေရာမရှိပါ",
+    "refreshIntervalMinutes": "{count} မိနစ်",
+    "refreshIntervalHours": "{count} နာရီ",
+    "refreshIntervalHoursMinutes": "{hours} နာရီ {minutes} မိနစ်",
+    "refreshIntervalEvery": "{interval} တိုင်း",
+    "refreshIntervalEveryHour": "နာရီတိုင်း"
+  },
+  "benchmark": {
+    "best": "အကောင်းဆုံး: ",
+    "primary": "ပင်မ ",
+    "secondary": "ဒုတိယ ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "ပိတ်ဆို့ထားသည်",
+      "cached": "cache ထားသည်",
+      "challenge": "challenge လိုအပ်သည်",
+      "custom_config_manual_only": "စိတ်ကြိုက် config ကို ကိုယ်တိုင်သာ",
+      "error": "အမှား",
+      "manual": "ကိုယ်တိုင်",
+      "ok": "အဆင်ပြေ",
+      "partial": "တစ်စိတ်တစ်ပိုင်း",
+      "tcp_error": "TCP အမှား",
+      "tcp_timeout": "TCP timeout ဖြစ်သည်",
+      "timeout": "timeout ဖြစ်သည်",
+      "unreachable": "မရောက်နိုင်",
+      "validation_timeout": "အတည်ပြုစစ်ဆေးမှု timeout"
+    }
+  },
+  "structured": {
+    "IDLE": "အားလပ်နေသည်",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "စာရင်းသွင်းမှု အလိုအလျောက် ပြန်လည်ဆန်းသစ်မှု သတ်မှတ်ထားသည်: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "အတည်ပြုစစ်ဆေးမှု ဆက်တင်များ သိမ်းပြီးပြီ: {0} • {1} • အသုတ် {2} • ပြန်ကြိုးစားမှု {3}",
+    "CUSTOM_DNS_SAVED": "စိတ်ကြိုက် DNS သိမ်းပြီးပြီ",
+    "CUSTOM_DNS_DISABLED": "စိတ်ကြိုက် DNS ပိတ်ပြီးပြီ",
+    "FIND_BEST_FROM_SUBSCRIPTION": "စာရင်းသွင်းမှုမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်...",
+    "FIND_BEST_FROM_SAVED": "သိမ်းထားသော တည်နေရာများမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်...",
+    "STARTING_CONNECTION.VPN": "VPN စတင်နေသည်...",
+    "STARTING_CONNECTION.PROXY_ONLY": "ဒေသတွင်း proxy စတင်နေသည်...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "အကောင်းဆုံးတည်နေရာဖြင့် VPN စတင်နေသည်...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "အကောင်းဆုံးတည်နေရာဖြင့် ဒေသတွင်း proxy စတင်နေသည်...",
+    "CONNECTION_STARTED.VPN": "VPN စတင်ပြီးပြီ",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy စတင်ပြီးပြီ",
+    "CONNECTION_STOPPED.VPN": "VPN ရပ်ပြီးပြီ",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy ရပ်ပြီးပြီ",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "ဤကွန်ပျူတာတွင် VPN အသင့်ဖြစ်သည်",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "ဤကွန်ပျူတာတွင် Proxy အသင့်ဖြစ်သည်",
+    "DESKTOP_APP_INITIALIZED": "အက်ပ် စတင်ပြင်ဆင်ပြီးပြီ",
+    "RUNTIME_MODE.VPN": "Runtime မုဒ်: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Runtime မုဒ်: Proxy",
+    "LOCAL_PROXY": "ဒေသတွင်း proxy: {0}",
+    "RUNTIME_LOG": "Runtime မှတ်တမ်း: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN မုဒ် စစ်ဆေးမှု အောင်မြင်သည်",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Proxy-only မုဒ် စစ်ဆေးမှု အောင်မြင်သည်",
+    "PREFLIGHT_FAILED.VPN": "VPN မုဒ် စစ်ဆေးမှု မအောင်မြင်: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Proxy-only မုဒ် စစ်ဆေးမှု မအောင်မြင်: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "ကွန်ပျူတာ VPN စွမ်းရည်: အသင့်ဖြစ်သည်",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "ကွန်ပျူတာ VPN စွမ်းရည်: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "ကွန်ပျူတာ VPN စွမ်းရည်: အသင့်မဖြစ်သေးပါ",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Benchmark လုပ်ရန် ရနိုင်သော တည်နေရာ မရှိပါ",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "အကောင်းဆုံးတည်နေရာ ရှာဖွေမှု timeout ဖြစ်သွားသည်။ လက်ရှိချိတ်ဆက်မှုကို ထိန်းထားသည်",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "တည်နေရာရှာဖွေမှု ပယ်ဖျက်ခဲ့သည်",
+    "LOCATION_SEARCH_FAILED": "တည်နေရာရှာဖွေမှု မအောင်မြင်ပါ",
+    "VPN_PERMISSION_REQUIRED": "VPN ခွင့်ပြုချက် ပေးပြီး ထပ်စမ်းပါ",
+    "SELECTED_LOCATION_SAVE_FAILED": "ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN စတင်ခဲ့သော်လည်း ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy စတင်ခဲ့သော်လည်း ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "BEST_LOCATION_START_FAILED.VPN": "အကောင်းဆုံးတည်နေရာဖြင့် VPN စတင်ရန် မအောင်မြင်ပါ",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "အကောင်းဆုံးတည်နေရာဖြင့် proxy စတင်ရန် မအောင်မြင်ပါ",
+    "BEST_LOCATION_SAVE_FAILED": "အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN စတင်ခဲ့သော်လည်း အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy စတင်ခဲ့သော်လည်း အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ",
+    "BACKGROUND_REFRESH_FINDING_BEST": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်မှု ပြီးသွားပြီ။ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်မှု ပြီးသွားသော်လည်း နောက်ခံတွင် ပြောင်းရန် VPN ခွင့်ပြုချက် လိုအပ်သည်။ ယခင် VPN တည်နေရာကို fallback အဖြစ် ထိန်းထားသည်။",
+    "NO_SUITABLE_LOCATION_FOUND": "သင့်တော်သော တည်နေရာ မတွေ့ပါ",
+    "BEST_LOCATION_NOT_MAPPED": "အကောင်းဆုံးတည်နေရာကို desktop စာရင်းနှင့် မချိတ်ဆက်နိုင်ပါ",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "စာရင်းသွင်းမှုအားလုံးကို အသက်သွင်းပြီးပြီ",
+    "ACTIVATED_SUBSCRIPTION": "အသက်သွင်းပြီးပြီ: {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "စာရင်းသွင်းမှုအမည် ပြန်လည်သတ်မှတ်ပြီးပြီ",
+    "SUBSCRIPTION_NAME_SAVED": "စာရင်းသွင်းမှုအမည် သိမ်းပြီးပြီ",
+    "SUBSCRIPTION_DELETED": "စာရင်းသွင်းမှု ဖျက်ပြီးပြီ",
+    "SELECT_LOCATION_FIRST": "တည်နေရာတစ်ခုကို အရင်ရွေးပါ",
+    "CHECKING_LOCATION": "{0} ကို စစ်ဆေးနေသည်...",
+    "TESTING_LOCATION": "{0} ကို စမ်းသပ်နေသည်...",
+    "LOCATION_CHECK_CANCELLED": "တည်နေရာစစ်ဆေးမှု ပယ်ဖျက်ပြီး",
+    "NO_LOCATIONS_TO_EXPORT": "ထုတ်ရန် တည်နေရာမရှိပါ",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Session စာရင်းအင်းများ ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Session စာရင်းအင်းများ ဖျောက်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Live traffic စာရင်းအင်းများ ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Live traffic စာရင်းအင်းများ ဖျောက်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "ပရိုဖိုင်တစ်ခုချင်းစီ စုစုပေါင်းများ ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "ပရိုဖိုင်တစ်ခုချင်းစီ စုစုပေါင်းများ ဖျောက်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Latency မှတ်တမ်း ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Latency မှတ်တမ်း ဖျောက်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "ချိတ်ဆက်မှုမှတ်တမ်း ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "ချိတ်ဆက်မှုမှတ်တမ်း ဖျောက်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "ချိတ်ဆက်မှု စမ်းသပ်ကိရိယာများ ဖွင့်ထားသည်",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "ချိတ်ဆက်မှု စမ်းသပ်ကိရိယာများ ဖျောက်ထားသည်",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "စာရင်းသွင်းမှုတည်နေရာများသည် ဖတ်ရန်သာဖြစ်သည်။ ပြင်ဆင်မှုများ သိမ်းရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ။",
+    "INVALID_LOCATION_CONFIG": "တည်နေရာ config မမှန်ပါ",
+    "LOCATION_ALREADY_SAVED": "တည်နေရာ သိမ်းထားပြီးသားဖြစ်သည်: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "ပြင်မည့် တည်နေရာ မရနိုင်တော့ပါ",
+    "LOCATION_ADDED": "တည်နေရာ ထည့်ပြီးပြီ: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "တည်နေရာ အပ်ဒိတ်လုပ်ပြီး ပေါင်းစည်းပြီးပြီ: {0}",
+    "LOCATION_UPDATED": "တည်နေရာ အပ်ဒိတ်လုပ်ပြီးပြီ: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "စာရင်းသွင်းမှုတည်နေရာများသည် ဖတ်ရန်သာဖြစ်သည်။ ဖျက်ရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ။",
+    "SELECTED_LOCATION_REMOVED": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ: {0}",
+    "LOCATION_REMOVED": "တည်နေရာ ဖယ်ရှားပြီးပြီ: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ။ VPN ရပ်ခဲ့သည်: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ။ Proxy ရပ်ခဲ့သည်: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPN ကို မရပ်နိုင်သောကြောင့် တည်နေရာ ဖယ်ရှားမှုကို ပြန်လှန်ထားသည်",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Proxy ကို မရပ်နိုင်သောကြောင့် တည်နေရာ ဖယ်ရှားမှုကို ပြန်လှန်ထားသည်",
+    "IMPORT_LOCATIONS_BLOCKED": "တည်နေရာများ ထည့်သွင်းရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ",
+    "IMPORT_LOCATIONS_FAILED": "တည်နေရာများ ထည့်သွင်းရန် မအောင်မြင်ပါ",
+    "LOCATIONS_IMPORTED": "တည်နေရာများ ထည့်သွင်းပြီးပြီ",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့ပါ",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့သောကြောင့် VPN ရပ်ထားသည်",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့သောကြောင့် proxy ရပ်ထားသည်",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "VPN ကို မရပ်နိုင်သောကြောင့် တည်နေရာများ ထည့်သွင်းမှုကို ပြန်လှန်ထားသည်",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Proxy ကို မရပ်နိုင်သောကြောင့် တည်နေရာများ ထည့်သွင်းမှုကို ပြန်လှန်ထားသည်",
+    "CLIPBOARD_EMPTY": "Clipboard ဗလာဖြစ်နေသည်",
+    "CLIPBOARD_READ_FAILED": "Clipboard ဖတ်ရန် မအောင်မြင်ပါ",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "စာရင်းသွင်းမှုစာသားကို ပရိုဖိုင်တက်ဘ်သို့ တင်ပြီးပါပြီ",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "ချိတ်ဆက်မှုမုဒ် ပြောင်းရန် အရင် ချိတ်ဆက်မှု ဖြတ်ပါ",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "စည်းမျဉ်းအစုံကို ဖယ်ရှားပြီးပါပြီ",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "တည်နေရာများကို ကိုယ်တိုင် ထည့်ရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ",
+    "HISTORY_ENTRY_DELETED": "မှတ်တမ်း item ဖျက်ပြီးပြီ",
+    "SELECTED_LOCATION_UNCHANGED": "ရွေးထားသော တည်နေရာ မပြောင်းလဲပါ: {0}",
+    "SELECTED_LOCATION_SET": "ရွေးထားသော တည်နေရာ သတ်မှတ်ပြီးပြီ: {0}",
+    "LOCATION_CHECKED": "Location စစ်ဆေးမှုed: {0}",
+    "LOCATION_CHECK_FAILED": "တည်နေရာ စစ်ဆေးမှု မအောင်မြင်ပါ",
+    "LOCATION_EDITED": "တည်နေရာ # ပြင်ပြီးပြီ{0}",
+    "SAMPLE_RULE_SET_ADDED": "ထည့်ပြီးပြီ: a sample rule-set",
+    "RULE_SET_DELETED": "ဖျက်ပြီးပြီ: rule-set {0}",
+    "ROUTING_RULES_SAVED": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ",
+    "ROUTING_RULES_IMPORTED": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ။ အသုံးချရန် VPN ကို ပြန်စတင်ပါ",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ။ အသုံးချရန် proxy ကို ပြန်စတင်ပါ",
+    "ROUTING_RULES_IMPORT_FAILED": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းရန် မအောင်မြင်ပါ",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "လမ်းကြောင်းစည်းမျဉ်းများကို clipboard သို့ ကူးယူပြီးပြီ",
+    "ROUTING_RULES_EXPORT_CANCELED": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်",
+    "ROUTING_RULES_EXPORTED_TO": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူထားသောနေရာ: {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူရန် မအောင်မြင်ပါ",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "လမ်းကြောင်းစည်းမျဉ်းဖိုင် ဖွင့်ရန် မအောင်မြင်ပါ",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "တည်နေရာများကို clipboard သို့ ကူးယူပြီးပြီ",
+    "LOCATIONS_EXPORT_CANCELED": "တည်နေရာများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်",
+    "LOCATIONS_EXPORTED_TO": "တည်နေရာများ ထုတ်ယူထားသောနေရာ: {0}",
+    "LOCATIONS_EXPORT_FAILED": "တည်နေရာများ ထုတ်ယူရန် မအောင်မြင်ပါ",
+    "LOCATIONS_FILE_OPEN_FAILED": "တည်နေရာဖိုင် ဖွင့်ရန် မအောင်မြင်ပါ",
+    "LOCATIONS_FILE_READ_FAILED": "တည်နေရာဖိုင် ဖတ်ရန် မအောင်မြင်ပါ",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Diagnostics ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostics ထုတ်ယူထားသောနေရာ: {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Diagnostics ထုတ်ယူရန် မအောင်မြင်ပါ",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Diagnostics သိမ်းမည့်နေရာကို ဖွင့်ရန် မအောင်မြင်ပါ",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "ပြန်လည်ဆန်းသစ်ရန် စာရင်းသွင်းမှု မရှိပါ",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Startup ဆက်တင် အပ်ဒိတ်လုပ်ရန် မအောင်မြင်ပါ",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Startup ဆက်တင် အပ်ဒိတ်လုပ်ရန် မအောင်မြင်ပါ: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "ပြန်လည်ဆန်းသစ်မှု ဆက်တင်များ သိမ်းရန် မအောင်မြင်ပါ",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "ပြန်လည်ဆန်းသစ်မှု ဆက်တင်များ သိမ်းရန် မအောင်မြင်ပါ: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "ယခင် VPN session ကို ပြန်လည်ရယူမည်",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "ယခင် VPN တည်နေရာ မရနိုင်တော့ပါ",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN ပြန်လည်ရယူနေသည်: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN စတင်ခဲ့သောနေရာ: {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy စတင်ခဲ့သောနေရာ: {1}",
+    "CONNECTION_START_FAILED.VPN": "VPN စတင်ရန် မအောင်မြင်ပါ",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "proxy စတင်ရန် မအောင်မြင်ပါ",
+    "CONNECTION_STOP_FAILED.VPN": "VPN ရပ်ရန် မအောင်မြင်ပါ",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "proxy ရပ်ရန် မအောင်မြင်ပါ",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "အက်ပ် ပိတ်သွားပြီ။ VPN ပိတ်ထားခဲ့သည်။",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN ရပ်ပြီးပြီ။ နောက်တစ်ကြိမ် ဖွင့်ချိန်တွင် ပြန်ချိတ်ဆက်မည်။",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy ရပ်ပြီးပြီ။ နောက်တစ်ကြိမ် ဖွင့်ချိန်တွင် ပြန်ချိတ်ဆက်မည်။",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "ထွက်ရန်မတိုင်မီ VPN ရပ်ရန် မအောင်မြင်ပါ",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "ထွက်ရန်မတိုင်မီ Proxy ရပ်ရန် မအောင်မြင်ပါ"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "စာရင်းသွင်းမှု URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "မဖတ်နိုင်သော စာရင်းသွင်းမှု URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "လုံခြုံမှုမရှိသော HTTP စာရင်းသွင်းမှုများကို မထောက်ပံ့ပါ"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// စာရင်းသွင်းမှု URL ကို သုံးပါ။"
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL တွင် မှန်ကန်သော HTTPS host ပါဝင်ရမည်"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "မှန်ကန်သော https:// စာရင်းသွင်းမှု URL ကို ကူးထည့်ပါ။"
+    },
+    {
+      "source": "Direct remote source",
+      "target": "တိုက်ရိုက် အဝေးရင်းမြစ်"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box import လင့်ခ်"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "မဖတ်နိုင်သော sing-box import link"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "မှန်ကန်သော HTTPS အဝေး URL များကိုသာ ထောက်ပံ့သည်"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "မှန်ကန်သော https:// URL သို့ resolve ဖြစ်သော sing-box import link ကို သုံးပါ။"
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ထည့်သွင်းထားသော URL မှ အဝေး content ကို ရယူသည်"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "အဝေး content ကို ဤနေရာမှ ရယူသည်: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "import link ကို parse မလုပ်နိုင်ပါ"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "မှန်ကန်သော sing-box remote-profile import link သို့မဟုတ် တိုက်ရိုက် စာရင်းသွင်းမှု URL ကို ကူးထည့်ပါ။"
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN import လင့်ခ်"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "မဖတ်နိုင်သော VPN import link"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "မထောက်ပံ့သော provider import"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia နှင့် အခြား vpn:// import များကို မထောက်ပံ့ပါ။ ပုံမှန် စာရင်းသွင်းမှု URL ကို သုံးပါ သို့မဟုတ် တည်နေရာများကို ကိုယ်တိုင် ထည့်ပါ။"
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "import payload ကို decode မလုပ်နိုင်ပါ"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// import များကို မထောက်ပံ့ပါ။ ပုံမှန် စာရင်းသွင်းမှု URL ကို သုံးပါ သို့မဟုတ် တည်နေရာများကို ကိုယ်တိုင် ထည့်ပါ။"
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP စာရင်းသွင်းမှု URL များကို မထောက်ပံ့ပါ။ အစား https:// ကို သုံးပါ။"
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "အဝေးရင်းမြစ်သည် https:// URL သို့မဟုတ် ထောက်ပံ့ထားသော import link ဖြစ်ရမည်"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "အဝေးရင်းမြစ် ဗလာဖြစ်နေသည်"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "အဝေးရင်းမြစ်သည် host ပါသော မှန်ကန်သည့် https:// URL ဖြစ်ရမည်။"
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "ဤ sing-box import သည် မမှန်ကန်သော သို့မဟုတ် HTTPS မဟုတ်သော URL သို့ resolve ဖြစ်သည်။ အစား မှန်ကန်သော https:// URL ကို သုံးပါ။"
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "ရွေးထားသော တည်နေရာကို အသုံးချနေသည်..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "အပ်ဒိတ်လုပ်ထားသော ရွေးထားသော တည်နေရာကို အသုံးချနေသည်..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "အကောင်းဆုံးတည်နေရာ ရှာဖွေမှု timeout ဖြစ်သွားသည်။ လက်ရှိချိတ်ဆက်မှုကို ထိန်းထားသည်"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Clipboard ဗလာဖြစ်နေသည်"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "ချိတ်ဆက်မှုမှတ်တမ်း ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "ချိတ်ဆက်မှုမှတ်တမ်း ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "ချိတ်ဆက်မှု စမ်းသပ်ကိရိယာများ ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "ချိတ်ဆက်မှု စမ်းသပ်ကိရိယာများ ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ထုတ်ယူမည့်နေရာကို မဖွင့်နိုင်ပါ"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ရွေးထားသော ဖိုင်ကို မဖွင့်နိုင်ပါ"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "ရွေးထားသော တည်နေရာဖိုင်ကို မဖွင့်နိုင်ပါ"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "ရွေးထားသော စည်းမျဉ်းဖိုင်ကို မဖွင့်နိုင်ပါ"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Desktop shell: Whitelists မှ Netherlands"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Desktop အက်ပ် စတင်ပြင်ဆင်ပြီးပြီ"
+    },
+    {
+      "source": "App initialized",
+      "target": "အက်ပ် စတင်ပြင်ဆင်ပြီးပြီ"
+    },
+    {
+      "source": "Export Locations",
+      "target": "တည်နေရာများ ထုတ်ယူရန်"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "အပ်ဒိတ်လုပ်ထားသော ရွေးထားသော တည်နေရာကို အသုံးချရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Diagnostics ထုတ်ယူရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "တည်နေရာများ ထုတ်ယူရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "အစားထိုး တည်နေရာ ရှာရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "ဖိုင် ထည့်သွင်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Diagnostics သိမ်းမည့်နေရာကို ဖွင့်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "ပြန်လည်ဆန်းသစ်မှု ဆက်တင်များ သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Startup ဆက်တင် အပ်ဒိတ်လုပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Import canceled",
+      "target": "ထည့်သွင်းမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "စာရင်းသွင်းမှု URL မမှန်ပါ"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latency မှတ်တမ်း ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latency မှတ်တမ်း ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live traffic စာရင်းအင်းများ ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live traffic စာရင်းအင်းများ ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "တည်နေရာ စစ်ဆေးမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Location check failed",
+      "target": "တည်နေရာ စစ်ဆေးမှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Locations exported",
+      "target": "တည်နေရာများ ထုတ်ယူပြီးပြီ"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "တည်နေရာများ ထည့်သွင်းမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Benchmark လုပ်ရန် ရနိုင်သော တည်နေရာ မရှိပါ"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "ပြန်လည်ဆန်းသစ်ရန် စာရင်းသွင်းမှု မရှိပါ"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "သင့်တော်သော တည်နေရာ မတွေ့ပါ"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "ပရိုဖိုင်တစ်ခုချင်းစီ စုစုပေါင်းများ ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "ပရိုဖိုင်တစ်ခုချင်းစီ စုစုပေါင်းများ ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "ယခင် VPN session ကို ပြန်လည်ရယူမည်"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR scan ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူပြီးပြီ"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Session စာရင်းအင်းများ ဖွင့်ထားသည်"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Session စာရင်းအင်းများ ဖျောက်ထားသည်"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "မျှဝေထားသော စာသားသည် ထောက်ပံ့ထားသော import payload မဟုတ်ပါ"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "စာရင်းသွင်းမှု ဖျက်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်မှု ပြီးသွားသော်လည်း နောက်ခံတွင် ပြောင်းရန် VPN ခွင့်ပြုချက် လိုအပ်သည်။ ယခင် VPN တည်နေရာကို fallback အဖြစ် ထိန်းထားသည်။"
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်မှု ပြီးသွားပြီ။ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်မှု ပြီးသွားပြီ။ "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Runtime မုဒ်: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "ဒေသတွင်း proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Runtime မှတ်တမ်း: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN မုဒ် စစ်ဆေးမှု အောင်မြင်သည်"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Proxy-only မုဒ် စစ်ဆေးမှု အောင်မြင်သည်"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN မုဒ် စစ်ဆေးမှု မအောင်မြင်: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Proxy-only မုဒ် စစ်ဆေးမှု မအောင်မြင်: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN မုဒ် မရနိုင်ပါ: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Proxy သီးသန့်မုဒ် မရနိုင်ပါ: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ကွန်ပျူတာ VPN စွမ်းရည်: အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ကွန်ပျူတာ VPN စွမ်းရည်: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN မုဒ် ရနိုင်သည်"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxy မုဒ် ရနိုင်သည်"
+    },
+    {
+      "source": "not ready",
+      "target": "အသင့်မဖြစ်သေးပါ"
+    },
+    {
+      "source": " checks",
+      "target": " စစ်ဆေးမှုများ"
+    },
+    {
+      "source": " check",
+      "target": " စစ်ဆေးမှု"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN စက်ပစ္စည်း မအောင်မြင်: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "ကွန်ရက် privilege မအောင်မြင်: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS tool မအောင်မြင်: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN စက်ပစ္စည်း"
+    },
+    {
+      "source": "network privileges",
+      "target": "ကွန်ရက် privilege များ"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS tool များ"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN စက်ပစ္စည်း /dev/net/tun တွင် မရှိပါ။ စမ်းကြည့်ပါ: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ကွန်ပျူတာ VPN မုဒ်သည် CAP_NET_ADMIN လိုအပ်သည်။ root အခွင့်အရေးဖြင့် ဖွင့်ပါ သို့မဟုတ် sing-box ကို အခွင့်အရေးပေးပါ: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows route/DNS tool များ မရနိုင်ပါ။ VPN မုဒ်အတွက် netsh.exe နှင့် DNS client PowerShell cmdlet များ လိုအပ်သည်။"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "ဤကွန်ပျူတာတွင် VPN အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ဤကွန်ပျူတာတွင် Proxy အသင့်ဖြစ်သည်"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "အားလပ်နေသည်"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN စတင်ပြီးပြီ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ရပ်ပြီးပြီ"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy စတင်ပြီးပြီ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy ရပ်ပြီးပြီ"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN စတင်နေသည်..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ဒေသတွင်း proxy စတင်နေသည်..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် VPN စတင်နေသည်..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် ဒေသတွင်း proxy စတင်နေသည်..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "စာရင်းသွင်းမှုမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "သိမ်းထားသော တည်နေရာများမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "တည်နေရာရှာဖွေမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Location search failed",
+      "target": "တည်နေရာရှာဖွေမှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN ခွင့်ပြုချက် ပေးပြီး ထပ်စမ်းပါ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "အဝေးရင်းမြစ်ကို အရင် သတ်မှတ်ပါ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "သိမ်းထားသော တည်နေရာ အနည်းဆုံးတစ်ခုကို အရင် ထည့်ပါ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "တည်နေရာတစ်ခုကို အရင် ရွေးပါ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "စာရင်းသွင်းမှုများ မသိမ်းရသေးပါ"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "စာရင်းသွင်းမှုအားလုံးကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "လက်ရှိစာရင်းသွင်းမှုကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "စာရင်းသွင်းမှုကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "စာရင်းသွင်းမှုများကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "စာရင်းသွင်းမှုကို အလိုအလျောက် ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "စာရင်းသွင်းမှုများကို အလိုအလျောက် ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "စာရင်းသွင်းမှုများ ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "လက်ရှိစာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "စာရင်းသွင်းမှုအားလုံး ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ပြန်လည်ဆန်းသစ်မှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ပရိုဖိုင်ရင်းမြစ်ကို စာရင်းသွင်းမှုအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ပရိုဖိုင်ရင်းမြစ်ကို သိမ်းထားသော တည်နေရာများအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ချိတ်ဆက်မှုမုဒ်ကို VPN အဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ချိတ်ဆက်မှုမုဒ်ကို Proxy သီးသန့်အဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ချိတ်ဆက်မှုမုဒ် ပြောင်းရန် အရင် ချိတ်ဆက်မှု ဖြတ်ပါ"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "မှတ်တမ်း item ဖျက်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "စာရင်းသွင်းမှုအမည် ပြန်လည်သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "စာရင်းသွင်းမှုအမည် သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ဘာသာစကားကို စနစ်မူလအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "စိတ်ကြိုက် DNS သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "စိတ်ကြိုက် DNS ပိတ်ပြီးပြီ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "Locations imported",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "တည်နေရာများ ထည့်သွင်းရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "တည်နေရာများကို ကိုယ်တိုင် ထည့်ရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "တည်နေရာ config မမှန်ပါ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ပြင်မည့် တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostics ထုတ်ယူမှု ဖွင့်ပြီးပြီ"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostics ထုတ်ယူမှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostics ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ယခင် VPN တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "အက်ပ် ပိတ်သွားပြီ။ VPN ပိတ်ထားခဲ့သည်။"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "စာရင်းသွင်းမှုအားလုံးကို အသက်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "စာရင်းသွင်းမှုအားလုံး ရွေးထားသည်"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "စာရင်းသွင်းမှု ရွေးထားသည်"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "တည်နေရာများကို clipboard သို့ ကူးယူပြီးပြီ"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "တည်နေရာများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများကို clipboard သို့ ကူးယူပြီးပြီ"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "ပရိုဖိုင်ရင်းမြစ်မုဒ်: စာရင်းသွင်းမှု"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "ပရိုဖိုင်ရင်းမြစ်မုဒ်: သိမ်းထားသောနေရာများ"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "အကောင်းဆုံးနေရာအသစ်ဖြင့် VPN စတင်နေသည်..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "အကောင်းဆုံးနေရာအသစ်ဖြင့် proxy စတင်နေသည်..."
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN မုဒ် စစ်ဆေးမှု အောင်မြင်သည်"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Proxy-only မုဒ် စစ်ဆေးမှု အောင်မြင်သည်"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN မုဒ် စစ်ဆေးမှု မအောင်မြင်: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Proxy-only မုဒ် စစ်ဆေးမှု မအောင်မြင်: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "ကွန်ပျူတာ VPN စွမ်းရည်: အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "ကွန်ပျူတာ VPN စွမ်းရည်: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "ကွန်ပျူတာ VPN မုဒ်သည် CAP_NET_ADMIN လိုအပ်သည်။ root အခွင့်အရေးဖြင့် ဖွင့်ပါ သို့မဟုတ် sing-box ကို အခွင့်အရေးပေးပါ: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ကွန်ပျူတာ VPN shell အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ကွန်ပျူတာ proxy shell အသင့်ဖြစ်သည်"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "စာရင်းသွင်းမှုတည်နေရာများသည် ဖတ်ရန်သာဖြစ်သည်။ ပြင်ဆင်မှုများ သိမ်းရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ။"
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "စာရင်းသွင်းမှုတည်နေရာများသည် ဖတ်ရန်သာဖြစ်သည်။ ဖျက်ရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ။"
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "စာရင်းသွင်းမှု လက်ခံရရှိသည်။ Profile tab တွင် စစ်ဆေးပြီး သိမ်းပါ။"
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "စာရင်းသွင်းမှု link လက်ခံရရှိသည်။ Profile tab တွင် စစ်ဆေးပြီး သိမ်းပါ။"
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "တည်နေရာ config လက်ခံရရှိသည်။ Locations tab တွင် စစ်ဆေးပြီး သိမ်းပါ။"
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် ဒေသတွင်း proxy စတင်နေသည်..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် VPN စတင်နေသည်..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "စာရင်းသွင်းမှုမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "သိမ်းထားသော တည်နေရာများမှ အကောင်းဆုံးတည်နေရာကို ရှာနေသည်..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့သောကြောင့် proxy ရပ်ထားသည်"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့သောကြောင့် VPN ရပ်ထားသည်"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ။ ရွေးထားသော တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ရွေးထားသော တည်နေရာကို အသုံးချပြီးသော်လည်း သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Proxy ကို မရပ်နိုင်သောကြောင့် တည်နေရာ ဖယ်ရှားမှုကို ပြန်လှန်ထားသည်"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPN ကို မရပ်နိုင်သောကြောင့် တည်နေရာ ဖယ်ရှားမှုကို ပြန်လှန်ထားသည်"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Proxy ကို မရပ်နိုင်သောကြောင့် တည်နေရာများ ထည့်သွင်းမှုကို ပြန်လှန်ထားသည်"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPN ကို မရပ်နိုင်သောကြောင့် တည်နေရာများ ထည့်သွင်းမှုကို ပြန်လှန်ထားသည်"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN ရပ်ပြီးပြီ။ ပြန်လည်ဆန်းသစ်ထားသော စာရင်းသွင်းမှုများက ရွေးထားသော တည်နေရာကို ဖယ်ရှားခဲ့သည်။"
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy ရပ်ပြီးပြီ။ ပြန်လည်ဆန်းသစ်ထားသော စာရင်းသွင်းမှုများက ရွေးထားသော တည်နေရာကို ဖယ်ရှားခဲ့သည်။"
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN ရပ်ပြီးပြီ။ နောက်တစ်ကြိမ် ဖွင့်ချိန်တွင် ပြန်ချိတ်ဆက်မည်။"
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy ရပ်ပြီးပြီ။ နောက်တစ်ကြိမ် ဖွင့်ချိန်တွင် ပြန်ချိတ်ဆက်မည်။"
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ။ အသုံးချရန် VPN ကို ပြန်စတင်ပါ"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ။ အသုံးချရန် proxy ကို ပြန်စတင်ပါ"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ။ အသုံးချရန် VPN ကို ပြန်စတင်ပါ"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ။ အသုံးချရန် proxy ကို ပြန်စတင်ပါ"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ။ VPN ရပ်ခဲ့သည်: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ။ Proxy ရပ်ခဲ့သည်: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "အကောင်းဆုံးတည်နေရာ ရွေးထားပြီး VPN စတင်ခဲ့သည်: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "အကောင်းဆုံးတည်နေရာ ရွေးထားပြီး proxy စတင်ခဲ့သည်: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN စတင်ခဲ့သော်လည်း ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy စတင်ခဲ့သော်လည်း ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN စတင်ခဲ့သော်လည်း အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy စတင်ခဲ့သော်လည်း အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် VPN စတင်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "အကောင်းဆုံးတည်နေရာဖြင့် proxy စတင်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "ရွေးထားသော တည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "ရွေးထားသော တည်နေရာ သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "အကောင်းဆုံးတည်နေရာကို သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "ရွေးထားသော တည်နေရာကို အသုံးချရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "တည်နေရာ ရွေးရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "ထွက်ရန်မတိုင်မီ VPN ရပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "ထွက်ရန်မတိုင်မီ Proxy ရပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPN ရပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "proxy ရပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPN စတင်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "proxy စတင်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN ကို ပြင်ဆင်မရပါ"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "proxy ကို ပြင်ဆင်မရပါ"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN ပြင်ဆင်နေသည်"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "proxy ပြင်ဆင်နေသည်"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN စတင်မှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy စတင်မှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN ရပ်မှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy ရပ်မှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "ဒေသတွင်း proxy စတင်နေသည်..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN စတင်နေသည်..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "စာရင်းသွင်းမှုအားလုံးကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "လက်ရှိစာရင်းသွင်းမှုကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "စာရင်းသွင်းမှုများကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "စာရင်းသွင်းမှုကို ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "စာရင်းသွင်းမှုများကို အလိုအလျောက် ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "စာရင်းသွင်းမှုကို အလိုအလျောက် ပြန်လည်ဆန်းသစ်နေသည်..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "စာရင်းသွင်းမှုအားလုံး ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "လက်ရှိစာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "စာရင်းသွင်းမှုများ ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "စာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "ပြန်လည်ဆန်းသစ်မှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "တည်နေရာရှာဖွေမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Location search failed",
+      "target": "တည်နေရာရှာဖွေမှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN ခွင့်ပြုချက် ပေးပြီး ထပ်စမ်းပါ"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "အဝေးရင်းမြစ်ကို အရင် သတ်မှတ်ပါ"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "သိမ်းထားသော တည်နေရာ အနည်းဆုံးတစ်ခုကို အရင် ထည့်ပါ"
+    },
+    {
+      "source": "Select a location first",
+      "target": "တည်နေရာတစ်ခုကို အရင် ရွေးပါ"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "စာရင်းသွင်းမှုများ မသိမ်းရသေးပါ"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ပရိုဖိုင်ရင်းမြစ်ကို စာရင်းသွင်းမှုအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ပရိုဖိုင်ရင်းမြစ်ကို သိမ်းထားသော တည်နေရာများအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "ချိတ်ဆက်မှုမုဒ်ကို VPN အဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "ချိတ်ဆက်မှုမုဒ်ကို Proxy သီးသန့်အဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "ချိတ်ဆက်မှုမုဒ် ပြောင်းရန် အရင် ချိတ်ဆက်မှု ဖြတ်ပါ"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "မှတ်တမ်း item ဖျက်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "စာရင်းသွင်းမှုအမည် ပြန်လည်သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "စာရင်းသွင်းမှုအမည် သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "ဘာသာစကားကို စနစ်မူလအဖြစ် သတ်မှတ်ပြီးပြီ"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "စိတ်ကြိုက် DNS သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "စိတ်ကြိုက် DNS ပိတ်ပြီးပြီ"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "Locations imported",
+      "target": "တည်နေရာများ ထည့်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "တည်နေရာများ ထည့်သွင်းရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "တည်နေရာများကို ကိုယ်တိုင် ထည့်ရန် သိမ်းထားသော တည်နေရာများသို့ ပြောင်းပါ"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "တည်နေရာ config မမှန်ပါ"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "ပြင်မည့် တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostics ထုတ်ယူမှု ဖွင့်ပြီးပြီ"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostics ထုတ်ယူမှု မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostics ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "ယခင် VPN တည်နေရာ မရနိုင်တော့ပါ"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "အက်ပ် ပိတ်သွားပြီ။ VPN ပိတ်ထားခဲ့သည်။"
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "စာရင်းသွင်းမှုအားလုံးကို အသက်သွင်းပြီးပြီ"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "စာရင်းသွင်းမှုအားလုံး ရွေးထားသည်"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "စာရင်းသွင်းမှု ရွေးထားသည်"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "စာရင်းသွင်းမှု သိမ်းပြီးပြီ"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "တည်နေရာများကို clipboard သို့ ကူးယူပြီးပြီ"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "တည်နေရာများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများကို clipboard သို့ ကူးယူပြီးပြီ"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူမှု ပယ်ဖျက်ခဲ့သည်"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Clipboard ဖတ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ထုတ်ယူရန် တည်နေရာ မရှိပါ"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "အက်ပ်များ load လုပ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "စာရင်းသွင်းမှုများ ပြန်လည်ဆန်းသစ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "လက်ရှိစာရင်းသွင်းမှု ပြန်လည်ဆန်းသစ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထည့်သွင်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "တည်နေရာများ ထည့်သွင်းရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "တည်နေရာဖိုင် ဖွင့်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "တည်နေရာဖိုင် ဖတ်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းဖိုင် ဖွင့်ရန် မအောင်မြင်ပါ"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "အကောင်းဆုံးတည်နေရာကို desktop စာရင်းနှင့် မချိတ်ဆက်နိုင်ပါ"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "ဤကွန်ပျူတာတွင် VPN အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ဤကွန်ပျူတာတွင် Proxy အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "ကွန်ပျူတာ VPN shell အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "ကွန်ပျူတာ proxy shell အသင့်ဖြစ်သည်"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN စတင်ခဲ့သောနေရာ: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy စတင်ခဲ့သောနေရာ: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN ရပ်ပြီးပြီ။ အက်ပ်မုဒ်: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy ရပ်ပြီးပြီ။ အက်ပ်မုဒ်: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "ဘာသာစကား သတ်မှတ်ထားသည်: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "စာရင်းသွင်းမှု အလိုအလျောက် ပြန်လည်ဆန်းသစ်မှု သတ်မှတ်ထားသည်: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "အတည်ပြုစစ်ဆေးမှု ဆက်တင်များ သိမ်းပြီးပြီ: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ရွေးထားသော တည်နေရာ မပြောင်းလဲပါ: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ရွေးထားသော တည်နေရာ ဖယ်ရှားပြီးပြီ: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "ရွေးထားသော တည်နေရာ သတ်မှတ်ပြီးပြီ: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "တည်နေရာ အပ်ဒိတ်လုပ်ပြီး ပေါင်းစည်းပြီးပြီ: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "တည်နေရာ သိမ်းထားပြီးသားဖြစ်သည်: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "တည်နေရာ အပ်ဒိတ်လုပ်ပြီးပြီ: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "တည်နေရာ ဖယ်ရှားပြီးပြီ: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "တည်နေရာ ထည့်ပြီးပြီ: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "စာရင်းသွင်းမှုများ ပြန်လည်ဆန်းသစ်ပြီးပြီ: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "မအောင်မြင်ပါ: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN ပြန်လည်ရယူနေသည်: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "ပြန်လည်ဆန်းသစ်နေသည်: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "တည်နေရာများ ထုတ်ယူထားသောနေရာ: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "လမ်းကြောင်းစည်းမျဉ်းများ ထုတ်ယူထားသောနေရာ: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostics ထုတ်ယူထားသောနေရာ: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Benchmark လုပ်ရန် မအောင်မြင်ပါ: "
+    },
+    {
+      "source": "Activated ",
+      "target": "အသက်သွင်းပြီးပြီ: "
+    },
+    {
+      "source": "Added ",
+      "target": "ထည့်ပြီးပြီ: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "ဖျက်ပြီးပြီ: "
+    },
+    {
+      "source": "Selected ",
+      "target": "ရွေးထားသည်: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "တည်နေရာ # ပြင်ပြီးပြီ"
+    },
+    {
+      "source": "App mode: ",
+      "target": "အက်ပ်မုဒ်: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " တည်နေရာ ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": " location refreshed",
+      "target": " တည်နေရာ ပြန်လည်ဆန်းသစ်ပြီးပြီ"
+    },
+    {
+      "source": " • batch ",
+      "target": " • အသုတ် "
+    },
+    {
+      "source": " • retries ",
+      "target": " • ပြန်ကြိုးစားမှု "
+    },
+    {
+      "source": "custom interval",
+      "target": "စိတ်ကြိုက် ကြားကာလ"
+    },
+    {
+      "source": "every hour",
+      "target": "နာရီတိုင်း"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "စာရင်းသွင်းမှုအားလုံး"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ရွေးထားသော စာရင်းသွင်းမှု"
+    },
+    {
+      "source": "proxy only",
+      "target": "proxy သီးသန့်"
+    },
+    {
+      "source": "off",
+      "target": "ပိတ်"
+    },
+    {
+      "source": "Idle",
+      "target": "အားလပ်နေသည်"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN စတင်ပြီးပြီ"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ရပ်ပြီးပြီ"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy စတင်ပြီးပြီ"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy ရပ်ပြီးပြီ"
+    }
+  ]
+}

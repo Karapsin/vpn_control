@@ -4,8 +4,10 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -39,6 +41,32 @@ class AppStringsCoverageTest {
         assertTrue(
             missing.isEmpty(),
             "Missing generated status JSON catalogs: $missing",
+        )
+    }
+
+    @Test
+    fun generatedStatusJsonCatalogHasStructuredTemplatesForEveryStatusKey() {
+        val englishStructured = generatedStatusTranslations
+            .getValue(AppLanguage.ENGLISH)
+            .structured
+        val missingEnglish = StatusMessageKey.entries.filterNot { key ->
+            key.name in englishStructured ||
+                englishStructured.keys.any { candidate -> candidate.startsWith("${key.name}.") }
+        }
+        assertTrue(
+            missingEnglish.isEmpty(),
+            "English status catalog is missing structured templates for keys: $missingEnglish",
+        )
+
+        val requiredKeys = englishStructured.keys
+        val missingByLanguage = generatedStatusTranslations.flatMap { (language, catalog) ->
+            requiredKeys
+                .filterNot { it in catalog.structured }
+                .map { "$language: $it" }
+        }
+        assertTrue(
+            missingByLanguage.isEmpty(),
+            "Status catalogs are missing structured templates: $missingByLanguage",
         )
     }
 
@@ -409,6 +437,8 @@ class AppStringsCoverageTest {
             "Per-profile totals enabled",
             "Per-profile totals hidden",
             "Previous VPN session will be restored",
+            "Profile source set to subscription",
+            "Profile source set to saved locations",
             "QR scan canceled",
             "Remote source is empty",
             "Routing rules exported",
@@ -418,6 +448,14 @@ class AppStringsCoverageTest {
             "Session stats hidden",
             "Shared text is not a supported import payload",
             "Subscription deleted",
+            "Connection mode set to VPN",
+            "Connection mode set to proxy only",
+            "Disconnect first to change connection mode",
+            "History entry deleted",
+            "Subscription name reset",
+            "Subscription name saved",
+            "Switch to Saved Locations to add locations manually",
+            "Switch to Saved Locations to import locations",
             "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
             "Subscription refresh finished. Finding the best location...",
             "Subscription refresh finished. No suitable location found",
@@ -449,6 +487,115 @@ class AppStringsCoverageTest {
             StatusMessages.runtimeLog("/tmp/sing-box:a|b.log"),
             StatusMessages.preflightPassed(AppMode.VPN),
             StatusMessages.desktopVpnCapabilityReady(),
+            StatusMessages.noLocationsAvailableForBenchmarking(),
+            StatusMessages.bestLocationSearchTimedOut(),
+            StatusMessages.retryingBestLocationSearch(attempt = 2, total = 3),
+            StatusMessages.locationSearchCancelled(),
+            StatusMessages.locationSearchFailed(),
+            StatusMessages.vpnPermissionRequired(),
+            StatusMessages.noSuitableLocationFound(),
+            StatusMessages.bestLocationNotMapped(),
+            StatusMessages.activatedAllSubscriptions(),
+            StatusMessages.activatedSubscription("Example"),
+            StatusMessages.profileSourceMode(ProfileSourceMode.SUBSCRIPTION),
+            StatusMessages.profileSourceMode(ProfileSourceMode.CURRENT_LOCATIONS),
+            StatusMessages.subscriptionNameReset(),
+            StatusMessages.subscriptionNameSaved(),
+            StatusMessages.subscriptionDeleted(),
+            StatusMessages.selectLocationFirst(),
+            StatusMessages.checkingLocation("Germany"),
+            StatusMessages.testingLocation("Germany"),
+            StatusMessages.locationCheckCancelled(),
+            StatusMessages.noLocationsToExport(),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LIVE_TRAFFIC_STATS, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.PROFILE_TOTALS, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LATENCY_HISTORY, true),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_LOG, false),
+            StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.CONNECTION_TEST_TOOLS, true),
+            StatusMessages.subscriptionLocationSaveReadOnly(),
+            StatusMessages.invalidLocationConfig(),
+            StatusMessages.locationAlreadySaved("Germany"),
+            StatusMessages.locationEditUnavailable(),
+            StatusMessages.locationAdded("Germany"),
+            StatusMessages.locationUpdatedAndMerged("Germany"),
+            StatusMessages.locationUpdated("Germany"),
+            StatusMessages.subscriptionLocationDeleteReadOnly(),
+            StatusMessages.selectedLocationRemoved("Germany"),
+            StatusMessages.locationRemoved("Germany"),
+            StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
+            StatusMessages.locationRemovalRollbackFailed(AppMode.PROXY_ONLY),
+            StatusMessages.importLocationsBlocked(),
+            StatusMessages.importLocationsFailed(),
+            StatusMessages.locationsImported(removedSelected = false),
+            StatusMessages.locationsImported(removedSelected = true),
+            StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.VPN),
+            StatusMessages.locationsImportRollbackFailed(AppMode.PROXY_ONLY),
+            StatusMessages.clipboardEmpty(),
+            StatusMessages.clipboardReadFailed(),
+            StatusMessages.subscriptionTextLoadedIntoProfile(),
+            StatusMessages.profileSourceSet(ProfileSourceMode.SUBSCRIPTION),
+            StatusMessages.profileSourceSet(ProfileSourceMode.CURRENT_LOCATIONS),
+            StatusMessages.disconnectFirstChangeConnectionMode(),
+            StatusMessages.connectionModeSet(AppMode.VPN),
+            StatusMessages.connectionModeSet(AppMode.PROXY_ONLY),
+            StatusMessages.ruleSetRemoved(),
+            StatusMessages.switchToSavedLocationsToAddLocations(),
+            StatusMessages.historyEntryDeleted(),
+            StatusMessages.selectedLocationUnchanged("Germany"),
+            StatusMessages.selectedLocationSet("Germany"),
+            StatusMessages.locationChecked("Germany"),
+            StatusMessages.locationCheckFailed(),
+            StatusMessages.locationEdited(12),
+            StatusMessages.sampleRuleSetAdded(),
+            StatusMessages.ruleSetDeleted("desktop-1"),
+            StatusMessages.routingRulesSaved(),
+            StatusMessages.routingRulesImported(),
+            StatusMessages.routingRulesImportedRestartRequired(AppMode.VPN),
+            StatusMessages.routingRulesImportedRestartRequired(AppMode.PROXY_ONLY),
+            StatusMessages.routingRulesImportFailed(),
+            StatusMessages.routingRulesCopiedToClipboard(),
+            StatusMessages.routingRulesExportCanceled(),
+            StatusMessages.routingRulesExportedTo("/tmp/rules.json"),
+            StatusMessages.routingRulesExportFailed(),
+            StatusMessages.routingRulesFileOpenFailed(),
+            StatusMessages.locationsCopiedToClipboard(),
+            StatusMessages.locationsExportCanceled(),
+            StatusMessages.locationsExportedTo("/tmp/locations.txt"),
+            StatusMessages.locationsExportFailed(),
+            StatusMessages.locationsFileOpenFailed(),
+            StatusMessages.locationsFileReadFailed(),
+            StatusMessages.diagnosticsExportCanceled(),
+            StatusMessages.diagnosticsExportedTo("/tmp/diagnostics.txt"),
+            StatusMessages.diagnosticsExportFailed(),
+            StatusMessages.diagnosticsDestinationOpenFailed(),
+            StatusMessages.noSubscriptionsToRefresh(),
+            StatusMessages.startOnLoginEnabled(),
+            StatusMessages.startOnLoginDisabled(),
+            StatusMessages.startupSettingUpdateFailed(),
+            StatusMessages.subscriptionHwidCleared(),
+            StatusMessages.subscriptionHwidSaved(),
+            StatusMessages.refreshSettingsSaveFailed(),
+            StatusMessages.appModeChanged(AppMode.PROXY_ONLY),
+            StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
+            StatusMessages.previousConnectionRestorePending(),
+            StatusMessages.previousLocationUnavailable(),
+            StatusMessages.restoringPreviousConnection("Germany"),
+            StatusMessages.connectionStartedOnTarget(AppMode.VPN, "tun-test"),
+            StatusMessages.connectionStartedOnTarget(AppMode.PROXY_ONLY, "127.0.0.1:2080"),
+            StatusMessages.connectionStartFailed(AppMode.VPN),
+            StatusMessages.connectionStopFailed(AppMode.PROXY_ONLY),
+            StatusMessages.selectedLocationSaveFailed(),
+            StatusMessages.selectedLocationStartedSaveFailed(AppMode.VPN),
+            StatusMessages.bestLocationStartFailed(AppMode.PROXY_ONLY),
+            StatusMessages.bestLocationSaveFailed(),
+            StatusMessages.bestLocationStartedSaveFailed(AppMode.VPN),
+            StatusMessages.backgroundRefreshFindingBest(),
+            StatusMessages.backgroundVpnPermissionRequiredKeepingPrevious(),
+            StatusMessages.appClosedConnectionWasOff(),
+            StatusMessages.connectionStoppedReconnectOnNextLaunch(AppMode.VPN),
+            StatusMessages.connectionStopBeforeExitFailed(AppMode.VPN),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)
@@ -465,6 +612,74 @@ class AppStringsCoverageTest {
         }
 
         assertTrue(rawLeaks.isEmpty(), "Structured status localization leaks: $rawLeaks")
+        val locationStatusEnglishLeaks = nonEnglishLanguages.flatMap { language ->
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.selectLocationFirst(),
+                StatusMessages.checkingLocation("Germany"),
+                StatusMessages.testingLocation("Germany"),
+                StatusMessages.locationCheckCancelled(),
+                StatusMessages.noLocationsToExport(),
+            ).flatMap { message ->
+                val localized = strings.statusMessage(message)
+                listOf("Select a location", "Checking", "Testing", "Location check", "No locations").mapNotNull { fragment ->
+                    if (localized.contains(fragment, ignoreCase = true)) "$language: $fragment in $localized" else null
+                }
+            }
+        }
+        assertTrue(
+            locationStatusEnglishLeaks.isEmpty(),
+            "Structured location status messages still contain English fragments: $locationStatusEnglishLeaks",
+        )
+        val sharedStatusFallbacks = nonEnglishLanguages.flatMap { language ->
+            val english = AppStrings(AppLanguage.ENGLISH)
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true),
+                StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.LIVE_TRAFFIC_STATS, false),
+                StatusMessages.subscriptionLocationSaveReadOnly(),
+                StatusMessages.locationAdded("Germany"),
+                StatusMessages.locationRemoved("Germany"),
+                StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
+                StatusMessages.importLocationsBlocked(),
+                StatusMessages.locationsImported(removedSelected = true),
+                StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.PROXY_ONLY),
+            ).mapNotNull { message ->
+                val localized = strings.statusMessage(message)
+                val englishText = english.statusMessage(message)
+                if (localized == englishText) "$language: $englishText" else null
+            }
+        }
+        assertTrue(
+            sharedStatusFallbacks.isEmpty(),
+            "Structured shared status messages still fall back to English: $sharedStatusFallbacks",
+        )
+        val desktopSettingsEnglishLeaks = nonEnglishLanguages.flatMap { language ->
+            val strings = AppStrings(language)
+            listOf(
+                StatusMessages.startOnLoginEnabled(),
+                StatusMessages.startOnLoginDisabled(),
+                StatusMessages.subscriptionHwidCleared(),
+                StatusMessages.subscriptionHwidSaved(),
+                StatusMessages.appModeChanged(AppMode.PROXY_ONLY),
+                StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
+            ).flatMap { message ->
+                val localized = strings.statusMessage(message)
+                listOf(
+                    "App will start",
+                    "App startup",
+                    "Subscription x-hwid",
+                    "App mode",
+                    "stopped",
+                ).mapNotNull { fragment ->
+                    if (localized.contains(fragment, ignoreCase = true)) "$language: $fragment in $localized" else null
+                }
+            }
+        }
+        assertTrue(
+            desktopSettingsEnglishLeaks.isEmpty(),
+            "Structured desktop settings status messages still contain English fragments: $desktopSettingsEnglishLeaks",
+        )
         assertTrue(
             AppStrings(AppLanguage.RUSSIAN)
                 .statusMessage(StatusMessages.validationSettingsSaved(BenchmarkValidationSettings(batchSize = 4, retryCount = 2)))

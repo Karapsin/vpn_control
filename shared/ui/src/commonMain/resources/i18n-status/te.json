@@ -1,0 +1,1571 @@
+{
+  "dynamic": {
+    "findingSubscription": "సబ్‌స్క్రిప్షన్ నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది...",
+    "findingSaved": "సేవ్ చేసిన స్థానాల నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది...",
+    "testingFastestCandidates": "వేగవంతమైన అభ్యర్థులను బ్యాచ్‌లుగా పరీక్షిస్తోంది...",
+    "checkingLocations": "{count} స్థానాలను తనిఖీ చేస్తోంది...",
+    "testingLocationsRange": "{total}లో {start}-{end} స్థానాలను పరీక్షిస్తోంది...",
+    "selectLocationFirst": "ముందుగా ఒక స్థానాన్ని ఎంచుకోండి",
+    "checkingLocation": "{name} తనిఖీ అవుతోంది...",
+    "testingLocation": "{name} పరీక్షించబడుతోంది...",
+    "locationCheckCancelled": "స్థాన తనిఖీ రద్దు చేయబడింది",
+    "noLocationsToExport": "ఎగుమతి చేయడానికి స్థానాలు లేవు",
+    "refreshIntervalMinutes": "{count} నిమి",
+    "refreshIntervalHours": "{count} గం",
+    "refreshIntervalHoursMinutes": "{hours} గం {minutes} నిమి",
+    "refreshIntervalEvery": "ప్రతి {interval}",
+    "refreshIntervalEveryHour": "ప్రతి గంట"
+  },
+  "benchmark": {
+    "best": "ఉత్తమం: ",
+    "primary": "ప్రాథమిక ",
+    "secondary": "ద్వితీయ ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "నిరోధించబడింది",
+      "cached": "క్యాష్‌లో ఉంది",
+      "challenge": "సవాలు",
+      "custom_config_manual_only": "కస్టమ్ config: మాన్యువల్ మాత్రమే",
+      "error": "లోపం",
+      "manual": "మాన్యువల్",
+      "ok": "సరే",
+      "partial": "పాక్షికం",
+      "tcp_error": "TCP లోపం",
+      "tcp_timeout": "TCP సమయం ముగిసింది",
+      "timeout": "సమయం ముగిసింది",
+      "unreachable": "చేరుకోలేనిది",
+      "validation_timeout": "ధృవీకరణ సమయం ముగిసింది"
+    }
+  },
+  "structured": {
+    "IDLE": "నిష్క్రియంగా ఉంది",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "సబ్‌స్క్రిప్షన్ ఆటో-రిఫ్రెష్ ఇలా సెట్ చేయబడింది: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "ధృవీకరణ సెట్టింగ్‌లు సేవ్ అయ్యాయి: {0} • {1} • బ్యాచ్ {2} • మళ్లీ ప్రయత్నాలు {3}",
+    "CUSTOM_DNS_SAVED": "కస్టమ్ DNS సేవ్ అయ్యింది",
+    "CUSTOM_DNS_DISABLED": "కస్టమ్ DNS నిలిపివేయబడింది",
+    "FIND_BEST_FROM_SUBSCRIPTION": "సబ్‌స్క్రిప్షన్ నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది...",
+    "FIND_BEST_FROM_SAVED": "సేవ్ చేసిన స్థానాల నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది...",
+    "STARTING_CONNECTION.VPN": "VPN ప్రారంభిస్తోంది...",
+    "STARTING_CONNECTION.PROXY_ONLY": "స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "ఉత్తమ స్థానంతో VPN ప్రారంభిస్తోంది...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "ఉత్తమ స్థానంతో స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది...",
+    "CONNECTION_STARTED.VPN": "VPN ప్రారంభమైంది",
+    "CONNECTION_STARTED.PROXY_ONLY": "ప్రాక్సీ ప్రారంభమైంది",
+    "CONNECTION_STOPPED.VPN": "VPN ఆగింది",
+    "CONNECTION_STOPPED.PROXY_ONLY": "ప్రాక్సీ ఆగింది",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "ఈ కంప్యూటర్‌లో VPN సిద్ధంగా ఉంది",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "ఈ కంప్యూటర్‌లో ప్రాక్సీ సిద్ధంగా ఉంది",
+    "DESKTOP_APP_INITIALIZED": "యాప్ ప్రారంభించబడింది",
+    "RUNTIME_MODE.VPN": "Runtime మోడ్: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Runtime మోడ్: Proxy",
+    "LOCAL_PROXY": "స్థానిక ప్రాక్సీ: {0}",
+    "RUNTIME_LOG": "Runtime లాగ్: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది",
+    "PREFLIGHT_FAILED.VPN": "VPN మోడ్ ముందస్తు తనిఖీ విఫలమైంది: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విఫలమైంది: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "డెస్క్‌టాప్ VPN capability: సిద్ధం",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "డెస్క్‌టాప్ VPN capability: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "డెస్క్‌టాప్ VPN capability: సిద్ధంగా లేదు",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Benchmarking కోసం స్థానాలు అందుబాటులో లేవు",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "ఉత్తమ స్థాన శోధన సమయం ముగిసింది; ప్రస్తుత కనెక్షన్‌ను ఉంచుతోంది",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "స్థాన శోధన రద్దయింది",
+    "LOCATION_SEARCH_FAILED": "స్థాన శోధన విఫలమైంది",
+    "VPN_PERMISSION_REQUIRED": "VPN అనుమతి ఇచ్చి మళ్లీ ప్రయత్నించండి",
+    "SELECTED_LOCATION_SAVE_FAILED": "ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN ప్రారంభమైంది, కానీ ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "ప్రాక్సీ ప్రారంభమైంది, కానీ ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "BEST_LOCATION_START_FAILED.VPN": "ఉత్తమ స్థానంతో VPN ప్రారంభించడంలో విఫలమైంది",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "ఉత్తమ స్థానంతో ప్రాక్సీని ప్రారంభించడంలో విఫలమైంది",
+    "BEST_LOCATION_SAVE_FAILED": "ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN ప్రారంభమైంది, కానీ ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "ప్రాక్సీ ప్రారంభమైంది, కానీ ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది",
+    "BACKGROUND_REFRESH_FINDING_BEST": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ పూర్తైంది. ఉత్తమ స్థానాన్ని కనుగొంటోంది...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ పూర్తైంది, కానీ నేపథ్యంలో మారడానికి VPN అనుమతి అవసరం. మునుపటి VPN స్థానం fallbackగా ఉంచబడింది.",
+    "NO_SUITABLE_LOCATION_FOUND": "అనుకూలమైన స్థానం కనబడలేదు",
+    "BEST_LOCATION_NOT_MAPPED": "ఉత్తమ స్థానాన్ని డెస్క్‌టాప్ జాబితాకు map చేయలేకపోయింది",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "అన్ని సబ్‌స్క్రిప్షన్‌లు సక్రియం చేయబడ్డాయి",
+    "ACTIVATED_SUBSCRIPTION": "సక్రియం చేయబడింది: {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "సబ్‌స్క్రిప్షన్ పేరు రీసెట్ చేయబడింది",
+    "SUBSCRIPTION_NAME_SAVED": "సబ్‌స్క్రిప్షన్ పేరు సేవ్ అయ్యింది",
+    "SUBSCRIPTION_DELETED": "సబ్‌స్క్రిప్షన్ తొలగించబడింది",
+    "SELECT_LOCATION_FIRST": "ముందుగా ఒక స్థానాన్ని ఎంచుకోండి",
+    "CHECKING_LOCATION": "{0} తనిఖీ అవుతోంది...",
+    "TESTING_LOCATION": "{0} పరీక్షించబడుతోంది...",
+    "LOCATION_CHECK_CANCELLED": "స్థాన తనిఖీ రద్దు చేయబడింది",
+    "NO_LOCATIONS_TO_EXPORT": "ఎగుమతి చేయడానికి స్థానాలు లేవు",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "సెషన్ గణాంకాలు ప్రారంభించబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "సెషన్ గణాంకాలు దాచబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Live traffic గణాంకాలు ప్రారంభించబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Live traffic గణాంకాలు దాచబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "ప్రతి-ప్రొఫైల్ totals ప్రారంభించబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "ప్రతి-ప్రొఫైల్ totals దాచబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Latency చరిత్ర ప్రారంభించబడింది",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Latency చరిత్ర దాచబడింది",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "కనెక్షన్ లాగ్ ప్రారంభించబడింది",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "కనెక్షన్ లాగ్ దాచబడింది",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "కనెక్షన్ పరీక్ష tools ప్రారంభించబడ్డాయి",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "కనెక్షన్ పరీక్ష tools దాచబడ్డాయి",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "సబ్‌స్క్రిప్షన్ స్థానాలు చదవడానికి మాత్రమే. సవరణలను సేవ్ చేయడానికి సేవ్ చేసిన స్థానాలకు మారండి.",
+    "INVALID_LOCATION_CONFIG": "చెల్లని స్థాన config",
+    "LOCATION_ALREADY_SAVED": "స్థానం ఇప్పటికే సేవ్ అయ్యింది: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "సవరించాల్సిన స్థానం ఇక అందుబాటులో లేదు",
+    "LOCATION_ADDED": "స్థానం జోడించబడింది: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "స్థానం అప్‌డేట్ చేసి కలపబడింది: {0}",
+    "LOCATION_UPDATED": "స్థానం అప్‌డేట్ అయింది: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "సబ్‌స్క్రిప్షన్ స్థానాలు చదవడానికి మాత్రమే. వాటిని తొలగించడానికి సేవ్ చేసిన స్థానాలకు మారండి.",
+    "SELECTED_LOCATION_REMOVED": "ఎంచుకున్న స్థానం తొలగించబడింది: {0}",
+    "LOCATION_REMOVED": "స్థానం తొలగించబడింది: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "ఎంచుకున్న స్థానం తొలగించబడింది. VPN ఆగింది: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "ఎంచుకున్న స్థానం తొలగించబడింది. ప్రాక్సీ ఆగింది: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPNను ఆపలేకపోయినందున స్థాన తొలగింపు rollback చేయబడింది",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "ప్రాక్సీని ఆపలేకపోయినందున స్థాన తొలగింపు rollback చేయబడింది",
+    "IMPORT_LOCATIONS_BLOCKED": "స్థానాలను దిగుమతి చేయడానికి సేవ్ చేసిన స్థానాలకు మారండి",
+    "IMPORT_LOCATIONS_FAILED": "స్థానాలను దిగుమతి చేయడంలో విఫలమైంది",
+    "LOCATIONS_IMPORTED": "స్థానాలు దిగుమతి అయ్యాయి",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు, vpn ఆగింది",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు, ప్రాక్సీ ఆగింది",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "VPNను ఆపలేకపోయినందున స్థానాల దిగుమతి rollback చేయబడింది",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "ప్రాక్సీని ఆపలేకపోయినందున స్థానాల దిగుమతి rollback చేయబడింది",
+    "CLIPBOARD_EMPTY": "క్లిప్‌బోర్డ్ ఖాళీగా ఉంది",
+    "CLIPBOARD_READ_FAILED": "క్లిప్‌బోర్డ్ చదవడం విఫలమైంది",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "సబ్‌స్క్రిప్షన్ టెక్స్ట్ ప్రొఫైల్ ట్యాబ్‌లో లోడ్ చేయబడింది",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "కనెక్షన్ మోడ్ మార్చడానికి ముందుగా డిస్‌కనెక్ట్ చేయండి",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "నిబంధనల సమితి తీసివేయబడింది",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "స్థానాలను మాన్యువల్‌గా జోడించడానికి సేవ్ చేసిన స్థానాలకు మారండి",
+    "HISTORY_ENTRY_DELETED": "చరిత్ర ఎంట్రీ తొలగించబడింది",
+    "SELECTED_LOCATION_UNCHANGED": "ఎంచుకున్న స్థానం మారలేదు: {0}",
+    "SELECTED_LOCATION_SET": "ఎంచుకున్న స్థానం సెట్ చేయబడింది: {0}",
+    "LOCATION_CHECKED": "Location తనిఖీed: {0}",
+    "LOCATION_CHECK_FAILED": "స్థాన తనిఖీ విఫలమైంది",
+    "LOCATION_EDITED": "సవరించిన స్థానం #{0}",
+    "SAMPLE_RULE_SET_ADDED": "జోడించబడింది: a sample rule-set",
+    "RULE_SET_DELETED": "తొలగించబడింది: rule-set {0}",
+    "ROUTING_RULES_SAVED": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి",
+    "ROUTING_RULES_IMPORTED": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి. వర్తింపజేయడానికి VPNను మళ్లీ ప్రారంభించండి",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి. వర్తింపజేయడానికి ప్రాక్సీని మళ్లీ ప్రారంభించండి",
+    "ROUTING_RULES_IMPORT_FAILED": "రూటింగ్ నియమాలను దిగుమతి చేయడంలో విఫలమైంది",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "రూటింగ్ నియమాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి",
+    "ROUTING_RULES_EXPORT_CANCELED": "రూటింగ్ నియమాల ఎగుమతి రద్దయింది",
+    "ROUTING_RULES_EXPORTED_TO": "రూటింగ్ నియమాలు ఇక్కడికి ఎగుమతి అయ్యాయి: {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "రూటింగ్ నియమాలను ఎగుమతి చేయడంలో విఫలమైంది",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "రూటింగ్ నియమాల ఫైల్‌ను తెరవడంలో విఫలమైంది",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "స్థానాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి",
+    "LOCATIONS_EXPORT_CANCELED": "స్థానాల ఎగుమతి రద్దయింది",
+    "LOCATIONS_EXPORTED_TO": "స్థానాలు ఇక్కడికి ఎగుమతి అయ్యాయి: {0}",
+    "LOCATIONS_EXPORT_FAILED": "స్థానాలను ఎగుమతి చేయడంలో విఫలమైంది",
+    "LOCATIONS_FILE_OPEN_FAILED": "స్థానాల ఫైల్‌ను తెరవడంలో విఫలమైంది",
+    "LOCATIONS_FILE_READ_FAILED": "స్థానాల ఫైల్‌ను చదవడంలో విఫలమైంది",
+    "DIAGNOSTICS_EXPORT_CANCELED": "డయాగ్నస్టిక్స్ ఎగుమతి రద్దయింది",
+    "DIAGNOSTICS_EXPORTED_TO": "డయాగ్నస్టిక్స్ ఇక్కడికి ఎగుమతి అయ్యాయి: {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "డయాగ్నస్టిక్స్ ఎగుమతి చేయడంలో విఫలమైంది",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "డయాగ్నస్టిక్స్ గమ్యాన్ని తెరవడంలో విఫలమైంది",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "రిఫ్రెష్ చేయడానికి సబ్‌స్క్రిప్షన్‌లు లేవు",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "స్టార్టప్ సెట్టింగ్‌ను అప్‌డేట్ చేయడంలో విఫలమైంది",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "స్టార్టప్ సెట్టింగ్‌ను అప్‌డేట్ చేయడంలో విఫలమైంది: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "రిఫ్రెష్ సెట్టింగ్‌లను సేవ్ చేయడంలో విఫలమైంది",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "రిఫ్రెష్ సెట్టింగ్‌లను సేవ్ చేయడంలో విఫలమైంది: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "మునుపటి VPN సెషన్ పునరుద్ధరించబడుతుంది",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "మునుపటి VPN స్థానం ఇక అందుబాటులో లేదు",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN పునరుద్ధరిస్తోంది: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN ఇక్కడ ప్రారంభమైంది: {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "ప్రాక్సీ ఇక్కడ ప్రారంభమైంది: {1}",
+    "CONNECTION_START_FAILED.VPN": "VPNను ప్రారంభించడంలో విఫలమైంది",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "ప్రాక్సీని ప్రారంభించడంలో విఫలమైంది",
+    "CONNECTION_STOP_FAILED.VPN": "VPNను ఆపడంలో విఫలమైంది",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "ప్రాక్సీని ఆపడంలో విఫలమైంది",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "యాప్ మూసివేయబడింది. VPN ఆఫ్‌లో ఉంది.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "ప్రాక్సీ ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "నిష్క్రమించే ముందు VPNను ఆపడంలో విఫలమైంది",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "నిష్క్రమించే ముందు Proxyను ఆపడంలో విఫలమైంది"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "సబ్‌స్క్రిప్షన్ URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "చదవలేని సబ్‌స్క్రిప్షన్ URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "సురక్షితం కాని HTTP సబ్‌స్క్రిప్షన్‌లకు మద్దతు లేదు"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "https:// సబ్‌స్క్రిప్షన్ URLను ఉపయోగించండి."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URLలో చెల్లుబాటు అయ్యే HTTPS host ఉండాలి"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "చెల్లుబాటు అయ్యే https:// సబ్‌స్క్రిప్షన్ URLను paste చేయండి."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "నేరుగా రిమోట్ మూలం"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box import లింక్"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "చదవలేని sing-box import లింక్"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "చెల్లుబాటు అయ్యే HTTPS రిమోట్ URLలకు మాత్రమే మద్దతు ఉంది"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "చెల్లుబాటు అయ్యే https:// URLకు resolve అయ్యే sing-box import linkను ఉపయోగించండి."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "ఎంబెడ్ చేసిన URL నుండి రిమోట్ కంటెంట్‌ను fetch చేస్తుంది"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "రిమోట్ కంటెంట్‌ను ఇక్కడి నుండి fetch చేస్తుంది: "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "import linkను parse చేయలేకపోయింది"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "చెల్లుబాటు అయ్యే sing-box remote-profile import లింక్ లేదా నేరుగా subscription URLను అతికించండి."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN import లింక్"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "చదవలేని VPN import లింక్"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "మద్దతు లేని provider import"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia మరియు ఇతర vpn:// importsకు మద్దతు లేదు. సాధారణ subscription URL ఉపయోగించండి లేదా స్థానాలను మాన్యువల్‌గా జోడించండి."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "import payloadను decode చేయలేకపోయింది"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// importsకు మద్దతు లేదు. సాధారణ subscription URL ఉపయోగించండి లేదా స్థానాలను మాన్యువల్‌గా జోడించండి."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP subscription URLలకు మద్దతు లేదు. బదులుగా https:// ఉపయోగించండి."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "రిమోట్ మూలం తప్పనిసరిగా https:// URL లేదా మద్దతు ఉన్న import లింక్ అయి ఉండాలి"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "రిమోట్ మూలం ఖాళీగా ఉంది"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "రిమోట్ మూలం hostతో కూడిన చెల్లుబాటు అయ్యే https:// URL అయి ఉండాలి."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "ఈ sing-box import చెల్లని లేదా HTTPS కాని URLకు resolve అవుతోంది. బదులుగా చెల్లుబాటు అయ్యే https:// URL ఉపయోగించండి."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "ఎంచుకున్న స్థానాన్ని వర్తింపజేస్తోంది..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "అప్‌డేట్ చేసిన ఎంచుకున్న స్థానాన్ని వర్తింపజేస్తోంది..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "ఉత్తమ స్థాన శోధన సమయం ముగిసింది; ప్రస్తుత కనెక్షన్‌ను ఉంచుతోంది"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "క్లిప్‌బోర్డ్ ఖాళీగా ఉంది"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "కనెక్షన్ లాగ్ ప్రారంభించబడింది"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "కనెక్షన్ లాగ్ దాచబడింది"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "కనెక్షన్ పరీక్ష tools ప్రారంభించబడ్డాయి"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "కనెక్షన్ పరీక్ష tools దాచబడ్డాయి"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "ఎగుమతి గమ్యాన్ని తెరవలేకపోయింది"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "ఎంచుకున్న ఫైల్‌ను తెరవలేకపోయింది"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "ఎంచుకున్న స్థానాల ఫైల్‌ను తెరవలేకపోయింది"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "ఎంచుకున్న నియమాల ఫైల్‌ను తెరవలేకపోయింది"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "డెస్క్‌టాప్ shell: Whitelists నుండి Netherlands"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "డెస్క్‌టాప్ యాప్ ప్రారంభించబడింది"
+    },
+    {
+      "source": "App initialized",
+      "target": "యాప్ ప్రారంభించబడింది"
+    },
+    {
+      "source": "Export Locations",
+      "target": "స్థానాలను ఎగుమతి చేయి"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "అప్‌డేట్ చేసిన ఎంచుకున్న స్థానాన్ని వర్తింపజేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "స్థానాలను ఎగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "రూటింగ్ నియమాలను ఎగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "ప్రత్యామ్నాయ స్థానాన్ని కనుగొనడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "ఫైల్‌ను దిగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "డయాగ్నస్టిక్స్ గమ్యాన్ని తెరవడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "రిఫ్రెష్ సెట్టింగ్‌లను సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "స్టార్టప్ సెట్టింగ్‌ను అప్‌డేట్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Import canceled",
+      "target": "దిగుమతి రద్దయింది"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "చెల్లని సబ్‌స్క్రిప్షన్ URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latency చరిత్ర ప్రారంభించబడింది"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latency చరిత్ర దాచబడింది"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Live traffic గణాంకాలు ప్రారంభించబడ్డాయి"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Live traffic గణాంకాలు దాచబడ్డాయి"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "స్థాన తనిఖీ రద్దయింది"
+    },
+    {
+      "source": "Location check failed",
+      "target": "స్థాన తనిఖీ విఫలమైంది"
+    },
+    {
+      "source": "Locations exported",
+      "target": "స్థానాలు ఎగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "స్థానాల దిగుమతి రద్దయింది"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Benchmarking కోసం స్థానాలు అందుబాటులో లేవు"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "రిఫ్రెష్ చేయడానికి సబ్‌స్క్రిప్షన్‌లు లేవు"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "అనుకూలమైన స్థానం కనబడలేదు"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "ప్రతి-ప్రొఫైల్ totals ప్రారంభించబడ్డాయి"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "ప్రతి-ప్రొఫైల్ totals దాచబడ్డాయి"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "మునుపటి VPN సెషన్ పునరుద్ధరించబడుతుంది"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR scan రద్దయింది"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "రూటింగ్ నియమాలు ఎగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "రూటింగ్ నియమాల దిగుమతి రద్దయింది"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "సెషన్ గణాంకాలు ప్రారంభించబడ్డాయి"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "సెషన్ గణాంకాలు దాచబడ్డాయి"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "షేర్ చేసిన text మద్దతు ఉన్న import payload కాదు"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "సబ్‌స్క్రిప్షన్ తొలగించబడింది"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ పూర్తైంది, కానీ నేపథ్యంలో మారడానికి VPN అనుమతి అవసరం. మునుపటి VPN స్థానం fallbackగా ఉంచబడింది."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ పూర్తైంది. ఉత్తమ స్థానాన్ని కనుగొంటోంది..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ పూర్తైంది. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Runtime మోడ్: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "స్థానిక ప్రాక్సీ: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Runtime లాగ్: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN మోడ్ ముందస్తు తనిఖీ విఫలమైంది: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విఫలమైంది: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN మోడ్ అందుబాటులో లేదు: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "ప్రాక్సీ-మాత్రమే మోడ్ అందుబాటులో లేదు: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "డెస్క్‌టాప్ VPN capability: సిద్ధం"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "డెస్క్‌టాప్ VPN capability: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN మోడ్ అందుబాటులో ఉంది"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "ప్రాక్సీ మోడ్ అందుబాటులో ఉంది"
+    },
+    {
+      "source": "not ready",
+      "target": "సిద్ధంగా లేదు"
+    },
+    {
+      "source": " checks",
+      "target": " తనిఖీలు"
+    },
+    {
+      "source": " check",
+      "target": " తనిఖీ"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "TUN పరికరం విఫలం: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "network privileges విఫలం: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "route/DNS tooling విఫలం: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN పరికరం"
+    },
+    {
+      "source": "network privileges",
+      "target": "network privileges అనుమతులు"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "route/DNS tooling సాధనాలు"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN పరికరం /dev/net/tun వద్ద లేదు. ప్రయత్నించండి: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "కంప్యూటర్ VPN మోడ్‌కు CAP_NET_ADMIN అవసరం. root హక్కులతో అమలు చేయండి లేదా sing-box కు అనుమతులు ఇవ్వండి: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows రూట్/DNS సాధనాలు అందుబాటులో లేవు. VPN మోడ్‌కు netsh.exe మరియు DNS క్లయింట్ కోసం PowerShell ఆదేశాలు అవసరం."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "ఈ కంప్యూటర్‌లో VPN సిద్ధంగా ఉంది"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ఈ కంప్యూటర్‌లో ప్రాక్సీ సిద్ధంగా ఉంది"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "నిష్క్రియంగా ఉంది"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN ప్రారంభమైంది"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ఆగింది"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ప్రాక్సీ ప్రారంభమైంది"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ప్రాక్సీ ఆగింది"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "ఉత్తమ స్థానంతో VPN ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ఉత్తమ స్థానంతో స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "సేవ్ చేసిన స్థానాల నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "స్థాన శోధన రద్దయింది"
+    },
+    {
+      "source": "Location search failed",
+      "target": "స్థాన శోధన విఫలమైంది"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN అనుమతి ఇచ్చి మళ్లీ ప్రయత్నించండి"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ముందుగా రిమోట్ మూలాన్ని సెట్ చేయండి"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ముందుగా కనీసం ఒక సేవ్ చేసిన స్థానాన్ని జోడించండి"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ముందుగా ఒక స్థానాన్ని ఎంచుకోండి"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ఇంకా సబ్‌స్క్రిప్షన్‌లు సేవ్ కాలేదు"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "సక్రియ సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ ఆటో-రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "సబ్‌స్క్రిప్షన్‌లు ఆటో-రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అయ్యింది"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అయ్యాయి"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "సక్రియ సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అయ్యింది"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అయ్యాయి"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "రిఫ్రెష్ విఫలమైంది"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ప్రొఫైల్ మూలం సబ్‌స్క్రిప్షన్‌గా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ప్రొఫైల్ మూలం సేవ్ చేసిన స్థానాలుగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "కనెక్షన్ మోడ్ VPNగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "కనెక్షన్ మోడ్ ప్రాక్సీ మాత్రమేగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "కనెక్షన్ మోడ్ మార్చడానికి ముందుగా డిస్‌కనెక్ట్ చేయండి"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "చరిత్ర ఎంట్రీ తొలగించబడింది"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "సబ్‌స్క్రిప్షన్ పేరు రీసెట్ చేయబడింది"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "సబ్‌స్క్రిప్షన్ పేరు సేవ్ అయ్యింది"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "భాష సిస్టమ్ డిఫాల్ట్‌కు సెట్ చేయబడింది"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "కస్టమ్ DNS సేవ్ అయ్యింది"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "కస్టమ్ DNS నిలిపివేయబడింది"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Locations imported",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "స్థానాలను దిగుమతి చేయడానికి సేవ్ చేసిన స్థానాలకు మారండి"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "స్థానాలను మాన్యువల్‌గా జోడించడానికి సేవ్ చేసిన స్థానాలకు మారండి"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "చెల్లని స్థాన config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "సవరించాల్సిన స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి తెరవబడింది"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి విఫలమైంది"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "మునుపటి VPN స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "యాప్ మూసివేయబడింది. VPN ఆఫ్‌లో ఉంది."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు సక్రియం చేయబడ్డాయి"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు ఎంచుకోబడ్డాయి"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "సబ్‌స్క్రిప్షన్ ఎంచుకోబడింది"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "స్థానాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "స్థానాల ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "రూటింగ్ నియమాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "రూటింగ్ నియమాల ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "ప్రొఫైల్ మూల మోడ్: సభ్యత్వం"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "ప్రొఫైల్ మూల మోడ్: సేవ్ చేసిన స్థానాలు"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "కొత్త ఉత్తమ స్థానంతో VPN ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "కొత్త ఉత్తమ స్థానంతో proxy ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "VPN మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విజయవంతమైంది"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "VPN మోడ్ ముందస్తు తనిఖీ విఫలమైంది: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "ప్రాక్సీ-మాత్రమే మోడ్ ముందస్తు తనిఖీ విఫలమైంది: "
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "కంప్యూటర్ VPN మోడ్‌కు CAP_NET_ADMIN అవసరం. root హక్కులతో అమలు చేయండి లేదా sing-box కు అనుమతులు ఇవ్వండి: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows రూట్/DNS సాధనాలు అందుబాటులో లేవు. VPN మోడ్‌కు netsh.exe మరియు DNS క్లయింట్ కోసం PowerShell ఆదేశాలు అవసరం."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "సబ్‌స్క్రిప్షన్ స్థానాలు చదవడానికి మాత్రమే. సవరణలను సేవ్ చేయడానికి సేవ్ చేసిన స్థానాలకు మారండి."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "సబ్‌స్క్రిప్షన్ స్థానాలు చదవడానికి మాత్రమే. వాటిని తొలగించడానికి సేవ్ చేసిన స్థానాలకు మారండి."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "సబ్‌స్క్రిప్షన్ అందింది. ప్రొఫైల్ ట్యాబ్‌లో సమీక్షించి సేవ్ చేయండి."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "సబ్‌స్క్రిప్షన్ లింక్ అందింది. ప్రొఫైల్ ట్యాబ్‌లో సమీక్షించి సేవ్ చేయండి."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "స్థాన config అందింది. స్థానాలు ట్యాబ్‌లో సమీక్షించి సేవ్ చేయండి."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "ఉత్తమ స్థానంతో స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "ఉత్తమ స్థానంతో VPN ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "సేవ్ చేసిన స్థానాల నుండి ఉత్తమ స్థానాన్ని కనుగొంటోంది..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు, ప్రాక్సీ ఆగింది"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు, vpn ఆగింది"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి. ఎంచుకున్న స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "ఎంచుకున్న స్థానం వర్తింపజేయబడింది, కానీ సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "ప్రాక్సీని ఆపలేకపోయినందున స్థాన తొలగింపు rollback చేయబడింది"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "VPNను ఆపలేకపోయినందున స్థాన తొలగింపు rollback చేయబడింది"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "ప్రాక్సీని ఆపలేకపోయినందున స్థానాల దిగుమతి rollback చేయబడింది"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "VPNను ఆపలేకపోయినందున స్థానాల దిగుమతి rollback చేయబడింది"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN ఆగింది. రిఫ్రెష్ అయిన సబ్‌స్క్రిప్షన్‌లు ఎంచుకున్న స్థానాన్ని తొలగించాయి."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "ప్రాక్సీ ఆగింది. రిఫ్రెష్ అయిన సబ్‌స్క్రిప్షన్‌లు ఎంచుకున్న స్థానాన్ని తొలగించాయి."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "ప్రాక్సీ ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి. వర్తింపజేయడానికి VPNను మళ్లీ ప్రారంభించండి"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి. వర్తింపజేయడానికి ప్రాక్సీని మళ్లీ ప్రారంభించండి"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి. వర్తింపజేయడానికి VPNను మళ్లీ ప్రారంభించండి"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి. వర్తింపజేయడానికి ప్రాక్సీని మళ్లీ ప్రారంభించండి"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "ఎంచుకున్న స్థానం తొలగించబడింది. VPN ఆగింది: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "ఎంచుకున్న స్థానం తొలగించబడింది. ప్రాక్సీ ఆగింది: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "ఉత్తమ స్థానం ఎంచుకోబడింది మరియు VPN ప్రారంభమైంది: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "ఉత్తమ స్థానం ఎంచుకోబడింది మరియు ప్రాక్సీ ప్రారంభమైంది: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN ప్రారంభమైంది, కానీ ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "ప్రాక్సీ ప్రారంభమైంది, కానీ ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN ప్రారంభమైంది, కానీ ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "ప్రాక్సీ ప్రారంభమైంది, కానీ ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "ఉత్తమ స్థానంతో VPN ప్రారంభించడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "ఉత్తమ స్థానంతో ప్రాక్సీని ప్రారంభించడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "ఎంచుకున్న స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "ఉత్తమ స్థానాన్ని సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "ఎంచుకున్న స్థానాన్ని వర్తింపజేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "స్థానాన్ని ఎంచుకోవడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "నిష్క్రమించే ముందు VPNను ఆపడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "నిష్క్రమించే ముందు Proxyను ఆపడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "VPNను ఆపడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "ప్రాక్సీని ఆపడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "VPNను ప్రారంభించడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "ప్రాక్సీని ప్రారంభించడంలో విఫలమైంది"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPNను సిద్ధం చేయలేకపోయింది"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "ప్రాక్సీని సిద్ధం చేయలేకపోయింది"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN సిద్ధం చేస్తోంది"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "ప్రాక్సీని సిద్ధం చేస్తోంది"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN ప్రారంభం రద్దయింది"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "ప్రాక్సీ ప్రారంభం రద్దయింది"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN ఆపడం రద్దయింది"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "ప్రాక్సీ ఆపడం రద్దయింది"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "స్థానిక ప్రాక్సీని ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN ప్రారంభిస్తోంది..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "సక్రియ సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "సబ్‌స్క్రిప్షన్‌లు ఆటో-రిఫ్రెష్ అవుతున్నాయి..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "సబ్‌స్క్రిప్షన్ ఆటో-రిఫ్రెష్ అవుతోంది..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అయ్యాయి"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "సక్రియ సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అయ్యింది"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అయ్యాయి"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "సబ్‌స్క్రిప్షన్ రిఫ్రెష్ అయ్యింది"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "రిఫ్రెష్ విఫలమైంది"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "స్థాన శోధన రద్దయింది"
+    },
+    {
+      "source": "Location search failed",
+      "target": "స్థాన శోధన విఫలమైంది"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "VPN అనుమతి ఇచ్చి మళ్లీ ప్రయత్నించండి"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "ముందుగా రిమోట్ మూలాన్ని సెట్ చేయండి"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "ముందుగా కనీసం ఒక సేవ్ చేసిన స్థానాన్ని జోడించండి"
+    },
+    {
+      "source": "Select a location first",
+      "target": "ముందుగా ఒక స్థానాన్ని ఎంచుకోండి"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "ఇంకా సబ్‌స్క్రిప్షన్‌లు సేవ్ కాలేదు"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "ప్రొఫైల్ మూలం సబ్‌స్క్రిప్షన్‌గా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "ప్రొఫైల్ మూలం సేవ్ చేసిన స్థానాలుగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "కనెక్షన్ మోడ్ VPNగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "కనెక్షన్ మోడ్ ప్రాక్సీ మాత్రమేగా సెట్ చేయబడింది"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "కనెక్షన్ మోడ్ మార్చడానికి ముందుగా డిస్‌కనెక్ట్ చేయండి"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "చరిత్ర ఎంట్రీ తొలగించబడింది"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "సబ్‌స్క్రిప్షన్ పేరు రీసెట్ చేయబడింది"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "సబ్‌స్క్రిప్షన్ పేరు సేవ్ అయ్యింది"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "భాష సిస్టమ్ డిఫాల్ట్‌కు సెట్ చేయబడింది"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "కస్టమ్ DNS సేవ్ అయ్యింది"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "కస్టమ్ DNS నిలిపివేయబడింది"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Locations imported",
+      "target": "స్థానాలు దిగుమతి అయ్యాయి"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "స్థానాలను దిగుమతి చేయడానికి సేవ్ చేసిన స్థానాలకు మారండి"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "స్థానాలను మాన్యువల్‌గా జోడించడానికి సేవ్ చేసిన స్థానాలకు మారండి"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "చెల్లని స్థాన config"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "సవరించాల్సిన స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి తెరవబడింది"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి విఫలమైంది"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "డయాగ్నస్టిక్స్ ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "మునుపటి VPN స్థానం ఇక అందుబాటులో లేదు"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "యాప్ మూసివేయబడింది. VPN ఆఫ్‌లో ఉంది."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు సక్రియం చేయబడ్డాయి"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు ఎంచుకోబడ్డాయి"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "సబ్‌స్క్రిప్షన్ ఎంచుకోబడింది"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "సబ్‌స్క్రిప్షన్ సేవ్ అయ్యింది"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "స్థానాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "స్థానాల ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "రూటింగ్ నియమాలు క్లిప్‌బోర్డ్‌కు కాపీ అయ్యాయి"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "రూటింగ్ నియమాల ఎగుమతి రద్దయింది"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "క్లిప్‌బోర్డ్ చదవడం విఫలమైంది"
+    },
+    {
+      "source": "No locations to export",
+      "target": "ఎగుమతి చేయడానికి స్థానాలు లేవు"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "appsను లోడ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "సబ్‌స్క్రిప్షన్‌లను రిఫ్రెష్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "సక్రియ సబ్‌స్క్రిప్షన్‌ను రిఫ్రెష్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "రూటింగ్ నియమాలను దిగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "రూటింగ్ నియమాలను సేవ్ చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "స్థానాలను దిగుమతి చేయడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "స్థానాల ఫైల్‌ను తెరవడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "స్థానాల ఫైల్‌ను చదవడంలో విఫలమైంది"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "రూటింగ్ నియమాల ఫైల్‌ను తెరవడంలో విఫలమైంది"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "ఉత్తమ స్థానాన్ని డెస్క్‌టాప్ జాబితాకు map చేయలేకపోయింది"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "ఈ కంప్యూటర్‌లో VPN సిద్ధంగా ఉంది"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "ఈ కంప్యూటర్‌లో ప్రాక్సీ సిద్ధంగా ఉంది"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "డెస్క్‌టాప్ VPN shell సిద్ధంగా ఉంది"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "డెస్క్‌టాప్ ప్రాక్సీ shell సిద్ధంగా ఉంది"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN ఇక్కడ ప్రారంభమైంది: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "ప్రాక్సీ ఇక్కడ ప్రారంభమైంది: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN ఆగింది. యాప్ మోడ్: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "ప్రాక్సీ ఆగింది. యాప్ మోడ్: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "భాష ఇలా సెట్ చేయబడింది: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "సబ్‌స్క్రిప్షన్ ఆటో-రిఫ్రెష్ ఇలా సెట్ చేయబడింది: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "ధృవీకరణ సెట్టింగ్‌లు సేవ్ అయ్యాయి: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "ఎంచుకున్న స్థానం మారలేదు: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "ఎంచుకున్న స్థానం తొలగించబడింది: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "ఎంచుకున్న స్థానం సెట్ చేయబడింది: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "స్థానం అప్‌డేట్ చేసి కలపబడింది: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "స్థానం ఇప్పటికే సేవ్ అయ్యింది: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "స్థానం అప్‌డేట్ అయింది: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "స్థానం తొలగించబడింది: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "స్థానం జోడించబడింది: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "సబ్‌స్క్రిప్షన్‌లు రిఫ్రెష్ అయ్యాయి: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "విఫలమైంది: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN పునరుద్ధరిస్తోంది: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "రిఫ్రెష్ చేస్తోంది: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "స్థానాలు ఇక్కడికి ఎగుమతి అయ్యాయి: "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "రూటింగ్ నియమాలు ఇక్కడికి ఎగుమతి అయ్యాయి: "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "డయాగ్నస్టిక్స్ ఇక్కడికి ఎగుమతి అయ్యాయి: "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Benchmark చేయడంలో విఫలమైంది: "
+    },
+    {
+      "source": "Activated ",
+      "target": "సక్రియం చేయబడింది: "
+    },
+    {
+      "source": "Added ",
+      "target": "జోడించబడింది: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "తొలగించబడింది: "
+    },
+    {
+      "source": "Selected ",
+      "target": "ఎంచుకోబడింది: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "సవరించిన స్థానం #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "యాప్ మోడ్: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " స్థానాలు రిఫ్రెష్ అయ్యాయి"
+    },
+    {
+      "source": " location refreshed",
+      "target": " స్థానం రిఫ్రెష్ అయ్యింది"
+    },
+    {
+      "source": " • batch ",
+      "target": " • బ్యాచ్ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • మళ్లీ ప్రయత్నాలు "
+    },
+    {
+      "source": "custom interval",
+      "target": "కస్టమ్ విరామం"
+    },
+    {
+      "source": "every hour",
+      "target": "ప్రతి గంట"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "అన్ని సబ్‌స్క్రిప్షన్‌లు"
+    },
+    {
+      "source": "selected subscription",
+      "target": "ఎంచుకున్న సబ్‌స్క్రిప్షన్"
+    },
+    {
+      "source": "proxy only",
+      "target": "ప్రాక్సీ మాత్రమే"
+    },
+    {
+      "source": "off",
+      "target": "ఆఫ్"
+    },
+    {
+      "source": "Idle",
+      "target": "నిష్క్రియంగా ఉంది"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN ప్రారంభమైంది"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN ఆగింది"
+    },
+    {
+      "source": "Proxy started",
+      "target": "ప్రాక్సీ ప్రారంభమైంది"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "ప్రాక్సీ ఆగింది"
+    }
+  ]
+}

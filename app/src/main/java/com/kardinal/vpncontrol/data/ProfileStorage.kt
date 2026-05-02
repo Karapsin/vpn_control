@@ -25,7 +25,7 @@ import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.activeSubscriptionUrls
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
@@ -60,6 +60,7 @@ class ProfileStorage(
         val profileHistory = stringPreferencesKey("profile_history")
         val profileHistoryNames = stringPreferencesKey("profile_history_names")
         val subscriptions = stringPreferencesKey("subscriptions_json")
+        val subscriptionHwid = stringPreferencesKey("subscription_hwid")
         val activeSubscriptionId = stringPreferencesKey("active_subscription_id")
         val profileSourceMode = stringPreferencesKey("profile_source_mode")
         val appMode = stringPreferencesKey("app_mode")
@@ -120,6 +121,18 @@ class ProfileStorage(
             }
         }
         .map(::mapState)
+
+    override suspend fun ensureSubscriptionHwid(): String {
+        var resolved = ""
+        context.dataStore.edit { prefs ->
+            val existing = prefs[Keys.subscriptionHwid]
+                ?.trim()
+                .orEmpty()
+            resolved = existing.ifBlank { generateSubscriptionHwid() }
+            prefs[Keys.subscriptionHwid] = resolved
+        }
+        return resolved
+    }
 
     override suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean) {
         context.dataStore.edit { prefs ->
@@ -514,7 +527,7 @@ class ProfileStorage(
     }
 
     override suspend fun updateSelection(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         summary: String,
         runtimeConfigJson: String,
         sourceUrl: String,
@@ -795,6 +808,7 @@ class ProfileStorage(
         }
         return PersistedState(
             appLanguage = AppLanguage.fromStoredName(preferences[Keys.appLanguage]),
+            subscriptionHwid = preferences[Keys.subscriptionHwid].orEmpty(),
             profileUrl = if (isAllSubscriptionsGroupActive(activeSubscriptionId, subscriptions)) {
                 ""
             } else {
@@ -1134,5 +1148,9 @@ class ProfileStorage(
         const val MAX_CONNECTION_LOG_ITEMS = 120
         const val MAX_LATENCY_HISTORY_ITEMS = 50
         const val MAX_PROFILE_TOTALS_ITEMS = 100
+
+        fun generateSubscriptionHwid(): String {
+            return UUID.randomUUID().toString().replace("-", "")
+        }
     }
 }

@@ -2,7 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -107,6 +107,36 @@ class DesktopProxyConfigFactoryTest {
     }
 
     @Test
+    fun buildVpnConfigRoutesCustomDnsDirect() {
+        val config = DesktopProxyConfigFactory.buildVpnConfig(
+            profile = testProfile(),
+            dns = DesktopDnsSettings(enabled = true, value = "9.9.9.9"),
+            routingRules = RoutingRules(ignoreRules = true),
+        )
+
+        val root = Json.parseToJsonElement(config).jsonObject
+        val dnsServer = root.getValue("dns")
+            .jsonObject
+            .getValue("servers")
+            .jsonArray
+            .single()
+            .jsonObject
+        val directCidrs = root.getValue("route")
+            .jsonObject
+            .getValue("rules")
+            .jsonArray
+            .first { rule -> rule.jsonObject.containsKey("ip_cidr") }
+            .jsonObject
+            .getValue("ip_cidr")
+            .jsonArray
+            .map { it.jsonPrimitive.content }
+
+        assertEquals("custom-dns", dnsServer.getValue("tag").jsonPrimitive.content)
+        assertEquals("9.9.9.9", dnsServer.getValue("server").jsonPrimitive.content)
+        assertTrue(directCidrs.contains("9.9.9.9/32"))
+    }
+
+    @Test
     fun buildProxyOnlyConfigDoesNotInjectDesktopProbeRouting() {
         val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = testProfile(),
@@ -128,7 +158,7 @@ class DesktopProxyConfigFactoryTest {
 
     @Test
     fun resolvedValidationServerPreservesImplicitTlsAndWebSocketHosts() {
-        val profile = VlessProfile(
+        val profile = ProxyProfile(
             protocol = ProxyProtocol.VLESS,
             remarks = "VLESS WS TLS",
             server = "edge.example.net",
@@ -171,8 +201,8 @@ class DesktopProxyConfigFactoryTest {
         assertEquals("edge.example.net", transportHeaders.getValue("Host").jsonPrimitive.content)
     }
 
-    private fun testProfile(): VlessProfile {
-        return VlessProfile(
+    private fun testProfile(): ProxyProfile {
+        return ProxyProfile(
             protocol = ProxyProtocol.SOCKS,
             remarks = "Test SOCKS",
             server = "127.0.0.1",

@@ -2,7 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import android.content.Context
 import com.kardinal.vpncontrol.model.ProfileBenchmark
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -47,7 +47,7 @@ class ProxyValidationRuntime(
     private val chatGptBlockedMarkers: List<String>,
 ) {
     suspend fun preflightProfiles(
-        profiles: List<VlessProfile>,
+        profiles: List<ProxyProfile>,
         settings: ValidationRuntimeSettings,
     ): List<PreflightResult> = coroutineScope {
         val semaphore = Semaphore(settings.prefilterConcurrency)
@@ -61,7 +61,7 @@ class ProxyValidationRuntime(
     }
 
     suspend fun preflightProfile(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         settings: ValidationRuntimeSettings,
     ): PreflightResult = withContext(Dispatchers.IO) {
         try {
@@ -134,7 +134,7 @@ class ProxyValidationRuntime(
         }
     }
 
-    private fun createProxyConfig(profile: VlessProfile, httpPort: Int, dnsSettings: DnsSettings): File {
+    private fun createProxyConfig(profile: ProxyProfile, httpPort: Int, dnsSettings: DnsSettings): File {
         val temp = File.createTempFile("vpn_proxy", ".json", context.cacheDir)
         temp.writeText(SingBoxConfigFactory.buildProxyValidationConfig(profile, httpPort, dnsSettings))
         return temp

@@ -16,6 +16,33 @@ $DistRoot = if ([System.IO.Path]::IsPathRooted($DistDir)) {
     Join-Path $RepoRoot $DistDir
 }
 
+function Test-GeneratedTrackedPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $Normalized = $Path -replace "\\", "/"
+    return (
+        $Normalized -like "app/build/*" -or
+        $Normalized -like "shared/*/build/*" -or
+        $Normalized -like "desktopApp/build/*" -or
+        $Normalized -like "desktopApp/src/main/resources/bin/*" -or
+        $Normalized -like "dist/*" -or
+        $Normalized -like ".runtime/*"
+    )
+}
+
+function Assert-ReleaseHygiene {
+    $Tracked = & git ls-files
+    if ($LASTEXITCODE -ne 0) {
+        throw "git ls-files failed with exit code $LASTEXITCODE"
+    }
+    $BadPaths = @($Tracked | Where-Object { Test-GeneratedTrackedPath $_ })
+    if ($BadPaths.Count -gt 0) {
+        $List = ($BadPaths | ForEach-Object { " - $_" }) -join [Environment]::NewLine
+        throw "Generated release/runtime artifacts are tracked by Git. Remove these files from the index before packaging:$([Environment]::NewLine)$List"
+    }
+    Write-Host "[vpn-control] release hygiene passed"
+}
+
 function Invoke-CheckedNative {
     param(
         [Parameter(Mandatory = $true)]
@@ -29,6 +56,8 @@ function Invoke-CheckedNative {
         throw "$FilePath $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
     }
 }
+
+Assert-ReleaseHygiene
 
 Write-Host "[vpn-control] checking Java runtime"
 $PreviousErrorActionPreference = $ErrorActionPreference

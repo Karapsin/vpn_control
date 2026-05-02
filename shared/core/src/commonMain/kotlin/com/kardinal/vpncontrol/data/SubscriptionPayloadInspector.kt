@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.ProxyProfile
+
 object SubscriptionPayloadInspector {
     private val genericChallengeMarkers = listOf(
         "ddos-guard",
@@ -51,5 +53,37 @@ object SubscriptionPayloadInspector {
             else ->
                 "Subscription endpoint returned an invalid subscription payload: $detail"
         }
+    }
+
+    fun parsedProfileError(
+        profiles: List<ProxyProfile>,
+        responseHeaders: Map<String, String>,
+    ): String? {
+        if (profiles.isEmpty() || profiles.any { !it.isDeviceBindingPlaceholder() }) {
+            return null
+        }
+        return when {
+            responseHeaders.hasHeader("x-hwid-max-devices-reached") ->
+                "Subscription device limit reached. Reset provider devices or set an authorized x-hwid."
+            responseHeaders.hasHeader("x-hwid-not-supported") ->
+                "Subscription requires a supported x-hwid header."
+            responseHeaders.hasHwidHint() ->
+                "Subscription returned a device-binding placeholder. Check provider HWID/device limit."
+            else ->
+                "Subscription endpoint returned disabled placeholder locations"
+        }
+    }
+
+    private fun ProxyProfile.isDeviceBindingPlaceholder(): Boolean {
+        return server == "0.0.0.0" && serverPort <= 1
+    }
+
+    private fun Map<String, String>.hasHwidHint(): Boolean {
+        return keys.any { key -> key.startsWith("x-hwid", ignoreCase = true) } ||
+            values.any { value -> "x-hwid" in value.lowercase() }
+    }
+
+    private fun Map<String, String>.hasHeader(name: String): Boolean {
+        return keys.any { key -> key.equals(name, ignoreCase = true) }
     }
 }

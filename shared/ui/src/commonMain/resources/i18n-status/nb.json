@@ -1,0 +1,1551 @@
+{
+  "dynamic": {
+    "findingSubscription": "Finner beste lokasjon fra abonnementet...",
+    "findingSaved": "Finner beste lokasjon fra lagrede lokasjoner...",
+    "testingFastestCandidates": "Tester de raskeste kandidatene i puljer...",
+    "checkingLocations": "Sjekker {count} lokasjoner...",
+    "testingLocationsRange": "Tester lokasjoner {start}-{end} av {total}...",
+    "selectLocationFirst": "Velg en plassering først",
+    "checkingLocation": "Kontrollerer {name}...",
+    "testingLocation": "Tester {name}...",
+    "locationCheckCancelled": "Plasseringssjekk avbrutt",
+    "noLocationsToExport": "Ingen plasseringer å eksportere",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} t",
+    "refreshIntervalHoursMinutes": "{hours} t {minutes} min.",
+    "refreshIntervalEvery": "hver {interval}",
+    "refreshIntervalEveryHour": "hver time"
+  },
+  "benchmark": {
+    "best": "Beste: ",
+    "primary": "primær ",
+    "secondary": "sekundær ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "blokkert",
+      "cached": "bufret",
+      "challenge": "utfordring",
+      "custom_config_manual_only": "egendefinert konfigurasjon: kun manuell",
+      "error": "feil",
+      "manual": "manuell",
+      "ok": "OK",
+      "partial": "delvis",
+      "tcp_error": "TCP-feil",
+      "tcp_timeout": "TCP-tidsavbrudd",
+      "timeout": "tidsavbrudd",
+      "unreachable": "utilgjengelig",
+      "validation_timeout": "valideringstidsavbrudd"
+    }
+  },
+  "structured": {
+    "IDLE": "Inaktiv",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Automatisk abonnementsoppdatering satt til {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Valideringsinnstillinger lagret: {0} • {1} • pulje {2} • forsøk {3}",
+    "CUSTOM_DNS_SAVED": "Egendefinert DNS lagret",
+    "CUSTOM_DNS_DISABLED": "Egendefinert DNS deaktivert",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Finner beste lokasjon fra abonnementet...",
+    "FIND_BEST_FROM_SAVED": "Finner beste lokasjon fra lagrede lokasjoner...",
+    "STARTING_CONNECTION.VPN": "Starter VPN...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Starter lokal proxy...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Starter VPN med beste lokasjon...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Starter lokal proxy med beste lokasjon...",
+    "CONNECTION_STARTED.VPN": "VPN startet",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy startet",
+    "CONNECTION_STOPPED.VPN": "VPN stoppet",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy stoppet",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN klar på denne datamaskinen",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy klar på denne datamaskinen",
+    "DESKTOP_APP_INITIALIZED": "Appen er initialisert",
+    "RUNTIME_MODE.VPN": "Kjøremodus: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Kjøremodus: Proxy",
+    "LOCAL_PROXY": "Lokal proxy: {0}",
+    "RUNTIME_LOG": "Kjøretidslogg: {0}",
+    "PREFLIGHT_PASSED.VPN": "Forhåndssjekk av VPN-modus bestått",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Forhåndssjekk av kun proxy-modus bestått",
+    "PREFLIGHT_FAILED.VPN": "Forhåndssjekk av VPN-modus mislyktes: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Forhåndssjekk av kun proxy-modus mislyktes: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Skrivebords-VPN-funksjonalitet: klar",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Skrivebords-VPN-funksjonalitet: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Skrivebords-VPN-funksjonalitet: ikke klar",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Ingen lokasjoner tilgjengelige for benchmarking",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Søk etter beste lokasjon tidsavbrøt; beholder gjeldende tilkobling",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Lokasjonssøk avbrutt",
+    "LOCATION_SEARCH_FAILED": "Lokasjonssøk mislyktes",
+    "VPN_PERMISSION_REQUIRED": "Gi VPN-tillatelse og prøv på nytt",
+    "SELECTED_LOCATION_SAVE_FAILED": "Kunne ikke lagre den valgte lokasjonen",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN startet, men kunne ikke lagre valgt lokasjon",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy startet, men kunne ikke lagre valgt lokasjon",
+    "BEST_LOCATION_START_FAILED.VPN": "Kunne ikke starte VPN med beste lokasjon",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Kunne ikke starte proxy med beste lokasjon",
+    "BEST_LOCATION_SAVE_FAILED": "Kunne ikke lagre beste lokasjon",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN startet, men kunne ikke lagre beste lokasjon",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy startet, men kunne ikke lagre beste lokasjon",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Abonnementsoppdateringen er fullført. Finner beste lokasjon...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Abonnementsoppdateringen er fullført, men VPN-tillatelse kreves for å bytte i bakgrunnen. Forrige VPN-lokasjon beholdes som reserve.",
+    "NO_SUITABLE_LOCATION_FOUND": "Ingen egnet lokasjon funnet",
+    "BEST_LOCATION_NOT_MAPPED": "Beste lokasjon kunne ikke kobles til skrivebordslisten",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Aktiverte alle abonnementer",
+    "ACTIVATED_SUBSCRIPTION": "Aktiverte {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Abonnementsnavn tilbakestilt",
+    "SUBSCRIPTION_NAME_SAVED": "Abonnementsnavn lagret",
+    "SUBSCRIPTION_DELETED": "Abonnement slettet",
+    "SELECT_LOCATION_FIRST": "Velg en plassering først",
+    "CHECKING_LOCATION": "Kontrollerer {0}...",
+    "TESTING_LOCATION": "Tester {0}...",
+    "LOCATION_CHECK_CANCELLED": "Plasseringssjekk avbrutt",
+    "NO_LOCATIONS_TO_EXPORT": "Ingen plasseringer å eksportere",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Øktstatistikk aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Øktstatistikk skjult",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Trafikkstatistikk i sanntid aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Trafikkstatistikk i sanntid skjult",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Totaler per profil aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Totaler per profil skjult",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Latenshistorikk aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Latenshistorikk skjult",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Tilkoblingslogg aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Tilkoblingslogg skjult",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Tilkoblingstestverktøy aktivert",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Tilkoblingstestverktøy skjult",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Abonnementslokasjoner er skrivebeskyttet. Bytt til Lagrede lokasjoner for å lagre endringer.",
+    "INVALID_LOCATION_CONFIG": "Ugyldig lokasjonskonfigurasjon",
+    "LOCATION_ALREADY_SAVED": "Lokasjon allerede lagret: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Lokasjonen som skal redigeres, er ikke lenger tilgjengelig",
+    "LOCATION_ADDED": "Lokasjon lagt til: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Lokasjon oppdatert og slått sammen: {0}",
+    "LOCATION_UPDATED": "Lokasjon oppdatert: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Abonnementslokasjoner er skrivebeskyttet. Bytt til Lagrede lokasjoner for å slette dem.",
+    "SELECTED_LOCATION_REMOVED": "Valgt lokasjon fjernet: {0}",
+    "LOCATION_REMOVED": "Lokasjon fjernet: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Valgt lokasjon fjernet. VPN stoppet: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Valgt lokasjon fjernet. Proxy stoppet: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Fjerning av lokasjon ble rullet tilbake fordi VPN ikke kunne stoppes",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Fjerning av lokasjon ble rullet tilbake fordi proxyen ikke kunne stoppes",
+    "IMPORT_LOCATIONS_BLOCKED": "Bytt til Lagrede lokasjoner for å importere lokasjoner",
+    "IMPORT_LOCATIONS_FAILED": "Kunne ikke importere lokasjoner",
+    "LOCATIONS_IMPORTED": "Lokasjoner importert",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig, VPN stoppet",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig, proxy stoppet",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Lokasjonsimport ble rullet tilbake fordi VPN ikke kunne stoppes",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Lokasjonsimport ble rullet tilbake fordi proxyen ikke kunne stoppes",
+    "CLIPBOARD_EMPTY": "Utklippstavlen er tom",
+    "CLIPBOARD_READ_FAILED": "Lesing av utklippstavle mislyktes",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Abonnementsteksten ble lastet inn i Profil-fanen",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Koble fra først for å endre tilkoblingsmodus",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Regelsett fjernet",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Bytt til Lagrede lokasjoner for å legge til lokasjoner manuelt",
+    "HISTORY_ENTRY_DELETED": "Historikkoppføring slettet",
+    "SELECTED_LOCATION_UNCHANGED": "Valgt lokasjon uendret: {0}",
+    "SELECTED_LOCATION_SET": "Valgt lokasjon satt: {0}",
+    "LOCATION_CHECKED": "Location sjekked: {0}",
+    "LOCATION_CHECK_FAILED": "Lokasjonssjekk mislyktes",
+    "LOCATION_EDITED": "Redigerte lokasjon #{0}",
+    "SAMPLE_RULE_SET_ADDED": "La til a sample rule-set",
+    "RULE_SET_DELETED": "Slettet rule-set {0}",
+    "ROUTING_RULES_SAVED": "Rutingregler lagret",
+    "ROUTING_RULES_IMPORTED": "Rutingregler importert",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Rutingregler importert. Start VPN på nytt for å bruke dem",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Rutingregler importert. Start proxy på nytt for å bruke dem",
+    "ROUTING_RULES_IMPORT_FAILED": "Kunne ikke importere rutingregler",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Rutingregler kopiert til utklippstavlen",
+    "ROUTING_RULES_EXPORT_CANCELED": "Eksport av rutingregler avbrutt",
+    "ROUTING_RULES_EXPORTED_TO": "Rutingregler eksportert til {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Kunne ikke eksportere rutingregler",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Kunne ikke åpne fil med rutingregler",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Lokasjoner kopiert til utklippstavlen",
+    "LOCATIONS_EXPORT_CANCELED": "Lokasjonseksport avbrutt",
+    "LOCATIONS_EXPORTED_TO": "Lokasjoner eksportert til {0}",
+    "LOCATIONS_EXPORT_FAILED": "Kunne ikke eksportere lokasjoner",
+    "LOCATIONS_FILE_OPEN_FAILED": "Kunne ikke åpne lokasjonsfil",
+    "LOCATIONS_FILE_READ_FAILED": "Kunne ikke lese lokasjonsfil",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Diagnostikkeksport avbrutt",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostikk eksportert til {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Kunne ikke eksportere diagnostikk",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Kunne ikke åpne diagnostikkmål",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Ingen abonnementer å oppdatere",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Kunne ikke oppdatere oppstartsinnstilling",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Kunne ikke oppdatere oppstartsinnstilling: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Kunne ikke lagre oppdateringsinnstillinger",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Kunne ikke lagre oppdateringsinnstillinger: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Forrige VPN-økt blir gjenopprettet",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Forrige VPN-lokasjon er ikke lenger tilgjengelig",
+    "RESTORING_PREVIOUS_CONNECTION": "Gjenoppretter VPN: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN startet på {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy startet på {1}",
+    "CONNECTION_START_FAILED.VPN": "Kunne ikke starte VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Kunne ikke starte proxy",
+    "CONNECTION_STOP_FAILED.VPN": "Kunne ikke stoppe VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Kunne ikke stoppe proxy",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Appen ble lukket. VPN var av.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN stoppet. Kobler til på nytt ved neste oppstart.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy stoppet. Kobler til på nytt ved neste oppstart.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Kunne ikke stoppe VPN før avslutning",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Kunne ikke stoppe proxy før avslutning"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "Abonnements-URL"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Uleselig abonnements-URL"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Usikre HTTP-abonnementer støttes ikke"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Bruk en https:// abonnements-URL."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL-en må inneholde en gyldig HTTPS-vert"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Lim inn en gyldig https:// abonnements-URL."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Direkte ekstern kilde"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "sing-box-importlenke"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Uleselig sing-box-importlenke"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Bare gyldige eksterne HTTPS-URL-er støttes"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Bruk en sing-box-importlenke som løses til en gyldig https:// URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Henter eksternt innhold fra den innebygde URL-en"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Henter eksternt innhold fra "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Importlenken kunne ikke tolkes"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Lim inn en gyldig sing-box remote-profile-importlenke eller en direkte abonnements-URL."
+    },
+    {
+      "source": "VPN import link",
+      "target": "VPN-importlenke"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Uleselig VPN-importlenke"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Leverandørimport støttes ikke"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia og andre vpn://-importer støttes ikke. Bruk en vanlig abonnements-URL eller legg til lokasjoner manuelt."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Importnyttelasten kunne ikke dekodes"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn://-importer støttes ikke. Bruk en vanlig abonnements-URL eller legg til lokasjoner manuelt."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP-abonnements-URL-er støttes ikke. Bruk https:// i stedet."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Ekstern kilde må være en https:// URL eller en støttet importlenke"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Ekstern kilde er tom"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Ekstern kilde må være en gyldig https:// URL med en vert."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Denne sing-box-importen løses til en ugyldig URL eller en URL som ikke bruker HTTPS. Bruk en gyldig https:// URL i stedet."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Bruker valgt lokasjon..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Bruker oppdatert valgt lokasjon..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Søk etter beste lokasjon tidsavbrøt; beholder gjeldende tilkobling"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Utklippstavlen er tom"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Tilkoblingslogg aktivert"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Tilkoblingslogg skjult"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Tilkoblingstestverktøy aktivert"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Tilkoblingstestverktøy skjult"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Kunne ikke åpne eksportmål"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Kunne ikke åpne valgt fil"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Kunne ikke åpne valgt lokasjonsfil"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Kunne ikke åpne valgt regelfil"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Skrivebordsapp: Nederland fra Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Skrivebordsappen er initialisert"
+    },
+    {
+      "source": "App initialized",
+      "target": "Appen er initialisert"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Eksporter lokasjoner"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Kunne ikke bruke oppdatert valgt lokasjon"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Kunne ikke eksportere diagnostikk"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Kunne ikke eksportere lokasjoner"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Kunne ikke eksportere rutingregler"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Kunne ikke finne en erstatningslokasjon"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Kunne ikke importere fil"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Kunne ikke åpne diagnostikkmål"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Kunne ikke lagre oppdateringsinnstillinger"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Kunne ikke oppdatere oppstartsinnstilling"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Import avbrutt"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Ugyldig abonnements-URL"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Latenshistorikk aktivert"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Latenshistorikk skjult"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Trafikkstatistikk i sanntid aktivert"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Trafikkstatistikk i sanntid skjult"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Lokasjonssjekk avbrutt"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Lokasjonssjekk mislyktes"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Lokasjoner eksportert"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Lokasjonsimport avbrutt"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Ingen lokasjoner tilgjengelige for benchmarking"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Ingen abonnementer å oppdatere"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Ingen egnet lokasjon funnet"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totaler per profil aktivert"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totaler per profil skjult"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Forrige VPN-økt blir gjenopprettet"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR-skanning avbrutt"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Rutingregler eksportert"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Import av rutingregler avbrutt"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Rutingregler lagret"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Øktstatistikk aktivert"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Øktstatistikk skjult"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Delt tekst er ikke en støttet importnyttelast"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Abonnement slettet"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Abonnementsoppdateringen er fullført, men VPN-tillatelse kreves for å bytte i bakgrunnen. Forrige VPN-lokasjon beholdes som reserve."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Abonnementsoppdateringen er fullført. Finner beste lokasjon..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Abonnementsoppdateringen er fullført. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Kjøremodus: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Lokal proxy: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Kjøretidslogg: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Forhåndssjekk av VPN-modus bestått"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Forhåndssjekk av kun proxy-modus bestått"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Forhåndssjekk av VPN-modus mislyktes: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Forhåndssjekk av kun proxy-modus mislyktes: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN-modus utilgjengelig: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Kun proxy-modus utilgjengelig: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Skrivebords-VPN-funksjonalitet: klar"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Skrivebords-VPN-funksjonalitet: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN-modus tilgjengelig"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Proxymodus tilgjengelig"
+    },
+    {
+      "source": "not ready",
+      "target": "ikke klar"
+    },
+    {
+      "source": " checks",
+      "target": " sjekker"
+    },
+    {
+      "source": " check",
+      "target": " sjekk"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "feil på TUN-enhet: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "feil med nettverksprivilegier: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "feil med rute-/DNS-verktøy: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN-enhet"
+    },
+    {
+      "source": "network privileges",
+      "target": "nettverksprivilegier"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "rute-/DNS-verktøy"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Linux TUN-enhet mangler på /dev/net/tun. Prøv: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-modus på datamaskinen krever CAP_NET_ADMIN. Kjør med root-rettigheter eller gi sing-box rettigheter: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows rute-/DNS-verktøy er utilgjengelige. VPN-modus trenger netsh.exe og PowerShell-cmdleter for DNS-klienten."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN klar på denne datamaskinen"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy klar på denne datamaskinen"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startet"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppet"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startet"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppet"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starter VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starter lokal proxy..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starter VPN med beste lokasjon..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starter lokal proxy med beste lokasjon..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finner beste lokasjon fra abonnementet..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finner beste lokasjon fra lagrede lokasjoner..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lokasjonssøk avbrutt"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lokasjonssøk mislyktes"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Gi VPN-tillatelse og prøv på nytt"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Angi en ekstern kilde først"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Legg til minst én lagret lokasjon først"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Velg en lokasjon først"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Ingen abonnementer lagret ennå"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Oppdaterer alle abonnementer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Oppdaterer aktivt abonnement..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Oppdaterer abonnement..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Oppdaterer abonnementer..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Oppdaterer abonnement automatisk..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Oppdaterer abonnementer automatisk..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement oppdatert"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementer oppdatert"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivt abonnement oppdatert"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementer oppdatert"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Oppdatering mislyktes"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkilde satt til abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkilde satt til lagrede lokasjoner"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Tilkoblingsmodus satt til VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Tilkoblingsmodus satt til kun proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Koble fra først for å endre tilkoblingsmodus"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikkoppføring slettet"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnavn tilbakestilt"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnavn lagret"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Språk satt til systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Egendefinert DNS lagret"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Egendefinert DNS deaktivert"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rutingregler lagret"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rutingregler importert"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokasjoner importert"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Bytt til Lagrede lokasjoner for å importere lokasjoner"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Bytt til Lagrede lokasjoner for å legge til lokasjoner manuelt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ugyldig lokasjonskonfigurasjon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokasjonen som skal redigeres, er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikkeksport åpnet"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikkeksport mislyktes"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikkeksport avbrutt"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Forrige VPN-lokasjon er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen ble lukket. VPN var av."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Aktiverte alle abonnementer"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementer valgt"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement valgt"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokasjoner kopiert til utklippstavlen"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Lokasjonseksport avbrutt"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rutingregler kopiert til utklippstavlen"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksport av rutingregler avbrutt"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Profilkildemodus: abonnement"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Profilkildemodus: lagrede plasseringer"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Starter VPN med den nye beste plasseringen..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Starter proxy med den nye beste plasseringen..."
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN-modus på datamaskinen krever CAP_NET_ADMIN. Kjør med root-rettigheter eller gi sing-box rettigheter: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Abonnementslokasjoner er skrivebeskyttet. Bytt til Lagrede lokasjoner for å lagre endringer."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Abonnementslokasjoner er skrivebeskyttet. Bytt til Lagrede lokasjoner for å slette dem."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Abonnement mottatt. Se gjennom og lagre det på Profil-fanen."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Abonnementslenke mottatt. Se gjennom og lagre den på Profil-fanen."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Lokasjonskonfigurasjon mottatt. Se gjennom og lagre den på Lokasjoner-fanen."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Starter lokal proxy med beste lokasjon..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Starter VPN med beste lokasjon..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Finner beste lokasjon fra abonnementet..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Finner beste lokasjon fra lagrede lokasjoner..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig, proxy stoppet"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig, VPN stoppet"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Lokasjoner importert. Valgt lokasjon er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Valgt lokasjon brukt, men kunne ikke lagres"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Fjerning av lokasjon ble rullet tilbake fordi proxyen ikke kunne stoppes"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Fjerning av lokasjon ble rullet tilbake fordi VPN ikke kunne stoppes"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Lokasjonsimport ble rullet tilbake fordi proxyen ikke kunne stoppes"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Lokasjonsimport ble rullet tilbake fordi VPN ikke kunne stoppes"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN stoppet. Oppdaterte abonnementer fjernet den valgte lokasjonen."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy stoppet. Oppdaterte abonnementer fjernet den valgte lokasjonen."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN stoppet. Kobler til på nytt ved neste oppstart."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy stoppet. Kobler til på nytt ved neste oppstart."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Rutingregler lagret. Start VPN på nytt for å bruke dem"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Rutingregler lagret. Start proxy på nytt for å bruke dem"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Rutingregler importert. Start VPN på nytt for å bruke dem"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Rutingregler importert. Start proxy på nytt for å bruke dem"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Valgt lokasjon fjernet. VPN stoppet: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Valgt lokasjon fjernet. Proxy stoppet: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Beste lokasjon valgt og VPN startet: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Beste lokasjon valgt og proxy startet: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN startet, men kunne ikke lagre valgt lokasjon"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy startet, men kunne ikke lagre valgt lokasjon"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN startet, men kunne ikke lagre beste lokasjon"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy startet, men kunne ikke lagre beste lokasjon"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Kunne ikke starte VPN med beste lokasjon"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Kunne ikke starte proxy med beste lokasjon"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Kunne ikke lagre den valgte lokasjonen"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Kunne ikke lagre valgt lokasjon"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Kunne ikke lagre beste lokasjon"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Kunne ikke bruke valgt lokasjon"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Kunne ikke velge lokasjon"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Kunne ikke stoppe VPN før avslutning"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Kunne ikke stoppe proxy før avslutning"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Kunne ikke stoppe VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Kunne ikke stoppe proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Kunne ikke starte VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Kunne ikke starte proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Kunne ikke klargjøre VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Kunne ikke klargjøre proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Klargjør VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Klargjør proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN-start avbrutt"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Proxy-start avbrutt"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN-stopp avbrutt"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Proxy-stopp avbrutt"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Starter lokal proxy..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Starter VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Oppdaterer alle abonnementer..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Oppdaterer aktivt abonnement..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Oppdaterer abonnementer..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Oppdaterer abonnement..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Oppdaterer abonnementer automatisk..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Oppdaterer abonnement automatisk..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Alle abonnementer oppdatert"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktivt abonnement oppdatert"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonnementer oppdatert"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonnement oppdatert"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Oppdatering mislyktes"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lokasjonssøk avbrutt"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lokasjonssøk mislyktes"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Gi VPN-tillatelse og prøv på nytt"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Angi en ekstern kilde først"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Legg til minst én lagret lokasjon først"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Velg en lokasjon først"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Ingen abonnementer lagret ennå"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profilkilde satt til abonnement"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profilkilde satt til lagrede lokasjoner"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Tilkoblingsmodus satt til VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Tilkoblingsmodus satt til kun proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Koble fra først for å endre tilkoblingsmodus"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Historikkoppføring slettet"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonnementsnavn tilbakestilt"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonnementsnavn lagret"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Språk satt til systemstandard"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Egendefinert DNS lagret"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Egendefinert DNS deaktivert"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rutingregler lagret"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rutingregler importert"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Lokasjoner importert"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Bytt til Lagrede lokasjoner for å importere lokasjoner"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Bytt til Lagrede lokasjoner for å legge til lokasjoner manuelt"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Ugyldig lokasjonskonfigurasjon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Lokasjonen som skal redigeres, er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikkeksport åpnet"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikkeksport mislyktes"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikkeksport avbrutt"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Forrige VPN-lokasjon er ikke lenger tilgjengelig"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Appen ble lukket. VPN var av."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Aktiverte alle abonnementer"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Alle abonnementer valgt"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonnement valgt"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonnement lagret"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Lokasjoner kopiert til utklippstavlen"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Lokasjonseksport avbrutt"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rutingregler kopiert til utklippstavlen"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksport av rutingregler avbrutt"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Lesing av utklippstavle mislyktes"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Ingen lokasjoner å eksportere"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Kunne ikke laste apper"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Kunne ikke oppdatere abonnementer"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Kunne ikke oppdatere det aktive abonnementet"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Kunne ikke importere rutingregler"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Kunne ikke lagre rutingregler"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Kunne ikke importere lokasjoner"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Kunne ikke åpne lokasjonsfil"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Kunne ikke lese lokasjonsfil"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Kunne ikke åpne fil med rutingregler"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Beste lokasjon kunne ikke kobles til skrivebordslisten"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN klar på denne datamaskinen"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy klar på denne datamaskinen"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Skrivebords-VPN-skall klart"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Skrivebords-proxy-skall klart"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN startet på "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy startet på "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN stoppet. Appmodus: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy stoppet. Appmodus: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Språk satt til "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Automatisk abonnementsoppdatering satt til "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Valideringsinnstillinger lagret: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Valgt lokasjon uendret: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Valgt lokasjon fjernet: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Valgt lokasjon satt: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Lokasjon oppdatert og slått sammen: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Lokasjon allerede lagret: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Lokasjon oppdatert: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Lokasjon fjernet: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Lokasjon lagt til: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonnementer oppdatert: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Mislyktes: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Gjenoppretter VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Oppdaterer "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Lokasjoner eksportert til "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Rutingregler eksportert til "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostikk eksportert til "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Kunne ikke benchmarke "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktiverte "
+    },
+    {
+      "source": "Added ",
+      "target": "La til "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Slettet "
+    },
+    {
+      "source": "Selected ",
+      "target": "Valgte "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Redigerte lokasjon #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Appmodus: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " lokasjoner oppdatert"
+    },
+    {
+      "source": " location refreshed",
+      "target": " lokasjon oppdatert"
+    },
+    {
+      "source": " • batch ",
+      "target": " • pulje "
+    },
+    {
+      "source": " • retries ",
+      "target": " • forsøk "
+    },
+    {
+      "source": "custom interval",
+      "target": "egendefinert intervall"
+    },
+    {
+      "source": "every hour",
+      "target": "hver time"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "alle abonnementer"
+    },
+    {
+      "source": "selected subscription",
+      "target": "valgt abonnement"
+    },
+    {
+      "source": "proxy only",
+      "target": "kun proxy"
+    },
+    {
+      "source": "off",
+      "target": "av"
+    },
+    {
+      "source": "Idle",
+      "target": "Inaktiv"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN startet"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN stoppet"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy startet"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy stoppet"
+    }
+  ]
+}

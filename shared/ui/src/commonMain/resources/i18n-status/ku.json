@@ -1,0 +1,1547 @@
+{
+  "dynamic": {
+    "findingSubscription": "Cihê herî baş ji abonetiyê tê dîtin...",
+    "findingSaved": "Cihê herî baş ji cihên tomarkirî tê dîtin...",
+    "testingFastestCandidates": "Berbijarên herî bilez bi koman têne ceribandin...",
+    "checkingLocations": "{count} cih têne kontrolkirin...",
+    "testingLocationsRange": "Cihên {start}-{end} ji {total} têne ceribandin...",
+    "selectLocationFirst": "Pêşî cîhek hilbijêre",
+    "checkingLocation": "{name} tê kontrolkirin...",
+    "testingLocation": "{name} tê ceribandin...",
+    "locationCheckCancelled": "Kontrola cihê hat betalkirin",
+    "noLocationsToExport": "Cih tune ye ji bo derxistin",
+    "refreshIntervalMinutes": "{count} xulek",
+    "refreshIntervalHours": "{count} demjimêr",
+    "refreshIntervalHoursMinutes": "{hours} demjimêr {minutes} xulek",
+    "refreshIntervalEvery": "her {interval}",
+    "refreshIntervalEveryHour": "her demjimêr"
+  },
+  "benchmark": {
+    "best": "Herî baş: ",
+    "primary": "sereke ",
+    "secondary": "duyemîn ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "astengkirî",
+      "cached": "cachekirî",
+      "challenge": "astenga kontrolê",
+      "custom_config_manual_only": "mîhenga taybet tenê destan",
+      "error": "çewtî",
+      "manual": "destan",
+      "ok": "baş",
+      "partial": "qismî",
+      "tcp_error": "çewtiya TCP",
+      "tcp_timeout": "demtêketina TCP",
+      "timeout": "demtêketin",
+      "unreachable": "negihîştbar",
+      "validation_timeout": "demtêketina erêkirinê"
+    }
+  },
+  "structured": {
+    "IDLE": "Bêkar",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Xweber nûkirina abonetiyê hate danîn: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Mîhengên erêkirinê hatin tomarkirin: {0} • {1} • kom {2} • dubare {3}",
+    "CUSTOM_DNS_SAVED": "DNS ya taybet hate tomarkirin",
+    "CUSTOM_DNS_DISABLED": "DNS ya taybet hate neçalakkirin",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Cihê herî baş ji abonetiyê tê dîtin...",
+    "FIND_BEST_FROM_SAVED": "Cihê herî baş ji cihên tomarkirî tê dîtin...",
+    "STARTING_CONNECTION.VPN": "VPN tê destpêkirin...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Proxyya herêmî tê destpêkirin...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "VPN bi cihê herî baş tê destpêkirin...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Proxyya herêmî bi cihê herî baş tê destpêkirin...",
+    "CONNECTION_STARTED.VPN": "VPN dest pê kir",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy dest pê kir",
+    "CONNECTION_STOPPED.VPN": "VPN rawestiya",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy rawestiya",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN li ser vê komputerê amade ye",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy li ser vê komputerê amade ye",
+    "DESKTOP_APP_INITIALIZED": "Sepan amade bû",
+    "RUNTIME_MODE.VPN": "Moda xebitandinê: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Moda xebitandinê: Proxy",
+    "LOCAL_PROXY": "Proxyya herêmî: {0}",
+    "RUNTIME_LOG": "Tomara xebitandinê: {0}",
+    "PREFLIGHT_PASSED.VPN": "Kontrola pêşîn a moda VPNê derbas bû",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Kontrola pêşîn a moda tenê-proxy derbas bû",
+    "PREFLIGHT_FAILED.VPN": "Kontrola pêşîn a moda VPNê bi ser neket: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Kontrola pêşîn a moda tenê-proxy bi ser neket: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Kapasîteya VPN ya desktopê: amade",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Kapasîteya VPN ya desktopê: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Kapasîteya VPN ya desktopê: ne amade ye",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Ji bo benchmarkê cih tune ne",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Lêgerîna cihê herî baş demtêket; girêdana niha tê parastin",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Lêgerîna cihê hate betalkirin",
+    "LOCATION_SEARCH_FAILED": "Lêgerîna cihê bi ser neket",
+    "VPN_PERMISSION_REQUIRED": "Destûra VPNê bide û dîsa biceribîne",
+    "SELECTED_LOCATION_SAVE_FAILED": "Tomarkirina cihê hilbijartî bi ser neket",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN dest pê kir, lê tomarkirina cihê hilbijartî bi ser neket",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy dest pê kir, lê tomarkirina cihê hilbijartî bi ser neket",
+    "BEST_LOCATION_START_FAILED.VPN": "Destpêkirina VPNê bi cihê herî baş bi ser neket",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Destpêkirina proxyê bi cihê herî baş bi ser neket",
+    "BEST_LOCATION_SAVE_FAILED": "Tomarkirina cihê herî baş bi ser neket",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN dest pê kir, lê tomarkirina cihê herî baş bi ser neket",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy dest pê kir, lê tomarkirina cihê herî baş bi ser neket",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Nûkirina abonetiyê qedî. Cihê herî baş tê dîtin...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Nûkirina abonetiyê qedî, lê ji bo guheztina di paşxaneyê de destûra VPNê hewce ye. Cihê VPNê yê berê wekî cîgir hate parastin.",
+    "NO_SUITABLE_LOCATION_FOUND": "Cihê guncaw nehat dîtin",
+    "BEST_LOCATION_NOT_MAPPED": "Cihê herî baş nehat girêdan bi lîsteya desktopê",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Hemû abonetî hatin çalakkirin",
+    "ACTIVATED_SUBSCRIPTION": "Çalak kir: {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Navê abonetiyê hate resetkirin",
+    "SUBSCRIPTION_NAME_SAVED": "Navê abonetiyê hate tomarkirin",
+    "SUBSCRIPTION_DELETED": "Abonetî hate jêbirin",
+    "SELECT_LOCATION_FIRST": "Pêşî cîhek hilbijêre",
+    "CHECKING_LOCATION": "{0} tê kontrolkirin...",
+    "TESTING_LOCATION": "{0} tê ceribandin...",
+    "LOCATION_CHECK_CANCELLED": "Kontrola cihê hat betalkirin",
+    "NO_LOCATIONS_TO_EXPORT": "Cih tune ye ji bo derxistin",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Amarên danişînê çalak bûn",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Amarên danişînê hatin veşartin",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Amarên trafîka zindî çalak bûn",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Amarên trafîka zindî hatin veşartin",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Koma giştî ya per-profîl çalak bû",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Koma giştî ya per-profîl hate veşartin",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Dîroka derengiyê çalak bû",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Dîroka derengiyê hate veşartin",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Tomara girêdanê çalak bû",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Tomara girêdanê hate veşartin",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Amûrên ceribandina girêdanê çalak bûn",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Amûrên ceribandina girêdanê hatin veşartin",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Cihên abonetiyê tenê-xwendin in. Ji bo tomarkirina sererastkirinan derbasî Cihên tomarkirî bibe.",
+    "INVALID_LOCATION_CONFIG": "Mîhenga cihê nederbasdar e",
+    "LOCATION_ALREADY_SAVED": "Cih jixwe tomarkirî ye: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Cihê ji bo sererastkirinê êdî berdest nîne",
+    "LOCATION_ADDED": "Cih lê hate zêdekirin: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Cih hat nûkirin û yek kirin: {0}",
+    "LOCATION_UPDATED": "Cih hat nûkirin: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Cihên abonetiyê tenê-xwendin in. Ji bo jêbirina wan derbasî Cihên tomarkirî bibe.",
+    "SELECTED_LOCATION_REMOVED": "Cihê hilbijartî hate jêbirin: {0}",
+    "LOCATION_REMOVED": "Cih hate jêbirin: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Cihê hilbijartî hate jêbirin. VPN rawestiya: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Cihê hilbijartî hate jêbirin. Proxy rawestiya: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Jêbirina cihê hate vegerandin ji ber ku VPN nehat rawestandin",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Jêbirina cihê hate vegerandin ji ber ku proxy nehat rawestandin",
+    "IMPORT_LOCATIONS_BLOCKED": "Ji bo têxistina cihan derbasî Cihên tomarkirî bibe",
+    "IMPORT_LOCATIONS_FAILED": "Têxistina cihan bi ser neket",
+    "LOCATIONS_IMPORTED": "Cih hatin têxistin",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne, VPN rawestiya",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne, proxy rawestiya",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Têxistina cihan hate vegerandin ji ber ku VPN nehat rawestandin",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Têxistina cihan hate vegerandin ji ber ku proxy nehat rawestandin",
+    "CLIPBOARD_EMPTY": "Panoya kopîkirinê vala ye",
+    "CLIPBOARD_READ_FAILED": "Xwendina panoya kopîkirinê bi ser neket",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Nivîsa abonetiyê di hilpekîna Profîl de hate barkirin",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Ji bo guhartina moda girêdanê pêşî girêdanê qut bike",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Komika rêzikan hate rakirin",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Ji bo zêdekirina cihan bi destan derbasî Cihên tomarkirî bibe",
+    "HISTORY_ENTRY_DELETED": "Têketina dîrokê hate jêbirin",
+    "SELECTED_LOCATION_UNCHANGED": "Cihê hilbijartî neguherî: {0}",
+    "SELECTED_LOCATION_SET": "Cihê hilbijartî hate danîn: {0}",
+    "LOCATION_CHECKED": "Location kontroled: {0}",
+    "LOCATION_CHECK_FAILED": "Kontrola cihê bi ser neket",
+    "LOCATION_EDITED": "Cih hate sererastkirin #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Lê zêde kir: a sample rule-set",
+    "RULE_SET_DELETED": "Jê bir: rule-set {0}",
+    "ROUTING_RULES_SAVED": "Rêzikên rêkirinê hatin tomarkirin",
+    "ROUTING_RULES_IMPORTED": "Rêzikên rêkirinê hatin têxistin",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Rêzikên rêkirinê hatin têxistin. Ji bo sepandinê VPNê ji nû ve dest pê bike",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Rêzikên rêkirinê hatin têxistin. Ji bo sepandinê proxy ji nû ve dest pê bike",
+    "ROUTING_RULES_IMPORT_FAILED": "Têxistina rêzikên rêkirinê bi ser neket",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Rêzikên rêkirinê li panoya kopîkirinê hatin kopîkirin",
+    "ROUTING_RULES_EXPORT_CANCELED": "Derxistina rêzikên rêkirinê hate betalkirin",
+    "ROUTING_RULES_EXPORTED_TO": "Rêzikên rêkirinê hatin derxistin bo {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Derxistina rêzikên rêkirinê bi ser neket",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Vekirina pelê rêzikên rêkirinê bi ser neket",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Cih li panoya kopîkirinê hatin kopîkirin",
+    "LOCATIONS_EXPORT_CANCELED": "Derxistina cihan hate betalkirin",
+    "LOCATIONS_EXPORTED_TO": "Cih hatin derxistin bo {0}",
+    "LOCATIONS_EXPORT_FAILED": "Derxistina cihan bi ser neket",
+    "LOCATIONS_FILE_OPEN_FAILED": "Vekirina pelê cihan bi ser neket",
+    "LOCATIONS_FILE_READ_FAILED": "Xwendina pelê cihan bi ser neket",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Derxistina diagnostîkê hate betalkirin",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostîk hat derxistin bo {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Derxistina diagnostîkê bi ser neket",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Vekirina cihê diagnostîkê bi ser neket",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Abonetî ji bo nûkirinê tune ne",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Nûkirina mîhenga destpêkirinê bi ser neket",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Nûkirina mîhenga destpêkirinê bi ser neket: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Tomarkirina mîhengên nûkirinê bi ser neket",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Tomarkirina mîhengên nûkirinê bi ser neket: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Danişîna VPNê ya berê dê bê vegerandin",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Cihê VPNê yê berê êdî berdest nîne",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN tê vegerandin: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN dest pê kir li {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy dest pê kir li {1}",
+    "CONNECTION_START_FAILED.VPN": "Destpêkirina VPNê bi ser neket",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Destpêkirina proxyê bi ser neket",
+    "CONNECTION_STOP_FAILED.VPN": "Rawestandina VPNê bi ser neket",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Rawestandina proxyê bi ser neket",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Sepan hate girtin. VPN girtî bû.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN rawestiya. Di destpêkirina bê de dê ji nû ve girê bide.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy rawestiya. Di destpêkirina bê de dê ji nû ve girê bide.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Rawestandina VPNê beriya derketinê bi ser neket",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Rawestandina Proxy beriya derketinê bi ser neket"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL ya abonetiyê"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL ya abonetiyê nayê xwendin"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Abonetiyên HTTP yên bêewle nayên piştgirîkirin"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "URL ya abonetiyê ya https:// bi kar bîne."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "Divê URL hostekî HTTPS yê derbasdar hebîne"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "URL ya abonetiyê ya https:// ya derbasdar pêve bike."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Çavkaniya dûr ya rasterast"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "Girêdana têxistina sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Girêdana têxistina sing-box nayê xwendin"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Tenê URL yên dûr yên HTTPS yên derbasdar têne piştgirîkirin"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Girêdaneke têxistina sing-box ku dibe URL ya derbasdar ya https:// bi kar bîne."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Naveroka dûr ji URL ya veşartî tîne"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Naveroka dûr tîne ji "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Girêdana têxistinê nehat parsekirin"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Girêdaneke derbasdar ya têxistina remote-profile ya sing-box an URL ya rasterast ya abonetiyê pêve bike."
+    },
+    {
+      "source": "VPN import link",
+      "target": "Girêdana têxistina VPNê"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Girêdana têxistina VPNê nayê xwendin"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Têxistina peydakerekî bêpiştgirî"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia û têxistinên din yên vpn:// nayên piştgirîkirin. URL ya abonetiyê ya asayî bi kar bîne an cihan bi destan lê zêde bike."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Barkirina têxistinê nehat dekodkirin"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Têxistinên vpn:// nayên piştgirîkirin. URL ya abonetiyê ya asayî bi kar bîne an cihan bi destan lê zêde bike."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "URL yên abonetiyê yên HTTP nayên piştgirîkirin. Li şûna wê https:// bi kar bîne."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Divê çavkaniya dûr URL ya https:// an girêdaneke têxistinê ya piştgirîkirî be"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Çavkaniya dûr vala ye"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Divê çavkaniya dûr URL ya https:// ya derbasdar bi hostê be."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Ev têxistina sing-box dibe URL ya nederbasdar an ne-HTTPS. Li şûna wê URL ya https:// ya derbasdar bi kar bîne."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Cihê hilbijartî tê sepandin..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Cihê hilbijartî yê nûkirî tê sepandin..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Lêgerîna cihê herî baş demtêket; girêdana niha tê parastin"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Panoya kopîkirinê vala ye"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Tomara girêdanê çalak bû"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Tomara girêdanê hate veşartin"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Amûrên ceribandina girêdanê çalak bûn"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Amûrên ceribandina girêdanê hatin veşartin"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Cihê derxistinê nehat vekirin"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Pelê hilbijartî nehat vekirin"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Pelê cihên hilbijartî nehat vekirin"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Pelê rêzikên hilbijartî nehat vekirin"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Şêla desktopê: Holanda ji Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Sepana desktopê amade bû"
+    },
+    {
+      "source": "App initialized",
+      "target": "Sepan amade bû"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Cihan derxe"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Sepandina cihê hilbijartî yê nûkirî bi ser neket"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Derxistina diagnostîkê bi ser neket"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Derxistina cihan bi ser neket"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Derxistina rêzikên rêkirinê bi ser neket"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Dîtina cihê cîgir bi ser neket"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Têxistina pelê bi ser neket"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Vekirina cihê diagnostîkê bi ser neket"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Tomarkirina mîhengên nûkirinê bi ser neket"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Nûkirina mîhenga destpêkirinê bi ser neket"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Têxistin hate betalkirin"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL ya abonetiyê nederbasdar e"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Dîroka derengiyê çalak bû"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Dîroka derengiyê hate veşartin"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Amarên trafîka zindî çalak bûn"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Amarên trafîka zindî hatin veşartin"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Kontrola cihê hate betalkirin"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Kontrola cihê bi ser neket"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Cih hatin derxistin"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Têxistina cihan hate betalkirin"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Ji bo benchmarkê cih tune ne"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Abonetî ji bo nûkirinê tune ne"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Cihê guncaw nehat dîtin"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Koma giştî ya per-profîl çalak bû"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Koma giştî ya per-profîl hate veşartin"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Danişîna VPNê ya berê dê bê vegerandin"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "Scanê QR hate betalkirin"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Rêzikên rêkirinê hatin derxistin"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Têxistina rêzikên rêkirinê hate betalkirin"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Rêzikên rêkirinê hatin tomarkirin"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Amarên danişînê çalak bûn"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Amarên danişînê hatin veşartin"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Nivîsa parvekirî barkirina têxistinê ya piştgirîkirî nîne"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Abonetî hate jêbirin"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Nûkirina abonetiyê qedî, lê ji bo guheztina di paşxaneyê de destûra VPNê hewce ye. Cihê VPNê yê berê wekî cîgir hate parastin."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Nûkirina abonetiyê qedî. Cihê herî baş tê dîtin..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Nûkirina abonetiyê qedî. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Moda xebitandinê: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Proxyya herêmî: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Tomara xebitandinê: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Kontrola pêşîn a moda VPNê derbas bû"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Kontrola pêşîn a moda tenê-proxy derbas bû"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Kontrola pêşîn a moda VPNê bi ser neket: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Kontrola pêşîn a moda tenê-proxy bi ser neket: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Moda VPN berdest nîne: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Moda tenê-proxy berdest nîne: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Kapasîteya VPN ya desktopê: amade"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Kapasîteya VPN ya desktopê: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "Moda VPN berdest e"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Moda proxyê berdest e"
+    },
+    {
+      "source": "not ready",
+      "target": "ne amade ye"
+    },
+    {
+      "source": " checks",
+      "target": " kontrol"
+    },
+    {
+      "source": " check",
+      "target": " kontrol"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "têkçûna amûra TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "têkçûna destûrên torê: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "têkçûna amûrên route/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "Amûra TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "Destûrên torê"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "Amûrên route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Amûra TUN ya Linux li /dev/net/tun tune ye. Biceribîne: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Moda VPN ya desktopê CAP_NET_ADMIN hewce dike. Wek root bixebitîne an şiyanên sing-box bide: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Amûrên route/DNS yên Windows berdest nînin. Moda VPNê netsh.exe û cmdletên PowerShell yên DNS client hewce dike."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN li ser vê komputerê amade ye"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy li ser vê komputerê amade ye"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Bêkar"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN dest pê kir"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN rawestiya"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy dest pê kir"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy rawestiya"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN tê destpêkirin..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Proxyya herêmî tê destpêkirin..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN bi cihê herî baş tê destpêkirin..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Proxyya herêmî bi cihê herî baş tê destpêkirin..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Cihê herî baş ji abonetiyê tê dîtin..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Cihê herî baş ji cihên tomarkirî tê dîtin..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lêgerîna cihê hate betalkirin"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lêgerîna cihê bi ser neket"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Destûra VPNê bide û dîsa biceribîne"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Pêşî çavkaniya dûr saz bike"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Pêşî herî kêm cihekî tomarkirî lê zêde bike"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pêşî cihekî hilbijêre"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Hêj tu abonetî nehatine tomarkirin"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Hemû abonetî têne nûkirin..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Abonetiya çalak tê nûkirin..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Abonetî tê nûkirin..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Abonetî têne nûkirin..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Abonetî xweber tê nûkirin..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Abonetî xweber têne nûkirin..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonetî hat nûkirin"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonetî hatin nûkirin"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Abonetiya çalak hat nûkirin"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Hemû abonetî hatin nûkirin"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Nûkirin bi ser neket"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Çavkaniya profîlê li abonetiyê hate danîn"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Çavkaniya profîlê li cihên tomarkirî hate danîn"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Moda girêdanê li VPN hate danîn"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Moda girêdanê li tenê proxy hate danîn"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Ji bo guhartina moda girêdanê pêşî girêdanê qut bike"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Têketina dîrokê hate jêbirin"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Navê abonetiyê hate resetkirin"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Navê abonetiyê hate tomarkirin"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Ziman li xwerûya pergalê hate danîn"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS ya taybet hate tomarkirin"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS ya taybet hate neçalakkirin"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rêzikên rêkirinê hatin tomarkirin"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rêzikên rêkirinê hatin têxistin"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Cih hatin têxistin"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Ji bo têxistina cihan derbasî Cihên tomarkirî bibe"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Ji bo zêdekirina cihan bi destan derbasî Cihên tomarkirî bibe"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Mîhenga cihê nederbasdar e"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Cihê ji bo sererastkirinê êdî berdest nîne"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Derxistina diagnostîkê hate vekirin"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Derxistina diagnostîkê bi ser neket"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Derxistina diagnostîkê hate betalkirin"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Cihê VPNê yê berê êdî berdest nîne"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Sepan hate girtin. VPN girtî bû."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Hemû abonetî hatin çalakkirin"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Hemû abonetî hatin hilbijartin"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonetî hate hilbijartin"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Cih li panoya kopîkirinê hatin kopîkirin"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Derxistina cihan hate betalkirin"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rêzikên rêkirinê li panoya kopîkirinê hatin kopîkirin"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Derxistina rêzikên rêkirinê hate betalkirin"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Moda çavkaniya profîlê: abonetî"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Moda çavkaniya profîlê: cihên tomarkirî"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "VPN bi cihê herî baş ê nû dest pê dike..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Proxy bi cihê herî baş ê nû dest pê dike..."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Cihên abonetiyê tenê-xwendin in. Ji bo tomarkirina sererastkirinan derbasî Cihên tomarkirî bibe."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Cihên abonetiyê tenê-xwendin in. Ji bo jêbirina wan derbasî Cihên tomarkirî bibe."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Abonetî hat stendin. Li taba Profîlê binêre û wê tomar bike."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Girêdana abonetiyê hat stendin. Li taba Profîlê binêre û wê tomar bike."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Mîhenga cihê hat stendin. Li taba Cih binêre û wê tomar bike."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Proxyya herêmî bi cihê herî baş tê destpêkirin..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "VPN bi cihê herî baş tê destpêkirin..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Cihê herî baş ji abonetiyê tê dîtin..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Cihê herî baş ji cihên tomarkirî tê dîtin..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne, proxy rawestiya"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne, VPN rawestiya"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Cih hatin têxistin. Cihê hilbijartî êdî berdest nîne"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Cihê hilbijartî hat sepandin, lê tomarkirina wê bi ser neket"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Jêbirina cihê hate vegerandin ji ber ku proxy nehat rawestandin"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Jêbirina cihê hate vegerandin ji ber ku VPN nehat rawestandin"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Têxistina cihan hate vegerandin ji ber ku proxy nehat rawestandin"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Têxistina cihan hate vegerandin ji ber ku VPN nehat rawestandin"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN rawestiya. Abonetiyên nûkirî cihê hilbijartî jê birin."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy rawestiya. Abonetiyên nûkirî cihê hilbijartî jê birin."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN rawestiya. Di destpêkirina bê de dê ji nû ve girê bide."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy rawestiya. Di destpêkirina bê de dê ji nû ve girê bide."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Rêzikên rêkirinê hatin tomarkirin. Ji bo sepandinê VPNê ji nû ve dest pê bike"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Rêzikên rêkirinê hatin tomarkirin. Ji bo sepandinê proxy ji nû ve dest pê bike"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Rêzikên rêkirinê hatin têxistin. Ji bo sepandinê VPNê ji nû ve dest pê bike"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Rêzikên rêkirinê hatin têxistin. Ji bo sepandinê proxy ji nû ve dest pê bike"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Cihê hilbijartî hate jêbirin. VPN rawestiya: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Cihê hilbijartî hate jêbirin. Proxy rawestiya: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Cihê herî baş hate hilbijartin û VPN dest pê kir: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Cihê herî baş hate hilbijartin û proxy dest pê kir: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN dest pê kir, lê tomarkirina cihê hilbijartî bi ser neket"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy dest pê kir, lê tomarkirina cihê hilbijartî bi ser neket"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN dest pê kir, lê tomarkirina cihê herî baş bi ser neket"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy dest pê kir, lê tomarkirina cihê herî baş bi ser neket"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Destpêkirina VPNê bi cihê herî baş bi ser neket"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Destpêkirina proxyê bi cihê herî baş bi ser neket"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Tomarkirina cihê hilbijartî bi ser neket"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Tomarkirina cihê hilbijartî bi ser neket"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Tomarkirina cihê herî baş bi ser neket"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Sepandina cihê hilbijartî bi ser neket"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Hilbijartina cihê bi ser neket"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Rawestandina VPNê beriya derketinê bi ser neket"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Rawestandina Proxy beriya derketinê bi ser neket"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Rawestandina VPNê bi ser neket"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Rawestandina proxyê bi ser neket"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Destpêkirina VPNê bi ser neket"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Destpêkirina proxyê bi ser neket"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN nehat amadekirin"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Proxy nehat amadekirin"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN tê amadekirin"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Proxy tê amadekirin"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Destpêkirina VPNê hate betalkirin"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Destpêkirina proxyê hate betalkirin"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Rawestandina VPNê hate betalkirin"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Rawestandina proxyê hate betalkirin"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Proxyya herêmî tê destpêkirin..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN tê destpêkirin..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Hemû abonetî têne nûkirin..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Abonetiya çalak tê nûkirin..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Abonetî têne nûkirin..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Abonetî tê nûkirin..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Abonetî xweber têne nûkirin..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Abonetî xweber tê nûkirin..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Hemû abonetî hatin nûkirin"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Abonetiya çalak hat nûkirin"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonetî hatin nûkirin"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonetî hat nûkirin"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Nûkirin bi ser neket"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Lêgerîna cihê hate betalkirin"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Lêgerîna cihê bi ser neket"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Destûra VPNê bide û dîsa biceribîne"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Pêşî çavkaniya dûr saz bike"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Pêşî herî kêm cihekî tomarkirî lê zêde bike"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Pêşî cihekî hilbijêre"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Hêj tu abonetî nehatine tomarkirin"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Çavkaniya profîlê li abonetiyê hate danîn"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Çavkaniya profîlê li cihên tomarkirî hate danîn"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Moda girêdanê li VPN hate danîn"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Moda girêdanê li tenê proxy hate danîn"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Ji bo guhartina moda girêdanê pêşî girêdanê qut bike"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Têketina dîrokê hate jêbirin"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Navê abonetiyê hate resetkirin"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Navê abonetiyê hate tomarkirin"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Ziman li xwerûya pergalê hate danîn"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS ya taybet hate tomarkirin"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS ya taybet hate neçalakkirin"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rêzikên rêkirinê hatin tomarkirin"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rêzikên rêkirinê hatin têxistin"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Cih hatin têxistin"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Ji bo têxistina cihan derbasî Cihên tomarkirî bibe"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Ji bo zêdekirina cihan bi destan derbasî Cihên tomarkirî bibe"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Mîhenga cihê nederbasdar e"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Cihê ji bo sererastkirinê êdî berdest nîne"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Derxistina diagnostîkê hate vekirin"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Derxistina diagnostîkê bi ser neket"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Derxistina diagnostîkê hate betalkirin"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Cihê VPNê yê berê êdî berdest nîne"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Sepan hate girtin. VPN girtî bû."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Hemû abonetî hatin çalakkirin"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Hemû abonetî hatin hilbijartin"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonetî hate hilbijartin"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonetî hate tomarkirin"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Cih li panoya kopîkirinê hatin kopîkirin"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Derxistina cihan hate betalkirin"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rêzikên rêkirinê li panoya kopîkirinê hatin kopîkirin"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Derxistina rêzikên rêkirinê hate betalkirin"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Xwendina panoya kopîkirinê bi ser neket"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Ji bo derxistinê cih tune ne"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Barkirina sepanan bi ser neket"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Nûkirina abonetiyan bi ser neket"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Nûkirina abonetiya çalak bi ser neket"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Têxistina rêzikên rêkirinê bi ser neket"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Tomarkirina rêzikên rêkirinê bi ser neket"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Têxistina cihan bi ser neket"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Vekirina pelê cihan bi ser neket"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Xwendina pelê cihan bi ser neket"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Vekirina pelê rêzikên rêkirinê bi ser neket"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Cihê herî baş nehat girêdan bi lîsteya desktopê"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN li ser vê komputerê amade ye"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy li ser vê komputerê amade ye"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Şêla VPN ya desktopê amade ye"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Şêla Proxy ya desktopê amade ye"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN dest pê kir li "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy dest pê kir li "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN rawestiya. Moda sepanê: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy rawestiya. Moda sepanê: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Ziman hate danîn: "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Xweber nûkirina abonetiyê hate danîn: "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Mîhengên erêkirinê hatin tomarkirin: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Cihê hilbijartî neguherî: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Cihê hilbijartî hate jêbirin: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Cihê hilbijartî hate danîn: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Cih hat nûkirin û yek kirin: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Cih jixwe tomarkirî ye: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Cih hat nûkirin: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Cih hate jêbirin: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Cih lê hate zêdekirin: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonetî hatin nûkirin: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Bi ser neket: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN tê vegerandin: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Tê nûkirin: "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Cih hatin derxistin bo "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Rêzikên rêkirinê hatin derxistin bo "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostîk hat derxistin bo "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Benchmarkkirin bi ser neket: "
+    },
+    {
+      "source": "Activated ",
+      "target": "Çalak kir: "
+    },
+    {
+      "source": "Added ",
+      "target": "Lê zêde kir: "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Jê bir: "
+    },
+    {
+      "source": "Selected ",
+      "target": "Hilbijart: "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Cih hate sererastkirin #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Moda sepanê: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " cih hatin nûkirin"
+    },
+    {
+      "source": " location refreshed",
+      "target": " cih hat nûkirin"
+    },
+    {
+      "source": " • batch ",
+      "target": " • kom "
+    },
+    {
+      "source": " • retries ",
+      "target": " • dubare "
+    },
+    {
+      "source": "custom interval",
+      "target": "navbera taybet"
+    },
+    {
+      "source": "every hour",
+      "target": "her demjimêr"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "hemû abonetî"
+    },
+    {
+      "source": "selected subscription",
+      "target": "abonetiya hilbijartî"
+    },
+    {
+      "source": "proxy only",
+      "target": "tenê proxy"
+    },
+    {
+      "source": "off",
+      "target": "girtî"
+    },
+    {
+      "source": "Idle",
+      "target": "Bêkar"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN dest pê kir"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN rawestiya"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy dest pê kir"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy rawestiya"
+    }
+  ]
+}

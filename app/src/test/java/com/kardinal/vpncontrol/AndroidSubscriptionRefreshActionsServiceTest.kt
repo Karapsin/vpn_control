@@ -1,0 +1,145 @@
+package com.kardinal.vpncontrol
+
+import com.kardinal.vpncontrol.data.SubscriptionRefreshBatchResult
+import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
+import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
+import com.kardinal.vpncontrol.model.SubscriptionSource
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Test
+
+class AndroidSubscriptionRefreshActionsServiceTest {
+    @Test
+    fun activeRefreshWithoutSubscriptionsReportsEmptyState() {
+        val controller = MainController(MainUiState())
+        val statuses = mutableListOf<String>()
+        var refreshCalled = false
+        val service = service(
+            controller = controller,
+            updateStatus = { statuses += it },
+            runActiveRefresh = {
+                refreshCalled = true
+                Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+            },
+        )
+
+        service.refreshActiveSubscriptionCache()
+
+        assertFalse(refreshCalled)
+        assertEquals(listOf(SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE), statuses)
+        assertFalse(controller.currentState().isBusy)
+    }
+
+    @Test
+    fun activeRefreshReportsManualSummary() {
+        val controller = MainController(
+            MainUiState(
+                activeSubscriptionId = "sub-1",
+                subscriptions = listOf(SubscriptionSource(id = "sub-1", url = "https://example.com/sub")),
+            ),
+        )
+        val statuses = mutableListOf<String>()
+        val service = service(
+            controller = controller,
+            updateStatus = { statuses += it },
+            runActiveRefresh = {
+                Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+            },
+        )
+
+        service.refreshActiveSubscriptionCache()
+
+        assertEquals(
+            listOf("Refreshing subscription...", "Active subscription refreshed"),
+            statuses,
+        )
+        assertFalse(controller.currentState().isBusy)
+    }
+
+    @Test
+    fun allRefreshReportsPartialFailureSummary() {
+        val controller = MainController(
+            MainUiState(
+                activeSubscriptionId = ALL_SUBSCRIPTIONS_ID,
+                subscriptions = listOf(
+                    SubscriptionSource(id = "sub-1", url = "https://example.com/one", customName = "One"),
+                    SubscriptionSource(id = "sub-2", url = "https://example.com/two", customName = "Two"),
+                ),
+            ),
+        )
+        val statuses = mutableListOf<String>()
+        val service = service(
+            controller = controller,
+            updateStatus = { statuses += it },
+            runActiveRefresh = {
+                Result.success(
+                    SubscriptionRefreshBatchResult(
+                        refreshedCount = 1,
+                        failedSubscriptions = listOf(
+                            SubscriptionRefreshFailure(
+                                subscriptionId = "sub-2",
+                                sourceUrl = "https://example.com/two",
+                                displayName = "Two",
+                                message = "bad",
+                            ),
+                        ),
+                    ),
+                )
+            },
+        )
+
+        service.refreshActiveSubscriptionCache()
+
+        assertEquals(
+            listOf(
+                "Refreshing subscriptions...",
+                "Subscriptions refreshed: 1/2. Failed: Two",
+            ),
+            statuses,
+        )
+        assertFalse(controller.currentState().isBusy)
+    }
+
+    @Test
+    fun allRefreshUsesFailureFallback() {
+        val controller = MainController(
+            MainUiState(
+                subscriptions = listOf(SubscriptionSource(id = "sub-1", url = "https://example.com/sub")),
+            ),
+        )
+        val statuses = mutableListOf<String>()
+        val service = service(
+            controller = controller,
+            updateStatus = { statuses += it },
+            runAllRefresh = {
+                Result.failure(IllegalStateException("network failed"))
+            },
+        )
+
+        service.refreshAllSubscriptionsCaches()
+
+        assertEquals(listOf("Refreshing subscription...", "network failed"), statuses)
+        assertFalse(controller.currentState().isBusy)
+    }
+
+    private fun service(
+        controller: MainController,
+        updateStatus: suspend (String) -> Unit = {},
+        runActiveRefresh: suspend () -> Result<SubscriptionRefreshBatchResult> = {
+            Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+        },
+        runAllRefresh: suspend () -> Result<SubscriptionRefreshBatchResult> = {
+            Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+        },
+    ): AndroidSubscriptionRefreshActionsService {
+        return AndroidSubscriptionRefreshActionsService(
+            stateProvider = controller::currentState,
+            launch = { block -> runBlocking { block() } },
+            setBusy = { busy -> controller.update { it.copy(isBusy = busy) } },
+            updateStatus = updateStatus,
+            runActiveRefresh = runActiveRefresh,
+            runAllRefresh = runAllRefresh,
+        )
+    }
+}

@@ -276,6 +276,7 @@ class DesktopStateStore(
     private fun encodePersistedState(state: PersistedState): JsonObject {
         return buildJsonObject {
             put("app_language", JsonPrimitive(state.appLanguage.name))
+            put("subscription_hwid", JsonPrimitive(state.subscriptionHwid))
             put("profile_url", JsonPrimitive(state.profileUrl))
             put("active_subscription_id", JsonPrimitive(state.activeSubscriptionId))
             put("subscriptions", buildJsonArray {
@@ -362,6 +363,7 @@ class DesktopStateStore(
                 key = "app_language",
                 default = AppLanguage.SYSTEM,
             ),
+            subscriptionHwid = root.string("subscription_hwid"),
             profileUrl = root.string("profile_url"),
             activeSubscriptionId = root.string("active_subscription_id"),
             subscriptions = root["subscriptions"]?.jsonArray.orEmpty().mapNotNull { element ->

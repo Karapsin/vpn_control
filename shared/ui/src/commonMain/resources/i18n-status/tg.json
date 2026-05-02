@@ -1,790 +1,1547 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
-    "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "findingSubscription": "Ҷустуҷӯи беҳтарин ҷой аз обуна...",
+    "findingSaved": "Ҷустуҷӯи беҳтарин ҷой аз ҷойҳои захирашуда...",
+    "testingFastestCandidates": "Санҷиши номзадҳои зудтарин дар гурӯҳҳо...",
+    "checkingLocations": "Санҷиши {count} ҷой...",
+    "testingLocationsRange": "Санҷиши ҷойҳои {start}-{end} аз {total}...",
+    "selectLocationFirst": "Аввал маконро интихоб кунед",
+    "checkingLocation": "{name} санҷида мешавад...",
+    "testingLocation": "{name} озмоиш мешавад...",
+    "locationCheckCancelled": "Санҷиши макон бекор шуд",
+    "noLocationsToExport": "Маконе барои содирот нест",
+    "refreshIntervalMinutes": "{count} дақ",
+    "refreshIntervalHours": "{count} соат",
+    "refreshIntervalHoursMinutes": "{hours} соат {minutes} дақ",
+    "refreshIntervalEvery": "ҳар {interval}",
+    "refreshIntervalEveryHour": "ҳар соат"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
+    "best": "Беҳтарин: ",
+    "primary": "асосӣ ",
+    "secondary": "дуюм ",
+    "tcp": "tcp ",
     "millisUnit": "мс",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "blocked": "баста",
+      "cached": "кэшшуда",
+      "challenge": "чолиш",
+      "custom_config_manual_only": "танҳо_дастӣ_барои_танзими_фармоишӣ",
+      "error": "хато",
+      "manual": "дастӣ",
+      "ok": "хуб",
+      "partial": "қисман",
+      "tcp_error": "хатои_tcp",
+      "tcp_timeout": "муҳлати_tcp_гузашт",
+      "timeout": "муҳлат_гузашт",
+      "unreachable": "дастнорас",
+      "validation_timeout": "муҳлати_санҷиш_гузашт"
     }
+  },
+  "structured": {
+    "IDLE": "Бекор",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Навсозии худкори обуна гузошта шуд ба {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Танзимоти санҷиш захира шуд: {0} • {1} • гурӯҳ {2} • такрорҳо {3}",
+    "CUSTOM_DNS_SAVED": "DNS-и фармоишӣ захира шуд",
+    "CUSTOM_DNS_DISABLED": "DNS-и фармоишӣ ғайрифаъол шуд",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Ҷустуҷӯи беҳтарин ҷой аз обуна...",
+    "FIND_BEST_FROM_SAVED": "Ҷустуҷӯи беҳтарин ҷой аз ҷойҳои захирашуда...",
+    "STARTING_CONNECTION.VPN": "VPN оғоз мешавад...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Proxy-и маҳаллӣ оғоз мешавад...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "VPN бо беҳтарин ҷой оғоз мешавад...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Proxy-и маҳаллӣ бо беҳтарин ҷой оғоз мешавад...",
+    "CONNECTION_STARTED.VPN": "VPN оғоз шуд",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy оғоз шуд",
+    "CONNECTION_STOPPED.VPN": "VPN қатъ шуд",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy қатъ шуд",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN дар ин компютер омода аст",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy дар ин компютер омода аст",
+    "DESKTOP_APP_INITIALIZED": "Барнома оғоз шуд",
+    "RUNTIME_MODE.VPN": "Реҷаи иҷро: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Реҷаи иҷро: Proxy",
+    "LOCAL_PROXY": "Proxy-и маҳаллӣ: {0}",
+    "RUNTIME_LOG": "Сабти иҷро: {0}",
+    "PREFLIGHT_PASSED.VPN": "Санҷиши пешакии реҷаи VPN гузашт",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Санҷиши пешакии реҷаи Proxy-only гузашт",
+    "PREFLIGHT_FAILED.VPN": "Санҷиши пешакии реҷаи VPN ноком шуд: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Санҷиши пешакии реҷаи Proxy-only ноком шуд: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Қобилияти VPN-и мизи корӣ: омода",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Қобилияти VPN-и мизи корӣ: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Қобилияти VPN-и мизи корӣ: омода нест",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Барои санҷиши суръат ҷойҳо дастрас нестанд",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Ҷустуҷӯи беҳтарин ҷой аз муҳлат гузашт; пайвасти ҷорӣ нигоҳ дошта мешавад",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Ҷустуҷӯи ҷой бекор шуд",
+    "LOCATION_SEARCH_FAILED": "Ҷустуҷӯи ҷой ноком шуд",
+    "VPN_PERMISSION_REQUIRED": "Иҷозати VPN диҳед ва дубора кӯшиш кунед",
+    "SELECTED_LOCATION_SAVE_FAILED": "Захираи ҷойи интихобшуда ноком шуд",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN оғоз шуд, аммо ҷойи интихобшуда захира нашуд",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy оғоз шуд, аммо ҷойи интихобшуда захира нашуд",
+    "BEST_LOCATION_START_FAILED.VPN": "Оғози VPN бо беҳтарин ҷой ноком шуд",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Оғози proxy бо беҳтарин ҷой ноком шуд",
+    "BEST_LOCATION_SAVE_FAILED": "Захираи беҳтарин ҷой ноком шуд",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN оғоз шуд, аммо беҳтарин ҷой захира нашуд",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy оғоз шуд, аммо беҳтарин ҷой захира нашуд",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Навсозии обуна анҷом ёфт. Ҷустуҷӯи беҳтарин ҷой...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Навсозии обуна анҷом ёфт, аммо барои гузариши пасзамина иҷозати VPN лозим аст. Ҷойи пешинаи VPN ҳамчун эҳтиёт нигоҳ дошта шуд.",
+    "NO_SUITABLE_LOCATION_FOUND": "Ҷойи мувофиқ ёфт нашуд",
+    "BEST_LOCATION_NOT_MAPPED": "Беҳтарин ҷой ба рӯйхати desktop мутобиқ карда нашуд",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Ҳама обунаҳо фаъол шуданд",
+    "ACTIVATED_SUBSCRIPTION": "Фаъол шуд {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Номи обуна барқарор шуд",
+    "SUBSCRIPTION_NAME_SAVED": "Номи обуна захира шуд",
+    "SUBSCRIPTION_DELETED": "Обуна нест шуд",
+    "SELECT_LOCATION_FIRST": "Аввал маконро интихоб кунед",
+    "CHECKING_LOCATION": "{0} санҷида мешавад...",
+    "TESTING_LOCATION": "{0} озмоиш мешавад...",
+    "LOCATION_CHECK_CANCELLED": "Санҷиши макон бекор шуд",
+    "NO_LOCATIONS_TO_EXPORT": "Маконе барои содирот нест",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Омори сеанс фаъол шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Омори сеанс пинҳон шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Омори зиндаи трафик фаъол шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Омори зиндаи трафик пинҳон шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Ҷамъҳои ҳар профил фаъол шуданд",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Ҷамъҳои ҳар профил пинҳон шуданд",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Таърихи таъхир фаъол шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Таърихи таъхир пинҳон шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Сабти пайваст фаъол шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Сабти пайваст пинҳон шуд",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Абзорҳои санҷиши пайваст фаъол шуданд",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Абзорҳои санҷиши пайваст пинҳон шуданд",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Ҷойҳои обуна танҳо-хондананд. Барои захира кардани таҳрирҳо ба Ҷойҳои захирашуда гузаред.",
+    "INVALID_LOCATION_CONFIG": "Танзимоти ҷой нодуруст аст",
+    "LOCATION_ALREADY_SAVED": "Ҷой аллакай захира шудааст: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Ҷой барои таҳрир дигар дастрас нест",
+    "LOCATION_ADDED": "Ҷой илова шуд: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Ҷой нав ва якҷоя шуд: {0}",
+    "LOCATION_UPDATED": "Ҷой нав шуд: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Ҷойҳои обуна танҳо-хондананд. Барои нест кардани онҳо ба Ҷойҳои захирашуда гузаред.",
+    "SELECTED_LOCATION_REMOVED": "Ҷойи интихобшуда хориҷ шуд: {0}",
+    "LOCATION_REMOVED": "Ҷой хориҷ шуд: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Ҷойи интихобшуда хориҷ шуд. VPN қатъ шуд: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Ҷойи интихобшуда хориҷ шуд. Proxy қатъ шуд: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Несткунии ҷой баргардонда шуд, зеро VPN қатъ нашуд",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Несткунии ҷой баргардонда шуд, зеро proxy қатъ нашуд",
+    "IMPORT_LOCATIONS_BLOCKED": "Барои ворид кардани ҷойҳо ба Ҷойҳои захирашуда гузаред",
+    "IMPORT_LOCATIONS_FAILED": "Воридоти ҷойҳо ноком шуд",
+    "LOCATIONS_IMPORTED": "Ҷойҳо ворид шуданд",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест, vpn қатъ шуд",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест, proxy қатъ шуд",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Воридоти ҷойҳо баргардонда шуд, зеро VPN қатъ нашуд",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Воридоти ҷойҳо баргардонда шуд, зеро proxy қатъ нашуд",
+    "CLIPBOARD_EMPTY": "Буфери нусхабардорӣ холӣ аст",
+    "CLIPBOARD_READ_FAILED": "Хондани буфер ноком шуд",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Матни обуна ба ҷадвали Профил бор карда шуд",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Барои иваз кардани реҷаи пайваст аввал қатъ шавед",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Маҷмӯи қоидаҳо хориҷ карда шуд",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Барои иловаи дастии ҷойҳо ба Ҷойҳои захирашуда гузаред",
+    "HISTORY_ENTRY_DELETED": "Сабти таърих нест шуд",
+    "SELECTED_LOCATION_UNCHANGED": "Ҷойи интихобшуда тағйир наёфт: {0}",
+    "SELECTED_LOCATION_SET": "Ҷойи интихобшуда гузошта шуд: {0}",
+    "LOCATION_CHECKED": "Location санҷишed: {0}",
+    "LOCATION_CHECK_FAILED": "Санҷиши ҷой ноком шуд",
+    "LOCATION_EDITED": "Ҷой таҳрир шуд #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Илова шуд a sample rule-set",
+    "RULE_SET_DELETED": "Нест шуд rule-set {0}",
+    "ROUTING_RULES_SAVED": "Қоидаҳои масир захира шуданд",
+    "ROUTING_RULES_IMPORTED": "Қоидаҳои масир ворид шуданд",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Қоидаҳои масир ворид шуданд. Барои татбиқ VPN-ро дубора оғоз кунед",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Қоидаҳои масир ворид шуданд. Барои татбиқ proxy-ро дубора оғоз кунед",
+    "ROUTING_RULES_IMPORT_FAILED": "Воридоти қоидаҳои масир ноком шуд",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Қоидаҳои масир ба буфери нусхабардорӣ нусха шуданд",
+    "ROUTING_RULES_EXPORT_CANCELED": "Содироти қоидаҳои масир бекор шуд",
+    "ROUTING_RULES_EXPORTED_TO": "Қоидаҳои масир содир шуданд ба {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Содироти қоидаҳои масир ноком шуд",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Кушодани файли қоидаҳои масир ноком шуд",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Ҷойҳо ба буфери нусхабардорӣ нусха шуданд",
+    "LOCATIONS_EXPORT_CANCELED": "Содироти ҷойҳо бекор шуд",
+    "LOCATIONS_EXPORTED_TO": "Ҷойҳо содир шуданд ба {0}",
+    "LOCATIONS_EXPORT_FAILED": "Содироти ҷойҳо ноком шуд",
+    "LOCATIONS_FILE_OPEN_FAILED": "Кушодани файли ҷойҳо ноком шуд",
+    "LOCATIONS_FILE_READ_FAILED": "Хондани файли ҷойҳо ноком шуд",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Содироти ташхис бекор шуд",
+    "DIAGNOSTICS_EXPORTED_TO": "Ташхис содир шуд ба {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Содироти ташхис ноком шуд",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Ҷойи ташхис кушода нашуд",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Барои навсозӣ обуна нест",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Навсозии танзимоти оғоз ноком шуд",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Навсозии танзимоти оғоз ноком шуд: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Захираи танзимоти навсозӣ ноком шуд",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Захираи танзимоти навсозӣ ноком шуд: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Сеанси пешинаи VPN барқарор мешавад",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Ҷойи пешинаи VPN дигар дастрас нест",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN барқарор мешавад: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN оғоз шуд дар {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy оғоз шуд дар {1}",
+    "CONNECTION_START_FAILED.VPN": "Оғози VPN ноком шуд",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Оғози proxy ноком шуд",
+    "CONNECTION_STOP_FAILED.VPN": "Қатъи VPN ноком шуд",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Қатъи proxy ноком шуд",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Барнома пӯшида шуд. VPN хомӯш буд.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN қатъ шуд. Дар оғози навбатӣ дубора пайваст мешавад.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy қатъ шуд. Дар оғози навбатӣ дубора пайваст мешавад.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Қатъи VPN пеш аз баромад ноком шуд",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Қатъи Proxy пеш аз баромад ноком шуд"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "URL-и обуна"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "URL-и обуна хонда намешавад"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Обунаҳои ноамни HTTP дастгирӣ намешаванд"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "URL-и обунаи https://-ро истифода баред."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL бояд мизбони дурусти HTTPS дошта бошад"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "URL-и дурусти обунаи https://-ро гузоред."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Манбаи дурдасти мустақим"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "пайванди воридоти sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Пайванди воридоти sing-box хонда намешавад"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Танҳо URL-ҳои дурдасти дурусти HTTPS дастгирӣ мешаванд"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Пайванди воридоти sing-box-еро истифода баред, ки ба URL-и дурусти https:// мебарад."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Муҳтавои дурдастро аз URL-и дарунсохт мегирад"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Муҳтавои дурдастро мегирад аз "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Пайванди воридот таҳлил нашуд"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Пайванди дурусти воридоти remote-profile-и sing-box ё URL-и мустақими обунаро гузоред."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "пайванди воридоти VPN"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Пайванди воридоти VPN хонда намешавад"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Воридоти провайдер дастгирӣ намешавад"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia ва воридотҳои дигари vpn:// дастгирӣ намешаванд. URL-и одии обунаро истифода баред ё ҷойҳоро дастӣ илова кунед."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Бори воридот рамзкушоӣ нашуд"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Воридотҳои vpn:// дастгирӣ намешаванд. URL-и одии обунаро истифода баред ё ҷойҳоро дастӣ илова кунед."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "URL-ҳои обунаи HTTP дастгирӣ намешаванд. Ба ҷои он https://-ро истифода баред."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Манбаи дурдаст бояд URL-и https:// ё пайванди воридоти дастгиришаванда бошад"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Манбаи дурдаст холӣ аст"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Манбаи дурдаст бояд URL-и дурусти https:// бо мизбон бошад."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Ин воридоти sing-box ба URL-и нодуруст ё ғайри-HTTPS мебарад. Ба ҷои он URL-и дурусти https://-ро истифода баред."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Ҷойи интихобшуда татбиқ мешавад..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Ҷойи интихобшудаи навшуда татбиқ мешавад..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Ҷустуҷӯи беҳтарин ҷой аз муҳлат гузашт; пайвасти ҷорӣ нигоҳ дошта мешавад"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Буфери нусхабардорӣ холӣ аст"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Сабти пайваст фаъол шуд"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Сабти пайваст пинҳон шуд"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Абзорҳои санҷиши пайваст фаъол шуданд"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Абзорҳои санҷиши пайваст пинҳон шуданд"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Ҷойи содирот кушода нашуд"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Файли интихобшуда кушода нашуд"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Файли интихобшудаи ҷойҳо кушода нашуд"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Файли интихобшудаи қоидаҳо кушода нашуд"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Қабати мизи корӣ: Нидерланд аз рӯйхатҳои иҷозатшуда"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Барномаи desktop оғоз шуд"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
-    },
-    {
-      "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
-    },
-    {
-      "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Барнома оғоз шуд"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Содироти ҷойҳо"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Татбиқи ҷойи интихобшудаи навшуда ноком шуд"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Содироти ташхис ноком шуд"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Содироти ҷойҳо ноком шуд"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Содироти қоидаҳои масир ноком шуд"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Ҷойи ивазкунанда ёфт нашуд"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Воридоти файл ноком шуд"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Ҷойи ташхис кушода нашуд"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Захираи танзимоти навсозӣ ноком шуд"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Навсозии танзимоти оғоз ноком шуд"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Воридот бекор шуд"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "URL-и обуна нодуруст аст"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Таърихи таъхир фаъол шуд"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Таърихи таъхир пинҳон шуд"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Омори зиндаи трафик фаъол шуд"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Омори зиндаи трафик пинҳон шуд"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Санҷиши ҷой бекор шуд"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Санҷиши ҷой ноком шуд"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Ҷойҳо содир шуданд"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Воридоти ҷойҳо бекор шуд"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Барои санҷиши суръат ҷойҳо дастрас нестанд"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Барои навсозӣ обуна нест"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Ҷойи мувофиқ ёфт нашуд"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Ҷамъҳои ҳар профил фаъол шуданд"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Ҷамъҳои ҳар профил пинҳон шуданд"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Сеанси пешинаи VPN барқарор мешавад"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "Сканкунии QR бекор шуд"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Қоидаҳои масир содир шуданд"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Воридоти қоидаҳои масир бекор шуд"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Қоидаҳои масир захира шуданд"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Омори сеанс фаъол шуд"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Омори сеанс пинҳон шуд"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Матни мубодилашуда бори воридоти дастгиришаванда нест"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Обуна нест шуд"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Навсозии обуна анҷом ёфт, аммо барои гузариши пасзамина иҷозати VPN лозим аст. Ҷойи пешинаи VPN ҳамчун эҳтиёт нигоҳ дошта шуд."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Навсозии обуна анҷом ёфт. Ҷустуҷӯи беҳтарин ҷой..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Навсозии обуна анҷом ёфт. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Реҷаи иҷро: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Proxy-и маҳаллӣ: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Сабти иҷро: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "Санҷиши пешакии реҷаи VPN гузашт"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Санҷиши пешакии реҷаи Proxy-only гузашт"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "Санҷиши пешакии реҷаи VPN ноком шуд: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Санҷиши пешакии реҷаи Proxy-only ноком шуд: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "Реҷаи VPN дастрас нест: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Реҷаи Proxy-only дастрас нест: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Қобилияти VPN-и мизи корӣ: омода"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Қобилияти VPN-и мизи корӣ: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "Реҷаи VPN дастрас аст"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Реҷаи Proxy дастрас аст"
     },
     {
       "source": "not ready",
-      "target": "не готово"
-    },
-    {
-      "source": " check",
-      "target": " проверка"
+      "target": "омода нест"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " санҷиш"
+    },
+    {
+      "source": " check",
+      "target": " санҷиш"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "нокомии дастгоҳи TUN: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "нокомии имтиёзҳои шабака: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "нокомии абзорҳои route/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "дастгоҳи TUN"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "имтиёзҳои шабака"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "абзорҳои route/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Дастгоҳи Linux TUN дар /dev/net/tun нест. Санҷед: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Реҷаи VPN-и мизи корӣ ба CAP_NET_ADMIN ниёз дорад. Ҳамчун root иҷро кунед ё ба sing-box қобилият диҳед: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Абзорҳои route/DNS-и Windows дастрас нестанд. Реҷаи VPN ба netsh.exe ва cmdlet-ҳои DNS client PowerShell ниёз дорад."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN дар ин компютер омода аст"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy дар ин компютер омода аст"
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Бекор"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN оғоз шуд"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN қатъ шуд"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Proxy оғоз шуд"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Proxy қатъ шуд"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "VPN оғоз мешавад..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Proxy-и маҳаллӣ оғоз мешавад..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "VPN бо беҳтарин ҷой оғоз мешавад..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Proxy-и маҳаллӣ бо беҳтарин ҷой оғоз мешавад..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Беҳтарин ҷой аз обуна ёфта мешавад..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Беҳтарин ҷой аз ҷойҳои захирашуда ёфта мешавад..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Ҷустуҷӯи ҷой бекор шуд"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Ҷустуҷӯи ҷой ноком шуд"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Иҷозати VPN диҳед ва дубора кӯшиш кунед"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Аввал манбаи дурдастро гузоред"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Аввал ҳадди ақал як ҷойи захирашуда илова кунед"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Аввал ҷойеро интихоб кунед"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Ҳанӯз ягон обуна захира нашудааст"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Ҳама обунаҳо нав мешаванд..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Обунаи фаъол нав мешавад..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Обуна нав мешавад..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Обунаҳо нав мешаванд..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Обуна худкор нав мешавад..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Обунаҳо худкор нав мешаванд..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Обуна нав шуд"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Обунаҳо нав шуданд"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Обунаи фаъол нав шуд"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Ҳама обунаҳо нав шуданд"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Навсозӣ ноком шуд"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Манбаи профил ба обуна гузошта шуд"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Манбаи профил ба ҷойҳои захирашуда гузошта шуд"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Реҷаи пайваст ба VPN гузошта шуд"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Реҷаи пайваст ба танҳо proxy гузошта шуд"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Барои иваз кардани реҷаи пайваст аввал қатъ шавед"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Сабти таърих нест шуд"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Номи обуна барқарор шуд"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Номи обуна захира шуд"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Забон ба пешфарзи система гузошта шуд"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "DNS-и фармоишӣ захира шуд"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "DNS-и фармоишӣ ғайрифаъол шуд"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Қоидаҳои масир захира шуданд"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Қоидаҳои масир ворид шуданд"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Ҷойҳо ворид шуданд"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Барои ворид кардани ҷойҳо ба Ҷойҳои захирашуда гузаред"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Барои иловаи дастии ҷойҳо ба Ҷойҳои захирашуда гузаред"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Танзимоти ҷой нодуруст аст"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Ҷой барои таҳрир дигар дастрас нест"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Содироти ташхис кушода шуд"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Содироти ташхис ноком шуд"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Содироти ташхис бекор шуд"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Ҷойи пешинаи VPN дигар дастрас нест"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Барнома пӯшида шуд. VPN хомӯш буд."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Ҳама обунаҳо фаъол шуданд"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Ҳама обунаҳо интихоб шуданд"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Обуна интихоб шуд"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Ҷойҳо ба буфери нусхабардорӣ нусха шуданд"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Содироти ҷойҳо бекор шуд"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Қоидаҳои масир ба буфери нусхабардорӣ нусха шуданд"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Содироти қоидаҳои масир бекор шуд"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Реҷаи манбаи профил: обуна"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Реҷаи манбаи профил: маконҳои ҷорӣ"
     }
   ],
   "legacyReplacements": [
     {
-      "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Ҷойҳои обуна танҳо-хондананд. Барои захира кардани таҳрирҳо ба Ҷойҳои захирашуда гузаред."
     },
     {
-      "source": " location refreshed",
-      "target": " локация обновлена"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Ҷойҳои обуна танҳо-хондананд. Барои нест кардани онҳо ба Ҷойҳои захирашуда гузаред."
     },
     {
-      "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Обуна қабул шуд. Онро дар ҷадвали Профил санҷида захира кунед."
     },
     {
-      "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Пайванди обуна қабул шуд. Онро дар ҷадвали Профил санҷида захира кунед."
     },
     {
-      "source": " • batch ",
-      "target": " • группа "
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Танзимоти ҷой қабул шуд. Онро дар ҷадвали Ҷойҳо санҷида захира кунед."
     },
     {
-      "source": " • retries ",
-      "target": " • повторные попытки "
+      "source": "Starting local proxy with the best location...",
+      "target": "Proxy-и маҳаллӣ бо беҳтарин ҷой оғоз мешавад..."
     },
     {
-      "source": "off",
-      "target": "выключено"
-    },
-    {
-      "source": "custom interval",
-      "target": "свой интервал"
-    },
-    {
-      "source": "all subscriptions",
-      "target": "все подписки"
-    },
-    {
-      "source": "selected subscription",
-      "target": "выбранная подписка"
-    },
-    {
-      "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
-    },
-    {
-      "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
-    },
-    {
-      "source": "VPN started on ",
-      "target": "VPN запущен на "
-    },
-    {
-      "source": "Proxy started on ",
-      "target": "Прокси запущен на "
-    },
-    {
-      "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
-    },
-    {
-      "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Refreshing ",
-      "target": "Обновление "
+      "source": "Starting VPN with the best location...",
+      "target": "VPN бо беҳтарин ҷой оғоз мешавад..."
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "VPN бо макони нави беҳтарин оғоз мешавад..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Прокси бо макони нави беҳтарин оғоз мешавад..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Беҳтарин ҷой аз обуна ёфта мешавад..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Беҳтарин ҷой аз ҷойҳои захирашуда ёфта мешавад..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест, proxy қатъ шуд"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест, vpn қатъ шуд"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Ҷойҳо ворид шуданд. Ҷойи интихобшуда дигар дастрас нест"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Ҷойи интихобшуда татбиқ шуд, аммо захира нашуд"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Несткунии ҷой баргардонда шуд, зеро proxy қатъ нашуд"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Несткунии ҷой баргардонда шуд, зеро VPN қатъ нашуд"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Воридоти ҷойҳо баргардонда шуд, зеро proxy қатъ нашуд"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Воридоти ҷойҳо баргардонда шуд, зеро VPN қатъ нашуд"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN қатъ шуд. Обунаҳои навшуда ҷойи интихобшударо хориҷ карданд."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy қатъ шуд. Обунаҳои навшуда ҷойи интихобшударо хориҷ карданд."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN қатъ шуд. Дар оғози навбатӣ дубора пайваст мешавад."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy қатъ шуд. Дар оғози навбатӣ дубора пайваст мешавад."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Қоидаҳои масир захира шуданд. Барои татбиқ VPN-ро дубора оғоз кунед"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Қоидаҳои масир захира шуданд. Барои татбиқ proxy-ро дубора оғоз кунед"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Қоидаҳои масир ворид шуданд. Барои татбиқ VPN-ро дубора оғоз кунед"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Қоидаҳои масир ворид шуданд. Барои татбиқ proxy-ро дубора оғоз кунед"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Ҷойи интихобшуда хориҷ шуд. VPN қатъ шуд: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Ҷойи интихобшуда хориҷ шуд. Proxy қатъ шуд: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Беҳтарин ҷой интихоб шуд ва vpn оғоз шуд: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Беҳтарин ҷой интихоб шуд ва proxy оғоз шуд: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN оғоз шуд, аммо ҷойи интихобшуда захира нашуд"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy оғоз шуд, аммо ҷойи интихобшуда захира нашуд"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN оғоз шуд, аммо беҳтарин ҷой захира нашуд"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy оғоз шуд, аммо беҳтарин ҷой захира нашуд"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Оғози VPN бо беҳтарин ҷой ноком шуд"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Оғози proxy бо беҳтарин ҷой ноком шуд"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Захираи ҷойи интихобшуда ноком шуд"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Захираи ҷойи интихобшуда ноком шуд"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Захираи беҳтарин ҷой ноком шуд"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Татбиқи ҷойи интихобшуда ноком шуд"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Интихоби ҷой ноком шуд"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Қатъи VPN пеш аз баромад ноком шуд"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Қатъи Proxy пеш аз баромад ноком шуд"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Қатъи VPN ноком шуд"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Қатъи proxy ноком шуд"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Оғози VPN ноком шуд"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Оғози proxy ноком шуд"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "VPN омода нашуд"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Proxy омода нашуд"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "VPN омода мешавад"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Proxy омода мешавад"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Оғози VPN бекор шуд"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Оғози Proxy бекор шуд"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Қатъи VPN бекор шуд"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Қатъи Proxy бекор шуд"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Proxy-и маҳаллӣ оғоз мешавад..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "VPN оғоз мешавад..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Ҳама обунаҳо нав мешаванд..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Обунаи фаъол нав мешавад..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Обунаҳо нав мешаванд..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Обуна нав мешавад..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Обунаҳо худкор нав мешаванд..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Обуна худкор нав мешавад..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Ҳама обунаҳо нав шуданд"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Обунаи фаъол нав шуд"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Обунаҳо нав шуданд"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Обуна нав шуд"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Навсозӣ ноком шуд"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Ҷустуҷӯи ҷой бекор шуд"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Ҷустуҷӯи ҷой ноком шуд"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Иҷозати VPN диҳед ва дубора кӯшиш кунед"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Аввал манбаи дурдастро гузоред"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Аввал ҳадди ақал як ҷойи захирашуда илова кунед"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Аввал ҷойеро интихоб кунед"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Ҳанӯз ягон обуна захира нашудааст"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Манбаи профил ба обуна гузошта шуд"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Манбаи профил ба ҷойҳои захирашуда гузошта шуд"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Реҷаи пайваст ба VPN гузошта шуд"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Реҷаи пайваст ба танҳо proxy гузошта шуд"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Барои иваз кардани реҷаи пайваст аввал қатъ шавед"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Сабти таърих нест шуд"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Номи обуна барқарор шуд"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Номи обуна захира шуд"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Забон ба пешфарзи система гузошта шуд"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS-и фармоишӣ захира шуд"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS-и фармоишӣ ғайрифаъол шуд"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Қоидаҳои масир захира шуданд"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Қоидаҳои масир ворид шуданд"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Ҷойҳо ворид шуданд"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Барои ворид кардани ҷойҳо ба Ҷойҳои захирашуда гузаред"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Барои иловаи дастии ҷойҳо ба Ҷойҳои захирашуда гузаред"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Танзимоти ҷой нодуруст аст"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Ҷой барои таҳрир дигар дастрас нест"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Содироти ташхис кушода шуд"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Содироти ташхис ноком шуд"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Содироти ташхис бекор шуд"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Ҷойи пешинаи VPN дигар дастрас нест"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Барнома пӯшида шуд. VPN хомӯш буд."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Ҳама обунаҳо фаъол шуданд"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Ҳама обунаҳо интихоб шуданд"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Обуна интихоб шуд"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Обуна захира шуд"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Ҷойҳо ба буфери нусхабардорӣ нусха шуданд"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Содироти ҷойҳо бекор шуд"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Қоидаҳои масир ба буфери нусхабардорӣ нусха шуданд"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Содироти қоидаҳои масир бекор шуд"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Хондани буфер ноком шуд"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Барои содирот ҷой нест"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Боркунии барномаҳо ноком шуд"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Навсозии обунаҳо ноком шуд"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Навсозии обунаи фаъол ноком шуд"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Воридоти қоидаҳои масир ноком шуд"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Захираи қоидаҳои масир ноком шуд"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Воридоти ҷойҳо ноком шуд"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Кушодани файли ҷойҳо ноком шуд"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Хондани файли ҷойҳо ноком шуд"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Кушодани файли қоидаҳои масир ноком шуд"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Беҳтарин ҷой ба рӯйхати desktop мутобиқ карда нашуд"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN дар ин компютер омода аст"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy дар ин компютер омода аст"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Қабати VPN-и мизи корӣ омода аст"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Қабати Proxy-и мизи корӣ омода аст"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN оғоз шуд дар "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy оғоз шуд дар "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN қатъ шуд. Реҷаи барнома: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy қатъ шуд. Реҷаи барнома: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Забон гузошта шуд ба "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Навсозии худкори обуна гузошта шуд ба "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Танзимоти санҷиш захира шуд: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Ҷойи интихобшуда тағйир наёфт: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Ҷойи интихобшуда хориҷ шуд: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Ҷойи интихобшуда гузошта шуд: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Ҷой нав ва якҷоя шуд: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Ҷой аллакай захира шудааст: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Ҷой нав шуд: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Ҷой хориҷ шуд: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Ҷой илова шуд: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Обунаҳо нав шуданд: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Ноком шуд: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "VPN барқарор мешавад: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Навсозӣ "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Ҷойҳо содир шуданд ба "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Қоидаҳои масир содир шуданд ба "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Ташхис содир шуд ба "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Санҷиши суръат ноком шуд "
+    },
+    {
+      "source": "Activated ",
+      "target": "Фаъол шуд "
+    },
+    {
+      "source": "Added ",
+      "target": "Илова шуд "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Нест шуд "
+    },
+    {
+      "source": "Selected ",
+      "target": "Интихоб шуд "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Ҷой таҳрир шуд #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Реҷаи барнома: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " ҷой нав шуд"
+    },
+    {
+      "source": " location refreshed",
+      "target": " ҷой нав шуд"
+    },
+    {
+      "source": " • batch ",
+      "target": " • гурӯҳ "
+    },
+    {
+      "source": " • retries ",
+      "target": " • такрорҳо "
+    },
+    {
+      "source": "custom interval",
+      "target": "фосилаи фармоишӣ"
+    },
+    {
+      "source": "every hour",
+      "target": "ҳар соат"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "ҳама обунаҳо"
+    },
+    {
+      "source": "selected subscription",
+      "target": "обунаи интихобшуда"
+    },
+    {
+      "source": "proxy only",
+      "target": "танҳо proxy"
+    },
+    {
+      "source": "off",
+      "target": "хомӯш"
+    },
+    {
+      "source": "Idle",
+      "target": "Бекор"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN оғоз шуд"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN қатъ шуд"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy оғоз шуд"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy қатъ шуд"
     }
   ]
 }

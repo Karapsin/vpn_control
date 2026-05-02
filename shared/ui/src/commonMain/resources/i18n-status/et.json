@@ -1,790 +1,1043 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
-    "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "findingSubscription": "Tellimusest parima asukoha otsimine...",
+    "findingSaved": "Salvestatud asukohtadest parima asukoha otsimine...",
+    "testingFastestCandidates": "Kiireimate kandidaatide testimine partiidena...",
+    "checkingLocations": "Asukohtade kontrollimine: {count}...",
+    "testingLocationsRange": "Asukohtade {start}-{end} testimine kokku {total}-st...",
+    "selectLocationFirst": "Valige esmalt asukoht",
+    "checkingLocation": "Kontrollitakse {name}...",
+    "testingLocation": "Testitakse {name}...",
+    "locationCheckCancelled": "Asukoha kontroll tühistati",
+    "noLocationsToExport": "Eksporditavaid asukohti pole",
+    "refreshIntervalMinutes": "{count} minutit",
+    "refreshIntervalHours": "{count} tundi",
+    "refreshIntervalHoursMinutes": "{hours} tundi {minutes} minutit",
+    "refreshIntervalEvery": "iga {interval}",
+    "refreshIntervalEveryHour": "iga tund"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
-    "millisUnit": "мс",
+    "best": "Parim: ",
+    "primary": "esmane ",
+    "secondary": "teisene ",
+    "tcp": "tcp ",
+    "millisUnit": "ms",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "ok": "korras",
+      "timeout": "aegus",
+      "error": "viga",
+      "partial": "osaline",
+      "blocked": "blokeeritud",
+      "challenge": "kontroll",
+      "manual": "käsitsi",
+      "cached": "vahemälus",
+      "unreachable": "kättesaamatu",
+      "validation_timeout": "valideerimine aegus",
+      "tcp_timeout": "tcp aegus",
+      "tcp_error": "tcp viga",
+      "custom_config_manual_only": "kohandatud konfiguratsioon ainult käsitsi"
     }
+  },
+  "structured": {
+    "IDLE": "Jõude",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Tellimuse automaatvärskendus: {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Valideerimisseaded salvestatud: {0} • {1} • partii {2} • korduskatsed {3}",
+    "CUSTOM_DNS_SAVED": "Kohandatud DNS salvestatud",
+    "CUSTOM_DNS_DISABLED": "Kohandatud DNS keelatud",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Tellimusest parima asukoha otsimine...",
+    "FIND_BEST_FROM_SAVED": "Salvestatud asukohtadest parima asukoha otsimine...",
+    "STARTING_CONNECTION.VPN": "VPN-i käivitamine...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Kohaliku proxy käivitamine...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "VPN-i käivitamine parima asukohaga...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Kohaliku proxy käivitamine parima asukohaga...",
+    "CONNECTION_STARTED.VPN": "VPN käivitatud",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy käivitatud",
+    "CONNECTION_STOPPED.VPN": "VPN peatatud",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy peatatud",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN on selles arvutis valmis",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy on selles arvutis valmis",
+    "DESKTOP_APP_INITIALIZED": "Rakendus käivitatud",
+    "RUNTIME_MODE.VPN": "Töörežiim: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Töörežiim: Proxy",
+    "LOCAL_PROXY": "Kohalik proxy: {0}",
+    "RUNTIME_LOG": "Töölogi: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN-režiimi eelkontroll õnnestus",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Ainult proxy režiimi eelkontroll õnnestus",
+    "PREFLIGHT_FAILED.VPN": "VPN-režiimi eelkontroll ebaõnnestus: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Ainult proxy režiimi eelkontroll ebaõnnestus: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Töölaua VPN-i võimekus: valmis",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Töölaua VPN-i võimekus: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Töölaua VPN-i võimekus: pole valmis",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Testimiseks pole asukohti saadaval",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Parima asukoha otsing aegus; praegune ühendus säilitatakse",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Asukohaotsing tühistatud",
+    "LOCATION_SEARCH_FAILED": "Asukohaotsing ebaõnnestus",
+    "VPN_PERMISSION_REQUIRED": "Anna VPN-i luba ja proovi uuesti",
+    "SELECTED_LOCATION_SAVE_FAILED": "Valitud asukoha salvestamine nurjus",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN käivitati, kuid valitud asukohta ei õnnestunud salvestada",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Puhverserver käivitati, kuid valitud asukohta ei õnnestunud salvestada",
+    "BEST_LOCATION_START_FAILED.VPN": "VPN-i käivitamine parima asukohaga nurjus",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Puhverserveri käivitamine parima asukohaga nurjus",
+    "BEST_LOCATION_SAVE_FAILED": "Parima asukoha salvestamine nurjus",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN käivitati, kuid parimat asukohta ei õnnestunud salvestada",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Puhverserver käivitati, kuid parimat asukohta ei õnnestunud salvestada",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Tellimuse värskendamine lõppes. Parima asukoha otsimine...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Tellimuse värskendamine lõppes, kuid taustal ümberlülitamiseks on vaja VPN-i luba. Eelmine VPN-i asukoht jäeti varuvariandiks.",
+    "NO_SUITABLE_LOCATION_FOUND": "Sobivat asukohta ei leitud",
+    "BEST_LOCATION_NOT_MAPPED": "Parimat asukohta ei saanud töölaua loendiga siduda",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Kõik tellimused aktiveeritud",
+    "ACTIVATED_SUBSCRIPTION": "Aktiveeritud {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Tellimuse nimi lähtestatud",
+    "SUBSCRIPTION_NAME_SAVED": "Tellimuse nimi salvestatud",
+    "SUBSCRIPTION_DELETED": "Tellimus kustutatud",
+    "SELECT_LOCATION_FIRST": "Valige esmalt asukoht",
+    "CHECKING_LOCATION": "Kontrollitakse {0}...",
+    "TESTING_LOCATION": "Testitakse {0}...",
+    "LOCATION_CHECK_CANCELLED": "Asukoha kontroll tühistati",
+    "NO_LOCATIONS_TO_EXPORT": "Eksporditavaid asukohti pole",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Seansi statistika lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Seansi statistika peidetud",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Reaalaja liiklusstatistika lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Reaalaja liiklusstatistika peidetud",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Profiilipõhised kogusummad lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Profiilipõhised kogusummad peidetud",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Viiteajalugu lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Viiteajalugu peidetud",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Ühenduse logi lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Ühenduse logi peidetud",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Ühenduse testimise tööriistad lubatud",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Ühenduse testimise tööriistad peidetud",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Tellimuse asukohad on ainult lugemiseks. Muudatuste salvestamiseks lülitu salvestatud asukohtadele.",
+    "INVALID_LOCATION_CONFIG": "Vigane asukoha konfiguratsioon",
+    "LOCATION_ALREADY_SAVED": "Asukoht on juba salvestatud: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Muudetav asukoht pole enam saadaval",
+    "LOCATION_ADDED": "Asukoht lisatud: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Asukoht uuendatud ja ühendatud: {0}",
+    "LOCATION_UPDATED": "Asukoht uuendatud: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Tellimuse asukohad on ainult lugemiseks. Kustutamiseks lülitu salvestatud asukohtadele.",
+    "SELECTED_LOCATION_REMOVED": "Valitud asukoht eemaldatud: {0}",
+    "LOCATION_REMOVED": "Asukoht eemaldatud: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Valitud asukoht eemaldatud. VPN peatatud: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Valitud asukoht eemaldatud. Proxy peatatud: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Asukoha eemaldamine tühistati, sest VPN-i ei saanud peatada",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Asukoha eemaldamine tühistati, sest proxyt ei saanud peatada",
+    "IMPORT_LOCATIONS_BLOCKED": "Asukohtade importimiseks lülitu salvestatud asukohtadele",
+    "IMPORT_LOCATIONS_FAILED": "Asukohtade importimine ebaõnnestus",
+    "LOCATIONS_IMPORTED": "Asukohad imporditud",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Asukohad imporditud. Valitud asukoht pole enam saadaval",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Asukohad imporditud. Valitud asukoht pole enam saadaval, VPN peatatud",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Asukohad imporditud. Valitud asukoht pole enam saadaval, proxy peatatud",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Asukohtade import tühistati, sest VPN-i ei saanud peatada",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Asukohtade import tühistati, sest proxyt ei saanud peatada",
+    "CLIPBOARD_EMPTY": "Lõikelaud on tühi",
+    "CLIPBOARD_READ_FAILED": "Lõikelaua lugemine ebaõnnestus",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Tellimuse tekst laaditi profiili vahekaardile",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Ühendusrežiimi muutmiseks katkesta esmalt ühendus",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Reeglistik eemaldatud",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Asukohtade käsitsi lisamiseks lülitu salvestatud asukohtadele",
+    "HISTORY_ENTRY_DELETED": "Ajalookirje kustutatud",
+    "SELECTED_LOCATION_UNCHANGED": "Valitud asukoht jäi muutmata: {0}",
+    "SELECTED_LOCATION_SET": "Valitud asukoht määratud: {0}",
+    "LOCATION_CHECKED": "Asukoht kontrollitud: {0}",
+    "LOCATION_CHECK_FAILED": "Asukoha kontroll ebaõnnestus",
+    "LOCATION_EDITED": "Muudetud asukoht #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Näidisreeglistik lisatud",
+    "RULE_SET_DELETED": "Reeglistik {0} kustutatud",
+    "ROUTING_RULES_SAVED": "Marsruutimisreeglid salvestatud",
+    "ROUTING_RULES_IMPORTED": "Marsruutimisreeglid imporditud",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Marsruutimisreeglid imporditud. Rakendamiseks taaskäivitage VPN",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Marsruutimisreeglid imporditud. Rakendamiseks taaskäivitage proxy",
+    "ROUTING_RULES_IMPORT_FAILED": "Marsruutimisreeglite importimine ebaõnnestus",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Marsruutimisreeglid kopeeritud lõikelauale",
+    "ROUTING_RULES_EXPORT_CANCELED": "Marsruutimisreeglite eksport tühistatud",
+    "ROUTING_RULES_EXPORTED_TO": "Marsruutimisreeglid eksporditud asukohta {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Marsruutimisreeglite eksportimine ebaõnnestus",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Marsruutimisreeglite faili avamine ebaõnnestus",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Asukohad kopeeritud lõikelauale",
+    "LOCATIONS_EXPORT_CANCELED": "Asukohtade eksport tühistatud",
+    "LOCATIONS_EXPORTED_TO": "Asukohad eksporditud asukohta {0}",
+    "LOCATIONS_EXPORT_FAILED": "Asukohtade eksportimine ebaõnnestus",
+    "LOCATIONS_FILE_OPEN_FAILED": "Asukohtade faili avamine ebaõnnestus",
+    "LOCATIONS_FILE_READ_FAILED": "Asukohtade faili lugemine ebaõnnestus",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Diagnostika eksport tühistatud",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostika eksporditud asukohta {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Diagnostika eksportimine ebaõnnestus",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Diagnostika sihtkohta ei saanud avada",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Värskendatavaid tellimusi pole",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Käivitusseade uuendamine ebaõnnestus",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Käivitusseade uuendamine ebaõnnestus: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Värskendusseadete salvestamine ebaõnnestus",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Värskendusseadete salvestamine ebaõnnestus: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Eelmine VPN-seanss taastatakse",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Eelmine VPN-i asukoht pole enam saadaval",
+    "RESTORING_PREVIOUS_CONNECTION": "VPN-i taastamine: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN käivitatud asukohas {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy käivitatud asukohas {1}",
+    "CONNECTION_START_FAILED.VPN": "VPN-i käivitamine ebaõnnestus",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Proxy käivitamine ebaõnnestus",
+    "CONNECTION_STOP_FAILED.VPN": "VPN-i peatamine ebaõnnestus",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Proxy peatamine ebaõnnestus",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Rakendus suleti. VPN oli väljas.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN peatatud. Ühendus taastatakse järgmisel käivitamisel.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy peatatud. Ühendus taastatakse järgmisel käivitamisel.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "VPN-i peatamine enne väljumist ebaõnnestus",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Proxy peatamine enne väljumist ebaõnnestus"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "Tellimuse URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Loetamatu tellimuse URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Ebaturvalisi HTTP tellimusi ei toetata"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "Kasuta https:// tellimuse URL-i."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL peab sisaldama kehtivat HTTPS hosti"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Kleebi kehtiv https:// tellimuse URL."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Otsene kaugallikas"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "sing-box impordilink"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Loetamatu sing-box impordilink"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Toetatud on ainult kehtivad HTTPS kaug-URL-id"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Kasuta sing-box impordilinki, mis viib kehtiva https:// URL-ini."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Laadib kaug­sisu põimitud URL-ist"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Laadib kaugsisu aadressilt "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Impordilinki ei saanud parsida"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Kleebi kehtiv sing-box remote-profile impordilink või otsene tellimuse URL."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "VPN-i impordilink"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Loetamatu VPN-i impordilink"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Teenusepakkuja importi ei toetata"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia ja muid vpn:// importe ei toetata. Kasuta tavalist tellimuse URL-i või lisa asukohad käsitsi."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Impordi sisu ei saanud dekodeerida"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// importe ei toetata. Kasuta tavalist tellimuse URL-i või lisa asukohad käsitsi."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP tellimuse URL-e ei toetata. Kasuta selle asemel https://."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Kaugallikas peab olema https:// URL või toetatud impordilink"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Kaugallikas on tühi"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Kaugallikas peab olema kehtiv https:// URL koos hostiga."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "See sing-box import viib vigase või mitte-HTTPS URL-ini. Kasuta selle asemel kehtivat https:// URL-i."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Valitud asukoha rakendamine..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Uuendatud valitud asukoha rakendamine..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Parima asukoha otsing aegus; praegune ühendus säilitatakse"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Lõikelaud on tühi"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Ühenduse logi lubatud"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Ühenduse logi peidetud"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Ühenduse testimise tööriistad lubatud"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Ühenduse testimise tööriistad peidetud"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Ekspordi sihtkohta ei saanud avada"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Valitud faili ei saanud avada"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Valitud asukohtade faili ei saanud avada"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Valitud reeglite faili ei saanud avada"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Töölaua kest: Madalmaad lubatud loenditest"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Töölauarakendus käivitatud"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Rakendus käivitatud"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
+      "target": "VPN on selles arvutis valmis"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Proxy on selles arvutis valmis"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Ekspordi asukohad"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Uuendatud valitud asukoha rakendamine ebaõnnestus"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Diagnostika eksportimine ebaõnnestus"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Asukohtade eksportimine ebaõnnestus"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Marsruutimisreeglite eksportimine ebaõnnestus"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Asendusasukohta ei õnnestunud leida"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Faili importimine ebaõnnestus"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Diagnostika sihtkohta ei saanud avada"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Värskendusseadete salvestamine ebaõnnestus"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Käivitusseade uuendamine ebaõnnestus"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Import tühistatud"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Vigane tellimuse URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Viiteajalugu lubatud"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Viiteajalugu peidetud"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Reaalaja liiklusstatistika lubatud"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Reaalaja liiklusstatistika peidetud"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Asukoha kontroll tühistatud"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Asukoha kontroll ebaõnnestus"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Asukohad eksporditud"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Asukohtade import tühistatud"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Testimiseks pole asukohti saadaval"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Värskendatavaid tellimusi pole"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Sobivat asukohta ei leitud"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Profiilipõhised kogusummad lubatud"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Profiilipõhised kogusummad peidetud"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Eelmine VPN-seanss taastatakse"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR-skannimine tühistatud"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Marsruutimisreeglid eksporditud"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Marsruutimisreeglite import tühistatud"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Marsruutimisreeglid salvestatud"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Seansi statistika lubatud"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Seansi statistika peidetud"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Jagatud tekst ei ole toetatud impordi sisu"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Tellimus kustutatud"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Tellimuse värskendamine lõppes, kuid taustal ümberlülitamiseks on vaja VPN-i luba. Eelmine VPN-i asukoht jäeti varuvariandiks."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Tellimuse värskendamine lõppes. Parima asukoha otsimine..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Tellimuse värskendamine lõppes. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Töörežiim: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Kohalik proxy: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Töölogi: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "VPN-režiimi eelkontroll õnnestus"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Ainult proxy režiimi eelkontroll õnnestus"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "VPN-režiimi eelkontroll ebaõnnestus: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Ainult proxy režiimi eelkontroll ebaõnnestus: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN-režiim pole saadaval: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Ainult proxy režiim pole saadaval: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Töölaua VPN-i võimekus: valmis"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Töölaua VPN-i võimekus: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN-režiim on saadaval"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Proxy režiim on saadaval"
     },
     {
       "source": "not ready",
-      "target": "не готово"
+      "target": "pole valmis"
     },
     {
       "source": " check",
-      "target": " проверка"
+      "target": " kontroll"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " kontrolli"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "TUN-seadme viga: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "võrguõiguste viga: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "marsruutimise/DNS-i tööriistade viga: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN-seade"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "võrguõigused"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "marsruutimise/DNS-i tööriistad"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linuxi TUN-seade puudub asukohas /dev/net/tun. Proovi: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Töölaua VPN-režiim vajab CAP_NET_ADMIN õigust. Käivita root-kasutajana või anna sing-boxile õigused: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Windowsi marsruutimise/DNS-i tööriistad pole saadaval. VPN-režiim vajab netsh.exe ja DNS-kliendi PowerShell cmdlet-käske."
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Jõude"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN käivitatud"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN peatatud"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Proxy käivitatud"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Proxy peatatud"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "VPN-i käivitamine..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Kohaliku proxy käivitamine..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "VPN-i käivitamine parima asukohaga..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Kohaliku proxy käivitamine parima asukohaga..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Tellimusest parima asukoha otsimine..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Salvestatud asukohtadest parima asukoha otsimine..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Asukohaotsing tühistatud"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Asukohaotsing ebaõnnestus"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Anna VPN-i luba ja proovi uuesti"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Määra esmalt kaugallikas"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Lisa esmalt vähemalt üks salvestatud asukoht"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Vali esmalt asukoht"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Salvestatud tellimusi veel pole"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Kõigi tellimuste värskendamine..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Aktiivse tellimuse värskendamine..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Tellimuse värskendamine..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Tellimuste värskendamine..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Tellimuse automaatne värskendamine..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Tellimuste automaatne värskendamine..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Tellimus värskendatud"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Tellimused värskendatud"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Aktiivne tellimus värskendatud"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Kõik tellimused värskendatud"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Värskendamine ebaõnnestus"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Profiili allikaks määrati tellimus"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Profiili allikaks määrati salvestatud asukohad"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Ühendusrežiimiks määrati VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Ühendusrežiimiks määrati ainult proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Ühendusrežiimi muutmiseks katkesta esmalt ühendus"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Ajalookirje kustutatud"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Tellimuse nimi lähtestatud"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Tellimuse nimi salvestatud"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Keeleks määrati süsteemi vaikeväärtus"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Kohandatud DNS salvestatud"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Kohandatud DNS keelatud"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Marsruutimisreeglid salvestatud"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Marsruutimisreeglid imporditud"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Asukohad imporditud"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Asukohtade importimiseks lülitu salvestatud asukohtadele"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Asukohtade käsitsi lisamiseks lülitu salvestatud asukohtadele"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Vigane asukoha konfiguratsioon"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Muudetav asukoht pole enam saadaval"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Diagnostika eksport avatud"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Diagnostika eksport ebaõnnestus"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Diagnostika eksport tühistatud"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Eelmine VPN-i asukoht pole enam saadaval"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Rakendus suleti. VPN oli väljas."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Kõik tellimused aktiveeritud"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Kõik tellimused valitud"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Tellimus valitud"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Asukohad kopeeritud lõikelauale"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Asukohtade eksport tühistatud"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Marsruutimisreeglid kopeeritud lõikelauale"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Marsruutimisreeglite eksport tühistatud"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Profiili allika režiim: tellimus"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Profiili allika režiim: praegused asukohad"
     }
   ],
   "legacyReplacements": [
     {
       "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "target": " asukohta värskendatud"
     },
     {
       "source": " location refreshed",
-      "target": " локация обновлена"
+      "target": " asukoht värskendatud"
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "target": "Tellimuse automaatvärskendus: "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "target": "Valideerimisseaded salvestatud: "
     },
     {
       "source": " • batch ",
-      "target": " • группа "
+      "target": " • partii "
     },
     {
       "source": " • retries ",
-      "target": " • повторные попытки "
+      "target": " • korduskatsed "
     },
     {
       "source": "off",
-      "target": "выключено"
+      "target": "väljas"
     },
     {
       "source": "custom interval",
-      "target": "свой интервал"
+      "target": "kohandatud intervall"
     },
     {
       "source": "all subscriptions",
-      "target": "все подписки"
+      "target": "kõik tellimused"
     },
     {
       "source": "selected subscription",
-      "target": "выбранная подписка"
+      "target": "valitud tellimus"
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
+      "target": "VPN peatatud. Rakenduse režiim: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
+      "target": "Proxy peatatud. Rakenduse režiim: "
     },
     {
       "source": "VPN started on ",
-      "target": "VPN запущен на "
+      "target": "VPN käivitatud asukohas "
     },
     {
       "source": "Proxy started on ",
-      "target": "Прокси запущен на "
+      "target": "Proxy käivitatud asukohas "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
+      "target": "VPN-i taastamine: "
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "VPN peatatud. Ühendus taastatakse järgmisel käivitamisel."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "Proxy peatatud. Ühendus taastatakse järgmisel käivitamisel."
     },
     {
       "source": "Refreshing ",
-      "target": "Обновление "
+      "target": "Värskendamine: "
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "VPN-i käivitamine uue parima asukohaga..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Proxy käivitamine uue parima asukohaga..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Tellimuse asukohad on ainult lugemiseks. Muudatuste salvestamiseks lülitu salvestatud asukohtadele."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Tellimuse asukohad on ainult lugemiseks. Kustutamiseks lülitu salvestatud asukohtadele."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Vigane asukoha konfiguratsioon"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Muudetav asukoht pole enam saadaval"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Asukoht on juba salvestatud: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Asukoht lisatud: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Asukoht uuendatud ja ühendatud: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Asukoht uuendatud: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Valitud asukoht eemaldatud. VPN peatatud: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Valitud asukoht eemaldatud. Proxy peatatud: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Valitud asukoht eemaldatud: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Asukoht eemaldatud: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Asukoha eemaldamine tühistati, sest proxyt ei saanud peatada"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Asukoha eemaldamine tühistati, sest VPN-i ei saanud peatada"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Asukohtade importimine ebaõnnestus"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval, proxy peatatud"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval, VPN peatatud"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Asukohad imporditud. Valitud asukoht pole enam saadaval"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Asukohad imporditud"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Asukohtade import tühistati, sest proxyt ei saanud peatada"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Asukohtade import tühistati, sest VPN-i ei saanud peatada"
     }
   ]
 }

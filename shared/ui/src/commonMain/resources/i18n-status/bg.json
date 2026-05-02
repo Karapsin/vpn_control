@@ -1,414 +1,583 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
+    "findingSubscription": "Търсене на най-добрата локация от абонамента...",
+    "findingSaved": "Търсене на най-добрата локация от запазените локации...",
+    "testingFastestCandidates": "Тестване на най-бързите кандидати на партиди...",
+    "checkingLocations": "Проверка на {count} локации...",
+    "testingLocationsRange": "Тестване на локации {start}-{end} от {total}...",
+    "selectLocationFirst": "Първо изберете локация",
+    "checkingLocation": "Проверка на {name}...",
+    "testingLocation": "Тестване на {name}...",
+    "locationCheckCancelled": "Проверката на локацията е отменена",
+    "noLocationsToExport": "Няма локации за експортиране",
     "refreshIntervalMinutes": "{count} мин",
     "refreshIntervalHours": "{count} ч",
     "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "refreshIntervalEvery": "на всеки {interval}",
+    "refreshIntervalEveryHour": "на всеки час"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
+    "best": "Най-добра: ",
+    "primary": "основен ",
+    "secondary": "вторичен ",
+    "tcp": "TCP ",
     "millisUnit": "мс",
     "statuses": {
       "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
+      "timeout": "изтекло време",
+      "error": "грешка",
       "partial": "частично",
-      "blocked": "заблокировано",
+      "blocked": "блокирано",
       "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "manual": "ръчно",
+      "cached": "кеширано",
+      "unreachable": "недостъпно",
+      "validation_timeout": "изтекло време за проверка",
+      "tcp_timeout": "изтекло време за TCP",
+      "tcp_error": "TCP грешка",
+      "custom_config_manual_only": "само ръчно за персонализирана конфигурация"
     }
+  },
+  "structured": {
+    "IDLE": "В покой",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Автоматичното обновяване на абонамента е зададено на {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Настройките за проверка са запазени: {0} • {1} • партида {2} • повторни опити {3}",
+    "CUSTOM_DNS_SAVED": "Персонализираният DNS е запазен",
+    "CUSTOM_DNS_DISABLED": "Персонализираният DNS е изключен",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Търсене на най-добрата локация от абонамента...",
+    "FIND_BEST_FROM_SAVED": "Търсене на най-добрата локация от запазените локации...",
+    "STARTING_CONNECTION.VPN": "Стартиране на VPN...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Стартиране на локален прокси...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Стартиране на VPN с най-добрата локация...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Стартиране на локален прокси с най-добрата локация...",
+    "CONNECTION_STARTED.VPN": "VPN е стартиран",
+    "CONNECTION_STARTED.PROXY_ONLY": "Проксито е стартирано",
+    "CONNECTION_STOPPED.VPN": "VPN е спрян",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Проксито е спряно",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN е готов на този компютър",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Проксито е готово на този компютър",
+    "DESKTOP_APP_INITIALIZED": "Приложението е инициализирано",
+    "RUNTIME_MODE.VPN": "Режим на runtime: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Режим на runtime: Proxy",
+    "LOCAL_PROXY": "Локален прокси: {0}",
+    "RUNTIME_LOG": "Дневник на runtime: {0}",
+    "PREFLIGHT_PASSED.VPN": "Предварителната проверка на VPN режим премина успешно",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Предварителната проверка на режим само прокси премина успешно",
+    "PREFLIGHT_FAILED.VPN": "Предварителната проверка на VPN режим е неуспешна: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Предварителната проверка на режим само прокси е неуспешна: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Възможност за десктоп VPN: готова",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Възможност за десктоп VPN: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Възможност за десктоп VPN: не е готово",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Няма налични локации за бенчмарк",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Търсенето на най-добра локация изтече; текущата връзка се запазва",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Търсенето на локация е отменено",
+    "LOCATION_SEARCH_FAILED": "Търсенето на локация е неуспешно",
+    "VPN_PERMISSION_REQUIRED": "Дайте разрешение за VPN и опитайте отново",
+    "SELECTED_LOCATION_SAVE_FAILED": "Неуспешно запазване на избраната локация",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN е стартиран, но избраната локация не бе запазена",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Проксито е стартирано, но избраната локация не бе запазена",
+    "BEST_LOCATION_START_FAILED.VPN": "Неуспешно стартиране на VPN с най-добрата локация",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Неуспешно стартиране на прокси с най-добрата локация",
+    "BEST_LOCATION_SAVE_FAILED": "Неуспешно запазване на най-добрата локация",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN е стартиран, но най-добрата локация не бе запазена",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Проксито е стартирано, но най-добрата локация не бе запазена",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Обновяването на абонамента приключи. Търсене на най-добрата локация...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Обновяването на абонамента приключи, но е необходимо разрешение за VPN, за да се превключи във фонов режим. Предишната VPN локация е запазена като резервен вариант.",
+    "NO_SUITABLE_LOCATION_FOUND": "Не е намерена подходяща локация",
+    "BEST_LOCATION_NOT_MAPPED": "Най-добрата локация не можа да бъде съпоставена със списъка на десктопа",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Всички абонаменти са активирани",
+    "ACTIVATED_SUBSCRIPTION": "Активиран е {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Името на абонамента е нулирано",
+    "SUBSCRIPTION_NAME_SAVED": "Името на абонамента е запазено",
+    "SUBSCRIPTION_DELETED": "Абонаментът е изтрит",
+    "SELECT_LOCATION_FIRST": "Първо изберете локация",
+    "CHECKING_LOCATION": "Проверка на {0}...",
+    "TESTING_LOCATION": "Тестване на {0}...",
+    "LOCATION_CHECK_CANCELLED": "Проверката на локацията е отменена",
+    "NO_LOCATIONS_TO_EXPORT": "Няма локации за експортиране",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Статистиката за сесията е включена",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Статистиката за сесията е скрита",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Статистиката за трафика на живо е включена",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Статистиката за трафика на живо е скрита",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Общите стойности по профил са включени",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Общите стойности по профил са скрити",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Историята на латентността е включена",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Историята на латентността е скрита",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Дневникът на връзката е включен",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Дневникът на връзката е скрит",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Инструментите за тест на връзката са включени",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Инструментите за тест на връзката са скрити",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Локациите от абонамента са само за четене. Превключете към запазени локации, за да запазите промените.",
+    "INVALID_LOCATION_CONFIG": "Невалидна конфигурация на локация",
+    "LOCATION_ALREADY_SAVED": "Локацията вече е запазена: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Локацията за редактиране вече не е налична",
+    "LOCATION_ADDED": "Локацията е добавена: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Локацията е обновена и обединена: {0}",
+    "LOCATION_UPDATED": "Локацията е обновена: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Локациите от абонамента са само за четене. Превключете към запазени локации, за да ги изтриете.",
+    "SELECTED_LOCATION_REMOVED": "Избраната локация е премахната: {0}",
+    "LOCATION_REMOVED": "Локацията е премахната: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Избраната локация е премахната. VPN е спрян: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Избраната локация е премахната. Проксито е спряно: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Премахването на локацията е отменено, защото VPN не можа да бъде спрян",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Премахването на локацията е отменено, защото проксито не можа да бъде спряно",
+    "IMPORT_LOCATIONS_BLOCKED": "Преминете към Запазени локации, за да импортирате локации",
+    "IMPORT_LOCATIONS_FAILED": "Неуспешен импорт на локации",
+    "LOCATIONS_IMPORTED": "Локациите са импортирани",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Локациите са импортирани. Избраната локация вече не е налична",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Локациите са импортирани. Избраната локация вече не е налична, VPN е спрян",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Локациите са импортирани. Избраната локация вече не е налична, проксито е спряно",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Импортът на локации е отменен, защото VPN не можа да бъде спрян",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Импортът на локации е отменен, защото проксито не можа да бъде спряно",
+    "CLIPBOARD_EMPTY": "Клипбордът е празен",
+    "CLIPBOARD_READ_FAILED": "Четенето от клипборда е неуспешно",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Текстът на абонамента е зареден в раздела „Профил“",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Първо прекъснете връзката, за да промените режима",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Наборът от правила е премахнат",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Преминете към Запазени локации, за да добавите локации ръчно",
+    "HISTORY_ENTRY_DELETED": "Записът от историята е изтрит",
+    "SELECTED_LOCATION_UNCHANGED": "Избраната локация не е променена: {0}",
+    "SELECTED_LOCATION_SET": "Избраната локация е зададена: {0}",
+    "LOCATION_CHECKED": "Локацията е проверена: {0}",
+    "LOCATION_CHECK_FAILED": "Проверката на локация е неуспешна",
+    "LOCATION_EDITED": "Редактирана е локация #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Добавен е примерен набор от правила",
+    "RULE_SET_DELETED": "Изтрит е набор от правила {0}",
+    "ROUTING_RULES_SAVED": "Правилата за маршрутизиране са запазени",
+    "ROUTING_RULES_IMPORTED": "Правилата за маршрутизиране са импортирани",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Правилата за маршрутизиране са импортирани. Рестартирайте VPN, за да ги приложите",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Правилата за маршрутизиране са импортирани. Рестартирайте проксито, за да ги приложите",
+    "ROUTING_RULES_IMPORT_FAILED": "Импортът на правилата за маршрутизиране е неуспешен",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Правилата за маршрутизиране са копирани в клипборда",
+    "ROUTING_RULES_EXPORT_CANCELED": "Експортът на правила за маршрутизиране е отменен",
+    "ROUTING_RULES_EXPORTED_TO": "Правилата за маршрутизиране са експортирани в {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Правилата за маршрутизиране не можаха да бъдат експортирани",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Файлът с правила за маршрутизиране не можа да бъде отворен",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Локациите са копирани в клипборда",
+    "LOCATIONS_EXPORT_CANCELED": "Експортът на локации е отменен",
+    "LOCATIONS_EXPORTED_TO": "Локациите са експортирани в {0}",
+    "LOCATIONS_EXPORT_FAILED": "Локациите не можаха да бъдат експортирани",
+    "LOCATIONS_FILE_OPEN_FAILED": "Файлът с локации не можа да бъде отворен",
+    "LOCATIONS_FILE_READ_FAILED": "Файлът с локации не можа да бъде прочетен",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Експортът на диагностика е отменен",
+    "DIAGNOSTICS_EXPORTED_TO": "Диагностиката е експортирана в {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Диагностиката не можа да бъде експортирана",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Местоназначението за диагностика не можа да бъде отворено",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Няма абонаменти за обновяване",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Настройката за стартиране не можа да бъде обновена",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Настройката за стартиране не можа да бъде обновена: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Настройките за обновяване не можаха да бъдат запазени",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Настройките за обновяване не можаха да бъдат запазени: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Предишната VPN сесия ще бъде възстановена",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Предишната VPN локация вече не е налична",
+    "RESTORING_PREVIOUS_CONNECTION": "Възстановяване на VPN: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN е стартиран на {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Проксито е стартирано на {1}",
+    "CONNECTION_START_FAILED.VPN": "VPN не можа да бъде стартиран",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Проксито не можа да бъде стартирано",
+    "CONNECTION_STOP_FAILED.VPN": "VPN не можа да бъде спрян",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Проксито не можа да бъде спряно",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Приложението е затворено. VPN беше изключен.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN е спрян. Ще се свърже отново при следващото стартиране.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Проксито е спряно. Ще се свърже отново при следващото стартиране.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "VPN не можа да бъде спрян преди изход",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Проксито не можа да бъде спряно преди изход"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "URL на абонамент"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Нечетим URL на абонамент"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Несигурни HTTP абонаменти не се поддържат"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "Използвайте https:// URL на абонамент."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL трябва да съдържа валиден HTTPS хост"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Поставете валиден https:// URL на абонамент."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Директен отдалечен източник"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "връзка за импорт на sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Нечетима връзка за импорт на sing-box"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Поддържат се само валидни отдалечени HTTPS URL адреси"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Използвайте връзка за импорт на sing-box, която сочи към валиден https:// URL."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Изтегля отдалечено съдържание от вградения URL"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Изтегля отдалечено съдържание от "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Връзката за импорт не можа да бъде разчетена"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Поставете валидна sing-box remote-profile връзка за импорт или директен URL на абонамент."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "връзка за импорт на VPN"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Нечетима връзка за импорт на VPN"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Неподдържан импорт от доставчик"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia и други vpn:// импорти не се поддържат. Използвайте нормален URL на абонамент или добавете локации ръчно."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Данните за импорт не можаха да бъдат декодирани"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// импорти не се поддържат. Използвайте нормален URL на абонамент или добавете локации ръчно."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP URL адреси за абонаменти не се поддържат. Използвайте https:// вместо това."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Отдалеченият източник трябва да е https:// URL или поддържана връзка за импорт"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Отдалеченият източник е празен"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Отдалеченият източник трябва да е валиден https:// URL с хост."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Този sing-box импорт сочи към невалиден или не-HTTPS URL. Използвайте валиден https:// URL вместо това."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Прилагане на избраната локация..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Прилагане на обновената избрана локация..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Търсенето на най-добра локация изтече; текущата връзка се запазва"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Клипбордът е празен"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Дневникът на връзката е включен"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Дневникът на връзката е скрит"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Инструментите за тест на връзката са включени"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Инструментите за тест на връзката са скрити"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Местоназначението за експорт не можа да бъде отворено"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Избраният файл не можа да бъде отворен"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Избраният файл с локации не можа да бъде отворен"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Избраният файл с правила не можа да бъде отворен"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Десктопна обвивка: Нидерландия от списъци с разрешени"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Desktop приложението е инициализирано"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
+      "target": "Приложението е инициализирано"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
+      "target": "VPN е готов на този компютър"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Проксито е готово на този компютър"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Експорт на локации"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Обновената избрана локация не можа да бъде приложена"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Диагностиката не можа да бъде експортирана"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Локациите не можаха да бъдат експортирани"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Правилата за маршрутизиране не можаха да бъдат експортирани"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Не можа да бъде намерена заместваща локация"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Файлът не можа да бъде импортиран"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Местоназначението за диагностика не можа да бъде отворено"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Настройките за обновяване не можаха да бъдат запазени"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Настройката за стартиране не можа да бъде обновена"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Импортът е отменен"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Невалиден URL на абонамент"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Историята на латентността е включена"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Историята на латентността е скрита"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Статистиката за трафика на живо е включена"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Статистиката за трафика на живо е скрита"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Проверката на локация е отменена"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Проверката на локация е неуспешна"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Локациите са експортирани"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Импортът на локации е отменен"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Няма налични локации за бенчмарк"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Няма абонаменти за обновяване"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Не е намерена подходяща локация"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Общите стойности по профил са включени"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Общите стойности по профил са скрити"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Предишната VPN сесия ще бъде възстановена"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR сканирането е отменено"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Правилата за маршрутизиране са експортирани"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Импортът на правила за маршрутизиране е отменен"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Правилата за маршрутизиране са запазени"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Статистиката за сесията е включена"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Статистиката за сесията е скрита"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Споделеният текст не е поддържан payload за импорт"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Абонаментът е изтрит"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Обновяването на абонамента приключи, но е необходимо разрешение за VPN, за да се превключи във фонов режим. Предишната VPN локация е запазена като резервен вариант."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Обновяването на абонамента приключи. Търсене на най-добрата локация..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Обновяването на абонамента приключи. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Режим на runtime: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Локален прокси: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Дневник на runtime: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "Предварителната проверка на VPN режим премина успешно"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Предварителната проверка на режим само прокси премина успешно"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "Предварителната проверка на VPN режим е неуспешна: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Предварителната проверка на режим само прокси е неуспешна: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN режимът е недостъпен: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Режимът само прокси е недостъпен: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Възможност за десктоп VPN: готова"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Възможност за десктоп VPN: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN режимът е наличен"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Прокси режимът е наличен"
     },
     {
       "source": "not ready",
-      "target": "не готово"
+      "target": "не е готово"
     },
     {
       "source": " check",
@@ -416,375 +585,459 @@
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " проверки"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "неуспешно TUN устройство: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "неуспешни мрежови привилегии: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "неуспешни инструменти за route/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN устройство"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "мрежови привилегии"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "инструменти за route/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linux TUN устройството липсва в /dev/net/tun. Опитайте: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Десктопният VPN режим изисква CAP_NET_ADMIN. Стартирайте като root или дайте права на sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Инструментите за route/DNS на Windows не са налични. VPN режимът изисква netsh.exe и PowerShell cmdlets за DNS client."
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "В покой"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN е стартиран"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN е спрян"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Проксито е стартирано"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Проксито е спряно"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "Стартиране на VPN..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Стартиране на локален прокси..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "Стартиране на VPN с най-добрата локация..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Стартиране на локален прокси с най-добрата локация..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Търсене на най-добрата локация от абонамента..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Търсене на най-добрата локация от запазените локации..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Търсенето на локация е отменено"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Търсенето на локация е неуспешно"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Дайте разрешение за VPN и опитайте отново"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Първо задайте отдалечен източник"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Първо добавете поне една запазена локация"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Първо изберете локация"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Все още няма запазени абонаменти"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Обновяване на всички абонаменти..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Обновяване на активния абонамент..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Обновяване на абонамента..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Обновяване на абонаментите..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Автоматично обновяване на абонамента..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Автоматично обновяване на абонаментите..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Абонаментът е обновен"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Абонаментите са обновени"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Активният абонамент е обновен"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Всички абонаменти са обновени"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Обновяването е неуспешно"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Източникът на профил е зададен на абонамент"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Източникът на профил е зададен на запазени локации"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Режимът на връзка е зададен на VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Режимът на връзка е зададен на само прокси"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Първо прекъснете връзката, за да промените режима"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Записът от историята е изтрит"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Името на абонамента е нулирано"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Името на абонамента е запазено"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Езикът е зададен на системния по подразбиране"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Персонализираният DNS е запазен"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Персонализираният DNS е изключен"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Правилата за маршрутизиране са запазени"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Правилата за маршрутизиране са импортирани"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Локациите са импортирани"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Локациите са импортирани. Избраната локация вече не е налична"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Преминете към Запазени локации, за да импортирате локации"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Преминете към Запазени локации, за да добавите локации ръчно"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Невалидна конфигурация на локация"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Локацията за редактиране вече не е налична"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Експортът на диагностика е отворен"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Експортът на диагностика е неуспешен"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Експортът на диагностика е отменен"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Предишната VPN локация вече не е налична"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Приложението е затворено. VPN беше изключен."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Всички абонаменти са активирани"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Всички абонаменти са избрани"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Абонаментът е избран"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Локациите са копирани в клипборда"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Експортът на локации е отменен"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Правилата за маршрутизиране са копирани в клипборда"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Експортът на правила за маршрутизиране е отменен"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Режим на източник на профил: Абонамент"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Режим на източник на профил: Текущи локации"
     }
   ],
   "legacyReplacements": [
     {
       "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "target": " локации обновени"
     },
     {
       "source": " location refreshed",
-      "target": " локация обновлена"
+      "target": " локация обновена"
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "target": "Автоматичното обновяване на абонамента е зададено на "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "target": "Настройките за проверка са запазени: "
     },
     {
       "source": " • batch ",
-      "target": " • группа "
+      "target": " • партида "
     },
     {
       "source": " • retries ",
-      "target": " • повторные попытки "
+      "target": " • повторни опити "
     },
     {
       "source": "off",
-      "target": "выключено"
+      "target": "изключено"
     },
     {
       "source": "custom interval",
-      "target": "свой интервал"
+      "target": "персонализиран интервал"
     },
     {
       "source": "all subscriptions",
-      "target": "все подписки"
+      "target": "всички абонаменти"
     },
     {
       "source": "selected subscription",
-      "target": "выбранная подписка"
+      "target": "избран абонамент"
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
+      "target": "VPN е спрян. Режим на приложението: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
+      "target": "Проксито е спряно. Режим на приложението: "
     },
     {
       "source": "VPN started on ",
-      "target": "VPN запущен на "
+      "target": "VPN е стартиран на "
     },
     {
       "source": "Proxy started on ",
-      "target": "Прокси запущен на "
+      "target": "Проксито е стартирано на "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
+      "target": "Възстановяване на VPN: "
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "VPN е спрян. Ще се свърже отново при следващото стартиране."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
+      "target": "Проксито е спряно. Ще се свърже отново при следващото стартиране."
     },
     {
       "source": "Refreshing ",
-      "target": "Обновление "
+      "target": "Обновяване на "
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "Стартиране на VPN с новата най-добра локация..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Стартиране на прокси с новата най-добра локация..."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Локациите от абонамента са само за четене. Превключете към запазени локации, за да запазите промените."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Локациите от абонамента са само за четене. Превключете към запазени локации, за да ги изтриете."
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Невалидна конфигурация на локация"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Локацията за редактиране вече не е налична"
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Локацията вече е запазена: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Локацията е добавена: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Локацията е обновена и обединена: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Локацията е обновена: "
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Избраната локация е премахната. VPN е спрян: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Избраната локация е премахната. Проксито е спряно: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Избраната локация е премахната: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Локацията е премахната: "
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Премахването на локацията е отменено, защото проксито не можа да бъде спряно"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Премахването на локацията е отменено, защото VPN не можа да бъде спрян"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Неуспешен импорт на локации"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Локациите са импортирани. Избраната локация вече не е налична, проксито е спряно"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Локациите са импортирани. Избраната локация вече не е налична, VPN е спрян"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локациите са импортирани. Избраната локация вече не е налична"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локациите са импортирани"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Импортът на локации е отменен, защото проксито не можа да бъде спряно"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Импортът на локации е отменен, защото VPN не можа да бъде спрян"
     }
   ]
 }

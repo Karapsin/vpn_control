@@ -16,6 +16,7 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/prepare_sing_box_desktop_runtime.sh"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_linux_desktop.sh"
       - "scripts/test_linux_desktop_package.sh"
   pull_request:
@@ -29,6 +30,7 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/prepare_sing_box_desktop_runtime.sh"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_linux_desktop.sh"
       - "scripts/test_linux_desktop_package.sh"
 
@@ -41,6 +43,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

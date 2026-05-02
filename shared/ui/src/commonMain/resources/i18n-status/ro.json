@@ -1,1070 +1,1239 @@
 {
   "dynamic": {
-    "findingSubscription": "Recherche du meilleur emplacement dans l'abonnement...",
-    "findingSaved": "Recherche du meilleur emplacement enregistré...",
-    "testingFastestCandidates": "Test des candidats les plus rapides par lots...",
-    "checkingLocations": "Vérification de {count} emplacements...",
-    "testingLocationsRange": "Test des emplacements {start}-{end} sur {total}...",
+    "findingSubscription": "Se caută cea mai bună locație din abonament...",
+    "findingSaved": "Se caută cea mai bună locație dintre locațiile salvate...",
+    "testingFastestCandidates": "Se testează în loturi candidații cei mai rapizi...",
+    "checkingLocations": "Se verifică {count} locații...",
+    "testingLocationsRange": "Se testează locațiile {start}-{end} din {total}...",
+    "selectLocationFirst": "Selectați mai întâi o locație",
+    "checkingLocation": "Se verifică {name}...",
+    "testingLocation": "Se testează {name}...",
+    "locationCheckCancelled": "Verificarea locației a fost anulată",
+    "noLocationsToExport": "Nu există locații de exportat",
     "refreshIntervalMinutes": "{count} min",
     "refreshIntervalHours": "{count} h",
     "refreshIntervalHoursMinutes": "{hours} h {minutes} min",
-    "refreshIntervalEvery": "toutes les {interval}",
-    "refreshIntervalEveryHour": "toutes les heures"
+    "refreshIntervalEvery": "la fiecare {interval}",
+    "refreshIntervalEveryHour": "la fiecare oră"
   },
   "benchmark": {
-    "best": "Meilleur emplacement : ",
-    "primary": "test principal : ",
-    "secondary": "test secondaire : ",
-    "tcp": "TCP : ",
+    "best": "Cea mai bună: ",
+    "primary": "principal ",
+    "secondary": "secundar ",
+    "tcp": "TCP ",
     "millisUnit": "ms",
     "statuses": {
       "ok": "OK",
-      "timeout": "délai dépassé",
-      "error": "erreur",
-      "partial": "partiel",
-      "blocked": "bloqué",
-      "challenge": "vérification",
-      "manual": "manuel",
-      "cached": "en cache",
-      "unreachable": "inaccessible",
-      "validation_timeout": "délai de validation dépassé",
-      "tcp_timeout": "délai TCP dépassé",
-      "tcp_error": "erreur TCP",
-      "custom_config_manual_only": "vérification manuelle uniquement"
+      "timeout": "timp expirat",
+      "error": "eroare",
+      "partial": "parțial",
+      "blocked": "blocat",
+      "challenge": "verificare",
+      "manual": "manuală",
+      "cached": "în cache",
+      "unreachable": "inaccesibil",
+      "validation_timeout": "timp de validare expirat",
+      "tcp_timeout": "timp TCP expirat",
+      "tcp_error": "eroare TCP",
+      "custom_config_manual_only": "doar verificare manuală"
     }
+  },
+  "structured": {
+    "IDLE": "Inactiv",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Actualizarea automată a abonamentului setată la {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Setări de validare salvate: {0} • {1} • lot {2} • reîncercări {3}",
+    "CUSTOM_DNS_SAVED": "DNS-ul personalizat a fost salvat",
+    "CUSTOM_DNS_DISABLED": "DNS-ul personalizat a fost dezactivat",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Se caută cea mai bună locație din abonament...",
+    "FIND_BEST_FROM_SAVED": "Se caută cea mai bună locație dintre locațiile salvate...",
+    "STARTING_CONNECTION.VPN": "Se pornește VPN-ul...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Se pornește proxy-ul local...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Se pornește VPN-ul cu cea mai bună locație...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Se pornește proxy-ul local cu cea mai bună locație...",
+    "CONNECTION_STARTED.VPN": "VPN pornit",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy pornit",
+    "CONNECTION_STOPPED.VPN": "VPN oprit",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy oprit",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN pregătit pe acest computer",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy pregătit pe acest computer",
+    "DESKTOP_APP_INITIALIZED": "Aplicația a fost inițializată",
+    "RUNTIME_MODE.VPN": "Mod de rulare: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Mod de rulare: Proxy",
+    "LOCAL_PROXY": "Proxy local: {0}",
+    "RUNTIME_LOG": "Jurnal de rulare: {0}",
+    "PREFLIGHT_PASSED.VPN": "Verificarea preliminară a modului VPN a reușit",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Verificarea preliminară a modului doar proxy a reușit",
+    "PREFLIGHT_FAILED.VPN": "Verificarea preliminară a modului VPN a eșuat: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Verificarea preliminară a modului doar proxy a eșuat: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Capacitate VPN desktop: gata",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Capacitate VPN desktop: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Capacitate VPN desktop: nu este gata",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Nu există locații disponibile pentru testare",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Căutarea celei mai bune locații a expirat; se păstrează conexiunea curentă",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Căutarea locației a fost anulată",
+    "LOCATION_SEARCH_FAILED": "Căutarea locației a eșuat",
+    "VPN_PERMISSION_REQUIRED": "Acordă permisiunea VPN și încearcă din nou",
+    "SELECTED_LOCATION_SAVE_FAILED": "Nu s-a putut salva locația selectată",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN-ul a pornit, dar locația selectată nu a putut fi salvată",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy-ul a pornit, dar locația selectată nu a putut fi salvată",
+    "BEST_LOCATION_START_FAILED.VPN": "Nu s-a putut porni VPN-ul cu cea mai bună locație",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Nu s-a putut porni proxy-ul cu cea mai bună locație",
+    "BEST_LOCATION_SAVE_FAILED": "Nu s-a putut salva cea mai bună locație",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN-ul a pornit, dar cea mai bună locație nu a putut fi salvată",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy-ul a pornit, dar cea mai bună locație nu a putut fi salvată",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Actualizarea abonamentului s-a încheiat. Se caută cea mai bună locație...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Actualizarea abonamentului s-a încheiat, dar este necesară permisiunea VPN pentru a comuta în fundal. Locația VPN anterioară a fost păstrată ca rezervă.",
+    "NO_SUITABLE_LOCATION_FOUND": "Nu s-a găsit nicio locație potrivită",
+    "BEST_LOCATION_NOT_MAPPED": "Cea mai bună locație nu a putut fi asociată cu lista desktop",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Toate abonamentele au fost activate",
+    "ACTIVATED_SUBSCRIPTION": "Activat {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Numele abonamentului a fost resetat",
+    "SUBSCRIPTION_NAME_SAVED": "Numele abonamentului a fost salvat",
+    "SUBSCRIPTION_DELETED": "Abonament șters",
+    "SELECT_LOCATION_FIRST": "Selectați mai întâi o locație",
+    "CHECKING_LOCATION": "Se verifică {0}...",
+    "TESTING_LOCATION": "Se testează {0}...",
+    "LOCATION_CHECK_CANCELLED": "Verificarea locației a fost anulată",
+    "NO_LOCATIONS_TO_EXPORT": "Nu există locații de exportat",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Statisticile sesiunii au fost activate",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Statisticile sesiunii au fost ascunse",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Statisticile de trafic live au fost activate",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Statisticile de trafic live au fost ascunse",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Totalurile pe profil au fost activate",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Totalurile pe profil au fost ascunse",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Istoricul latenței a fost activat",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Istoricul latenței a fost ascuns",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Jurnalul de conexiune a fost activat",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Jurnalul de conexiune a fost ascuns",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Instrumentele de testare a conexiunii au fost activate",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Instrumentele de testare a conexiunii au fost ascunse",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Locațiile din abonament sunt doar în citire. Treci la Locații salvate pentru a salva modificările.",
+    "INVALID_LOCATION_CONFIG": "Configurație de locație nevalidă",
+    "LOCATION_ALREADY_SAVED": "Locație deja salvată: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Locația de editat nu mai este disponibilă",
+    "LOCATION_ADDED": "Locație adăugată: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Locație actualizată și îmbinată: {0}",
+    "LOCATION_UPDATED": "Locație actualizată: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Locațiile din abonament sunt doar în citire. Treci la Locații salvate pentru a le șterge.",
+    "SELECTED_LOCATION_REMOVED": "Locație selectată eliminată: {0}",
+    "LOCATION_REMOVED": "Locație eliminată: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Locația selectată a fost eliminată. VPN oprit: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Locația selectată a fost eliminată. Proxy oprit: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Ștergerea locației a fost anulată deoarece VPN-ul nu a putut fi oprit",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Ștergerea locației a fost anulată deoarece proxy-ul nu a putut fi oprit",
+    "IMPORT_LOCATIONS_BLOCKED": "Treci la Locații salvate pentru a importa locații",
+    "IMPORT_LOCATIONS_FAILED": "Nu s-au putut importa locațiile",
+    "LOCATIONS_IMPORTED": "Locațiile au fost importate",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Locațiile au fost importate. Locația selectată nu mai este disponibilă",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Locațiile au fost importate. Locația selectată nu mai este disponibilă, VPN-ul a fost oprit",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Locațiile au fost importate. Locația selectată nu mai este disponibilă, proxy-ul a fost oprit",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Importul locațiilor a fost anulat deoarece VPN-ul nu a putut fi oprit",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Importul locațiilor a fost anulat deoarece proxy-ul nu a putut fi oprit",
+    "CLIPBOARD_EMPTY": "Clipboardul este gol",
+    "CLIPBOARD_READ_FAILED": "Citirea clipboardului a eșuat",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Textul abonamentului a fost încărcat în fila Profil",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Deconectează-te mai întâi pentru a schimba modul conexiunii",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Setul de reguli a fost eliminat",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Treci la Locații salvate pentru a adăuga locații manual",
+    "HISTORY_ENTRY_DELETED": "Intrarea din istoric a fost ștearsă",
+    "SELECTED_LOCATION_UNCHANGED": "Locația selectată a rămas neschimbată: {0}",
+    "SELECTED_LOCATION_SET": "Locație selectată setată: {0}",
+    "LOCATION_CHECKED": "Location verificareed: {0}",
+    "LOCATION_CHECK_FAILED": "Verificarea locației a eșuat",
+    "LOCATION_EDITED": "Locație editată #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Adăugat a sample rule-set",
+    "RULE_SET_DELETED": "Șters rule-set {0}",
+    "ROUTING_RULES_SAVED": "Regulile de rutare au fost salvate",
+    "ROUTING_RULES_IMPORTED": "Regulile de rutare au fost importate",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Regulile de rutare au fost importate. Repornește VPN-ul pentru aplicare",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Regulile de rutare au fost importate. Repornește proxy-ul pentru aplicare",
+    "ROUTING_RULES_IMPORT_FAILED": "Nu s-au putut importa regulile de rutare",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Regulile de rutare au fost copiate în clipboard",
+    "ROUTING_RULES_EXPORT_CANCELED": "Exportul regulilor de rutare a fost anulat",
+    "ROUTING_RULES_EXPORTED_TO": "Reguli de rutare exportate în {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Nu s-au putut exporta regulile de rutare",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Nu s-a putut deschide fișierul cu reguli de rutare",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Locațiile au fost copiate în clipboard",
+    "LOCATIONS_EXPORT_CANCELED": "Exportul locațiilor a fost anulat",
+    "LOCATIONS_EXPORTED_TO": "Locații exportate în {0}",
+    "LOCATIONS_EXPORT_FAILED": "Nu s-au putut exporta locațiile",
+    "LOCATIONS_FILE_OPEN_FAILED": "Nu s-a putut deschide fișierul cu locații",
+    "LOCATIONS_FILE_READ_FAILED": "Nu s-a putut citi fișierul cu locații",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Exportul diagnosticului a fost anulat",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostic exportat în {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Nu s-a putut exporta diagnosticul",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Nu s-a putut deschide destinația diagnosticului",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Nu există abonamente de actualizat",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Nu s-a putut actualiza setarea de pornire",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Nu s-a putut actualiza setarea de pornire: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Nu s-au putut salva setările de actualizare",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Nu s-au putut salva setările de actualizare: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Sesiunea VPN anterioară va fi restaurată",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Locația VPN anterioară nu mai este disponibilă",
+    "RESTORING_PREVIOUS_CONNECTION": "Se restaurează VPN-ul: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN pornit pe {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy pornit pe {1}",
+    "CONNECTION_START_FAILED.VPN": "Nu s-a putut porni VPN-ul",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Nu s-a putut porni proxy-ul",
+    "CONNECTION_STOP_FAILED.VPN": "Nu s-a putut opri VPN-ul",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Nu s-a putut opri proxy-ul",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Aplicația s-a închis. VPN-ul era oprit.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN oprit. Se va reconecta la următoarea lansare.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy oprit. Se va reconecta la următoarea lansare.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Nu s-a putut opri VPN-ul înainte de ieșire",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Nu s-a putut opri proxy-ul înainte de ieșire"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL d'abonnement"
+      "target": "URL de abonament"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "URL d'abonnement illisible"
+      "target": "URL de abonament ilizibil"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Les abonnements HTTP non sécurisés ne sont pas pris en charge"
+      "target": "Abonamentele HTTP nesecurizate nu sunt acceptate"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Utilisez une URL d'abonnement https://."
+      "target": "Folosește un URL de abonament https://."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "L'URL doit inclure un hôte HTTPS valide"
+      "target": "URL-ul trebuie să includă o gazdă HTTPS validă"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Collez une URL d'abonnement https:// valide."
+      "target": "Lipește un URL de abonament https:// valid."
     },
     {
       "source": "Direct remote source",
-      "target": "Source distante directe"
+      "target": "Sursă directă la distanță"
     },
     {
       "source": "sing-box import link",
-      "target": "lien d'import sing-box"
+      "target": "link de import sing-box"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Lien d'import sing-box illisible"
+      "target": "Link de import sing-box ilizibil"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Seules les URL distantes HTTPS valides sont prises en charge"
+      "target": "Sunt acceptate doar URL-uri HTTPS la distanță valide"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Utilisez un lien d'import sing-box qui résout vers une URL https:// valide."
+      "target": "Folosește un link de import sing-box care se rezolvă la un URL https:// valid."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Récupère le contenu distant depuis l'URL intégrée"
+      "target": "Preia conținut la distanță din URL-ul încorporat"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Récupère le contenu distant depuis "
+      "target": "Preia conținut la distanță din "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Le lien d'import n'a pas pu être analysé"
+      "target": "Linkul de import nu a putut fi analizat"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Collez un lien d'import remote-profile sing-box valide ou une URL d'abonnement directe."
+      "target": "Lipește un link de import remote-profile sing-box valid sau un URL direct de abonament."
     },
     {
       "source": "VPN import link",
-      "target": "lien d'import VPN"
+      "target": "link de import VPN"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Lien d'import VPN illisible"
+      "target": "Link de import VPN ilizibil"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Import de fournisseur non pris en charge"
+      "target": "Import de furnizor neacceptat"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia et les autres imports vpn:// ne sont pas pris en charge. Utilisez une URL d'abonnement normale ou ajoutez des emplacements manuellement."
+      "target": "Amnezia și alte importuri vpn:// nu sunt acceptate. Folosește un URL obișnuit de abonament sau adaugă locații manual."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Le contenu d'import n'a pas pu être décodé"
+      "target": "Conținutul importului nu a putut fi decodat"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Les imports vpn:// ne sont pas pris en charge. Utilisez une URL d'abonnement normale ou ajoutez des emplacements manuellement."
+      "target": "Importurile vpn:// nu sunt acceptate. Folosește un URL obișnuit de abonament sau adaugă locații manual."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "Les URL d'abonnement HTTP ne sont pas prises en charge. Utilisez https://."
+      "target": "URL-urile de abonament HTTP nu sunt acceptate. Folosește https:// în schimb."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "La source distante doit être une URL https:// ou un lien d'import pris en charge"
+      "target": "Sursa la distanță trebuie să fie un URL https:// sau un link de import acceptat"
     },
     {
       "source": "Remote source is empty",
-      "target": "La source distante est vide"
+      "target": "Sursa la distanță este goală"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "La source distante doit être une URL https:// valide avec un hôte."
+      "target": "Sursa la distanță trebuie să fie un URL https:// valid cu o gazdă."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Cet import sing-box pointe vers une URL invalide ou non HTTPS. Utilisez une URL https:// valide."
+      "target": "Acest import sing-box se rezolvă la un URL nevalid sau non-HTTPS. Folosește în schimb un URL https:// valid."
     },
     {
       "source": "Applying selected location...",
-      "target": "Application de l'emplacement sélectionné..."
+      "target": "Se aplică locația selectată..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Application de l'emplacement sélectionné mis à jour..."
+      "target": "Se aplică locația selectată actualizată..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "La recherche du meilleur emplacement a expiré; la connexion actuelle est conservée"
+      "target": "Căutarea celei mai bune locații a expirat; se păstrează conexiunea curentă"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Le presse-papiers est vide"
+      "target": "Clipboardul este gol"
     },
     {
       "source": "Connection log enabled",
-      "target": "Journal de connexion activé"
+      "target": "Jurnalul de conexiune a fost activat"
     },
     {
       "source": "Connection log hidden",
-      "target": "Journal de connexion masqué"
+      "target": "Jurnalul de conexiune a fost ascuns"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Outils de test de connexion activés"
+      "target": "Instrumentele de testare a conexiunii au fost activate"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Outils de test de connexion masqués"
+      "target": "Instrumentele de testare a conexiunii au fost ascunse"
     },
     {
       "source": "Could not open export destination",
-      "target": "Impossible d'ouvrir la destination d'export"
+      "target": "Nu s-a putut deschide destinația exportului"
     },
     {
       "source": "Could not open selected file",
-      "target": "Impossible d'ouvrir le fichier sélectionné"
+      "target": "Nu s-a putut deschide fișierul selectat"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Impossible d'ouvrir le fichier d'emplacements sélectionné"
+      "target": "Nu s-a putut deschide fișierul de locații selectat"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Impossible d'ouvrir le fichier de règles sélectionné"
+      "target": "Nu s-a putut deschide fișierul de reguli selectat"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Pays-Bas depuis Whitelists"
+      "target": "Interfață desktop: Țările de Jos din listele permise"
     },
     {
       "source": "Desktop app initialized",
-      "target": "App démarrée"
+      "target": "Aplicația desktop a fost inițializată"
     },
     {
       "source": "App initialized",
-      "target": "App démarrée"
+      "target": "Aplicația a fost inițializată"
     },
     {
       "source": "Export Locations",
-      "target": "Exporter les emplacements"
+      "target": "Exportă locațiile"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Impossible d'appliquer l'emplacement sélectionné mis à jour"
+      "target": "Nu s-a putut aplica locația selectată actualizată"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Impossible d'exporter les diagnostics"
+      "target": "Nu s-a putut exporta diagnosticul"
     },
     {
       "source": "Failed to export locations",
-      "target": "Impossible d'exporter les emplacements"
+      "target": "Nu s-au putut exporta locațiile"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Impossible d'exporter les règles de routage"
+      "target": "Nu s-au putut exporta regulile de rutare"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Impossible de trouver un emplacement de remplacement"
+      "target": "Nu s-a putut găsi o locație de înlocuire"
     },
     {
       "source": "Failed to import file",
-      "target": "Impossible d'importer le fichier"
+      "target": "Nu s-a putut importa fișierul"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Impossible d'ouvrir la destination des diagnostics"
+      "target": "Nu s-a putut deschide destinația diagnosticului"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Impossible d'enregistrer les paramètres d'actualisation"
+      "target": "Nu s-au putut salva setările de actualizare"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Impossible de mettre à jour le paramètre de démarrage"
+      "target": "Nu s-a putut actualiza setarea de pornire"
     },
     {
       "source": "Import canceled",
-      "target": "Import annulé"
+      "target": "Import anulat"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "URL d'abonnement invalide"
+      "target": "URL de abonament nevalid"
     },
     {
       "source": "Latency history enabled",
-      "target": "Historique de latence activé"
+      "target": "Istoricul latenței a fost activat"
     },
     {
       "source": "Latency history hidden",
-      "target": "Historique de latence masqué"
+      "target": "Istoricul latenței a fost ascuns"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Statistiques de trafic en direct activées"
+      "target": "Statisticile de trafic live au fost activate"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Statistiques de trafic en direct masquées"
+      "target": "Statisticile de trafic live au fost ascunse"
     },
     {
       "source": "Location check cancelled",
-      "target": "Vérification d'emplacement annulée"
+      "target": "Verificarea locației a fost anulată"
     },
     {
       "source": "Location check failed",
-      "target": "Vérification d'emplacement échouée"
+      "target": "Verificarea locației a eșuat"
     },
     {
       "source": "Locations exported",
-      "target": "Emplacements exportés"
+      "target": "Locațiile au fost exportate"
     },
     {
       "source": "Locations import canceled",
-      "target": "Import des emplacements annulé"
+      "target": "Importul locațiilor a fost anulat"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Aucun emplacement disponible pour le test"
+      "target": "Nu există locații disponibile pentru testare"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Aucun abonnement à actualiser"
+      "target": "Nu există abonamente de actualizat"
     },
     {
       "source": "No suitable location found",
-      "target": "Aucun emplacement adapté trouvé"
+      "target": "Nu s-a găsit nicio locație potrivită"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Totaux par profil activés"
+      "target": "Totalurile pe profil au fost activate"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Totaux par profil masqués"
+      "target": "Totalurile pe profil au fost ascunse"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "La session VPN précédente sera restaurée"
+      "target": "Sesiunea VPN anterioară va fi restaurată"
     },
     {
       "source": "QR scan canceled",
-      "target": "Scan QR annulé"
+      "target": "Scanarea QR a fost anulată"
     },
     {
       "source": "Routing rules exported",
-      "target": "Règles de routage exportées"
+      "target": "Regulile de rutare au fost exportate"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Import des règles de routage annulé"
+      "target": "Importul regulilor de rutare a fost anulat"
     },
     {
       "source": "Saved routing rules",
-      "target": "Règles de routage enregistrées"
+      "target": "Reguli de rutare salvate"
     },
     {
       "source": "Session stats enabled",
-      "target": "Statistiques de session activées"
+      "target": "Statisticile sesiunii au fost activate"
     },
     {
       "source": "Session stats hidden",
-      "target": "Statistiques de session masquées"
+      "target": "Statisticile sesiunii au fost ascunse"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Le texte partagé n'est pas un contenu d'import pris en charge"
+      "target": "Textul partajat nu este un conținut de import acceptat"
     },
     {
       "source": "Subscription deleted",
-      "target": "Abonnement supprimé"
+      "target": "Abonament șters"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "L'actualisation de l'abonnement est terminée, mais l'autorisation VPN est requise pour changer en arrière-plan. L'emplacement VPN précédent est conservé comme solution de secours."
+      "target": "Actualizarea abonamentului s-a încheiat, dar este necesară permisiunea VPN pentru a comuta în fundal. Locația VPN anterioară a fost păstrată ca rezervă."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "L'actualisation de l'abonnement est terminée. Recherche du meilleur emplacement..."
+      "target": "Actualizarea abonamentului s-a încheiat. Se caută cea mai bună locație..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "L'actualisation de l'abonnement est terminée. "
+      "target": "Actualizarea abonamentului s-a încheiat. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Mode actuel : "
+      "target": "Mod de rulare: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Proxy local : "
+      "target": "Proxy local: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Journal d'activité : "
+      "target": "Jurnal de rulare: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Vérification du mode VPN réussie"
+      "target": "Verificarea preliminară a modului VPN a reușit"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Vérification du mode proxy uniquement réussie"
+      "target": "Verificarea preliminară a modului doar proxy a reușit"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Vérification du mode VPN échouée : "
+      "target": "Verificarea preliminară a modului VPN a eșuat: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Vérification du mode proxy uniquement échouée : "
+      "target": "Verificarea preliminară a modului doar proxy a eșuat: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Mode VPN indisponible : "
+      "target": "Modul VPN nu este disponibil: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Mode Proxy uniquement indisponible : "
+      "target": "Modul doar proxy nu este disponibil: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN sur cet ordinateur : prêt"
+      "target": "Capacitate VPN desktop: gata"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN sur cet ordinateur : "
+      "target": "Capacitate VPN desktop: "
     },
     {
       "source": "VPN mode available",
-      "target": "Mode VPN disponible"
+      "target": "Mod VPN disponibil"
     },
     {
       "source": "Proxy mode available",
-      "target": "Mode proxy disponible"
+      "target": "Mod proxy disponibil"
     },
     {
       "source": "not ready",
-      "target": "pas prêt"
+      "target": "nu este gata"
     },
     {
       "source": " checks",
-      "target": " vérifications"
+      "target": " verificări"
     },
     {
       "source": " check",
-      "target": " vérification"
+      "target": " verificare"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Échec du périphérique TUN : "
+      "target": "eroare dispozitiv TUN: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Échec des privilèges réseau : "
+      "target": "eroare privilegii de rețea: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Échec des outils route/DNS : "
+      "target": "eroare instrumente rutare/DNS: "
     },
     {
       "source": "TUN device",
-      "target": "périphérique TUN"
+      "target": "dispozitiv TUN"
     },
     {
       "source": "network privileges",
-      "target": "privilèges réseau"
+      "target": "privilegii de rețea"
     },
     {
       "source": "route/DNS tooling",
-      "target": "outils route/DNS"
+      "target": "instrumente rutare/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Le périphérique TUN Linux est absent dans /dev/net/tun. Essayez : sudo modprobe tun"
+      "target": "Dispozitivul TUN Linux lipsește la /dev/net/tun. Încearcă: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Le mode VPN sur ordinateur nécessite CAP_NET_ADMIN. Lancez en root ou accordez les permissions à sing-box : sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Modul VPN desktop necesită CAP_NET_ADMIN. Rulează ca root sau acordă capabilități pentru sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Les outils route/DNS Windows sont indisponibles. Le mode VPN nécessite netsh.exe et les cmdlets DNS client PowerShell."
+      "target": "Instrumentele de rutare/DNS Windows nu sunt disponibile. Modul VPN necesită netsh.exe și cmdleturi PowerShell pentru clientul DNS."
     }
   ],
   "legacyExact": [
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Source du profil : abonnement"
+      "target": "Mod sursă profil: abonament"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Source du profil : emplacements enregistrés"
+      "target": "Mod sursă profil: locații curente"
     }
   ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
-      "target": "Les emplacements de l'abonnement sont en lecture seule. Passez aux emplacements enregistrés pour sauvegarder les modifications."
+      "target": "Locațiile din abonament sunt doar în citire. Treci la Locații salvate pentru a salva modificările."
     },
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
-      "target": "Les emplacements de l'abonnement sont en lecture seule. Passez aux emplacements enregistrés pour les supprimer."
+      "target": "Locațiile din abonament sunt doar în citire. Treci la Locații salvate pentru a le șterge."
     },
     {
       "source": "Subscription received. Review and save it on the Profile tab.",
-      "target": "Abonnement reçu. Vérifiez-le et enregistrez-le dans l'onglet Profil."
+      "target": "Abonament primit. Verifică-l și salvează-l în fila Profil."
     },
     {
       "source": "Subscription link received. Review and save it on the Profile tab.",
-      "target": "Lien d'abonnement reçu. Vérifiez-le et enregistrez-le dans l'onglet Profil."
+      "target": "Link de abonament primit. Verifică-l și salvează-l în fila Profil."
     },
     {
       "source": "Location config received. Review and save it on the Locations tab.",
-      "target": "Configuration d'emplacement reçue. Vérifiez-la et enregistrez-la dans l'onglet Emplacements."
+      "target": "Configurație de locație primită. Verific-o și salveaz-o în fila Locații."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Démarrage du proxy local avec le meilleur emplacement..."
+      "target": "Se pornește proxy-ul local cu cea mai bună locație..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Démarrage du VPN avec le meilleur emplacement..."
+      "target": "Se pornește VPN-ul cu cea mai bună locație..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Recherche du meilleur emplacement dans l'abonnement..."
+      "target": "Se caută cea mai bună locație din abonament..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Recherche du meilleur emplacement enregistré..."
+      "target": "Se caută cea mai bună locație dintre locațiile salvate..."
     },
     {
       "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Emplacements importés. L'emplacement sélectionné n'est plus disponible, proxy arrêté"
+      "target": "Locațiile au fost importate. Locația selectată nu mai este disponibilă, proxy-ul a fost oprit"
     },
     {
       "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Emplacements importés. L'emplacement sélectionné n'est plus disponible, VPN arrêté"
+      "target": "Locațiile au fost importate. Locația selectată nu mai este disponibilă, VPN-ul a fost oprit"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Emplacements importés. L'emplacement sélectionné n'est plus disponible"
+      "target": "Locațiile au fost importate. Locația selectată nu mai este disponibilă"
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Emplacement sélectionné appliqué, mais impossible de l'enregistrer"
+      "target": "Locația selectată a fost aplicată, dar nu a putut fi salvată"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Suppression de l'emplacement annulée, car le proxy n'a pas pu être arrêté"
+      "target": "Ștergerea locației a fost anulată deoarece proxy-ul nu a putut fi oprit"
     },
     {
       "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "Suppression de l'emplacement annulée, car le VPN n'a pas pu être arrêté"
+      "target": "Ștergerea locației a fost anulată deoarece VPN-ul nu a putut fi oprit"
     },
     {
       "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Import des emplacements annulé, car le proxy n'a pas pu être arrêté"
+      "target": "Importul locațiilor a fost anulat deoarece proxy-ul nu a putut fi oprit"
     },
     {
       "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "Import des emplacements annulé, car le VPN n'a pas pu être arrêté"
+      "target": "Importul locațiilor a fost anulat deoarece VPN-ul nu a putut fi oprit"
     },
     {
       "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "VPN arrêté. Les abonnements actualisés ont supprimé l'emplacement sélectionné."
+      "target": "VPN oprit. Abonamentele actualizate au eliminat locația selectată."
     },
     {
       "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Proxy arrêté. Les abonnements actualisés ont supprimé l'emplacement sélectionné."
+      "target": "Proxy oprit. Abonamentele actualizate au eliminat locația selectată."
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN arrêté. Reconnexion au prochain lancement."
+      "target": "VPN oprit. Se va reconecta la următoarea lansare."
     },
     {
       "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Proxy arrêté. Reconnexion au prochain lancement."
+      "target": "Proxy oprit. Se va reconecta la următoarea lansare."
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Règles de routage enregistrées. Redémarrez le VPN pour appliquer"
+      "target": "Regulile de rutare au fost salvate. Repornește VPN-ul pentru aplicare"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Règles de routage enregistrées. Redémarrez le proxy pour appliquer"
+      "target": "Regulile de rutare au fost salvate. Repornește proxy-ul pentru aplicare"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Règles de routage importées. Redémarrez le VPN pour appliquer"
+      "target": "Regulile de rutare au fost importate. Repornește VPN-ul pentru aplicare"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Règles de routage importées. Redémarrez le proxy pour appliquer"
+      "target": "Regulile de rutare au fost importate. Repornește proxy-ul pentru aplicare"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
-      "target": "Emplacement sélectionné supprimé. VPN arrêté : "
+      "target": "Locația selectată a fost eliminată. VPN oprit: "
     },
     {
       "source": "Selected location removed. Proxy stopped: ",
-      "target": "Emplacement sélectionné supprimé. Proxy arrêté : "
+      "target": "Locația selectată a fost eliminată. Proxy oprit: "
     },
     {
       "source": "Best location selected and vpn started: ",
-      "target": "Meilleur emplacement sélectionné et VPN démarré : "
+      "target": "Cea mai bună locație a fost selectată și VPN-ul a pornit: "
     },
     {
       "source": "Best location selected and proxy started: ",
-      "target": "Meilleur emplacement sélectionné et proxy démarré : "
+      "target": "Cea mai bună locație a fost selectată și proxy-ul a pornit: "
     },
     {
       "source": "VPN started, but failed to save the selected location",
-      "target": "VPN démarré, mais l'emplacement sélectionné n'a pas pu être enregistré"
+      "target": "VPN-ul a pornit, dar locația selectată nu a putut fi salvată"
     },
     {
       "source": "Proxy started, but failed to save the selected location",
-      "target": "Proxy démarré, mais l'emplacement sélectionné n'a pas pu être enregistré"
+      "target": "Proxy-ul a pornit, dar locația selectată nu a putut fi salvată"
     },
     {
       "source": "VPN started, but failed to save the best location",
-      "target": "VPN démarré, mais le meilleur emplacement n'a pas pu être enregistré"
+      "target": "VPN-ul a pornit, dar cea mai bună locație nu a putut fi salvată"
     },
     {
       "source": "Proxy started, but failed to save the best location",
-      "target": "Proxy démarré, mais le meilleur emplacement n'a pas pu être enregistré"
+      "target": "Proxy-ul a pornit, dar cea mai bună locație nu a putut fi salvată"
     },
     {
       "source": "Failed to start VPN with the best location",
-      "target": "Impossible de démarrer le VPN avec le meilleur emplacement"
+      "target": "Nu s-a putut porni VPN-ul cu cea mai bună locație"
     },
     {
       "source": "Failed to start proxy with the best location",
-      "target": "Impossible de démarrer le proxy avec le meilleur emplacement"
+      "target": "Nu s-a putut porni proxy-ul cu cea mai bună locație"
     },
     {
       "source": "Failed to save the selected location",
-      "target": "Impossible d'enregistrer l'emplacement sélectionné"
+      "target": "Nu s-a putut salva locația selectată"
     },
     {
       "source": "Failed to save selected location",
-      "target": "Impossible d'enregistrer l'emplacement sélectionné"
+      "target": "Nu s-a putut salva locația selectată"
     },
     {
       "source": "Failed to save the best location",
-      "target": "Impossible d'enregistrer le meilleur emplacement"
+      "target": "Nu s-a putut salva cea mai bună locație"
     },
     {
       "source": "Failed to apply selected location",
-      "target": "Impossible d'appliquer l'emplacement sélectionné"
+      "target": "Nu s-a putut aplica locația selectată"
     },
     {
       "source": "Failed to select location",
-      "target": "Impossible de sélectionner l'emplacement"
+      "target": "Nu s-a putut selecta locația"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "Impossible d'arrêter le VPN avant de quitter"
+      "target": "Nu s-a putut opri VPN-ul înainte de ieșire"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "Impossible d'arrêter le proxy avant de quitter"
+      "target": "Nu s-a putut opri proxy-ul înainte de ieșire"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "Impossible d'arrêter le VPN"
+      "target": "Nu s-a putut opri VPN-ul"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "Impossible d'arrêter le proxy"
+      "target": "Nu s-a putut opri proxy-ul"
     },
     {
       "source": "Failed to start VPN",
-      "target": "Impossible de démarrer le VPN"
+      "target": "Nu s-a putut porni VPN-ul"
     },
     {
       "source": "Failed to start proxy",
-      "target": "Impossible de démarrer le proxy"
+      "target": "Nu s-a putut porni proxy-ul"
     },
     {
       "source": "Could not prepare VPN",
-      "target": "Impossible de préparer le VPN"
+      "target": "Nu s-a putut pregăti VPN-ul"
     },
     {
       "source": "Could not prepare proxy",
-      "target": "Impossible de préparer le proxy"
+      "target": "Nu s-a putut pregăti proxy-ul"
     },
     {
       "source": "Preparing VPN",
-      "target": "Préparation du VPN"
+      "target": "Se pregătește VPN-ul"
     },
     {
       "source": "Preparing proxy",
-      "target": "Préparation du proxy"
+      "target": "Se pregătește proxy-ul"
     },
     {
       "source": "VPN start cancelled",
-      "target": "Démarrage du VPN annulé"
+      "target": "Pornirea VPN-ului a fost anulată"
     },
     {
       "source": "Proxy start cancelled",
-      "target": "Démarrage du proxy annulé"
+      "target": "Pornirea proxy-ului a fost anulată"
     },
     {
       "source": "VPN stop cancelled",
-      "target": "Arrêt du VPN annulé"
+      "target": "Oprirea VPN-ului a fost anulată"
     },
     {
       "source": "Proxy stop cancelled",
-      "target": "Arrêt du proxy annulé"
+      "target": "Oprirea proxy-ului a fost anulată"
     },
     {
       "source": "Starting local proxy...",
-      "target": "Démarrage du proxy local..."
+      "target": "Se pornește proxy-ul local..."
     },
     {
       "source": "Starting VPN...",
-      "target": "Démarrage du VPN..."
+      "target": "Se pornește VPN-ul..."
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Actualisation de tous les abonnements..."
+      "target": "Se actualizează toate abonamentele..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Actualisation de l'abonnement actif..."
+      "target": "Se actualizează abonamentul activ..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Actualisation des abonnements..."
+      "target": "Se actualizează abonamentele..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Actualisation de l'abonnement..."
+      "target": "Se actualizează abonamentul..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Actualisation automatique des abonnements..."
+      "target": "Se actualizează automat abonamentele..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Actualisation automatique de l'abonnement..."
+      "target": "Se actualizează automat abonamentul..."
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Tous les abonnements actualisés"
+      "target": "Toate abonamentele au fost actualizate"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Abonnement actif actualisé"
+      "target": "Abonamentul activ a fost actualizat"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Abonnements actualisés"
+      "target": "Abonamente actualizate"
     },
     {
       "source": "Subscription refreshed",
-      "target": "Abonnement actualisé"
+      "target": "Abonament actualizat"
     },
     {
       "source": "Refresh failed",
-      "target": "Échec de l'actualisation"
+      "target": "Actualizarea a eșuat"
     },
     {
       "source": "Location search cancelled",
-      "target": "Recherche d'emplacement annulée"
+      "target": "Căutarea locației a fost anulată"
     },
     {
       "source": "Location search failed",
-      "target": "Recherche d'emplacement échouée"
+      "target": "Căutarea locației a eșuat"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Accordez l'autorisation VPN et réessayez"
+      "target": "Acordă permisiunea VPN și încearcă din nou"
     },
     {
       "source": "Set a remote source first",
-      "target": "Définissez d'abord une source distante"
+      "target": "Setează mai întâi o sursă la distanță"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Ajoutez d'abord au moins un emplacement enregistré"
+      "target": "Adaugă mai întâi cel puțin o locație salvată"
     },
     {
       "source": "Select a location first",
-      "target": "Sélectionnez d'abord un emplacement"
+      "target": "Selectează mai întâi o locație"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Aucun abonnement enregistré"
+      "target": "Nu există încă abonamente salvate"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Source du profil définie sur abonnement"
+      "target": "Sursa profilului a fost setată la abonament"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Source du profil définie sur emplacements enregistrés"
+      "target": "Sursa profilului a fost setată la locații salvate"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Mode de connexion défini sur VPN"
+      "target": "Modul conexiunii a fost setat la VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Mode de connexion défini sur proxy uniquement"
+      "target": "Modul conexiunii a fost setat la doar proxy"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Déconnectez d'abord pour changer de mode de connexion"
+      "target": "Deconectează-te mai întâi pentru a schimba modul conexiunii"
     },
     {
       "source": "History entry deleted",
-      "target": "Entrée d'historique supprimée"
+      "target": "Intrarea din istoric a fost ștearsă"
     },
     {
       "source": "Subscription name reset",
-      "target": "Nom de l'abonnement réinitialisé"
+      "target": "Numele abonamentului a fost resetat"
     },
     {
       "source": "Subscription name saved",
-      "target": "Nom de l'abonnement enregistré"
+      "target": "Numele abonamentului a fost salvat"
     },
     {
       "source": "Language set to system default",
-      "target": "Langue définie sur la valeur système"
+      "target": "Limba a fost setată la valoarea implicită a sistemului"
     },
     {
       "source": "Custom DNS saved",
-      "target": "DNS personnalisé enregistré"
+      "target": "DNS-ul personalizat a fost salvat"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "DNS personnalisé désactivé"
+      "target": "DNS-ul personalizat a fost dezactivat"
     },
     {
       "source": "Routing rules saved",
-      "target": "Règles de routage enregistrées"
+      "target": "Regulile de rutare au fost salvate"
     },
     {
       "source": "Routing rules imported",
-      "target": "Règles de routage importées"
+      "target": "Regulile de rutare au fost importate"
     },
     {
       "source": "Locations imported",
-      "target": "Emplacements importés"
+      "target": "Locațiile au fost importate"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Passez aux emplacements enregistrés pour importer des emplacements"
+      "target": "Treci la Locații salvate pentru a importa locații"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Passez aux emplacements enregistrés pour ajouter des emplacements manuellement"
+      "target": "Treci la Locații salvate pentru a adăuga locații manual"
     },
     {
       "source": "Invalid location config",
-      "target": "Configuration d'emplacement invalide"
+      "target": "Configurație de locație nevalidă"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "L'emplacement à modifier n'est plus disponible"
+      "target": "Locația de editat nu mai este disponibilă"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Export de diagnostic ouvert"
+      "target": "Exportul diagnosticului a fost deschis"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Échec de l'export de diagnostic"
+      "target": "Exportul diagnosticului a eșuat"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Export de diagnostic annulé"
+      "target": "Exportul diagnosticului a fost anulat"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "L'emplacement VPN précédent n'est plus disponible"
+      "target": "Locația VPN anterioară nu mai este disponibilă"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Application fermée. Le VPN était désactivé."
+      "target": "Aplicația s-a închis. VPN-ul era oprit."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Tous les abonnements activés"
+      "target": "Toate abonamentele au fost activate"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Tous les abonnements sélectionnés"
+      "target": "Toate abonamentele au fost selectate"
     },
     {
       "source": "Subscription selected",
-      "target": "Abonnement sélectionné"
+      "target": "Abonament selectat"
     },
     {
       "source": "Subscription saved",
-      "target": "Abonnement enregistré"
+      "target": "Abonament salvat"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Emplacements copiés dans le presse-papiers"
+      "target": "Locațiile au fost copiate în clipboard"
     },
     {
       "source": "Locations export canceled",
-      "target": "Export des emplacements annulé"
+      "target": "Exportul locațiilor a fost anulat"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Règles de routage copiées dans le presse-papiers"
+      "target": "Regulile de rutare au fost copiate în clipboard"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Export des règles de routage annulé"
+      "target": "Exportul regulilor de rutare a fost anulat"
     },
     {
       "source": "Clipboard read failed",
-      "target": "Lecture du presse-papiers échouée"
+      "target": "Citirea clipboardului a eșuat"
     },
     {
       "source": "No locations to export",
-      "target": "Aucun emplacement à exporter"
+      "target": "Nu există locații de exportat"
     },
     {
       "source": "Failed to load apps",
-      "target": "Impossible de charger les applications"
+      "target": "Nu s-au putut încărca aplicațiile"
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "Impossible d'actualiser les abonnements"
+      "target": "Nu s-au putut actualiza abonamentele"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "Impossible d'actualiser l'abonnement actif"
+      "target": "Nu s-a putut actualiza abonamentul activ"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "Impossible d'importer les règles de routage"
+      "target": "Nu s-au putut importa regulile de rutare"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "Impossible d'enregistrer les règles de routage"
+      "target": "Nu s-au putut salva regulile de rutare"
     },
     {
       "source": "Failed to import locations",
-      "target": "Impossible d'importer les emplacements"
+      "target": "Nu s-au putut importa locațiile"
     },
     {
       "source": "Failed to open locations file",
-      "target": "Impossible d'ouvrir le fichier d'emplacements"
+      "target": "Nu s-a putut deschide fișierul cu locații"
     },
     {
       "source": "Failed to read locations file",
-      "target": "Impossible de lire le fichier d'emplacements"
+      "target": "Nu s-a putut citi fișierul cu locații"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "Impossible d'ouvrir le fichier de règles de routage"
+      "target": "Nu s-a putut deschide fișierul cu reguli de rutare"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
-      "target": "Le meilleur emplacement n'a pas pu être associé à la liste ordinateur"
+      "target": "Cea mai bună locație nu a putut fi asociată cu lista desktop"
     },
     {
       "source": "VPN ready on this computer",
-      "target": "VPN prêt sur cet ordinateur"
+      "target": "VPN pregătit pe acest computer"
     },
     {
       "source": "Proxy ready on this computer",
-      "target": "Proxy prêt sur cet ordinateur"
+      "target": "Proxy pregătit pe acest computer"
     },
     {
       "source": "Desktop VPN shell ready",
-      "target": "VPN prêt sur cet ordinateur"
+      "target": "Interfața VPN desktop este pregătită"
     },
     {
       "source": "Desktop Proxy shell ready",
-      "target": "Proxy prêt sur cet ordinateur"
+      "target": "Interfața proxy desktop este pregătită"
     },
     {
       "source": "VPN started on ",
-      "target": "VPN démarré sur "
+      "target": "VPN pornit pe "
     },
     {
       "source": "Proxy started on ",
-      "target": "Proxy démarré sur "
+      "target": "Proxy pornit pe "
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "VPN arrêté. Mode de l'app : "
+      "target": "VPN oprit. Mod aplicație: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Proxy arrêté. Mode de l'app : "
+      "target": "Proxy oprit. Mod aplicație: "
     },
     {
       "source": "Language set to ",
-      "target": "Langue : "
+      "target": "Limba setată la "
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Actualisation automatique de l'abonnement : "
+      "target": "Actualizarea automată a abonamentului setată la "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Paramètres de validation enregistrés : "
+      "target": "Setări de validare salvate: "
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Emplacement sélectionné inchangé : "
+      "target": "Locația selectată a rămas neschimbată: "
     },
     {
       "source": "Selected location removed: ",
-      "target": "Emplacement sélectionné supprimé : "
+      "target": "Locație selectată eliminată: "
     },
     {
       "source": "Selected location set: ",
-      "target": "Emplacement sélectionné : "
+      "target": "Locație selectată setată: "
     },
     {
       "source": "Location updated and merged: ",
-      "target": "Emplacement mis à jour et fusionné : "
+      "target": "Locație actualizată și îmbinată: "
     },
     {
       "source": "Location already saved: ",
-      "target": "Emplacement déjà enregistré : "
+      "target": "Locație deja salvată: "
     },
     {
       "source": "Location updated: ",
-      "target": "Emplacement mis à jour : "
+      "target": "Locație actualizată: "
     },
     {
       "source": "Location removed: ",
-      "target": "Emplacement supprimé : "
+      "target": "Locație eliminată: "
     },
     {
       "source": "Location added: ",
-      "target": "Emplacement ajouté : "
+      "target": "Locație adăugată: "
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Abonnements actualisés : "
+      "target": "Abonamente actualizate: "
     },
     {
       "source": "Failed: ",
-      "target": "Échecs : "
+      "target": "Eșuat: "
     },
     {
       "source": "Restoring VPN: ",
-      "target": "Restauration du VPN : "
+      "target": "Se restaurează VPN-ul: "
     },
     {
       "source": "Refreshing ",
-      "target": "Actualisation de "
+      "target": "Se actualizează "
     },
     {
       "source": "Locations exported to ",
-      "target": "Emplacements exportés vers "
+      "target": "Locații exportate în "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Règles de routage exportées vers "
+      "target": "Reguli de rutare exportate în "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Diagnostic exporté vers "
+      "target": "Diagnostic exportat în "
     },
     {
       "source": "Failed to benchmark ",
-      "target": "Échec du test de "
+      "target": "Nu s-a putut testa "
     },
     {
       "source": "Activated ",
-      "target": "Activé : "
+      "target": "Activat "
     },
     {
       "source": "Added ",
-      "target": "Ajouté : "
+      "target": "Adăugat "
     },
     {
       "source": "Deleted ",
-      "target": "Supprimé : "
+      "target": "Șters "
     },
     {
       "source": "Selected ",
-      "target": "Sélectionné : "
+      "target": "Selectat "
     },
     {
       "source": "Edited location #",
-      "target": "Emplacement # modifié : "
+      "target": "Locație editată #"
     },
     {
       "source": "App mode: ",
-      "target": "Mode de l'app : "
+      "target": "Mod aplicație: "
     },
     {
       "source": " locations refreshed",
-      "target": " emplacements actualisés"
+      "target": " locații actualizate"
     },
     {
       "source": " location refreshed",
-      "target": " emplacement actualisé"
+      "target": " locație actualizată"
     },
     {
       "source": " • batch ",
@@ -1072,59 +1241,59 @@
     },
     {
       "source": " • retries ",
-      "target": " • relances "
+      "target": " • reîncercări "
     },
     {
       "source": "custom interval",
-      "target": "intervalle personnalisé"
+      "target": "interval personalizat"
     },
     {
       "source": "every hour",
-      "target": "toutes les heures"
+      "target": "la fiecare oră"
     },
     {
       "source": "all subscriptions",
-      "target": "tous les abonnements"
+      "target": "toate abonamentele"
     },
     {
       "source": "selected subscription",
-      "target": "abonnement sélectionné"
+      "target": "abonamentul selectat"
     },
     {
       "source": "proxy only",
-      "target": "proxy uniquement"
+      "target": "doar proxy"
     },
     {
       "source": "off",
-      "target": "désactivé"
+      "target": "oprit"
     },
     {
       "source": "Idle",
-      "target": "Inactif"
+      "target": "Inactiv"
     },
     {
       "source": "VPN started",
-      "target": "VPN démarré"
+      "target": "VPN pornit"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN arrêté"
+      "target": "VPN oprit"
     },
     {
       "source": "Proxy started",
-      "target": "Proxy démarré"
+      "target": "Proxy pornit"
     },
     {
       "source": "Proxy stopped",
-      "target": "Proxy arrêté"
+      "target": "Proxy oprit"
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Démarrage du VPN avec le nouveau meilleur emplacement..."
+      "target": "Se pornește VPN-ul cu noua cea mai bună locație..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Démarrage du proxy avec le nouveau meilleur emplacement..."
+      "target": "Se pornește proxy-ul cu noua cea mai bună locație..."
     }
   ]
 }

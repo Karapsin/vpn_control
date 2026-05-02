@@ -35,6 +35,8 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+./scripts/check_release_hygiene.sh
+
 echo "[vpn-control] checking Java runtime"
 java -version
 

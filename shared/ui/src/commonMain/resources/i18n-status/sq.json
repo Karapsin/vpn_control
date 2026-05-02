@@ -1,0 +1,1547 @@
+{
+  "dynamic": {
+    "findingSubscription": "Po gjendet vendndodhja më e mirë nga abonimi...",
+    "findingSaved": "Po gjendet vendndodhja më e mirë nga vendndodhjet e ruajtura...",
+    "testingFastestCandidates": "Po testohen kandidatët më të shpejtë me grupe...",
+    "checkingLocations": "Po kontrollohen {count} vendndodhje...",
+    "testingLocationsRange": "Po testohen vendndodhjet {start}-{end} nga {total}...",
+    "selectLocationFirst": "Zgjidhni fillimisht një vendndodhje",
+    "checkingLocation": "Po kontrollohet {name}...",
+    "testingLocation": "Po testohet {name}...",
+    "locationCheckCancelled": "Kontrolli i vendndodhjes u anulua",
+    "noLocationsToExport": "Nuk ka vendndodhje për eksport",
+    "refreshIntervalMinutes": "{count} min.",
+    "refreshIntervalHours": "{count} orë",
+    "refreshIntervalHoursMinutes": "{hours} orë {minutes} min.",
+    "refreshIntervalEvery": "çdo {interval}",
+    "refreshIntervalEveryHour": "çdo orë"
+  },
+  "benchmark": {
+    "best": "Më e mira: ",
+    "primary": "kryesor ",
+    "secondary": "dytësor ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
+    "statuses": {
+      "blocked": "bllokuar",
+      "cached": "në cache",
+      "challenge": "sfidë",
+      "custom_config_manual_only": "konfigurim i personalizuar vetëm manual",
+      "error": "gabim",
+      "manual": "me dorë",
+      "ok": "në rregull",
+      "partial": "i pjesshëm",
+      "tcp_error": "gabim TCP",
+      "tcp_timeout": "skadim TCP",
+      "timeout": "skadim",
+      "unreachable": "i paarritshëm",
+      "validation_timeout": "skadim validimi"
+    }
+  },
+  "structured": {
+    "IDLE": "Në pritje",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Vetëpërditësimi i abonimit u vendos në {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Cilësimet e validimit u ruajtën: {0} • {1} • grupi {2} • riprova {3}",
+    "CUSTOM_DNS_SAVED": "DNS i personalizuar u ruajt",
+    "CUSTOM_DNS_DISABLED": "DNS i personalizuar u çaktivizua",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Po gjendet vendndodhja më e mirë nga abonimi...",
+    "FIND_BEST_FROM_SAVED": "Po gjendet vendndodhja më e mirë nga vendndodhjet e ruajtura...",
+    "STARTING_CONNECTION.VPN": "Po niset VPN...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Po niset proxy lokal...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Po niset VPN me vendndodhjen më të mirë...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Po niset proxy lokal me vendndodhjen më të mirë...",
+    "CONNECTION_STARTED.VPN": "VPN u nis",
+    "CONNECTION_STARTED.PROXY_ONLY": "Proxy u nis",
+    "CONNECTION_STOPPED.VPN": "VPN u ndal",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Proxy u ndal",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN është gati në këtë kompjuter",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Proxy është gati në këtë kompjuter",
+    "DESKTOP_APP_INITIALIZED": "Aplikacioni u inicializua",
+    "RUNTIME_MODE.VPN": "Modaliteti i runtime-it: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Modaliteti i runtime-it: Proxy",
+    "LOCAL_PROXY": "Proxy lokal: {0}",
+    "RUNTIME_LOG": "Regjistri i runtime-it: {0}",
+    "PREFLIGHT_PASSED.VPN": "Kontrolli paraprak i modalitetit VPN kaloi",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Kontrolli paraprak i modalitetit vetëm Proxy kaloi",
+    "PREFLIGHT_FAILED.VPN": "Kontrolli paraprak i modalitetit VPN dështoi: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Kontrolli paraprak i modalitetit vetëm Proxy dështoi: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Aftësia VPN desktop: gati",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Aftësia VPN desktop: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Aftësia VPN desktop: jo gati",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Nuk ka vendndodhje të disponueshme për benchmark",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Kërkimi i vendndodhjes më të mirë skadoi; po mbahet lidhja aktuale",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Kërkimi i vendndodhjes u anulua",
+    "LOCATION_SEARCH_FAILED": "Kërkimi i vendndodhjes dështoi",
+    "VPN_PERMISSION_REQUIRED": "Jep lejen për VPN dhe provo përsëri",
+    "SELECTED_LOCATION_SAVE_FAILED": "Dështoi ruajtja e vendndodhjes së zgjedhur",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN u nis, por ruajtja e vendndodhjes së zgjedhur dështoi",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy u nis, por ruajtja e vendndodhjes së zgjedhur dështoi",
+    "BEST_LOCATION_START_FAILED.VPN": "Dështoi nisja e VPN me vendndodhjen më të mirë",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Dështoi nisja e proxy me vendndodhjen më të mirë",
+    "BEST_LOCATION_SAVE_FAILED": "Dështoi ruajtja e vendndodhjes më të mirë",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN u nis, por ruajtja e vendndodhjes më të mirë dështoi",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy u nis, por ruajtja e vendndodhjes më të mirë dështoi",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Përditësimi i abonimit përfundoi. Po gjendet vendndodhja më e mirë...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Përditësimi i abonimit përfundoi, por kërkohet leja për VPN për të kaluar në sfond. Vendndodhja e mëparshme VPN u mbajt si rezervë.",
+    "NO_SUITABLE_LOCATION_FOUND": "Nuk u gjet vendndodhje e përshtatshme",
+    "BEST_LOCATION_NOT_MAPPED": "Vendndodhja më e mirë nuk mund të lidhej me listën desktop",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Të gjitha abonimet u aktivizuan",
+    "ACTIVATED_SUBSCRIPTION": "U aktivizua {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Emri i abonimit u rivendos",
+    "SUBSCRIPTION_NAME_SAVED": "Emri i abonimit u ruajt",
+    "SUBSCRIPTION_DELETED": "Abonimi u fshi",
+    "SELECT_LOCATION_FIRST": "Zgjidhni fillimisht një vendndodhje",
+    "CHECKING_LOCATION": "Po kontrollohet {0}...",
+    "TESTING_LOCATION": "Po testohet {0}...",
+    "LOCATION_CHECK_CANCELLED": "Kontrolli i vendndodhjes u anulua",
+    "NO_LOCATIONS_TO_EXPORT": "Nuk ka vendndodhje për eksport",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Statistikat e sesionit u aktivizuan",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Statistikat e sesionit u fshehën",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Statistikat e trafikut live u aktivizuan",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Statistikat e trafikut live u fshehën",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Totalet sipas profilit u aktivizuan",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Totalet sipas profilit u fshehën",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Historiku i vonesës u aktivizua",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Historiku i vonesës u fsheh",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Regjistri i lidhjes u aktivizua",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Regjistri i lidhjes u fsheh",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Mjetet e testimit të lidhjes u aktivizuan",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Mjetet e testimit të lidhjes u fshehën",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Vendndodhjet e abonimit janë vetëm për lexim. Kalo te Vendndodhjet e ruajtura për të ruajtur ndryshimet.",
+    "INVALID_LOCATION_CONFIG": "Konfigurim i pavlefshëm i vendndodhjes",
+    "LOCATION_ALREADY_SAVED": "Vendndodhja është ruajtur tashmë: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Vendndodhja për modifikim nuk është më e disponueshme",
+    "LOCATION_ADDED": "Vendndodhja u shtua: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Vendndodhja u përditësua dhe u bashkua: {0}",
+    "LOCATION_UPDATED": "Vendndodhja u përditësua: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Vendndodhjet e abonimit janë vetëm për lexim. Kalo te Vendndodhjet e ruajtura për t'i fshirë.",
+    "SELECTED_LOCATION_REMOVED": "Vendndodhja e zgjedhur u hoq: {0}",
+    "LOCATION_REMOVED": "Vendndodhja u hoq: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Vendndodhja e zgjedhur u hoq. VPN u ndal: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Vendndodhja e zgjedhur u hoq. Proxy u ndal: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Heqja e vendndodhjes u kthye pas sepse VPN nuk mund të ndalej",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Heqja e vendndodhjes u kthye pas sepse proxy nuk mund të ndalej",
+    "IMPORT_LOCATIONS_BLOCKED": "Kalo te Vendndodhjet e ruajtura për të importuar vendndodhje",
+    "IMPORT_LOCATIONS_FAILED": "Dështoi importimi i vendndodhjeve",
+    "LOCATIONS_IMPORTED": "Vendndodhjet u importuan",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme, vpn u ndal",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme, proxy u ndal",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Importimi i vendndodhjeve u kthye pas sepse VPN nuk mund të ndalej",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Importimi i vendndodhjeve u kthye pas sepse proxy nuk mund të ndalej",
+    "CLIPBOARD_EMPTY": "Clipboard është bosh",
+    "CLIPBOARD_READ_FAILED": "Leximi i clipboard-it dështoi",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Teksti i abonimit u ngarkua në skedën Profili",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Shkëputu fillimisht për të ndryshuar modalitetin e lidhjes",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Grupi i rregullave u hoq",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Kalo te Vendndodhjet e ruajtura për të shtuar vendndodhje manualisht",
+    "HISTORY_ENTRY_DELETED": "Hyrja e historikut u fshi",
+    "SELECTED_LOCATION_UNCHANGED": "Vendndodhja e zgjedhur nuk ndryshoi: {0}",
+    "SELECTED_LOCATION_SET": "Vendndodhja e zgjedhur u vendos: {0}",
+    "LOCATION_CHECKED": "Location kontrolled: {0}",
+    "LOCATION_CHECK_FAILED": "Kontrolli i vendndodhjes dështoi",
+    "LOCATION_EDITED": "U modifikua vendndodhja #{0}",
+    "SAMPLE_RULE_SET_ADDED": "U shtua a sample rule-set",
+    "RULE_SET_DELETED": "U fshi rule-set {0}",
+    "ROUTING_RULES_SAVED": "Rregullat e rutimit u ruajtën",
+    "ROUTING_RULES_IMPORTED": "Rregullat e rutimit u importuan",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Rregullat e rutimit u importuan. Rinis VPN për t'i zbatuar",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Rregullat e rutimit u importuan. Rinis proxy për t'i zbatuar",
+    "ROUTING_RULES_IMPORT_FAILED": "Dështoi importimi i rregullave të rutimit",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Rregullat e rutimit u kopjuan në clipboard",
+    "ROUTING_RULES_EXPORT_CANCELED": "Eksportimi i rregullave të rutimit u anulua",
+    "ROUTING_RULES_EXPORTED_TO": "Rregullat e rutimit u eksportuan te {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Dështoi eksportimi i rregullave të rutimit",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Dështoi hapja e skedarit të rregullave të rutimit",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Vendndodhjet u kopjuan në clipboard",
+    "LOCATIONS_EXPORT_CANCELED": "Eksportimi i vendndodhjeve u anulua",
+    "LOCATIONS_EXPORTED_TO": "Vendndodhjet u eksportuan te {0}",
+    "LOCATIONS_EXPORT_FAILED": "Dështoi eksportimi i vendndodhjeve",
+    "LOCATIONS_FILE_OPEN_FAILED": "Dështoi hapja e skedarit të vendndodhjeve",
+    "LOCATIONS_FILE_READ_FAILED": "Dështoi leximi i skedarit të vendndodhjeve",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Eksportimi i diagnostikës u anulua",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostika u eksportua te {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Dështoi eksportimi i diagnostikës",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Dështoi hapja e destinacionit të diagnostikës",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Nuk ka abonime për t'u përditësuar",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Dështoi përditësimi i cilësimit të nisjes",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Dështoi përditësimi i cilësimit të nisjes: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Dështoi ruajtja e cilësimeve të përditësimit",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Dështoi ruajtja e cilësimeve të përditësimit: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Sesioni i mëparshëm VPN do të rikthehet",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Vendndodhja e mëparshme VPN nuk është më e disponueshme",
+    "RESTORING_PREVIOUS_CONNECTION": "Po rikthehet VPN: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN u nis në {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy u nis në {1}",
+    "CONNECTION_START_FAILED.VPN": "Dështoi nisja e VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Dështoi nisja e proxy",
+    "CONNECTION_STOP_FAILED.VPN": "Dështoi ndalimi i VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Dështoi ndalimi i proxy",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Aplikacioni u mbyll. VPN ishte joaktiv.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN u ndal. Do të rilidhet në nisjen tjetër.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy u ndal. Do të rilidhet në nisjen tjetër.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Dështoi ndalimi i VPN para daljes",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Dështoi ndalimi i Proxy para daljes"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL e abonimit"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "URL e abonimit e palexueshme"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Abonimet HTTP të pasigurta nuk mbështeten"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Përdor një URL abonimi https://."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL-ja duhet të përmbajë një host të vlefshëm HTTPS"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Ngjit një URL të vlefshme https:// abonimi."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Burim i largët i drejtpërdrejtë"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "lidhje importimi sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Lidhje importimi sing-box e palexueshme"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Mbështeten vetëm URL të largëta HTTPS të vlefshme"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Përdor një lidhje importimi sing-box që zgjidhet në një URL të vlefshme https://."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Merr përmbajtje të largët nga URL-ja e integruar"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Merr përmbajtje të largët nga "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Lidhja e importimit nuk mund të analizohej"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Ngjit një lidhje të vlefshme importimi të profilit të largët sing-box ose një URL të drejtpërdrejtë abonimi."
+    },
+    {
+      "source": "VPN import link",
+      "target": "lidhje importimi VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Lidhje importimi VPN e palexueshme"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Importim ofruesi i pambështetur"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Importimet Amnezia dhe të tjera vpn:// nuk mbështeten. Përdor një URL normale abonimi ose shto vendndodhje manualisht."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Ngarkesa e importimit nuk mund të dekodohej"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Importimet vpn:// nuk mbështeten. Përdor një URL normale abonimi ose shto vendndodhje manualisht."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "URL-të HTTP të abonimit nuk mbështeten. Përdor https:// në vend të tyre."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Burimi i largët duhet të jetë një URL https:// ose një lidhje importimi e mbështetur"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Burimi i largët është bosh"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Burimi i largët duhet të jetë një URL e vlefshme https:// me host."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Ky import sing-box zgjidhet në një URL të pavlefshme ose jo-HTTPS. Përdor një URL të vlefshme https:// në vend të saj."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Po zbatohet vendndodhja e zgjedhur..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Po zbatohet vendndodhja e zgjedhur e përditësuar..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Kërkimi i vendndodhjes më të mirë skadoi; po mbahet lidhja aktuale"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Clipboard është bosh"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Regjistri i lidhjes u aktivizua"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Regjistri i lidhjes u fsheh"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Mjetet e testimit të lidhjes u aktivizuan"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Mjetet e testimit të lidhjes u fshehën"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Nuk mund të hapej destinacioni i eksportimit"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Nuk mund të hapej skedari i zgjedhur"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Nuk mund të hapej skedari i zgjedhur i vendndodhjeve"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Nuk mund të hapej skedari i zgjedhur i rregullave"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Shell desktop: Holanda nga Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Aplikacioni desktop u inicializua"
+    },
+    {
+      "source": "App initialized",
+      "target": "Aplikacioni u inicializua"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Eksporto vendndodhjet"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Dështoi zbatimi i vendndodhjes së zgjedhur të përditësuar"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Dështoi eksportimi i diagnostikës"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Dështoi eksportimi i vendndodhjeve"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Dështoi eksportimi i rregullave të rutimit"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Dështoi gjetja e një vendndodhjeje zëvendësuese"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Dështoi importimi i skedarit"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Dështoi hapja e destinacionit të diagnostikës"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Dështoi ruajtja e cilësimeve të përditësimit"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Dështoi përditësimi i cilësimit të nisjes"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Importimi u anulua"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "URL e pavlefshme abonimi"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Historiku i vonesës u aktivizua"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Historiku i vonesës u fsheh"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Statistikat e trafikut live u aktivizuan"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Statistikat e trafikut live u fshehën"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Kontrolli i vendndodhjes u anulua"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Kontrolli i vendndodhjes dështoi"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Vendndodhjet u eksportuan"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Importimi i vendndodhjeve u anulua"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Nuk ka vendndodhje të disponueshme për benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Nuk ka abonime për t'u përditësuar"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Nuk u gjet vendndodhje e përshtatshme"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Totalet sipas profilit u aktivizuan"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Totalet sipas profilit u fshehën"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Sesioni i mëparshëm VPN do të rikthehet"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "Skanimi QR u anulua"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Rregullat e rutimit u eksportuan"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Importimi i rregullave të rutimit u anulua"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Rregullat e rutimit u ruajtën"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Statistikat e sesionit u aktivizuan"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Statistikat e sesionit u fshehën"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Teksti i ndarë nuk është ngarkesë importimi e mbështetur"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Abonimi u fshi"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Përditësimi i abonimit përfundoi, por kërkohet leja për VPN për të kaluar në sfond. Vendndodhja e mëparshme VPN u mbajt si rezervë."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Përditësimi i abonimit përfundoi. Po gjendet vendndodhja më e mirë..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Përditësimi i abonimit përfundoi. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Modaliteti i runtime-it: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Proxy lokal: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Regjistri i runtime-it: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Kontrolli paraprak i modalitetit VPN kaloi"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Kontrolli paraprak i modalitetit vetëm Proxy kaloi"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Kontrolli paraprak i modalitetit VPN dështoi: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Kontrolli paraprak i modalitetit vetëm Proxy dështoi: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "Modaliteti VPN i padisponueshëm: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Modaliteti vetëm Proxy i padisponueshëm: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Aftësia VPN desktop: gati"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Aftësia VPN desktop: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "Modaliteti VPN i disponueshëm"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Modaliteti Proxy i disponueshëm"
+    },
+    {
+      "source": "not ready",
+      "target": "jo gati"
+    },
+    {
+      "source": " checks",
+      "target": " kontrolle"
+    },
+    {
+      "source": " check",
+      "target": " kontroll"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "dështim i pajisjes TUN: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "dështim i privilegjeve të rrjetit: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "dështim i mjeteve route/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "pajisja TUN"
+    },
+    {
+      "source": "network privileges",
+      "target": "privilegjet e rrjetit"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "mjetet route/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Pajisja TUN e Linux mungon te /dev/net/tun. Provo: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "Modaliteti VPN desktop kërkon CAP_NET_ADMIN. Ekzekutoje si root ose jepi sing-box aftësitë: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Mjetet route/DNS të Windows nuk janë të disponueshme. Modaliteti VPN kërkon netsh.exe dhe cmdlet-et PowerShell të klientit DNS."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN është gati në këtë kompjuter"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy është gati në këtë kompjuter"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Në pritje"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN u nis"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN u ndal"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy u nis"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy u ndal"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Po niset VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Po niset proxy lokal..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Po niset VPN me vendndodhjen më të mirë..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Po niset proxy lokal me vendndodhjen më të mirë..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Po gjendet vendndodhja më e mirë nga abonimi..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Po gjendet vendndodhja më e mirë nga vendndodhjet e ruajtura..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Kërkimi i vendndodhjes u anulua"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Kërkimi i vendndodhjes dështoi"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Jep lejen për VPN dhe provo përsëri"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Vendos fillimisht një burim të largët"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Shto fillimisht të paktën një vendndodhje të ruajtur"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Zgjidh fillimisht një vendndodhje"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Nuk ka ende abonime të ruajtura"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Po përditësohen të gjitha abonimet..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Po përditësohet abonimi aktiv..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Po përditësohet abonimi..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Po përditësohen abonimet..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Po vetëpërditësohet abonimi..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Po vetëpërditësohen abonimet..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonimi u përditësua"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonimet u përditësuan"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Abonimi aktiv u përditësua"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Të gjitha abonimet u përditësuan"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Përditësimi dështoi"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Burimi i profilit u vendos në abonim"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Burimi i profilit u vendos në vendndodhjet e ruajtura"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Modaliteti i lidhjes u vendos në VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Modaliteti i lidhjes u vendos vetëm në proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Shkëputu fillimisht për të ndryshuar modalitetin e lidhjes"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Hyrja e historikut u fshi"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Emri i abonimit u rivendos"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Emri i abonimit u ruajt"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Gjuha u vendos në parazgjedhjen e sistemit"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS i personalizuar u ruajt"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS i personalizuar u çaktivizua"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rregullat e rutimit u ruajtën"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rregullat e rutimit u importuan"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Vendndodhjet u importuan"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Kalo te Vendndodhjet e ruajtura për të importuar vendndodhje"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Kalo te Vendndodhjet e ruajtura për të shtuar vendndodhje manualisht"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Konfigurim i pavlefshëm i vendndodhjes"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Vendndodhja për modifikim nuk është më e disponueshme"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Eksportimi i diagnostikës u hap"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Eksportimi i diagnostikës dështoi"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Eksportimi i diagnostikës u anulua"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Vendndodhja e mëparshme VPN nuk është më e disponueshme"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikacioni u mbyll. VPN ishte joaktiv."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Të gjitha abonimet u aktivizuan"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Të gjitha abonimet u zgjodhën"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonimi u zgjodh"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Vendndodhjet u kopjuan në clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Eksportimi i vendndodhjeve u anulua"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rregullat e rutimit u kopjuan në clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksportimi i rregullave të rutimit u anulua"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Modaliteti i burimit të profilit: abonim"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Modaliteti i burimit të profilit: vendndodhje të ruajtura"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Po niset VPN me vendndodhjen e re më të mirë..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Po niset proxy me vendndodhjen e re më të mirë..."
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Vendndodhjet e abonimit janë vetëm për lexim. Kalo te Vendndodhjet e ruajtura për të ruajtur ndryshimet."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Vendndodhjet e abonimit janë vetëm për lexim. Kalo te Vendndodhjet e ruajtura për t'i fshirë."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Abonimi u mor. Rishikoje dhe ruaje në skedën Profili."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Lidhja e abonimit u mor. Rishikoje dhe ruaje në skedën Profili."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Konfigurimi i vendndodhjes u mor. Rishikoje dhe ruaje në skedën Vendndodhjet."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Po niset proxy lokal me vendndodhjen më të mirë..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Po niset VPN me vendndodhjen më të mirë..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Po gjendet vendndodhja më e mirë nga abonimi..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Po gjendet vendndodhja më e mirë nga vendndodhjet e ruajtura..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme, proxy u ndal"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme, vpn u ndal"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Vendndodhjet u importuan. Vendndodhja e zgjedhur nuk është më e disponueshme"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Vendndodhja e zgjedhur u zbatua, por ruajtja e saj dështoi"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Heqja e vendndodhjes u kthye pas sepse proxy nuk mund të ndalej"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Heqja e vendndodhjes u kthye pas sepse VPN nuk mund të ndalej"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Importimi i vendndodhjeve u kthye pas sepse proxy nuk mund të ndalej"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Importimi i vendndodhjeve u kthye pas sepse VPN nuk mund të ndalej"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN u ndal. Abonimet e përditësuara hoqën vendndodhjen e zgjedhur."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Proxy u ndal. Abonimet e përditësuara hoqën vendndodhjen e zgjedhur."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN u ndal. Do të rilidhet në nisjen tjetër."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Proxy u ndal. Do të rilidhet në nisjen tjetër."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Rregullat e rutimit u ruajtën. Rinis VPN për t'i zbatuar"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Rregullat e rutimit u ruajtën. Rinis proxy për t'i zbatuar"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Rregullat e rutimit u importuan. Rinis VPN për t'i zbatuar"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Rregullat e rutimit u importuan. Rinis proxy për t'i zbatuar"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Vendndodhja e zgjedhur u hoq. VPN u ndal: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Vendndodhja e zgjedhur u hoq. Proxy u ndal: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Vendndodhja më e mirë u zgjodh dhe vpn u nis: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Vendndodhja më e mirë u zgjodh dhe proxy u nis: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN u nis, por ruajtja e vendndodhjes së zgjedhur dështoi"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Proxy u nis, por ruajtja e vendndodhjes së zgjedhur dështoi"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN u nis, por ruajtja e vendndodhjes më të mirë dështoi"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Proxy u nis, por ruajtja e vendndodhjes më të mirë dështoi"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Dështoi nisja e VPN me vendndodhjen më të mirë"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Dështoi nisja e proxy me vendndodhjen më të mirë"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Dështoi ruajtja e vendndodhjes së zgjedhur"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Dështoi ruajtja e vendndodhjes së zgjedhur"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Dështoi ruajtja e vendndodhjes më të mirë"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Dështoi zbatimi i vendndodhjes së zgjedhur"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Dështoi zgjedhja e vendndodhjes"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Dështoi ndalimi i VPN para daljes"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Dështoi ndalimi i Proxy para daljes"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Dështoi ndalimi i VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Dështoi ndalimi i proxy"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Dështoi nisja e VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Dështoi nisja e proxy"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Nuk mund të përgatitej VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Nuk mund të përgatitej proxy"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Po përgatitet VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Po përgatitet proxy"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Nisja e VPN u anulua"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Nisja e Proxy u anulua"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Ndalimi i VPN u anulua"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Ndalimi i Proxy u anulua"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Po niset proxy lokal..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Po niset VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Po përditësohen të gjitha abonimet..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Po përditësohet abonimi aktiv..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Po përditësohen abonimet..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Po përditësohet abonimi..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Po vetëpërditësohen abonimet..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Po vetëpërditësohet abonimi..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Të gjitha abonimet u përditësuan"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Abonimi aktiv u përditësua"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonimet u përditësuan"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonimi u përditësua"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Përditësimi dështoi"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Kërkimi i vendndodhjes u anulua"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Kërkimi i vendndodhjes dështoi"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Jep lejen për VPN dhe provo përsëri"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Vendos fillimisht një burim të largët"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Shto fillimisht të paktën një vendndodhje të ruajtur"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Zgjidh fillimisht një vendndodhje"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Nuk ka ende abonime të ruajtura"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Burimi i profilit u vendos në abonim"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Burimi i profilit u vendos në vendndodhjet e ruajtura"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Modaliteti i lidhjes u vendos në VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Modaliteti i lidhjes u vendos vetëm në proxy"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Shkëputu fillimisht për të ndryshuar modalitetin e lidhjes"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Hyrja e historikut u fshi"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Emri i abonimit u rivendos"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Emri i abonimit u ruajt"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Gjuha u vendos në parazgjedhjen e sistemit"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "DNS i personalizuar u ruajt"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "DNS i personalizuar u çaktivizua"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Rregullat e rutimit u ruajtën"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Rregullat e rutimit u importuan"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Vendndodhjet u importuan"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Kalo te Vendndodhjet e ruajtura për të importuar vendndodhje"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Kalo te Vendndodhjet e ruajtura për të shtuar vendndodhje manualisht"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Konfigurim i pavlefshëm i vendndodhjes"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Vendndodhja për modifikim nuk është më e disponueshme"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Eksportimi i diagnostikës u hap"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Eksportimi i diagnostikës dështoi"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Eksportimi i diagnostikës u anulua"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Vendndodhja e mëparshme VPN nuk është më e disponueshme"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Aplikacioni u mbyll. VPN ishte joaktiv."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Të gjitha abonimet u aktivizuan"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Të gjitha abonimet u zgjodhën"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonimi u zgjodh"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonimi u ruajt"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Vendndodhjet u kopjuan në clipboard"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Eksportimi i vendndodhjeve u anulua"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Rregullat e rutimit u kopjuan në clipboard"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Eksportimi i rregullave të rutimit u anulua"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Leximi i clipboard-it dështoi"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Nuk ka vendndodhje për eksportim"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Dështoi ngarkimi i aplikacioneve"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Dështoi përditësimi i abonimeve"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Dështoi përditësimi i abonimit aktiv"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Dështoi importimi i rregullave të rutimit"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Dështoi ruajtja e rregullave të rutimit"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Dështoi importimi i vendndodhjeve"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Dështoi hapja e skedarit të vendndodhjeve"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Dështoi leximi i skedarit të vendndodhjeve"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Dështoi hapja e skedarit të rregullave të rutimit"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Vendndodhja më e mirë nuk mund të lidhej me listën desktop"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN është gati në këtë kompjuter"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Proxy është gati në këtë kompjuter"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Shell-i VPN desktop është gati"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Shell-i Proxy desktop është gati"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN u nis në "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Proxy u nis në "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN u ndal. Modaliteti i aplikacionit: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Proxy u ndal. Modaliteti i aplikacionit: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Gjuha u vendos në "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Vetëpërditësimi i abonimit u vendos në "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Cilësimet e validimit u ruajtën: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Vendndodhja e zgjedhur nuk ndryshoi: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Vendndodhja e zgjedhur u hoq: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Vendndodhja e zgjedhur u vendos: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Vendndodhja u përditësua dhe u bashkua: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Vendndodhja është ruajtur tashmë: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Vendndodhja u përditësua: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Vendndodhja u hoq: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Vendndodhja u shtua: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonimet u përditësuan: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Dështoi: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Po rikthehet VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Po përditësohet "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Vendndodhjet u eksportuan te "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Rregullat e rutimit u eksportuan te "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostika u eksportua te "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Dështoi benchmark për "
+    },
+    {
+      "source": "Activated ",
+      "target": "U aktivizua "
+    },
+    {
+      "source": "Added ",
+      "target": "U shtua "
+    },
+    {
+      "source": "Deleted ",
+      "target": "U fshi "
+    },
+    {
+      "source": "Selected ",
+      "target": "U zgjodh "
+    },
+    {
+      "source": "Edited location #",
+      "target": "U modifikua vendndodhja #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Modaliteti i aplikacionit: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " vendndodhje u përditësuan"
+    },
+    {
+      "source": " location refreshed",
+      "target": " vendndodhje u përditësua"
+    },
+    {
+      "source": " • batch ",
+      "target": " • grupi "
+    },
+    {
+      "source": " • retries ",
+      "target": " • riprova "
+    },
+    {
+      "source": "custom interval",
+      "target": "interval i personalizuar"
+    },
+    {
+      "source": "every hour",
+      "target": "çdo orë"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "të gjitha abonimet"
+    },
+    {
+      "source": "selected subscription",
+      "target": "abonimi i zgjedhur"
+    },
+    {
+      "source": "proxy only",
+      "target": "vetëm proxy"
+    },
+    {
+      "source": "off",
+      "target": "joaktiv"
+    },
+    {
+      "source": "Idle",
+      "target": "Në pritje"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN u nis"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN u ndal"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Proxy u nis"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Proxy u ndal"
+    }
+  ]
+}

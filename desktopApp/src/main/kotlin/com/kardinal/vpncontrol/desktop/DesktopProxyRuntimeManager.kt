@@ -3,7 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.StatusMessages
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -38,7 +38,7 @@ class DesktopProxyRuntimeManager(
     private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,
     private val windowsAdministratorOverride: Boolean? = null,
-) {
+) : DesktopRuntimeController {
     @Volatile
     private var process: Process? = null
 
@@ -57,8 +57,8 @@ class DesktopProxyRuntimeManager(
     @Volatile
     private var lastAttemptedConfigJson: String? = null
 
-    suspend fun start(
-        profile: VlessProfile,
+    override suspend fun start(
+        profile: ProxyProfile,
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,
@@ -150,7 +150,7 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             stopActiveProcess()
             runtimeConfigStore.clearRuntimeConfig()
@@ -164,11 +164,11 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    fun isRunning(): Boolean = process?.isAlive == true
+    override fun isRunning(): Boolean = process?.isAlive == true
 
     fun currentPort(): Int? = if (isRunning()) listenPort else null
 
-    fun currentMode(): AppMode? = if (isRunning()) activeMode else null
+    override fun currentMode(): AppMode? = if (isRunning()) activeMode else null
 
     fun currentProcessId(): Long? = process?.takeIf { it.isAlive }?.pid()
 

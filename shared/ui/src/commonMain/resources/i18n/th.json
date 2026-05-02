@@ -65,7 +65,7 @@
   "DNS_APPLIES_NEW_DESKTOP_SESSIONS": "ใช้กับเซสชันพร็อกซีเดสก์ท็อปหรือ VPN ใหม่",
   "DNS_IP_ADDRESS": "ที่อยู่ IP ของ DNS",
   "APP_MODE_ANDROID_DESCRIPTION": "โหมดเริ่มต้นคือ VPN เปิดเฉพาะพร็อกซีเพื่อเรียกใช้พร็อกซีผสม HTTP/SOCKS ในเครื่องแทน Android VPN",
-  "APP_MODE_DESKTOP_DESCRIPTION": "โหมด VPN ใช้ sing-box TUN บน Linux หรือ Windows ตอนนี้ macOS รองรับเฉพาะโหมดพร็อกซีจนกว่าจะมี helper สิทธิ์สูง",
+  "APP_MODE_DESKTOP_DESCRIPTION": "โหมด VPN ใช้ sing-box TUN บน Linux หรือ Windows ตอนนี้ macOS รองรับเฉพาะโหมดพร็อกซีจนกว่าจะมีตัวช่วยสิทธิ์สูง",
   "VPN": "VPN",
   "VPN_MODE_LABEL": "โหมด VPN",
   "PROXY_ONLY": "พร็อกซีเท่านั้น",

@@ -203,5 +203,135 @@
     "enumName": "ROMANIAN",
     "code": "ro",
     "nativeName": "Română"
+  },
+  {
+    "enumName": "DUTCH",
+    "code": "nl",
+    "nativeName": "Nederlands"
+  },
+  {
+    "enumName": "CZECH",
+    "code": "cs",
+    "nativeName": "Čeština"
+  },
+  {
+    "enumName": "SLOVAK",
+    "code": "sk",
+    "nativeName": "Slovenčina"
+  },
+  {
+    "enumName": "CROATIAN",
+    "code": "hr",
+    "nativeName": "Hrvatski"
+  },
+  {
+    "enumName": "SLOVENIAN",
+    "code": "sl",
+    "nativeName": "Slovenščina"
+  },
+  {
+    "enumName": "HEBREW",
+    "code": "he",
+    "nativeName": "עברית"
+  },
+  {
+    "enumName": "URDU",
+    "code": "ur",
+    "nativeName": "اردو"
+  },
+  {
+    "enumName": "MALAY",
+    "code": "ms",
+    "nativeName": "Bahasa Melayu"
+  },
+  {
+    "enumName": "FILIPINO",
+    "code": "fil",
+    "nativeName": "Filipino"
+  },
+  {
+    "enumName": "BURMESE",
+    "code": "my",
+    "nativeName": "မြန်မာ"
+  },
+  {
+    "enumName": "SWEDISH",
+    "code": "sv",
+    "nativeName": "Svenska"
+  },
+  {
+    "enumName": "DANISH",
+    "code": "da",
+    "nativeName": "Dansk"
+  },
+  {
+    "enumName": "NORWEGIAN_BOKMAL",
+    "code": "nb",
+    "nativeName": "Norsk bokmål"
+  },
+  {
+    "enumName": "TAMIL",
+    "code": "ta",
+    "nativeName": "தமிழ்"
+  },
+  {
+    "enumName": "TELUGU",
+    "code": "te",
+    "nativeName": "తెలుగు"
+  },
+  {
+    "enumName": "MARATHI",
+    "code": "mr",
+    "nativeName": "मराठी"
+  },
+  {
+    "enumName": "PUNJABI",
+    "code": "pa",
+    "nativeName": "ਪੰਜਾਬੀ"
+  },
+  {
+    "enumName": "NEPALI",
+    "code": "ne",
+    "nativeName": "नेपाली"
+  },
+  {
+    "enumName": "SINHALA",
+    "code": "si",
+    "nativeName": "සිංහල"
+  },
+  {
+    "enumName": "BOSNIAN",
+    "code": "bs",
+    "nativeName": "Bosanski"
+  },
+  {
+    "enumName": "MACEDONIAN",
+    "code": "mk",
+    "nativeName": "Македонски"
+  },
+  {
+    "enumName": "ALBANIAN",
+    "code": "sq",
+    "nativeName": "Shqip"
+  },
+  {
+    "enumName": "KURDISH",
+    "code": "ku",
+    "nativeName": "Kurdî"
+  },
+  {
+    "enumName": "PASHTO",
+    "code": "ps",
+    "nativeName": "پښتو"
+  },
+  {
+    "enumName": "KHMER",
+    "code": "km",
+    "nativeName": "ខ្មែរ"
+  },
+  {
+    "enumName": "LAO",
+    "code": "lo",
+    "nativeName": "ລາວ"
   }
 ]

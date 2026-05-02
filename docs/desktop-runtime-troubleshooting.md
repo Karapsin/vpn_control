@@ -1,4 +1,6 @@
-# Desktop Runtime Troubleshooting
+# Desktop Runtime Details
+
+This document owns desktop-specific runtime files, generated configs, and platform details. General safety rules and read-only diagnostic commands live in `docs/runtime-troubleshooting.md`.
 
 Desktop state and runtime files live under:
 

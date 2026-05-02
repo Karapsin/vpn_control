@@ -1,790 +1,1547 @@
 {
   "dynamic": {
-    "findingSubscription": "Поиск лучшей локации из подписки...",
-    "findingSaved": "Поиск лучшей сохраненной локации...",
-    "testingFastestCandidates": "Проверка самых быстрых кандидатов по группам...",
-    "checkingLocations": "Проверка локаций: {count}...",
-    "testingLocationsRange": "Проверка локаций {start}-{end} из {total}...",
-    "refreshIntervalMinutes": "{count} мин",
-    "refreshIntervalHours": "{count} ч",
-    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
-    "refreshIntervalEvery": "каждые {interval}",
-    "refreshIntervalEveryHour": "каждый час"
+    "findingSubscription": "Meklē labāko atrašanās vietu abonementā...",
+    "findingSaved": "Meklē labāko atrašanās vietu saglabātajās atrašanās vietās...",
+    "testingFastestCandidates": "Pārbauda ātrākos kandidātus partijās...",
+    "checkingLocations": "Pārbauda {count} atrašanās vietas...",
+    "testingLocationsRange": "Pārbauda atrašanās vietas {start}-{end} no {total}...",
+    "selectLocationFirst": "Vispirms izvēlieties atrašanās vietu",
+    "checkingLocation": "Pārbauda {name}...",
+    "testingLocation": "Testē {name}...",
+    "locationCheckCancelled": "Atrašanās vietas pārbaude atcelta",
+    "noLocationsToExport": "Nav atrašanās vietu eksportēšanai",
+    "refreshIntervalMinutes": "{count} min",
+    "refreshIntervalHours": "{count} h",
+    "refreshIntervalHoursMinutes": "{hours} h {minutes} min",
+    "refreshIntervalEvery": "ik pēc {interval}",
+    "refreshIntervalEveryHour": "katru stundu"
   },
   "benchmark": {
-    "best": "Лучшая локация: ",
-    "primary": "основной тест: ",
-    "secondary": "резервный тест: ",
-    "tcp": "TCP: ",
-    "millisUnit": "мс",
+    "best": "Labākā: ",
+    "primary": "primārā ",
+    "secondary": "sekundārā ",
+    "tcp": "TCP ",
+    "millisUnit": "ms",
     "statuses": {
-      "ok": "успешно",
-      "timeout": "тайм-аут",
-      "error": "ошибка",
-      "partial": "частично",
-      "blocked": "заблокировано",
-      "challenge": "проверка",
-      "manual": "вручную",
-      "cached": "из кэша",
-      "unreachable": "недоступно",
-      "validation_timeout": "тайм-аут проверки",
-      "tcp_timeout": "тайм-аут TCP",
-      "tcp_error": "ошибка TCP",
-      "custom_config_manual_only": "только ручная проверка"
+      "blocked": "bloķēts",
+      "cached": "kešots",
+      "challenge": "pārbaude",
+      "custom_config_manual_only": "tikai manuāla pielāgota konfigurācija",
+      "error": "kļūda",
+      "manual": "manuāli",
+      "ok": "labi",
+      "partial": "daļēji",
+      "tcp_error": "TCP kļūda",
+      "tcp_timeout": "TCP noildze",
+      "timeout": "noildze",
+      "unreachable": "nesasniedzams",
+      "validation_timeout": "validācijas noildze"
     }
+  },
+  "structured": {
+    "IDLE": "Dīkstāve",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Abonementa automātiskā atsvaidzināšana iestatīta uz {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Validācijas iestatījumi saglabāti: {0} • {1} • partija {2} • atkārtojumi {3}",
+    "CUSTOM_DNS_SAVED": "Pielāgots DNS saglabāts",
+    "CUSTOM_DNS_DISABLED": "Pielāgots DNS atspējots",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Meklē labāko atrašanās vietu abonementā...",
+    "FIND_BEST_FROM_SAVED": "Meklē labāko atrašanās vietu saglabātajās atrašanās vietās...",
+    "STARTING_CONNECTION.VPN": "Palaiž VPN...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Palaiž lokālo starpniekserveri...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Palaiž VPN ar labāko atrašanās vietu...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Palaiž lokālo starpniekserveri ar labāko atrašanās vietu...",
+    "CONNECTION_STARTED.VPN": "VPN palaists",
+    "CONNECTION_STARTED.PROXY_ONLY": "Starpniekserveris palaists",
+    "CONNECTION_STOPPED.VPN": "VPN apturēts",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Starpniekserveris apturēts",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN šajā datorā ir gatavs",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Starpniekserveris šajā datorā ir gatavs",
+    "DESKTOP_APP_INITIALIZED": "Lietotne inicializēta",
+    "RUNTIME_MODE.VPN": "Izpildes režīms: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Izpildes režīms: Proxy",
+    "LOCAL_PROXY": "Lokālais starpniekserveris: {0}",
+    "RUNTIME_LOG": "Izpildes žurnāls: {0}",
+    "PREFLIGHT_PASSED.VPN": "VPN režīma priekšpārbaude izieta",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Tikai starpniekservera režīma priekšpārbaude izieta",
+    "PREFLIGHT_FAILED.VPN": "VPN režīma priekšpārbaude neizdevās: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Tikai starpniekservera režīma priekšpārbaude neizdevās: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Darbvirsmas VPN spēja: gatava",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Darbvirsmas VPN spēja: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Darbvirsmas VPN spēja: nav gatavs",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Nav atrašanās vietu, ko pārbaudīt",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Labākās atrašanās vietas meklēšanai iestājās noildze; pašreizējais savienojums tiek paturēts",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Atrašanās vietas meklēšana atcelta",
+    "LOCATION_SEARCH_FAILED": "Atrašanās vietas meklēšana neizdevās",
+    "VPN_PERMISSION_REQUIRED": "Piešķiriet VPN atļauju un mēģiniet vēlreiz",
+    "SELECTED_LOCATION_SAVE_FAILED": "Neizdevās saglabāt atlasīto atrašanās vietu",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN palaists, bet atlasīto atrašanās vietu neizdevās saglabāt",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Starpniekserveris palaists, bet atlasīto atrašanās vietu neizdevās saglabāt",
+    "BEST_LOCATION_START_FAILED.VPN": "Neizdevās palaist VPN ar labāko atrašanās vietu",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Neizdevās palaist starpniekserveri ar labāko atrašanās vietu",
+    "BEST_LOCATION_SAVE_FAILED": "Neizdevās saglabāt labāko atrašanās vietu",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN palaists, bet labāko atrašanās vietu neizdevās saglabāt",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Starpniekserveris palaists, bet labāko atrašanās vietu neizdevās saglabāt",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Abonementa atsvaidzināšana pabeigta. Meklē labāko atrašanās vietu...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Abonementa atsvaidzināšana pabeigta, bet pārslēgšanai fonā nepieciešama VPN atļauja. Iepriekšējā VPN atrašanās vieta paturēta kā rezerves variants.",
+    "NO_SUITABLE_LOCATION_FOUND": "Piemērota atrašanās vieta nav atrasta",
+    "BEST_LOCATION_NOT_MAPPED": "Labāko atrašanās vietu neizdevās piesaistīt darbvirsmas sarakstam",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Aktivizēti visi abonementi",
+    "ACTIVATED_SUBSCRIPTION": "Aktivizēts {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Abonementa nosaukums atiestatīts",
+    "SUBSCRIPTION_NAME_SAVED": "Abonementa nosaukums saglabāts",
+    "SUBSCRIPTION_DELETED": "Abonements dzēsts",
+    "SELECT_LOCATION_FIRST": "Vispirms izvēlieties atrašanās vietu",
+    "CHECKING_LOCATION": "Pārbauda {0}...",
+    "TESTING_LOCATION": "Testē {0}...",
+    "LOCATION_CHECK_CANCELLED": "Atrašanās vietas pārbaude atcelta",
+    "NO_LOCATIONS_TO_EXPORT": "Nav atrašanās vietu eksportēšanai",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Sesijas statistika ieslēgta",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Sesijas statistika paslēpta",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Tiešraides trafika statistika ieslēgta",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Tiešraides trafika statistika paslēpta",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Kopsummas pa profiliem ieslēgtas",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Kopsummas pa profiliem paslēptas",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Aiztures vēsture ieslēgta",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Aiztures vēsture paslēpta",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Savienojuma žurnāls ieslēgts",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Savienojuma žurnāls paslēpts",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Savienojuma pārbaudes rīki ieslēgti",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Savienojuma pārbaudes rīki paslēpti",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Abonementa atrašanās vietas ir tikai lasāmas. Pārslēdzieties uz Saglabātās atrašanās vietas, lai saglabātu labojumus.",
+    "INVALID_LOCATION_CONFIG": "Nederīga atrašanās vietas konfigurācija",
+    "LOCATION_ALREADY_SAVED": "Atrašanās vieta jau saglabāta: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Rediģējamā atrašanās vieta vairs nav pieejama",
+    "LOCATION_ADDED": "Atrašanās vieta pievienota: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Atrašanās vieta atjaunināta un apvienota: {0}",
+    "LOCATION_UPDATED": "Atrašanās vieta atjaunināta: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Abonementa atrašanās vietas ir tikai lasāmas. Pārslēdzieties uz Saglabātās atrašanās vietas, lai tās dzēstu.",
+    "SELECTED_LOCATION_REMOVED": "Atlasītā atrašanās vieta noņemta: {0}",
+    "LOCATION_REMOVED": "Atrašanās vieta noņemta: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Atlasītā atrašanās vieta noņemta. VPN apturēts: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Atlasītā atrašanās vieta noņemta. Starpniekserveris apturēts: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Atrašanās vietas noņemšana atsaukta, jo VPN neizdevās apturēt",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Atrašanās vietas noņemšana atsaukta, jo starpniekserveri neizdevās apturēt",
+    "IMPORT_LOCATIONS_BLOCKED": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai importētu atrašanās vietas",
+    "IMPORT_LOCATIONS_FAILED": "Neizdevās importēt atrašanās vietas",
+    "LOCATIONS_IMPORTED": "Atrašanās vietas importētas",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama, VPN apturēts",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama, starpniekserveris apturēts",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Atrašanās vietu imports atsaukts, jo VPN neizdevās apturēt",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Atrašanās vietu imports atsaukts, jo starpniekserveri neizdevās apturēt",
+    "CLIPBOARD_EMPTY": "Starpliktuve ir tukša",
+    "CLIPBOARD_READ_FAILED": "Starpliktuves nolasīšana neizdevās",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Abonementa teksts ielādēts cilnē Profils",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Lai mainītu savienojuma režīmu, vispirms atvienojieties",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Noteikumu kopa noņemta",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai manuāli pievienotu atrašanās vietas",
+    "HISTORY_ENTRY_DELETED": "Vēstures ieraksts dzēsts",
+    "SELECTED_LOCATION_UNCHANGED": "Atlasītā atrašanās vieta nemainīta: {0}",
+    "SELECTED_LOCATION_SET": "Atlasītā atrašanās vieta iestatīta: {0}",
+    "LOCATION_CHECKED": "Location pārbaudeed: {0}",
+    "LOCATION_CHECK_FAILED": "Atrašanās vietas pārbaude neizdevās",
+    "LOCATION_EDITED": "Rediģēta atrašanās vieta #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Pievienots a sample rule-set",
+    "RULE_SET_DELETED": "Dzēsts rule-set {0}",
+    "ROUTING_RULES_SAVED": "Maršrutēšanas noteikumi saglabāti",
+    "ROUTING_RULES_IMPORTED": "Maršrutēšanas noteikumi importēti",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Maršrutēšanas noteikumi importēti. Restartējiet VPN, lai tos lietotu",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Maršrutēšanas noteikumi importēti. Restartējiet starpniekserveri, lai tos lietotu",
+    "ROUTING_RULES_IMPORT_FAILED": "Neizdevās importēt maršrutēšanas noteikumus",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Maršrutēšanas noteikumi kopēti starpliktuvē",
+    "ROUTING_RULES_EXPORT_CANCELED": "Maršrutēšanas noteikumu eksports atcelts",
+    "ROUTING_RULES_EXPORTED_TO": "Maršrutēšanas noteikumi eksportēti uz {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Neizdevās eksportēt maršrutēšanas noteikumus",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Neizdevās atvērt maršrutēšanas noteikumu failu",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Atrašanās vietas kopētas starpliktuvē",
+    "LOCATIONS_EXPORT_CANCELED": "Atrašanās vietu eksports atcelts",
+    "LOCATIONS_EXPORTED_TO": "Atrašanās vietas eksportētas uz {0}",
+    "LOCATIONS_EXPORT_FAILED": "Neizdevās eksportēt atrašanās vietas",
+    "LOCATIONS_FILE_OPEN_FAILED": "Neizdevās atvērt atrašanās vietu failu",
+    "LOCATIONS_FILE_READ_FAILED": "Neizdevās nolasīt atrašanās vietu failu",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Diagnostikas eksports atcelts",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostika eksportēta uz {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Neizdevās eksportēt diagnostiku",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Neizdevās atvērt diagnostikas galamērķi",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Nav abonementu, ko atsvaidzināt",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Neizdevās atjaunināt palaišanas iestatījumu",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Neizdevās atjaunināt palaišanas iestatījumu: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Neizdevās saglabāt atsvaidzināšanas iestatījumus",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Neizdevās saglabāt atsvaidzināšanas iestatījumus: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Iepriekšējā VPN sesija tiks atjaunota",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Iepriekšējā VPN atrašanās vieta vairs nav pieejama",
+    "RESTORING_PREVIOUS_CONNECTION": "Atjauno VPN: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN palaists: {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Starpniekserveris palaists: {1}",
+    "CONNECTION_START_FAILED.VPN": "Neizdevās palaist VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Neizdevās palaist starpniekserveri",
+    "CONNECTION_STOP_FAILED.VPN": "Neizdevās apturēt VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Neizdevās apturēt starpniekserveri",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Lietotne aizvērta. VPN bija izslēgts.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN apturēts. Nākamajā palaišanas reizē savienosies atkārtoti.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Starpniekserveris apturēts. Nākamajā palaišanas reizē savienosies atkārtoti.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Neizdevās apturēt VPN pirms iziešanas",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Neizdevās apturēt starpniekserveri pirms iziešanas"
   },
   "freeformReplacements": [
     {
       "source": "Subscription URL",
-      "target": "URL подписки"
+      "target": "Abonementa URL"
     },
     {
       "source": "Unreadable subscription URL",
-      "target": "Нечитаемый URL подписки"
+      "target": "Nelasāms abonementa URL"
     },
     {
       "source": "Insecure HTTP subscriptions are not supported",
-      "target": "Небезопасные HTTP-подписки не поддерживаются"
+      "target": "Nedroši HTTP abonementi netiek atbalstīti"
     },
     {
       "source": "Use an https:// subscription URL.",
-      "target": "Используйте URL подписки https://."
+      "target": "Izmantojiet https:// abonementa URL."
     },
     {
       "source": "The URL must include a valid HTTPS host",
-      "target": "URL должен содержать корректный HTTPS-хост"
+      "target": "URL jāietver derīgs HTTPS resursdators"
     },
     {
       "source": "Paste a valid https:// subscription URL.",
-      "target": "Вставьте корректный URL подписки https://."
+      "target": "Ielīmējiet derīgu https:// abonementa URL."
     },
     {
       "source": "Direct remote source",
-      "target": "Прямой удаленный источник"
+      "target": "Tiešs attālais avots"
     },
     {
       "source": "sing-box import link",
-      "target": "ссылка импорта sing-box"
+      "target": "sing-box importēšanas saite"
     },
     {
       "source": "Unreadable sing-box import link",
-      "target": "Нечитаемая ссылка импорта sing-box"
+      "target": "Nelasāma sing-box importēšanas saite"
     },
     {
       "source": "Only valid HTTPS remote URLs are supported",
-      "target": "Поддерживаются только корректные удаленные HTTPS URL"
+      "target": "Tiek atbalstīti tikai derīgi attālie HTTPS URL"
     },
     {
       "source": "Use a sing-box import link that resolves to a valid https:// URL.",
-      "target": "Используйте ссылку импорта sing-box, которая ведет к корректному URL https://."
+      "target": "Izmantojiet sing-box importēšanas saiti, kas norāda uz derīgu https:// URL."
     },
     {
       "source": "Fetches remote content from the embedded URL",
-      "target": "Загружает удаленный контент из встроенного URL"
+      "target": "Iegūst attālo saturu no iegultā URL"
     },
     {
       "source": "Fetches remote content from ",
-      "target": "Загружает удаленный контент с "
+      "target": "Iegūst attālo saturu no "
     },
     {
       "source": "The import link could not be parsed",
-      "target": "Ссылку импорта не удалось разобрать"
+      "target": "Importēšanas saiti neizdevās parsēt"
     },
     {
       "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
-      "target": "Вставьте корректную ссылку импорта remote-profile sing-box или прямой URL подписки."
+      "target": "Ielīmējiet derīgu sing-box remote-profile importēšanas saiti vai tiešu abonementa URL."
     },
     {
       "source": "VPN import link",
-      "target": "ссылка импорта VPN"
+      "target": "VPN importēšanas saite"
     },
     {
       "source": "Unreadable VPN import link",
-      "target": "Нечитаемая ссылка импорта VPN"
+      "target": "Nelasāma VPN importēšanas saite"
     },
     {
       "source": "Unsupported provider import",
-      "target": "Неподдерживаемый импорт провайдера"
+      "target": "Neatbalstīts pakalpojumu sniedzēja imports"
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Amnezia и другие импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "Amnezia un citi vpn:// importi netiek atbalstīti. Izmantojiet parastu abonementa URL vai pievienojiet atrašanās vietas manuāli."
     },
     {
       "source": "The import payload could not be decoded",
-      "target": "Данные импорта не удалось декодировать"
+      "target": "Importa datus neizdevās dekodēt"
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "Импорты vpn:// не поддерживаются. Используйте обычный URL подписки или добавьте локации вручную."
+      "target": "vpn:// importi netiek atbalstīti. Izmantojiet parastu abonementa URL vai pievienojiet atrašanās vietas manuāli."
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "HTTP URL подписок не поддерживаются. Используйте https://."
+      "target": "HTTP abonementu URL netiek atbalstīti. Tā vietā izmantojiet https://."
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Удаленный источник должен быть URL https:// или поддерживаемой ссылкой импорта"
+      "target": "Attālajam avotam jābūt https:// URL vai atbalstītai importēšanas saitei"
     },
     {
       "source": "Remote source is empty",
-      "target": "Удаленный источник пуст"
+      "target": "Attālais avots ir tukšs"
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Удаленный источник должен быть корректным URL https:// с хостом."
+      "target": "Attālajam avotam jābūt derīgam https:// URL ar resursdatoru."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Этот импорт sing-box ведет к некорректному или не-HTTPS URL. Используйте корректный URL https://."
+      "target": "Šis sing-box imports norāda uz nederīgu vai ne-HTTPS URL. Tā vietā izmantojiet derīgu https:// URL."
     },
     {
       "source": "Applying selected location...",
-      "target": "Применение выбранной локации..."
+      "target": "Lieto atlasīto atrašanās vietu..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Применение обновленной выбранной локации..."
+      "target": "Lieto atjaunināto atlasīto atrašanās vietu..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Поиск лучшей локации превысил время ожидания; текущее подключение сохранено"
+      "target": "Labākās atrašanās vietas meklēšanai iestājās noildze; pašreizējais savienojums tiek paturēts"
     },
     {
       "source": "Clipboard is empty",
-      "target": "Буфер обмена пуст"
+      "target": "Starpliktuve ir tukša"
     },
     {
       "source": "Connection log enabled",
-      "target": "Журнал подключений включен"
+      "target": "Savienojuma žurnāls ieslēgts"
     },
     {
       "source": "Connection log hidden",
-      "target": "Журнал подключений скрыт"
+      "target": "Savienojuma žurnāls paslēpts"
     },
     {
       "source": "Connection test tools enabled",
-      "target": "Инструменты проверки подключения включены"
+      "target": "Savienojuma pārbaudes rīki ieslēgti"
     },
     {
       "source": "Connection test tools hidden",
-      "target": "Инструменты проверки подключения скрыты"
+      "target": "Savienojuma pārbaudes rīki paslēpti"
     },
     {
       "source": "Could not open export destination",
-      "target": "Не удалось открыть место экспорта"
+      "target": "Neizdevās atvērt eksportēšanas galamērķi"
     },
     {
       "source": "Could not open selected file",
-      "target": "Не удалось открыть выбранный файл"
+      "target": "Neizdevās atvērt atlasīto failu"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Не удалось открыть выбранный файл локаций"
+      "target": "Neizdevās atvērt atlasīto atrašanās vietu failu"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Не удалось открыть выбранный файл правил"
+      "target": "Neizdevās atvērt atlasīto noteikumu failu"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
-      "target": "Нидерланды из Whitelists"
+      "target": "Darbvirsmas apvalks: Nīderlande no atļauto sarakstiem"
     },
     {
       "source": "Desktop app initialized",
-      "target": "Приложение запущено"
+      "target": "Darbvirsmas lietotne inicializēta"
     },
     {
       "source": "App initialized",
-      "target": "Приложение запущено"
-    },
-    {
-      "source": "VPN ready on this computer",
-      "target": "VPN на компьютере готов"
-    },
-    {
-      "source": "Proxy ready on this computer",
-      "target": "Прокси на компьютере готов"
+      "target": "Lietotne inicializēta"
     },
     {
       "source": "Export Locations",
-      "target": "Экспорт локаций"
+      "target": "Eksportēt atrašanās vietas"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Не удалось применить обновленную выбранную локацию"
+      "target": "Neizdevās lietot atjaunināto atlasīto atrašanās vietu"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Не удалось экспортировать диагностику"
+      "target": "Neizdevās eksportēt diagnostiku"
     },
     {
       "source": "Failed to export locations",
-      "target": "Не удалось экспортировать локации"
+      "target": "Neizdevās eksportēt atrašanās vietas"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Не удалось экспортировать правила маршрутизации"
+      "target": "Neizdevās eksportēt maršrutēšanas noteikumus"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Не удалось найти заменяющую локацию"
+      "target": "Neizdevās atrast aizvietojošu atrašanās vietu"
     },
     {
       "source": "Failed to import file",
-      "target": "Не удалось импортировать файл"
+      "target": "Neizdevās importēt failu"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Не удалось открыть место сохранения диагностики"
+      "target": "Neizdevās atvērt diagnostikas galamērķi"
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не удалось сохранить настройки обновления"
+      "target": "Neizdevās saglabāt atsvaidzināšanas iestatījumus"
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Не удалось обновить настройку автозапуска"
+      "target": "Neizdevās atjaunināt palaišanas iestatījumu"
     },
     {
       "source": "Import canceled",
-      "target": "Импорт отменен"
+      "target": "Importēšana atcelta"
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Некорректный URL подписки"
+      "target": "Nederīgs abonementa URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "История задержек включена"
+      "target": "Aiztures vēsture ieslēgta"
     },
     {
       "source": "Latency history hidden",
-      "target": "История задержек скрыта"
+      "target": "Aiztures vēsture paslēpta"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Статистика трафика в реальном времени включена"
+      "target": "Tiešraides trafika statistika ieslēgta"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Статистика трафика в реальном времени скрыта"
+      "target": "Tiešraides trafika statistika paslēpta"
     },
     {
       "source": "Location check cancelled",
-      "target": "Проверка локации отменена"
+      "target": "Atrašanās vietas pārbaude atcelta"
     },
     {
       "source": "Location check failed",
-      "target": "Проверка локации не удалась"
+      "target": "Atrašanās vietas pārbaude neizdevās"
     },
     {
       "source": "Locations exported",
-      "target": "Локации экспортированы"
+      "target": "Atrašanās vietas eksportētas"
     },
     {
       "source": "Locations import canceled",
-      "target": "Импорт локаций отменен"
+      "target": "Atrašanās vietu imports atcelts"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Нет локаций для проверки"
+      "target": "Nav atrašanās vietu, ko pārbaudīt"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Нет подписок для обновления"
+      "target": "Nav abonementu, ko atsvaidzināt"
     },
     {
       "source": "No suitable location found",
-      "target": "Подходящая локация не найдена"
+      "target": "Piemērota atrašanās vieta nav atrasta"
     },
     {
       "source": "Per-profile totals enabled",
-      "target": "Итоги по профилям включены"
+      "target": "Kopsummas pa profiliem ieslēgtas"
     },
     {
       "source": "Per-profile totals hidden",
-      "target": "Итоги по профилям скрыты"
+      "target": "Kopsummas pa profiliem paslēptas"
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Предыдущая VPN-сессия будет восстановлена"
+      "target": "Iepriekšējā VPN sesija tiks atjaunota"
     },
     {
       "source": "QR scan canceled",
-      "target": "Сканирование QR отменено"
+      "target": "QR skenēšana atcelta"
     },
     {
       "source": "Routing rules exported",
-      "target": "Правила маршрутизации экспортированы"
+      "target": "Maršrutēšanas noteikumi eksportēti"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Импорт правил маршрутизации отменен"
+      "target": "Maršrutēšanas noteikumu imports atcelts"
     },
     {
       "source": "Saved routing rules",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Maršrutēšanas noteikumi saglabāti"
     },
     {
       "source": "Session stats enabled",
-      "target": "Статистика сессии включена"
+      "target": "Sesijas statistika ieslēgta"
     },
     {
       "source": "Session stats hidden",
-      "target": "Статистика сессии скрыта"
+      "target": "Sesijas statistika paslēpta"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Отправленный текст не является поддерживаемым импортом"
+      "target": "Kopīgotais teksts nav atbalstīta importa slodze"
     },
     {
       "source": "Subscription deleted",
-      "target": "Подписка удалена"
+      "target": "Abonements dzēsts"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Обновление подписки завершено, но для фонового переключения требуется разрешение VPN. Предыдущая VPN-локация оставлена как резервная."
+      "target": "Abonementa atsvaidzināšana pabeigta, bet pārslēgšanai fonā nepieciešama VPN atļauja. Iepriekšējā VPN atrašanās vieta paturēta kā rezerves variants."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
-      "target": "Обновление подписки завершено. Поиск лучшей локации..."
+      "target": "Abonementa atsvaidzināšana pabeigta. Meklē labāko atrašanās vietu..."
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Обновление подписки завершено. "
+      "target": "Abonementa atsvaidzināšana pabeigta. "
     },
     {
       "source": "Runtime mode: ",
-      "target": "Текущий режим: "
+      "target": "Izpildes režīms: "
     },
     {
       "source": "Local proxy: ",
-      "target": "Локальный прокси: "
+      "target": "Lokālais starpniekserveris: "
     },
     {
       "source": "Runtime log: ",
-      "target": "Журнал работы: "
+      "target": "Izpildes žurnāls: "
     },
     {
       "source": "VPN mode preflight passed",
-      "target": "Проверка режима VPN пройдена"
+      "target": "VPN režīma priekšpārbaude izieta"
     },
     {
       "source": "Proxy-only mode preflight passed",
-      "target": "Проверка режима только прокси пройдена"
+      "target": "Tikai starpniekservera režīma priekšpārbaude izieta"
     },
     {
       "source": "VPN mode preflight failed: ",
-      "target": "Проверка режима VPN не пройдена: "
+      "target": "VPN režīma priekšpārbaude neizdevās: "
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Проверка режима только прокси не пройдена: "
+      "target": "Tikai starpniekservera režīma priekšpārbaude neizdevās: "
     },
     {
       "source": "VPN mode unavailable: ",
-      "target": "Режим VPN недоступен: "
+      "target": "VPN režīms nav pieejams: "
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Режим только прокси недоступен: "
+      "target": "Tikai starpniekservera režīms nav pieejams: "
     },
     {
       "source": "Desktop VPN capability: ready",
-      "target": "VPN на компьютере: готово"
+      "target": "Darbvirsmas VPN spēja: gatava"
     },
     {
       "source": "Desktop VPN capability: ",
-      "target": "VPN на компьютере: "
+      "target": "Darbvirsmas VPN spēja: "
     },
     {
       "source": "VPN mode available",
-      "target": "Режим VPN доступен"
+      "target": "VPN režīms pieejams"
     },
     {
       "source": "Proxy mode available",
-      "target": "Режим прокси доступен"
+      "target": "Starpniekservera režīms pieejams"
     },
     {
       "source": "not ready",
-      "target": "не готово"
-    },
-    {
-      "source": " check",
-      "target": " проверка"
+      "target": "nav gatavs"
     },
     {
       "source": " checks",
-      "target": " проверок"
+      "target": " pārbaudes"
+    },
+    {
+      "source": " check",
+      "target": " pārbaude"
     },
     {
       "source": "fail TUN device: ",
-      "target": "Ошибка TUN-устройства: "
+      "target": "TUN ierīces kļūme: "
     },
     {
       "source": "fail network privileges: ",
-      "target": "Ошибка сетевых привилегий: "
+      "target": "tīkla privilēģiju kļūme: "
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "Ошибка инструментов маршрутизации/DNS: "
+      "target": "maršrutēšanas/DNS rīku kļūme: "
     },
     {
       "source": "TUN device",
-      "target": "TUN-устройство"
+      "target": "TUN ierīce"
     },
     {
       "source": "network privileges",
-      "target": "сетевые привилегии"
+      "target": "tīkla privilēģijas"
     },
     {
       "source": "route/DNS tooling",
-      "target": "инструменты маршрутизации/DNS"
+      "target": "maršrutēšanas/DNS rīki"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Linux TUN-устройство отсутствует в /dev/net/tun. Попробуйте: sudo modprobe tun"
+      "target": "Linux TUN ierīces nav vietā /dev/net/tun. Mēģiniet: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Режиму VPN на компьютере нужен CAP_NET_ADMIN. Запустите от root или выдайте sing-box нужные права: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+      "target": "Darbvirsmas VPN režīmam nepieciešams CAP_NET_ADMIN. Palaidiet kā root vai piešķiriet sing-box iespējas: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Инструменты маршрутизации/DNS Windows недоступны. Режиму VPN нужны netsh.exe и команды PowerShell для DNS Client."
+      "target": "Windows maršrutēšanas/DNS rīki nav pieejami. VPN režīmam nepieciešams netsh.exe un DNS klienta PowerShell cmdlet komandas."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN šajā datorā ir gatavs"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Starpniekserveris šajā datorā ir gatavs"
     }
   ],
   "legacyExact": [
     {
       "source": "Idle",
-      "target": "Ожидание"
+      "target": "Dīkstāve"
     },
     {
       "source": "VPN started",
-      "target": "VPN запущен"
+      "target": "VPN palaists"
     },
     {
       "source": "VPN stopped",
-      "target": "VPN остановлен"
+      "target": "VPN apturēts"
     },
     {
       "source": "Proxy started",
-      "target": "Прокси запущен"
+      "target": "Starpniekserveris palaists"
     },
     {
       "source": "Proxy stopped",
-      "target": "Прокси остановлен"
+      "target": "Starpniekserveris apturēts"
     },
     {
       "source": "Starting VPN...",
-      "target": "Запуск VPN..."
+      "target": "Palaiž VPN..."
     },
     {
       "source": "Starting local proxy...",
-      "target": "Запуск локального прокси..."
+      "target": "Palaiž lokālo starpniekserveri..."
     },
     {
       "source": "Starting VPN with the best location...",
-      "target": "Запуск VPN с лучшей локацией..."
+      "target": "Palaiž VPN ar labāko atrašanās vietu..."
     },
     {
       "source": "Starting local proxy with the best location...",
-      "target": "Запуск локального прокси с лучшей локацией..."
+      "target": "Palaiž lokālo starpniekserveri ar labāko atrašanās vietu..."
     },
     {
       "source": "Finding the best location from the subscription...",
-      "target": "Поиск лучшей локации из подписки..."
+      "target": "Meklē labāko atrašanās vietu abonementā..."
     },
     {
       "source": "Finding the best location from saved locations...",
-      "target": "Поиск лучшей сохраненной локации..."
+      "target": "Meklē labāko atrašanās vietu saglabātajās atrašanās vietās..."
     },
     {
       "source": "Location search cancelled",
-      "target": "Поиск локации отменен"
+      "target": "Atrašanās vietas meklēšana atcelta"
     },
     {
       "source": "Location search failed",
-      "target": "Поиск локации не удался"
+      "target": "Atrašanās vietas meklēšana neizdevās"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Разрешите VPN и попробуйте снова"
+      "target": "Piešķiriet VPN atļauju un mēģiniet vēlreiz"
     },
     {
       "source": "Set a remote source first",
-      "target": "Сначала укажите удаленный источник"
+      "target": "Vispirms iestatiet attālo avotu"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Сначала добавьте хотя бы одну сохраненную локацию"
+      "target": "Vispirms pievienojiet vismaz vienu saglabātu atrašanās vietu"
     },
     {
       "source": "Select a location first",
-      "target": "Сначала выберите локацию"
+      "target": "Vispirms atlasiet atrašanās vietu"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Сохраненных подписок пока нет"
+      "target": "Vēl nav saglabātu abonementu"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Обновление всех подписок..."
+      "target": "Atsvaidzina visus abonementus..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Обновление активной подписки..."
+      "target": "Atsvaidzina aktīvo abonementu..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Обновление подписки..."
+      "target": "Atsvaidzina abonementu..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Обновление подписок..."
+      "target": "Atsvaidzina abonementus..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Автообновление подписки..."
+      "target": "Automātiski atsvaidzina abonementu..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Автообновление подписок..."
+      "target": "Automātiski atsvaidzina abonementus..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Подписка обновлена"
+      "target": "Abonements atsvaidzināts"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Подписки обновлены"
+      "target": "Abonementi atsvaidzināti"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Активная подписка обновлена"
+      "target": "Aktīvais abonements atsvaidzināts"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Все подписки обновлены"
+      "target": "Visi abonementi atsvaidzināti"
     },
     {
       "source": "Refresh failed",
-      "target": "Обновление не удалось"
+      "target": "Atsvaidzināšana neizdevās"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Источник профиля: подписка"
+      "target": "Profila avots iestatīts uz abonementu"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Источник профиля: сохраненные локации"
+      "target": "Profila avots iestatīts uz saglabātajām atrašanās vietām"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Режим подключения: VPN"
+      "target": "Savienojuma režīms iestatīts uz VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Режим подключения: только прокси"
+      "target": "Savienojuma režīms iestatīts tikai uz starpniekserveri"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Сначала отключитесь, чтобы изменить режим подключения"
+      "target": "Lai mainītu savienojuma režīmu, vispirms atvienojieties"
     },
     {
       "source": "History entry deleted",
-      "target": "Запись истории удалена"
+      "target": "Vēstures ieraksts dzēsts"
     },
     {
       "source": "Subscription name reset",
-      "target": "Название подписки сброшено"
+      "target": "Abonementa nosaukums atiestatīts"
     },
     {
       "source": "Subscription name saved",
-      "target": "Название подписки сохранено"
+      "target": "Abonementa nosaukums saglabāts"
     },
     {
       "source": "Language set to system default",
-      "target": "Язык: системный"
+      "target": "Valoda iestatīta uz sistēmas noklusējumu"
     },
     {
       "source": "Custom DNS saved",
-      "target": "Пользовательский DNS сохранен"
+      "target": "Pielāgots DNS saglabāts"
     },
     {
       "source": "Custom DNS disabled",
-      "target": "Пользовательский DNS отключен"
+      "target": "Pielāgots DNS atspējots"
     },
     {
       "source": "Routing rules saved",
-      "target": "Правила маршрутизации сохранены"
+      "target": "Maršrutēšanas noteikumi saglabāti"
     },
     {
       "source": "Routing rules imported",
-      "target": "Правила маршрутизации импортированы"
+      "target": "Maršrutēšanas noteikumi importēti"
     },
     {
       "source": "Locations imported",
-      "target": "Локации импортированы"
+      "target": "Atrašanās vietas importētas"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Локации импортированы. Выбранная локация больше недоступна"
+      "target": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Переключитесь на сохраненные локации, чтобы импортировать локации"
+      "target": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai importētu atrašanās vietas"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Переключитесь на сохраненные локации, чтобы добавить локации вручную"
+      "target": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai manuāli pievienotu atrašanās vietas"
     },
     {
       "source": "Invalid location config",
-      "target": "Некорректная конфигурация локации"
+      "target": "Nederīga atrašanās vietas konfigurācija"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Редактируемая локация больше недоступна"
+      "target": "Rediģējamā atrašanās vieta vairs nav pieejama"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Экспорт диагностики открыт"
+      "target": "Diagnostikas eksports atvērts"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Экспорт диагностики не удался"
+      "target": "Diagnostikas eksports neizdevās"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Экспорт диагностики отменен"
+      "target": "Diagnostikas eksports atcelts"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Предыдущая VPN-локация больше недоступна"
+      "target": "Iepriekšējā VPN atrašanās vieta vairs nav pieejama"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Приложение закрыто. VPN был выключен."
+      "target": "Lietotne aizvērta. VPN bija izslēgts."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Активированы все подписки"
+      "target": "Aktivizēti visi abonementi"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Выбраны все подписки"
+      "target": "Atlasīti visi abonementi"
     },
     {
       "source": "Subscription selected",
-      "target": "Подписка выбрана"
+      "target": "Abonements atlasīts"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Локации скопированы в буфер обмена"
+      "target": "Atrašanās vietas kopētas starpliktuvē"
     },
     {
       "source": "Locations export canceled",
-      "target": "Экспорт локаций отменен"
+      "target": "Atrašanās vietu eksports atcelts"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Правила маршрутизации скопированы в буфер обмена"
+      "target": "Maršrutēšanas noteikumi kopēti starpliktuvē"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Экспорт правил маршрутизации отменен"
+      "target": "Maršrutēšanas noteikumu eksports atcelts"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Источник профиля: подписка"
+      "target": "Profila avota režīms: abonements"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Источник профиля: сохранённые локации"
+      "target": "Profila avota režīms: pašreizējās atrašanās vietas"
     }
   ],
   "legacyReplacements": [
     {
-      "source": " locations refreshed",
-      "target": " локаций обновлено"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Abonementa atrašanās vietas ir tikai lasāmas. Pārslēdzieties uz Saglabātās atrašanās vietas, lai saglabātu labojumus."
     },
     {
-      "source": " location refreshed",
-      "target": " локация обновлена"
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Abonementa atrašanās vietas ir tikai lasāmas. Pārslēdzieties uz Saglabātās atrašanās vietas, lai tās dzēstu."
     },
     {
-      "source": "Subscription auto-refresh set to ",
-      "target": "Автообновление подписки: "
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Saņemts abonements. Pārskatiet un saglabājiet cilnē Profils."
     },
     {
-      "source": "Validation settings saved: ",
-      "target": "Настройки проверки сохранены: "
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Saņemta abonementa saite. Pārskatiet un saglabājiet cilnē Profils."
     },
     {
-      "source": " • batch ",
-      "target": " • группа "
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Saņemta atrašanās vietas konfigurācija. Pārskatiet un saglabājiet cilnē Atrašanās vietas."
     },
     {
-      "source": " • retries ",
-      "target": " • повторные попытки "
+      "source": "Starting local proxy with the best location...",
+      "target": "Palaiž lokālo starpniekserveri ar labāko atrašanās vietu..."
     },
     {
-      "source": "off",
-      "target": "выключено"
-    },
-    {
-      "source": "custom interval",
-      "target": "свой интервал"
-    },
-    {
-      "source": "all subscriptions",
-      "target": "все подписки"
-    },
-    {
-      "source": "selected subscription",
-      "target": "выбранная подписка"
-    },
-    {
-      "source": "VPN stopped. App mode: ",
-      "target": "VPN остановлен. Режим приложения: "
-    },
-    {
-      "source": "Proxy stopped. App mode: ",
-      "target": "Прокси остановлен. Режим приложения: "
-    },
-    {
-      "source": "VPN started on ",
-      "target": "VPN запущен на "
-    },
-    {
-      "source": "Proxy started on ",
-      "target": "Прокси запущен на "
-    },
-    {
-      "source": "Restoring VPN: ",
-      "target": "Восстановление VPN: "
-    },
-    {
-      "source": "VPN stopped. Will reconnect on next launch.",
-      "target": "VPN остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Proxy stopped. Will reconnect on next launch.",
-      "target": "Прокси остановлен. Подключение будет восстановлено при следующем запуске."
-    },
-    {
-      "source": "Refreshing ",
-      "target": "Обновление "
+      "source": "Starting VPN with the best location...",
+      "target": "Palaiž VPN ar labāko atrašanās vietu..."
     },
     {
       "source": "Starting VPN with the new best location...",
-      "target": "Запуск VPN с новой лучшей локацией..."
+      "target": "VPN tiek startēts ar jauno labāko atrašanās vietu..."
     },
     {
       "source": "Starting proxy with the new best location...",
-      "target": "Запуск прокси с новой лучшей локацией..."
+      "target": "Starpniekserveris tiek startēts ar jauno labāko atrašanās vietu..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Meklē labāko atrašanās vietu abonementā..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Meklē labāko atrašanās vietu saglabātajās atrašanās vietās..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama, starpniekserveris apturēts"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama, VPN apturēts"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Atrašanās vietas importētas. Atlasītā atrašanās vieta vairs nav pieejama"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Atlasītā atrašanās vieta lietota, bet saglabāšana neizdevās"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Atrašanās vietas noņemšana atsaukta, jo starpniekserveri neizdevās apturēt"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Atrašanās vietas noņemšana atsaukta, jo VPN neizdevās apturēt"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Atrašanās vietu imports atsaukts, jo starpniekserveri neizdevās apturēt"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Atrašanās vietu imports atsaukts, jo VPN neizdevās apturēt"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN apturēts. Atsvaidzinātie abonementi noņēma atlasīto atrašanās vietu."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Starpniekserveris apturēts. Atsvaidzinātie abonementi noņēma atlasīto atrašanās vietu."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN apturēts. Nākamajā palaišanas reizē savienosies atkārtoti."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Starpniekserveris apturēts. Nākamajā palaišanas reizē savienosies atkārtoti."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Maršrutēšanas noteikumi saglabāti. Restartējiet VPN, lai tos lietotu"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Maršrutēšanas noteikumi saglabāti. Restartējiet starpniekserveri, lai tos lietotu"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Maršrutēšanas noteikumi importēti. Restartējiet VPN, lai tos lietotu"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Maršrutēšanas noteikumi importēti. Restartējiet starpniekserveri, lai tos lietotu"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Atlasītā atrašanās vieta noņemta. VPN apturēts: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Atlasītā atrašanās vieta noņemta. Starpniekserveris apturēts: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Labākā atrašanās vieta atlasīta un VPN palaists: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Labākā atrašanās vieta atlasīta un starpniekserveris palaists: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN palaists, bet atlasīto atrašanās vietu neizdevās saglabāt"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Starpniekserveris palaists, bet atlasīto atrašanās vietu neizdevās saglabāt"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN palaists, bet labāko atrašanās vietu neizdevās saglabāt"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Starpniekserveris palaists, bet labāko atrašanās vietu neizdevās saglabāt"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Neizdevās palaist VPN ar labāko atrašanās vietu"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Neizdevās palaist starpniekserveri ar labāko atrašanās vietu"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Neizdevās saglabāt atlasīto atrašanās vietu"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Neizdevās saglabāt atlasīto atrašanās vietu"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Neizdevās saglabāt labāko atrašanās vietu"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Neizdevās lietot atlasīto atrašanās vietu"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Neizdevās atlasīt atrašanās vietu"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Neizdevās apturēt VPN pirms iziešanas"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Neizdevās apturēt starpniekserveri pirms iziešanas"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Neizdevās apturēt VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Neizdevās apturēt starpniekserveri"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Neizdevās palaist VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Neizdevās palaist starpniekserveri"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Neizdevās sagatavot VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Neizdevās sagatavot starpniekserveri"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Sagatavo VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Sagatavo starpniekserveri"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "VPN palaišana atcelta"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Starpniekservera palaišana atcelta"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "VPN apturēšana atcelta"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Starpniekservera apturēšana atcelta"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Palaiž lokālo starpniekserveri..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Palaiž VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Atsvaidzina visus abonementus..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Atsvaidzina aktīvo abonementu..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Atsvaidzina abonementus..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Atsvaidzina abonementu..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Automātiski atsvaidzina abonementus..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Automātiski atsvaidzina abonementu..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Visi abonementi atsvaidzināti"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Aktīvais abonements atsvaidzināts"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Abonementi atsvaidzināti"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Abonements atsvaidzināts"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Atsvaidzināšana neizdevās"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Atrašanās vietas meklēšana atcelta"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Atrašanās vietas meklēšana neizdevās"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Piešķiriet VPN atļauju un mēģiniet vēlreiz"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Vispirms iestatiet attālo avotu"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Vispirms pievienojiet vismaz vienu saglabātu atrašanās vietu"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Vispirms atlasiet atrašanās vietu"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Vēl nav saglabātu abonementu"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Profila avots iestatīts uz abonementu"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Profila avots iestatīts uz saglabātajām atrašanās vietām"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Savienojuma režīms iestatīts uz VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Savienojuma režīms iestatīts tikai uz starpniekserveri"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Lai mainītu savienojuma režīmu, vispirms atvienojieties"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Vēstures ieraksts dzēsts"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Abonementa nosaukums atiestatīts"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Abonementa nosaukums saglabāts"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Valoda iestatīta uz sistēmas noklusējumu"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Pielāgots DNS saglabāts"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Pielāgots DNS atspējots"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Maršrutēšanas noteikumi saglabāti"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Maršrutēšanas noteikumi importēti"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Atrašanās vietas importētas"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai importētu atrašanās vietas"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Pārslēdzieties uz Saglabātās atrašanās vietas, lai manuāli pievienotu atrašanās vietas"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Nederīga atrašanās vietas konfigurācija"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Rediģējamā atrašanās vieta vairs nav pieejama"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Diagnostikas eksports atvērts"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Diagnostikas eksports neizdevās"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Diagnostikas eksports atcelts"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Iepriekšējā VPN atrašanās vieta vairs nav pieejama"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Lietotne aizvērta. VPN bija izslēgts."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Aktivizēti visi abonementi"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Atlasīti visi abonementi"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Abonements atlasīts"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Abonements saglabāts"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Atrašanās vietas kopētas starpliktuvē"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Atrašanās vietu eksports atcelts"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Maršrutēšanas noteikumi kopēti starpliktuvē"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Maršrutēšanas noteikumu eksports atcelts"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Starpliktuves nolasīšana neizdevās"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Nav atrašanās vietu eksportēšanai"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Neizdevās ielādēt lietotnes"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Neizdevās atsvaidzināt abonementus"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Neizdevās atsvaidzināt aktīvo abonementu"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Neizdevās importēt maršrutēšanas noteikumus"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Neizdevās saglabāt maršrutēšanas noteikumus"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Neizdevās importēt atrašanās vietas"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Neizdevās atvērt atrašanās vietu failu"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Neizdevās nolasīt atrašanās vietu failu"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Neizdevās atvērt maršrutēšanas noteikumu failu"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Labāko atrašanās vietu neizdevās piesaistīt darbvirsmas sarakstam"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN šajā datorā ir gatavs"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Starpniekserveris šajā datorā ir gatavs"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Darbvirsmas VPN apvalks gatavs"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Darbvirsmas starpniekservera apvalks gatavs"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN palaists: "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Starpniekserveris palaists: "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN apturēts. Lietotnes režīms: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Starpniekserveris apturēts. Lietotnes režīms: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Valoda iestatīta uz "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Abonementa automātiskā atsvaidzināšana iestatīta uz "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Validācijas iestatījumi saglabāti: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Atlasītā atrašanās vieta nemainīta: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Atlasītā atrašanās vieta noņemta: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Atlasītā atrašanās vieta iestatīta: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Atrašanās vieta atjaunināta un apvienota: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Atrašanās vieta jau saglabāta: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Atrašanās vieta atjaunināta: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Atrašanās vieta noņemta: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Atrašanās vieta pievienota: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Abonementi atsvaidzināti: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Neizdevās: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Atjauno VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Atsvaidzina "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Atrašanās vietas eksportētas uz "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Maršrutēšanas noteikumi eksportēti uz "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Diagnostika eksportēta uz "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Neizdevās pārbaudīt "
+    },
+    {
+      "source": "Activated ",
+      "target": "Aktivizēts "
+    },
+    {
+      "source": "Added ",
+      "target": "Pievienots "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Dzēsts "
+    },
+    {
+      "source": "Selected ",
+      "target": "Atlasīts "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Rediģēta atrašanās vieta #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Lietotnes režīms: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " atrašanās vietas atsvaidzinātas"
+    },
+    {
+      "source": " location refreshed",
+      "target": " atrašanās vieta atsvaidzināta"
+    },
+    {
+      "source": " • batch ",
+      "target": " • partija "
+    },
+    {
+      "source": " • retries ",
+      "target": " • atkārtojumi "
+    },
+    {
+      "source": "custom interval",
+      "target": "pielāgots intervāls"
+    },
+    {
+      "source": "every hour",
+      "target": "katru stundu"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "visi abonementi"
+    },
+    {
+      "source": "selected subscription",
+      "target": "atlasītais abonements"
+    },
+    {
+      "source": "proxy only",
+      "target": "tikai starpniekserveris"
+    },
+    {
+      "source": "off",
+      "target": "izslēgts"
+    },
+    {
+      "source": "Idle",
+      "target": "Dīkstāve"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN palaists"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN apturēts"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Starpniekserveris palaists"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Starpniekserveris apturēts"
     }
   ]
 }

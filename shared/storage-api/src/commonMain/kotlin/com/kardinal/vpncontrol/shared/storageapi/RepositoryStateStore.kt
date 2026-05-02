@@ -8,7 +8,7 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 
 interface RepositoryStateStore : SearchStateStore, RuntimeConfigStore {
     suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean = false)
@@ -38,7 +38,7 @@ interface RepositoryStateStore : SearchStateStore, RuntimeConfigStore {
     suspend fun updateRoutingRules(rules: RoutingRules)
 
     suspend fun updateSelection(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         summary: String,
         runtimeConfigJson: String,
         sourceUrl: String = "",

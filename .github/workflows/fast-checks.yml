@@ -1,0 +1,67 @@
+name: Fast Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/fast-checks.yml"
+      - "app/**"
+      - "desktopApp/**"
+      - "shared/**"
+      - "i18n/**"
+      - "i18n-status/**"
+      - "languages.json"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/check_localization.py"
+      - "scripts/check_release_hygiene.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/fast-checks.yml"
+      - "app/**"
+      - "desktopApp/**"
+      - "shared/**"
+      - "i18n/**"
+      - "i18n-status/**"
+      - "languages.json"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/check_localization.py"
+      - "scripts/check_release_hygiene.sh"
+
+jobs:
+  fast-checks:
+    name: Hygiene, Localization, Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check localization catalogs
+        run: ./scripts/check_localization.py
+
+      - name: Run fast unit tests
+        run: ./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest

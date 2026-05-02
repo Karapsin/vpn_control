@@ -407,7 +407,7 @@ fun VpnControlApp(
             textContentColor = Color.White,
             text = {
                 Text(
-                    text = state.locationMutationBlockedMessage,
+                    text = appStrings.statusMessage(state.locationMutationBlockedMessage),
                     color = Color(0xFFD3E3EE),
                 )
             },

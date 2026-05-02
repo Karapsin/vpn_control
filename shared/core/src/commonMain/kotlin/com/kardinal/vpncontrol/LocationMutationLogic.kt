@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 
 sealed interface SaveLocationDecision {
     data class MutationBlocked(val message: String) : SaveLocationDecision
@@ -40,14 +41,14 @@ object LocationMutationLogic {
             state.editingLocationIndex != null
         ) {
             return SaveLocationDecision.MutationBlocked(
-                "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+                StatusMessages.subscriptionLocationSaveReadOnly(),
             )
         }
 
         val parsed = runCatching { LocationConfigs.parseLocationInput(state.locationDraft.trim()) }
         if (parsed.isFailure) {
             return SaveLocationDecision.Invalid(
-                parsed.exceptionOrNull()?.message ?: "Invalid location config",
+                parsed.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig(),
             )
         }
 
@@ -59,10 +60,10 @@ object LocationMutationLogic {
         val duplicateIndex = nextLocations.indexOf(normalized)
 
         if (editIndex == null && duplicateIndex != -1) {
-            return SaveLocationDecision.Duplicate("Location already saved: ${profile.remarks}")
+            return SaveLocationDecision.Duplicate(StatusMessages.locationAlreadySaved(profile.remarks))
         }
         if (editIndex != null && editIndex !in nextLocations.indices) {
-            return SaveLocationDecision.Invalid("Location to edit is no longer available")
+            return SaveLocationDecision.Invalid(StatusMessages.locationEditUnavailable())
         }
 
         val mergedWithExisting = editIndex != null && duplicateIndex != -1 && duplicateIndex != editIndex
@@ -84,16 +85,16 @@ object LocationMutationLogic {
 
     fun saveLocationSuccessMessage(plan: SaveLocationDecision.Plan): String {
         return when {
-            plan.editIndex == null -> "Location added: ${plan.remarks}"
-            plan.mergedWithExisting -> "Location updated and merged: ${plan.remarks}"
-            else -> "Location updated: ${plan.remarks}"
+            plan.editIndex == null -> StatusMessages.locationAdded(plan.remarks)
+            plan.mergedWithExisting -> StatusMessages.locationUpdatedAndMerged(plan.remarks)
+            else -> StatusMessages.locationUpdated(plan.remarks)
         }
     }
 
     fun planDeleteLocation(state: MainUiState, index: Int): DeleteLocationDecision {
         if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
             return DeleteLocationDecision.MutationBlocked(
-                "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+                StatusMessages.subscriptionLocationDeleteReadOnly(),
             )
         }
         val nextLocations = state.currentLocations.toMutableList()
@@ -114,9 +115,9 @@ object LocationMutationLogic {
         remarks: String,
     ): String {
         return if (removedSelected) {
-            "Selected location removed: $remarks"
+            StatusMessages.selectedLocationRemoved(remarks)
         } else {
-            "Location removed: $remarks"
+            StatusMessages.locationRemoved(remarks)
         }
     }
 
@@ -124,39 +125,35 @@ object LocationMutationLogic {
         appMode: AppMode,
         remarks: String,
     ): String {
-        return "Selected location removed. ${MainCommandLogic.stoppedConnectionLabel(appMode)}: $remarks"
+        return StatusMessages.selectedLocationRemovedConnectionStopped(appMode, remarks)
     }
 
     fun deleteLocationRollbackFailureMessage(appMode: AppMode): String {
-        return "Location removal rolled back because the ${MainCommandLogic.connectionNoun(appMode)} could not be stopped"
+        return StatusMessages.locationRemovalRollbackFailed(appMode)
     }
 
     fun planImportLocations(state: MainUiState, raw: String): ImportLocationsDecision {
         if (state.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
-            return ImportLocationsDecision.Blocked("Switch to Saved Locations to import locations")
+            return ImportLocationsDecision.Blocked(StatusMessages.importLocationsBlocked())
         }
         val parsed = runCatching { LocationConfigs.import(raw) }
         if (parsed.isFailure) {
             return ImportLocationsDecision.Invalid(
-                parsed.exceptionOrNull()?.message ?: "Failed to import locations",
+                parsed.exceptionOrNull()?.message ?: StatusMessages.importLocationsFailed(),
             )
         }
         return ImportLocationsDecision.Plan(parsed.getOrThrow())
     }
 
     fun importLocationsStatusMessage(removedSelected: Boolean): String {
-        return if (removedSelected) {
-            "Locations imported. Selected location is no longer available"
-        } else {
-            "Locations imported"
-        }
+        return StatusMessages.locationsImported(removedSelected)
     }
 
     fun importLocationsStoppedStatusMessage(appMode: AppMode): String {
-        return "Locations imported. Selected location is no longer available, ${MainCommandLogic.stoppedConnectionLabel(appMode).lowercase()}"
+        return StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(appMode)
     }
 
     fun importLocationsRollbackFailureMessage(appMode: AppMode): String {
-        return "Locations import rolled back because the ${MainCommandLogic.connectionNoun(appMode)} could not be stopped"
+        return StatusMessages.locationsImportRollbackFailed(appMode)
     }
 }

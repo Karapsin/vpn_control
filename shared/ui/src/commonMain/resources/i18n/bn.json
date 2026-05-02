@@ -65,7 +65,7 @@
   "DNS_APPLIES_NEW_DESKTOP_SESSIONS": "নতুন ডেস্কটপ প্রক্সি বা VPN সেশনে প্রযোজ্য।",
   "DNS_IP_ADDRESS": "DNS IP ঠিকানা",
   "APP_MODE_ANDROID_DESCRIPTION": "ডিফল্ট মোড VPN। Android VPN-এর বদলে স্থানীয় HTTP/SOCKS মিশ্র প্রক্সি চালাতে শুধু প্রক্সি চালু করুন।",
-  "APP_MODE_DESKTOP_DESCRIPTION": "VPN মোড Linux বা Windows-এ sing-box TUN ব্যবহার করে। বিশেষ অধিকারযুক্ত helper তৈরি না হওয়া পর্যন্ত macOS শুধু প্রক্সি মোড সমর্থন করে।",
+  "APP_MODE_DESKTOP_DESCRIPTION": "VPN মোড Linux বা Windows-এ sing-box TUN ব্যবহার করে। বিশেষ অধিকারপ্রাপ্ত সহায়ক তৈরি না হওয়া পর্যন্ত macOS শুধু প্রক্সি মোড সমর্থন করে।",
   "VPN": "VPN",
   "VPN_MODE_LABEL": "VPN মোড",
   "PROXY_ONLY": "শুধু প্রক্সি",

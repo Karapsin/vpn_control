@@ -1,0 +1,183 @@
+package com.kardinal.vpncontrol.desktop
+
+import com.kardinal.vpncontrol.MainCommandLogic
+import com.kardinal.vpncontrol.MainDraftLogic
+import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.MainUiStateTransitions
+import com.kardinal.vpncontrol.model.AppLanguage
+import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
+
+internal class DesktopSettingsService(
+    private val stateProvider: () -> MainUiState,
+    private val autostartManager: DesktopAutostartManager,
+    private val stopConnection: suspend (String) -> Result<Unit>,
+    private val commitState: (MainUiState) -> Unit,
+    private val updateState: ((MainUiState) -> MainUiState) -> Unit,
+) {
+    fun toggleDnsDialog() {
+        updateState {
+            if (it.showDnsDialog) {
+                it.copy(showDnsDialog = false)
+            } else {
+                it.copy(
+                    showDnsDialog = true,
+                    customDnsDraft = it.customDns,
+                    useCustomDnsDraft = it.useCustomDns,
+                )
+            }
+        }
+    }
+
+    fun setUseCustomDnsDraft(enabled: Boolean) {
+        updateState { it.copy(useCustomDnsDraft = enabled) }
+    }
+
+    fun setCustomDnsDraft(value: String) {
+        updateState { it.copy(customDnsDraft = value.take(80)) }
+    }
+
+    fun saveDns() {
+        val state = stateProvider()
+        val plan = MainDraftLogic.resolveDnsSave(state)
+        commitState(
+            state.copy(
+                customDns = plan.dns,
+                customDnsDraft = plan.dns,
+                useCustomDns = plan.enabled,
+                useCustomDnsDraft = plan.enabled,
+                showDnsDialog = false,
+            ).withStatus(plan.statusMessage),
+        )
+    }
+
+    fun setStartOnBootEnabled(enabled: Boolean) {
+        val result = autostartManager.setEnabled(enabled)
+        val actual = autostartManager.isEnabled()
+        val status = if (result.isSuccess) {
+            if (actual) {
+                StatusMessages.startOnLoginEnabled()
+            } else {
+                StatusMessages.startOnLoginDisabled()
+            }
+        } else {
+            StatusMessages.startupSettingUpdateFailed(result.exceptionOrNull()?.message.orEmpty())
+        }
+        updateState { it.copy(startOnBootEnabled = actual).withStatus(status) }
+    }
+
+    fun toggleAppModeDialog() {
+        updateState { it.copy(showAppModeDialog = !it.showAppModeDialog) }
+    }
+
+    fun toggleRefreshPolicyDialog() {
+        updateState(MainUiStateTransitions::toggleRefreshPolicyDialog)
+    }
+
+    fun toggleValidationSettingsDialog() {
+        updateState(MainUiStateTransitions::toggleValidationSettingsDialog)
+    }
+
+    fun toggleLanguageDialog() {
+        updateState { it.copy(showLanguageDialog = !it.showLanguageDialog) }
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        updateState {
+            it.copy(appLanguage = language, showLanguageDialog = false).withStatus(
+                StatusMessages.languageSet(if (language == AppLanguage.SYSTEM) "" else language.nativeName),
+            )
+        }
+    }
+
+    fun setSubscriptionHwid(value: String) {
+        val normalized = value.trim()
+        val status = if (normalized.isBlank()) {
+            StatusMessages.subscriptionHwidCleared()
+        } else {
+            StatusMessages.subscriptionHwidSaved()
+        }
+        updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
+    }
+
+    fun setValidationPrimaryUrlDraft(value: String) {
+        updateState { it.copy(validationPrimaryUrlDraft = value) }
+    }
+
+    fun setValidationSecondaryUrlDraft(value: String) {
+        updateState { it.copy(validationSecondaryUrlDraft = value) }
+    }
+
+    fun setValidationBatchSizeDraft(value: String) {
+        updateState { it.copy(validationBatchSizeDraft = value.filter(Char::isDigit).take(3)) }
+    }
+
+    fun setValidationRetryCountDraft(value: String) {
+        updateState { it.copy(validationRetryCountDraft = value.filter(Char::isDigit).take(3)) }
+    }
+
+    fun saveValidationSettings() {
+        val state = stateProvider()
+        val plan = MainDraftLogic.resolveValidationSettingsSave(state)
+        val settings = plan.settings
+        commitState(
+            state.copy(
+                validationSettings = settings,
+                validationPrimaryUrlDraft = settings.primaryUrl,
+                validationSecondaryUrlDraft = settings.secondaryUrl,
+                validationBatchSizeDraft = settings.batchSize.toString(),
+                validationRetryCountDraft = settings.retryCount.toString(),
+                showValidationSettingsDialog = false,
+            ).withStatus(plan.statusMessage),
+        )
+    }
+
+    fun saveSubscriptionRefreshPolicy() {
+        val state = stateProvider()
+        val resolution = MainCommandLogic.resolveSubscriptionRefreshPolicySave(state)
+        if (resolution.isFailure) {
+            updateState {
+                it.withStatus(
+                    resolution.exceptionOrNull()?.message ?: StatusMessages.refreshSettingsSaveFailed(),
+                )
+            }
+            return
+        }
+        val saved = resolution.getOrThrow()
+        commitState(
+            state.copy(
+                subscriptionRefreshPolicy = saved.policy,
+                subscriptionRefreshPolicyDraft = saved.policy,
+                findBestAfterSubscriptionRefresh = saved.findBestAfterRefresh,
+                findBestAfterSubscriptionRefreshDraft = saved.findBestAfterRefresh,
+                subscriptionRefreshCustomHours = saved.resolvedHours,
+                subscriptionRefreshCustomHoursDraft = formatSubscriptionRefreshHoursInput(saved.resolvedHours),
+                showRefreshPolicyDialog = false,
+            ).withStatus(saved.statusMessage),
+        )
+    }
+
+    suspend fun setAppMode(mode: AppMode) {
+        val state = stateProvider()
+        if (state.isVpnRunning && mode != state.appMode) {
+            val stopResult = stopConnection(
+                StatusMessages.connectionStoppedForAppMode(state.appMode, mode),
+            )
+            if (stopResult.isFailure) {
+                return
+            }
+        }
+        updateState { it.withStatus(StatusMessages.appModeChanged(mode)).copy(appMode = mode, showAppModeDialog = false) }
+    }
+
+    suspend fun toggleAppMode() {
+        val nextMode = if (stateProvider().appMode == AppMode.VPN) {
+            AppMode.PROXY_ONLY
+        } else {
+            AppMode.VPN
+        }
+        setAppMode(nextMode)
+    }
+}

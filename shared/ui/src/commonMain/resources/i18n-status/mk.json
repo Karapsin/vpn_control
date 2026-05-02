@@ -1,0 +1,1551 @@
+{
+  "dynamic": {
+    "findingSubscription": "Се бара најдобрата локација од претплатата...",
+    "findingSaved": "Се бара најдобрата локација од зачуваните локации...",
+    "testingFastestCandidates": "Се тестираат најбрзите кандидати во серии...",
+    "checkingLocations": "Се проверуваат {count} локации...",
+    "testingLocationsRange": "Се тестираат локации {start}-{end} од {total}...",
+    "selectLocationFirst": "Прво изберете локација",
+    "checkingLocation": "Проверка на {name}...",
+    "testingLocation": "Тестирање на {name}...",
+    "locationCheckCancelled": "Проверката на локацијата е откажана",
+    "noLocationsToExport": "Нема локации за извоз",
+    "refreshIntervalMinutes": "{count} мин",
+    "refreshIntervalHours": "{count} ч",
+    "refreshIntervalHoursMinutes": "{hours} ч {minutes} мин",
+    "refreshIntervalEvery": "секои {interval}",
+    "refreshIntervalEveryHour": "секој час"
+  },
+  "benchmark": {
+    "best": "Најдобра: ",
+    "primary": "примарен ",
+    "secondary": "секундарен ",
+    "tcp": "TCP ",
+    "millisUnit": "мс",
+    "statuses": {
+      "blocked": "блокирано",
+      "cached": "кеширано",
+      "challenge": "предизвик",
+      "custom_config_manual_only": "само рачно за сопствена конфигурација",
+      "error": "грешка",
+      "manual": "рачно",
+      "ok": "успешно",
+      "partial": "делумно",
+      "tcp_error": "TCP грешка",
+      "tcp_timeout": "истече време за TCP",
+      "timeout": "истече време",
+      "unreachable": "недостапно",
+      "validation_timeout": "истече време за проверка"
+    }
+  },
+  "structured": {
+    "IDLE": "Неактивно",
+    "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
+    "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Автоматското освежување на претплати е поставено на {refreshInterval}",
+    "VALIDATION_SETTINGS_SAVED": "Поставките за проверка се зачувани: {0} • {1} • серија {2} • повторни обиди {3}",
+    "CUSTOM_DNS_SAVED": "Сопствениот DNS е зачуван",
+    "CUSTOM_DNS_DISABLED": "Сопствениот DNS е оневозможен",
+    "FIND_BEST_FROM_SUBSCRIPTION": "Се бара најдобрата локација од претплатата...",
+    "FIND_BEST_FROM_SAVED": "Се бара најдобрата локација од зачуваните локации...",
+    "STARTING_CONNECTION.VPN": "Се стартува VPN...",
+    "STARTING_CONNECTION.PROXY_ONLY": "Се стартува локалниот прокси...",
+    "STARTING_CONNECTION_WITH_BEST.VPN": "Се стартува VPN со најдобрата локација...",
+    "STARTING_CONNECTION_WITH_BEST.PROXY_ONLY": "Се стартува локалниот прокси со најдобрата локација...",
+    "CONNECTION_STARTED.VPN": "VPN е стартуван",
+    "CONNECTION_STARTED.PROXY_ONLY": "Проксито е стартувано",
+    "CONNECTION_STOPPED.VPN": "VPN е запрен",
+    "CONNECTION_STOPPED.PROXY_ONLY": "Проксито е запрено",
+    "CONNECTION_READY_ON_COMPUTER.VPN": "VPN е подготвен на овој компјутер",
+    "CONNECTION_READY_ON_COMPUTER.PROXY_ONLY": "Проксито е подготвено на овој компјутер",
+    "DESKTOP_APP_INITIALIZED": "Апликацијата е иницијализирана",
+    "RUNTIME_MODE.VPN": "Режим на извршување: VPN",
+    "RUNTIME_MODE.PROXY_ONLY": "Режим на извршување: Proxy",
+    "LOCAL_PROXY": "Локален прокси: {0}",
+    "RUNTIME_LOG": "Дневник на извршување: {0}",
+    "PREFLIGHT_PASSED.VPN": "Предпроверката на VPN режимот помина",
+    "PREFLIGHT_PASSED.PROXY_ONLY": "Предпроверката на режимот само прокси помина",
+    "PREFLIGHT_FAILED.VPN": "Предпроверката на VPN режимот не успеа: {checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Предпроверката на режимот само прокси не успеа: {checkCount}",
+    "DESKTOP_VPN_CAPABILITY_READY": "Можност за десктоп VPN: подготвено",
+    "DESKTOP_VPN_CAPABILITY_ERROR": "Можност за десктоп VPN: {valueOrNotReady}",
+    "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Можност за десктоп VPN: не е подготвено",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Нема достапни локации за benchmark",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Пребарувањето за најдобра локација истече; се задржува тековната врска",
+    "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
+    "LOCATION_SEARCH_CANCELLED": "Пребарувањето локација е откажано",
+    "LOCATION_SEARCH_FAILED": "Пребарувањето локација не успеа",
+    "VPN_PERMISSION_REQUIRED": "Дајте VPN дозвола и обидете се повторно",
+    "SELECTED_LOCATION_SAVE_FAILED": "Не успеа зачувувањето на избраната локација",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN е стартуван, но не успеа да се зачува избраната локација",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Проксито е стартувано, но не успеа да се зачува избраната локација",
+    "BEST_LOCATION_START_FAILED.VPN": "Не успеа стартувањето на VPN со најдобрата локација",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Не успеа стартувањето на прокси со најдобрата локација",
+    "BEST_LOCATION_SAVE_FAILED": "Не успеа зачувувањето на најдобрата локација",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN е стартуван, но не успеа да се зачува најдобрата локација",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Проксито е стартувано, но не успеа да се зачува најдобрата локација",
+    "BACKGROUND_REFRESH_FINDING_BEST": "Освежувањето на претплатата заврши. Се бара најдобрата локација...",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Освежувањето на претплатата заврши, но потребна е VPN дозвола за префрлање во заднина. Претходната VPN локација е задржана како резервна.",
+    "NO_SUITABLE_LOCATION_FOUND": "Не е најдена соодветна локација",
+    "BEST_LOCATION_NOT_MAPPED": "Најдобрата локација не може да се мапира во десктоп листата",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Активирани се сите претплати",
+    "ACTIVATED_SUBSCRIPTION": "Активирано {0}",
+    "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "SUBSCRIPTION_NAME_RESET": "Името на претплатата е ресетирано",
+    "SUBSCRIPTION_NAME_SAVED": "Името на претплатата е зачувано",
+    "SUBSCRIPTION_DELETED": "Претплатата е избришана",
+    "SELECT_LOCATION_FIRST": "Прво изберете локација",
+    "CHECKING_LOCATION": "Проверка на {0}...",
+    "TESTING_LOCATION": "Тестирање на {0}...",
+    "LOCATION_CHECK_CANCELLED": "Проверката на локацијата е откажана",
+    "NO_LOCATIONS_TO_EXPORT": "Нема локации за извоз",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Статистиката за сесијата е овозможена",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Статистиката за сесијата е скриена",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Статистиката за жив сообраќај е овозможена",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Статистиката за жив сообраќај е скриена",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Вкупните вредности по профил се овозможени",
+    "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Вкупните вредности по профил се скриени",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Историјата на латентност е овозможена",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Историјата на латентност е скриена",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Дневникот на врската е овозможен",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Дневникот на врската е скриен",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Алатките за тестирање на врската се овозможени",
+    "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Алатките за тестирање на врската се скриени",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Локациите од претплата се само за читање. Префрлете се на Зачувани локации за да зачувате измени.",
+    "INVALID_LOCATION_CONFIG": "Невалидна конфигурација на локација",
+    "LOCATION_ALREADY_SAVED": "Локацијата е веќе зачувана: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Локацијата за уредување веќе не е достапна",
+    "LOCATION_ADDED": "Локацијата е додадена: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Локацијата е ажурирана и обединета: {0}",
+    "LOCATION_UPDATED": "Локацијата е ажурирана: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Локациите од претплата се само за читање. Префрлете се на Зачувани локации за да ги избришете.",
+    "SELECTED_LOCATION_REMOVED": "Избраната локација е отстранета: {0}",
+    "LOCATION_REMOVED": "Локацијата е отстранета: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Избраната локација е отстранета. VPN е запрен: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Избраната локација е отстранета. Проксито е запрено: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Отстранувањето на локацијата е вратено назад бидејќи VPN не можеше да се запре",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Отстранувањето на локацијата е вратено назад бидејќи проксито не можеше да се запре",
+    "IMPORT_LOCATIONS_BLOCKED": "Префрлете се на Зачувани локации за да увезете локации",
+    "IMPORT_LOCATIONS_FAILED": "Не успеа увозот на локации",
+    "LOCATIONS_IMPORTED": "Локациите се увезени",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Локациите се увезени. Избраната локација веќе не е достапна",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Локациите се увезени. Избраната локација веќе не е достапна, vpn е запрен",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Локациите се увезени. Избраната локација веќе не е достапна, проксито е запрено",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Увозот на локации е вратен назад бидејќи VPN не можеше да се запре",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Увозот на локации е вратен назад бидејќи проксито не можеше да се запре",
+    "CLIPBOARD_EMPTY": "Клипбордот е празен",
+    "CLIPBOARD_READ_FAILED": "Читањето од клипборд не успеа",
+    "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Текстот на претплатата е вчитан во јазичето Профил",
+    "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
+    "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Прво исклучете се за да го промените режимот на врска",
+    "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "RULE_SET_REMOVED": "Множеството правила е отстрането",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Префрлете се на Зачувани локации за рачно да додадете локации",
+    "HISTORY_ENTRY_DELETED": "Записот од историјата е избришан",
+    "SELECTED_LOCATION_UNCHANGED": "Избраната локација е непроменета: {0}",
+    "SELECTED_LOCATION_SET": "Избраната локација е поставена: {0}",
+    "LOCATION_CHECKED": "Location проверкаed: {0}",
+    "LOCATION_CHECK_FAILED": "Проверката на локација не успеа",
+    "LOCATION_EDITED": "Уредена локација #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Додадено a sample rule-set",
+    "RULE_SET_DELETED": "Избришано rule-set {0}",
+    "ROUTING_RULES_SAVED": "Правилата за рутирање се зачувани",
+    "ROUTING_RULES_IMPORTED": "Правилата за рутирање се увезени",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Правилата за рутирање се увезени. Рестартувајте VPN за да се применат",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Правилата за рутирање се увезени. Рестартувајте прокси за да се применат",
+    "ROUTING_RULES_IMPORT_FAILED": "Не успеа увозот на правила за рутирање",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Правилата за рутирање се копирани во клипборд",
+    "ROUTING_RULES_EXPORT_CANCELED": "Извозот на правила за рутирање е откажан",
+    "ROUTING_RULES_EXPORTED_TO": "Правилата за рутирање се извезени во {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Не успеа извозот на правила за рутирање",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Не успеа отворањето на датотеката со правила за рутирање",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Локациите се копирани во клипборд",
+    "LOCATIONS_EXPORT_CANCELED": "Извозот на локации е откажан",
+    "LOCATIONS_EXPORTED_TO": "Локациите се извезени во {0}",
+    "LOCATIONS_EXPORT_FAILED": "Не успеа извозот на локации",
+    "LOCATIONS_FILE_OPEN_FAILED": "Не успеа отворањето на датотеката со локации",
+    "LOCATIONS_FILE_READ_FAILED": "Не успеа читањето на датотеката со локации",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Извозот на дијагностика е откажан",
+    "DIAGNOSTICS_EXPORTED_TO": "Дијагностиката е извезена во {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Не успеа извозот на дијагностика",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Не успеа отворањето на одредиштето за дијагностика",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Нема претплати за освежување",
+    "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
+    "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Не успеа ажурирањето на поставката за стартување",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Не успеа ажурирањето на поставката за стартување: {0}",
+    "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
+    "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Не успеа зачувувањето на поставките за освежување",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Не успеа зачувувањето на поставките за освежување: {0}",
+    "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Претходната VPN сесија ќе биде вратена",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Претходната VPN локација веќе не е достапна",
+    "RESTORING_PREVIOUS_CONNECTION": "Се враќа VPN: {0}...",
+    "CONNECTION_STARTED_ON_TARGET.VPN": "VPN е стартуван на {1}",
+    "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Проксито е стартувано на {1}",
+    "CONNECTION_START_FAILED.VPN": "Не успеа стартувањето на VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Не успеа стартувањето на прокси",
+    "CONNECTION_STOP_FAILED.VPN": "Не успеа запирањето на VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Не успеа запирањето на прокси",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Апликацијата е затворена. VPN беше исклучен.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN е запрен. Ќе се поврзе повторно при следното стартување.",
+    "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Проксито е запрено. Ќе се поврзе повторно при следното стартување.",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Не успеа запирањето на VPN пред излез",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Не успеа запирањето на Proxy пред излез"
+  },
+  "freeformReplacements": [
+    {
+      "source": "Subscription URL",
+      "target": "URL на претплата"
+    },
+    {
+      "source": "Unreadable subscription URL",
+      "target": "Нечитлив URL на претплата"
+    },
+    {
+      "source": "Insecure HTTP subscriptions are not supported",
+      "target": "Небезбедни HTTP претплати не се поддржани"
+    },
+    {
+      "source": "Use an https:// subscription URL.",
+      "target": "Користете https:// URL на претплата."
+    },
+    {
+      "source": "The URL must include a valid HTTPS host",
+      "target": "URL-то мора да содржи валиден HTTPS хост"
+    },
+    {
+      "source": "Paste a valid https:// subscription URL.",
+      "target": "Залепете валиден https:// URL на претплата."
+    },
+    {
+      "source": "Direct remote source",
+      "target": "Директен оддалечен извор"
+    },
+    {
+      "source": "sing-box import link",
+      "target": "врска за увоз на sing-box"
+    },
+    {
+      "source": "Unreadable sing-box import link",
+      "target": "Нечитлива врска за увоз на sing-box"
+    },
+    {
+      "source": "Only valid HTTPS remote URLs are supported",
+      "target": "Поддржани се само валидни оддалечени HTTPS URL-адреси"
+    },
+    {
+      "source": "Use a sing-box import link that resolves to a valid https:// URL.",
+      "target": "Користете врска за увоз на sing-box што разрешува во валиден https:// URL."
+    },
+    {
+      "source": "Fetches remote content from the embedded URL",
+      "target": "Презема оддалечена содржина од вградениот URL"
+    },
+    {
+      "source": "Fetches remote content from ",
+      "target": "Презема оддалечена содржина од "
+    },
+    {
+      "source": "The import link could not be parsed",
+      "target": "Врската за увоз не може да се парсира"
+    },
+    {
+      "source": "Paste a valid sing-box remote-profile import link or a direct subscription URL.",
+      "target": "Залепете валидна sing-box remote-profile врска за увоз или директен URL на претплата."
+    },
+    {
+      "source": "VPN import link",
+      "target": "врска за увоз на VPN"
+    },
+    {
+      "source": "Unreadable VPN import link",
+      "target": "Нечитлива врска за увоз на VPN"
+    },
+    {
+      "source": "Unsupported provider import",
+      "target": "Неподдржан увоз од провајдер"
+    },
+    {
+      "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "Amnezia и други vpn:// увози не се поддржани. Користете нормален URL на претплата или додајте локации рачно."
+    },
+    {
+      "source": "The import payload could not be decoded",
+      "target": "Содржината за увоз не може да се декодира"
+    },
+    {
+      "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
+      "target": "vpn:// увози не се поддржани. Користете нормален URL на претплата или додајте локации рачно."
+    },
+    {
+      "source": "HTTP subscription URLs are not supported. Use https:// instead.",
+      "target": "HTTP URL-адреси за претплати не се поддржани. Наместо тоа користете https://."
+    },
+    {
+      "source": "Remote source must be an https:// URL or a supported import link",
+      "target": "Оддалечениот извор мора да биде https:// URL или поддржана врска за увоз"
+    },
+    {
+      "source": "Remote source is empty",
+      "target": "Оддалечениот извор е празен"
+    },
+    {
+      "source": "Remote source must be a valid https:// URL with a host.",
+      "target": "Оддалечениот извор мора да биде валиден https:// URL со хост."
+    },
+    {
+      "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
+      "target": "Овој sing-box увоз разрешува во невалиден или не-HTTPS URL. Наместо тоа користете валиден https:// URL."
+    },
+    {
+      "source": "Applying selected location...",
+      "target": "Се применува избраната локација..."
+    },
+    {
+      "source": "Applying updated selected location...",
+      "target": "Се применува ажурираната избрана локација..."
+    },
+    {
+      "source": "Best location search timed out; keeping the current connection",
+      "target": "Пребарувањето за најдобра локација истече; се задржува тековната врска"
+    },
+    {
+      "source": "Clipboard is empty",
+      "target": "Клипбордот е празен"
+    },
+    {
+      "source": "Connection log enabled",
+      "target": "Дневникот на врската е овозможен"
+    },
+    {
+      "source": "Connection log hidden",
+      "target": "Дневникот на врската е скриен"
+    },
+    {
+      "source": "Connection test tools enabled",
+      "target": "Алатките за тестирање на врската се овозможени"
+    },
+    {
+      "source": "Connection test tools hidden",
+      "target": "Алатките за тестирање на врската се скриени"
+    },
+    {
+      "source": "Could not open export destination",
+      "target": "Не може да се отвори одредиштето за извоз"
+    },
+    {
+      "source": "Could not open selected file",
+      "target": "Не може да се отвори избраната датотека"
+    },
+    {
+      "source": "Could not open selected locations file",
+      "target": "Не може да се отвори избраната датотека со локации"
+    },
+    {
+      "source": "Could not open selected rules file",
+      "target": "Не може да се отвори избраната датотека со правила"
+    },
+    {
+      "source": "Desktop shell: Netherlands from Whitelists",
+      "target": "Десктоп обвивка: Холандија од Whitelists"
+    },
+    {
+      "source": "Desktop app initialized",
+      "target": "Десктоп апликацијата е иницијализирана"
+    },
+    {
+      "source": "App initialized",
+      "target": "Апликацијата е иницијализирана"
+    },
+    {
+      "source": "Export Locations",
+      "target": "Извези локации"
+    },
+    {
+      "source": "Failed to apply updated selected location",
+      "target": "Не успеа примената на ажурираната избрана локација"
+    },
+    {
+      "source": "Failed to export diagnostics",
+      "target": "Не успеа извозот на дијагностика"
+    },
+    {
+      "source": "Failed to export locations",
+      "target": "Не успеа извозот на локации"
+    },
+    {
+      "source": "Failed to export routing rules",
+      "target": "Не успеа извозот на правила за рутирање"
+    },
+    {
+      "source": "Failed to find a replacement location",
+      "target": "Не успеа наоѓањето заменска локација"
+    },
+    {
+      "source": "Failed to import file",
+      "target": "Не успеа увозот на датотека"
+    },
+    {
+      "source": "Failed to open diagnostics destination",
+      "target": "Не успеа отворањето на одредиштето за дијагностика"
+    },
+    {
+      "source": "Failed to save refresh settings",
+      "target": "Не успеа зачувувањето на поставките за освежување"
+    },
+    {
+      "source": "Failed to update startup setting",
+      "target": "Не успеа ажурирањето на поставката за стартување"
+    },
+    {
+      "source": "Import canceled",
+      "target": "Увозот е откажан"
+    },
+    {
+      "source": "Invalid subscription URL",
+      "target": "Невалиден URL на претплата"
+    },
+    {
+      "source": "Latency history enabled",
+      "target": "Историјата на латентност е овозможена"
+    },
+    {
+      "source": "Latency history hidden",
+      "target": "Историјата на латентност е скриена"
+    },
+    {
+      "source": "Live traffic stats enabled",
+      "target": "Статистиката за жив сообраќај е овозможена"
+    },
+    {
+      "source": "Live traffic stats hidden",
+      "target": "Статистиката за жив сообраќај е скриена"
+    },
+    {
+      "source": "Location check cancelled",
+      "target": "Проверката на локација е откажана"
+    },
+    {
+      "source": "Location check failed",
+      "target": "Проверката на локација не успеа"
+    },
+    {
+      "source": "Locations exported",
+      "target": "Локациите се извезени"
+    },
+    {
+      "source": "Locations import canceled",
+      "target": "Увозот на локации е откажан"
+    },
+    {
+      "source": "No locations available for benchmarking",
+      "target": "Нема достапни локации за benchmark"
+    },
+    {
+      "source": "No subscriptions to refresh",
+      "target": "Нема претплати за освежување"
+    },
+    {
+      "source": "No suitable location found",
+      "target": "Не е најдена соодветна локација"
+    },
+    {
+      "source": "Per-profile totals enabled",
+      "target": "Вкупните вредности по профил се овозможени"
+    },
+    {
+      "source": "Per-profile totals hidden",
+      "target": "Вкупните вредности по профил се скриени"
+    },
+    {
+      "source": "Previous VPN session will be restored",
+      "target": "Претходната VPN сесија ќе биде вратена"
+    },
+    {
+      "source": "QR scan canceled",
+      "target": "QR скенирањето е откажано"
+    },
+    {
+      "source": "Routing rules exported",
+      "target": "Правилата за рутирање се извезени"
+    },
+    {
+      "source": "Routing rules import canceled",
+      "target": "Увозот на правила за рутирање е откажан"
+    },
+    {
+      "source": "Saved routing rules",
+      "target": "Правилата за рутирање се зачувани"
+    },
+    {
+      "source": "Session stats enabled",
+      "target": "Статистиката за сесијата е овозможена"
+    },
+    {
+      "source": "Session stats hidden",
+      "target": "Статистиката за сесијата е скриена"
+    },
+    {
+      "source": "Shared text is not a supported import payload",
+      "target": "Споделениот текст не е поддржана содржина за увоз"
+    },
+    {
+      "source": "Subscription deleted",
+      "target": "Претплатата е избришана"
+    },
+    {
+      "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
+      "target": "Освежувањето на претплатата заврши, но потребна е VPN дозвола за префрлање во заднина. Претходната VPN локација е задржана како резервна."
+    },
+    {
+      "source": "Subscription refresh finished. Finding the best location...",
+      "target": "Освежувањето на претплатата заврши. Се бара најдобрата локација..."
+    },
+    {
+      "source": "Subscription refresh finished. ",
+      "target": "Освежувањето на претплатата заврши. "
+    },
+    {
+      "source": "Runtime mode: ",
+      "target": "Режим на извршување: "
+    },
+    {
+      "source": "Local proxy: ",
+      "target": "Локален прокси: "
+    },
+    {
+      "source": "Runtime log: ",
+      "target": "Дневник на извршување: "
+    },
+    {
+      "source": "VPN mode preflight passed",
+      "target": "Предпроверката на VPN режимот помина"
+    },
+    {
+      "source": "Proxy-only mode preflight passed",
+      "target": "Предпроверката на режимот само прокси помина"
+    },
+    {
+      "source": "VPN mode preflight failed: ",
+      "target": "Предпроверката на VPN режимот не успеа: "
+    },
+    {
+      "source": "Proxy-only mode preflight failed: ",
+      "target": "Предпроверката на режимот само прокси не успеа: "
+    },
+    {
+      "source": "VPN mode unavailable: ",
+      "target": "VPN режимот е недостапен: "
+    },
+    {
+      "source": "Proxy-only mode unavailable: ",
+      "target": "Режимот само прокси е недостапен: "
+    },
+    {
+      "source": "Desktop VPN capability: ready",
+      "target": "Можност за десктоп VPN: подготвено"
+    },
+    {
+      "source": "Desktop VPN capability: ",
+      "target": "Можност за десктоп VPN: "
+    },
+    {
+      "source": "VPN mode available",
+      "target": "VPN режимот е достапен"
+    },
+    {
+      "source": "Proxy mode available",
+      "target": "Прокси режимот е достапен"
+    },
+    {
+      "source": "not ready",
+      "target": "не е подготвено"
+    },
+    {
+      "source": " checks",
+      "target": " проверки"
+    },
+    {
+      "source": " check",
+      "target": " проверка"
+    },
+    {
+      "source": "fail TUN device: ",
+      "target": "неуспех TUN уред: "
+    },
+    {
+      "source": "fail network privileges: ",
+      "target": "неуспех мрежни привилегии: "
+    },
+    {
+      "source": "fail route/DNS tooling: ",
+      "target": "неуспех алатки за рути/DNS: "
+    },
+    {
+      "source": "TUN device",
+      "target": "TUN уред"
+    },
+    {
+      "source": "network privileges",
+      "target": "мрежни привилегии"
+    },
+    {
+      "source": "route/DNS tooling",
+      "target": "алатки за рути/DNS"
+    },
+    {
+      "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+      "target": "Недостасува Linux TUN уредот на /dev/net/tun. Обидете се: sudo modprobe tun"
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN режимот на компјутер бара CAP_NET_ADMIN. Стартувајте со root права или доделете права на sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    },
+    {
+      "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+      "target": "Windows алатките за рути/DNS се недостапни. На VPN режимот му требаат netsh.exe и PowerShell cmdlets за DNS клиент."
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN е подготвен на овој компјутер"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Проксито е подготвено на овој компјутер"
+    }
+  ],
+  "legacyExact": [
+    {
+      "source": "Idle",
+      "target": "Неактивно"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN е стартуван"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN е запрен"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Проксито е стартувано"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Проксито е запрено"
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Се стартува VPN..."
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Се стартува локалниот прокси..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Се стартува VPN со најдобрата локација..."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Се стартува локалниот прокси со најдобрата локација..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Се бара најдобрата локација од претплатата..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Се бара најдобрата локација од зачуваните локации..."
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Пребарувањето локација е откажано"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Пребарувањето локација не успеа"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Дајте VPN дозвола и обидете се повторно"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Прво поставете оддалечен извор"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Прво додајте барем една зачувана локација"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Прво изберете локација"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Сè уште нема зачувани претплати"
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Се освежуваат сите претплати..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Се освежува активната претплата..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Се освежува претплатата..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Се освежуваат претплати..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Автоматско освежување на претплата..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Автоматско освежување на претплати..."
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Претплатата е освежена"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Претплатите се освежени"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Активната претплата е освежена"
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Сите претплати се освежени"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Освежувањето не успеа"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Изворот на профилот е поставен на претплата"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Изворот на профилот е поставен на зачувани локации"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Режимот на врска е поставен на VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Режимот на врска е поставен на само прокси"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Прво исклучете се за да го промените режимот на врска"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Записот од историјата е избришан"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Името на претплатата е ресетирано"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Името на претплатата е зачувано"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Јазикот е поставен на системскиот стандарден"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Сопствениот DNS е зачуван"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Сопствениот DNS е оневозможен"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Правилата за рутирање се зачувани"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Правилата за рутирање се увезени"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локациите се увезени"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локациите се увезени. Избраната локација веќе не е достапна"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Префрлете се на Зачувани локации за да увезете локации"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Префрлете се на Зачувани локации за рачно да додадете локации"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Невалидна конфигурација на локација"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Локацијата за уредување веќе не е достапна"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Извозот на дијагностика е отворен"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Извозот на дијагностика не успеа"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Извозот на дијагностика е откажан"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Претходната VPN локација веќе не е достапна"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Апликацијата е затворена. VPN беше исклучен."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Активирани се сите претплати"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Избрани се сите претплати"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Претплатата е избрана"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Локациите се копирани во клипборд"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Извозот на локации е откажан"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Правилата за рутирање се копирани во клипборд"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Извозот на правила за рутирање е откажан"
+    },
+    {
+      "source": "Profile source mode: SUBSCRIPTION",
+      "target": "Режим на изворот на профилот: претплата"
+    },
+    {
+      "source": "Profile source mode: CURRENT_LOCATIONS",
+      "target": "Режим на изворот на профилот: зачувани локации"
+    },
+    {
+      "source": "Starting VPN with the new best location...",
+      "target": "Се стартува VPN со новата најдобра локација..."
+    },
+    {
+      "source": "Starting proxy with the new best location...",
+      "target": "Се стартува proxy со новата најдобра локација..."
+    },
+    {
+      "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
+      "target": "VPN режимот на компјутер бара CAP_NET_ADMIN. Стартувајте со root права или доделете права на sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
+    }
+  ],
+  "legacyReplacements": [
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
+      "target": "Локациите од претплата се само за читање. Префрлете се на Зачувани локации за да зачувате измени."
+    },
+    {
+      "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
+      "target": "Локациите од претплата се само за читање. Префрлете се на Зачувани локации за да ги избришете."
+    },
+    {
+      "source": "Subscription received. Review and save it on the Profile tab.",
+      "target": "Претплатата е примена. Прегледајте ја и зачувајте ја во јазичето Профил."
+    },
+    {
+      "source": "Subscription link received. Review and save it on the Profile tab.",
+      "target": "Врската за претплата е примена. Прегледајте ја и зачувајте ја во јазичето Профил."
+    },
+    {
+      "source": "Location config received. Review and save it on the Locations tab.",
+      "target": "Конфигурацијата на локација е примена. Прегледајте ја и зачувајте ја во јазичето Локации."
+    },
+    {
+      "source": "Starting local proxy with the best location...",
+      "target": "Се стартува локалниот прокси со најдобрата локација..."
+    },
+    {
+      "source": "Starting VPN with the best location...",
+      "target": "Се стартува VPN со најдобрата локација..."
+    },
+    {
+      "source": "Finding the best location from the subscription...",
+      "target": "Се бара најдобрата локација од претплатата..."
+    },
+    {
+      "source": "Finding the best location from saved locations...",
+      "target": "Се бара најдобрата локација од зачуваните локации..."
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, proxy stopped",
+      "target": "Локациите се увезени. Избраната локација веќе не е достапна, проксито е запрено"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available, vpn stopped",
+      "target": "Локациите се увезени. Избраната локација веќе не е достапна, vpn е запрен"
+    },
+    {
+      "source": "Locations imported. Selected location is no longer available",
+      "target": "Локациите се увезени. Избраната локација веќе не е достапна"
+    },
+    {
+      "source": "Selected location applied, but failed to save it",
+      "target": "Избраната локација е применета, но не успеа да се зачува"
+    },
+    {
+      "source": "Location removal rolled back because the proxy could not be stopped",
+      "target": "Отстранувањето на локацијата е вратено назад бидејќи проксито не можеше да се запре"
+    },
+    {
+      "source": "Location removal rolled back because the VPN could not be stopped",
+      "target": "Отстранувањето на локацијата е вратено назад бидејќи VPN не можеше да се запре"
+    },
+    {
+      "source": "Locations import rolled back because the proxy could not be stopped",
+      "target": "Увозот на локации е вратен назад бидејќи проксито не можеше да се запре"
+    },
+    {
+      "source": "Locations import rolled back because the VPN could not be stopped",
+      "target": "Увозот на локации е вратен назад бидејќи VPN не можеше да се запре"
+    },
+    {
+      "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
+      "target": "VPN е запрен. Освежените претплати ја отстранија избраната локација."
+    },
+    {
+      "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
+      "target": "Проксито е запрено. Освежените претплати ја отстранија избраната локација."
+    },
+    {
+      "source": "VPN stopped. Will reconnect on next launch.",
+      "target": "VPN е запрен. Ќе се поврзе повторно при следното стартување."
+    },
+    {
+      "source": "Proxy stopped. Will reconnect on next launch.",
+      "target": "Проксито е запрено. Ќе се поврзе повторно при следното стартување."
+    },
+    {
+      "source": "Routing rules saved. Restart VPN to apply",
+      "target": "Правилата за рутирање се зачувани. Рестартувајте VPN за да се применат"
+    },
+    {
+      "source": "Routing rules saved. Restart proxy to apply",
+      "target": "Правилата за рутирање се зачувани. Рестартувајте прокси за да се применат"
+    },
+    {
+      "source": "Routing rules imported. Restart VPN to apply",
+      "target": "Правилата за рутирање се увезени. Рестартувајте VPN за да се применат"
+    },
+    {
+      "source": "Routing rules imported. Restart proxy to apply",
+      "target": "Правилата за рутирање се увезени. Рестартувајте прокси за да се применат"
+    },
+    {
+      "source": "Selected location removed. VPN stopped: ",
+      "target": "Избраната локација е отстранета. VPN е запрен: "
+    },
+    {
+      "source": "Selected location removed. Proxy stopped: ",
+      "target": "Избраната локација е отстранета. Проксито е запрено: "
+    },
+    {
+      "source": "Best location selected and vpn started: ",
+      "target": "Избрана е најдобрата локација и vpn е стартуван: "
+    },
+    {
+      "source": "Best location selected and proxy started: ",
+      "target": "Избрана е најдобрата локација и проксито е стартувано: "
+    },
+    {
+      "source": "VPN started, but failed to save the selected location",
+      "target": "VPN е стартуван, но не успеа да се зачува избраната локација"
+    },
+    {
+      "source": "Proxy started, but failed to save the selected location",
+      "target": "Проксито е стартувано, но не успеа да се зачува избраната локација"
+    },
+    {
+      "source": "VPN started, but failed to save the best location",
+      "target": "VPN е стартуван, но не успеа да се зачува најдобрата локација"
+    },
+    {
+      "source": "Proxy started, but failed to save the best location",
+      "target": "Проксито е стартувано, но не успеа да се зачува најдобрата локација"
+    },
+    {
+      "source": "Failed to start VPN with the best location",
+      "target": "Не успеа стартувањето на VPN со најдобрата локација"
+    },
+    {
+      "source": "Failed to start proxy with the best location",
+      "target": "Не успеа стартувањето на прокси со најдобрата локација"
+    },
+    {
+      "source": "Failed to save the selected location",
+      "target": "Не успеа зачувувањето на избраната локација"
+    },
+    {
+      "source": "Failed to save selected location",
+      "target": "Не успеа зачувувањето на избраната локација"
+    },
+    {
+      "source": "Failed to save the best location",
+      "target": "Не успеа зачувувањето на најдобрата локација"
+    },
+    {
+      "source": "Failed to apply selected location",
+      "target": "Не успеа примената на избраната локација"
+    },
+    {
+      "source": "Failed to select location",
+      "target": "Не успеа изборот на локација"
+    },
+    {
+      "source": "Failed to stop VPN before exit",
+      "target": "Не успеа запирањето на VPN пред излез"
+    },
+    {
+      "source": "Failed to stop Proxy before exit",
+      "target": "Не успеа запирањето на Proxy пред излез"
+    },
+    {
+      "source": "Failed to stop VPN",
+      "target": "Не успеа запирањето на VPN"
+    },
+    {
+      "source": "Failed to stop proxy",
+      "target": "Не успеа запирањето на прокси"
+    },
+    {
+      "source": "Failed to start VPN",
+      "target": "Не успеа стартувањето на VPN"
+    },
+    {
+      "source": "Failed to start proxy",
+      "target": "Не успеа стартувањето на прокси"
+    },
+    {
+      "source": "Could not prepare VPN",
+      "target": "Не може да се подготви VPN"
+    },
+    {
+      "source": "Could not prepare proxy",
+      "target": "Не може да се подготви прокси"
+    },
+    {
+      "source": "Preparing VPN",
+      "target": "Се подготвува VPN"
+    },
+    {
+      "source": "Preparing proxy",
+      "target": "Се подготвува прокси"
+    },
+    {
+      "source": "VPN start cancelled",
+      "target": "Стартувањето на VPN е откажано"
+    },
+    {
+      "source": "Proxy start cancelled",
+      "target": "Стартувањето на прокси е откажано"
+    },
+    {
+      "source": "VPN stop cancelled",
+      "target": "Запирањето на VPN е откажано"
+    },
+    {
+      "source": "Proxy stop cancelled",
+      "target": "Запирањето на прокси е откажано"
+    },
+    {
+      "source": "Starting local proxy...",
+      "target": "Се стартува локалниот прокси..."
+    },
+    {
+      "source": "Starting VPN...",
+      "target": "Се стартува VPN..."
+    },
+    {
+      "source": "Refreshing all subscriptions...",
+      "target": "Се освежуваат сите претплати..."
+    },
+    {
+      "source": "Refreshing active subscription...",
+      "target": "Се освежува активната претплата..."
+    },
+    {
+      "source": "Refreshing subscriptions...",
+      "target": "Се освежуваат претплати..."
+    },
+    {
+      "source": "Refreshing subscription...",
+      "target": "Се освежува претплатата..."
+    },
+    {
+      "source": "Auto-refreshing subscriptions...",
+      "target": "Автоматско освежување на претплати..."
+    },
+    {
+      "source": "Auto-refreshing subscription...",
+      "target": "Автоматско освежување на претплата..."
+    },
+    {
+      "source": "All subscriptions refreshed",
+      "target": "Сите претплати се освежени"
+    },
+    {
+      "source": "Active subscription refreshed",
+      "target": "Активната претплата е освежена"
+    },
+    {
+      "source": "Subscriptions refreshed",
+      "target": "Претплатите се освежени"
+    },
+    {
+      "source": "Subscription refreshed",
+      "target": "Претплатата е освежена"
+    },
+    {
+      "source": "Refresh failed",
+      "target": "Освежувањето не успеа"
+    },
+    {
+      "source": "Location search cancelled",
+      "target": "Пребарувањето локација е откажано"
+    },
+    {
+      "source": "Location search failed",
+      "target": "Пребарувањето локација не успеа"
+    },
+    {
+      "source": "Grant VPN permission and try again",
+      "target": "Дајте VPN дозвола и обидете се повторно"
+    },
+    {
+      "source": "Set a remote source first",
+      "target": "Прво поставете оддалечен извор"
+    },
+    {
+      "source": "Add at least one saved location first",
+      "target": "Прво додајте барем една зачувана локација"
+    },
+    {
+      "source": "Select a location first",
+      "target": "Прво изберете локација"
+    },
+    {
+      "source": "No subscriptions saved yet",
+      "target": "Сè уште нема зачувани претплати"
+    },
+    {
+      "source": "Profile source set to subscription",
+      "target": "Изворот на профилот е поставен на претплата"
+    },
+    {
+      "source": "Profile source set to saved locations",
+      "target": "Изворот на профилот е поставен на зачувани локации"
+    },
+    {
+      "source": "Connection mode set to VPN",
+      "target": "Режимот на врска е поставен на VPN"
+    },
+    {
+      "source": "Connection mode set to proxy only",
+      "target": "Режимот на врска е поставен на само прокси"
+    },
+    {
+      "source": "Disconnect first to change connection mode",
+      "target": "Прво исклучете се за да го промените режимот на врска"
+    },
+    {
+      "source": "History entry deleted",
+      "target": "Записот од историјата е избришан"
+    },
+    {
+      "source": "Subscription name reset",
+      "target": "Името на претплатата е ресетирано"
+    },
+    {
+      "source": "Subscription name saved",
+      "target": "Името на претплатата е зачувано"
+    },
+    {
+      "source": "Language set to system default",
+      "target": "Јазикот е поставен на системскиот стандарден"
+    },
+    {
+      "source": "Custom DNS saved",
+      "target": "Сопствениот DNS е зачуван"
+    },
+    {
+      "source": "Custom DNS disabled",
+      "target": "Сопствениот DNS е оневозможен"
+    },
+    {
+      "source": "Routing rules saved",
+      "target": "Правилата за рутирање се зачувани"
+    },
+    {
+      "source": "Routing rules imported",
+      "target": "Правилата за рутирање се увезени"
+    },
+    {
+      "source": "Locations imported",
+      "target": "Локациите се увезени"
+    },
+    {
+      "source": "Switch to Saved Locations to import locations",
+      "target": "Префрлете се на Зачувани локации за да увезете локации"
+    },
+    {
+      "source": "Switch to Saved Locations to add locations manually",
+      "target": "Префрлете се на Зачувани локации за рачно да додадете локации"
+    },
+    {
+      "source": "Invalid location config",
+      "target": "Невалидна конфигурација на локација"
+    },
+    {
+      "source": "Location to edit is no longer available",
+      "target": "Локацијата за уредување веќе не е достапна"
+    },
+    {
+      "source": "Diagnostics export opened",
+      "target": "Извозот на дијагностика е отворен"
+    },
+    {
+      "source": "Diagnostics export failed",
+      "target": "Извозот на дијагностика не успеа"
+    },
+    {
+      "source": "Diagnostics export canceled",
+      "target": "Извозот на дијагностика е откажан"
+    },
+    {
+      "source": "Previous VPN location is no longer available",
+      "target": "Претходната VPN локација веќе не е достапна"
+    },
+    {
+      "source": "App closed. VPN was off.",
+      "target": "Апликацијата е затворена. VPN беше исклучен."
+    },
+    {
+      "source": "Activated all subscriptions",
+      "target": "Активирани се сите претплати"
+    },
+    {
+      "source": "All subscriptions selected",
+      "target": "Избрани се сите претплати"
+    },
+    {
+      "source": "Subscription selected",
+      "target": "Претплатата е избрана"
+    },
+    {
+      "source": "Subscription saved",
+      "target": "Претплатата е зачувана"
+    },
+    {
+      "source": "Locations copied to clipboard",
+      "target": "Локациите се копирани во клипборд"
+    },
+    {
+      "source": "Locations export canceled",
+      "target": "Извозот на локации е откажан"
+    },
+    {
+      "source": "Routing rules copied to clipboard",
+      "target": "Правилата за рутирање се копирани во клипборд"
+    },
+    {
+      "source": "Routing rules export canceled",
+      "target": "Извозот на правила за рутирање е откажан"
+    },
+    {
+      "source": "Clipboard read failed",
+      "target": "Читањето од клипборд не успеа"
+    },
+    {
+      "source": "No locations to export",
+      "target": "Нема локации за извоз"
+    },
+    {
+      "source": "Failed to load apps",
+      "target": "Не успеа вчитувањето апликации"
+    },
+    {
+      "source": "Failed to refresh subscriptions",
+      "target": "Не успеа освежувањето на претплатите"
+    },
+    {
+      "source": "Failed to refresh the active subscription",
+      "target": "Не успеа освежувањето на активната претплата"
+    },
+    {
+      "source": "Failed to import routing rules",
+      "target": "Не успеа увозот на правила за рутирање"
+    },
+    {
+      "source": "Failed to save routing rules",
+      "target": "Не успеа зачувувањето на правила за рутирање"
+    },
+    {
+      "source": "Failed to import locations",
+      "target": "Не успеа увозот на локации"
+    },
+    {
+      "source": "Failed to open locations file",
+      "target": "Не успеа отворањето на датотеката со локации"
+    },
+    {
+      "source": "Failed to read locations file",
+      "target": "Не успеа читањето на датотеката со локации"
+    },
+    {
+      "source": "Failed to open routing rules file",
+      "target": "Не успеа отворањето на датотеката со правила за рутирање"
+    },
+    {
+      "source": "Best location could not be mapped to the desktop list",
+      "target": "Најдобрата локација не може да се мапира во десктоп листата"
+    },
+    {
+      "source": "VPN ready on this computer",
+      "target": "VPN е подготвен на овој компјутер"
+    },
+    {
+      "source": "Proxy ready on this computer",
+      "target": "Проксито е подготвено на овој компјутер"
+    },
+    {
+      "source": "Desktop VPN shell ready",
+      "target": "Десктоп VPN обвивката е подготвена"
+    },
+    {
+      "source": "Desktop Proxy shell ready",
+      "target": "Десктоп Proxy обвивката е подготвена"
+    },
+    {
+      "source": "VPN started on ",
+      "target": "VPN е стартуван на "
+    },
+    {
+      "source": "Proxy started on ",
+      "target": "Проксито е стартувано на "
+    },
+    {
+      "source": "VPN stopped. App mode: ",
+      "target": "VPN е запрен. Режим на апликација: "
+    },
+    {
+      "source": "Proxy stopped. App mode: ",
+      "target": "Проксито е запрено. Режим на апликација: "
+    },
+    {
+      "source": "Language set to ",
+      "target": "Јазикот е поставен на "
+    },
+    {
+      "source": "Subscription auto-refresh set to ",
+      "target": "Автоматското освежување на претплати е поставено на "
+    },
+    {
+      "source": "Validation settings saved: ",
+      "target": "Поставките за проверка се зачувани: "
+    },
+    {
+      "source": "Selected location unchanged: ",
+      "target": "Избраната локација е непроменета: "
+    },
+    {
+      "source": "Selected location removed: ",
+      "target": "Избраната локација е отстранета: "
+    },
+    {
+      "source": "Selected location set: ",
+      "target": "Избраната локација е поставена: "
+    },
+    {
+      "source": "Location updated and merged: ",
+      "target": "Локацијата е ажурирана и обединета: "
+    },
+    {
+      "source": "Location already saved: ",
+      "target": "Локацијата е веќе зачувана: "
+    },
+    {
+      "source": "Location updated: ",
+      "target": "Локацијата е ажурирана: "
+    },
+    {
+      "source": "Location removed: ",
+      "target": "Локацијата е отстранета: "
+    },
+    {
+      "source": "Location added: ",
+      "target": "Локацијата е додадена: "
+    },
+    {
+      "source": "Subscriptions refreshed: ",
+      "target": "Претплатите се освежени: "
+    },
+    {
+      "source": "Failed: ",
+      "target": "Неуспешно: "
+    },
+    {
+      "source": "Restoring VPN: ",
+      "target": "Се враќа VPN: "
+    },
+    {
+      "source": "Refreshing ",
+      "target": "Се освежува "
+    },
+    {
+      "source": "Locations exported to ",
+      "target": "Локациите се извезени во "
+    },
+    {
+      "source": "Routing rules exported to ",
+      "target": "Правилата за рутирање се извезени во "
+    },
+    {
+      "source": "Diagnostics exported to ",
+      "target": "Дијагностиката е извезена во "
+    },
+    {
+      "source": "Failed to benchmark ",
+      "target": "Не успеа benchmark за "
+    },
+    {
+      "source": "Activated ",
+      "target": "Активирано "
+    },
+    {
+      "source": "Added ",
+      "target": "Додадено "
+    },
+    {
+      "source": "Deleted ",
+      "target": "Избришано "
+    },
+    {
+      "source": "Selected ",
+      "target": "Избрано "
+    },
+    {
+      "source": "Edited location #",
+      "target": "Уредена локација #"
+    },
+    {
+      "source": "App mode: ",
+      "target": "Режим на апликација: "
+    },
+    {
+      "source": " locations refreshed",
+      "target": " локации освежени"
+    },
+    {
+      "source": " location refreshed",
+      "target": " локација освежена"
+    },
+    {
+      "source": " • batch ",
+      "target": " • серија "
+    },
+    {
+      "source": " • retries ",
+      "target": " • повторни обиди "
+    },
+    {
+      "source": "custom interval",
+      "target": "сопствен интервал"
+    },
+    {
+      "source": "every hour",
+      "target": "секој час"
+    },
+    {
+      "source": "all subscriptions",
+      "target": "сите претплати"
+    },
+    {
+      "source": "selected subscription",
+      "target": "избрана претплата"
+    },
+    {
+      "source": "proxy only",
+      "target": "само прокси"
+    },
+    {
+      "source": "off",
+      "target": "исклучено"
+    },
+    {
+      "source": "Idle",
+      "target": "Неактивно"
+    },
+    {
+      "source": "VPN started",
+      "target": "VPN е стартуван"
+    },
+    {
+      "source": "VPN stopped",
+      "target": "VPN е запрен"
+    },
+    {
+      "source": "Proxy started",
+      "target": "Проксито е стартувано"
+    },
+    {
+      "source": "Proxy stopped",
+      "target": "Проксито е запрено"
+    }
+  ]
+}

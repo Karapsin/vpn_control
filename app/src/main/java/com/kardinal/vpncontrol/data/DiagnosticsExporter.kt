@@ -75,6 +75,7 @@ class DiagnosticsExporter(
             appendLine()
             appendLine("[state]")
             appendLine("profile_url=${RemoteSourceResolver.redactForDiagnostics(state.profileUrl)}")
+            appendLine("subscription_hwid_present=${state.subscriptionHwid.isNotBlank()}")
             appendLine("subscriptions_count=${state.subscriptions.size}")
             appendLine("active_subscription_id=${state.activeSubscriptionId}")
             appendLine("profile_source_mode=${state.profileSourceMode}")

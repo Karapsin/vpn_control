@@ -128,7 +128,7 @@ private fun DesktopApplication(
     activationEvents: DesktopActivationEvents,
     onExitApplication: () -> Unit,
 ) {
-    val service = remember { DesktopAppService.default() }
+    val service = remember { DesktopAppServiceFactory.default() }
     val coroutineScope = rememberCoroutineScope()
     val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
     val traySupported = remember { isDesktopTraySupported() }

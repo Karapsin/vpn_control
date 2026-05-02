@@ -17,6 +17,7 @@ on:
       - "gradlew"
       - "gradlew.bat"
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
       - "scripts/test_windows_installed_desktop.ps1"
@@ -32,6 +33,7 @@ on:
       - "gradlew"
       - "gradlew.bat"
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
       - "scripts/test_windows_installed_desktop.ps1"
@@ -45,6 +47,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check release hygiene
+        shell: bash
+        run: ./scripts/check_release_hygiene.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

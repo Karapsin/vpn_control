@@ -89,6 +89,8 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+./scripts/check_release_hygiene.sh
+
 if [[ -z "$host_ip" ]]; then
   host_ip="$(ip -4 addr show virbr0 2>/dev/null | awk '/inet / { sub("/.*", "", $2); print $2; exit }')"
   host_ip="${host_ip:-192.168.122.1}"
