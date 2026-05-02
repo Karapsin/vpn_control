@@ -5,6 +5,8 @@ import com.kardinal.vpncontrol.ImportLocationsDecision
 import com.kardinal.vpncontrol.LocationMutationLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.SelectionCandidate
+import com.kardinal.vpncontrol.SelectionMappingLogic
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
 import java.nio.file.Path
@@ -241,11 +243,16 @@ internal fun List<String>.toDesktopLocationRecords(startIndex: Int): List<Deskto
 }
 
 internal fun DesktopLocationRecord.matchesSelectedLocation(state: MainUiState): Boolean {
-    val selectedRaw = state.selectedProfileRawLink.takeIf(String::isNotBlank) ?: return false
-    if (rawLink == selectedRaw) return true
-    if (normalizedStorageKey() == LocationConfigs.normalizeStoredReference(selectedRaw)) return true
-    return sourceUrl.isNotBlank() &&
-        sourceUrl == state.selectedProfileSourceUrl &&
-        name == state.selectedProfileName &&
-        server == state.selectedProfileServer
+    return SelectionMappingLogic.matchesSelectedLocation(
+        candidate = SelectionCandidate(
+            rawLink = rawLink,
+            sourceUrl = sourceUrl,
+            name = name,
+            server = server,
+        ),
+        selectedRawLink = state.selectedProfileRawLink,
+        selectedSourceUrl = state.selectedProfileSourceUrl,
+        selectedName = state.selectedProfileName,
+        selectedServer = state.selectedProfileServer,
+    )
 }

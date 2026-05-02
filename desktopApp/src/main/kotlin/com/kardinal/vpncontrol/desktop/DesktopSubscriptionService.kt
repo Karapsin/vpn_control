@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.SelectionMappingLogic
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
@@ -166,7 +167,7 @@ internal fun generateDesktopSubscriptionHwid(): String {
 }
 
 internal fun DesktopLocationRecord.normalizedStorageKey(): String {
-    return LocationConfigs.normalizeStoredReference(rawLink)
+    return SelectionMappingLogic.normalizedStoredKey(rawLink)
 }
 
 internal fun nextLocationIndex(locations: List<DesktopLocationRecord>): Int {
