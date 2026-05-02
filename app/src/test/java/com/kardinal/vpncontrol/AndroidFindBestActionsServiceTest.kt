@@ -151,8 +151,15 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(2, refreshCalls)
-        assertTrue(statuses.any { it.contains("Retrying best location search") })
-        assertTrue(statuses.last().contains("Retry Winner"))
+        assertTrue(
+            statuses.any {
+                StatusMessages.decode(it)?.key == StatusMessageKey.RETRYING_BEST_LOCATION_SEARCH
+            },
+        )
+        assertEquals(
+            listOf(AppMode.VPN.name, "Retry Winner"),
+            StatusMessages.decode(statuses.last())?.args,
+        )
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)
     }

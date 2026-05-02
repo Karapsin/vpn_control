@@ -116,7 +116,7 @@ class AndroidConnectionLifecycleServiceTest {
         service.toggleConnection()
 
         assertEquals(0, startCalls)
-        assertEquals("Grant VPN permission and try again", statuses.single())
+        assertEquals(StatusMessages.vpnPermissionRequired(), statuses.single())
         assertFalse(state.isBusy)
     }
 

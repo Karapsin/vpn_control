@@ -42,7 +42,12 @@ object ConnectionOrchestrationLogic {
         var lastFailure: Throwable? = null
         repeat(normalizedRetryCount + 1) { attempt ->
             if (attempt > 0) {
-                onRetryStatus("Retrying best location search (${attempt + 1}/${normalizedRetryCount + 1})...")
+                onRetryStatus(
+                    StatusMessages.retryingBestLocationSearch(
+                        attempt = attempt + 1,
+                        total = normalizedRetryCount + 1,
+                    ),
+                )
                 delay(750)
             }
             val result = action()
@@ -51,7 +56,7 @@ object ConnectionOrchestrationLogic {
             }
             lastFailure = result.exceptionOrNull()
         }
-        return Result.failure(lastFailure ?: IllegalStateException("Location search failed"))
+        return Result.failure(lastFailure ?: IllegalStateException(StatusMessages.locationSearchFailed()))
     }
 
     fun selectionCommitFailureMessage(
@@ -71,7 +76,7 @@ object ConnectionOrchestrationLogic {
 
     fun toggleStartPreconditionError(state: MainUiState): String? {
         return if (state.appMode == AppMode.VPN && !state.hasVpnPermission) {
-            "Grant VPN permission and try again"
+            StatusMessages.vpnPermissionRequired()
         } else {
             null
         }
@@ -89,7 +94,7 @@ object ConnectionOrchestrationLogic {
         return StatusMessages.connectionStartedOnTarget(appMode, remarks)
     }
 
-    fun refreshCancelledMessage(): String = "Location search cancelled"
+    fun refreshCancelledMessage(): String = StatusMessages.locationSearchCancelled()
 
     fun cancelledWithStopFailureMessage(prefix: String, appMode: AppMode, errorMessage: String?): String {
         return "$prefix ${errorMessage ?: "Failed to stop ${MainCommandLogic.connectionNoun(appMode)}."}"
@@ -109,17 +114,17 @@ object ConnectionOrchestrationLogic {
 
     fun startSelectionFailureTexts(appMode: AppMode): SelectionCommitFailureTexts {
         return SelectionCommitFailureTexts(
-            applyFailureFallback = "Failed to start ${MainCommandLogic.connectionNoun(appMode)}",
-            persistFailureWithoutApplyFallback = "Failed to save the selected location",
-            persistFailureAfterApplyFallback = "${MainCommandLogic.connectionDisplayName(appMode)} started, but failed to save the selected location",
+            applyFailureFallback = StatusMessages.connectionStartFailed(appMode),
+            persistFailureWithoutApplyFallback = StatusMessages.selectedLocationSaveFailed(),
+            persistFailureAfterApplyFallback = StatusMessages.selectedLocationStartedSaveFailed(appMode),
         )
     }
 
     fun refreshSelectionFailureTexts(appMode: AppMode): SelectionCommitFailureTexts {
         return SelectionCommitFailureTexts(
-            applyFailureFallback = "Failed to start ${MainCommandLogic.connectionNoun(appMode)} with the best location",
-            persistFailureWithoutApplyFallback = "Failed to save the best location",
-            persistFailureAfterApplyFallback = "Best location ${MainCommandLogic.connectionNoun(appMode)} started, but failed to save it",
+            applyFailureFallback = StatusMessages.bestLocationStartFailed(appMode),
+            persistFailureWithoutApplyFallback = StatusMessages.bestLocationSaveFailed(),
+            persistFailureAfterApplyFallback = StatusMessages.bestLocationStartedSaveFailed(appMode),
         )
     }
 }

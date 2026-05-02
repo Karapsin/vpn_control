@@ -395,6 +395,9 @@ internal fun structuredStatusTemplateKeys(status: StructuredStatusMessage): List
         StatusMessageKey.CONNECTION_STARTED_ON_TARGET,
         StatusMessageKey.CONNECTION_START_FAILED,
         StatusMessageKey.CONNECTION_STOP_FAILED,
+        StatusMessageKey.SELECTED_LOCATION_STARTED_SAVE_FAILED,
+        StatusMessageKey.BEST_LOCATION_START_FAILED,
+        StatusMessageKey.BEST_LOCATION_STARTED_SAVE_FAILED,
         StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
         StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED -> modeVariantKey()
         StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->

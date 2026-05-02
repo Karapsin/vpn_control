@@ -5,6 +5,7 @@ import android.net.VpnService
 import androidx.work.WorkManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.kardinal.vpncontrol.ConnectionOrchestrationLogic
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
@@ -12,7 +13,6 @@ import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
-import kotlinx.coroutines.delay
 
 class SubscriptionRefreshWorker(
     appContext: Context,
@@ -97,16 +97,14 @@ class SubscriptionRefreshWorker(
                             restoreRuntimeArtifacts = true,
                             sourceUrlOverride = "",
                         )
-                        storage.updateStatus(
-                            "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-                        )
+                        storage.updateStatus(StatusMessages.backgroundVpnPermissionRequiredKeepingPrevious())
                         DiagnosticsLogger.append(
                             applicationContext,
                             "Background subscription sync skipped auto-switch because VPN permission is not available in background",
                         )
                         return@fold finishAndScheduleNext()
                     }
-                    storage.updateStatus("Subscription refresh finished. Finding the best location...")
+                    storage.updateStatus(StatusMessages.backgroundRefreshFindingBest())
                     var switchFailure: Throwable? = null
                     val replacement = findBestProfileWithRetries(
                         orchestrator = orchestrator,
@@ -223,23 +221,10 @@ class SubscriptionRefreshWorker(
         orchestrator: BenchmarkOrchestrator,
         retryCount: Int,
     ): kotlin.Result<ProfileSelection> {
-        val normalizedRetries = retryCount.coerceAtLeast(0)
-        var lastFailure: Throwable? = null
-        repeat(normalizedRetries + 1) { attempt ->
-            if (attempt > 0) {
-                storage.updateStatus(
-                    "Retrying best location search (${attempt + 1}/${normalizedRetries + 1})...",
-                )
-                delay(750)
-            }
-            val result = orchestrator.refreshBestProfile()
-            if (result.isSuccess) {
-                return result
-            }
-            lastFailure = result.exceptionOrNull()
-        }
-        return kotlin.Result.failure(
-            lastFailure ?: IllegalStateException("Location search failed"),
+        return ConnectionOrchestrationLogic.findBestProfileWithRetries(
+            retryCount = retryCount,
+            onRetryStatus = storage::updateStatus,
+            action = orchestrator::refreshBestProfile,
         )
     }
 

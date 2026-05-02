@@ -233,6 +233,10 @@ enum class StatusMessageKey {
     DESKTOP_VPN_CAPABILITY_ERROR,
     NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING,
     BEST_LOCATION_SEARCH_TIMED_OUT,
+    RETRYING_BEST_LOCATION_SEARCH,
+    LOCATION_SEARCH_CANCELLED,
+    LOCATION_SEARCH_FAILED,
+    VPN_PERMISSION_REQUIRED,
     NO_SUITABLE_LOCATION_FOUND,
     BEST_LOCATION_NOT_MAPPED,
     ACTIVATED_ALL_SUBSCRIPTIONS,
@@ -315,6 +319,13 @@ enum class StatusMessageKey {
     CONNECTION_STARTED_ON_TARGET,
     CONNECTION_START_FAILED,
     CONNECTION_STOP_FAILED,
+    SELECTED_LOCATION_SAVE_FAILED,
+    SELECTED_LOCATION_STARTED_SAVE_FAILED,
+    BEST_LOCATION_START_FAILED,
+    BEST_LOCATION_SAVE_FAILED,
+    BEST_LOCATION_STARTED_SAVE_FAILED,
+    BACKGROUND_REFRESH_FINDING_BEST,
+    BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS,
     APP_CLOSED_CONNECTION_WAS_OFF,
     CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
     CONNECTION_STOP_BEFORE_EXIT_FAILED,
@@ -434,6 +445,22 @@ object StatusMessages {
 
     fun bestLocationSearchTimedOut(): String =
         encode(StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT)
+
+    fun retryingBestLocationSearch(attempt: Int, total: Int): String =
+        encode(
+            StatusMessageKey.RETRYING_BEST_LOCATION_SEARCH,
+            attempt.coerceAtLeast(1).toString(),
+            total.coerceAtLeast(1).toString(),
+        )
+
+    fun locationSearchCancelled(): String =
+        encode(StatusMessageKey.LOCATION_SEARCH_CANCELLED)
+
+    fun locationSearchFailed(): String =
+        encode(StatusMessageKey.LOCATION_SEARCH_FAILED)
+
+    fun vpnPermissionRequired(): String =
+        encode(StatusMessageKey.VPN_PERMISSION_REQUIRED)
 
     fun noSuitableLocationFound(): String =
         encode(StatusMessageKey.NO_SUITABLE_LOCATION_FOUND)
@@ -689,6 +716,27 @@ object StatusMessages {
 
     fun connectionStopFailed(appMode: AppMode): String =
         encode(StatusMessageKey.CONNECTION_STOP_FAILED, appMode.name)
+
+    fun selectedLocationSaveFailed(): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_SAVE_FAILED)
+
+    fun selectedLocationStartedSaveFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.SELECTED_LOCATION_STARTED_SAVE_FAILED, appMode.name)
+
+    fun bestLocationStartFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.BEST_LOCATION_START_FAILED, appMode.name)
+
+    fun bestLocationSaveFailed(): String =
+        encode(StatusMessageKey.BEST_LOCATION_SAVE_FAILED)
+
+    fun bestLocationStartedSaveFailed(appMode: AppMode): String =
+        encode(StatusMessageKey.BEST_LOCATION_STARTED_SAVE_FAILED, appMode.name)
+
+    fun backgroundRefreshFindingBest(): String =
+        encode(StatusMessageKey.BACKGROUND_REFRESH_FINDING_BEST)
+
+    fun backgroundVpnPermissionRequiredKeepingPrevious(): String =
+        encode(StatusMessageKey.BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS)
 
     fun appClosedConnectionWasOff(): String =
         encode(StatusMessageKey.APP_CLOSED_CONNECTION_WAS_OFF)

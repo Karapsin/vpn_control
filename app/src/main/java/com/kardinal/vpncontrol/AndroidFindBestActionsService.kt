@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -80,7 +81,7 @@ internal class AndroidFindBestActionsService(
                     }
                 },
                 onFailure = { error ->
-                    error.message ?: "Location search failed"
+                    error.message ?: StatusMessages.locationSearchFailed()
                 },
             )
             updateStatus(message)

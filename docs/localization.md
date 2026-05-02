@@ -27,6 +27,7 @@ The build generates Kotlin sources from:
 - Do not add `when (AppLanguage...)` branches with translated UI or status text in Kotlin.
 - `AppStrings.kt` should only choose keys, parse known message shapes, and substitute placeholders. It must not own rendered English sentence templates for typed status messages.
 - Prefer typed `StatusMessages` helpers for stable runtime/status events. If a raw English status string must remain for legacy compatibility, add it to status catalogs and cover it in `AppStringsCoverageTest`.
+- Do not concatenate encoded `StatusMessages` into longer raw sentences. If a message needs several clauses, add one complete structured status key or keep the whole legacy sentence on the legacy translation path until it can be migrated safely.
 - Shared settings and location mutation feedback should use `StatusMessages` helpers, not raw English strings from shared core.
 - Desktop settings, app-mode, autostart, connection lifecycle, reconnect, shutdown, and restore messages should use `StatusMessages` helpers instead of ad hoc English strings.
 - UI labels belong in `shared/ui/src/commonMain/resources/i18n/<language-code>.json`.

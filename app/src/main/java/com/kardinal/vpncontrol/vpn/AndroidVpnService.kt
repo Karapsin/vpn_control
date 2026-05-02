@@ -112,7 +112,8 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start VPN", error)
             DiagnosticsLogger.append(applicationContext, "Failed to start VPN", error)
-            stopVpn(error.message ?: "Failed to start VPN", startId)
+            val appMode = currentAppMode()
+            stopVpn(error.message ?: StatusMessages.connectionStartFailed(appMode), startId)
         }
     }
 
