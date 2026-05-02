@@ -132,7 +132,7 @@ class DesktopAppServiceTest {
     fun defaultWorkspaceUsesPlatformDefaultModeWithoutDefaultRoutingDomains() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-defaults")
         try {
-            val service = DesktopAppService.createForTesting(store = DesktopStateStore(tempDir))
+            val service = DesktopAppServiceFactory.createForTesting(store = DesktopStateStore(tempDir))
 
             assertEquals(defaultDesktopAppMode(), service.state.appMode)
             assertTrue(service.state.profileUrl.isBlank())
@@ -166,7 +166,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-language")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.setAppLanguage(AppLanguage.RUSSIAN)
 
@@ -262,7 +262,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-add-subscription")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.toggleAddSubscriptionEditor()
             service.setProfileDraft("https://example.com/new-subscription.txt")
@@ -291,7 +291,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-service-save")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.setSubscriptionRefreshPolicyDraft(SubscriptionRefreshPolicy.CUSTOM)
             service.setSubscriptionRefreshCustomHoursDraft("0.5")
@@ -322,7 +322,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-service-invalid")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
             val before = DesktopStateStore(tempDir).loadWorkspace(
                 DesktopWorkspace(
                     persistedState = PersistedState(),
@@ -356,7 +356,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-additional-settings")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.toggleDnsDialog()
             service.setUseCustomDnsDraft(true)
@@ -400,7 +400,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-delete-subscription")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = store,
                 initialWorkspace = desktopWorkspaceWithTwoSubscriptions(),
             )
@@ -423,7 +423,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-resume-after-shutdown")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = store,
                 initialWorkspace = desktopWorkspaceWithSelectedLocation(),
                 forceRunningState = true,
@@ -450,7 +450,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-no-resume-after-stop")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = store,
                 forceRunningState = true,
             )
@@ -474,7 +474,7 @@ class DesktopAppServiceTest {
     fun findBestInVpnModeUsesNormalPreconditionsInsteadOfUnsupportedModeGuard() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-vpn-mode-precondition")
         try {
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = DesktopStateStore(tempDir),
                 initialWorkspace = DesktopWorkspace(
                     persistedState = PersistedState(
@@ -522,7 +522,7 @@ class DesktopAppServiceTest {
                 locations = emptyList(),
             )
             var postRefreshSelections = 0
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = DesktopStateStore(tempDir),
                 initialWorkspace = workspace,
                 subscriptionContentFetcher = FakeSubscriptionContentFetcher(
@@ -569,7 +569,7 @@ class DesktopAppServiceTest {
                 mapOf(subscription.url to "socks://user:pass@127.0.0.1:1080#HWID"),
             )
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = store,
                 initialWorkspace = workspace,
                 subscriptionContentFetcher = fetcher,
@@ -596,7 +596,7 @@ class DesktopAppServiceTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-manual-hwid")
         try {
             val store = DesktopStateStore(tempDir)
-            val service = DesktopAppService.createForTesting(store = store)
+            val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.setSubscriptionHwid("  authorized-device-id  ")
 
@@ -650,7 +650,7 @@ class DesktopAppServiceTest {
                 ),
             )
             var postRefreshSelections = 0
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = DesktopStateStore(tempDir),
                 initialWorkspace = workspace,
                 subscriptionContentFetcher = FakeSubscriptionContentFetcher(
@@ -709,7 +709,7 @@ class DesktopAppServiceTest {
                     ),
                 ),
             )
-            val service = DesktopAppService.createForTesting(
+            val service = DesktopAppServiceFactory.createForTesting(
                 store = DesktopStateStore(tempDir),
                 initialWorkspace = workspace,
                 subscriptionContentFetcher = FakeSubscriptionContentFetcher(
