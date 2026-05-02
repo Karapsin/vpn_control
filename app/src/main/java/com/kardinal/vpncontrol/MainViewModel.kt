@@ -9,7 +9,6 @@ import com.kardinal.vpncontrol.data.BenchmarkOrchestrator
 import com.kardinal.vpncontrol.data.DiagnosticsExporter
 import com.kardinal.vpncontrol.data.InstalledAppsCatalog
 import com.kardinal.vpncontrol.data.ImportPreference
-import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
@@ -73,6 +72,24 @@ class MainViewModel(
         rehydrateSelection = repository::rehydrateSelection,
         startConnection = { selection -> vpnManager.start(selection) },
         stopConnection = vpnManager::stop,
+    )
+    private val locationActions = AndroidLocationActionsService(
+        controller = controller,
+        stateProvider = { _uiState.value },
+        launch = { block -> viewModelScope.launch { block() } },
+        launchTrackedBusyOperation = ::launchTrackedBusyOperation,
+        setBusy = ::setBusy,
+        setRefreshing = { value -> _uiState.value = _uiState.value.copy(isRefreshing = value) },
+        updateStatus = repository::updateStatus,
+        snapshot = repository::snapshot,
+        restoreSnapshot = { state -> repository.restoreSnapshot(state) },
+        updateCurrentLocations = repository::updateCurrentLocations,
+        selectionFromRawLink = repository::selectionFromRawLink,
+        applyAndPersistSelection = connectionLifecycle::applyAndPersistSelection,
+        rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
+        stopConnection = vpnManager::stop,
+        benchmarkLocation = repository::benchmarkLocation,
+        appendLatencyHistory = repository::appendLatencyHistory,
     )
 
     init {
@@ -326,31 +343,23 @@ class MainViewModel(
     }
 
     fun showAddLocationDialog() {
-        handleControllerEffects(controller.showAddLocationDialog())
+        locationActions.showAddLocationDialog()
     }
 
     fun editLocation(index: Int) {
-        val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
-        controller.editLocation(
-            index = index,
-            rawLink = runCatching { LocationConfigs.prettyStoredLocation(rawLink) }.getOrDefault(rawLink),
-        )
+        locationActions.editLocation(index)
     }
 
     fun closeLocationDialog() {
-        controller.closeLocationDialog()
+        locationActions.closeLocationDialog()
     }
 
     fun closeLocationMutationBlockedDialog() {
-        controller.closeLocationMutationBlockedDialog()
-    }
-
-    private fun showLocationMutationBlockedDialog(message: String) {
-        controller.showLocationMutationBlockedDialog(message)
+        locationActions.closeLocationMutationBlockedDialog()
     }
 
     fun onLocationDraftChanged(value: String) {
-        controller.onLocationDraftChanged(value)
+        locationActions.onLocationDraftChanged(value)
     }
 
     fun toggleProxyRoutingApp(packageName: String) {
@@ -489,187 +498,23 @@ class MainViewModel(
     }
 
     fun saveLocation() {
-        val decision = LocationMutationLogic.planSaveLocation(_uiState.value)
-        viewModelScope.launch {
-            when (decision) {
-                is SaveLocationDecision.MutationBlocked -> {
-                    showLocationMutationBlockedDialog(decision.message)
-                    return@launch
-                }
-                is SaveLocationDecision.Invalid -> {
-                    repository.updateStatus(decision.message)
-                    return@launch
-                }
-                is SaveLocationDecision.Duplicate -> {
-                    repository.updateStatus(decision.message)
-                    return@launch
-                }
-                is SaveLocationDecision.Plan -> Unit
-            }
-            val plan = decision as SaveLocationDecision.Plan
-            val previousState = repository.snapshot()
-            repository.updateCurrentLocations(plan.nextLocations)
-            if (plan.replacedRawLink != null && plan.replacedRawLink == selectedLocationReference()) {
-                val selectionResult = repository.selectionFromRawLink(
-                    rawLink = plan.normalizedLocation,
-                    detail = "Selected location updated",
-                )
-                if (selectionResult.isFailure) {
-                    repository.restoreSnapshot(previousState)
-                    repository.updateStatus(
-                        selectionResult.exceptionOrNull()?.message
-                            ?: "Failed to apply updated selected location",
-                    )
-                    return@launch
-                }
-                val applyResult = connectionLifecycle.applyAndPersistSelection(
-                    selection = selectionResult.getOrThrow(),
-                    statusMessage = "Applying updated selected location...",
-                )
-                if (!applyResult.isSuccess) {
-                    val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                        result = applyResult,
-                        texts = SelectionCommitFailureTexts(
-                            applyFailureFallback = "Failed to apply updated selected location",
-                            persistFailureWithoutApplyFallback = "Failed to save the updated selected location",
-                            persistFailureAfterApplyFallback = "Updated selected location applied, but failed to save it",
-                        ),
-                    )
-                    val resolvedMessage = if (applyResult.requiresLiveRollback) {
-                        connectionLifecycle.rollbackSelectionChange(previousState, message)
-                    } else {
-                        repository.restoreSnapshot(previousState)
-                        message
-                    }
-                    repository.updateStatus(resolvedMessage)
-                    return@launch
-                }
-            }
-            repository.updateStatus(LocationMutationLogic.saveLocationSuccessMessage(plan))
-            closeLocationDialog()
-        }
+        locationActions.saveLocation()
     }
 
     fun deleteLocation(index: Int) {
-        when (val decision = LocationMutationLogic.planDeleteLocation(_uiState.value, index)) {
-            is DeleteLocationDecision.MutationBlocked -> {
-                showLocationMutationBlockedDialog(decision.message)
-                return
-            }
-            DeleteLocationDecision.Missing -> return
-            is DeleteLocationDecision.Plan -> viewModelScope.launch {
-                val previousState = repository.snapshot()
-                val update = repository.updateCurrentLocations(decision.nextLocations)
-                val removedSelected = update.selectedMissing
-                if (removedSelected && _uiState.value.isVpnRunning) {
-                    val stopResult = vpnManager.stop()
-                    repository.updateStatus(
-                        stopResult.fold(
-                            onSuccess = {
-                                LocationMutationLogic.deleteLocationStoppedStatusMessage(
-                                    appMode = _uiState.value.appMode,
-                                    remarks = decision.remarks,
-                                )
-                            },
-                            onFailure = {
-                                repository.restoreSnapshot(previousState)
-                                it.message ?: LocationMutationLogic.deleteLocationRollbackFailureMessage(
-                                    _uiState.value.appMode,
-                                )
-                            },
-                        ),
-                    )
-                } else {
-                    repository.updateStatus(
-                        LocationMutationLogic.deleteLocationStatusMessage(
-                            removedSelected = removedSelected,
-                            appMode = _uiState.value.appMode,
-                            remarks = decision.remarks,
-                        ),
-                    )
-                }
-            }
-        }
+        locationActions.deleteLocation(index)
     }
 
     fun benchmarkLocation(index: Int) {
-        val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
-        benchmarkLocationStored(rawLink)
+        locationActions.benchmarkLocation(index)
     }
 
     fun benchmarkSelectedLocationFromStats() {
-        val rawLink = selectedLocationReference().ifBlank {
-            _uiState.value.currentLocations.firstOrNull {
-                it == selectedLocationReference()
-            }.orEmpty()
-        }
-        if (rawLink.isBlank()) {
-            viewModelScope.launch {
-                repository.updateStatus("Select a location first")
-            }
-            return
-        }
-        benchmarkLocationStored(rawLink)
+        locationActions.benchmarkSelectedLocationFromStats()
     }
 
     fun selectLocation(index: Int) {
-        val rawLink = _uiState.value.currentLocations.getOrNull(index) ?: return
-        viewModelScope.launch {
-            setBusy(true)
-            val isSelected = rawLink == selectedLocationReference()
-            val previousState = repository.snapshot()
-            val result = if (isSelected) {
-                Result.success("Selected location unchanged")
-            } else {
-                val selectionResult = repository.selectionFromRawLink(
-                    rawLink = rawLink,
-                    detail = "Selected location manually",
-                )
-                if (selectionResult.isFailure) {
-                    Result.failure(selectionResult.exceptionOrNull() ?: IllegalStateException("Failed to select location"))
-                } else {
-                    val applyResult = connectionLifecycle.applyAndPersistSelection(
-                        selection = selectionResult.getOrThrow(),
-                        statusMessage = "Applying selected location...",
-                    )
-                    if (!applyResult.isSuccess) {
-                        val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                            result = applyResult,
-                            texts = SelectionCommitFailureTexts(
-                                applyFailureFallback = "Failed to apply selected location",
-                                persistFailureWithoutApplyFallback = "Failed to save selected location",
-                                persistFailureAfterApplyFallback = "Selected location applied, but failed to save it",
-                            ),
-                        )
-                        val resolvedMessage = if (applyResult.requiresLiveRollback) {
-                            connectionLifecycle.rollbackSelectionChange(previousState, message)
-                        } else {
-                            if (applyResult.shouldRestoreSnapshot) {
-                                repository.restoreSnapshot(previousState)
-                            }
-                            message
-                        }
-                        Result.failure(IllegalStateException(resolvedMessage))
-                    } else {
-                        Result.success("Selected location set")
-                    }
-                }
-            }
-            repository.updateStatus(
-                if (result.isSuccess) {
-                    val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
-                        .getOrDefault("Location")
-                    if (isSelected) {
-                        "Selected location unchanged: $remarks"
-                    } else {
-                        "Selected location set: $remarks"
-                    }
-                } else {
-                    result.exceptionOrNull()?.message ?: "Failed to select location"
-                },
-            )
-            setBusy(false)
-        }
+        locationActions.selectLocation(index)
     }
 
     fun saveDns() {
@@ -705,52 +550,11 @@ class MainViewModel(
     }
 
     fun buildLocationsExport(): LocationsExportDocument {
-        return LocationConfigs.export(_uiState.value.currentLocations)
+        return locationActions.buildLocationsExport()
     }
 
     fun importLocations(raw: String) {
-        viewModelScope.launch {
-            when (val decision = LocationMutationLogic.planImportLocations(_uiState.value, raw)) {
-                is ImportLocationsDecision.Blocked -> {
-                    repository.updateStatus(decision.message)
-                    return@launch
-                }
-                is ImportLocationsDecision.Invalid -> {
-                    repository.updateStatus(decision.message)
-                    return@launch
-                }
-                is ImportLocationsDecision.Plan -> {
-                    setBusy(true)
-                    val previousState = repository.snapshot()
-                    val update = repository.updateCurrentLocations(decision.importedLocations)
-                    val removedSelected = update.selectedMissing &&
-                        _uiState.value.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS
-                    if (removedSelected && _uiState.value.isVpnRunning) {
-                        val stopResult = vpnManager.stop()
-                        repository.updateStatus(
-                            stopResult.fold(
-                                onSuccess = {
-                                    LocationMutationLogic.importLocationsStoppedStatusMessage(
-                                        _uiState.value.appMode,
-                                    )
-                                },
-                                onFailure = {
-                                    repository.restoreSnapshot(previousState)
-                                    it.message ?: LocationMutationLogic.importLocationsRollbackFailureMessage(
-                                        _uiState.value.appMode,
-                                    )
-                                },
-                            ),
-                        )
-                    } else {
-                        repository.updateStatus(
-                            LocationMutationLogic.importLocationsStatusMessage(removedSelected),
-                        )
-                    }
-                    setBusy(false)
-                }
-            }
-        }
+        locationActions.importLocations(raw)
     }
 
     fun importRoutingRules(raw: String) {
@@ -934,42 +738,6 @@ class MainViewModel(
             onRetryStatus = { message -> repository.updateStatus(message) },
             action = { repository.refreshBestProfile() },
         )
-    }
-
-    private fun selectedLocationReference(): String {
-        return LocationConfigs.selectedStoredReference(
-            selectedProfileJson = _uiState.value.selectedProfileJson,
-            selectedProfileRawLink = _uiState.value.selectedProfileRawLink,
-        )
-    }
-
-    private fun benchmarkLocationStored(rawLink: String) {
-        launchTrackedBusyOperation {
-            setBusy(true)
-            _uiState.value = _uiState.value.copy(isRefreshing = true)
-            try {
-                val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
-                    .getOrDefault("Location")
-                repository.updateStatus("Checking $remarks...")
-                val result = repository.benchmarkLocation(rawLink)
-                result.onSuccess { benchmark ->
-                    appendLatencyHistory(benchmark)
-                }
-                repository.updateStatus(
-                    result.fold(
-                        onSuccess = { benchmark -> "Location checked: ${benchmark.profile.remarks}" },
-                        onFailure = { it.message ?: "Location check failed" },
-                    ),
-                )
-            } catch (_: CancellationException) {
-                withContext(NonCancellable) {
-                    repository.updateStatus("Location check cancelled")
-                }
-            } finally {
-                _uiState.value = _uiState.value.copy(isRefreshing = false)
-                setBusy(false)
-            }
-        }
     }
 
     private suspend fun appendLatencyHistory(benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark) {
