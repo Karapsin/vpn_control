@@ -17,21 +17,17 @@ import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.InstalledApp
-import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainViewModel(
     private val repository: AppRepository,
@@ -110,6 +106,20 @@ class MainViewModel(
         updateStatus = repository::updateStatus,
         runActiveRefresh = repository::refreshActiveSubscriptionCache,
         runAllRefresh = repository::refreshAllSubscriptionsCaches,
+    )
+    private val findBestActions = AndroidFindBestActionsService(
+        stateProvider = { _uiState.value },
+        launchTrackedBusyOperation = ::launchTrackedBusyOperation,
+        setBusy = ::setBusy,
+        setRefreshing = { value -> _uiState.value = _uiState.value.copy(isRefreshing = value) },
+        updateStatus = repository::updateStatus,
+        snapshot = repository::snapshot,
+        restoreSnapshot = { state -> repository.restoreSnapshot(state) },
+        refreshBestProfile = repository::refreshBestProfile,
+        startAndPersistSelection = connectionLifecycle::startAndPersistSelection,
+        rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
+        stopConnection = vpnManager::stop,
+        appendLatencyHistory = repository::appendLatencyHistory,
     )
     private val settingsActions = AndroidSettingsActionsService(
         controller = controller,
@@ -489,89 +499,7 @@ class MainViewModel(
     }
 
     fun refresh() {
-        launchTrackedBusyOperation {
-            val preconditionError = MainCommandLogic.refreshPreconditionError(_uiState.value)
-            if (preconditionError != null) {
-                repository.updateStatus(preconditionError)
-                return@launchTrackedBusyOperation
-            }
-            setBusy(true)
-            _uiState.value = _uiState.value.copy(isRefreshing = true)
-            val previousState = repository.snapshot()
-            var startAttempted = false
-            try {
-                repository.updateStatus(MainCommandLogic.refreshStartMessage(_uiState.value))
-                val result = findBestProfileWithRetries()
-                val message = result.fold(
-                    onSuccess = { selection ->
-                        startAttempted = true
-                        val applyResult = connectionLifecycle.startAndPersistSelection(
-                            selection = selection,
-                            statusMessage = MainCommandLogic.bestSelectionStartMessage(_uiState.value.appMode),
-                        )
-                        if (applyResult.isSuccess) {
-                            appendLatencyHistory(selection.benchmark)
-                            ConnectionOrchestrationLogic.refreshSelectionStartedMessage(
-                                appMode = _uiState.value.appMode,
-                                remarks = selection.profile.remarks,
-                            )
-                        } else if (applyResult.requiresLiveRollback) {
-                            connectionLifecycle.rollbackSelectionChange(
-                                previousState = previousState,
-                                baseMessage = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                                    result = applyResult,
-                                    texts = ConnectionOrchestrationLogic.refreshSelectionFailureTexts(
-                                        _uiState.value.appMode,
-                                    ),
-                                ),
-                            )
-                        } else {
-                            if (applyResult.shouldRestoreSnapshot) {
-                                repository.restoreSnapshot(previousState)
-                            }
-                            ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                                result = applyResult,
-                                texts = ConnectionOrchestrationLogic.refreshSelectionFailureTexts(
-                                    _uiState.value.appMode,
-                                ),
-                            )
-                        }
-                    },
-                    onFailure = { error ->
-                        error.message ?: "Location search failed"
-                    },
-                )
-                repository.updateStatus(message)
-            } catch (_: CancellationException) {
-                withContext(NonCancellable) {
-                    val message = when {
-                        startAttempted && previousState.isVpnRunning ->
-                            connectionLifecycle.rollbackSelectionChange(previousState, "Location search cancelled.")
-                        startAttempted -> {
-                            val stopResult = vpnManager.stop()
-                            stopResult.fold(
-                                onSuccess = {
-                                    repository.restoreSnapshot(previousState)
-                                    ConnectionOrchestrationLogic.refreshCancelledMessage()
-                                },
-                                onFailure = {
-                                    ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
-                                        prefix = "Location search cancelled.",
-                                        appMode = _uiState.value.appMode,
-                                        errorMessage = it.message,
-                                    )
-                                },
-                            )
-                        }
-                        else -> ConnectionOrchestrationLogic.refreshCancelledMessage()
-                    }
-                    repository.updateStatus(message)
-                }
-            } finally {
-                _uiState.value = _uiState.value.copy(isRefreshing = false)
-                setBusy(false)
-            }
-        }
+        findBestActions.refresh()
     }
 
     fun toggleVpn() {
@@ -610,29 +538,6 @@ class MainViewModel(
 
     private fun setBusy(value: Boolean) {
         _uiState.value = _uiState.value.copy(isBusy = value)
-    }
-
-    private suspend fun findBestProfileWithRetries(): Result<com.kardinal.vpncontrol.model.ProfileSelection> {
-        return ConnectionOrchestrationLogic.findBestProfileWithRetries(
-            retryCount = _uiState.value.validationSettings.retryCount,
-            onRetryStatus = { message -> repository.updateStatus(message) },
-            action = { repository.refreshBestProfile() },
-        )
-    }
-
-    private suspend fun appendLatencyHistory(benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark) {
-        repository.appendLatencyHistory(
-            LatencyHistoryEntry(
-                id = UUID.randomUUID().toString(),
-                profileName = benchmark.profile.remarks,
-                detail = benchmark.detail,
-                primaryStatus = benchmark.primaryStatus,
-                secondaryStatus = benchmark.secondaryStatus,
-                primaryTotalMs = benchmark.primaryTotal,
-                secondaryTotalMs = benchmark.secondaryTotal,
-                createdAtEpochMillis = System.currentTimeMillis(),
-            ),
-        )
     }
 
     private fun launchTrackedBusyOperation(block: suspend () -> Unit) {
