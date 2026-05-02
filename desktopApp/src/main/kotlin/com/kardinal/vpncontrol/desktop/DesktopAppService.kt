@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
+import com.kardinal.vpncontrol.AutoRefreshLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
@@ -615,22 +616,17 @@ class DesktopAppService private constructor(
     }
 
     suspend fun runAutoRefreshCycle() {
-        if (state.isBusy) return
-        val wasVpnRunning = state.isVpnRunning || connectionLifecycle.isRuntimeRunning()
-        val shouldFindBestAfterRefresh = wasVpnRunning && state.findBestAfterSubscriptionRefresh
-        val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
-        if (refreshTargets.isEmpty()) return
+        val plan = AutoRefreshLogic.plan(
+            state = state,
+            isRuntimeRunning = connectionLifecycle.isRuntimeRunning(),
+        ) ?: return
         val refreshResult = refreshDesktopSubscriptions(
-            subscriptionsToRefresh = refreshTargets,
-            statusPrefix = if (refreshTargets.size == 1) {
-                "Auto-refreshing subscription..."
-            } else {
-                "Auto-refreshing subscriptions..."
-            },
-            stopVpnIfSelectedRemoved = !shouldFindBestAfterRefresh,
+            subscriptionsToRefresh = plan.subscriptionsToRefresh,
+            statusPrefix = plan.statusPrefix,
+            stopVpnIfSelectedRemoved = plan.stopVpnIfSelectedRemoved,
         )
         if (refreshResult.isFailure) return
-        if (shouldFindBestAfterRefresh) {
+        if (plan.shouldFindBestAfterRefresh) {
             autoRefreshBestSelectionAction(this)
         }
     }
