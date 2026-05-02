@@ -31,6 +31,8 @@ Do not commit these paths:
 - `.runtime/`
 - downloaded release packages
 
+Packaging entry points run `scripts/check_release_hygiene.sh` before building. The check fails if generated release/runtime paths are already tracked by Git, which prevents Windows checkout failures from long generated class/dex paths.
+
 Desktop runtime binaries are bundled into local/release packages by scripts:
 
 ```text

@@ -52,7 +52,7 @@ Run the full local release pass from the repository root:
 ./scripts/release_checklist.sh
 ```
 
-The script runs standalone regression tests, builds Android, Linux, macOS when on macOS, and Windows through the local VM, then prints candidate artifacts and SHA-256 checksums.
+The script first runs `scripts/check_release_hygiene.sh` to fail fast if generated release/runtime artifacts are tracked by Git. It then runs standalone regression tests, builds Android, Linux, macOS when on macOS, and Windows through the local VM, then prints candidate artifacts and SHA-256 checksums.
 
 Useful skip flags:
 
@@ -125,6 +125,12 @@ Run localization validation for all catalogs before packaging if UI/status text 
 ./scripts/check_localization.py
 ```
 
+Run release hygiene directly before packaging if a previous build or VM package run created local artifacts:
+
+```bash
+./scripts/check_release_hygiene.sh
+```
+
 Run targeted package scripts when only one platform changed:
 
 ```bash
@@ -133,11 +139,12 @@ Run targeted package scripts when only one platform changed:
 ./scripts/package_macos_desktop.sh
 ```
 
-Each platform package script has skip flags for tests or extracted package smoke checks. Use skip flags only when the omitted check is unrelated to the change and record that decision in the handoff.
+Each platform package script has skip flags for tests or extracted package smoke checks. Linux, macOS, Windows-host, and Windows-VM package scripts all run release hygiene before building. Use skip flags only when the omitted check is unrelated to the change and record that decision in the handoff.
 
 ## Common Failure Modes
 
 - `Filename too long` on Windows checkout usually means generated `build/` outputs were committed. Remove generated artifacts from Git instead of changing source names.
+- `Generated release/runtime artifacts are tracked by Git` means `build/`, `dist/`, `.runtime/`, or desktop bundled runtime outputs were accidentally added to the index. Remove them from Git before packaging.
 - `Windows app image was not produced` usually means the packaging script expects an output layout that changed. Inspect `desktopApp/build/compose/binaries/main/`.
 - `MSI payload is missing bundled runtime` usually means the package validation script and current Compose runtime layout disagree.
 - `Timed out waiting for QEMU guest agent` means the Windows VM is off, locked too early, or the guest agent service is not running.

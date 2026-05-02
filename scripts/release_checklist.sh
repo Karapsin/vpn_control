@@ -67,6 +67,8 @@ log() {
   printf '[vpn-control] %s\n' "$*"
 }
 
+./scripts/check_release_hygiene.sh
+
 if [[ "$skip_tests" != true ]]; then
   log "running standalone regression tests"
   ./gradlew :shared:core:desktopTest :shared:model:desktopTest :desktopApp:test
