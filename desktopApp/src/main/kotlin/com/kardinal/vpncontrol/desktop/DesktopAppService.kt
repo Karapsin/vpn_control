@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.AppScreen
-import com.kardinal.vpncontrol.LocationMutationLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
@@ -14,21 +13,15 @@ import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
-import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.UnsupportedRemoteSourceResolution
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
-import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.RoutingRuleSet
-import com.kardinal.vpncontrol.model.RoutingRuleSetAction
-import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
-import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
@@ -77,6 +70,21 @@ class DesktopAppService private constructor(
             runtimeManager.stopBlocking()
         },
         "vpn-control-runtime-shutdown",
+    )
+    private val locationService = DesktopLocationService(
+        stateProvider = { state },
+        locationsProvider = { desktopLocations },
+        currentRuntimeMode = { connectionLifecycle.currentRuntimeMode() },
+        stopConnection = { message -> stopDesktopProxy(message) },
+        commitState = { nextState, nextLocations ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
+        updateState = ::updateState,
+    )
+    private val routingRulesService = DesktopRoutingRulesService(
+        stateProvider = { state },
+        commitState = { nextState -> commitState(nextState = nextState) },
+        updateState = ::updateState,
     )
 
     companion object {
@@ -216,12 +224,11 @@ class DesktopAppService private constructor(
     }
 
     fun visibleDesktopLocations(): List<DesktopLocationRecord> {
-        return desktopLocations.filter { it.rawLink in state.currentLocations }
+        return locationService.visibleLocations()
     }
 
     fun selectedDesktopLocation(): DesktopLocationRecord? {
-        return desktopLocations.firstOrNull { it.matchesSelectedLocation(state) }
-            ?: visibleDesktopLocations().firstOrNull { it.isSelected }
+        return locationService.selectedLocation()
     }
 
     fun activateSelection(targetId: String) {
@@ -629,149 +636,63 @@ class DesktopAppService private constructor(
     }
 
     fun addSampleLocation() {
-        val nextIndex = (desktopLocations.maxOfOrNull { it.index } ?: 0) + 1
-        val newLocation = DesktopLocationRecord(
-            index = nextIndex,
-            sourceUrl = "",
-            rawLink = "vless://desktop-$nextIndex",
-            name = "Desktop Node $nextIndex",
-            server = "desktop-$nextIndex.example.net",
-            details = "VLESS TCP",
-            benchmarkDetail = "primary ok • secondary ok • ${120 + nextIndex} ms",
-            isValid = true,
-        )
-        commitState(
-            nextLocations = desktopLocations + newLocation,
-            nextState = state.withStatus("Added ${newLocation.name}"),
-        )
+        locationService.addSampleLocation()
     }
 
     fun editLocation(index: Int) {
-        val updatedLocations = desktopLocations.map { location ->
-            if (location.index == index) {
-                location.copy(name = "${location.name} (edited)")
-            } else {
-                location
-            }
-        }
-        commitState(
-            nextLocations = updatedLocations,
-            nextState = state.withStatus("Edited location #$index"),
-        )
+        locationService.editLocation(index)
     }
 
     suspend fun deleteLocation(index: Int) {
-        val removed = desktopLocations.firstOrNull { it.index == index } ?: return
-        val removedSelected = removed.rawLink == state.selectedProfileRawLink
-        if (removedSelected && state.isVpnRunning) {
-            val stopResult = stopDesktopProxy(MainCommandLogic.stoppedConnectionLabel(connectionLifecycle.currentRuntimeMode() ?: state.appMode))
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-        val updatedLocations = desktopLocations.filterNot { it.index == index }
-        commitState(
-            nextLocations = updatedLocations,
-            nextState = state.clearSelectedLocationIf(removedSelected)
-                .withStatus("Deleted ${removed.name}"),
-        )
+        locationService.deleteLocation(index)
     }
 
     fun applyLocationSelection(index: Int, messagePrefix: String = "Selected") {
-        val selected = desktopLocations.firstOrNull { it.index == index } ?: return
-        val updatedLocations = desktopLocations.map { it.copy(isSelected = it.index == index) }
-        commitState(
-            nextLocations = updatedLocations,
-            nextState = state.withStatus("$messagePrefix ${selected.name}").copy(
-                selectedProfileName = selected.name,
-                selectedProfileServer = selected.server,
-                selectedProfileRawLink = selected.rawLink,
-                selectedProfileSourceUrl = selected.sourceUrl,
-            ),
-        )
+        locationService.applySelection(index, messagePrefix)
     }
 
     fun setRoutingIgnoreRulesDraft(enabled: Boolean) {
-        updateState { it.copy(routingIgnoreRulesDraft = enabled) }
+        routingRulesService.setIgnoreRulesDraft(enabled)
     }
 
     fun setRoutingAppSearch(query: String) {
-        updateState { it.copy(routingAppSearch = query) }
+        routingRulesService.setAppSearch(query)
     }
 
     fun toggleProxyApp(packageName: String) {
-        updateState {
-            it.copy(
-                routingProxyPackagesDraft = if (packageName in it.routingProxyPackagesDraft) {
-                    it.routingProxyPackagesDraft - packageName
-                } else {
-                    it.routingProxyPackagesDraft + packageName
-                },
-            )
-        }
+        routingRulesService.toggleProxyApp(packageName)
     }
 
     fun selectAllProxyApps() {
-        updateState { it.copy(routingProxyPackagesDraft = it.installedApps.map(InstalledApp::packageName).toSet()) }
+        routingRulesService.selectAllProxyApps()
     }
 
     fun clearAllProxyApps() {
-        updateState { it.copy(routingProxyPackagesDraft = emptySet()) }
+        routingRulesService.clearAllProxyApps()
     }
 
     fun setRoutingNationalDomainsDraft(value: String) {
-        updateState { it.copy(routingNationalDomainsDraft = value) }
+        routingRulesService.setNationalDomainsDraft(value)
     }
 
     fun setRoutingDirectDomainsDraft(value: String) {
-        updateState { it.copy(routingDirectDomainsDraft = value) }
+        routingRulesService.setDirectDomainsDraft(value)
     }
 
     fun addSampleRuleSet() {
-        updateState {
-            it.withStatus("Added a sample rule-set").copy(
-                routingRuleSetsDraft = it.routingRuleSetsDraft + RoutingRuleSet(
-                    id = "desktop-${it.routingRuleSetsDraft.size + 1}",
-                    name = "Desktop Sample ${it.routingRuleSetsDraft.size + 1}",
-                    sourceType = RoutingRuleSetSourceType.INLINE,
-                    format = RoutingRuleSetFormat.SOURCE,
-                    action = RoutingRuleSetAction.BLOCK,
-                    source = """{"version":1,"rules":[{"domain_suffix":["ads.example"]}]}""",
-                ),
-            )
-        }
+        routingRulesService.addSampleRuleSet()
     }
 
     fun editRuleSet(id: String) {
-        updateState {
-            it.copy(
-                routingRuleSetsDraft = it.routingRuleSetsDraft.map { ruleSet ->
-                    if (ruleSet.id == id) ruleSet.copy(name = "${ruleSet.name} (edited)") else ruleSet
-                },
-            )
-        }
+        routingRulesService.editRuleSet(id)
     }
 
     fun deleteRuleSet(id: String) {
-        updateState {
-            it.copy(routingRuleSetsDraft = it.routingRuleSetsDraft.filterNot { ruleSet -> ruleSet.id == id })
-                .withStatus("Deleted rule-set $id")
-        }
+        routingRulesService.deleteRuleSet(id)
     }
 
     fun saveRoutingRules() {
-        updateState {
-            it.withStatus("Saved routing rules").copy(
-                routingRules = RoutingRules(
-                    ignoreRules = it.routingIgnoreRulesDraft,
-                    proxyPackages = RoutingRules.normalizePackageNames(it.routingProxyPackagesDraft),
-                    bypassPackages = emptyList(),
-                    nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(it.routingNationalDomainsDraft),
-                    directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(it.routingDirectDomainsDraft),
-                    ruleSets = emptyList(),
-                ),
-            )
-        }
+        routingRulesService.saveRoutingRules()
     }
 
     suspend fun stopDesktopProxy(message: String? = null): Result<Unit> {
@@ -870,189 +791,52 @@ class DesktopAppService private constructor(
     }
 
     suspend fun importLocationsRaw(raw: String) {
-        when (val decision = LocationMutationLogic.planImportLocations(state, raw)) {
-            is com.kardinal.vpncontrol.ImportLocationsDecision.Blocked -> {
-                updateState { it.withStatus(decision.message) }
-            }
-            is com.kardinal.vpncontrol.ImportLocationsDecision.Invalid -> {
-                updateState { it.withStatus(decision.message) }
-            }
-            is com.kardinal.vpncontrol.ImportLocationsDecision.Plan -> {
-                val preservedSubscriptionLocations = desktopLocations.filter { it.sourceUrl.isNotBlank() }
-                val importedLocations = decision.importedLocations.toDesktopLocationRecords(
-                    startIndex = nextLocationIndex(preservedSubscriptionLocations),
-                )
-                val nextLocations = preservedSubscriptionLocations + importedLocations
-                val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
-                    nextLocations.none { it.rawLink == state.selectedProfileRawLink }
-                if (removedSelected && state.isVpnRunning) {
-                    val stopResult = stopDesktopProxy(
-                        LocationMutationLogic.importLocationsStoppedStatusMessage(state.appMode),
-                    )
-                    if (stopResult.isFailure) {
-                        return
-                    }
-                }
-                val message = if (removedSelected && state.isVpnRunning) {
-                    LocationMutationLogic.importLocationsStoppedStatusMessage(state.appMode)
-                } else {
-                    LocationMutationLogic.importLocationsStatusMessage(removedSelected)
-                }
-                commitState(
-                    nextLocations = nextLocations,
-                    nextState = state.clearSelectedLocationIf(removedSelected)
-                        .copy(isVpnRunning = if (removedSelected) false else state.isVpnRunning)
-                        .withStatus(message),
-                )
-            }
-        }
+        locationService.importRaw(raw)
     }
 
     suspend fun importLocationsFromClipboard() {
-        val raw = DesktopTextTransfer.readClipboardText()
-        if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Clipboard read failed") }
-            return
-        }
-        importLocationsRaw(raw.getOrThrow())
+        locationService.importFromClipboard()
     }
 
     suspend fun importLocationsFromFile(selection: Result<Path?>) {
-        if (selection.isFailure) {
-            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: "Failed to open locations file") }
-            return
-        }
-        val path = selection.getOrNull() ?: return
-        val raw = DesktopTextTransfer.readTextFile(path)
-        if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Failed to read locations file") }
-            return
-        }
-        importLocationsRaw(raw.getOrThrow())
+        locationService.importFromFile(selection)
     }
 
     fun exportLocationsToClipboard() {
-        if (state.currentLocations.isEmpty()) {
-            updateState { it.withStatus("No locations to export") }
-            return
-        }
-        val document = LocationConfigs.export(state.currentLocations)
-        val result = DesktopTextTransfer.writeClipboardText(document.content)
-        updateState {
-            it.withStatus(
-                result.exceptionOrNull()?.message ?: "Locations copied to clipboard",
-            )
-        }
+        locationService.exportToClipboard()
     }
 
     fun exportLocationsToFile(
         window: ComposeWindow,
         title: String = "Export Locations",
     ) {
-        if (state.currentLocations.isEmpty()) {
-            updateState { it.withStatus("No locations to export") }
-            return
-        }
-        val document = LocationConfigs.export(state.currentLocations)
-        val result = DesktopTextTransfer.saveTextFile(
-            window = window,
-            title = title,
-            suggestedFileName = document.fileName,
-            content = document.content,
-        )
-        updateState {
-            it.withStatus(
-                result.fold(
-                    onSuccess = { path ->
-                        if (path == null) {
-                            "Locations export canceled"
-                        } else {
-                            "Locations exported to $path"
-                        }
-                    },
-                    onFailure = { error -> error.message ?: "Failed to export locations" },
-                ),
-            )
-        }
+        locationService.exportToFile(window, title)
     }
 
     fun importRoutingRulesRaw(raw: String) {
-        val parsed = runCatching { RoutingRulesTransfer.import(raw) }
-        if (parsed.isFailure) {
-            updateState { it.withStatus(parsed.exceptionOrNull()?.message ?: "Failed to import routing rules") }
-            return
-        }
-        val rules = MainDraftLogic.sanitizeRoutingRules(parsed.getOrThrow())
-        val message = if (state.isVpnRunning) {
-            "Routing rules imported. Restart ${MainCommandLogic.connectionNoun(state.appMode)} to apply"
-        } else {
-            "Routing rules imported"
-        }
-        commitState(
-            nextState = MainDraftLogic.applyImportedRoutingRules(
-                state.copy(routingRules = rules),
-                rules,
-            ).withStatus(message),
-        )
+        routingRulesService.importRaw(raw)
     }
 
     fun importRoutingRulesFromClipboard() {
-        val raw = DesktopTextTransfer.readClipboardText()
-        if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: "Clipboard read failed") }
-            return
-        }
-        importRoutingRulesRaw(raw.getOrThrow())
+        routingRulesService.importFromClipboard()
     }
 
     fun importRoutingRulesFromFile(
         window: ComposeWindow,
         title: String = "Import Routing Rules",
     ) {
-        val opened = DesktopTextTransfer.openTextFile(window, title)
-        if (opened.isFailure) {
-            updateState { it.withStatus(opened.exceptionOrNull()?.message ?: "Failed to open routing rules file") }
-            return
-        }
-        val raw = opened.getOrNull() ?: return
-        importRoutingRulesRaw(raw)
+        routingRulesService.importFromFile(window, title)
     }
 
     fun exportRoutingRulesToClipboard() {
-        val document = RoutingRulesTransfer.export(MainDraftLogic.buildEditedRoutingRules(state))
-        val result = DesktopTextTransfer.writeClipboardText(document.content)
-        updateState {
-            it.withStatus(
-                result.exceptionOrNull()?.message ?: "Routing rules copied to clipboard",
-            )
-        }
+        routingRulesService.exportToClipboard()
     }
 
     fun exportRoutingRulesToFile(
         window: ComposeWindow,
         title: String = "Export Routing Rules",
     ) {
-        val document = RoutingRulesTransfer.export(MainDraftLogic.buildEditedRoutingRules(state))
-        val result = DesktopTextTransfer.saveTextFile(
-            window = window,
-            title = title,
-            suggestedFileName = document.fileName,
-            content = document.content,
-        )
-        updateState {
-            it.withStatus(
-                result.fold(
-                    onSuccess = { path ->
-                        if (path == null) {
-                            "Routing rules export canceled"
-                        } else {
-                            "Routing rules exported to $path"
-                        }
-                    },
-                    onFailure = { error -> error.message ?: "Failed to export routing rules" },
-                ),
-            )
-        }
+        routingRulesService.exportToFile(window, title)
     }
 
     suspend fun exportDiagnostics(selection: Result<Path?>) {
@@ -1453,42 +1237,6 @@ private fun MainUiState.toPersistedState(
         latencyHistory = synced.latencyHistory,
         connectionLog = synced.connectionLog,
     )
-}
-
-private fun MainUiState.clearSelectedLocationIf(shouldClear: Boolean): MainUiState {
-    if (!shouldClear) return this
-    return copy(
-        selectedProfileName = "",
-        selectedProfileServer = "",
-        selectedProfileRawLink = "",
-        selectedProfileSourceUrl = "",
-    )
-}
-
-private fun List<String>.toDesktopLocationRecords(startIndex: Int): List<DesktopLocationRecord> {
-    return mapIndexed { offset, rawLink ->
-        val profile = LocationConfigs.decodeStoredLocation(rawLink)
-        DesktopLocationRecord(
-            index = startIndex + offset,
-            sourceUrl = "",
-            rawLink = rawLink,
-            name = profile.remarks,
-            server = profile.server,
-            details = profile.desktopDetails(),
-            benchmarkDetail = "Imported • not checked yet",
-            isValid = true,
-        )
-    }
-}
-
-private fun DesktopLocationRecord.matchesSelectedLocation(state: MainUiState): Boolean {
-    val selectedRaw = state.selectedProfileRawLink.takeIf(String::isNotBlank) ?: return false
-    if (rawLink == selectedRaw) return true
-    if (normalizedStorageKey() == LocationConfigs.normalizeStoredReference(selectedRaw)) return true
-    return sourceUrl.isNotBlank() &&
-        sourceUrl == state.selectedProfileSourceUrl &&
-        name == state.selectedProfileName &&
-        server == state.selectedProfileServer
 }
 
 private fun DesktopLocationRecord.toCompactBenchmarkMillis(): Double? {
