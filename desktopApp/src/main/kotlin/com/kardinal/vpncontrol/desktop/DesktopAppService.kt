@@ -34,7 +34,6 @@ import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.withTimeoutOrNull
 
 class DesktopAppService private constructor(
     private val desktopStore: DesktopStateStore,
@@ -93,6 +92,31 @@ class DesktopAppService private constructor(
         desktopStore = desktopStore,
         runtimeManager = runtimeManager,
         updateState = ::updateState,
+    )
+    private val findBestService = DesktopFindBestService(
+        stateProvider = { state },
+        visibleLocationsProvider = { locationService.visibleLocations() },
+        locationsProvider = { desktopLocations },
+        refreshSubscriptions = { subscriptions, statusPrefix ->
+            refreshDesktopSubscriptions(
+                subscriptionsToRefresh = subscriptions,
+                statusPrefix = statusPrefix,
+            )
+        },
+        startConnection = ::startDesktopProxy,
+        commitState = { nextLocations, nextState ->
+            commitState(nextState = nextState, nextLocations = nextLocations)
+        },
+        updateState = ::updateState,
+        evaluateProfiles = { profiles, dnsSettings, benchmarkUrls, settings, onProgress ->
+            validationRuntime.evaluateProfiles(
+                profiles = profiles,
+                dnsSettings = dnsSettings,
+                benchmarkUrls = benchmarkUrls,
+                settings = settings,
+                onProgress = onProgress,
+            )
+        },
     )
 
     companion object {
@@ -895,87 +919,7 @@ class DesktopAppService private constructor(
     suspend fun findBestLocation(
         refreshSubscriptionsFirst: Boolean = true,
     ) {
-        val preconditionError = MainCommandLogic.refreshPreconditionError(state)
-        if (preconditionError != null) {
-            updateState { it.withStatus(preconditionError) }
-            return
-        }
-        if (refreshSubscriptionsFirst && state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-            val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(state)
-            val refreshResult = refreshDesktopSubscriptions(
-                subscriptionsToRefresh = refreshTargets,
-                statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
-            )
-            if (refreshResult.isFailure) {
-                return
-            }
-        }
-        val profiles = visibleDesktopLocations().mapNotNull { location ->
-            runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }.getOrNull()
-        }
-        if (profiles.isEmpty()) {
-            updateState { it.withStatus("No locations available for benchmarking") }
-            return
-        }
-        updateState {
-            it.copy(isBusy = true, isRefreshing = true).withStatus(
-                "${MainCommandLogic.refreshStartMessage(it)} Testing fastest candidates in batches...",
-            )
-        }
-        val validationSettings = state.validationSettings.normalized()
-        val desktopValidationSettings = validationSettings.toDesktopValidationSettings()
-        val evaluation = withTimeoutOrNull(desktopValidationSettings.searchTimeoutMillis) {
-            validationRuntime.evaluateProfiles(
-                profiles = profiles,
-                dnsSettings = DesktopDnsSettings(
-                    enabled = state.useCustomDns,
-                    value = state.customDns,
-                ),
-                benchmarkUrls = BenchmarkUrls(
-                    primary = validationSettings.primaryUrl,
-                    secondary = validationSettings.secondaryUrl,
-                ),
-                settings = desktopValidationSettings,
-                onProgress = { progress ->
-                    updateState {
-                        it.copy(isBusy = true, isRefreshing = true).withStatus(progress)
-                    }
-                },
-            )
-        } ?: run {
-            updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    "Best location search timed out; keeping the current connection",
-                )
-            }
-            return
-        }
-        val winning = evaluation.winner ?: evaluation.fallback
-        val winningRawKey = winning?.let { LocationConfigs.encodeStoredLocation(it.profile) }
-        updateLocationBenchmarks(
-            detailsByRawKey = evaluation.locationBenchmarkDetails,
-            winningRawKey = winningRawKey,
-        )
-        if (winning == null) {
-            updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    evaluation.failureMessage ?: "No suitable location found",
-                )
-            }
-            return
-        }
-        val winnerLocation = desktopLocations.firstOrNull { it.normalizedStorageKey() == winningRawKey }
-        if (winnerLocation == null) {
-            updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus("Best location could not be mapped to the desktop list")
-            }
-            return
-        }
-        startDesktopProxy(
-            location = winnerLocation,
-            benchmarkSummary = "Best: ${winning.profile.remarks} • ${winning.detail.toCompactBenchmarkLabel()}",
-        )
-        updateState { it.copy(isRefreshing = false) }
+        findBestService.findBestLocation(refreshSubscriptionsFirst)
     }
 
     private fun validateDesktopSubscriptionSource(raw: String): Result<Unit> {
@@ -990,27 +934,6 @@ class DesktopAppService private constructor(
 
     private fun activeConnectionName(): String {
         return MainCommandLogic.connectionDisplayName(connectionLifecycle.currentRuntimeMode() ?: state.appMode)
-    }
-
-    private fun updateLocationBenchmarks(
-        detailsByRawKey: Map<String, String>,
-        winningRawKey: String? = null,
-    ) {
-        if (detailsByRawKey.isEmpty()) return
-        val updatedLocations = desktopLocations.map { location ->
-            val normalized = location.normalizedStorageKey()
-            val detail = detailsByRawKey[normalized] ?: return@map location
-            location.copy(
-                benchmarkDetail = detail.toCompactBenchmarkLabel(),
-                isValid = benchmarkDetailIndicatesSelectable(detail, location.isValid),
-                isSelected = if (winningRawKey != null) {
-                    normalized == winningRawKey
-                } else {
-                    location.isSelected
-                },
-            )
-        }
-        commitState(nextLocations = updatedLocations, nextState = state)
     }
 
     private fun commitState(
@@ -1079,7 +1002,7 @@ private fun restoreDesktopUiState(
     )
 }
 
-private fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopValidationSettings {
+internal fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopValidationSettings {
     val normalized = normalized()
     val concurrency = minOf(normalized.batchSize.coerceAtLeast(1), 5)
     return DesktopValidationSettings(
@@ -1208,12 +1131,7 @@ private fun MainUiState.toPersistedState(
     )
 }
 
-private fun DesktopLocationRecord.toCompactBenchmarkMillis(): Double? {
-    val match = Regex("""(\d+(?:\.\d+)?)\s*ms""").find(benchmarkDetail)
-    return match?.groupValues?.getOrNull(1)?.toDoubleOrNull()
-}
-
-private fun String.toCompactBenchmarkLabel(): String {
+internal fun String.toCompactBenchmarkLabel(): String {
     val primary = Regex("""primary=([a-z]+)""").find(this)?.groupValues?.getOrNull(1)
     val secondary = Regex("""secondary=([a-z]+)""").find(this)?.groupValues?.getOrNull(1)
     val tcp = Regex("""tcp=([0-9.]+ms|unreachable)""").find(this)?.groupValues?.getOrNull(1)
