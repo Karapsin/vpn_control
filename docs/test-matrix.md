@@ -7,7 +7,7 @@ Use this matrix to choose the smallest useful validation set for a patch. Add mo
 | Touched Area | Run |
 | --- | --- |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
-| `shared/core/` parsing, refresh, selection, config-independent logic | `./gradlew :shared:core:desktopTest` |
+| `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` plus relevant `app/src/androidTest` tests when practical |
@@ -52,6 +52,14 @@ If the Android patch changes actual generated `sing-box` config shape, also run 
 ```bash
 ./gradlew :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.data.SingBoxConfigFactoryInstrumentedTest
+```
+
+If the patch changes shared outbound/TLS/transport generation, also update or inspect:
+
+```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
 ```
 
 Import/export UI patch:

@@ -37,6 +37,8 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 - Prefer small, targeted fixes with regression tests for behavior changes.
 - If large work intentionally spans multiple dirty buckets, document the intent in `docs/work-in-progress.md`.
 - Start low-context repository navigation from `docs/README.md`.
+- Use `docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.
+- Use `docs/native-runtime-artifacts.md` before touching native runtime binaries or runtime preparation scripts.
 
 ## Common Commands
 
@@ -187,7 +189,7 @@ See `docs/localization.md` for catalog structure, all-language validation, and s
 - Desktop best-location checks should use direct probes so results are not biased by whether VPN is currently on.
 - Android best-location and refresh behavior should remain consistent with shared core logic.
 
-See `docs/architecture.md`, `docs/desktop-lifecycle.md`, `docs/platform-matrix.md`, and `docs/sing-box-contract.md` before changing cross-platform runtime behavior.
+See `docs/architecture.md`, `docs/state-ownership.md`, `docs/desktop-lifecycle.md`, `docs/platform-matrix.md`, and `docs/sing-box-contract.md` before changing cross-platform runtime behavior.
 
 ## User-Facing Install Docs
 

@@ -78,11 +78,13 @@ See `docs/runtime-troubleshooting.md` for the safe diagnostic path.
 ## Where To Look Next
 
 - Platform behavior and limitations: `docs/platform-matrix.md`.
+- State/action ownership: `docs/state-ownership.md`.
 - Test selection: `docs/test-matrix.md`.
 - Runtime logs and safe checks: `docs/runtime-troubleshooting.md`.
 - Architecture and data flow: `docs/architecture.md`.
 - Desktop lifecycle invariants: `docs/desktop-lifecycle.md`.
 - sing-box config contract: `docs/sing-box-contract.md`.
+- Native runtime artifact policy: `docs/native-runtime-artifacts.md`.
 - Large dirty-state handoff template: `docs/work-in-progress.md`.
 - Localization architecture: `docs/localization.md`.
 - Developer release packaging: `docs/developer-release-checklist.md`.
