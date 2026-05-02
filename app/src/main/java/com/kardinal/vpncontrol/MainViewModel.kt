@@ -71,6 +71,11 @@ class MainViewModel(
         startConnection = { selection -> vpnManager.start(selection) },
         stopConnection = vpnManager::stop,
     )
+    private val connectionActions = AndroidConnectionActionsService(
+        controller = controller,
+        connectionLifecycle = connectionLifecycle,
+        launchTrackedBusyOperation = ::launchTrackedBusyOperation,
+    )
     private val locationActions = AndroidLocationActionsService(
         controller = controller,
         stateProvider = { _uiState.value },
@@ -384,7 +389,7 @@ class MainViewModel(
     }
 
     fun onVpnPermissionGranted() {
-        controller.onVpnPermissionGranted()
+        connectionActions.onVpnPermissionGranted()
     }
 
     fun saveProfile() {
@@ -570,9 +575,7 @@ class MainViewModel(
     }
 
     fun toggleVpn() {
-        launchTrackedBusyOperation {
-            connectionLifecycle.toggleConnection()
-        }
+        connectionActions.toggleVpn()
     }
 
     fun exportDiagnostics() {

@@ -21,6 +21,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
 | Android profile/import action orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android connection command/lifecycle orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android location mutation, selection, import/export, or location benchmark orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android routing draft/import/save orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android manual subscription refresh orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |

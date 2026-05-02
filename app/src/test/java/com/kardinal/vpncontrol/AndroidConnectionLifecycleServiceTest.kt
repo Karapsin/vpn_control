@@ -9,6 +9,7 @@ import com.kardinal.vpncontrol.model.ProxyProtocol
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidConnectionLifecycleServiceTest {
@@ -94,6 +95,48 @@ class AndroidConnectionLifecycleServiceTest {
         assertEquals(MainCommandLogic.startedConnectionLabel(AppMode.VPN), statuses.last())
         assertFalse(state.isBusy)
         assertFalse(state.isStartingVpn)
+    }
+
+    @Test
+    fun toggleConnectionWithoutVpnPermissionPostsPreconditionError() = runBlocking {
+        var state = MainUiState(appMode = AppMode.VPN, hasVpnPermission = false)
+        val statuses = mutableListOf<String>()
+        var startCalls = 0
+        val service = testService(
+            stateProvider = { state },
+            updateState = { transform -> state = transform(state) },
+            updateStatus = { statuses += it },
+            startConnection = {
+                startCalls += 1
+                Result.success(Unit)
+            },
+        )
+
+        service.toggleConnection()
+
+        assertEquals(0, startCalls)
+        assertEquals("Grant VPN permission and try again", statuses.single())
+        assertFalse(state.isBusy)
+    }
+
+    @Test
+    fun toggleConnectionReportsStopFailure() = runBlocking {
+        var state = MainUiState(appMode = AppMode.VPN, isVpnRunning = true)
+        val statuses = mutableListOf<String>()
+        val service = testService(
+            stateProvider = { state },
+            updateState = { transform -> state = transform(state) },
+            updateStatus = { statuses += it },
+            stopConnection = {
+                Result.failure(IllegalStateException("stop failed"))
+            },
+        )
+
+        service.toggleConnection()
+
+        assertEquals("stop failed", statuses.last())
+        assertTrue(state.isVpnRunning)
+        assertFalse(state.isBusy)
     }
 }
 
