@@ -459,6 +459,10 @@ class AppStringsCoverageTest {
             StatusMessages.runtimeLog("/tmp/sing-box:a|b.log"),
             StatusMessages.preflightPassed(AppMode.VPN),
             StatusMessages.desktopVpnCapabilityReady(),
+            StatusMessages.noLocationsAvailableForBenchmarking(),
+            StatusMessages.bestLocationSearchTimedOut(),
+            StatusMessages.noSuitableLocationFound(),
+            StatusMessages.bestLocationNotMapped(),
         )
         val rawLeaks = nonEnglishLanguages.flatMap { language ->
             val strings = AppStrings(language)

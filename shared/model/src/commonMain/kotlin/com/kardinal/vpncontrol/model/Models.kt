@@ -222,6 +222,10 @@ enum class StatusMessageKey {
     PREFLIGHT_FAILED,
     DESKTOP_VPN_CAPABILITY_READY,
     DESKTOP_VPN_CAPABILITY_ERROR,
+    NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING,
+    BEST_LOCATION_SEARCH_TIMED_OUT,
+    NO_SUITABLE_LOCATION_FOUND,
+    BEST_LOCATION_NOT_MAPPED,
 }
 
 data class StructuredStatusMessage(
@@ -332,6 +336,18 @@ object StatusMessages {
 
     fun desktopVpnCapabilityError(detail: String): String =
         encode(StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR, detail)
+
+    fun noLocationsAvailableForBenchmarking(): String =
+        encode(StatusMessageKey.NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING)
+
+    fun bestLocationSearchTimedOut(): String =
+        encode(StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT)
+
+    fun noSuitableLocationFound(): String =
+        encode(StatusMessageKey.NO_SUITABLE_LOCATION_FOUND)
+
+    fun bestLocationNotMapped(): String =
+        encode(StatusMessageKey.BEST_LOCATION_NOT_MAPPED)
 
     private fun escapeArg(value: String): String = buildString {
         value.forEach { char ->

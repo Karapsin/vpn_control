@@ -402,6 +402,10 @@ private fun englishStructuredStatusMessage(status: StructuredStatusMessage): Str
         StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY -> "Desktop VPN capability: ready"
         StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->
             "Desktop VPN capability: ${arg(0).ifBlank { "not ready" }}"
+        StatusMessageKey.NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING -> "No locations available for benchmarking"
+        StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT -> "Best location search timed out; keeping the current connection"
+        StatusMessageKey.NO_SUITABLE_LOCATION_FOUND -> "No suitable location found"
+        StatusMessageKey.BEST_LOCATION_NOT_MAPPED -> "Best location could not be mapped to the desktop list"
     }
 }
 

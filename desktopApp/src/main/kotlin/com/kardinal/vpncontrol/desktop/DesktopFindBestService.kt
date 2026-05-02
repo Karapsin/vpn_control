@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.SearchEvaluation
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -51,7 +52,7 @@ internal class DesktopFindBestService(
             runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }.getOrNull()
         }
         if (profiles.isEmpty()) {
-            updateState { it.withStatus("No locations available for benchmarking") }
+            updateState { it.withStatus(StatusMessages.noLocationsAvailableForBenchmarking()) }
             return
         }
 
@@ -84,7 +85,7 @@ internal class DesktopFindBestService(
         } ?: run {
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    "Best location search timed out; keeping the current connection",
+                    StatusMessages.bestLocationSearchTimedOut(),
                 )
             }
             return
@@ -102,7 +103,7 @@ internal class DesktopFindBestService(
         if (winning == null) {
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    evaluation.failureMessage ?: "No suitable location found",
+                    evaluation.failureMessage ?: StatusMessages.noSuitableLocationFound(),
                 )
             }
             return
@@ -111,7 +112,7 @@ internal class DesktopFindBestService(
         val winnerLocation = locationsProvider().firstOrNull { it.normalizedStorageKey() == winningRawKey }
         if (winnerLocation == null) {
             updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus("Best location could not be mapped to the desktop list")
+                it.copy(isBusy = false, isRefreshing = false).withStatus(StatusMessages.bestLocationNotMapped())
             }
             return
         }
