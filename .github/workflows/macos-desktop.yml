@@ -17,6 +17,7 @@ on:
       - "gradlew"
       - "scripts/prepare_sing_box_macos_runtime.sh"
       - "scripts/setup_macos_signing.sh"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_macos_desktop.sh"
       - "scripts/test_macos_desktop_package.sh"
   pull_request:
@@ -31,6 +32,7 @@ on:
       - "gradlew"
       - "scripts/prepare_sing_box_macos_runtime.sh"
       - "scripts/setup_macos_signing.sh"
+      - "scripts/check_release_hygiene.sh"
       - "scripts/package_macos_desktop.sh"
       - "scripts/test_macos_desktop_package.sh"
 
@@ -43,6 +45,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
