@@ -22,7 +22,6 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
-import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
@@ -49,6 +48,21 @@ class MainViewModel(
     private val _uiState = controller.mutableState
     val uiState: StateFlow<MainUiState> = controller.state
     private var activeBusyJob: Job? = null
+    private val connectionLifecycle = AndroidConnectionLifecycleService(
+        stateProvider = { _uiState.value },
+        updateState = { transform -> _uiState.value = transform(_uiState.value) },
+        setBusy = ::setBusy,
+        updateStatus = repository::updateStatus,
+        snapshot = repository::snapshot,
+        restoreSnapshot = { state, restoreRuntimeArtifacts ->
+            repository.restoreSnapshot(state, restoreRuntimeArtifacts = restoreRuntimeArtifacts)
+        },
+        ensureSelection = repository::ensureSelection,
+        persistSelection = { selection -> repository.persistSelection(selection) },
+        rehydrateSelection = repository::rehydrateSelection,
+        startConnection = { selection -> vpnManager.start(selection) },
+        stopConnection = vpnManager::stop,
+    )
 
     init {
         repository.state.onEach { persisted ->
@@ -523,7 +537,7 @@ class MainViewModel(
                     )
                     return@launch
                 }
-                val applyResult = applyAndPersistSelection(
+                val applyResult = connectionLifecycle.applyAndPersistSelection(
                     selection = selectionResult.getOrThrow(),
                     statusMessage = "Applying updated selected location...",
                 )
@@ -537,7 +551,7 @@ class MainViewModel(
                         ),
                     )
                     val resolvedMessage = if (applyResult.requiresLiveRollback) {
-                        rollbackSelectionChange(previousState, message)
+                        connectionLifecycle.rollbackSelectionChange(previousState, message)
                     } else {
                         repository.restoreSnapshot(previousState)
                         message
@@ -629,7 +643,7 @@ class MainViewModel(
                 if (selectionResult.isFailure) {
                     Result.failure(selectionResult.exceptionOrNull() ?: IllegalStateException("Failed to select location"))
                 } else {
-                    val applyResult = applyAndPersistSelection(
+                    val applyResult = connectionLifecycle.applyAndPersistSelection(
                         selection = selectionResult.getOrThrow(),
                         statusMessage = "Applying selected location...",
                     )
@@ -643,7 +657,7 @@ class MainViewModel(
                             ),
                         )
                         val resolvedMessage = if (applyResult.requiresLiveRollback) {
-                            rollbackSelectionChange(previousState, message)
+                            connectionLifecycle.rollbackSelectionChange(previousState, message)
                         } else {
                             if (applyResult.shouldRestoreSnapshot) {
                                 repository.restoreSnapshot(previousState)
@@ -810,7 +824,7 @@ class MainViewModel(
                 val message = result.fold(
                     onSuccess = { selection ->
                         startAttempted = true
-                        val applyResult = startAndPersistSelection(
+                        val applyResult = connectionLifecycle.startAndPersistSelection(
                             selection = selection,
                             statusMessage = MainCommandLogic.bestSelectionStartMessage(_uiState.value.appMode),
                         )
@@ -821,7 +835,7 @@ class MainViewModel(
                                 remarks = selection.profile.remarks,
                             )
                         } else if (applyResult.requiresLiveRollback) {
-                            rollbackSelectionChange(
+                            connectionLifecycle.rollbackSelectionChange(
                                 previousState = previousState,
                                 baseMessage = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                                     result = applyResult,
@@ -851,7 +865,7 @@ class MainViewModel(
                 withContext(NonCancellable) {
                     val message = when {
                         startAttempted && previousState.isVpnRunning ->
-                            rollbackSelectionChange(previousState, "Location search cancelled.")
+                            connectionLifecycle.rollbackSelectionChange(previousState, "Location search cancelled.")
                         startAttempted -> {
                             val stopResult = vpnManager.stop()
                             stopResult.fold(
@@ -881,120 +895,7 @@ class MainViewModel(
 
     fun toggleVpn() {
         launchTrackedBusyOperation {
-            if (_uiState.value.isVpnRunning) {
-                setBusy(true)
-                try {
-                    val result = vpnManager.stop()
-                    repository.updateStatus(
-                        result.fold(
-                            onSuccess = { MainCommandLogic.stoppedConnectionLabel(_uiState.value.appMode) },
-                            onFailure = {
-                                ConnectionOrchestrationLogic.connectionStopFailureMessage(
-                                    appMode = _uiState.value.appMode,
-                                    errorMessage = it.message,
-                                )
-                            },
-                        ),
-                    )
-                } catch (_: CancellationException) {
-                    withContext(NonCancellable) {
-                        repository.updateStatus(
-                            ConnectionOrchestrationLogic.connectionStopCancelledMessage(
-                                _uiState.value.appMode,
-                            ),
-                        )
-                    }
-                } finally {
-                    setBusy(false)
-                }
-                return@launchTrackedBusyOperation
-            }
-
-            val preconditionError = ConnectionOrchestrationLogic.toggleStartPreconditionError(_uiState.value)
-            if (preconditionError != null) {
-                repository.updateStatus(preconditionError)
-                return@launchTrackedBusyOperation
-            }
-
-            setBusy(true)
-            val previousState = repository.snapshot()
-            var startAttempted = false
-            try {
-                repository.updateStatus(
-                    ConnectionOrchestrationLogic.preparingConnectionMessage(_uiState.value.appMode),
-                )
-
-                val selection = repository.ensureSelection()
-                if (selection.isFailure) {
-                    repository.updateStatus(
-                        ConnectionOrchestrationLogic.ensureSelectionFailureMessage(
-                            appMode = _uiState.value.appMode,
-                            errorMessage = selection.exceptionOrNull()?.message,
-                        ),
-                    )
-                    return@launchTrackedBusyOperation
-                }
-
-                startAttempted = true
-                val applyResult = startAndPersistSelection(
-                    selection = selection.getOrThrow(),
-                    statusMessage = MainCommandLogic.startingConnectionLabel(_uiState.value.appMode),
-                )
-                val message = if (applyResult.isSuccess) {
-                    MainCommandLogic.startedConnectionLabel(_uiState.value.appMode)
-                } else {
-                    ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                        result = applyResult,
-                        texts = ConnectionOrchestrationLogic.startSelectionFailureTexts(
-                            _uiState.value.appMode,
-                        ),
-                    ).let { failureMessage ->
-                        if (applyResult.requiresLiveRollback) {
-                            rollbackStartedVpnAfterPersistFailure(
-                                previousState = previousState,
-                                applyResult.error ?: IllegalStateException(failureMessage),
-                            )
-                        } else if (applyResult.shouldRestoreSnapshot) {
-                            repository.restoreSnapshot(previousState)
-                            failureMessage
-                        } else {
-                            failureMessage
-                        }
-                    }
-                }
-                repository.updateStatus(message)
-            } catch (_: CancellationException) {
-                withContext(NonCancellable) {
-                    if (startAttempted) {
-                        val stopResult = vpnManager.stop()
-                        repository.updateStatus(
-                            stopResult.fold(
-                                onSuccess = {
-                                    repository.restoreSnapshot(previousState)
-                                    ConnectionOrchestrationLogic.connectionStartCancelledMessage(
-                                        _uiState.value.appMode,
-                                    )
-                                },
-                                onFailure = {
-                                    ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
-                                        prefix = "${ConnectionOrchestrationLogic.connectionStartCancelledMessage(_uiState.value.appMode)}.",
-                                        appMode = _uiState.value.appMode,
-                                        errorMessage = it.message,
-                                    )
-                                },
-                            ),
-                        )
-                    } else {
-                        repository.updateStatus(
-                            ConnectionOrchestrationLogic.connectionStartCancelledMessage(
-                                _uiState.value.appMode,
-                            ),
-                        )
-                    }
-                }
-            } finally {
-                setBusy(false)
-            }
+            connectionLifecycle.toggleConnection()
         }
     }
 
@@ -1117,83 +1018,6 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(isBusy = value)
     }
 
-    private suspend fun reapplyVpnIfRunning(
-        selection: com.kardinal.vpncontrol.model.ProfileSelection,
-        statusMessage: String,
-    ): Result<Unit> {
-        if (!_uiState.value.isVpnRunning) {
-            return Result.success(Unit)
-        }
-
-        _uiState.value = _uiState.value.copy(isStartingVpn = true)
-        return try {
-            repository.updateStatus(statusMessage)
-            vpnManager.start(selection)
-        } finally {
-            _uiState.value = _uiState.value.copy(isStartingVpn = false)
-        }
-    }
-
-    private suspend fun startAndPersistSelection(
-        selection: com.kardinal.vpncontrol.model.ProfileSelection,
-        statusMessage: String,
-    ): SelectionCommitResult {
-        _uiState.value = _uiState.value.copy(isStartingVpn = true)
-        return try {
-            repository.updateStatus(statusMessage)
-            val startResult = vpnManager.start(selection)
-            if (startResult.isFailure) {
-                return SelectionCommitResult(
-                    stage = SelectionCommitStage.APPLY_FAILED,
-                    error = startResult.exceptionOrNull(),
-                )
-            }
-            val persistResult = runCatching {
-                repository.persistSelection(selection)
-            }
-            if (persistResult.isFailure) {
-                return SelectionCommitResult(
-                    stage = SelectionCommitStage.PERSIST_FAILED_AFTER_APPLY,
-                    error = persistResult.exceptionOrNull(),
-                )
-            }
-            SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
-        } finally {
-            _uiState.value = _uiState.value.copy(isStartingVpn = false)
-        }
-    }
-
-    private suspend fun applyAndPersistSelection(
-        selection: com.kardinal.vpncontrol.model.ProfileSelection,
-        statusMessage: String,
-    ): SelectionCommitResult {
-        val vpnWasRunning = _uiState.value.isVpnRunning
-        val applyResult = reapplyVpnIfRunning(
-            selection = selection,
-            statusMessage = statusMessage,
-        )
-        if (applyResult.isFailure) {
-            return SelectionCommitResult(
-                stage = SelectionCommitStage.APPLY_FAILED,
-                error = applyResult.exceptionOrNull(),
-            )
-        }
-        val persistResult = runCatching {
-            repository.persistSelection(selection)
-        }
-        if (persistResult.isFailure) {
-            return SelectionCommitResult(
-                stage = if (vpnWasRunning) {
-                    SelectionCommitStage.PERSIST_FAILED_AFTER_APPLY
-                } else {
-                    SelectionCommitStage.PERSIST_FAILED_WITHOUT_APPLY
-                },
-                error = persistResult.exceptionOrNull(),
-            )
-        }
-        return SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
-    }
-
     private suspend fun findBestProfileWithRetries(): Result<com.kardinal.vpncontrol.model.ProfileSelection> {
         return ConnectionOrchestrationLogic.findBestProfileWithRetries(
             retryCount = _uiState.value.validationSettings.retryCount,
@@ -1250,64 +1074,6 @@ class MainViewModel(
                 secondaryTotalMs = benchmark.secondaryTotal,
                 createdAtEpochMillis = System.currentTimeMillis(),
             ),
-        )
-    }
-
-    private suspend fun rollbackSelectionChange(
-        previousState: PersistedState,
-        baseMessage: String,
-    ): String {
-        val restoredSelection = repository.rehydrateSelection(previousState)
-        if (restoredSelection.isSuccess) {
-            val restartResult = vpnManager.start(restoredSelection.getOrThrow())
-            return restartResult.fold(
-                onSuccess = {
-                    repository.restoreSnapshot(previousState, restoreRuntimeArtifacts = false)
-                    "$baseMessage Previous ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} location restored."
-                },
-                onFailure = { restartError ->
-                    val stopResult = vpnManager.stop()
-                    stopResult.fold(
-                        onSuccess = {
-                            repository.restoreSnapshot(previousState)
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} location."} " +
-                                "${MainCommandLogic.stoppedConnectionLabel(_uiState.value.appMode)} to keep state consistent."
-                        },
-                        onFailure = { stopError ->
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} location."} " +
-                                "${stopError.message ?: "Failed to stop the current ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} session."}"
-                        },
-                    )
-                },
-            )
-        }
-
-        val stopResult = vpnManager.stop()
-        return stopResult.fold(
-            onSuccess = {
-                repository.restoreSnapshot(previousState)
-                "$baseMessage ${MainCommandLogic.stoppedConnectionLabel(_uiState.value.appMode)} to keep state consistent."
-            },
-            onFailure = { error ->
-                "$baseMessage ${error.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(_uiState.value.appMode)} session."}"
-            },
-        )
-    }
-
-    private suspend fun rollbackStartedVpnAfterPersistFailure(
-        previousState: PersistedState,
-        error: Throwable,
-    ): String {
-        val baseMessage = error.message ?: "Failed to save the selected location"
-        val stopResult = vpnManager.stop()
-        return stopResult.fold(
-            onSuccess = {
-                repository.restoreSnapshot(previousState)
-                "$baseMessage ${MainCommandLogic.connectionDisplayName(_uiState.value.appMode)} was stopped to keep state consistent."
-            },
-            onFailure = { stopError ->
-                "$baseMessage ${stopError.message ?: "${MainCommandLogic.connectionDisplayName(_uiState.value.appMode)} is still running and may not match the saved selection."}"
-            },
         )
     }
 
