@@ -54,6 +54,14 @@ Subscription refresh behavior patch:
 ./gradlew :app:testDebugUnitTest
 ```
 
+Subscription source add/delete/rename/activation patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :shared:ui:desktopTest
+```
+
 Selection/remap behavior patch:
 
 ```bash

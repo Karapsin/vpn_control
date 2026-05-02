@@ -44,6 +44,7 @@ app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstru
 ```
 
 Android VPN mode uses Android VPN APIs and the bundled Android runtime. App assignment routing is Android-specific and meaningful there.
+Unit tests should cover both empty app-assignment behavior and `include_package` behavior when Android app assignments are present.
 
 ## Desktop Config Shape
 
@@ -54,6 +55,7 @@ desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFac
 ```
 
 Desktop uses the same shared outbound builder as Android for non-custom profiles. It also uses the shared route/DNS builder for common DNS, direct CIDR, domain bypass, and rule-set behavior. Platform factories still own inbounds, direct probe routing, app-assignment behavior where applicable, and runtime-specific wrappers.
+Desktop VPN config must keep custom DNS servers in direct CIDR routing and must only inject direct probe process rules in VPN mode, before DNS hijack rules.
 
 Primary coverage:
 

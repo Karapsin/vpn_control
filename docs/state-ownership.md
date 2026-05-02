@@ -12,6 +12,8 @@ Shared core owns state transitions that do not directly touch Android, desktop, 
 - `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/BenchmarkSearchLogic.kt`
 - `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SelectionWorkflowService.kt`
 - `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/RepositoryWorkflowService.kt`
+- `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/SubscriptionSourceLogic.kt`
+- `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/SelectionMappingLogic.kt`
 
 Add or update shared tests when touching these files:
 
@@ -41,6 +43,8 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopStateStore.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManager.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionManagementService.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopFindBestService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTrayController.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt`
 
