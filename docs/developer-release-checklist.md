@@ -54,6 +54,8 @@ Run the full local release pass from the repository root:
 
 The script first runs `scripts/check_release_hygiene.sh` to fail fast if generated release/runtime artifacts are tracked by Git. It then runs standalone regression tests, builds Android, Linux, macOS when on macOS, and Windows through the local VM, then prints candidate artifacts and SHA-256 checksums.
 
+GitHub Actions package workflows run the same release hygiene check immediately after checkout, before platform setup or packaging starts.
+
 Useful skip flags:
 
 | Flag | Effect |

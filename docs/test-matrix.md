@@ -17,6 +17,7 @@ Use this matrix to choose the smallest useful validation set for a patch. Add mo
 | Windows packaging | `./scripts/package_windows_desktop_vm.sh` when a VM is available, or `.\scripts\package_windows_desktop.ps1` on Windows |
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
 | Documentation only | `git diff --check` |
+| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh` and `git diff --check` |
 
 ## Common Combined Checks
 
@@ -33,6 +34,14 @@ Shared core behavior patch:
 ```bash
 ./gradlew :shared:core:desktopTest
 ./gradlew :app:compileDebugKotlin
+```
+
+Subscription refresh behavior patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :app:testDebugUnitTest
 ```
 
 Desktop runtime patch:

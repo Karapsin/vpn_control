@@ -25,10 +25,11 @@ subscription/import input
 | Persisted state | `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopStateStore.kt` | `shared/storage-api/`, `shared/model/` |
 | Main state/actions | `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt` plus shared controller | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAppService.kt` | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/MainController.kt`, `MainUiState.kt`, `MainUiStateProjector` |
 | Find Best / benchmark selection | `app/src/main/java/com/kardinal/vpncontrol/data/BenchmarkOrchestrator.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyValidationRuntime.kt` | `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/BenchmarkSearchLogic.kt` |
+| Subscription refresh results | `app/src/main/java/com/kardinal/vpncontrol/MainViewModel.kt`, `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionService.kt` | `AutoRefreshLogic`, `SubscriptionRefreshResultLogic` |
 | Config generation | `app/src/main/java/com/kardinal/vpncontrol/data/SingBoxConfigFactory.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt` | shared outbound builder in `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilder.kt`, shared route/DNS builder in `shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt`, model/rules in `shared/model/` |
 | Runtime lifecycle | `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManager.kt` | shared state models |
 | Scheduled refresh | `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutoRefreshScheduler.kt` | `AutoRefreshLogic`, shared refresh/selection logic |
-| Diagnostics | `app/src/main/java/com/kardinal/vpncontrol/data/DiagnosticsExporter.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAppService.kt` | shared formatters and state models |
+| Diagnostics | `app/src/main/java/com/kardinal/vpncontrol/data/DiagnosticsExporter.kt` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopDiagnosticsService.kt`, `DesktopDiagnosticsExporter.kt` | shared formatters and state models |
 
 ## Cross-Cutting Contracts
 
@@ -51,5 +52,6 @@ subscription/import input
 | Android VPN or app assignment routing | `MainViewModel`, Android storage/runtime classes, `SingBoxConfigFactory`, Android instrumentation tests, Android smoke docs. |
 | Desktop runtime, tray, autostart, or reconnect behavior | `DesktopAppService`, `DesktopStateStore`, runtime managers, desktop tests, `docs/desktop-lifecycle.md`, `docs/desktop-runtime-troubleshooting.md`. |
 | Shared UI state/action behavior | `MainController`, `MainUiStateProjector`, shared core tests, Android `MainViewModel`, desktop service integration. |
+| Subscription refresh state/result behavior | `AutoRefreshLogic`, `SubscriptionRefreshResultLogic`, Android manual/background refresh paths, desktop refresh service, shared core tests. |
 | User-visible status or log text | `StatusMessages`, `i18n-status/*.json`, `AppStringsCoverageTest`, `docs/localization.md`. |
 | Native runtime binaries or packaging scripts | `docs/native-runtime-artifacts.md`, release checklist, platform packaging scripts, checksum/update notes. |
