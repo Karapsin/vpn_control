@@ -1,7 +1,6 @@
 package com.kardinal.vpncontrol.data
 
-import com.kardinal.vpncontrol.model.VlessProfile
-import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
@@ -27,7 +26,7 @@ object SingBoxConfigFactory {
     )
 
     fun buildTunConfig(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         dns: DnsSettings,
         routingRules: RoutingRules,
     ): String {
@@ -157,7 +156,7 @@ object SingBoxConfigFactory {
         return root.toString(2)
     }
 
-    fun buildProxyValidationConfig(profile: VlessProfile, httpPort: Int, dns: DnsSettings): String {
+    fun buildProxyValidationConfig(profile: ProxyProfile, httpPort: Int, dns: DnsSettings): String {
         return buildValidationConfig(
             profile = profile,
             listenPort = httpPort,
@@ -168,7 +167,7 @@ object SingBoxConfigFactory {
     }
 
     fun buildProxyOnlyConfig(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         dns: DnsSettings,
         routingRules: RoutingRules,
         listenPort: Int = DEFAULT_PROXY_ONLY_PORT,
@@ -275,7 +274,7 @@ object SingBoxConfigFactory {
     }
 
     private fun buildValidationConfig(
-        profile: VlessProfile,
+        profile: ProxyProfile,
         listenPort: Int,
         dns: DnsSettings,
         inboundType: String,
@@ -338,71 +337,8 @@ object SingBoxConfigFactory {
             .toString(2)
     }
 
-    private fun buildOutbound(profile: VlessProfile): JSONObject {
-        val outbound = when (profile.protocol) {
-            ProxyProtocol.VLESS -> JSONObject()
-                .put("type", "vless")
-                .put("tag", "proxy")
-                .put("server", profile.server)
-                .put("server_port", profile.serverPort)
-                .put("uuid", profile.uuid)
-                .put("packet_encoding", "xudp")
-                .also {
-                    if (profile.flow.isNotBlank()) {
-                        it.put("flow", profile.flow)
-                    }
-                }
-            ProxyProtocol.TROJAN -> JSONObject()
-                .put("type", "trojan")
-                .put("tag", "proxy")
-                .put("server", profile.server)
-                .put("server_port", profile.serverPort)
-                .put("password", profile.password)
-            ProxyProtocol.SHADOWSOCKS -> JSONObject()
-                .put("type", "shadowsocks")
-                .put("tag", "proxy")
-                .put("server", profile.server)
-                .put("server_port", profile.serverPort)
-                .put("method", profile.method)
-                .put("password", profile.password)
-            ProxyProtocol.VMESS -> JSONObject()
-                .put("type", "vmess")
-                .put("tag", "proxy")
-                .put("server", profile.server)
-                .put("server_port", profile.serverPort)
-                .put("uuid", profile.uuid)
-                .put("security", profile.vmessSecurity.ifBlank { "auto" })
-                .put("alter_id", profile.alterId)
-                .put("packet_encoding", "xudp")
-            ProxyProtocol.SOCKS -> JSONObject()
-                .put("type", "socks")
-                .put("tag", "proxy")
-                .put("server", profile.server)
-                .put("server_port", profile.serverPort)
-                .put("version", "5")
-                .also {
-                    if (profile.username.isNotBlank()) {
-                        it.put("username", profile.username)
-                    }
-                    if (profile.password.isNotBlank()) {
-                        it.put("password", profile.password)
-                    }
-                }
-            ProxyProtocol.CUSTOM -> error("Custom configs must be used as direct runtime JSON")
-        }
-
-        if (profile.network.isNotBlank() &&
-            profile.protocol != ProxyProtocol.SHADOWSOCKS &&
-            profile.protocol != ProxyProtocol.SOCKS
-        ) {
-            outbound.put("network", profile.network)
-        } else if (profile.protocol == ProxyProtocol.SHADOWSOCKS && profile.network.isNotBlank() && profile.network != "tcp") {
-            outbound.put("network", profile.network)
-        }
-
-        buildTls(profile)?.let { outbound.put("tls", it) }
-        buildTransport(profile)?.let { outbound.put("transport", it) }
-        return outbound
+    private fun buildOutbound(profile: ProxyProfile): JSONObject {
+        return JSONObject(SingBoxOutboundBuilder.buildOutbound(profile).toString())
     }
 
     private fun buildRuleSetDefinitions(ruleSets: List<RoutingRuleSet>): JSONArray {
@@ -477,54 +413,4 @@ object SingBoxConfigFactory {
         }
     }
 
-    private fun buildTls(profile: VlessProfile): JSONObject? {
-        val shouldEnable = when (profile.protocol) {
-            ProxyProtocol.VLESS -> profile.security.isNotBlank()
-            ProxyProtocol.TROJAN -> true
-            ProxyProtocol.VMESS -> profile.security.isNotBlank()
-            ProxyProtocol.SHADOWSOCKS, ProxyProtocol.SOCKS -> false
-            ProxyProtocol.CUSTOM -> false
-        }
-        if (!shouldEnable) return null
-
-        return JSONObject()
-            .put("enabled", true)
-            .put("server_name", profile.sni.ifBlank { profile.server })
-            .put(
-                "utls",
-                JSONObject()
-                    .put("enabled", true)
-                    .put("fingerprint", profile.fingerprint.ifBlank { "chrome" }),
-            )
-            .also { tls ->
-                if (profile.protocol == ProxyProtocol.VLESS && profile.security == "reality") {
-                    tls.put(
-                        "reality",
-                        JSONObject()
-                            .put("enabled", true)
-                            .put("public_key", profile.publicKey)
-                            .put("short_id", profile.shortId),
-                    )
-                }
-            }
-    }
-
-    private fun buildTransport(profile: VlessProfile): JSONObject? {
-        return when (profile.network) {
-            "ws" -> JSONObject().put("type", "ws").also { transport ->
-                if (profile.path.isNotBlank()) {
-                    transport.put("path", profile.path)
-                }
-                if (profile.hostHeader.isNotBlank()) {
-                    transport.put("headers", JSONObject().put("Host", profile.hostHeader))
-                }
-            }
-            "grpc" -> JSONObject().put("type", "grpc").also { transport ->
-                if (profile.serviceName.isNotBlank()) {
-                    transport.put("service_name", profile.serviceName)
-                }
-            }
-            else -> null
-        }
-    }
 }

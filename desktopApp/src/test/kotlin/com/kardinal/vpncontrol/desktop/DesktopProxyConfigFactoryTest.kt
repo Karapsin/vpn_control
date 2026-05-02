@@ -2,7 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.VlessProfile
+import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -128,7 +128,7 @@ class DesktopProxyConfigFactoryTest {
 
     @Test
     fun resolvedValidationServerPreservesImplicitTlsAndWebSocketHosts() {
-        val profile = VlessProfile(
+        val profile = ProxyProfile(
             protocol = ProxyProtocol.VLESS,
             remarks = "VLESS WS TLS",
             server = "edge.example.net",
@@ -171,8 +171,8 @@ class DesktopProxyConfigFactoryTest {
         assertEquals("edge.example.net", transportHeaders.getValue("Host").jsonPrimitive.content)
     }
 
-    private fun testProfile(): VlessProfile {
-        return VlessProfile(
+    private fun testProfile(): ProxyProfile {
+        return ProxyProfile(
             protocol = ProxyProtocol.SOCKS,
             remarks = "Test SOCKS",
             server = "127.0.0.1",
