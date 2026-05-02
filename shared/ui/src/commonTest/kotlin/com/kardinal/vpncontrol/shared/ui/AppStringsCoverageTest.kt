@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
@@ -40,6 +41,32 @@ class AppStringsCoverageTest {
         assertTrue(
             missing.isEmpty(),
             "Missing generated status JSON catalogs: $missing",
+        )
+    }
+
+    @Test
+    fun generatedStatusJsonCatalogHasStructuredTemplatesForEveryStatusKey() {
+        val englishStructured = generatedStatusTranslations
+            .getValue(AppLanguage.ENGLISH)
+            .structured
+        val missingEnglish = StatusMessageKey.entries.filterNot { key ->
+            key.name in englishStructured ||
+                englishStructured.keys.any { candidate -> candidate.startsWith("${key.name}.") }
+        }
+        assertTrue(
+            missingEnglish.isEmpty(),
+            "English status catalog is missing structured templates for keys: $missingEnglish",
+        )
+
+        val requiredKeys = englishStructured.keys
+        val missingByLanguage = generatedStatusTranslations.flatMap { (language, catalog) ->
+            requiredKeys
+                .filterNot { it in catalog.structured }
+                .map { "$language: $it" }
+        }
+        assertTrue(
+            missingByLanguage.isEmpty(),
+            "Status catalogs are missing structured templates: $missingByLanguage",
         )
     }
 

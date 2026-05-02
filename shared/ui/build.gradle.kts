@@ -38,10 +38,11 @@ val generateI18nCatalog by tasks.registering {
         }
 
         val parser = JsonSlurper()
-        val targetFile = outputDir.get().file(
-            "com/kardinal/vpncontrol/shared/ui/GeneratedI18nCatalog.kt",
-        ).asFile
-        targetFile.parentFile.mkdirs()
+        val packageDir = outputDir.get().dir("com/kardinal/vpncontrol/shared/ui").asFile
+        packageDir.deleteRecursively()
+        packageDir.mkdirs()
+
+        fun generatedFile(name: String): java.io.File = packageDir.resolve(name)
 
         fun String.kotlinLiteral(): String = buildString {
             append('"')
@@ -120,7 +121,7 @@ val generateI18nCatalog by tasks.registering {
             return replace(Regex("[^A-Za-z0-9]"), "_")
         }
 
-        targetFile.writeText(
+        generatedFile("GeneratedI18nTypes.kt").writeText(
             buildString {
                 appendLine("package com.kardinal.vpncontrol.shared.ui")
                 appendLine()
@@ -158,50 +159,57 @@ val generateI18nCatalog by tasks.registering {
                 appendLine("internal data class GeneratedStatusTranslations(")
                 appendLine("    val dynamic: GeneratedDynamicStatusWords,")
                 appendLine("    val benchmark: GeneratedBenchmarkWords,")
+                appendLine("    val structured: Map<String, String>,")
                 appendLine("    val freeformReplacements: List<Pair<String, String>>,")
                 appendLine("    val legacyExact: Map<String, String>,")
                 appendLine("    val legacyReplacements: List<Pair<String, String>>,")
                 appendLine(")")
                 appendLine()
-                appendLine("private fun appLanguageForGeneratedCatalog(code: String, catalog: String): AppLanguage {")
+                appendLine("internal fun appLanguageForGeneratedCatalog(code: String, catalog: String): AppLanguage {")
                 appendLine("    return requireNotNull(AppLanguage.entries.firstOrNull { it.code == code }) {")
                 appendLine("        \"No AppLanguage entry exists for i18n catalog \$catalog\"")
                 appendLine("    }")
                 appendLine("}")
                 appendLine()
-                jsonFiles.forEach { file ->
-                    val code = file.nameWithoutExtension
-                    @Suppress("UNCHECKED_CAST")
-                    val entries = parser.parse(file) as Map<String, Any?>
-                    appendLine("private fun uiTextTranslations_${code.catalogFunctionSuffix()}(): Map<UiText, String> = mapOf(")
+            },
+            Charsets.UTF_8,
+        )
+
+        jsonFiles.forEach { file ->
+            val code = file.nameWithoutExtension
+            @Suppress("UNCHECKED_CAST")
+            val entries = parser.parse(file) as Map<String, Any?>
+            generatedFile("GeneratedUiText_${code.catalogFunctionSuffix()}.kt").writeText(
+                buildString {
+                    appendLine("package com.kardinal.vpncontrol.shared.ui")
+                    appendLine()
+                    appendLine("internal fun uiTextTranslations_${code.catalogFunctionSuffix()}(): Map<UiText, String> = mapOf(")
                     entries.forEach { (key, value) ->
                         appendLine("    UiText.$key to ${value.toString().kotlinLiteral()},")
                     }
                     appendLine(")")
+                },
+                Charsets.UTF_8,
+            )
+        }
+
+        statusJsonFiles.forEach { file ->
+            val code = file.nameWithoutExtension
+            val root = parseObject(file)
+            val dynamic = root.objectValue("dynamic", file)
+            val benchmark = root.objectValue("benchmark", file)
+            val statuses = benchmark.stringMapValue("statuses", file)
+            val structured = root.stringMapValue("structured", file)
+            val freeformReplacements = root.pairsValue("freeformReplacements", file)
+                .sortedByDescending { it.first.length }
+            val legacyExact = root.pairsValue("legacyExact", file).toMap()
+            val legacyReplacements = root.pairsValue("legacyReplacements", file)
+                .sortedByDescending { it.first.length }
+            generatedFile("GeneratedStatus_${code.catalogFunctionSuffix()}.kt").writeText(
+                buildString {
+                    appendLine("package com.kardinal.vpncontrol.shared.ui")
                     appendLine()
-                }
-                appendLine("internal val generatedUiTextTranslations: Map<AppLanguage, Map<UiText, String>> = mapOf(")
-                jsonFiles.forEach { file ->
-                    val code = file.nameWithoutExtension
-                    appendLine(
-                        "    appLanguageForGeneratedCatalog(${code.kotlinLiteral()}, \"UI ${code}\") " +
-                            "to uiTextTranslations_${code.catalogFunctionSuffix()}(),",
-                    )
-                }
-                appendLine(")")
-                appendLine()
-                statusJsonFiles.forEach { file ->
-                    val code = file.nameWithoutExtension
-                    val root = parseObject(file)
-                    val dynamic = root.objectValue("dynamic", file)
-                    val benchmark = root.objectValue("benchmark", file)
-                    val statuses = benchmark.stringMapValue("statuses", file)
-                    val freeformReplacements = root.pairsValue("freeformReplacements", file)
-                        .sortedByDescending { it.first.length }
-                    val legacyExact = root.pairsValue("legacyExact", file).toMap()
-                    val legacyReplacements = root.pairsValue("legacyReplacements", file)
-                        .sortedByDescending { it.first.length }
-                    appendLine("private fun statusTranslations_${code.catalogFunctionSuffix()}(): GeneratedStatusTranslations = GeneratedStatusTranslations(")
+                    appendLine("internal fun statusTranslations_${code.catalogFunctionSuffix()}(): GeneratedStatusTranslations = GeneratedStatusTranslations(")
                     appendLine("    dynamic = GeneratedDynamicStatusWords(")
                     appendLine("        findingSubscription = ${dynamic.stringValue("findingSubscription", file).kotlinLiteral()},")
                     appendLine("        findingSaved = ${dynamic.stringValue("findingSaved", file).kotlinLiteral()},")
@@ -229,6 +237,9 @@ val generateI18nCatalog by tasks.registering {
                     appendStringMap(statuses, "        ")
                     appendLine(",")
                     appendLine("    ),")
+                    append("    structured = ")
+                    appendStringMap(structured, "    ")
+                    appendLine(",")
                     append("    freeformReplacements = ")
                     appendPairList(freeformReplacements, "    ")
                     appendLine(",")
@@ -240,13 +251,33 @@ val generateI18nCatalog by tasks.registering {
                     appendLine(",")
                     appendLine(")")
                     appendLine()
-                }
+                },
+                Charsets.UTF_8,
+            )
+        }
+
+        generatedFile("GeneratedI18nCatalog.kt").writeText(
+            buildString {
+                appendLine("package com.kardinal.vpncontrol.shared.ui")
+                appendLine()
+                appendLine("import com.kardinal.vpncontrol.model.AppLanguage")
+                appendLine()
                 appendLine("internal val generatedStatusTranslations: Map<AppLanguage, GeneratedStatusTranslations> = mapOf(")
                 statusJsonFiles.forEach { file ->
                     val code = file.nameWithoutExtension
                     appendLine(
                         "    appLanguageForGeneratedCatalog(${code.kotlinLiteral()}, \"status ${code}\") " +
                             "to statusTranslations_${code.catalogFunctionSuffix()}(),",
+                    )
+                }
+                appendLine(")")
+                appendLine()
+                appendLine("internal val generatedUiTextTranslations: Map<AppLanguage, Map<UiText, String>> = mapOf(")
+                jsonFiles.forEach { file ->
+                    val code = file.nameWithoutExtension
+                    appendLine(
+                        "    appLanguageForGeneratedCatalog(${code.kotlinLiteral()}, \"UI ${code}\") " +
+                            "to uiTextTranslations_${code.catalogFunctionSuffix()}(),",
                     )
                 }
                 appendLine(")")

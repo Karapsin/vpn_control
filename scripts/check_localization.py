@@ -12,15 +12,42 @@ LANGUAGE_MANIFEST = ROOT / "shared/model/src/commonMain/resources/languages.json
 UI_CATALOG_DIR = ROOT / "shared/ui/src/commonMain/resources/i18n"
 STATUS_CATALOG_DIR = ROOT / "shared/ui/src/commonMain/resources/i18n-status"
 
-PLACEHOLDER_RE = re.compile(r"\{[A-Za-z0-9_]+\}")
+PLACEHOLDER_RE = re.compile(r"\{[^{}]+\}")
 ALLOWED_IDENTICAL = {
     "",
     "VPN",
     "Proxy",
+    "proxy",
+    "QR",
     "TCP",
+    "tcp",
     "OK",
+    "ok",
     "ms",
     "VPN Control",
+}
+ALLOWED_IDENTICAL_UI_KEYS = {
+    "BYTES_COUNT",
+    "CLIPBOARD",
+    "NAME",
+    "PROXY",
+    "QR",
+    "SERVER",
+    "SESSION",
+    "SETTINGS_LANGUAGE_SYSTEM",
+    "STATUS",
+    "SYSTEM_APP",
+}
+ALLOWED_IDENTICAL_STATUS_ITEMS = {
+    "benchmark.tcp",
+    "benchmark.statuses.error",
+    "benchmark.statuses.manual",
+    "benchmark.statuses.ok",
+    "benchmark.statuses.tcp_error",
+    "benchmark.statuses.tcp_timeout",
+    "dynamic.refreshIntervalHours",
+    "dynamic.refreshIntervalHoursMinutes",
+    "dynamic.refreshIntervalMinutes",
 }
 
 
@@ -33,6 +60,22 @@ def load_json(path: Path) -> Any:
 
 def placeholders(value: str) -> set[str]:
     return set(PLACEHOLDER_RE.findall(value))
+
+
+def unchanged_ui_value_is_allowed(key: str, value: str) -> bool:
+    return value in ALLOWED_IDENTICAL or key in ALLOWED_IDENTICAL_UI_KEYS
+
+
+def unchanged_status_value_is_allowed(item_name: str, value: str) -> bool:
+    if value in ALLOWED_IDENTICAL:
+        return True
+    if item_name in ALLOWED_IDENTICAL_STATUS_ITEMS:
+        return True
+    if not item_name.startswith("structured."):
+        return False
+    literal = PLACEHOLDER_RE.sub("", value).strip()
+    literal = re.sub(r"[\s:.,;!?()\[\]{}•|/\\-]+", "", literal)
+    return literal in {"", "xhwid"}
 
 
 def language_codes() -> list[str]:
@@ -98,7 +141,7 @@ def validate_ui_catalog(code: str, english: dict[str, str], strict: bool) -> tup
                 f"{path.relative_to(ROOT)} key {key} placeholder mismatch: "
                 f"{sorted(placeholders(source))} != {sorted(placeholders(target))}",
             )
-        if code != "en" and target == source and target not in ALLOWED_IDENTICAL:
+        if code != "en" and target == source and not unchanged_ui_value_is_allowed(key, target):
             warnings.append(f"{path.relative_to(ROOT)} key {key} is unchanged from English")
         else:
             translated += 1
@@ -142,6 +185,11 @@ def status_items(catalog: dict[str, Any]) -> list[tuple[str, str, str]]:
             for key, value in statuses.items():
                 if isinstance(value, str):
                     items.append((f"benchmark.statuses.{key}", key, value))
+    structured = catalog.get("structured", {})
+    if isinstance(structured, dict):
+        for key, value in structured.items():
+            if isinstance(value, str):
+                items.append((f"structured.{key}", value, value))
     for section_name in ("freeformReplacements", "legacyExact", "legacyReplacements"):
         section = catalog.get(section_name)
         if isinstance(section, list):
@@ -168,7 +216,7 @@ def validate_status_catalog(
 
     errors = []
     warnings = []
-    for section in ("dynamic", "benchmark", "freeformReplacements", "legacyExact", "legacyReplacements"):
+    for section in ("dynamic", "benchmark", "structured", "freeformReplacements", "legacyExact", "legacyReplacements"):
         if section not in catalog:
             errors.append(f"{path.relative_to(ROOT)} missing section {section}")
 
@@ -200,6 +248,32 @@ def validate_status_catalog(
             for key in sorted(extra):
                 errors.append(f"{path.relative_to(ROOT)} contains unknown benchmark status {key}")
 
+    structured = catalog.get("structured")
+    english_structured = english.get("structured")
+    if not isinstance(structured, dict):
+        errors.append(f"{path.relative_to(ROOT)} structured must be an object")
+    elif not isinstance(english_structured, dict):
+        errors.append("English status catalog structured section must be an object")
+    else:
+        missing = set(english_structured) - set(structured)
+        extra = set(structured) - set(english_structured)
+        for key in sorted(missing):
+            errors.append(f"{path.relative_to(ROOT)} missing structured status {key}")
+        for key in sorted(extra):
+            errors.append(f"{path.relative_to(ROOT)} contains unknown structured status {key}")
+        for key in sorted(set(english_structured) & set(structured)):
+            source = english_structured[key]
+            target = structured[key]
+            if not isinstance(source, str):
+                errors.append(f"English status catalog structured.{key} must be a string")
+            elif not isinstance(target, str):
+                errors.append(f"{path.relative_to(ROOT)} structured.{key} must be a string")
+            elif placeholders(source) != placeholders(target):
+                errors.append(
+                    f"{path.relative_to(ROOT)} structured.{key} placeholder mismatch: "
+                    f"{sorted(placeholders(source))} != {sorted(placeholders(target))}",
+                )
+
     for section_name in ("freeformReplacements", "legacyExact", "legacyReplacements"):
         try:
             pairs = replacement_pairs(catalog.get(section_name), path, section_name)
@@ -216,7 +290,7 @@ def validate_status_catalog(
     for item_name, source, target in status_items(catalog):
         total += 1
         english_target = english_items.get(item_name, source)
-        if code != "en" and target == english_target and target not in ALLOWED_IDENTICAL:
+        if code != "en" and target == english_target and not unchanged_status_value_is_allowed(item_name, target):
             warnings.append(f"{path.relative_to(ROOT)} {item_name} is unchanged from English")
         else:
             translated += 1

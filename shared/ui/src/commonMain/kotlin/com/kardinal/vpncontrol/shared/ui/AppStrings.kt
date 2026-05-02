@@ -5,12 +5,10 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
-import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.StructuredStatusMessage
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import com.kardinal.vpncontrol.model.effective
 import com.kardinal.vpncontrol.model.subscriptionRefreshIntervalMinutes
 import kotlinx.datetime.Instant
@@ -359,299 +357,133 @@ private fun localizedStructuredStatusMessage(
     language: AppLanguage,
     status: StructuredStatusMessage,
 ): String {
-    val english = englishStructuredStatusMessage(status)
-    if (language == AppLanguage.ENGLISH || language == AppLanguage.SYSTEM) return english
-    localizedDesktopSettingsStatusMessage(language, status)?.let { return it }
-    localizedLocationStatusMessage(language, status)?.let { return it }
-    return localizedGeneratedStatusMessage(language, english) ?: english
+    val resolvedLanguage = if (language == AppLanguage.SYSTEM) AppLanguage.ENGLISH else language
+    val keys = structuredStatusTemplateKeys(status)
+    val template = keys.firstNotNullOfOrNull { key ->
+        generatedStatusTranslations[resolvedLanguage]?.structured?.get(key)
+    } ?: keys.firstNotNullOfOrNull { key ->
+        generatedStatusTranslations[AppLanguage.ENGLISH]?.structured?.get(key)
+    } ?: status.key.name
+    return renderStructuredStatusTemplate(resolvedLanguage, status, template)
 }
 
-private fun localizedDesktopSettingsStatusMessage(
+internal fun structuredStatusTemplateKeys(status: StructuredStatusMessage): List<String> {
+    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
+    fun mode(index: Int): String = if (arg(index).isProxyMode()) "PROXY_ONLY" else "VPN"
+    fun profileSource(index: Int): String =
+        if (arg(index).equals("CURRENT_LOCATIONS", ignoreCase = true)) "CURRENT_LOCATIONS" else "SUBSCRIPTION"
+    fun bool(index: Int): String = if (arg(index).equals("true", ignoreCase = true)) "TRUE" else "FALSE"
+    fun modeVariantKey() = "${status.key.name}.${mode(0)}"
+
+    val specific = when (status.key) {
+        StatusMessageKey.LANGUAGE_SET ->
+            if (arg(0).isBlank()) "${status.key.name}.SYSTEM" else null
+        StatusMessageKey.STARTING_CONNECTION,
+        StatusMessageKey.STARTING_CONNECTION_WITH_BEST,
+        StatusMessageKey.CONNECTION_STARTED,
+        StatusMessageKey.CONNECTION_STOPPED,
+        StatusMessageKey.CONNECTION_READY_ON_COMPUTER,
+        StatusMessageKey.RUNTIME_MODE,
+        StatusMessageKey.PREFLIGHT_PASSED,
+        StatusMessageKey.PREFLIGHT_FAILED,
+        StatusMessageKey.SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED,
+        StatusMessageKey.LOCATION_REMOVAL_ROLLBACK_FAILED,
+        StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED,
+        StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED,
+        StatusMessageKey.ROUTING_RULES_IMPORTED_RESTART_REQUIRED,
+        StatusMessageKey.APP_MODE_CHANGED,
+        StatusMessageKey.CONNECTION_STARTED_ON_TARGET,
+        StatusMessageKey.CONNECTION_START_FAILED,
+        StatusMessageKey.CONNECTION_STOP_FAILED,
+        StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
+        StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED -> modeVariantKey()
+        StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->
+            if (arg(0).isBlank()) "${status.key.name}.EMPTY" else null
+        StatusMessageKey.PROFILE_SOURCE_MODE,
+        StatusMessageKey.PROFILE_SOURCE_SET -> "${status.key.name}.${profileSource(0)}"
+        StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED -> "${status.key.name}.${arg(0)}.${bool(1)}"
+        StatusMessageKey.CONNECTION_MODE_SET -> "${status.key.name}.${mode(0)}"
+        StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED,
+        StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED ->
+            if (arg(0).isBlank()) null else "${status.key.name}.DETAIL"
+        StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE -> "${status.key.name}.${mode(0)}.${mode(1)}"
+        else -> null
+    }
+    return listOfNotNull(specific, status.key.name)
+}
+
+private val structuredPlaceholderRegex = Regex("\\{([^{}]+)}")
+
+private fun renderStructuredStatusTemplate(
     language: AppLanguage,
     status: StructuredStatusMessage,
+    template: String,
+): String = structuredPlaceholderRegex.replace(template) { match ->
+    val token = match.groupValues[1]
+    renderStructuredPlaceholder(language, status, token) ?: match.value
+}
+
+private fun renderStructuredPlaceholder(
+    language: AppLanguage,
+    status: StructuredStatusMessage,
+    token: String,
 ): String? {
+    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
+    return token.toIntOrNull()?.let { arg(it) } ?: when (token) {
+        "refreshInterval" -> structuredRefreshInterval(language, status)
+        "checkCount" -> structuredCheckCount(language, arg(1).toIntOrNull() ?: 0)
+        "valueOrNotReady" -> arg(0).ifBlank {
+            localizedGeneratedStatusMessage(language, "not ready") ?: "not ready"
+        }
+        else -> null
+    } ?: renderStructuredNamedPlaceholder(language, status, token)
+}
+
+private fun renderStructuredNamedPlaceholder(
+    language: AppLanguage,
+    status: StructuredStatusMessage,
+    token: String,
+): String? {
+    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
     fun ui(key: UiText): String =
         generatedUiTextTranslations[language]?.get(key)
             ?: generatedUiTextTranslations[AppLanguage.ENGLISH]?.get(key)
             ?: key.name
-
-    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
     fun modeLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY_ONLY) else ui(UiText.VPN)
     fun connectionLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY) else ui(UiText.VPN)
-    fun withDetail(base: String, detail: String): String =
-        if (detail.isBlank()) base else "$base: $detail"
 
-    return when (status.key) {
-        StatusMessageKey.START_ON_LOGIN_ENABLED ->
-            "${ui(UiText.SETTINGS_START_ON_LOGIN)}: ${ui(UiText.SETTINGS_ENABLED)}"
-        StatusMessageKey.START_ON_LOGIN_DISABLED ->
-            "${ui(UiText.SETTINGS_START_ON_LOGIN)}: ${ui(UiText.SETTINGS_DISABLED)}"
-        StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->
-            withDetail(
-                localizedGeneratedStatusMessage(language, "Failed to update startup setting")
-                    ?: "Failed to update startup setting",
-                arg(0),
-            )
-        StatusMessageKey.SUBSCRIPTION_HWID_CLEARED ->
-            "x-hwid: ${ui(UiText.SETTINGS_DISABLED)}"
-        StatusMessageKey.SUBSCRIPTION_HWID_SAVED ->
-            "x-hwid: ${ui(UiText.SETTINGS_ENABLED)}"
-        StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED ->
-            withDetail(
-                localizedGeneratedStatusMessage(language, "Failed to save refresh settings")
-                    ?: "Failed to save refresh settings",
-                arg(0),
-            )
-        StatusMessageKey.APP_MODE_CHANGED ->
-            "${ui(UiText.SETTINGS_VPN_PROXY_MODE)}: ${modeLabel(arg(0))}"
-        StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE ->
-            "${connectionLabel(arg(0))} ${ui(UiText.STOPPED)}. ${ui(UiText.SETTINGS_VPN_PROXY_MODE)}: ${modeLabel(arg(1))}"
+    val parts = token.split(':')
+    return when (parts.firstOrNull()) {
+        "ui" -> parts.getOrNull(1)
+            ?.let { runCatching { UiText.valueOf(it) }.getOrNull() }
+            ?.let(::ui)
+        "modeLabel" -> parts.getOrNull(1)?.toIntOrNull()?.let { modeLabel(arg(it)) }
+        "connectionLabel" -> parts.getOrNull(1)?.toIntOrNull()?.let { connectionLabel(arg(it)) }
         else -> null
     }
 }
 
-private fun localizedLocationStatusMessage(
+private fun structuredRefreshInterval(
     language: AppLanguage,
     status: StructuredStatusMessage,
-): String? {
-    val words = generatedStatusTranslations[language]?.dynamic ?: return null
-    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
-    return when (status.key) {
-        StatusMessageKey.SELECT_LOCATION_FIRST -> words.selectLocationFirst
-        StatusMessageKey.CHECKING_LOCATION -> words.checkingLocation.replace("{name}", arg(0))
-        StatusMessageKey.TESTING_LOCATION -> words.testingLocation.replace("{name}", arg(0))
-        StatusMessageKey.LOCATION_CHECK_CANCELLED -> words.locationCheckCancelled
-        StatusMessageKey.NO_LOCATIONS_TO_EXPORT -> words.noLocationsToExport
-        else -> null
-    }
-}
-
-private fun englishStructuredStatusMessage(status: StructuredStatusMessage): String {
-    fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
-    return when (status.key) {
-        StatusMessageKey.IDLE -> "Idle"
-        StatusMessageKey.LANGUAGE_SET -> "Language set to ${arg(0).ifBlank { "system default" }}"
-        StatusMessageKey.SUBSCRIPTION_AUTO_REFRESH_SET ->
-            englishRefreshStatus(arg(0), arg(1).toIntOrNull())
-        StatusMessageKey.VALIDATION_SETTINGS_SAVED ->
-            "Validation settings saved: ${arg(0)} • ${arg(1)} • batch ${arg(2)} • retries ${arg(3)}"
-        StatusMessageKey.CUSTOM_DNS_SAVED -> "Custom DNS saved"
-        StatusMessageKey.CUSTOM_DNS_DISABLED -> "Custom DNS disabled"
-        StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION ->
-            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.findingSubscription
-                ?: "Finding the best location from the subscription..."
-        StatusMessageKey.FIND_BEST_FROM_SAVED ->
-            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.findingSaved
-                ?: "Finding the best location from saved locations..."
-        StatusMessageKey.STARTING_CONNECTION ->
-            englishStartingConnection(arg(0), withBestLocation = false)
-        StatusMessageKey.STARTING_CONNECTION_WITH_BEST ->
-            englishStartingConnection(arg(0), withBestLocation = true)
-        StatusMessageKey.CONNECTION_STARTED ->
-            if (arg(0).isProxyMode()) "Proxy started" else "VPN started"
-        StatusMessageKey.CONNECTION_STOPPED ->
-            if (arg(0).isProxyMode()) "Proxy stopped" else "VPN stopped"
-        StatusMessageKey.CONNECTION_READY_ON_COMPUTER ->
-            if (arg(0).isProxyMode()) "Proxy ready on this computer" else "VPN ready on this computer"
-        StatusMessageKey.DESKTOP_APP_INITIALIZED -> "App initialized"
-        StatusMessageKey.RUNTIME_MODE -> "Runtime mode: ${englishConnectionDisplay(arg(0))}"
-        StatusMessageKey.LOCAL_PROXY -> "Local proxy: ${arg(0)}"
-        StatusMessageKey.RUNTIME_LOG -> "Runtime log: ${arg(0)}"
-        StatusMessageKey.PREFLIGHT_PASSED -> "${englishConnectionDisplay(arg(0))} mode preflight passed"
-        StatusMessageKey.PREFLIGHT_FAILED -> {
-            val failedChecks = arg(1).toIntOrNull() ?: 0
-            val checks = "$failedChecks check${if (failedChecks == 1) "" else "s"}"
-            "${englishConnectionDisplay(arg(0))} mode preflight failed: $checks"
-        }
-        StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY -> "Desktop VPN capability: ready"
-        StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->
-            "Desktop VPN capability: ${arg(0).ifBlank { "not ready" }}"
-        StatusMessageKey.NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING -> "No locations available for benchmarking"
-        StatusMessageKey.BEST_LOCATION_SEARCH_TIMED_OUT -> "Best location search timed out; keeping the current connection"
-        StatusMessageKey.NO_SUITABLE_LOCATION_FOUND -> "No suitable location found"
-        StatusMessageKey.BEST_LOCATION_NOT_MAPPED -> "Best location could not be mapped to the desktop list"
-        StatusMessageKey.ACTIVATED_ALL_SUBSCRIPTIONS -> "Activated all subscriptions"
-        StatusMessageKey.ACTIVATED_SUBSCRIPTION -> "Activated ${arg(0)}"
-        StatusMessageKey.PROFILE_SOURCE_MODE -> "Profile source mode: ${arg(0)}"
-        StatusMessageKey.SUBSCRIPTION_NAME_RESET -> "Subscription name reset"
-        StatusMessageKey.SUBSCRIPTION_NAME_SAVED -> "Subscription name saved"
-        StatusMessageKey.SUBSCRIPTION_DELETED -> "Subscription deleted"
-        StatusMessageKey.SELECT_LOCATION_FIRST ->
-            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.selectLocationFirst
-                ?: "Select a location first"
-        StatusMessageKey.CHECKING_LOCATION ->
-            (generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.checkingLocation
-                ?: "Checking {name}...").replace("{name}", arg(0))
-        StatusMessageKey.TESTING_LOCATION ->
-            (generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.testingLocation
-                ?: "Testing {name}...").replace("{name}", arg(0))
-        StatusMessageKey.LOCATION_CHECK_CANCELLED ->
-            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.locationCheckCancelled
-                ?: "Location check cancelled"
-        StatusMessageKey.NO_LOCATIONS_TO_EXPORT ->
-            generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic?.noLocationsToExport
-                ?: "No locations to export"
-        StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED ->
-            englishUiSettingVisibility(arg(0), arg(1).equals("true", ignoreCase = true))
-        StatusMessageKey.SUBSCRIPTION_LOCATION_SAVE_READ_ONLY ->
-            "Subscription locations are read-only. Switch to Saved Locations to save edits."
-        StatusMessageKey.INVALID_LOCATION_CONFIG -> "Invalid location config"
-        StatusMessageKey.LOCATION_ALREADY_SAVED -> "Location already saved: ${arg(0)}"
-        StatusMessageKey.LOCATION_EDIT_UNAVAILABLE -> "Location to edit is no longer available"
-        StatusMessageKey.LOCATION_ADDED -> "Location added: ${arg(0)}"
-        StatusMessageKey.LOCATION_UPDATED_AND_MERGED -> "Location updated and merged: ${arg(0)}"
-        StatusMessageKey.LOCATION_UPDATED -> "Location updated: ${arg(0)}"
-        StatusMessageKey.SUBSCRIPTION_LOCATION_DELETE_READ_ONLY ->
-            "Subscription locations are read-only. Switch to Saved Locations to delete them."
-        StatusMessageKey.SELECTED_LOCATION_REMOVED -> "Selected location removed: ${arg(0)}"
-        StatusMessageKey.LOCATION_REMOVED -> "Location removed: ${arg(0)}"
-        StatusMessageKey.SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED ->
-            "Selected location removed. ${englishConnectionDisplay(arg(0))} stopped: ${arg(1)}"
-        StatusMessageKey.LOCATION_REMOVAL_ROLLBACK_FAILED ->
-            "Location removal rolled back because the ${englishConnectionNoun(arg(0))} could not be stopped"
-        StatusMessageKey.IMPORT_LOCATIONS_BLOCKED -> "Switch to Saved Locations to import locations"
-        StatusMessageKey.IMPORT_LOCATIONS_FAILED -> "Failed to import locations"
-        StatusMessageKey.LOCATIONS_IMPORTED -> "Locations imported"
-        StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE ->
-            "Locations imported. Selected location is no longer available"
-        StatusMessageKey.LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED ->
-            "Locations imported. Selected location is no longer available, ${englishConnectionNounLower(arg(0))} stopped"
-        StatusMessageKey.LOCATIONS_IMPORT_ROLLBACK_FAILED ->
-            "Locations import rolled back because the ${englishConnectionNoun(arg(0))} could not be stopped"
-        StatusMessageKey.CLIPBOARD_EMPTY -> "Clipboard is empty"
-        StatusMessageKey.CLIPBOARD_READ_FAILED -> "Clipboard read failed"
-        StatusMessageKey.SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE -> "Subscription text loaded into the Profile tab"
-        StatusMessageKey.PROFILE_SOURCE_SET ->
-            if (arg(0) == ProfileSourceMode.SUBSCRIPTION.name) {
-                "Profile source set to subscription"
-            } else {
-                "Profile source set to saved locations"
-            }
-        StatusMessageKey.DISCONNECT_FIRST_CHANGE_CONNECTION_MODE -> "Disconnect first to change connection mode"
-        StatusMessageKey.CONNECTION_MODE_SET ->
-            if (arg(0).isProxyMode()) "Connection mode set to proxy only" else "Connection mode set to VPN"
-        StatusMessageKey.RULE_SET_REMOVED -> "Rule-set removed"
-        StatusMessageKey.SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS ->
-            "Switch to Saved Locations to add locations manually"
-        StatusMessageKey.HISTORY_ENTRY_DELETED -> "History entry deleted"
-        StatusMessageKey.SELECTED_LOCATION_UNCHANGED -> "Selected location unchanged: ${arg(0)}"
-        StatusMessageKey.SELECTED_LOCATION_SET -> "Selected location set: ${arg(0)}"
-        StatusMessageKey.LOCATION_CHECKED -> "Location checked: ${arg(0)}"
-        StatusMessageKey.LOCATION_CHECK_FAILED -> "Location check failed"
-        StatusMessageKey.LOCATION_EDITED -> "Edited location #${arg(0)}"
-        StatusMessageKey.SAMPLE_RULE_SET_ADDED -> "Added a sample rule-set"
-        StatusMessageKey.RULE_SET_DELETED -> "Deleted rule-set ${arg(0)}"
-        StatusMessageKey.ROUTING_RULES_SAVED -> "Routing rules saved"
-        StatusMessageKey.ROUTING_RULES_IMPORTED -> "Routing rules imported"
-        StatusMessageKey.ROUTING_RULES_IMPORTED_RESTART_REQUIRED ->
-            "Routing rules imported. Restart ${englishConnectionNoun(arg(0))} to apply"
-        StatusMessageKey.ROUTING_RULES_IMPORT_FAILED -> "Failed to import routing rules"
-        StatusMessageKey.ROUTING_RULES_COPIED_TO_CLIPBOARD -> "Routing rules copied to clipboard"
-        StatusMessageKey.ROUTING_RULES_EXPORT_CANCELED -> "Routing rules export canceled"
-        StatusMessageKey.ROUTING_RULES_EXPORTED_TO -> "Routing rules exported to ${arg(0)}"
-        StatusMessageKey.ROUTING_RULES_EXPORT_FAILED -> "Failed to export routing rules"
-        StatusMessageKey.ROUTING_RULES_FILE_OPEN_FAILED -> "Failed to open routing rules file"
-        StatusMessageKey.LOCATIONS_COPIED_TO_CLIPBOARD -> "Locations copied to clipboard"
-        StatusMessageKey.LOCATIONS_EXPORT_CANCELED -> "Locations export canceled"
-        StatusMessageKey.LOCATIONS_EXPORTED_TO -> "Locations exported to ${arg(0)}"
-        StatusMessageKey.LOCATIONS_EXPORT_FAILED -> "Failed to export locations"
-        StatusMessageKey.LOCATIONS_FILE_OPEN_FAILED -> "Failed to open locations file"
-        StatusMessageKey.LOCATIONS_FILE_READ_FAILED -> "Failed to read locations file"
-        StatusMessageKey.DIAGNOSTICS_EXPORT_CANCELED -> "Diagnostics export canceled"
-        StatusMessageKey.DIAGNOSTICS_EXPORTED_TO -> "Diagnostics exported to ${arg(0)}"
-        StatusMessageKey.DIAGNOSTICS_EXPORT_FAILED -> "Failed to export diagnostics"
-        StatusMessageKey.DIAGNOSTICS_DESTINATION_OPEN_FAILED -> "Failed to open diagnostics destination"
-        StatusMessageKey.NO_SUBSCRIPTIONS_TO_REFRESH -> "No subscriptions to refresh"
-        StatusMessageKey.START_ON_LOGIN_ENABLED -> "App will start automatically after login"
-        StatusMessageKey.START_ON_LOGIN_DISABLED -> "App startup on login disabled"
-        StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED ->
-            appendStatusDetail("Failed to update startup setting", arg(0))
-        StatusMessageKey.SUBSCRIPTION_HWID_CLEARED ->
-            "Subscription x-hwid cleared. A new ID will be generated on the next refresh."
-        StatusMessageKey.SUBSCRIPTION_HWID_SAVED ->
-            "Subscription x-hwid saved. Refresh the subscription to use it."
-        StatusMessageKey.REFRESH_SETTINGS_SAVE_FAILED ->
-            appendStatusDetail("Failed to save refresh settings", arg(0))
-        StatusMessageKey.APP_MODE_CHANGED ->
-            "App mode: ${englishConnectionDisplay(arg(0))}"
-        StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE ->
-            "${englishConnectionDisplay(arg(0))} stopped. App mode: ${englishConnectionDisplay(arg(1))}"
-        StatusMessageKey.PREVIOUS_CONNECTION_RESTORE_PENDING -> "Previous VPN session will be restored"
-        StatusMessageKey.PREVIOUS_LOCATION_UNAVAILABLE -> "Previous VPN location is no longer available"
-        StatusMessageKey.RESTORING_PREVIOUS_CONNECTION -> "Restoring VPN: ${arg(0)}..."
-        StatusMessageKey.CONNECTION_STARTED_ON_TARGET ->
-            "${englishConnectionDisplay(arg(0))} started on ${arg(1)}"
-        StatusMessageKey.CONNECTION_START_FAILED ->
-            "Failed to start ${englishConnectionNoun(arg(0))}"
-        StatusMessageKey.CONNECTION_STOP_FAILED ->
-            "Failed to stop ${englishConnectionNoun(arg(0))}"
-        StatusMessageKey.APP_CLOSED_CONNECTION_WAS_OFF -> "App closed. VPN was off."
-        StatusMessageKey.CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH ->
-            "${englishConnectionDisplay(arg(0))} stopped. Will reconnect on next launch."
-        StatusMessageKey.CONNECTION_STOP_BEFORE_EXIT_FAILED ->
-            "Failed to stop ${englishConnectionDisplay(arg(0))} before exit"
-    }
-}
-
-private fun appendStatusDetail(base: String, detail: String): String =
-    if (detail.isBlank()) base else "$base: $detail"
-
-private fun englishRefreshStatus(
-    policyName: String,
-    intervalMinutes: Int?,
 ): String {
-    val value = when {
-        policyName == SubscriptionRefreshPolicy.OFF.name -> "off"
-        intervalMinutes != null -> formatLocalizedRefreshInterval(intervalMinutes, AppLanguage.ENGLISH, includeEvery = true)
-        policyName == SubscriptionRefreshPolicy.EVERY_HOUR.name ->
-            formatLocalizedRefreshInterval(60, AppLanguage.ENGLISH, includeEvery = true)
-        else -> "custom interval"
-    }
-    return "Subscription auto-refresh set to $value"
-}
-
-private fun englishStartingConnection(
-    mode: String,
-    withBestLocation: Boolean,
-): String {
-    val isProxy = mode.isProxyMode()
-    return when {
-        withBestLocation && isProxy -> "Starting local proxy with the best location..."
-        withBestLocation -> "Starting VPN with the best location..."
-        isProxy -> "Starting local proxy..."
-        else -> "Starting VPN..."
+    val policyName = status.args.getOrNull(0).orEmpty()
+    val intervalMinutes = status.args.getOrNull(1)?.toIntOrNull()
+    return when (policyName) {
+        SubscriptionRefreshPolicy.OFF.name ->
+            generatedUiTextTranslations[language]?.get(UiText.REFRESH_POLICY_OFF)
+                ?: generatedUiTextTranslations[AppLanguage.ENGLISH]?.get(UiText.REFRESH_POLICY_OFF)
+                ?: "Off"
+        SubscriptionRefreshPolicy.EVERY_HOUR.name ->
+            formatLocalizedRefreshInterval(60, language, includeEvery = true)
+        else ->
+            formatLocalizedRefreshInterval(intervalMinutes ?: 0, language, includeEvery = true)
     }
 }
 
-private fun englishConnectionDisplay(mode: String): String =
-    if (mode.isProxyMode()) "Proxy" else "VPN"
-
-private fun englishConnectionNoun(mode: String): String =
-    if (mode.isProxyMode()) "proxy" else "VPN"
-
-private fun englishConnectionNounLower(mode: String): String =
-    if (mode.isProxyMode()) "proxy" else "vpn"
-
-private fun englishUiSettingVisibility(
-    itemName: String,
-    enabled: Boolean,
-): String {
-    val item = UiSettingsStatusItem.entries.firstOrNull { it.name == itemName }
-    return when (item) {
-        UiSettingsStatusItem.SESSION_STATS ->
-            if (enabled) "Session stats enabled" else "Session stats hidden"
-        UiSettingsStatusItem.LIVE_TRAFFIC_STATS ->
-            if (enabled) "Live traffic stats enabled" else "Live traffic stats hidden"
-        UiSettingsStatusItem.PROFILE_TOTALS ->
-            if (enabled) "Per-profile totals enabled" else "Per-profile totals hidden"
-        UiSettingsStatusItem.LATENCY_HISTORY ->
-            if (enabled) "Latency history enabled" else "Latency history hidden"
-        UiSettingsStatusItem.CONNECTION_LOG ->
-            if (enabled) "Connection log enabled" else "Connection log hidden"
-        UiSettingsStatusItem.CONNECTION_TEST_TOOLS ->
-            if (enabled) "Connection test tools enabled" else "Connection test tools hidden"
-        null -> if (enabled) "Settings enabled" else "Settings hidden"
-    }
+private fun structuredCheckCount(language: AppLanguage, count: Int): String {
+    val english = "$count check${if (count == 1) "" else "s"}"
+    return localizedGeneratedStatusMessage(language, english) ?: english
 }
 
 private fun String.isProxyMode(): Boolean =
@@ -659,23 +491,61 @@ private fun String.isProxyMode(): Boolean =
         equals("Proxy", ignoreCase = true) ||
         equals("proxy", ignoreCase = true)
 
+private fun matchStatusTemplate(
+    template: String,
+    text: String,
+    placeholderPatterns: Map<String, String>,
+): Map<String, String>? {
+    val names = mutableListOf<String>()
+    var cursor = 0
+    val pattern = buildString {
+        append('^')
+        structuredPlaceholderRegex.findAll(template).forEach { match ->
+            append(Regex.escape(template.substring(cursor, match.range.first)))
+            val name = match.groupValues[1]
+            names += name
+            append('(')
+            append(placeholderPatterns[name] ?: ".+?")
+            append(')')
+            cursor = match.range.last + 1
+        }
+        append(Regex.escape(template.substring(cursor)))
+        append('$')
+    }
+    val result = Regex(pattern).matchEntire(text) ?: return null
+    return names.mapIndexed { index, name -> name to result.groupValues[index + 1] }.toMap()
+}
+
 private fun localizedDynamicStatusMessage(language: AppLanguage, text: String): String? {
     val words = generatedStatusTranslations[language]?.dynamic ?: return null
-    Regex("^Checking (\\d+) locations\\.\\.\\.$").matchEntire(text)?.let {
-        return words.checkingLocations.replace("{count}", it.groupValues[1])
+    val sourceWords = generatedStatusTranslations[AppLanguage.ENGLISH]?.dynamic ?: return null
+    matchStatusTemplate(
+        template = sourceWords.checkingLocations,
+        text = text,
+        placeholderPatterns = mapOf("count" to "\\d+"),
+    )?.let {
+        return words.checkingLocations.replace("{count}", it.getValue("count"))
     }
-    Regex("^Testing locations (\\d+)-(\\d+) of (\\d+)\\.\\.\\.$").matchEntire(text)?.let {
+    matchStatusTemplate(
+        template = sourceWords.testingLocationsRange,
+        text = text,
+        placeholderPatterns = mapOf(
+            "start" to "\\d+",
+            "end" to "\\d+",
+            "total" to "\\d+",
+        ),
+    )?.let {
         return words.testingLocationsRange
-            .replace("{start}", it.groupValues[1])
-            .replace("{end}", it.groupValues[2])
-            .replace("{total}", it.groupValues[3])
+            .replace("{start}", it.getValue("start"))
+            .replace("{end}", it.getValue("end"))
+            .replace("{total}", it.getValue("total"))
     }
 
-    val testingSuffix = " Testing fastest candidates in batches..."
+    val testingSuffix = " ${sourceWords.testingFastestCandidates}"
     if (!text.endsWith(testingSuffix)) return null
     val translatedPrefix = when (text.removeSuffix(testingSuffix)) {
-        "Finding the best location from the subscription..." -> words.findingSubscription
-        "Finding the best location from saved locations..." -> words.findingSaved
+        sourceWords.findingSubscription -> words.findingSubscription
+        sourceWords.findingSaved -> words.findingSaved
         else -> return null
     }
     return "$translatedPrefix ${words.testingFastestCandidates}"
@@ -683,25 +553,26 @@ private fun localizedDynamicStatusMessage(language: AppLanguage, text: String): 
 
 private fun localizedBenchmarkMessage(language: AppLanguage, text: String): String? {
     val words = generatedStatusTranslations[language]?.benchmark ?: return null
+    val sourceWords = generatedStatusTranslations[AppLanguage.ENGLISH]?.benchmark ?: return null
     val segments = text.split(" • ")
     var changed = false
     val translated = segments.joinToString(" • ") { segment ->
         when {
-            segment.startsWith("Best: ") -> {
+            segment.startsWith(sourceWords.best) -> {
                 changed = true
-                words.best + segment.removePrefix("Best: ")
+                words.best + segment.removePrefix(sourceWords.best)
             }
-            segment.startsWith("primary ") -> {
+            segment.startsWith(sourceWords.primary) -> {
                 changed = true
-                words.primary + translateBenchmarkStatus(segment.removePrefix("primary "), words)
+                words.primary + translateBenchmarkStatus(segment.removePrefix(sourceWords.primary), words, sourceWords)
             }
-            segment.startsWith("secondary ") -> {
+            segment.startsWith(sourceWords.secondary) -> {
                 changed = true
-                words.secondary + translateBenchmarkStatus(segment.removePrefix("secondary "), words)
+                words.secondary + translateBenchmarkStatus(segment.removePrefix(sourceWords.secondary), words, sourceWords)
             }
-            segment.startsWith("tcp ") -> {
+            segment.startsWith(sourceWords.tcp) -> {
                 changed = true
-                words.tcp + translateBenchmarkStatus(segment.removePrefix("tcp "), words)
+                words.tcp + translateBenchmarkStatus(segment.removePrefix(sourceWords.tcp), words, sourceWords)
             }
             else -> segment
         }
@@ -709,11 +580,16 @@ private fun localizedBenchmarkMessage(language: AppLanguage, text: String): Stri
     return translated.takeIf { changed && it != text }
 }
 
-private fun translateBenchmarkStatus(status: String, words: GeneratedBenchmarkWords): String {
-    Regex("^([0-9]+(?:\\.[0-9]+)?)ms$").matchEntire(status)?.let {
+private fun translateBenchmarkStatus(
+    status: String,
+    words: GeneratedBenchmarkWords,
+    sourceWords: GeneratedBenchmarkWords,
+): String {
+    Regex("^([0-9]+(?:\\.[0-9]+)?)\\s*${Regex.escape(sourceWords.millisUnit)}$").matchEntire(status)?.let {
         return "${it.groupValues[1]} ${words.millisUnit}"
     }
-    return words.statuses[status] ?: status
+    val sourceStatus = sourceWords.statuses.entries.firstOrNull { it.value == status }?.key ?: status
+    return words.statuses[sourceStatus] ?: status
 }
 
 private fun formatLocalizedRefreshInterval(
