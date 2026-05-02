@@ -32,6 +32,7 @@ shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBu
 Primary coverage:
 
 ```text
+app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
 app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
 ```
 
@@ -52,6 +53,7 @@ Primary coverage:
 ```text
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManagerTest.kt
 ```
 
@@ -119,6 +121,7 @@ Use this checklist for protocol work:
    - Update `SingBoxOutboundBuilder.kt` for shared outbound/TLS/transport behavior.
    - Update `SingBoxConfigFactory.kt` for Android inbounds, DNS, route rules, or VPN-only behavior.
    - Add assertions in `SingBoxOutboundBuilderTest`.
+   - Add or update parity assertions in `SingBoxConfigFactoryParityTest`.
    - Add assertions in `SingBoxConfigFactoryInstrumentedTest`.
    - Check VPN routing behavior if the protocol interacts with app assignments or domain bypass rules.
 
@@ -128,6 +131,7 @@ Use this checklist for protocol work:
    - Update `DesktopProxyConfigFactory.kt` for desktop inbounds, DNS, route rules, direct probes, or VPN-only behavior.
    - Add assertions in `SingBoxOutboundBuilderTest`.
    - Add assertions in `DesktopProxyConfigFactoryTest`.
+   - Add or update parity assertions in `DesktopProxyConfigParityTest`.
    - Check proxy-only and VPN mode where the platform supports them.
 
 5. Subscription and Find Best

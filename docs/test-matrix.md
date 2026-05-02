@@ -10,7 +10,7 @@ Use this matrix to choose the smallest useful validation set for a patch. Add mo
 | `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
-| Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` plus relevant `app/src/androidTest` tests when practical |
+| Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
 | Desktop package metadata or bundled runtime extraction | Relevant package script and package smoke tests |
 | Linux packaging | `./scripts/package_linux_desktop.sh` |
@@ -45,6 +45,7 @@ Android VPN/config patch:
 
 ```bash
 ./gradlew :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest
 ```
 
 If the Android patch changes actual generated `sing-box` config shape, also run or update:
@@ -58,7 +59,9 @@ If the patch changes shared outbound/TLS/transport generation, also update or in
 
 ```text
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
+app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
 app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
 ```
 
