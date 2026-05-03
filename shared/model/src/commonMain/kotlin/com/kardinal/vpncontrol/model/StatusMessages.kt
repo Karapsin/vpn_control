@@ -1,254 +1,12 @@
 package com.kardinal.vpncontrol.model
 
-enum class StatusMessageKey {
-    IDLE,
-    LANGUAGE_SET,
-    SUBSCRIPTION_AUTO_REFRESH_SET,
-    VALIDATION_SETTINGS_SAVED,
-    CUSTOM_DNS_SAVED,
-    CUSTOM_DNS_DISABLED,
-    FIND_BEST_FROM_SUBSCRIPTION,
-    FIND_BEST_FROM_SAVED,
-    STARTING_CONNECTION,
-    STARTING_CONNECTION_WITH_BEST,
-    CONNECTION_STARTED,
-    CONNECTION_STOPPED,
-    CONNECTION_START_CANCELLED,
-    CONNECTION_STOP_CANCELLED,
-    CONNECTION_READY_ON_COMPUTER,
-    DESKTOP_APP_INITIALIZED,
-    RUNTIME_MODE,
-    LOCAL_PROXY,
-    RUNTIME_LOG,
-    PREFLIGHT_PASSED,
-    PREFLIGHT_FAILED,
-    DESKTOP_VPN_CAPABILITY_READY,
-    DESKTOP_VPN_CAPABILITY_ERROR,
-    NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING,
-    BEST_LOCATION_SEARCH_TIMED_OUT,
-    RETRYING_BEST_LOCATION_SEARCH,
-    LOCATION_SEARCH_CANCELLED,
-    LOCATION_SEARCH_FAILED,
-    LOCATION_SEARCH_CANCELLED_STOP_FAILED,
-    VPN_PERMISSION_REQUIRED,
-    NO_SUITABLE_LOCATION_FOUND,
-    BEST_LOCATION_NOT_MAPPED,
-    NO_SUBSCRIPTIONS_SAVED,
-    NO_REMOTE_SOURCE,
-    ADD_SAVED_LOCATION_FIRST,
-    REFRESHING_SUBSCRIPTION,
-    REFRESHING_SUBSCRIPTIONS,
-    REFRESHING_SUBSCRIPTION_NAMED,
-    AUTO_REFRESHING_SUBSCRIPTION,
-    AUTO_REFRESHING_SUBSCRIPTIONS,
-    ACTIVE_SUBSCRIPTION_REFRESHED,
-    ALL_SUBSCRIPTIONS_REFRESHED,
-    SUBSCRIPTION_REFRESHED,
-    SUBSCRIPTIONS_REFRESHED,
-    SUBSCRIPTIONS_REFRESHED_COUNT,
-    SUBSCRIPTIONS_REFRESHED_PARTIAL,
-    LOCATION_REFRESHED_COUNT,
-    LOCATIONS_REFRESHED_COUNT,
-    FAILED_TO_REFRESH,
-    FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION,
-    FAILED_TO_REFRESH_SUBSCRIPTIONS,
-    NO_SUBSCRIPTIONS_REFRESHED,
-    NO_ACTIVE_SUBSCRIPTION_SELECTED,
-    LOADING_SAVED_LOCATIONS,
-    DOWNLOADING_REMOTE_SOURCE,
-    RESOLVING_REMOTE_SOURCE,
-    SUBSCRIPTION_SOURCE_LOAD_FAILED,
-    NO_LOCATIONS_FOUND_SELECTED_SUBSCRIPTION,
-    NO_LOCATIONS_FOUND_IN_SOURCE,
-    CHECKING_TCP_SPEED,
-    CHECKING_LOCATIONS,
-    CHECKING_LOCATION_SOURCE,
-    TESTING_FASTEST_CANDIDATES,
-    TESTING_LOCATIONS_RANGE,
-    FIND_BEST_TESTING_FASTEST,
-    BEST_LOCATION_SUMMARY,
-    ACTIVATED_ALL_SUBSCRIPTIONS,
-    ACTIVATED_SUBSCRIPTION,
-    PROFILE_SOURCE_MODE,
-    SUBSCRIPTION_NAME_RESET,
-    SUBSCRIPTION_NAME_SAVED,
-    SUBSCRIPTION_DELETED,
-    SELECT_LOCATION_FIRST,
-    CHECKING_LOCATION,
-    TESTING_LOCATION,
-    LOCATION_CHECK_CANCELLED,
-    NO_LOCATIONS_TO_EXPORT,
-    UI_SETTING_VISIBILITY_CHANGED,
-    SUBSCRIPTION_LOCATION_SAVE_READ_ONLY,
-    INVALID_LOCATION_CONFIG,
-    LOCATION_ALREADY_SAVED,
-    LOCATION_EDIT_UNAVAILABLE,
-    LOCATION_ADDED,
-    LOCATION_UPDATED_AND_MERGED,
-    LOCATION_UPDATED,
-    SUBSCRIPTION_LOCATION_DELETE_READ_ONLY,
-    SELECTED_LOCATION_REMOVED,
-    LOCATION_REMOVED,
-    SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED,
-    LOCATION_REMOVAL_ROLLBACK_FAILED,
-    IMPORT_LOCATIONS_BLOCKED,
-    IMPORT_LOCATIONS_FAILED,
-    LOCATIONS_IMPORTED,
-    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE,
-    LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED,
-    LOCATIONS_IMPORT_ROLLBACK_FAILED,
-    CLIPBOARD_EMPTY,
-    CLIPBOARD_READ_FAILED,
-    SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE,
-    PROFILE_SOURCE_SET,
-    DISCONNECT_FIRST_CHANGE_CONNECTION_MODE,
-    CONNECTION_MODE_SET,
-    RULE_SET_REMOVED,
-    SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS,
-    HISTORY_ENTRY_DELETED,
-    SELECTED_LOCATION_UNCHANGED,
-    SELECTED_LOCATION_SET,
-    SELECTED_LOCATION_APPLYING,
-    UPDATED_SELECTED_LOCATION_APPLYING,
-    SELECTED_LOCATION_APPLY_FAILED,
-    SELECTED_LOCATION_SELECT_FAILED,
-    UPDATED_SELECTED_LOCATION_APPLY_FAILED,
-    UPDATED_SELECTED_LOCATION_SAVE_FAILED,
-    UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED,
-    CONNECTION_STOPPED_KEEP_STATE_CONSISTENT,
-    PREVIOUS_CONNECTION_RESTORED,
-    PREVIOUS_CONNECTION_RESTORED_WITH_REASON,
-    PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED,
-    PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED,
-    LOCATION_CHECKED,
-    LOCATION_CHECK_FAILED,
-    LOCATION_EDITED,
-    SAMPLE_RULE_SET_ADDED,
-    RULE_SET_DELETED,
-    ROUTING_RULES_SAVED,
-    ROUTING_RULES_SAVED_RESTART_REQUIRED,
-    ROUTING_RULES_SAVE_FAILED,
-    ROUTING_RULES_IMPORTED,
-    ROUTING_RULES_IMPORTED_RESTART_REQUIRED,
-    ROUTING_RULES_IMPORT_FAILED,
-    ROUTING_RULES_COPIED_TO_CLIPBOARD,
-    ROUTING_RULES_EXPORT_CANCELED,
-    ROUTING_RULES_EXPORTED_TO,
-    ROUTING_RULES_EXPORT_FAILED,
-    ROUTING_RULES_FILE_OPEN_FAILED,
-    LOCATIONS_COPIED_TO_CLIPBOARD,
-    LOCATIONS_EXPORT_CANCELED,
-    LOCATIONS_EXPORTED_TO,
-    LOCATIONS_EXPORT_FAILED,
-    LOCATIONS_FILE_OPEN_FAILED,
-    LOCATIONS_FILE_READ_FAILED,
-    DIAGNOSTICS_EXPORT_CANCELED,
-    DIAGNOSTICS_EXPORTED_TO,
-    DIAGNOSTICS_EXPORT_FAILED,
-    DIAGNOSTICS_DESTINATION_OPEN_FAILED,
-    DIAGNOSTICS_EXPORT_OPENED,
-    APPS_LOAD_FAILED,
-    NO_SUBSCRIPTIONS_TO_REFRESH,
-    START_ON_LOGIN_ENABLED,
-    START_ON_LOGIN_DISABLED,
-    STARTUP_SETTING_UPDATE_FAILED,
-    SUBSCRIPTION_HWID_CLEARED,
-    SUBSCRIPTION_HWID_SAVED,
-    REFRESH_SETTINGS_SAVE_FAILED,
-    APP_MODE_CHANGED,
-    CONNECTION_STOPPED_FOR_APP_MODE,
-    PREVIOUS_CONNECTION_RESTORE_PENDING,
-    PREVIOUS_LOCATION_UNAVAILABLE,
-    RESTORING_PREVIOUS_CONNECTION,
-    CONNECTION_STARTED_ON_TARGET,
-    CONNECTION_START_FAILED,
-    CONNECTION_STOP_FAILED,
-    SELECTED_LOCATION_SAVE_FAILED,
-    SELECTED_LOCATION_STARTED_SAVE_FAILED,
-    BEST_LOCATION_START_FAILED,
-    BEST_LOCATION_SAVE_FAILED,
-    BEST_LOCATION_STARTED_SAVE_FAILED,
-    BACKGROUND_REFRESH_FINDING_BEST,
-    BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS,
-    APP_CLOSED_CONNECTION_WAS_OFF,
-    CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH,
-    CONNECTION_STOP_BEFORE_EXIT_FAILED,
-    SUBSCRIPTION_RECEIVED,
-    SUBSCRIPTION_LINK_RECEIVED,
-    LOCATION_CONFIG_RECEIVED,
-    SHARED_TEXT_UNSUPPORTED_IMPORT,
-    PASTE_SUBSCRIPTION_REQUIRED,
-    SUBSCRIPTION_SAVED,
-    INVALID_REMOTE_SOURCE,
-    INVALID_RULE_SET,
-    RULE_SET_ADDED,
-    RULE_SET_UPDATED,
-    ALL_SUBSCRIPTIONS_SELECTED,
-    SUBSCRIPTION_SELECTED,
-    INVALID_SUBSCRIPTION_URL,
-    SUBSCRIPTION_REFRESH_REMOVED_SELECTED_STOPPED,
-    SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED,
-    BENCHMARKED_LOCATION,
-    BENCHMARK_LOCATION_FAILED,
-    BACKGROUND_REFRESH_SWITCHED,
-    BACKGROUND_REFRESH_SWITCHED_SOURCE,
-    BACKGROUND_REFRESH_SWITCHED_PARTIAL,
-    BACKGROUND_REFRESH_SWITCHED_PARTIAL_SOURCE,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_SOURCE_FAILED,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_ROLLBACK,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_SOURCE_FAILED,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_ROLLBACK,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_SOURCE_FAILED_ROLLBACK,
-    BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_SOURCE_FAILED_ROLLBACK,
-    BACKGROUND_REFRESH_SELECTED_MISSING_KEPT,
-    BACKGROUND_REFRESH_SELECTED_MISSING_KEPT_WITH_FAILURES,
-    BACKGROUND_REFRESH_KEPT_CURRENT,
-    BACKGROUND_REFRESH_KEPT_CURRENT_PARTIAL,
-    BACKGROUND_REFRESH_KEPT_CURRENT_PREVIOUS_CACHE,
-    BACKGROUND_REFRESH_KEPT_CURRENT_PARTIAL_PREVIOUS_CACHE,
-    BACKGROUND_REFRESH_PREVIOUS_LOCATION_KEPT,
-    BACKGROUND_REFRESH_REPLACEMENT_STOPPED,
-    BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED,
-    BACKGROUND_REFRESH_FAILED,
-    REPLACEMENT_LOCATION_SEARCH_FAILED,
-    REPLACEMENT_LOCATION_SAVE_FAILED,
-}
-
-data class StructuredStatusMessage(
-    val key: StatusMessageKey,
-    val args: List<String> = emptyList(),
-)
-
 object StatusMessages {
-    private const val PREFIX = "vpn-control-status:v1:"
-
     fun encode(
         key: StatusMessageKey,
         vararg args: String,
-    ): String = buildString {
-        append(PREFIX)
-        append(key.name)
-        if (args.isNotEmpty()) {
-            append(':')
-            append(args.joinToString(separator = "|", transform = ::escapeArg))
-        }
-    }
+    ): String = StatusMessageCodec.encode(key, *args)
 
-    fun decode(raw: String): StructuredStatusMessage? {
-        if (!raw.startsWith(PREFIX)) return null
-        val payload = raw.removePrefix(PREFIX)
-        val keyName = payload.substringBefore(':')
-        val key = StatusMessageKey.entries.firstOrNull { it.name == keyName } ?: return null
-        val encodedArgs = payload.substringAfter(':', missingDelimiterValue = "")
-        val args = if (encodedArgs.isBlank()) {
-            emptyList()
-        } else {
-            encodedArgs.split('|').map(::unescapeArg)
-        }
-        return StructuredStatusMessage(key, args)
-    }
+    fun decode(raw: String): StructuredStatusMessage? = StatusMessageCodec.decode(raw)
 
     fun idle(): String = encode(StatusMessageKey.IDLE)
 
@@ -279,12 +37,7 @@ object StatusMessages {
         encode(if (enabled) StatusMessageKey.CUSTOM_DNS_SAVED else StatusMessageKey.CUSTOM_DNS_DISABLED)
 
     fun findBestStart(sourceMode: ProfileSourceMode): String =
-        encode(
-            when (sourceMode) {
-                ProfileSourceMode.SUBSCRIPTION -> StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION
-                ProfileSourceMode.CURRENT_LOCATIONS -> StatusMessageKey.FIND_BEST_FROM_SAVED
-            },
-        )
+        encode(ConnectionStatusMessageKeys.findBestStart(sourceMode))
 
     fun startingConnection(appMode: AppMode): String =
         encode(StatusMessageKey.STARTING_CONNECTION, appMode.name)
@@ -372,14 +125,7 @@ object StatusMessages {
         encode(StatusMessageKey.ADD_SAVED_LOCATION_FIRST)
 
     fun subscriptionRefreshStart(targetCount: Int, auto: Boolean = false): String {
-        val many = targetCount != 1
-        val key = when {
-            auto && many -> StatusMessageKey.AUTO_REFRESHING_SUBSCRIPTIONS
-            auto -> StatusMessageKey.AUTO_REFRESHING_SUBSCRIPTION
-            many -> StatusMessageKey.REFRESHING_SUBSCRIPTIONS
-            else -> StatusMessageKey.REFRESHING_SUBSCRIPTION
-        }
-        return encode(key)
+        return encode(SubscriptionStatusMessageKeys.refreshStart(targetCount, auto))
     }
 
     fun refreshingSubscriptionNamed(name: String): String =
@@ -412,14 +158,7 @@ object StatusMessages {
     )
 
     fun locationsRefreshed(count: Int): String =
-        encode(
-            if (count == 1) {
-                StatusMessageKey.LOCATION_REFRESHED_COUNT
-            } else {
-                StatusMessageKey.LOCATIONS_REFRESHED_COUNT
-            },
-            count.toString(),
-        )
+        encode(SubscriptionStatusMessageKeys.locationsRefreshed(count), count.toString())
 
     fun failedToRefresh(failedLabel: String): String =
         encode(StatusMessageKey.FAILED_TO_REFRESH, failedLabel)
@@ -867,15 +606,7 @@ object StatusMessages {
         winnerSource: String?,
         failedLabel: String?,
     ): String {
-        val key = when {
-            !failedLabel.isNullOrBlank() && !winnerSource.isNullOrBlank() ->
-                StatusMessageKey.BACKGROUND_REFRESH_SWITCHED_PARTIAL_SOURCE
-            !failedLabel.isNullOrBlank() ->
-                StatusMessageKey.BACKGROUND_REFRESH_SWITCHED_PARTIAL
-            !winnerSource.isNullOrBlank() ->
-                StatusMessageKey.BACKGROUND_REFRESH_SWITCHED_SOURCE
-            else -> StatusMessageKey.BACKGROUND_REFRESH_SWITCHED
-        }
+        val key = BackgroundRefreshStatusMessageKeys.switched(winnerSource, failedLabel)
         return encode(key, appMode.name, selectedProfileName, winnerSource.orEmpty(), failedLabel.orEmpty())
     }
 
@@ -886,35 +617,16 @@ object StatusMessages {
         selectedSourceFailed: Boolean,
         rollbackMessage: String,
     ): String {
-        val hasFailures = !failedLabel.isNullOrBlank()
-        val hasRollback = rollbackMessage.isNotBlank()
-        val key = when {
-            hasFailures && selectedSourceFailed && hasRollback ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_SOURCE_FAILED_ROLLBACK
-            hasFailures && selectedSourceFailed ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_SOURCE_FAILED
-            hasFailures && hasRollback ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES_ROLLBACK
-            selectedSourceFailed && hasRollback ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_SOURCE_FAILED_ROLLBACK
-            hasFailures ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_WITH_FAILURES
-            selectedSourceFailed ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_SOURCE_FAILED
-            hasRollback ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED_ROLLBACK
-            else ->
-                StatusMessageKey.BACKGROUND_REFRESH_REPLACEMENT_FAILED
-        }
+        val key = BackgroundRefreshStatusMessageKeys.replacementFailed(
+            failedLabel = failedLabel,
+            selectedSourceFailed = selectedSourceFailed,
+            rollbackMessage = rollbackMessage,
+        )
         return encode(key, appMode.name, failureMessage, failedLabel.orEmpty(), rollbackMessage)
     }
 
     fun backgroundRefreshSelectedMissingKept(appMode: AppMode, failedLabel: String?): String {
-        val key = if (failedLabel.isNullOrBlank()) {
-            StatusMessageKey.BACKGROUND_REFRESH_SELECTED_MISSING_KEPT
-        } else {
-            StatusMessageKey.BACKGROUND_REFRESH_SELECTED_MISSING_KEPT_WITH_FAILURES
-        }
+        val key = BackgroundRefreshStatusMessageKeys.selectedMissingKept(failedLabel)
         return encode(key, appMode.name, failedLabel.orEmpty())
     }
 
@@ -923,16 +635,7 @@ object StatusMessages {
         failedLabel: String?,
         selectedSourceFailed: Boolean,
     ): String {
-        val key = when {
-            !failedLabel.isNullOrBlank() && selectedSourceFailed ->
-                StatusMessageKey.BACKGROUND_REFRESH_KEPT_CURRENT_PARTIAL_PREVIOUS_CACHE
-            !failedLabel.isNullOrBlank() ->
-                StatusMessageKey.BACKGROUND_REFRESH_KEPT_CURRENT_PARTIAL
-            selectedSourceFailed ->
-                StatusMessageKey.BACKGROUND_REFRESH_KEPT_CURRENT_PREVIOUS_CACHE
-            else ->
-                StatusMessageKey.BACKGROUND_REFRESH_KEPT_CURRENT
-        }
+        val key = BackgroundRefreshStatusMessageKeys.keptCurrent(failedLabel, selectedSourceFailed)
         return encode(key, appMode.name, failedLabel.orEmpty())
     }
 
@@ -954,55 +657,4 @@ object StatusMessages {
     fun replacementLocationSaveFailed(): String =
         encode(StatusMessageKey.REPLACEMENT_LOCATION_SAVE_FAILED)
 
-    private fun escapeArg(value: String): String = buildString {
-        value.forEach { char ->
-            when (char) {
-                '%' -> append("%25")
-                '|' -> append("%7C")
-                ':' -> append("%3A")
-                '\n' -> append("%0A")
-                '\r' -> append("%0D")
-                else -> append(char)
-            }
-        }
-    }
-
-    private fun unescapeArg(value: String): String {
-        val builder = StringBuilder()
-        var index = 0
-        while (index < value.length) {
-            if (value[index] == '%' && index + 2 < value.length) {
-                when (value.substring(index + 1, index + 3)) {
-                    "25" -> {
-                        builder.append('%')
-                        index += 3
-                        continue
-                    }
-                    "7C" -> {
-                        builder.append('|')
-                        index += 3
-                        continue
-                    }
-                    "3A" -> {
-                        builder.append(':')
-                        index += 3
-                        continue
-                    }
-                    "0A" -> {
-                        builder.append('\n')
-                        index += 3
-                        continue
-                    }
-                    "0D" -> {
-                        builder.append('\r')
-                        index += 3
-                        continue
-                    }
-                }
-            }
-            builder.append(value[index])
-            index += 1
-        }
-        return builder.toString()
-    }
 }

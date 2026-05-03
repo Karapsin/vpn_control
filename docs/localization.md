@@ -25,7 +25,7 @@ The build generates Kotlin sources from:
 
 - Keep user-facing translations in JSON catalogs, not in Kotlin source.
 - Do not add `when (AppLanguage...)` branches with translated UI or status text in Kotlin.
-- `AppStrings.kt` should only choose keys, parse known message shapes, and substitute placeholders. It must not own rendered English sentence templates for typed status messages.
+- `AppStrings.kt` should stay the UI-facing entry point. `StatusMessageRenderer.kt` owns structured status lookup, placeholder substitution, dynamic status parsing, and benchmark status rendering. It must not own rendered English sentence templates for typed status messages.
 - Prefer typed `StatusMessages` helpers for stable runtime/status events. If a raw English status string must remain for legacy compatibility, add it to status catalogs and cover it in `AppStringsCoverageTest`.
 - Do not concatenate encoded `StatusMessages` into longer raw sentences. If a message needs several clauses, add one complete structured status key or keep the whole legacy sentence on the legacy translation path until it can be migrated safely.
 - Shared settings and location mutation feedback should use `StatusMessages` helpers, not raw English strings from shared core.
@@ -67,10 +67,18 @@ When a new typed status needs real translation work across many languages, split
 
 ## Add A Typed Status
 
-Typed runtime/status messages are defined in `shared/model/src/commonMain/kotlin/com/kardinal/vpncontrol/model/StatusMessages.kt`. To add one:
+Typed runtime/status messages are split across the shared model status files:
+
+- `StatusMessageTypes.kt` owns `StatusMessageKey` and `StructuredStatusMessage`.
+- `StatusMessageCodec.kt` owns encode/decode escaping.
+- `StatusMessageKeySelectors.kt` owns domain-specific key selection.
+- `StatusMessages.kt` is the public facade used by Android, desktop, and shared core.
+
+To add one:
 
 1. Add a `StatusMessageKey` entry and a `StatusMessages` helper.
-2. Seed the structured catalog entry:
+2. Put non-trivial variant selection into `StatusMessageKeySelectors.kt` instead of inline UI/platform code.
+3. Seed the structured catalog entry:
 
 ```bash
 ./scripts/status_catalog_tool.py add-structured STATUS_KEY "English template with {0} placeholders"
@@ -84,10 +92,11 @@ Use a variant suffix when one key has mode-specific wording:
 
 The tool copies the English template into every status catalog as a translation skeleton. Translate those copied skeletons per language before relying on `--strict`.
 
-Run the status catalog checker after any typed-status change:
+Run the status catalog checker and the model/UI status tests after any typed-status change:
 
 ```bash
 ./scripts/status_catalog_tool.py check
+./gradlew :shared:model:desktopTest :shared:ui:desktopTest
 ```
 
 ## Validation
