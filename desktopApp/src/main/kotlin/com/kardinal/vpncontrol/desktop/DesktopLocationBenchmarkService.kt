@@ -1,12 +1,13 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 
 internal typealias DesktopLocationBenchmarker = suspend (
     profile: ProxyProfile,
@@ -26,7 +27,7 @@ internal class DesktopLocationBenchmarkService(
         val location = locationsProvider().firstOrNull { it.index == index } ?: return
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
         if (profile.isFailure) {
-            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig()) }
+            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: LocationStatusMessages.invalidLocationConfig()) }
             return
         }
 
@@ -60,14 +61,14 @@ internal class DesktopLocationBenchmarkService(
             }
             commitState(
                 stateProvider().copy(isBusy = false).withStatus(
-                    StatusMessages.benchmarkedLocation(location.name, result.primaryStatus, result.secondaryStatus),
+                    BenchmarkStatusMessages.benchmarkedLocation(location.name, result.primaryStatus, result.secondaryStatus),
                 ),
                 updatedLocations,
             )
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    benchmark.exceptionOrNull()?.message ?: StatusMessages.benchmarkLocationFailed(location.name),
+                    benchmark.exceptionOrNull()?.message ?: BenchmarkStatusMessages.benchmarkLocationFailed(location.name),
                 )
             }
         }

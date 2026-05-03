@@ -1,5 +1,11 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.GeneralStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
+import com.kardinal.vpncontrol.model.RoutingStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.model.AppMode
@@ -7,7 +13,6 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -132,7 +137,7 @@ class MainController(
         return listOf(
             MainControllerEffect.UpdateAppLanguage(
                 language = value,
-                statusMessage = StatusMessages.languageSet(
+                statusMessage = GeneralStatusMessages.languageSet(
                     if (value == AppLanguage.SYSTEM) "" else value.nativeName,
                 ),
             ),
@@ -190,7 +195,7 @@ class MainController(
     fun pasteSubscriptionDraft(raw: String): List<MainControllerEffect> {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) {
-            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.clipboardEmpty()))
+            return listOf(MainControllerEffect.UpdateStatus(LocationStatusMessages.clipboardEmpty()))
         }
         _state.value = MainUiStateTransitions.navigateToScreen(_state.value, AppScreen.PROFILE).copy(
             profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
@@ -199,7 +204,7 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateProfileSourceMode(ProfileSourceMode.SUBSCRIPTION),
-            MainControllerEffect.UpdateStatus(StatusMessages.subscriptionTextLoadedIntoProfile()),
+            MainControllerEffect.UpdateStatus(SubscriptionStatusMessages.subscriptionTextLoadedIntoProfile()),
         )
     }
 
@@ -252,13 +257,13 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateProfileSourceMode(value),
-            MainControllerEffect.UpdateStatus(StatusMessages.profileSourceSet(value)),
+            MainControllerEffect.UpdateStatus(SubscriptionStatusMessages.profileSourceSet(value)),
         )
     }
 
     fun setAppMode(value: AppMode): List<MainControllerEffect> {
         if (_state.value.isVpnRunning) {
-            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode()))
+            return listOf(MainControllerEffect.UpdateStatus(ConnectionStatusMessages.disconnectFirstChangeConnectionMode()))
         }
         _state.value = _state.value.copy(
             appMode = value,
@@ -266,7 +271,7 @@ class MainController(
         )
         return listOf(
             MainControllerEffect.UpdateAppMode(value),
-            MainControllerEffect.UpdateStatus(StatusMessages.connectionModeSet(value)),
+            MainControllerEffect.UpdateStatus(RoutingStatusMessages.connectionModeSet(value)),
         )
     }
 
@@ -402,12 +407,12 @@ class MainController(
             showRuleSetDialog = if (_state.value.editingRuleSetId == id) false else _state.value.showRuleSetDialog,
             editingRuleSetId = if (_state.value.editingRuleSetId == id) "" else _state.value.editingRuleSetId,
         )
-        return listOf(MainControllerEffect.UpdateStatus(StatusMessages.ruleSetRemoved()))
+        return listOf(MainControllerEffect.UpdateStatus(RoutingStatusMessages.ruleSetRemoved()))
     }
 
     fun showAddLocationDialog(): List<MainControllerEffect> {
         if (_state.value.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
-            return listOf(MainControllerEffect.UpdateStatus(StatusMessages.switchToSavedLocationsToAddLocations()))
+            return listOf(MainControllerEffect.UpdateStatus(RoutingStatusMessages.switchToSavedLocationsToAddLocations()))
         }
         _state.value = _state.value.copy(
             showLocationDialog = true,
@@ -521,7 +526,7 @@ class MainController(
         if (decision.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    decision.exceptionOrNull()?.message ?: StatusMessages.invalidRemoteSource(),
+                    decision.exceptionOrNull()?.message ?: SubscriptionStatusMessages.invalidRemoteSource(),
                 ),
             )
         }
@@ -551,7 +556,7 @@ class MainController(
         return listOf(
             MainControllerEffect.DeleteProfileHistoryEntry(
                 source = trimmed,
-                statusMessage = StatusMessages.historyEntryDeleted(),
+                statusMessage = RoutingStatusMessages.historyEntryDeleted(),
             ),
         )
     }
@@ -569,9 +574,9 @@ class MainController(
                 source = source,
                 normalizedName = normalizedName,
                 statusMessage = if (normalizedName.isBlank()) {
-                    StatusMessages.subscriptionNameReset()
+                    SubscriptionStatusMessages.subscriptionNameReset()
                 } else {
-                    StatusMessages.subscriptionNameSaved()
+                    SubscriptionStatusMessages.subscriptionNameSaved()
                 },
             ),
         )
@@ -582,7 +587,7 @@ class MainController(
         if (resolution.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    resolution.exceptionOrNull()?.message ?: StatusMessages.refreshSettingsSaveFailed(),
+                    resolution.exceptionOrNull()?.message ?: SettingsStatusMessages.refreshSettingsSaveFailed(),
                 ),
             )
         }
@@ -626,7 +631,7 @@ class MainController(
         if (draft.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    draft.exceptionOrNull()?.message ?: StatusMessages.invalidRuleSet(),
+                    draft.exceptionOrNull()?.message ?: RoutingStatusMessages.invalidRuleSet(),
                 ),
             )
         }
@@ -641,7 +646,7 @@ class MainController(
         closeRuleSetDialog()
         return listOf(
             MainControllerEffect.UpdateStatus(
-                if (wasEditing) StatusMessages.ruleSetUpdated() else StatusMessages.ruleSetAdded(),
+                if (wasEditing) RoutingStatusMessages.ruleSetUpdated() else RoutingStatusMessages.ruleSetAdded(),
             ),
         )
     }
@@ -665,9 +670,9 @@ class MainController(
             MainControllerEffect.SelectActiveSubscription(normalized),
             MainControllerEffect.UpdateStatus(
                 if (normalized == com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID) {
-                    StatusMessages.allSubscriptionsSelected()
+                    SubscriptionStatusMessages.allSubscriptionsSelected()
                 } else {
-                    StatusMessages.subscriptionSelected()
+                    SubscriptionStatusMessages.subscriptionSelected()
                 },
             ),
         )

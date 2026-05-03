@@ -1,11 +1,12 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.activeSubscriptionUrls
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 
@@ -35,16 +36,16 @@ object RepositoryWorkflowService {
         return runCatching {
             if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
                 val refreshed = refreshAllSubscriptions().getOrThrow()
-                require(refreshed.refreshedCount > 0) { StatusMessages.noSubscriptionsRefreshed() }
+                require(refreshed.refreshedCount > 0) { SubscriptionStatusMessages.noSubscriptionsRefreshed() }
                 return@runCatching refreshed
             }
             val subscriptionId = state.activeSubscriptionId
             val sourceUrl = state.profileUrl
             require(subscriptionId.isNotBlank() && sourceUrl.isNotBlank()) {
-                StatusMessages.noActiveSubscriptionSelected()
+                SubscriptionStatusMessages.noActiveSubscriptionSelected()
             }
             val profiles = fetchSubscriptionLocations(sourceUrl)
-            require(profiles.isNotEmpty()) { StatusMessages.noLocationsFoundSelectedSubscription() }
+            require(profiles.isNotEmpty()) { BenchmarkStatusMessages.noLocationsFoundSelectedSubscription() }
             updateSubscriptionCache(subscriptionId, profiles.map { it.rawLink })
             SubscriptionRefreshBatchResult(refreshedCount = 1)
         }.also { result ->
@@ -53,7 +54,7 @@ object RepositoryWorkflowService {
                 if (activeId.isNotBlank()) {
                     updateRefreshStatus(
                         activeId,
-                        result.exceptionOrNull()?.message ?: StatusMessages.backgroundRefreshFailed(),
+                        result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
                     )
                 }
             }
@@ -86,7 +87,7 @@ object RepositoryWorkflowService {
                         subscriptionId = subscription.id,
                         sourceUrl = subscription.url,
                         displayName = displayLabel(subscription),
-                        message = result.exceptionOrNull()?.message ?: StatusMessages.backgroundRefreshFailed(),
+                        message = result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
                     )
                 }
             }
@@ -200,13 +201,13 @@ object RepositoryWorkflowService {
     ): Result<Unit> {
         return runCatching {
             val profiles = fetchSubscriptionLocations(subscription.url)
-            require(profiles.isNotEmpty()) { StatusMessages.noLocationsFoundSelectedSubscription() }
+            require(profiles.isNotEmpty()) { BenchmarkStatusMessages.noLocationsFoundSelectedSubscription() }
             updateSubscriptionCache(subscription.id, profiles.map { it.rawLink })
         }.also { result ->
             if (result.isFailure) {
                 updateRefreshStatus(
                     subscription.id,
-                    result.exceptionOrNull()?.message ?: StatusMessages.backgroundRefreshFailed(),
+                    result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
                 )
             }
         }

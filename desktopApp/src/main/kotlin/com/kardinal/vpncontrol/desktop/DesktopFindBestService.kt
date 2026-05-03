@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
@@ -8,7 +9,6 @@ import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.SearchEvaluation
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -52,13 +52,13 @@ internal class DesktopFindBestService(
             runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }.getOrNull()
         }
         if (profiles.isEmpty()) {
-            updateState { it.withStatus(StatusMessages.noLocationsAvailableForBenchmarking()) }
+            updateState { it.withStatus(BenchmarkStatusMessages.noLocationsAvailableForBenchmarking()) }
             return
         }
 
         updateState {
             it.copy(isBusy = true, isRefreshing = true).withStatus(
-                StatusMessages.findBestTestingFastest(it.profileSourceMode),
+                BenchmarkStatusMessages.findBestTestingFastest(it.profileSourceMode),
             )
         }
 
@@ -85,7 +85,7 @@ internal class DesktopFindBestService(
         } ?: run {
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    StatusMessages.bestLocationSearchTimedOut(),
+                    BenchmarkStatusMessages.bestLocationSearchTimedOut(),
                 )
             }
             return
@@ -103,7 +103,7 @@ internal class DesktopFindBestService(
         if (winning == null) {
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    evaluation.failureMessage ?: StatusMessages.noSuitableLocationFound(),
+                    evaluation.failureMessage ?: BenchmarkStatusMessages.noSuitableLocationFound(),
                 )
             }
             return
@@ -112,14 +112,14 @@ internal class DesktopFindBestService(
         val winnerLocation = locationsProvider().firstOrNull { it.normalizedStorageKey() == winningRawKey }
         if (winnerLocation == null) {
             updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus(StatusMessages.bestLocationNotMapped())
+                it.copy(isBusy = false, isRefreshing = false).withStatus(BenchmarkStatusMessages.bestLocationNotMapped())
             }
             return
         }
 
         startConnection(
             winnerLocation,
-            StatusMessages.bestLocationSummary(winning.profile.remarks, winning.detail.toCompactBenchmarkLabel()),
+            BenchmarkStatusMessages.bestLocationSummary(winning.profile.remarks, winning.detail.toCompactBenchmarkLabel()),
         )
         updateState { it.copy(isRefreshing = false) }
     }

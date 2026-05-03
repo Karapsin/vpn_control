@@ -1,9 +1,9 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 
 sealed interface SaveLocationDecision {
     data class MutationBlocked(val message: String) : SaveLocationDecision
@@ -41,14 +41,14 @@ object LocationMutationLogic {
             state.editingLocationIndex != null
         ) {
             return SaveLocationDecision.MutationBlocked(
-                StatusMessages.subscriptionLocationSaveReadOnly(),
+                LocationStatusMessages.subscriptionLocationSaveReadOnly(),
             )
         }
 
         val parsed = runCatching { LocationConfigs.parseLocationInput(state.locationDraft.trim()) }
         if (parsed.isFailure) {
             return SaveLocationDecision.Invalid(
-                parsed.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig(),
+                parsed.exceptionOrNull()?.message ?: LocationStatusMessages.invalidLocationConfig(),
             )
         }
 
@@ -60,10 +60,10 @@ object LocationMutationLogic {
         val duplicateIndex = nextLocations.indexOf(normalized)
 
         if (editIndex == null && duplicateIndex != -1) {
-            return SaveLocationDecision.Duplicate(StatusMessages.locationAlreadySaved(profile.remarks))
+            return SaveLocationDecision.Duplicate(LocationStatusMessages.locationAlreadySaved(profile.remarks))
         }
         if (editIndex != null && editIndex !in nextLocations.indices) {
-            return SaveLocationDecision.Invalid(StatusMessages.locationEditUnavailable())
+            return SaveLocationDecision.Invalid(LocationStatusMessages.locationEditUnavailable())
         }
 
         val mergedWithExisting = editIndex != null && duplicateIndex != -1 && duplicateIndex != editIndex
@@ -85,16 +85,16 @@ object LocationMutationLogic {
 
     fun saveLocationSuccessMessage(plan: SaveLocationDecision.Plan): String {
         return when {
-            plan.editIndex == null -> StatusMessages.locationAdded(plan.remarks)
-            plan.mergedWithExisting -> StatusMessages.locationUpdatedAndMerged(plan.remarks)
-            else -> StatusMessages.locationUpdated(plan.remarks)
+            plan.editIndex == null -> LocationStatusMessages.locationAdded(plan.remarks)
+            plan.mergedWithExisting -> LocationStatusMessages.locationUpdatedAndMerged(plan.remarks)
+            else -> LocationStatusMessages.locationUpdated(plan.remarks)
         }
     }
 
     fun planDeleteLocation(state: MainUiState, index: Int): DeleteLocationDecision {
         if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
             return DeleteLocationDecision.MutationBlocked(
-                StatusMessages.subscriptionLocationDeleteReadOnly(),
+                LocationStatusMessages.subscriptionLocationDeleteReadOnly(),
             )
         }
         val nextLocations = state.currentLocations.toMutableList()
@@ -115,9 +115,9 @@ object LocationMutationLogic {
         remarks: String,
     ): String {
         return if (removedSelected) {
-            StatusMessages.selectedLocationRemoved(remarks)
+            LocationStatusMessages.selectedLocationRemoved(remarks)
         } else {
-            StatusMessages.locationRemoved(remarks)
+            LocationStatusMessages.locationRemoved(remarks)
         }
     }
 
@@ -125,35 +125,35 @@ object LocationMutationLogic {
         appMode: AppMode,
         remarks: String,
     ): String {
-        return StatusMessages.selectedLocationRemovedConnectionStopped(appMode, remarks)
+        return LocationStatusMessages.selectedLocationRemovedConnectionStopped(appMode, remarks)
     }
 
     fun deleteLocationRollbackFailureMessage(appMode: AppMode): String {
-        return StatusMessages.locationRemovalRollbackFailed(appMode)
+        return LocationStatusMessages.locationRemovalRollbackFailed(appMode)
     }
 
     fun planImportLocations(state: MainUiState, raw: String): ImportLocationsDecision {
         if (state.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
-            return ImportLocationsDecision.Blocked(StatusMessages.importLocationsBlocked())
+            return ImportLocationsDecision.Blocked(LocationStatusMessages.importLocationsBlocked())
         }
         val parsed = runCatching { LocationConfigs.import(raw) }
         if (parsed.isFailure) {
             return ImportLocationsDecision.Invalid(
-                parsed.exceptionOrNull()?.message ?: StatusMessages.importLocationsFailed(),
+                parsed.exceptionOrNull()?.message ?: LocationStatusMessages.importLocationsFailed(),
             )
         }
         return ImportLocationsDecision.Plan(parsed.getOrThrow())
     }
 
     fun importLocationsStatusMessage(removedSelected: Boolean): String {
-        return StatusMessages.locationsImported(removedSelected)
+        return LocationStatusMessages.locationsImported(removedSelected)
     }
 
     fun importLocationsStoppedStatusMessage(appMode: AppMode): String {
-        return StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(appMode)
+        return LocationStatusMessages.locationsImportedSelectedUnavailableConnectionStopped(appMode)
     }
 
     fun importLocationsRollbackFailureMessage(appMode: AppMode): String {
-        return StatusMessages.locationsImportRollbackFailed(appMode)
+        return LocationStatusMessages.locationsImportRollbackFailed(appMode)
     }
 }

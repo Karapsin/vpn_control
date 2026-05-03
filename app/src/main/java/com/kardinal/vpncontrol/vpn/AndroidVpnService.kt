@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.vpn
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -21,7 +22,6 @@ import com.kardinal.vpncontrol.data.DiagnosticsLogger
 import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RuntimeFiles
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import io.nekohasekai.libbox.BoxService
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
@@ -113,7 +113,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             Log.e(TAG, "Failed to start VPN", error)
             DiagnosticsLogger.append(applicationContext, "Failed to start VPN", error)
             val appMode = currentAppMode()
-            stopVpn(error.message ?: StatusMessages.connectionStartFailed(appMode), startId)
+            stopVpn(error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode), startId)
         }
     }
 
@@ -468,11 +468,11 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     }
 
     private fun startedText(appMode: AppMode): String {
-        return StatusMessages.connectionStarted(appMode)
+        return ConnectionStatusMessages.connectionStarted(appMode)
     }
 
     private fun stoppedText(appMode: AppMode): String {
-        return StatusMessages.connectionStopped(appMode)
+        return ConnectionStatusMessages.connectionStopped(appMode)
     }
 
     private fun dumpFlags(networkInterface: NetworkInterface, hasInternet: Boolean): Int {

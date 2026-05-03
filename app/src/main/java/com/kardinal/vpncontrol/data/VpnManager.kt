@@ -1,10 +1,10 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import android.content.Context
 import android.content.Intent
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSelection
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.vpn.AndroidVpnService
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +42,7 @@ class VpnManager(
                 context.startForegroundService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: StatusMessages.connectionStartFailed(appMode),
+                    message = error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode),
                     cause = error,
                     commandDispatched = false,
                 )
@@ -51,7 +51,7 @@ class VpnManager(
                 waitForStart(initialStatus, appMode)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: StatusMessages.connectionStartFailed(appMode),
+                    message = error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode),
                     cause = error,
                     commandDispatched = true,
                 )
@@ -70,7 +70,7 @@ class VpnManager(
                 context.startService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: StatusMessages.connectionStopFailed(initialState.appMode),
+                    message = error.message ?: ConnectionStatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
                     commandDispatched = false,
                 )
@@ -79,7 +79,7 @@ class VpnManager(
                 waitForStop(initialStatus)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: StatusMessages.connectionStopFailed(initialState.appMode),
+                    message = error.message ?: ConnectionStatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
                     commandDispatched = true,
                 )
@@ -130,7 +130,7 @@ class VpnManager(
         const val STOP_TIMEOUT_MILLIS = 10_000L
 
         fun startedStatus(appMode: AppMode): String {
-            return StatusMessages.connectionStarted(appMode)
+            return ConnectionStatusMessages.connectionStarted(appMode)
         }
 
     }

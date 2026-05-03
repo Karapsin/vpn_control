@@ -1,8 +1,9 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
-import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class DesktopConnectionActionsService(
     private val stateProvider: () -> MainUiState,
@@ -32,12 +33,12 @@ internal class DesktopConnectionActionsService(
         if (location == null) {
             updateState {
                 it.copy(isBusy = false, isVpnRunning = false)
-                    .withStatus(StatusMessages.previousLocationUnavailable())
+                    .withStatus(ConnectionStatusMessages.previousLocationUnavailable())
             }
             return
         }
         updateState {
-            it.withStatus(StatusMessages.restoringPreviousConnection(location.name))
+            it.withStatus(ConnectionStatusMessages.restoringPreviousConnection(location.name))
         }
         start(
             location = location,
@@ -56,7 +57,7 @@ internal class DesktopConnectionActionsService(
         val location = selectedDesktopLocation()
         return if (location == null) {
             updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }
-            Result.failure(IllegalStateException(StatusMessages.selectLocationFirst()))
+            Result.failure(IllegalStateException(LocationStatusMessages.selectLocationFirst()))
         } else {
             start(location)
         }

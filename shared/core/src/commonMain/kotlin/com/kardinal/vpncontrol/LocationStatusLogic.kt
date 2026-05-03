@@ -1,15 +1,15 @@
 package com.kardinal.vpncontrol
 
-import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 
 object LocationStatusLogic {
-    fun selectLocationFirst(): String = StatusMessages.selectLocationFirst()
+    fun selectLocationFirst(): String = LocationStatusMessages.selectLocationFirst()
 
-    fun checkingLocation(remarks: String): String = StatusMessages.checkingLocation(remarks)
+    fun checkingLocation(remarks: String): String = LocationStatusMessages.checkingLocation(remarks)
 
-    fun testingLocation(remarks: String): String = StatusMessages.testingLocation(remarks)
+    fun testingLocation(remarks: String): String = LocationStatusMessages.testingLocation(remarks)
 
-    fun locationCheckCancelled(): String = StatusMessages.locationCheckCancelled()
+    fun locationCheckCancelled(): String = LocationStatusMessages.locationCheckCancelled()
 
-    fun noLocationsToExport(): String = StatusMessages.noLocationsToExport()
+    fun noLocationsToExport(): String = LocationStatusMessages.noLocationsToExport()
 }

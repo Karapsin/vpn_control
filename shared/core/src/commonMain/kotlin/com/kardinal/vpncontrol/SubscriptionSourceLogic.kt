@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 
@@ -45,7 +45,7 @@ object SubscriptionSourceLogic {
                     profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
                     profileUrl = state.profileUrl,
                 ),
-                statusMessage = StatusMessages.activatedAllSubscriptions(),
+                statusMessage = SubscriptionStatusMessages.activatedAllSubscriptions(),
             )
         }
         val target = state.subscriptions.firstOrNull { it.id == targetId } ?: return null
@@ -55,7 +55,7 @@ object SubscriptionSourceLogic {
                 profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
                 profileUrl = target.url,
             ),
-            statusMessage = StatusMessages.activatedSubscription(sourceLabelFor(state.subscriptions, target.url)),
+            statusMessage = SubscriptionStatusMessages.activatedSubscription(sourceLabelFor(state.subscriptions, target.url)),
         )
     }
 
@@ -65,7 +65,7 @@ object SubscriptionSourceLogic {
     ): SubscriptionSavePlan {
         return SubscriptionSavePlan(
             nextState = state.copy(profileSourceMode = mode),
-            statusMessage = StatusMessages.profileSourceMode(mode),
+            statusMessage = SubscriptionStatusMessages.profileSourceMode(mode),
         )
     }
 
@@ -112,9 +112,9 @@ object SubscriptionSourceLogic {
                 profileHistoryRenameDraft = "",
             ),
             statusMessage = if (normalizedName.isBlank()) {
-                StatusMessages.subscriptionNameReset()
+                SubscriptionStatusMessages.subscriptionNameReset()
             } else {
-                StatusMessages.subscriptionNameSaved()
+                SubscriptionStatusMessages.subscriptionNameSaved()
             },
         )
     }
@@ -198,7 +198,7 @@ object SubscriptionSourceLogic {
                     state.showAddSubscriptionEditor
                 },
             ),
-            statusMessage = StatusMessages.subscriptionDeleted(),
+            statusMessage = SubscriptionStatusMessages.subscriptionDeleted(),
         )
     }
 

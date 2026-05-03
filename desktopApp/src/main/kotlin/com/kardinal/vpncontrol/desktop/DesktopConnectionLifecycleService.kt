@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
@@ -7,7 +9,6 @@ import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 
 internal interface DesktopRuntimeController {
     suspend fun start(
@@ -41,7 +42,7 @@ internal class DesktopConnectionLifecycleService(
         val targetMode = state.appMode
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
         if (profile.isFailure) {
-            val error = profile.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig()
+            val error = profile.exceptionOrNull()?.message ?: LocationStatusMessages.invalidLocationConfig()
             updateState { it.withStatus(error) }
             return Result.failure(IllegalStateException(error))
         }
@@ -84,14 +85,14 @@ internal class DesktopConnectionLifecycleService(
                     sessionStoppedAtEpochMillis = 0L,
                     successfulStarts = latestState.successfulStarts + 1,
                     lastBenchmarkSummary = benchmarkSummary ?: latestState.lastBenchmarkSummary,
-                ).withStatus(StatusMessages.connectionStartedOnTarget(targetMode, startedTarget)),
+                ).withStatus(ConnectionStatusMessages.connectionStartedOnTarget(targetMode, startedTarget)),
             )
         } else {
             updateState {
                 it.copy(
                     isBusy = false,
                     isVpnRunning = false,
-                ).withStatus(result.exceptionOrNull()?.message ?: StatusMessages.connectionStartFailed(targetMode))
+                ).withStatus(result.exceptionOrNull()?.message ?: ConnectionStatusMessages.connectionStartFailed(targetMode))
             }
         }
         return result.map { Unit }
@@ -136,7 +137,7 @@ internal class DesktopConnectionLifecycleService(
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: StatusMessages.connectionStopFailed(stoppedMode),
+                    result.exceptionOrNull()?.message ?: ConnectionStatusMessages.connectionStopFailed(stoppedMode),
                 )
             }
         }
@@ -160,7 +161,7 @@ internal class DesktopConnectionLifecycleService(
                 state.copy(
                     isBusy = false,
                     isVpnRunning = false,
-                ).withStatus(StatusMessages.appClosedConnectionWasOff()),
+                ).withStatus(ConnectionStatusMessages.appClosedConnectionWasOff()),
             )
             return Result.success(Unit)
         }
@@ -176,12 +177,12 @@ internal class DesktopConnectionLifecycleService(
                     isBusy = false,
                     isVpnRunning = false,
                     sessionStoppedAtEpochMillis = stoppedAt,
-                ).withStatus(StatusMessages.connectionStoppedReconnectOnNextLaunch(stoppedMode)),
+                ).withStatus(ConnectionStatusMessages.connectionStoppedReconnectOnNextLaunch(stoppedMode)),
             )
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    result.exceptionOrNull()?.message ?: StatusMessages.connectionStopBeforeExitFailed(stoppedMode),
+                    result.exceptionOrNull()?.message ?: ConnectionStatusMessages.connectionStopBeforeExitFailed(stoppedMode),
                 )
             }
         }

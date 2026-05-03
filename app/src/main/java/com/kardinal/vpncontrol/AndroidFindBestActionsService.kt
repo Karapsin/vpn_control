@@ -1,10 +1,10 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -81,7 +81,7 @@ internal class AndroidFindBestActionsService(
                     }
                 },
                 onFailure = { error ->
-                    error.message ?: StatusMessages.locationSearchFailed()
+                    error.message ?: BenchmarkStatusMessages.locationSearchFailed()
                 },
             )
             updateStatus(message)
@@ -89,7 +89,7 @@ internal class AndroidFindBestActionsService(
             withContext(NonCancellable) {
                 val message = when {
                     startAttempted && previousState.isVpnRunning ->
-                        rollbackSelectionChange(previousState, StatusMessages.locationSearchCancelled())
+                        rollbackSelectionChange(previousState, BenchmarkStatusMessages.locationSearchCancelled())
                     startAttempted -> {
                         val stopResult = stopConnection()
                         stopResult.fold(
@@ -99,7 +99,7 @@ internal class AndroidFindBestActionsService(
                             },
                             onFailure = {
                                 ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
-                                    prefix = StatusMessages.locationSearchCancelled(),
+                                    prefix = BenchmarkStatusMessages.locationSearchCancelled(),
                                     appMode = stateProvider().appMode,
                                     errorMessage = it.message,
                                 )

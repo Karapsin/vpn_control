@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 
 enum class DesktopPreflightStatus {
     PASS,
@@ -29,9 +29,9 @@ data class DesktopPreflightReport(
     fun summary(): String {
         val failed = checks.count { it.status == DesktopPreflightStatus.FAIL }
         return if (failed == 0) {
-            StatusMessages.preflightPassed(appMode)
+            RuntimeStatusMessages.preflightPassed(appMode)
         } else {
-            StatusMessages.preflightFailed(appMode, failed)
+            RuntimeStatusMessages.preflightFailed(appMode, failed)
         }
     }
 

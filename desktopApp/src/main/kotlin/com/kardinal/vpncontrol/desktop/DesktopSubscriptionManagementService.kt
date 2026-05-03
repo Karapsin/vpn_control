@@ -1,9 +1,9 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionSourceLogic
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.util.UUID
 
 internal class DesktopSubscriptionManagementService(
@@ -85,7 +85,7 @@ internal class DesktopSubscriptionManagementService(
         )
         if (result.isFailure) {
             updateState {
-                it.withStatus(result.exceptionOrNull()?.message ?: StatusMessages.invalidSubscriptionUrl())
+                it.withStatus(result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.invalidSubscriptionUrl())
             }
             return
         }
@@ -109,7 +109,7 @@ internal class DesktopSubscriptionManagementService(
 
         if (plan.removedSelected && state.isVpnRunning) {
             val stopResult = stopConnection(
-                StatusMessages.subscriptionDeleteRemovedSelectedStopped(state.appMode),
+                SubscriptionStatusMessages.subscriptionDeleteRemovedSelectedStopped(state.appMode),
             )
             if (stopResult.isFailure) {
                 return

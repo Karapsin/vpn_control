@@ -1,8 +1,9 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSelection
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -122,10 +123,10 @@ internal class AndroidConnectionLifecycleService(
             return restartResult.fold(
                 onSuccess = {
                     restoreSnapshot(previousState, false)
-                    if (baseMessage == StatusMessages.locationSearchCancelled()) {
-                        StatusMessages.previousConnectionRestored(stateProvider().appMode)
+                    if (baseMessage == BenchmarkStatusMessages.locationSearchCancelled()) {
+                        ConnectionStatusMessages.previousConnectionRestored(stateProvider().appMode)
                     } else {
-                        StatusMessages.previousConnectionRestoredWithReason(stateProvider().appMode, baseMessage)
+                        ConnectionStatusMessages.previousConnectionRestoredWithReason(stateProvider().appMode, baseMessage)
                     }
                 },
                 onFailure = { restartError ->
@@ -133,13 +134,13 @@ internal class AndroidConnectionLifecycleService(
                     stopResult.fold(
                         onSuccess = {
                             restoreSnapshot(previousState, true)
-                            StatusMessages.previousConnectionRestoreFailedStopped(
+                            ConnectionStatusMessages.previousConnectionRestoreFailedStopped(
                                 stateProvider().appMode,
                                 restartError.message.orEmpty(),
                             )
                         },
                         onFailure = { stopError ->
-                            StatusMessages.previousConnectionRestoreOrStopFailed(
+                            ConnectionStatusMessages.previousConnectionRestoreOrStopFailed(
                                 stateProvider().appMode,
                                 restartError.message.orEmpty(),
                                 stopError.message.orEmpty(),
@@ -154,10 +155,10 @@ internal class AndroidConnectionLifecycleService(
         return stopResult.fold(
             onSuccess = {
                 restoreSnapshot(previousState, true)
-                StatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
+                ConnectionStatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
             },
             onFailure = { error ->
-                StatusMessages.previousConnectionRestoreOrStopFailed(
+                ConnectionStatusMessages.previousConnectionRestoreOrStopFailed(
                     stateProvider().appMode,
                     baseMessage,
                     error.message.orEmpty(),
@@ -170,15 +171,15 @@ internal class AndroidConnectionLifecycleService(
         previousState: PersistedState,
         error: Throwable,
     ): String {
-        val baseMessage = error.message ?: StatusMessages.selectedLocationSaveFailed()
+        val baseMessage = error.message ?: ConnectionStatusMessages.selectedLocationSaveFailed()
         val stopResult = stopConnection()
         return stopResult.fold(
             onSuccess = {
                 restoreSnapshot(previousState, true)
-                StatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
+                ConnectionStatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
             },
             onFailure = { stopError ->
-                StatusMessages.previousConnectionRestoreOrStopFailed(
+                ConnectionStatusMessages.previousConnectionRestoreOrStopFailed(
                     stateProvider().appMode,
                     baseMessage,
                     stopError.message.orEmpty(),

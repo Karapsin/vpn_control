@@ -1,10 +1,11 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.AutoRefreshLogic
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 
 internal class DesktopSubscriptionRefreshService(
@@ -60,7 +61,7 @@ internal class DesktopSubscriptionRefreshService(
     ): Result<Int> {
         if (subscriptionsToRefresh.isEmpty()) {
             updateState { it.withStatus(SubscriptionRefreshResultLogic.NO_REMOTE_SOURCE_MESSAGE) }
-            return Result.failure(IllegalStateException(StatusMessages.noSubscriptionsToRefresh()))
+            return Result.failure(IllegalStateException(SubscriptionStatusMessages.noSubscriptionsToRefresh()))
         }
 
         updateState { it.copy(isBusy = true, isRefreshing = true).withStatus(statusPrefix) }
@@ -77,7 +78,7 @@ internal class DesktopSubscriptionRefreshService(
             updateState { it.copy(isBusy = false, isRefreshing = false) }
             return Result.failure(
                 refreshResult.exceptionOrNull()
-                    ?: IllegalStateException(StatusMessages.failedToRefreshSubscriptions()),
+                    ?: IllegalStateException(SubscriptionStatusMessages.failedToRefreshSubscriptions()),
             )
         }
         val refreshed = refreshResult.getOrThrow()
@@ -86,10 +87,10 @@ internal class DesktopSubscriptionRefreshService(
         val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
             refreshed.locations.none { it.matchesSelectedLocation(state) }
         if (removedSelected && state.isVpnRunning && stopVpnIfSelectedRemoved) {
-            val stopResult = stopConnection(StatusMessages.subscriptionRefreshRemovedSelectedStopped(state.appMode))
+            val stopResult = stopConnection(SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(state.appMode))
             if (stopResult.isFailure) {
                 updateState { it.copy(isBusy = false) }
-                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.connectionStopFailed(state.appMode)))
+                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException(ConnectionStatusMessages.connectionStopFailed(state.appMode)))
             }
         }
 

@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 
@@ -70,19 +70,19 @@ object SelectionWorkflowService {
             } else {
                 target.displayName
             }
-            onStatus(StatusMessages.resolvingRemoteSource(sourceLabel))
+            onStatus(BenchmarkStatusMessages.resolvingRemoteSource(sourceLabel))
             val profilesResult = runCatching { loadProfiles(target.sourceUrl) }
             if (profilesResult.isFailure) {
                 val error = profilesResult.exceptionOrNull()
-                failureMessages += error?.message ?: StatusMessages.subscriptionSourceLoadFailed(sourceLabel)
+                failureMessages += error?.message ?: BenchmarkStatusMessages.subscriptionSourceLoadFailed(sourceLabel)
                 continue
             }
             val profiles = profilesResult.getOrThrow()
             if (profiles.isEmpty()) {
                 val message = if (targets.size == 1) {
-                    StatusMessages.noLocationsFoundSelectedSubscription()
+                    BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
                 } else {
-                    StatusMessages.noLocationsFoundInSource(sourceLabel)
+                    BenchmarkStatusMessages.noLocationsFoundInSource(sourceLabel)
                 }
                 failureMessages += message
                 continue

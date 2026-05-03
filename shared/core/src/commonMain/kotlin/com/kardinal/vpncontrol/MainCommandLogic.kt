@@ -1,11 +1,13 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.MIN_SUBSCRIPTION_REFRESH_MINUTES
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
@@ -73,7 +75,7 @@ object MainCommandLogic {
                 policy = policy,
                 resolvedHours = resolvedHours,
                 findBestAfterRefresh = state.findBestAfterSubscriptionRefreshDraft,
-                statusMessage = StatusMessages.subscriptionAutoRefreshSet(policy, resolvedHours),
+                statusMessage = SettingsStatusMessages.subscriptionAutoRefreshSet(policy, resolvedHours),
             )
         }
     }
@@ -90,10 +92,10 @@ object MainCommandLogic {
         return when {
             state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
                 currentSubscriptionSearchTargets(state).isEmpty() ->
-                StatusMessages.noRemoteSource()
+                SubscriptionStatusMessages.noRemoteSource()
             state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS &&
                 state.currentLocations.isEmpty() ->
-                StatusMessages.addSavedLocationFirst()
+                SubscriptionStatusMessages.addSavedLocationFirst()
             else -> null
         }
     }
@@ -103,7 +105,7 @@ object MainCommandLogic {
     }
 
     fun refreshStartStatus(state: MainUiState): String {
-        return StatusMessages.findBestStart(state.profileSourceMode)
+        return ConnectionStatusMessages.findBestStart(state.profileSourceMode)
     }
 
     fun formatRefreshSummaryMessage(
@@ -135,7 +137,7 @@ object MainCommandLogic {
     }
 
     fun startingConnectionLabel(appMode: AppMode): String {
-        return StatusMessages.startingConnection(appMode)
+        return ConnectionStatusMessages.startingConnection(appMode)
     }
 
     fun startedConnectionLabel(appMode: AppMode): String {
@@ -146,7 +148,7 @@ object MainCommandLogic {
     }
 
     fun startedConnectionStatus(appMode: AppMode): String {
-        return StatusMessages.connectionStarted(appMode)
+        return ConnectionStatusMessages.connectionStarted(appMode)
     }
 
     fun stoppedConnectionLabel(appMode: AppMode): String {
@@ -157,11 +159,11 @@ object MainCommandLogic {
     }
 
     fun stoppedConnectionStatus(appMode: AppMode): String {
-        return StatusMessages.connectionStopped(appMode)
+        return ConnectionStatusMessages.connectionStopped(appMode)
     }
 
     fun bestSelectionStartMessage(appMode: AppMode): String {
-        return StatusMessages.startingConnectionWithBestLocation(appMode)
+        return ConnectionStatusMessages.startingConnectionWithBestLocation(appMode)
     }
 
     fun incomingImportEffect(
@@ -180,8 +182,8 @@ object MainCommandLogic {
                     nextState = next,
                     profileSourceModeUpdate = ProfileSourceMode.SUBSCRIPTION,
                     statusMessage = when (preference) {
-                        ImportPreference.SUBSCRIPTION -> StatusMessages.subscriptionReceived()
-                        else -> StatusMessages.subscriptionLinkReceived()
+                        ImportPreference.SUBSCRIPTION -> SubscriptionStatusMessages.subscriptionReceived()
+                        else -> SubscriptionStatusMessages.subscriptionLinkReceived()
                     },
                 )
             }
@@ -195,7 +197,7 @@ object MainCommandLogic {
                 IncomingImportEffect(
                     nextState = next,
                     profileSourceModeUpdate = ProfileSourceMode.CURRENT_LOCATIONS,
-                    statusMessage = StatusMessages.locationConfigReceived(),
+                    statusMessage = SubscriptionStatusMessages.locationConfigReceived(),
                 )
             }
             is IncomingImportPayload.RoutingRules -> {
@@ -218,15 +220,15 @@ object MainCommandLogic {
     ): Result<String> {
         return runCatching {
             if (mode == ProfileSourceMode.SUBSCRIPTION && value.isBlank()) {
-                error(StatusMessages.pasteSubscriptionRequired())
+                error(SubscriptionStatusMessages.pasteSubscriptionRequired())
             }
             if (mode == ProfileSourceMode.SUBSCRIPTION && value.isNotBlank()) {
                 validateSubscription(value).getOrThrow()
             }
             if (mode == ProfileSourceMode.SUBSCRIPTION) {
-                StatusMessages.subscriptionSaved()
+                SubscriptionStatusMessages.subscriptionSaved()
             } else {
-                StatusMessages.profileSourceSet(ProfileSourceMode.CURRENT_LOCATIONS)
+                SubscriptionStatusMessages.profileSourceSet(ProfileSourceMode.CURRENT_LOCATIONS)
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
@@ -7,7 +9,6 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -86,21 +87,21 @@ internal class AndroidLocationActionsService(
                     restoreSnapshot(previousState)
                     updateStatus(
                         selectionResult.exceptionOrNull()?.message
-                            ?: StatusMessages.updatedSelectedLocationApplyFailed(),
+                            ?: ConnectionStatusMessages.updatedSelectedLocationApplyFailed(),
                     )
                     return@launch
                 }
                 val applyResult = applyAndPersistSelection(
                     selectionResult.getOrThrow(),
-                    StatusMessages.updatedSelectedLocationApplying(),
+                    ConnectionStatusMessages.updatedSelectedLocationApplying(),
                 )
                 if (!applyResult.isSuccess) {
                     val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                         result = applyResult,
                         texts = SelectionCommitFailureTexts(
-                            applyFailureFallback = StatusMessages.updatedSelectedLocationApplyFailed(),
-                            persistFailureWithoutApplyFallback = StatusMessages.updatedSelectedLocationSaveFailed(),
-                            persistFailureAfterApplyFallback = StatusMessages.updatedSelectedLocationAppliedSaveFailed(),
+                            applyFailureFallback = ConnectionStatusMessages.updatedSelectedLocationApplyFailed(),
+                            persistFailureWithoutApplyFallback = ConnectionStatusMessages.updatedSelectedLocationSaveFailed(),
+                            persistFailureAfterApplyFallback = ConnectionStatusMessages.updatedSelectedLocationAppliedSaveFailed(),
                         ),
                     )
                     val resolvedMessage = if (applyResult.requiresLiveRollback) {
@@ -193,20 +194,20 @@ internal class AndroidLocationActionsService(
                 if (selectionResult.isFailure) {
                     Result.failure(
                         selectionResult.exceptionOrNull()
-                            ?: IllegalStateException(StatusMessages.selectedLocationSelectFailed()),
+                            ?: IllegalStateException(ConnectionStatusMessages.selectedLocationSelectFailed()),
                     )
                 } else {
                     val applyResult = applyAndPersistSelection(
                         selectionResult.getOrThrow(),
-                        StatusMessages.selectedLocationApplying(),
+                        ConnectionStatusMessages.selectedLocationApplying(),
                     )
                     if (!applyResult.isSuccess) {
                         val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                             result = applyResult,
                             texts = SelectionCommitFailureTexts(
-                                applyFailureFallback = StatusMessages.selectedLocationApplyFailed(),
-                                persistFailureWithoutApplyFallback = StatusMessages.selectedLocationSaveFailed(),
-                                persistFailureAfterApplyFallback = StatusMessages.selectedLocationStartedSaveFailed(
+                                applyFailureFallback = ConnectionStatusMessages.selectedLocationApplyFailed(),
+                                persistFailureWithoutApplyFallback = ConnectionStatusMessages.selectedLocationSaveFailed(),
+                                persistFailureAfterApplyFallback = ConnectionStatusMessages.selectedLocationStartedSaveFailed(
                                     stateProvider().appMode,
                                 ),
                             ),
@@ -230,12 +231,12 @@ internal class AndroidLocationActionsService(
                     val remarks = runCatching { LocationConfigs.decodeStoredLocation(rawLink).remarks }
                         .getOrDefault("Location")
                     if (isSelected) {
-                        StatusMessages.selectedLocationUnchanged(remarks)
+                        ConnectionStatusMessages.selectedLocationUnchanged(remarks)
                     } else {
-                        StatusMessages.selectedLocationSet(remarks)
+                        ConnectionStatusMessages.selectedLocationSet(remarks)
                     }
                 } else {
-                    result.exceptionOrNull()?.message ?: StatusMessages.selectedLocationSelectFailed()
+                    result.exceptionOrNull()?.message ?: ConnectionStatusMessages.selectedLocationSelectFailed()
                 },
             )
             setBusy(false)
@@ -321,8 +322,8 @@ internal class AndroidLocationActionsService(
                 }
                 updateStatus(
                     result.fold(
-                        onSuccess = { benchmark -> StatusMessages.locationChecked(benchmark.profile.remarks) },
-                        onFailure = { it.message ?: StatusMessages.locationCheckFailed() },
+                        onSuccess = { benchmark -> LocationStatusMessages.locationChecked(benchmark.profile.remarks) },
+                        onFailure = { it.message ?: LocationStatusMessages.locationCheckFailed() },
                     ),
                 )
             } catch (_: CancellationException) {

@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol
 
-import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.DiagnosticsStatusMessages
 
 internal class AndroidDiagnosticsActionsService(
     private val launch: (suspend () -> Unit) -> Unit,
@@ -14,8 +14,8 @@ internal class AndroidDiagnosticsActionsService(
             val result = exportAndShare()
             updateStatus(
                 result.fold(
-                    onSuccess = { StatusMessages.diagnosticsExportOpened() },
-                    onFailure = { it.message ?: StatusMessages.diagnosticsExportFailed() },
+                    onSuccess = { DiagnosticsStatusMessages.diagnosticsExportOpened() },
+                    onFailure = { it.message ?: DiagnosticsStatusMessages.diagnosticsExportFailed() },
                 ),
             )
             setBusy(false)

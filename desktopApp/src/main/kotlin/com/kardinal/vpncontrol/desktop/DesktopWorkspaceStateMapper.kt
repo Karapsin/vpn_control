@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateProjector
@@ -8,7 +9,6 @@ import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
@@ -18,7 +18,7 @@ internal fun defaultDesktopWorkspace(): DesktopWorkspace {
     val persisted = PersistedState(
         appMode = appMode,
         routingRules = RoutingRules(),
-        statusMessage = StatusMessages.connectionReadyOnComputer(appMode),
+        statusMessage = ConnectionStatusMessages.connectionReadyOnComputer(appMode),
     )
     return DesktopWorkspace(
         persistedState = persisted,

@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.data.CompactJson
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -7,7 +8,6 @@ import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.net.URI
 import kotlin.random.Random
 import kotlinx.serialization.json.JsonArray
@@ -39,7 +39,7 @@ object MainDraftLogic {
         ).normalized()
         return ValidationSettingsSavePlan(
             settings = settings,
-            statusMessage = StatusMessages.validationSettingsSaved(settings),
+            statusMessage = SettingsStatusMessages.validationSettingsSaved(settings),
         )
     }
 
@@ -49,7 +49,7 @@ object MainDraftLogic {
         return DnsSavePlan(
             dns = dns,
             enabled = enabled,
-            statusMessage = StatusMessages.customDnsSaved(enabled),
+            statusMessage = SettingsStatusMessages.customDnsSaved(enabled),
         )
     }
 

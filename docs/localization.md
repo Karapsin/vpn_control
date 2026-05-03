@@ -72,13 +72,15 @@ Typed runtime/status messages are split across the shared model status files:
 - `StatusMessageTypes.kt` owns `StatusMessageKey` and `StructuredStatusMessage`.
 - `StatusMessageCodec.kt` owns encode/decode escaping.
 - `StatusMessageKeySelectors.kt` owns domain-specific key selection.
-- `StatusMessages.kt` is the public facade used by Android, desktop, and shared core.
+- Domain facades such as `ConnectionStatusMessages`, `SubscriptionStatusMessages`, `BenchmarkStatusMessages`, `LocationStatusMessages`, `RoutingStatusMessages`, `DiagnosticsStatusMessages`, `RuntimeStatusMessages`, and `SettingsStatusMessages` own grouped helpers for new production code.
+- `StatusMessages.kt` is the compatibility facade. Keep it delegating to domain facades when a helper belongs to a focused domain.
 
 To add one:
 
-1. Add a `StatusMessageKey` entry and a `StatusMessages` helper.
+1. Add a `StatusMessageKey` entry and a helper on the relevant domain facade.
 2. Put non-trivial variant selection into `StatusMessageKeySelectors.kt` instead of inline UI/platform code.
-3. Seed the structured catalog entry:
+3. Add or update the compatibility wrapper in `StatusMessages.kt` if existing call sites or tests need the old public API.
+4. Seed the structured catalog entry:
 
 ```bash
 ./scripts/status_catalog_tool.py add-structured STATUS_KEY "English template with {0} placeholders"

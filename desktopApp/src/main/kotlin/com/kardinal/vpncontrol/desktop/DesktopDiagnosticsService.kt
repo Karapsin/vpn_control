@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DiagnosticsStatusMessages
 import com.kardinal.vpncontrol.MainUiState
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Path
 
 internal class DesktopDiagnosticsService(
@@ -20,7 +20,7 @@ internal class DesktopDiagnosticsService(
             return
         }
         val target = selection.getOrNull() ?: run {
-            updateState { it.withStatus(StatusMessages.diagnosticsExportCanceled()) }
+            updateState { it.withStatus(DiagnosticsStatusMessages.diagnosticsExportCanceled()) }
             return
         }
         val report = DesktopDiagnosticsExporter.buildReport(

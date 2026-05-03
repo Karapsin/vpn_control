@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
@@ -183,9 +183,9 @@ class DesktopProxyRuntimeManager(
     fun desktopVpnCapabilityStatus(): String {
         return runCatching {
             ensureDesktopVpnSupported()
-            StatusMessages.desktopVpnCapabilityReady()
+            RuntimeStatusMessages.desktopVpnCapabilityReady()
         }.getOrElse { error ->
-            StatusMessages.desktopVpnCapabilityError(error.message ?: "not ready")
+            RuntimeStatusMessages.desktopVpnCapabilityError(error.message ?: "not ready")
         }
     }
 

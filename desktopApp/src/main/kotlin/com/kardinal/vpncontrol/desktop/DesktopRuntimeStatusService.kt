@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Path
 
 internal class DesktopRuntimeStatusService(
@@ -18,8 +18,8 @@ internal class DesktopRuntimeStatusService(
         val state = stateProvider()
         val runtimeMode = currentMode() ?: state.appMode
         val details = mutableListOf<String>()
-        details += StatusMessages.runtimeMode(runtimeMode.name)
-        currentPort()?.let { details += StatusMessages.localProxy("127.0.0.1:$it") }
+        details += RuntimeStatusMessages.runtimeMode(runtimeMode.name)
+        currentPort()?.let { details += RuntimeStatusMessages.localProxy("127.0.0.1:$it") }
         if (state.appMode == AppMode.VPN) {
             val preflight = lastPreflightReport()
             if (preflight != null) {
@@ -33,7 +33,7 @@ internal class DesktopRuntimeStatusService(
             }
         }
         val logPath = currentLogFile() ?: defaultLogFile()
-        details += StatusMessages.runtimeLog(logPath.toString())
+        details += RuntimeStatusMessages.runtimeLog(logPath.toString())
         return details
     }
 }

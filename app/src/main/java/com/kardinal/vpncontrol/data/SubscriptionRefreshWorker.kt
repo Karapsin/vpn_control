@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import android.content.Context
 import android.net.VpnService
 import androidx.work.WorkManager
@@ -9,7 +11,6 @@ import com.kardinal.vpncontrol.ConnectionOrchestrationLogic
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
@@ -97,14 +98,14 @@ class SubscriptionRefreshWorker(
                             restoreRuntimeArtifacts = true,
                             sourceUrlOverride = "",
                         )
-                        storage.updateStatus(StatusMessages.backgroundVpnPermissionRequiredKeepingPrevious())
+                        storage.updateStatus(ConnectionStatusMessages.backgroundVpnPermissionRequiredKeepingPrevious())
                         DiagnosticsLogger.append(
                             applicationContext,
                             "Background subscription sync skipped auto-switch because VPN permission is not available in background",
                         )
                         return@fold finishAndScheduleNext()
                     }
-                    storage.updateStatus(StatusMessages.backgroundRefreshFindingBest())
+                    storage.updateStatus(SubscriptionStatusMessages.backgroundRefreshFindingBest())
                     var switchFailure: Throwable? = null
                     val replacement = findBestProfileWithRetries(
                         orchestrator = orchestrator,
@@ -149,7 +150,7 @@ class SubscriptionRefreshWorker(
                     )
                     val failureMessage = switchFailure?.message
                         ?: replacement.exceptionOrNull()?.message
-                        ?: StatusMessages.replacementLocationSearchFailed()
+                        ?: SubscriptionStatusMessages.replacementLocationSearchFailed()
                     storage.updateStatus(
                         SubscriptionRefreshResultLogic.backgroundReplacementFailedMessage(
                             appMode = state.appMode,
@@ -205,7 +206,7 @@ class SubscriptionRefreshWorker(
                 if (!refreshAll && state.activeSubscriptionId.isNotBlank()) {
                     storage.updateSubscriptionRefreshStatus(
                         subscriptionId = state.activeSubscriptionId,
-                        status = error.message ?: StatusMessages.backgroundRefreshFailed(),
+                        status = error.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
                     )
                 }
                 DiagnosticsLogger.append(
@@ -235,11 +236,11 @@ class SubscriptionRefreshWorker(
         repository: AppRepository,
     ): kotlin.Result<Unit> {
         val appMode = storage.snapshot().appMode
-        storage.updateStatus(StatusMessages.startingConnectionWithBestLocation(appMode))
+        storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
         val startResult = vpnManager.start(selection)
         if (startResult.isFailure) {
             return kotlin.Result.failure(
-                startResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.bestLocationStartFailed(appMode)),
+                startResult.exceptionOrNull() ?: IllegalStateException(ConnectionStatusMessages.bestLocationStartFailed(appMode)),
             )
         }
         val persistResult = runCatching {
@@ -247,7 +248,7 @@ class SubscriptionRefreshWorker(
         }
         if (persistResult.isFailure) {
             return kotlin.Result.failure(
-                persistResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.replacementLocationSaveFailed()),
+                persistResult.exceptionOrNull() ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
             )
         }
         return kotlin.Result.success(Unit)
@@ -265,7 +266,7 @@ class SubscriptionRefreshWorker(
                 restoreRuntimeArtifacts = true,
                 sourceUrlOverride = "",
             )
-            return StatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
+            return SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
         }
         val previousSelection = orchestrator.rehydrateSelection(previousState)
         if (previousSelection.isSuccess) {
@@ -276,17 +277,17 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = false,
                     sourceUrlOverride = "",
                 )
-                return StatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
+                return SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
             }
         }
         val stopResult = vpnManager.stop()
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                StatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
+                SubscriptionStatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
             },
             onFailure = { error ->
-                StatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
+                SubscriptionStatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
             },
         )
     }
@@ -299,7 +300,7 @@ class SubscriptionRefreshWorker(
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                StatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
+                SubscriptionStatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
             },
             onFailure = { error ->
                 storage.restoreSelection(
@@ -307,7 +308,7 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = true,
                     sourceUrlOverride = "",
                 )
-                StatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
+                SubscriptionStatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
             },
         )
     }

@@ -1,9 +1,9 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
-import com.kardinal.vpncontrol.model.StatusMessages
 
 enum class SubscriptionRefreshScope {
     ACTIVE,
@@ -12,15 +12,15 @@ enum class SubscriptionRefreshScope {
 
 object SubscriptionRefreshResultLogic {
     val NO_SUBSCRIPTIONS_MESSAGE: String
-        get() = StatusMessages.noSubscriptionsSaved()
+        get() = SubscriptionStatusMessages.noSubscriptionsSaved()
     val NO_REMOTE_SOURCE_MESSAGE: String
-        get() = StatusMessages.noRemoteSource()
+        get() = SubscriptionStatusMessages.noRemoteSource()
 
     fun refreshStartMessage(
         targetCount: Int,
         auto: Boolean = false,
     ): String {
-        return StatusMessages.subscriptionRefreshStart(targetCount = targetCount, auto = auto)
+        return SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = targetCount, auto = auto)
     }
 
     fun manualSummary(
@@ -30,12 +30,12 @@ object SubscriptionRefreshResultLogic {
         totalCount: Int,
     ): String {
         val defaultSuccess = when (scope) {
-            SubscriptionRefreshScope.ACTIVE -> StatusMessages.activeSubscriptionRefreshed()
+            SubscriptionRefreshScope.ACTIVE -> SubscriptionStatusMessages.activeSubscriptionRefreshed()
             SubscriptionRefreshScope.ALL -> {
                 if (totalCount == refreshedCount) {
-                    StatusMessages.allSubscriptionsRefreshed()
+                    SubscriptionStatusMessages.allSubscriptionsRefreshed()
                 } else {
-                    StatusMessages.subscriptionsRefreshedCount(refreshedCount, totalCount)
+                    SubscriptionStatusMessages.subscriptionsRefreshedCount(refreshedCount, totalCount)
                 }
             }
         }
@@ -53,9 +53,9 @@ object SubscriptionRefreshResultLogic {
         totalCount: Int,
     ): String {
         val defaultSuccess = if (refreshedCount == 1 && totalCount == 1) {
-            StatusMessages.subscriptionRefreshed()
+            SubscriptionStatusMessages.subscriptionRefreshed()
         } else {
-            StatusMessages.subscriptionsRefreshed()
+            SubscriptionStatusMessages.subscriptionsRefreshed()
         }
         return summary(
             refreshedCount = refreshedCount,
@@ -75,12 +75,12 @@ object SubscriptionRefreshResultLogic {
             return defaultSuccess
         }
         val failedSuffix = failureLabel(failedSubscriptionNames)
-        return StatusMessages.subscriptionsRefreshedPartial(refreshedCount, totalCount, failedSuffix)
+        return SubscriptionStatusMessages.subscriptionsRefreshedPartial(refreshedCount, totalCount, failedSuffix)
     }
 
     fun failureSummary(failedSubscriptionNames: List<String>): String? {
         if (failedSubscriptionNames.isEmpty()) return null
-        return StatusMessages.failedToRefresh(failureLabel(failedSubscriptionNames))
+        return SubscriptionStatusMessages.failedToRefresh(failureLabel(failedSubscriptionNames))
     }
 
     fun selectedSourceFailed(
@@ -117,7 +117,7 @@ object SubscriptionRefreshResultLogic {
         winnerSource: String?,
         failedSubscriptionNames: List<String>,
     ): String {
-        return StatusMessages.backgroundRefreshSwitched(
+        return SubscriptionStatusMessages.backgroundRefreshSwitched(
             appMode = appMode,
             selectedProfileName = selectedProfileName,
             winnerSource = winnerSource,
@@ -132,7 +132,7 @@ object SubscriptionRefreshResultLogic {
         selectedSourceFailed: Boolean,
         rollbackMessage: String,
     ): String {
-        return StatusMessages.backgroundRefreshReplacementFailed(
+        return SubscriptionStatusMessages.backgroundRefreshReplacementFailed(
             appMode = appMode,
             failureMessage = failureMessage,
             failedLabel = failureLabelOrNull(failedSubscriptionNames),
@@ -145,7 +145,7 @@ object SubscriptionRefreshResultLogic {
         appMode: AppMode,
         failedSubscriptionNames: List<String>,
     ): String {
-        return StatusMessages.backgroundRefreshSelectedMissingKept(
+        return SubscriptionStatusMessages.backgroundRefreshSelectedMissingKept(
             appMode = appMode,
             failedLabel = failureLabelOrNull(failedSubscriptionNames),
         )
@@ -156,7 +156,7 @@ object SubscriptionRefreshResultLogic {
         failedSubscriptionNames: List<String>,
         selectedSourceFailed: Boolean,
     ): String {
-        return StatusMessages.backgroundRefreshKeptCurrent(
+        return SubscriptionStatusMessages.backgroundRefreshKeptCurrent(
             appMode = appMode,
             failedLabel = failureLabelOrNull(failedSubscriptionNames),
             selectedSourceFailed = selectedSourceFailed,

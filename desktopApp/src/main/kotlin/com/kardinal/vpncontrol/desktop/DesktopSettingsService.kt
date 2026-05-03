@@ -1,12 +1,13 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.GeneralStatusMessages
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 
@@ -58,12 +59,12 @@ internal class DesktopSettingsService(
         val actual = autostartManager.isEnabled()
         val status = if (result.isSuccess) {
             if (actual) {
-                StatusMessages.startOnLoginEnabled()
+                SettingsStatusMessages.startOnLoginEnabled()
             } else {
-                StatusMessages.startOnLoginDisabled()
+                SettingsStatusMessages.startOnLoginDisabled()
             }
         } else {
-            StatusMessages.startupSettingUpdateFailed(result.exceptionOrNull()?.message.orEmpty())
+            SettingsStatusMessages.startupSettingUpdateFailed(result.exceptionOrNull()?.message.orEmpty())
         }
         updateState { it.copy(startOnBootEnabled = actual).withStatus(status) }
     }
@@ -87,7 +88,7 @@ internal class DesktopSettingsService(
     fun setAppLanguage(language: AppLanguage) {
         updateState {
             it.copy(appLanguage = language, showLanguageDialog = false).withStatus(
-                StatusMessages.languageSet(if (language == AppLanguage.SYSTEM) "" else language.nativeName),
+                GeneralStatusMessages.languageSet(if (language == AppLanguage.SYSTEM) "" else language.nativeName),
             )
         }
     }
@@ -95,9 +96,9 @@ internal class DesktopSettingsService(
     fun setSubscriptionHwid(value: String) {
         val normalized = value.trim()
         val status = if (normalized.isBlank()) {
-            StatusMessages.subscriptionHwidCleared()
+            SettingsStatusMessages.subscriptionHwidCleared()
         } else {
-            StatusMessages.subscriptionHwidSaved()
+            SettingsStatusMessages.subscriptionHwidSaved()
         }
         updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
     }
@@ -140,7 +141,7 @@ internal class DesktopSettingsService(
         if (resolution.isFailure) {
             updateState {
                 it.withStatus(
-                    resolution.exceptionOrNull()?.message ?: StatusMessages.refreshSettingsSaveFailed(),
+                    resolution.exceptionOrNull()?.message ?: SettingsStatusMessages.refreshSettingsSaveFailed(),
                 )
             }
             return
@@ -163,13 +164,13 @@ internal class DesktopSettingsService(
         val state = stateProvider()
         if (state.isVpnRunning && mode != state.appMode) {
             val stopResult = stopConnection(
-                StatusMessages.connectionStoppedForAppMode(state.appMode, mode),
+                SettingsStatusMessages.connectionStoppedForAppMode(state.appMode, mode),
             )
             if (stopResult.isFailure) {
                 return
             }
         }
-        updateState { it.withStatus(StatusMessages.appModeChanged(mode)).copy(appMode = mode, showAppModeDialog = false) }
+        updateState { it.withStatus(SettingsStatusMessages.appModeChanged(mode)).copy(appMode = mode, showAppModeDialog = false) }
     }
 
     suspend fun toggleAppMode() {

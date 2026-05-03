@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.ImportLocationsDecision
 import com.kardinal.vpncontrol.LocationStatusLogic
@@ -9,7 +11,6 @@ import com.kardinal.vpncontrol.SelectionCandidate
 import com.kardinal.vpncontrol.SelectionMappingLogic
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Path
 
 internal class DesktopLocationService(
@@ -44,7 +45,7 @@ internal class DesktopLocationService(
             isValid = true,
         )
         commitState(
-            stateProvider().withStatus(StatusMessages.locationAdded(newLocation.name)),
+            stateProvider().withStatus(LocationStatusMessages.locationAdded(newLocation.name)),
             locations + newLocation,
         )
     }
@@ -58,7 +59,7 @@ internal class DesktopLocationService(
             }
         }
         commitState(
-            stateProvider().withStatus(StatusMessages.locationEdited(index)),
+            stateProvider().withStatus(LocationStatusMessages.locationEdited(index)),
             updatedLocations,
         )
     }
@@ -70,7 +71,7 @@ internal class DesktopLocationService(
         val removedSelected = removed.rawLink == state.selectedProfileRawLink
         if (removedSelected && state.isVpnRunning) {
             val stopResult = stopConnection(
-                StatusMessages.connectionStopped(currentRuntimeMode() ?: state.appMode),
+                ConnectionStatusMessages.connectionStopped(currentRuntimeMode() ?: state.appMode),
             )
             if (stopResult.isFailure) {
                 return
@@ -80,7 +81,7 @@ internal class DesktopLocationService(
         val updatedLocations = locations.filterNot { it.index == index }
         commitState(
             latestState.clearSelectedLocationIf(removedSelected)
-                .withStatus(StatusMessages.locationRemoved(removed.name)),
+                .withStatus(LocationStatusMessages.locationRemoved(removed.name)),
             updatedLocations,
         )
     }
@@ -91,7 +92,7 @@ internal class DesktopLocationService(
         val selected = locations.firstOrNull { it.index == index } ?: return
         val updatedLocations = locations.map { it.copy(isSelected = it.index == index) }
         commitState(
-            state.withStatus(StatusMessages.selectedLocationSet(selected.name)).copy(
+            state.withStatus(ConnectionStatusMessages.selectedLocationSet(selected.name)).copy(
                 selectedProfileName = selected.name,
                 selectedProfileServer = selected.server,
                 selectedProfileRawLink = selected.rawLink,
@@ -118,7 +119,7 @@ internal class DesktopLocationService(
     suspend fun importFromClipboard() {
         val raw = DesktopTextTransfer.readClipboardText()
         if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: StatusMessages.clipboardReadFailed()) }
+            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: LocationStatusMessages.clipboardReadFailed()) }
             return
         }
         importRaw(raw.getOrThrow())
@@ -126,13 +127,13 @@ internal class DesktopLocationService(
 
     suspend fun importFromFile(selection: Result<Path?>) {
         if (selection.isFailure) {
-            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: StatusMessages.locationsFileOpenFailed()) }
+            updateState { it.withStatus(selection.exceptionOrNull()?.message ?: LocationStatusMessages.locationsFileOpenFailed()) }
             return
         }
         val path = selection.getOrNull() ?: return
         val raw = DesktopTextTransfer.readTextFile(path)
         if (raw.isFailure) {
-            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: StatusMessages.locationsFileReadFailed()) }
+            updateState { it.withStatus(raw.exceptionOrNull()?.message ?: LocationStatusMessages.locationsFileReadFailed()) }
             return
         }
         importRaw(raw.getOrThrow())
@@ -148,7 +149,7 @@ internal class DesktopLocationService(
         val result = DesktopTextTransfer.writeClipboardText(document.content)
         updateState {
             it.withStatus(
-                result.exceptionOrNull()?.message ?: StatusMessages.locationsCopiedToClipboard(),
+                result.exceptionOrNull()?.message ?: LocationStatusMessages.locationsCopiedToClipboard(),
             )
         }
     }
@@ -174,12 +175,12 @@ internal class DesktopLocationService(
                 result.fold(
                     onSuccess = { path ->
                         if (path == null) {
-                            StatusMessages.locationsExportCanceled()
+                            LocationStatusMessages.locationsExportCanceled()
                         } else {
-                            StatusMessages.locationsExportedTo(path.toString())
+                            LocationStatusMessages.locationsExportedTo(path.toString())
                         }
                     },
-                    onFailure = { error -> error.message ?: StatusMessages.locationsExportFailed() },
+                    onFailure = { error -> error.message ?: LocationStatusMessages.locationsExportFailed() },
                 ),
             )
         }

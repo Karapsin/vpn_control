@@ -1,21 +1,21 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 
 internal object DesktopSubscriptionRefreshStatus {
     fun noSubscriptionsToRefresh(): IllegalStateException =
-        IllegalStateException(StatusMessages.noSubscriptionsToRefresh())
+        IllegalStateException(SubscriptionStatusMessages.noSubscriptionsToRefresh())
 
     fun progress(subscription: SubscriptionSource): String =
-        StatusMessages.refreshingSubscriptionNamed(subscriptionDisplayName(subscription))
+        SubscriptionStatusMessages.refreshingSubscriptionNamed(subscriptionDisplayName(subscription))
 
     fun successfulLocationRefresh(locationCount: Int): String =
-        StatusMessages.locationsRefreshed(locationCount)
+        SubscriptionStatusMessages.locationsRefreshed(locationCount)
 
     fun failedSubscriptionRefresh(subscription: SubscriptionSource, error: Throwable): String =
-        error.message ?: StatusMessages.failedToRefresh(subscriptionDisplayName(subscription))
+        error.message ?: SubscriptionStatusMessages.failedToRefresh(subscriptionDisplayName(subscription))
 
     fun summary(
         refreshedCount: Int,

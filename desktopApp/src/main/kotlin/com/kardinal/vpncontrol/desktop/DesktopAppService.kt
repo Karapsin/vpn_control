@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,7 +11,6 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import java.nio.file.Path
@@ -36,7 +36,7 @@ class DesktopAppService internal constructor(
         restoreDesktopUiState(initialWorkspace.persistedState, initialWorkspace.locations).copy(
             isVpnRunning = false,
             statusMessage = if (resumeConnectionOnLaunch) {
-                StatusMessages.previousConnectionRestorePending()
+                ConnectionStatusMessages.previousConnectionRestorePending()
             } else {
                 initialWorkspace.persistedState.statusMessage
             },

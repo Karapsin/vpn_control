@@ -1,7 +1,8 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.delay
 
 enum class SelectionCommitStage {
@@ -43,7 +44,7 @@ object ConnectionOrchestrationLogic {
         repeat(normalizedRetryCount + 1) { attempt ->
             if (attempt > 0) {
                 onRetryStatus(
-                    StatusMessages.retryingBestLocationSearch(
+                    BenchmarkStatusMessages.retryingBestLocationSearch(
                         attempt = attempt + 1,
                         total = normalizedRetryCount + 1,
                     ),
@@ -56,7 +57,7 @@ object ConnectionOrchestrationLogic {
             }
             lastFailure = result.exceptionOrNull()
         }
-        return Result.failure(lastFailure ?: IllegalStateException(StatusMessages.locationSearchFailed()))
+        return Result.failure(lastFailure ?: IllegalStateException(BenchmarkStatusMessages.locationSearchFailed()))
     }
 
     fun selectionCommitFailureMessage(
@@ -76,59 +77,59 @@ object ConnectionOrchestrationLogic {
 
     fun toggleStartPreconditionError(state: MainUiState): String? {
         return if (state.appMode == AppMode.VPN && !state.hasVpnPermission) {
-            StatusMessages.vpnPermissionRequired()
+            BenchmarkStatusMessages.vpnPermissionRequired()
         } else {
             null
         }
     }
 
     fun preparingConnectionMessage(appMode: AppMode): String {
-        return StatusMessages.startingConnection(appMode)
+        return ConnectionStatusMessages.startingConnection(appMode)
     }
 
     fun ensureSelectionFailureMessage(appMode: AppMode, errorMessage: String?): String {
-        return errorMessage ?: StatusMessages.connectionStartFailed(appMode)
+        return errorMessage ?: ConnectionStatusMessages.connectionStartFailed(appMode)
     }
 
     fun refreshSelectionStartedMessage(appMode: AppMode, remarks: String): String {
-        return StatusMessages.connectionStartedOnTarget(appMode, remarks)
+        return ConnectionStatusMessages.connectionStartedOnTarget(appMode, remarks)
     }
 
-    fun refreshCancelledMessage(): String = StatusMessages.locationSearchCancelled()
+    fun refreshCancelledMessage(): String = BenchmarkStatusMessages.locationSearchCancelled()
 
     fun cancelledWithStopFailureMessage(prefix: String, appMode: AppMode, errorMessage: String?): String {
-        return if (prefix == StatusMessages.locationSearchCancelled()) {
-            StatusMessages.locationSearchCancelledStopFailed(appMode, errorMessage.orEmpty())
+        return if (prefix == BenchmarkStatusMessages.locationSearchCancelled()) {
+            BenchmarkStatusMessages.locationSearchCancelledStopFailed(appMode, errorMessage.orEmpty())
         } else {
-            "$prefix ${errorMessage ?: StatusMessages.connectionStopFailed(appMode)}"
+            "$prefix ${errorMessage ?: ConnectionStatusMessages.connectionStopFailed(appMode)}"
         }
     }
 
     fun connectionStartCancelledMessage(appMode: AppMode): String {
-        return StatusMessages.connectionStartCancelled(appMode)
+        return ConnectionStatusMessages.connectionStartCancelled(appMode)
     }
 
     fun connectionStopCancelledMessage(appMode: AppMode): String {
-        return StatusMessages.connectionStopCancelled(appMode)
+        return ConnectionStatusMessages.connectionStopCancelled(appMode)
     }
 
     fun connectionStopFailureMessage(appMode: AppMode, errorMessage: String?): String {
-        return errorMessage ?: StatusMessages.connectionStopFailed(appMode)
+        return errorMessage ?: ConnectionStatusMessages.connectionStopFailed(appMode)
     }
 
     fun startSelectionFailureTexts(appMode: AppMode): SelectionCommitFailureTexts {
         return SelectionCommitFailureTexts(
-            applyFailureFallback = StatusMessages.connectionStartFailed(appMode),
-            persistFailureWithoutApplyFallback = StatusMessages.selectedLocationSaveFailed(),
-            persistFailureAfterApplyFallback = StatusMessages.selectedLocationStartedSaveFailed(appMode),
+            applyFailureFallback = ConnectionStatusMessages.connectionStartFailed(appMode),
+            persistFailureWithoutApplyFallback = ConnectionStatusMessages.selectedLocationSaveFailed(),
+            persistFailureAfterApplyFallback = ConnectionStatusMessages.selectedLocationStartedSaveFailed(appMode),
         )
     }
 
     fun refreshSelectionFailureTexts(appMode: AppMode): SelectionCommitFailureTexts {
         return SelectionCommitFailureTexts(
-            applyFailureFallback = StatusMessages.bestLocationStartFailed(appMode),
-            persistFailureWithoutApplyFallback = StatusMessages.bestLocationSaveFailed(),
-            persistFailureAfterApplyFallback = StatusMessages.bestLocationStartedSaveFailed(appMode),
+            applyFailureFallback = ConnectionStatusMessages.bestLocationStartFailed(appMode),
+            persistFailureWithoutApplyFallback = ConnectionStatusMessages.bestLocationSaveFailed(),
+            persistFailureAfterApplyFallback = ConnectionStatusMessages.bestLocationStartedSaveFailed(appMode),
         )
     }
 }
