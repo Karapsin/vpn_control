@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
@@ -8,7 +10,6 @@ import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -491,7 +492,7 @@ class DesktopAppServiceTest {
             service.findBestLocation(refreshSubscriptionsFirst = false)
 
             assertEquals(AppMode.VPN, service.state.appMode)
-            assertEquals(StatusMessages.addSavedLocationFirst(), service.state.statusMessage)
+            assertEquals(SubscriptionStatusMessages.addSavedLocationFirst(), service.state.statusMessage)
             assertFalse(service.state.statusMessage.contains("Proxy-only mode only"))
         } finally {
             tempDir.toFile().deleteRecursively()
@@ -540,7 +541,7 @@ class DesktopAppServiceTest {
             assertEquals(1, postRefreshSelections)
             assertEquals(1, service.state.subscriptions.single().cachedLocations.size)
             assertEquals(1, service.state.currentLocations.size)
-            assertEquals(StatusMessages.subscriptionRefreshed(), service.state.statusMessage)
+            assertEquals(SubscriptionStatusMessages.subscriptionRefreshed(), service.state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }
@@ -606,7 +607,7 @@ class DesktopAppServiceTest {
                 DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
             )
             assertEquals("authorized-device-id", reloaded.persistedState.subscriptionHwid)
-            assertEquals(StatusMessages.subscriptionHwidSaved(), service.state.statusMessage)
+            assertEquals(SettingsStatusMessages.subscriptionHwidSaved(), service.state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

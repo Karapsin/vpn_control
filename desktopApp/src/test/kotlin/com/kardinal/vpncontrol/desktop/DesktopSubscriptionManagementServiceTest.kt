@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,7 +33,7 @@ class DesktopSubscriptionManagementServiceTest {
         assertEquals("https://example.com/sub.txt", state.profileUrl)
         assertEquals(listOf("https://example.com/sub.txt"), state.subscriptions.map(SubscriptionSource::url))
         assertFalse(state.showAddSubscriptionEditor)
-        assertEquals(StatusMessages.subscriptionSaved(), state.statusMessage)
+        assertEquals(SubscriptionStatusMessages.subscriptionSaved(), state.statusMessage)
     }
 
     @Test
@@ -82,12 +82,12 @@ class DesktopSubscriptionManagementServiceTest {
 
         service.deleteSubscription(subscription.id)
 
-        assertEquals(StatusMessages.subscriptionDeleteRemovedSelectedStopped(AppMode.VPN), stopMessage)
+        assertEquals(SubscriptionStatusMessages.subscriptionDeleteRemovedSelectedStopped(AppMode.VPN), stopMessage)
         assertFalse(state.isVpnRunning)
         assertTrue(state.subscriptions.isEmpty())
         assertTrue(locations.isEmpty())
         assertEquals("", state.selectedProfileRawLink)
-        assertEquals(StatusMessages.subscriptionDeleted(), state.statusMessage)
+        assertEquals(SubscriptionStatusMessages.subscriptionDeleted(), state.statusMessage)
     }
 
     private fun service(

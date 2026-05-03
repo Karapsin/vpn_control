@@ -1,9 +1,10 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.LocationStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,7 +46,7 @@ class DesktopLocationServiceTest {
         assertEquals("", state.selectedProfileServer)
         assertEquals("", state.selectedProfileRawLink)
         assertTrue(locations.isEmpty())
-        assertEquals(StatusMessages.locationRemoved("Netherlands"), state.statusMessage)
+        assertEquals(LocationStatusMessages.locationRemoved("Netherlands"), state.statusMessage)
     }
 
     @Test
@@ -74,7 +75,7 @@ class DesktopLocationServiceTest {
         assertEquals("vless://second", state.selectedProfileRawLink)
         assertFalse(locations[0].isSelected)
         assertTrue(locations[1].isSelected)
-        assertEquals(StatusMessages.selectedLocationSet("Second"), state.statusMessage)
+        assertEquals(ConnectionStatusMessages.selectedLocationSet("Second"), state.statusMessage)
     }
 
     @Test
@@ -95,7 +96,7 @@ class DesktopLocationServiceTest {
 
         service.importRaw("not relevant")
 
-        assertEquals(StatusMessages.importLocationsBlocked(), state.statusMessage)
+        assertEquals(LocationStatusMessages.importLocationsBlocked(), state.statusMessage)
     }
 }
 

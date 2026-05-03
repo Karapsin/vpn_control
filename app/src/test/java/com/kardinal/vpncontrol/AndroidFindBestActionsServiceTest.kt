@@ -1,7 +1,10 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
@@ -9,8 +12,6 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,7 +38,7 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(0, refreshCalls)
-        assertEquals(listOf(StatusMessages.addSavedLocationFirst()), statuses)
+        assertEquals(listOf(SubscriptionStatusMessages.addSavedLocationFirst()), statuses)
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)
     }
@@ -70,12 +71,13 @@ class AndroidFindBestActionsServiceTest {
 
         assertEquals(1, startCalls)
         assertEquals(
-            StatusMessageKey.FIND_BEST_FROM_SAVED,
-            StatusMessages.decode(statuses.first())?.key,
+            ConnectionStatusMessages.findBestStart(ProfileSourceMode.CURRENT_LOCATIONS),
+            statuses.first(),
         )
-        val finalStatus = StatusMessages.decode(statuses.last())
-        assertEquals(StatusMessageKey.CONNECTION_STARTED_ON_TARGET, finalStatus?.key)
-        assertEquals(listOf(AppMode.VPN.name, "Germany"), finalStatus?.args)
+        assertEquals(
+            ConnectionStatusMessages.connectionStartedOnTarget(AppMode.VPN, "Germany"),
+            statuses.last(),
+        )
         assertEquals("fixed-id", latencies.single().id)
         assertEquals("Germany", latencies.single().profileName)
         assertEquals(1234L, latencies.single().createdAtEpochMillis)
@@ -153,12 +155,12 @@ class AndroidFindBestActionsServiceTest {
         assertEquals(2, refreshCalls)
         assertTrue(
             statuses.any {
-                StatusMessages.decode(it)?.key == StatusMessageKey.RETRYING_BEST_LOCATION_SEARCH
+                it == BenchmarkStatusMessages.retryingBestLocationSearch(attempt = 2, total = 2)
             },
         )
         assertEquals(
-            listOf(AppMode.VPN.name, "Retry Winner"),
-            StatusMessages.decode(statuses.last())?.args,
+            ConnectionStatusMessages.connectionStartedOnTarget(AppMode.VPN, "Retry Winner"),
+            statuses.last(),
         )
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)

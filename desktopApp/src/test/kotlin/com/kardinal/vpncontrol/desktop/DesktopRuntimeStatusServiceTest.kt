@@ -1,9 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,9 +19,9 @@ class DesktopRuntimeStatusServiceTest {
 
         assertEquals(
             listOf(
-                StatusMessages.runtimeMode(AppMode.PROXY_ONLY.name),
-                StatusMessages.localProxy("127.0.0.1:2080"),
-                StatusMessages.runtimeLog("/tmp/current.log"),
+                RuntimeStatusMessages.runtimeMode(AppMode.PROXY_ONLY.name),
+                RuntimeStatusMessages.localProxy("127.0.0.1:2080"),
+                RuntimeStatusMessages.runtimeLog("/tmp/current.log"),
             ),
             details,
         )
@@ -32,12 +31,12 @@ class DesktopRuntimeStatusServiceTest {
     fun vpnModeWithoutPreflightIncludesCapabilityStatus() {
         val details = service(
             state = MainUiState(appMode = AppMode.VPN),
-            desktopVpnCapabilityStatus = { StatusMessages.desktopVpnCapabilityReady() },
+            desktopVpnCapabilityStatus = { RuntimeStatusMessages.desktopVpnCapabilityReady() },
         ).details()
 
-        assertEquals(StatusMessageKey.RUNTIME_MODE, StatusMessages.decode(details[0])?.key)
-        assertEquals(StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY, StatusMessages.decode(details[1])?.key)
-        assertEquals(StatusMessageKey.RUNTIME_LOG, StatusMessages.decode(details[2])?.key)
+        assertEquals(RuntimeStatusMessages.runtimeMode(AppMode.VPN.name), details[0])
+        assertEquals(RuntimeStatusMessages.desktopVpnCapabilityReady(), details[1])
+        assertEquals(RuntimeStatusMessages.runtimeLog("/tmp/default.log"), details[2])
     }
 
     @Test
@@ -56,10 +55,10 @@ class DesktopRuntimeStatusServiceTest {
             lastPreflightReport = { report },
         ).details()
 
-        assertEquals(StatusMessageKey.PREFLIGHT_FAILED, StatusMessages.decode(details[1])?.key)
+        assertEquals(RuntimeStatusMessages.preflightFailed(AppMode.VPN, failedChecks = 3), details[1])
         assertEquals("fail first: broken first", details[2])
         assertEquals("fail second: broken second", details[3])
-        assertEquals(StatusMessageKey.RUNTIME_LOG, StatusMessages.decode(details[4])?.key)
+        assertEquals(RuntimeStatusMessages.runtimeLog("/tmp/default.log"), details[4])
         assertEquals(5, details.size)
     }
 
@@ -68,7 +67,7 @@ class DesktopRuntimeStatusServiceTest {
         currentMode: () -> AppMode? = { null },
         currentPort: () -> Int? = { null },
         lastPreflightReport: () -> DesktopPreflightReport? = { null },
-        desktopVpnCapabilityStatus: () -> String = { StatusMessages.desktopVpnCapabilityError("not ready") },
+        desktopVpnCapabilityStatus: () -> String = { RuntimeStatusMessages.desktopVpnCapabilityError("not ready") },
         currentLogFile: () -> java.nio.file.Path? = { null },
     ): DesktopRuntimeStatusService {
         return DesktopRuntimeStatusService(

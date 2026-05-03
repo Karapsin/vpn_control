@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.shared.ui
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.StatusMessageKey
@@ -11,12 +13,12 @@ import kotlin.test.assertTrue
 class StatusMessageRendererTest {
     @Test
     fun structuredRendererLocalizesNestedStatusArguments() {
-        val message = StatusMessages.backgroundRefreshReplacementFailed(
+        val message = SubscriptionStatusMessages.backgroundRefreshReplacementFailed(
             appMode = AppMode.VPN,
-            failureMessage = StatusMessages.replacementLocationSearchFailed(),
+            failureMessage = SubscriptionStatusMessages.replacementLocationSearchFailed(),
             failedLabel = null,
             selectedSourceFailed = false,
-            rollbackMessage = StatusMessages.backgroundRefreshPreviousLocationKept(AppMode.VPN),
+            rollbackMessage = SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(AppMode.VPN),
         )
 
         val rendered = AppStrings(AppLanguage.ENGLISH).statusMessage(message)
@@ -27,7 +29,7 @@ class StatusMessageRendererTest {
 
     @Test
     fun structuredTemplateKeysUseDetailVariantsBeforeFallback() {
-        val status = StatusMessages.decode(StatusMessages.startupSettingUpdateFailed("denied"))!!
+        val status = StatusMessages.decode(SettingsStatusMessages.startupSettingUpdateFailed("denied"))!!
 
         assertEquals(
             listOf(

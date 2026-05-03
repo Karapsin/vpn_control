@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,10 +51,10 @@ class DesktopSettingsServiceTest {
 
         service.setAppMode(AppMode.PROXY_ONLY)
 
-        assertEquals(listOf(StatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY)), stopMessages)
+        assertEquals(listOf(SettingsStatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY)), stopMessages)
         assertEquals(AppMode.PROXY_ONLY, state.appMode)
         assertFalse(state.showAppModeDialog)
-        assertEquals(StatusMessages.appModeChanged(AppMode.PROXY_ONLY), state.statusMessage)
+        assertEquals(SettingsStatusMessages.appModeChanged(AppMode.PROXY_ONLY), state.statusMessage)
     }
 
     @Test
@@ -68,11 +68,11 @@ class DesktopSettingsServiceTest {
 
         service.setSubscriptionHwid(" abc ")
         assertEquals("abc", state.subscriptionHwid)
-        assertEquals(StatusMessages.subscriptionHwidSaved(), state.statusMessage)
+        assertEquals(SettingsStatusMessages.subscriptionHwidSaved(), state.statusMessage)
 
         service.setSubscriptionHwid(" ")
         assertEquals("", state.subscriptionHwid)
-        assertEquals(StatusMessages.subscriptionHwidCleared(), state.statusMessage)
+        assertEquals(SettingsStatusMessages.subscriptionHwidCleared(), state.statusMessage)
     }
 
     private fun service(

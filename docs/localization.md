@@ -26,10 +26,10 @@ The build generates Kotlin sources from:
 - Keep user-facing translations in JSON catalogs, not in Kotlin source.
 - Do not add `when (AppLanguage...)` branches with translated UI or status text in Kotlin.
 - `AppStrings.kt` should stay the UI-facing entry point. `StatusMessageRenderer.kt` owns structured status lookup, placeholder substitution, dynamic status parsing, and benchmark status rendering. It must not own rendered English sentence templates for typed status messages.
-- Prefer typed `StatusMessages` helpers for stable runtime/status events. If a raw English status string must remain for legacy compatibility, add it to status catalogs and cover it in `AppStringsCoverageTest`.
-- Do not concatenate encoded `StatusMessages` into longer raw sentences. If a message needs several clauses, add one complete structured status key or keep the whole legacy sentence on the legacy translation path until it can be migrated safely.
-- Shared settings and location mutation feedback should use `StatusMessages` helpers, not raw English strings from shared core.
-- Desktop settings, app-mode, autostart, connection lifecycle, reconnect, shutdown, and restore messages should use `StatusMessages` helpers instead of ad hoc English strings.
+- Prefer typed status domain facades for stable runtime/status events. If a raw English status string must remain for legacy compatibility, add it to status catalogs and cover it in `AppStringsCoverageTest`.
+- Do not concatenate encoded status messages into longer raw sentences. If a message needs several clauses, add one complete structured status key or keep the whole legacy sentence on the legacy translation path until it can be migrated safely.
+- Shared settings and location mutation feedback should use domain-facade helpers, not raw English strings from shared core.
+- Desktop settings, app-mode, autostart, connection lifecycle, reconnect, shutdown, and restore messages should use domain-facade helpers instead of ad hoc English strings.
 - UI labels belong in `shared/ui/src/commonMain/resources/i18n/<language-code>.json`.
 - Status, log, and freeform runtime message translations belong in `shared/ui/src/commonMain/resources/i18n-status/<language-code>.json`.
 - Preserve placeholders exactly. If English has `{count}`, every translation must keep `{count}`.
@@ -40,12 +40,12 @@ The build generates Kotlin sources from:
 
 Status catalogs support three main translation paths:
 
-- `structured`: templates for typed `StatusMessages` entries. These are the preferred path for new app/runtime statuses.
+- `structured`: templates for typed status entries. These are the preferred path for new app/runtime statuses.
 - `dynamic`: placeholder templates for known status/log patterns.
 - `legacyExact`: complete legacy/freeform messages that should be translated exactly.
 - `legacyReplacements`: stable prefixes or fragments used to translate older messages.
 
-Prefer `structured` when code can emit a `StatusMessages` helper. Prefer `dynamic` when Kotlin must parse a stable legacy source pattern with placeholders. Use `legacyExact` for complete messages that already exist in persisted logs. Use `legacyReplacements` only for stable fragments or prefixes that can safely appear inside longer messages.
+Prefer `structured` when code can emit a domain-facade helper. Prefer `dynamic` when Kotlin must parse a stable legacy source pattern with placeholders. Use `legacyExact` for complete messages that already exist in persisted logs. Use `legacyReplacements` only for stable fragments or prefixes that can safely appear inside longer messages.
 
 Do not translate the `source` value in status entries. Translate only `target`.
 
@@ -73,14 +73,13 @@ Typed runtime/status messages are split across the shared model status files:
 - `StatusMessageCodec.kt` owns encode/decode escaping.
 - `StatusMessageKeySelectors.kt` owns domain-specific key selection.
 - Domain facades such as `ConnectionStatusMessages`, `SubscriptionStatusMessages`, `BenchmarkStatusMessages`, `LocationStatusMessages`, `RoutingStatusMessages`, `DiagnosticsStatusMessages`, `RuntimeStatusMessages`, and `SettingsStatusMessages` own grouped helpers for new production code.
-- `StatusMessages.kt` is the compatibility facade. Keep it delegating to domain facades when a helper belongs to a focused domain.
+- `StatusMessages.kt` only exposes encode/decode for codec and renderer boundaries. Do not add domain helper wrappers there.
 
 To add one:
 
 1. Add a `StatusMessageKey` entry and a helper on the relevant domain facade.
 2. Put non-trivial variant selection into `StatusMessageKeySelectors.kt` instead of inline UI/platform code.
-3. Add or update the compatibility wrapper in `StatusMessages.kt` if existing call sites or tests need the old public API.
-4. Seed the structured catalog entry:
+3. Seed the structured catalog entry:
 
 ```bash
 ./scripts/status_catalog_tool.py add-structured STATUS_KEY "English template with {0} placeholders"

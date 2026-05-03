@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +24,7 @@ class SubscriptionSourceLogicTest {
         assertEquals(ALL_SUBSCRIPTIONS_ID, plan.nextState.activeSubscriptionId)
         assertEquals("https://example.com/active", plan.nextState.profileUrl)
         assertEquals(ProfileSourceMode.SUBSCRIPTION, plan.nextState.profileSourceMode)
-        assertEquals(StatusMessages.activatedAllSubscriptions(), plan.statusMessage)
+        assertEquals(SubscriptionStatusMessages.activatedAllSubscriptions(), plan.statusMessage)
     }
 
     @Test
@@ -73,7 +73,7 @@ class SubscriptionSourceLogicTest {
         assertEquals("two", plan.nextState.activeSubscriptionId)
         assertEquals(second.url, plan.nextState.profileUrl)
         assertEquals("", plan.nextState.selectedProfileRawLink)
-        assertEquals(StatusMessages.subscriptionDeleted(), plan.statusMessage)
+        assertEquals(SubscriptionStatusMessages.subscriptionDeleted(), plan.statusMessage)
     }
 
     @Test

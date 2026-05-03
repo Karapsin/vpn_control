@@ -1,12 +1,12 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,7 +63,7 @@ class DesktopLocationBenchmarkServiceTest {
         service.benchmark(7)
 
         assertFalse(state.isBusy)
-        assertEquals(StatusMessages.benchmarkedLocation("Germany", "ok", "timeout"), state.statusMessage)
+        assertEquals(BenchmarkStatusMessages.benchmarkedLocation("Germany", "ok", "timeout"), state.statusMessage)
         assertEquals("primary ok • secondary timeout • tcp 40.0ms", locations.single().benchmarkDetail)
         assertTrue(locations.single().isValid)
         assertEquals(DesktopDnsSettings(enabled = true, value = "1.1.1.1"), capturedDns)

@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DiagnosticsStatusMessages
 import com.kardinal.vpncontrol.MainUiState
-import com.kardinal.vpncontrol.model.StatusMessages
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,7 +36,7 @@ class DesktopDiagnosticsServiceTest {
             val report = Files.readString(target)
             assertTrue(report.contains("VPN Control Desktop Diagnostics"))
             assertTrue(report.contains("status=Ready"))
-            assertEquals(StatusMessages.diagnosticsExportedTo(target.toString()), state.statusMessage)
+            assertEquals(DiagnosticsStatusMessages.diagnosticsExportedTo(target.toString()), state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }
@@ -65,7 +65,7 @@ class DesktopDiagnosticsServiceTest {
 
             service.export(Result.success(null))
 
-            assertEquals(StatusMessages.diagnosticsExportCanceled(), state.statusMessage)
+            assertEquals(DiagnosticsStatusMessages.diagnosticsExportCanceled(), state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

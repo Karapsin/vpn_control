@@ -1,9 +1,9 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.data.SubscriptionRefreshBatchResult
 import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -53,8 +53,8 @@ class AndroidSubscriptionRefreshActionsServiceTest {
 
         assertEquals(
             listOf(
-                StatusMessages.subscriptionRefreshStart(targetCount = 1),
-                StatusMessages.activeSubscriptionRefreshed(),
+                SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 1),
+                SubscriptionStatusMessages.activeSubscriptionRefreshed(),
             ),
             statuses,
         )
@@ -97,8 +97,8 @@ class AndroidSubscriptionRefreshActionsServiceTest {
 
         assertEquals(
             listOf(
-                StatusMessages.subscriptionRefreshStart(targetCount = 2),
-                StatusMessages.subscriptionsRefreshedPartial(
+                SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 2),
+                SubscriptionStatusMessages.subscriptionsRefreshedPartial(
                     refreshedCount = 1,
                     totalCount = 2,
                     failedLabel = "Two",
@@ -127,7 +127,7 @@ class AndroidSubscriptionRefreshActionsServiceTest {
 
         service.refreshAllSubscriptionsCaches()
 
-        assertEquals(listOf(StatusMessages.subscriptionRefreshStart(targetCount = 1), "network failed"), statuses)
+        assertEquals(listOf(SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 1), "network failed"), statuses)
         assertFalse(controller.currentState().isBusy)
     }
 

@@ -1,7 +1,8 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -25,7 +26,7 @@ class AndroidSettingsActionsServiceTest {
         assertTrue(controller.currentState().sessionStatsEnabled)
         assertEquals(true, persisted)
         assertEquals(
-            listOf(StatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true)),
+            listOf(SettingsStatusMessages.uiSettingVisibilityChanged(UiSettingsStatusItem.SESSION_STATS, true)),
             statuses,
         )
     }
@@ -43,7 +44,7 @@ class AndroidSettingsActionsServiceTest {
 
         assertEquals(AppMode.VPN, controller.currentState().appMode)
         assertEquals(
-            listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode())),
+            listOf(MainControllerEffect.UpdateStatus(ConnectionStatusMessages.disconnectFirstChangeConnectionMode())),
             effects,
         )
     }
@@ -71,7 +72,7 @@ class AndroidSettingsActionsServiceTest {
                 MainControllerEffect.SaveDns(
                     dns = "1.1.1.1",
                     enabled = true,
-                    statusMessage = StatusMessages.customDnsSaved(true),
+                    statusMessage = SettingsStatusMessages.customDnsSaved(true),
                 ),
             ),
             effects,

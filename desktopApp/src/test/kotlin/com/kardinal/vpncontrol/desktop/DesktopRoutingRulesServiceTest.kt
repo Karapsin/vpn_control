@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.RoutingStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -30,7 +30,7 @@ class DesktopRoutingRulesServiceTest {
         assertEquals(listOf("ru", "by"), state.routingRules.nationalDomainSuffixes)
         assertEquals(listOf("example.com", "local"), state.routingRules.directDomainSuffixes)
         assertTrue(state.routingRules.ruleSets.isEmpty())
-        assertEquals(StatusMessages.routingRulesSaved(), state.statusMessage)
+        assertEquals(RoutingStatusMessages.routingRulesSaved(), state.statusMessage)
     }
 
     @Test
@@ -57,6 +57,6 @@ class DesktopRoutingRulesServiceTest {
         assertEquals(setOf("com.example.browser"), state.routingProxyPackagesDraft)
         assertEquals("ru", state.routingNationalDomainsDraft)
         assertEquals("example.com", state.routingDirectDomainsDraft)
-        assertEquals(StatusMessages.routingRulesImportedRestartRequired(AppMode.VPN), state.statusMessage)
+        assertEquals(RoutingStatusMessages.routingRulesImportedRestartRequired(AppMode.VPN), state.statusMessage)
     }
 }

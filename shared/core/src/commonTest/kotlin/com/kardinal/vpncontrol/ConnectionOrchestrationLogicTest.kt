@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,27 +10,22 @@ import kotlin.test.assertEquals
 class ConnectionOrchestrationLogicTest {
     @Test
     fun standaloneConnectionMessagesUseStructuredStatuses() {
-        val preparing = StatusMessages.decode(
+        assertEquals(
+            ConnectionStatusMessages.startingConnection(AppMode.VPN),
             ConnectionOrchestrationLogic.preparingConnectionMessage(AppMode.VPN),
         )
-        val prepareFailure = StatusMessages.decode(
+        assertEquals(
+            ConnectionStatusMessages.connectionStartFailed(AppMode.PROXY_ONLY),
             ConnectionOrchestrationLogic.ensureSelectionFailureMessage(AppMode.PROXY_ONLY, null),
         )
-        val started = StatusMessages.decode(
+        assertEquals(
+            ConnectionStatusMessages.connectionStartedOnTarget(AppMode.VPN, "Germany"),
             ConnectionOrchestrationLogic.refreshSelectionStartedMessage(AppMode.VPN, "Germany"),
         )
-        val stopFailure = StatusMessages.decode(
+        assertEquals(
+            ConnectionStatusMessages.connectionStopFailed(AppMode.PROXY_ONLY),
             ConnectionOrchestrationLogic.connectionStopFailureMessage(AppMode.PROXY_ONLY, null),
         )
-
-        assertEquals(StatusMessageKey.STARTING_CONNECTION, preparing?.key)
-        assertEquals(listOf(AppMode.VPN.name), preparing?.args)
-        assertEquals(StatusMessageKey.CONNECTION_START_FAILED, prepareFailure?.key)
-        assertEquals(listOf(AppMode.PROXY_ONLY.name), prepareFailure?.args)
-        assertEquals(StatusMessageKey.CONNECTION_STARTED_ON_TARGET, started?.key)
-        assertEquals(listOf(AppMode.VPN.name, "Germany"), started?.args)
-        assertEquals(StatusMessageKey.CONNECTION_STOP_FAILED, stopFailure?.key)
-        assertEquals(listOf(AppMode.PROXY_ONLY.name), stopFailure?.args)
     }
 
     @Test
@@ -50,12 +45,8 @@ class ConnectionOrchestrationLogicTest {
             }
         }
 
-        val retry = StatusMessages.decode(statuses.single())
-        val cancelled = StatusMessages.decode(ConnectionOrchestrationLogic.refreshCancelledMessage())
-
-        assertEquals(StatusMessageKey.RETRYING_BEST_LOCATION_SEARCH, retry?.key)
-        assertEquals(listOf("2", "2"), retry?.args)
-        assertEquals(StatusMessageKey.LOCATION_SEARCH_CANCELLED, cancelled?.key)
+        assertEquals(BenchmarkStatusMessages.retryingBestLocationSearch(attempt = 2, total = 2), statuses.single())
+        assertEquals(BenchmarkStatusMessages.locationSearchCancelled(), ConnectionOrchestrationLogic.refreshCancelledMessage())
     }
 
     @Test
@@ -64,7 +55,7 @@ class ConnectionOrchestrationLogicTest {
             MainUiState(appMode = AppMode.VPN, hasVpnPermission = false),
         )
 
-        assertEquals(StatusMessageKey.VPN_PERMISSION_REQUIRED, StatusMessages.decode(message.orEmpty())?.key)
+        assertEquals(BenchmarkStatusMessages.vpnPermissionRequired(), message)
     }
 
     @Test
@@ -73,28 +64,28 @@ class ConnectionOrchestrationLogicTest {
         val refreshTexts = ConnectionOrchestrationLogic.refreshSelectionFailureTexts(AppMode.PROXY_ONLY)
 
         assertEquals(
-            StatusMessageKey.CONNECTION_START_FAILED,
-            StatusMessages.decode(startTexts.applyFailureFallback)?.key,
+            ConnectionStatusMessages.connectionStartFailed(AppMode.VPN),
+            startTexts.applyFailureFallback,
         )
         assertEquals(
-            StatusMessageKey.SELECTED_LOCATION_SAVE_FAILED,
-            StatusMessages.decode(startTexts.persistFailureWithoutApplyFallback)?.key,
+            ConnectionStatusMessages.selectedLocationSaveFailed(),
+            startTexts.persistFailureWithoutApplyFallback,
         )
         assertEquals(
-            StatusMessageKey.SELECTED_LOCATION_STARTED_SAVE_FAILED,
-            StatusMessages.decode(startTexts.persistFailureAfterApplyFallback)?.key,
+            ConnectionStatusMessages.selectedLocationStartedSaveFailed(AppMode.VPN),
+            startTexts.persistFailureAfterApplyFallback,
         )
         assertEquals(
-            StatusMessageKey.BEST_LOCATION_START_FAILED,
-            StatusMessages.decode(refreshTexts.applyFailureFallback)?.key,
+            ConnectionStatusMessages.bestLocationStartFailed(AppMode.PROXY_ONLY),
+            refreshTexts.applyFailureFallback,
         )
         assertEquals(
-            StatusMessageKey.BEST_LOCATION_SAVE_FAILED,
-            StatusMessages.decode(refreshTexts.persistFailureWithoutApplyFallback)?.key,
+            ConnectionStatusMessages.bestLocationSaveFailed(),
+            refreshTexts.persistFailureWithoutApplyFallback,
         )
         assertEquals(
-            StatusMessageKey.BEST_LOCATION_STARTED_SAVE_FAILED,
-            StatusMessages.decode(refreshTexts.persistFailureAfterApplyFallback)?.key,
+            ConnectionStatusMessages.bestLocationStartedSaveFailed(AppMode.PROXY_ONLY),
+            refreshTexts.persistFailureAfterApplyFallback,
         )
     }
 

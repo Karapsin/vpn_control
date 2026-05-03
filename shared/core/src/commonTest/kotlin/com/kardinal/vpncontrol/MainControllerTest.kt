@@ -1,8 +1,10 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.RoutingStatusMessages
+import com.kardinal.vpncontrol.model.GeneralStatusMessages
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -25,7 +27,7 @@ class MainControllerTest {
         assertEquals(
             MainControllerEffect.UpdateAppLanguage(
                 language = AppLanguage.RUSSIAN,
-                statusMessage = StatusMessages.languageSet(AppLanguage.RUSSIAN.nativeName),
+                statusMessage = GeneralStatusMessages.languageSet(AppLanguage.RUSSIAN.nativeName),
             ),
             effects.single(),
         )
@@ -46,7 +48,7 @@ class MainControllerTest {
         assertEquals(AppMode.VPN, controller.currentState().appMode)
         assertEquals(true, controller.currentState().showAppModeDialog)
         assertEquals(
-            listOf(MainControllerEffect.UpdateStatus(StatusMessages.disconnectFirstChangeConnectionMode())),
+            listOf(MainControllerEffect.UpdateStatus(ConnectionStatusMessages.disconnectFirstChangeConnectionMode())),
             effects,
         )
     }
@@ -70,7 +72,7 @@ class MainControllerTest {
             listOf(
                 MainControllerEffect.DeleteProfileHistoryEntry(
                     source = "https://example.com/sub",
-                    statusMessage = StatusMessages.historyEntryDeleted(),
+                    statusMessage = RoutingStatusMessages.historyEntryDeleted(),
                 ),
             ),
             effects,

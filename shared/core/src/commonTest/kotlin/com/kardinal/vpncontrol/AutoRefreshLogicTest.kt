@@ -1,7 +1,7 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +38,7 @@ class AutoRefreshLogicTest {
 
         requireNotNull(plan)
         assertEquals(listOf("one", "two"), plan.subscriptionsToRefresh.map { it.id })
-        assertEquals(StatusMessages.subscriptionRefreshStart(targetCount = 2, auto = true), plan.statusPrefix)
+        assertEquals(SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 2, auto = true), plan.statusPrefix)
         assertTrue(plan.shouldFindBestAfterRefresh)
         assertFalse(plan.stopVpnIfSelectedRemoved)
     }
@@ -57,7 +57,7 @@ class AutoRefreshLogicTest {
 
         requireNotNull(plan)
         assertEquals(listOf("one"), plan.subscriptionsToRefresh.map { it.id })
-        assertEquals(StatusMessages.subscriptionRefreshStart(targetCount = 1, auto = true), plan.statusPrefix)
+        assertEquals(SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 1, auto = true), plan.statusPrefix)
         assertFalse(plan.shouldFindBestAfterRefresh)
         assertTrue(plan.stopVpnIfSelectedRemoved)
     }

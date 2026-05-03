@@ -1,7 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -40,8 +39,8 @@ class DesktopProxyRuntimeManagerTest {
             )
 
             assertEquals(
-                StatusMessageKey.DESKTOP_VPN_CAPABILITY_READY,
-                StatusMessages.decode(manager.desktopVpnCapabilityStatus())?.key,
+                RuntimeStatusMessages.desktopVpnCapabilityReady(),
+                manager.desktopVpnCapabilityStatus(),
             )
         } finally {
             tempDir.toFile().deleteRecursively()

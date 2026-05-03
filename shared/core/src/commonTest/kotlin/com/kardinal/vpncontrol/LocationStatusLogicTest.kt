@@ -1,7 +1,6 @@
 package com.kardinal.vpncontrol
 
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -9,24 +8,24 @@ class LocationStatusLogicTest {
     @Test
     fun statusMessagesUseStructuredKeysForLocalization() {
         assertEquals(
-            StatusMessageKey.SELECT_LOCATION_FIRST,
-            StatusMessages.decode(LocationStatusLogic.selectLocationFirst())?.key,
+            LocationStatusMessages.selectLocationFirst(),
+            LocationStatusLogic.selectLocationFirst(),
         )
         assertEquals(
-            listOf("Germany"),
-            StatusMessages.decode(LocationStatusLogic.checkingLocation("Germany"))?.args,
+            LocationStatusMessages.checkingLocation("Germany"),
+            LocationStatusLogic.checkingLocation("Germany"),
         )
         assertEquals(
-            listOf("Germany"),
-            StatusMessages.decode(LocationStatusLogic.testingLocation("Germany"))?.args,
+            LocationStatusMessages.testingLocation("Germany"),
+            LocationStatusLogic.testingLocation("Germany"),
         )
         assertEquals(
-            StatusMessageKey.LOCATION_CHECK_CANCELLED,
-            StatusMessages.decode(LocationStatusLogic.locationCheckCancelled())?.key,
+            LocationStatusMessages.locationCheckCancelled(),
+            LocationStatusLogic.locationCheckCancelled(),
         )
         assertEquals(
-            StatusMessageKey.NO_LOCATIONS_TO_EXPORT,
-            StatusMessages.decode(LocationStatusLogic.noLocationsToExport())?.key,
+            LocationStatusMessages.noLocationsToExport(),
+            LocationStatusLogic.noLocationsToExport(),
         )
     }
 }

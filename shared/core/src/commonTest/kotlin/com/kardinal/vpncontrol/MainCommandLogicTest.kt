@@ -1,10 +1,10 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessageKey
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
@@ -92,7 +92,7 @@ class MainCommandLogicTest {
             ),
         )
 
-        assertEquals(StatusMessages.noRemoteSource(), error)
+        assertEquals(SubscriptionStatusMessages.noRemoteSource(), error)
     }
 
     @Test
@@ -101,7 +101,7 @@ class MainCommandLogicTest {
             MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS),
         )
 
-        assertEquals(StatusMessages.addSavedLocationFirst(), error)
+        assertEquals(SubscriptionStatusMessages.addSavedLocationFirst(), error)
     }
 
     @Test
@@ -119,32 +119,29 @@ class MainCommandLogicTest {
     @Test
     fun findBestStartStatusUsesStructuredKeysForLocalization() {
         assertEquals(
-            StatusMessageKey.FIND_BEST_FROM_SUBSCRIPTION,
-            StatusMessages.decode(
-                MainCommandLogic.refreshStartStatus(
-                    MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION),
-                ),
-            )?.key,
+            ConnectionStatusMessages.findBestStart(ProfileSourceMode.SUBSCRIPTION),
+            MainCommandLogic.refreshStartStatus(
+                MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION),
+            ),
         )
         assertEquals(
-            StatusMessageKey.FIND_BEST_FROM_SAVED,
-            StatusMessages.decode(
-                MainCommandLogic.refreshStartStatus(
-                    MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS),
-                ),
-            )?.key,
+            ConnectionStatusMessages.findBestStart(ProfileSourceMode.CURRENT_LOCATIONS),
+            MainCommandLogic.refreshStartStatus(
+                MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS),
+            ),
         )
     }
 
     @Test
     fun connectionLifecycleStatusesUseStructuredKeysForLocalization() {
-        val started = StatusMessages.decode(MainCommandLogic.startedConnectionStatus(AppMode.VPN))
-        val stopped = StatusMessages.decode(MainCommandLogic.stoppedConnectionStatus(AppMode.PROXY_ONLY))
-
-        assertEquals(StatusMessageKey.CONNECTION_STARTED, started?.key)
-        assertEquals(listOf(AppMode.VPN.name), started?.args)
-        assertEquals(StatusMessageKey.CONNECTION_STOPPED, stopped?.key)
-        assertEquals(listOf(AppMode.PROXY_ONLY.name), stopped?.args)
+        assertEquals(
+            ConnectionStatusMessages.connectionStarted(AppMode.VPN),
+            MainCommandLogic.startedConnectionStatus(AppMode.VPN),
+        )
+        assertEquals(
+            ConnectionStatusMessages.connectionStopped(AppMode.PROXY_ONLY),
+            MainCommandLogic.stoppedConnectionStatus(AppMode.PROXY_ONLY),
+        )
     }
 
     private fun subscription(id: String, url: String): SubscriptionSource {

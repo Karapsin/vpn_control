@@ -26,7 +26,7 @@ class StatusMessagesTest {
 
     @Test
     fun locationsRefreshedUsesSingularAndPluralKeys() {
-        assertEquals(StatusMessageKey.LOCATION_REFRESHED_COUNT, StatusMessages.decode(StatusMessages.locationsRefreshed(1))?.key)
-        assertEquals(StatusMessageKey.LOCATIONS_REFRESHED_COUNT, StatusMessages.decode(StatusMessages.locationsRefreshed(2))?.key)
+        assertEquals(StatusMessageKey.LOCATION_REFRESHED_COUNT, StatusMessages.decode(SubscriptionStatusMessages.locationsRefreshed(1))?.key)
+        assertEquals(StatusMessageKey.LOCATIONS_REFRESHED_COUNT, StatusMessages.decode(SubscriptionStatusMessages.locationsRefreshed(2))?.key)
     }
 }

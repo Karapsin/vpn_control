@@ -1,12 +1,12 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.SearchEvaluation
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,7 +71,7 @@ class DesktopFindBestServiceTest {
             "status=${state.statusMessage}; keys=${locations.map { it.normalizedStorageKey() }}; raw=$rawLink",
         )
         assertEquals(
-            StatusMessages.bestLocationSummary("Germany", "primary ok • secondary ok • tcp 50.0ms"),
+            BenchmarkStatusMessages.bestLocationSummary("Germany", "primary ok • secondary ok • tcp 50.0ms"),
             startedSummary,
         )
         assertTrue(locations.single().isSelected)

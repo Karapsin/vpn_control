@@ -1,12 +1,13 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,7 +64,7 @@ class AndroidConnectionLifecycleServiceTest {
         service.toggleConnection()
 
         assertEquals(1, stopCalls)
-        assertEquals(StatusMessages.connectionStopped(AppMode.VPN), statuses.last())
+        assertEquals(ConnectionStatusMessages.connectionStopped(AppMode.VPN), statuses.last())
         assertFalse(state.isBusy)
     }
 
@@ -93,7 +94,7 @@ class AndroidConnectionLifecycleServiceTest {
 
         assertEquals(1, startCalls)
         assertEquals(1, persistCalls)
-        assertEquals(StatusMessages.connectionStarted(AppMode.VPN), statuses.last())
+        assertEquals(ConnectionStatusMessages.connectionStarted(AppMode.VPN), statuses.last())
         assertFalse(state.isBusy)
         assertFalse(state.isStartingVpn)
     }
@@ -116,7 +117,7 @@ class AndroidConnectionLifecycleServiceTest {
         service.toggleConnection()
 
         assertEquals(0, startCalls)
-        assertEquals(StatusMessages.vpnPermissionRequired(), statuses.single())
+        assertEquals(BenchmarkStatusMessages.vpnPermissionRequired(), statuses.single())
         assertFalse(state.isBusy)
     }
 

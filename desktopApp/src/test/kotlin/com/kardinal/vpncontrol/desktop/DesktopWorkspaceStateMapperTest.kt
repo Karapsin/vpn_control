@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
@@ -7,7 +8,6 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
@@ -23,7 +23,7 @@ class DesktopWorkspaceStateMapperTest {
         assertTrue(workspace.locations.isEmpty())
         assertEquals(defaultDesktopAppMode(), workspace.persistedState.appMode)
         assertEquals(
-            StatusMessages.connectionReadyOnComputer(defaultDesktopAppMode()),
+            ConnectionStatusMessages.connectionReadyOnComputer(defaultDesktopAppMode()),
             workspace.persistedState.statusMessage,
         )
         assertTrue(workspace.persistedState.subscriptions.isEmpty())

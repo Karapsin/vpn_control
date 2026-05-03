@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -26,15 +26,15 @@ class LocationMutationLogicTest {
         )
 
         assertEquals(
-            StatusMessages.subscriptionLocationSaveReadOnly(),
+            LocationStatusMessages.subscriptionLocationSaveReadOnly(),
             assertIs<SaveLocationDecision.MutationBlocked>(saveDecision).message,
         )
         assertEquals(
-            StatusMessages.subscriptionLocationDeleteReadOnly(),
+            LocationStatusMessages.subscriptionLocationDeleteReadOnly(),
             assertIs<DeleteLocationDecision.MutationBlocked>(deleteDecision).message,
         )
         assertEquals(
-            StatusMessages.importLocationsBlocked(),
+            LocationStatusMessages.importLocationsBlocked(),
             assertIs<ImportLocationsDecision.Blocked>(importDecision).message,
         )
     }
@@ -42,7 +42,7 @@ class LocationMutationLogicTest {
     @Test
     fun locationMutationStatusHelpersUseStructuredStatuses() {
         assertEquals(
-            StatusMessages.locationAdded("Germany"),
+            LocationStatusMessages.locationAdded("Germany"),
             LocationMutationLogic.saveLocationSuccessMessage(
                 SaveLocationDecision.Plan(
                     nextLocations = emptyList(),
@@ -55,7 +55,7 @@ class LocationMutationLogicTest {
             ),
         )
         assertEquals(
-            StatusMessages.locationUpdatedAndMerged("Germany"),
+            LocationStatusMessages.locationUpdatedAndMerged("Germany"),
             LocationMutationLogic.saveLocationSuccessMessage(
                 SaveLocationDecision.Plan(
                     nextLocations = emptyList(),
@@ -68,7 +68,7 @@ class LocationMutationLogicTest {
             ),
         )
         assertEquals(
-            StatusMessages.locationUpdated("Germany"),
+            LocationStatusMessages.locationUpdated("Germany"),
             LocationMutationLogic.saveLocationSuccessMessage(
                 SaveLocationDecision.Plan(
                     nextLocations = emptyList(),
@@ -81,7 +81,7 @@ class LocationMutationLogicTest {
             ),
         )
         assertEquals(
-            StatusMessages.selectedLocationRemoved("Germany"),
+            LocationStatusMessages.selectedLocationRemoved("Germany"),
             LocationMutationLogic.deleteLocationStatusMessage(
                 removedSelected = true,
                 appMode = AppMode.VPN,
@@ -89,7 +89,7 @@ class LocationMutationLogicTest {
             ),
         )
         assertEquals(
-            StatusMessages.locationRemoved("Germany"),
+            LocationStatusMessages.locationRemoved("Germany"),
             LocationMutationLogic.deleteLocationStatusMessage(
                 removedSelected = false,
                 appMode = AppMode.VPN,
@@ -97,23 +97,23 @@ class LocationMutationLogicTest {
             ),
         )
         assertEquals(
-            StatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
+            LocationStatusMessages.selectedLocationRemovedConnectionStopped(AppMode.VPN, "Germany"),
             LocationMutationLogic.deleteLocationStoppedStatusMessage(AppMode.VPN, "Germany"),
         )
         assertEquals(
-            StatusMessages.locationRemovalRollbackFailed(AppMode.PROXY_ONLY),
+            LocationStatusMessages.locationRemovalRollbackFailed(AppMode.PROXY_ONLY),
             LocationMutationLogic.deleteLocationRollbackFailureMessage(AppMode.PROXY_ONLY),
         )
         assertEquals(
-            StatusMessages.locationsImported(removedSelected = true),
+            LocationStatusMessages.locationsImported(removedSelected = true),
             LocationMutationLogic.importLocationsStatusMessage(removedSelected = true),
         )
         assertEquals(
-            StatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.VPN),
+            LocationStatusMessages.locationsImportedSelectedUnavailableConnectionStopped(AppMode.VPN),
             LocationMutationLogic.importLocationsStoppedStatusMessage(AppMode.VPN),
         )
         assertEquals(
-            StatusMessages.locationsImportRollbackFailed(AppMode.PROXY_ONLY),
+            LocationStatusMessages.locationsImportRollbackFailed(AppMode.PROXY_ONLY),
             LocationMutationLogic.importLocationsRollbackFailureMessage(AppMode.PROXY_ONLY),
         )
     }

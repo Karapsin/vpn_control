@@ -1,9 +1,9 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.RoutingStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.RoutingRules
-import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,7 +39,7 @@ class AndroidRoutingActionsServiceTest {
         assertEquals(listOf("org.example.one", "org.example.two"), savedRules?.proxyPackages)
         assertEquals(listOf("ru", "su"), savedRules?.nationalDomainSuffixes)
         assertEquals(listOf("example.com"), savedRules?.directDomainSuffixes)
-        assertEquals(listOf(StatusMessages.routingRulesSavedRestartRequired(AppMode.VPN)), statuses)
+        assertEquals(listOf(RoutingStatusMessages.routingRulesSavedRestartRequired(AppMode.VPN)), statuses)
         assertEquals(AppScreen.MAIN, controller.currentState().currentScreen)
         assertFalse(controller.currentState().isBusy)
     }
@@ -74,7 +74,7 @@ class AndroidRoutingActionsServiceTest {
         assertEquals("org.example.one\norg.example.two", controller.currentState().routingProxyPackagesDraft.sorted().joinToString("\n"))
         assertEquals("ru", controller.currentState().routingNationalDomainsDraft)
         assertEquals("example.com", controller.currentState().routingDirectDomainsDraft)
-        assertEquals(listOf(StatusMessages.routingRulesImported()), statuses)
+        assertEquals(listOf(RoutingStatusMessages.routingRulesImported()), statuses)
         assertFalse(controller.currentState().isBusy)
     }
 
