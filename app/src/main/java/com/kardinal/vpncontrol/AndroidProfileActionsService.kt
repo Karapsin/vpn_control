@@ -5,6 +5,7 @@ import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.data.IncomingImportResolver
 import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class AndroidProfileActionsService(
     private val controller: MainController,
@@ -86,7 +87,7 @@ internal class AndroidProfileActionsService(
                     effectSink.handle(controller.handleIncomingImport(payload, preference))
                 },
                 onFailure = { error ->
-                    updateStatus(error.message ?: "Shared text is not a supported import payload")
+                    updateStatus(error.message ?: StatusMessages.sharedTextUnsupportedImport())
                 },
             )
         }

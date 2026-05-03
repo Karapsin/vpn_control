@@ -14,6 +14,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.ui.VpnControlApp
 
 class MainActivity : ComponentActivity() {
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
         val content = pendingRoutingRulesExport
         pendingRoutingRulesExport = null
         if (uri == null || content == null) {
-            viewModel.postStatus("Routing rules export canceled")
+            viewModel.postStatus(StatusMessages.routingRulesExportCanceled())
             return@registerForActivityResult
         }
 
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
         }.onSuccess {
             viewModel.postStatus("Routing rules exported")
         }.onFailure { error ->
-            viewModel.postStatus(error.message ?: "Failed to export routing rules")
+            viewModel.postStatus(error.message ?: StatusMessages.routingRulesExportFailed())
         }
     }
     private val importRoutingRulesLauncher = registerForActivityResult(
@@ -75,7 +76,7 @@ class MainActivity : ComponentActivity() {
         }.onSuccess { raw ->
             viewModel.importRoutingRules(raw)
         }.onFailure { error ->
-            viewModel.postStatus(error.message ?: "Failed to import routing rules")
+            viewModel.postStatus(error.message ?: StatusMessages.routingRulesImportFailed())
         }
     }
     private val exportLocationsLauncher = registerForActivityResult(
@@ -84,7 +85,7 @@ class MainActivity : ComponentActivity() {
         val content = pendingLocationsExport
         pendingLocationsExport = null
         if (uri == null || content == null) {
-            viewModel.postStatus("Locations export canceled")
+            viewModel.postStatus(StatusMessages.locationsExportCanceled())
             return@registerForActivityResult
         }
 
@@ -95,7 +96,7 @@ class MainActivity : ComponentActivity() {
         }.onSuccess {
             viewModel.postStatus("Locations exported")
         }.onFailure { error ->
-            viewModel.postStatus(error.message ?: "Failed to export locations")
+            viewModel.postStatus(error.message ?: StatusMessages.locationsExportFailed())
         }
     }
     private val importLocationsLauncher = registerForActivityResult(
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
         }.onSuccess { raw ->
             viewModel.importLocations(raw)
         }.onFailure { error ->
-            viewModel.postStatus(error.message ?: "Failed to import locations")
+            viewModel.postStatus(error.message ?: StatusMessages.importLocationsFailed())
         }
     }
     private val genericImportFileLauncher = registerForActivityResult(
@@ -131,7 +132,7 @@ class MainActivity : ComponentActivity() {
         }.onSuccess { raw ->
             handleImportedFileContent(raw, pendingFileImportPreference)
         }.onFailure { error ->
-            viewModel.postStatus(error.message ?: "Failed to import file")
+            viewModel.postStatus(error.message ?: StatusMessages.sharedTextUnsupportedImport())
         }
     }
     private val qrScanLauncher = registerForActivityResult(

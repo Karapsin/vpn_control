@@ -521,7 +521,7 @@ class MainController(
         if (decision.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    decision.exceptionOrNull()?.message ?: "Invalid remote source",
+                    decision.exceptionOrNull()?.message ?: StatusMessages.invalidRemoteSource(),
                 ),
             )
         }
@@ -569,9 +569,9 @@ class MainController(
                 source = source,
                 normalizedName = normalizedName,
                 statusMessage = if (normalizedName.isBlank()) {
-                    "Subscription name reset"
+                    StatusMessages.subscriptionNameReset()
                 } else {
-                    "Subscription name saved"
+                    StatusMessages.subscriptionNameSaved()
                 },
             ),
         )
@@ -582,7 +582,7 @@ class MainController(
         if (resolution.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    resolution.exceptionOrNull()?.message ?: "Failed to save refresh settings",
+                    resolution.exceptionOrNull()?.message ?: StatusMessages.refreshSettingsSaveFailed(),
                 ),
             )
         }
@@ -626,7 +626,7 @@ class MainController(
         if (draft.isFailure) {
             return listOf(
                 MainControllerEffect.UpdateStatus(
-                    draft.exceptionOrNull()?.message ?: "Invalid rule-set",
+                    draft.exceptionOrNull()?.message ?: StatusMessages.invalidRuleSet(),
                 ),
             )
         }
@@ -641,7 +641,7 @@ class MainController(
         closeRuleSetDialog()
         return listOf(
             MainControllerEffect.UpdateStatus(
-                if (wasEditing) "Rule-set updated" else "Rule-set added",
+                if (wasEditing) StatusMessages.ruleSetUpdated() else StatusMessages.ruleSetAdded(),
             ),
         )
     }
@@ -665,9 +665,9 @@ class MainController(
             MainControllerEffect.SelectActiveSubscription(normalized),
             MainControllerEffect.UpdateStatus(
                 if (normalized == com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID) {
-                    "All subscriptions selected"
+                    StatusMessages.allSubscriptionsSelected()
                 } else {
-                    "Subscription selected"
+                    StatusMessages.subscriptionSelected()
                 },
             ),
         )

@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -72,7 +73,7 @@ class DesktopSubscriptionRefreshServiceTest {
         assertFalse(state.isRefreshing)
         assertEquals(1, state.subscriptions.single().cachedLocations.size)
         assertEquals(1, locations.size)
-        assertTrue(state.statusMessage.contains("Subscription refreshed"))
+        assertEquals(StatusMessages.subscriptionRefreshed(), state.statusMessage)
     }
 
     @Test
@@ -132,7 +133,7 @@ class DesktopSubscriptionRefreshServiceTest {
             statusPrefix = "Refreshing",
         )
 
-        assertTrue(stopMessage.contains("removed the selected location"))
+        assertEquals(StatusMessages.subscriptionRefreshRemovedSelectedStopped(AppMode.VPN), stopMessage)
         assertFalse(state.isVpnRunning)
         assertEquals("", state.selectedProfileRawLink)
         assertEquals(1, locations.size)
@@ -158,7 +159,6 @@ class DesktopSubscriptionRefreshServiceTest {
             ),
             isRuntimeRunning = isRuntimeRunning,
             stopConnection = stopConnection,
-            activeConnectionName = { "VPN" },
             findBestAfterRefresh = findBestAfterRefresh,
             commitState = commitState,
             updateState = updateState,

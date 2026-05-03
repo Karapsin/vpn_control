@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -121,19 +122,28 @@ internal class AndroidConnectionLifecycleService(
             return restartResult.fold(
                 onSuccess = {
                     restoreSnapshot(previousState, false)
-                    "$baseMessage Previous ${MainCommandLogic.connectionNoun(stateProvider().appMode)} location restored."
+                    if (baseMessage == StatusMessages.locationSearchCancelled()) {
+                        StatusMessages.previousConnectionRestored(stateProvider().appMode)
+                    } else {
+                        StatusMessages.previousConnectionRestoredWithReason(stateProvider().appMode, baseMessage)
+                    }
                 },
                 onFailure = { restartError ->
                     val stopResult = stopConnection()
                     stopResult.fold(
                         onSuccess = {
                             restoreSnapshot(previousState, true)
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(stateProvider().appMode)} location."} " +
-                                "${MainCommandLogic.stoppedConnectionLabel(stateProvider().appMode)} to keep state consistent."
+                            StatusMessages.previousConnectionRestoreFailedStopped(
+                                stateProvider().appMode,
+                                restartError.message.orEmpty(),
+                            )
                         },
                         onFailure = { stopError ->
-                            "$baseMessage ${restartError.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(stateProvider().appMode)} location."} " +
-                                "${stopError.message ?: "Failed to stop the current ${MainCommandLogic.connectionNoun(stateProvider().appMode)} session."}"
+                            StatusMessages.previousConnectionRestoreOrStopFailed(
+                                stateProvider().appMode,
+                                restartError.message.orEmpty(),
+                                stopError.message.orEmpty(),
+                            )
                         },
                     )
                 },
@@ -144,10 +154,14 @@ internal class AndroidConnectionLifecycleService(
         return stopResult.fold(
             onSuccess = {
                 restoreSnapshot(previousState, true)
-                "$baseMessage ${MainCommandLogic.stoppedConnectionLabel(stateProvider().appMode)} to keep state consistent."
+                StatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
             },
             onFailure = { error ->
-                "$baseMessage ${error.message ?: "Failed to restore the previous ${MainCommandLogic.connectionNoun(stateProvider().appMode)} session."}"
+                StatusMessages.previousConnectionRestoreOrStopFailed(
+                    stateProvider().appMode,
+                    baseMessage,
+                    error.message.orEmpty(),
+                )
             },
         )
     }
@@ -156,15 +170,19 @@ internal class AndroidConnectionLifecycleService(
         previousState: PersistedState,
         error: Throwable,
     ): String {
-        val baseMessage = error.message ?: "Failed to save the selected location"
+        val baseMessage = error.message ?: StatusMessages.selectedLocationSaveFailed()
         val stopResult = stopConnection()
         return stopResult.fold(
             onSuccess = {
                 restoreSnapshot(previousState, true)
-                "$baseMessage ${MainCommandLogic.connectionDisplayName(stateProvider().appMode)} was stopped to keep state consistent."
+                StatusMessages.connectionStoppedKeepStateConsistent(stateProvider().appMode)
             },
             onFailure = { stopError ->
-                "$baseMessage ${stopError.message ?: "${MainCommandLogic.connectionDisplayName(stateProvider().appMode)} is still running and may not match the saved selection."}"
+                StatusMessages.previousConnectionRestoreOrStopFailed(
+                    stateProvider().appMode,
+                    baseMessage,
+                    stopError.message.orEmpty(),
+                )
             },
         )
     }

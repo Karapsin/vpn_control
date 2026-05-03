@@ -58,7 +58,7 @@ internal class DesktopFindBestService(
 
         updateState {
             it.copy(isBusy = true, isRefreshing = true).withStatus(
-                "${MainCommandLogic.refreshStartMessage(it)} Testing fastest candidates in batches...",
+                StatusMessages.findBestTestingFastest(it.profileSourceMode),
             )
         }
 
@@ -119,7 +119,7 @@ internal class DesktopFindBestService(
 
         startConnection(
             winnerLocation,
-            "Best: ${winning.profile.remarks} • ${winning.detail.toCompactBenchmarkLabel()}",
+            StatusMessages.bestLocationSummary(winning.profile.remarks, winning.detail.toCompactBenchmarkLabel()),
         )
         updateState { it.copy(isRefreshing = false) }
     }

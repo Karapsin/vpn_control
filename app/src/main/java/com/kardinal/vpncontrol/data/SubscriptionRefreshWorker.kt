@@ -125,7 +125,7 @@ class SubscriptionRefreshWorker(
                             )
                             storage.updateStatus(
                                 SubscriptionRefreshResultLogic.backgroundSwitchedMessage(
-                                    connectionLabel = connectionLabel(state.appMode),
+                                    appMode = state.appMode,
                                     selectedProfileName = selection.profile.remarks,
                                     winnerSource = winnerSource,
                                     failedSubscriptionNames = failedSubscriptionNames,
@@ -149,10 +149,10 @@ class SubscriptionRefreshWorker(
                     )
                     val failureMessage = switchFailure?.message
                         ?: replacement.exceptionOrNull()?.message
-                        ?: "Failed to find a replacement location"
+                        ?: StatusMessages.replacementLocationSearchFailed()
                     storage.updateStatus(
                         SubscriptionRefreshResultLogic.backgroundReplacementFailedMessage(
-                            connectionLabel = connectionLabel(state.appMode),
+                            appMode = state.appMode,
                             failureMessage = failureMessage,
                             failedSubscriptionNames = failedSubscriptionNames,
                             selectedSourceFailed = selectedSourceFailed,
@@ -174,7 +174,7 @@ class SubscriptionRefreshWorker(
                     )
                     storage.updateStatus(
                         SubscriptionRefreshResultLogic.backgroundSelectedMissingMessage(
-                            connectionLabel = connectionLabel(state.appMode),
+                            appMode = state.appMode,
                             failedSubscriptionNames = failedSubscriptionNames,
                         ),
                     )
@@ -188,7 +188,7 @@ class SubscriptionRefreshWorker(
                 if (state.isVpnRunning) {
                     storage.updateStatus(
                         SubscriptionRefreshResultLogic.backgroundKeptCurrentMessage(
-                            connectionLabel = connectionLabel(state.appMode),
+                            appMode = state.appMode,
                             failedSubscriptionNames = failedSubscriptionNames,
                             selectedSourceFailed = selectedSourceFailed,
                         ),
@@ -205,7 +205,7 @@ class SubscriptionRefreshWorker(
                 if (!refreshAll && state.activeSubscriptionId.isNotBlank()) {
                     storage.updateSubscriptionRefreshStatus(
                         subscriptionId = state.activeSubscriptionId,
-                        status = error.message ?: "Background refresh failed",
+                        status = error.message ?: StatusMessages.backgroundRefreshFailed(),
                     )
                 }
                 DiagnosticsLogger.append(
@@ -239,7 +239,7 @@ class SubscriptionRefreshWorker(
         val startResult = vpnManager.start(selection)
         if (startResult.isFailure) {
             return kotlin.Result.failure(
-                startResult.exceptionOrNull() ?: IllegalStateException("Failed to start ${connectionLabel(appMode)} with the new best location"),
+                startResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.bestLocationStartFailed(appMode)),
             )
         }
         val persistResult = runCatching {
@@ -247,7 +247,7 @@ class SubscriptionRefreshWorker(
         }
         if (persistResult.isFailure) {
             return kotlin.Result.failure(
-                persistResult.exceptionOrNull() ?: IllegalStateException("Failed to save the replacement location"),
+                persistResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.replacementLocationSaveFailed()),
             )
         }
         return kotlin.Result.success(Unit)
@@ -265,7 +265,7 @@ class SubscriptionRefreshWorker(
                 restoreRuntimeArtifacts = true,
                 sourceUrlOverride = "",
             )
-            return "Previous ${connectionLabel(previousState.appMode)} location kept as a fallback outside the current subscription."
+            return StatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
         }
         val previousSelection = orchestrator.rehydrateSelection(previousState)
         if (previousSelection.isSuccess) {
@@ -276,17 +276,17 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = false,
                     sourceUrlOverride = "",
                 )
-                return "Previous ${connectionLabel(previousState.appMode)} location kept as a fallback outside the current subscription."
+                return StatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
             }
         }
         val stopResult = vpnManager.stop()
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                "${connectionLabel(previousState.appMode).replaceFirstChar { it.uppercase() }} was stopped because a replacement location could not be activated."
+                StatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
             },
             onFailure = { error ->
-                "Failed to restore or stop ${connectionLabel(previousState.appMode)} cleanly: ${error.message ?: "live state may not match the saved state"}."
+                StatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
             },
         )
     }
@@ -299,7 +299,7 @@ class SubscriptionRefreshWorker(
         return stopResult.fold(
             onSuccess = {
                 storage.clearSelection()
-                "${connectionLabel(previousState.appMode).replaceFirstChar { it.uppercase() }} was stopped."
+                StatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
             },
             onFailure = { error ->
                 storage.restoreSelection(
@@ -307,7 +307,7 @@ class SubscriptionRefreshWorker(
                     restoreRuntimeArtifacts = true,
                     sourceUrlOverride = "",
                 )
-                "Failed to stop ${connectionLabel(previousState.appMode)} cleanly: ${error.message ?: "the previous location was kept as a fallback outside the current subscription"}."
+                StatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
             },
         )
     }

@@ -382,6 +382,8 @@ internal fun structuredStatusTemplateKeys(status: StructuredStatusMessage): List
         StatusMessageKey.STARTING_CONNECTION_WITH_BEST,
         StatusMessageKey.CONNECTION_STARTED,
         StatusMessageKey.CONNECTION_STOPPED,
+        StatusMessageKey.CONNECTION_START_CANCELLED,
+        StatusMessageKey.CONNECTION_STOP_CANCELLED,
         StatusMessageKey.CONNECTION_READY_ON_COMPUTER,
         StatusMessageKey.RUNTIME_MODE,
         StatusMessageKey.PREFLIGHT_PASSED,
@@ -403,7 +405,8 @@ internal fun structuredStatusTemplateKeys(status: StructuredStatusMessage): List
         StatusMessageKey.DESKTOP_VPN_CAPABILITY_ERROR ->
             if (arg(0).isBlank()) "${status.key.name}.EMPTY" else null
         StatusMessageKey.PROFILE_SOURCE_MODE,
-        StatusMessageKey.PROFILE_SOURCE_SET -> "${status.key.name}.${profileSource(0)}"
+        StatusMessageKey.PROFILE_SOURCE_SET,
+        StatusMessageKey.FIND_BEST_TESTING_FASTEST -> "${status.key.name}.${profileSource(0)}"
         StatusMessageKey.UI_SETTING_VISIBILITY_CHANGED -> "${status.key.name}.${arg(0)}.${bool(1)}"
         StatusMessageKey.CONNECTION_MODE_SET -> "${status.key.name}.${mode(0)}"
         StatusMessageKey.STARTUP_SETTING_UPDATE_FAILED,
@@ -432,7 +435,7 @@ private fun renderStructuredPlaceholder(
     token: String,
 ): String? {
     fun arg(index: Int): String = status.args.getOrNull(index).orEmpty()
-    return token.toIntOrNull()?.let { arg(it) } ?: when (token) {
+    return token.toIntOrNull()?.let { localizedStatusArg(language, arg(it)) } ?: when (token) {
         "refreshInterval" -> structuredRefreshInterval(language, status)
         "checkCount" -> structuredCheckCount(language, arg(1).toIntOrNull() ?: 0)
         "valueOrNotReady" -> arg(0).ifBlank {
@@ -440,6 +443,11 @@ private fun renderStructuredPlaceholder(
         }
         else -> null
     } ?: renderStructuredNamedPlaceholder(language, status, token)
+}
+
+private fun localizedStatusArg(language: AppLanguage, value: String): String {
+    val decoded = StatusMessages.decode(value) ?: return value
+    return localizedStructuredStatusMessage(language, decoded)
 }
 
 private fun renderStructuredNamedPlaceholder(
@@ -454,6 +462,12 @@ private fun renderStructuredNamedPlaceholder(
             ?: key.name
     fun modeLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY_ONLY) else ui(UiText.VPN)
     fun connectionLabel(mode: String): String = if (mode.isProxyMode()) ui(UiText.PROXY) else ui(UiText.VPN)
+    fun searchSourceLabel(value: String): String = when (value) {
+        "ALL_SUBSCRIPTIONS" -> ui(UiText.ALL_SUBSCRIPTIONS)
+        "SELECTED_SUBSCRIPTION" -> ui(UiText.ACTIVE_SUBSCRIPTION)
+        "SAVED_LOCATIONS" -> ui(UiText.SAVED_LOCATIONS)
+        else -> value
+    }
 
     val parts = token.split(':')
     return when (parts.firstOrNull()) {
@@ -462,6 +476,7 @@ private fun renderStructuredNamedPlaceholder(
             ?.let(::ui)
         "modeLabel" -> parts.getOrNull(1)?.toIntOrNull()?.let { modeLabel(arg(it)) }
         "connectionLabel" -> parts.getOrNull(1)?.toIntOrNull()?.let { connectionLabel(arg(it)) }
+        "searchSourceLabel" -> parts.getOrNull(1)?.toIntOrNull()?.let { searchSourceLabel(arg(it)) }
         else -> null
     }
 }

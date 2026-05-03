@@ -491,7 +491,7 @@ class DesktopAppServiceTest {
             service.findBestLocation(refreshSubscriptionsFirst = false)
 
             assertEquals(AppMode.VPN, service.state.appMode)
-            assertTrue(service.state.statusMessage.contains("Add at least one saved location first"))
+            assertEquals(StatusMessages.addSavedLocationFirst(), service.state.statusMessage)
             assertFalse(service.state.statusMessage.contains("Proxy-only mode only"))
         } finally {
             tempDir.toFile().deleteRecursively()
@@ -540,7 +540,7 @@ class DesktopAppServiceTest {
             assertEquals(1, postRefreshSelections)
             assertEquals(1, service.state.subscriptions.single().cachedLocations.size)
             assertEquals(1, service.state.currentLocations.size)
-            assertTrue(service.state.statusMessage.contains("Subscription refreshed"))
+            assertEquals(StatusMessages.subscriptionRefreshed(), service.state.statusMessage)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

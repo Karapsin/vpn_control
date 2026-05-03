@@ -9,7 +9,8 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 ```bash
 ./scripts/check_release_hygiene.sh
 ./scripts/check_localization.py
-./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest
+./scripts/status_catalog_tool.py check
+./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest
 ```
 
 ## Quick Mapping
@@ -17,7 +18,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Touched Area | Run |
 | --- | --- |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
-| Shared typed status helpers or status models | `./gradlew :shared:model:desktopTest :shared:ui:desktopTest` |
+| Shared typed status helpers or status models | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:model:desktopTest :shared:ui:desktopTest` |
 | Shared settings/location mutation status helpers | `./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest` |
 | `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
@@ -105,6 +106,7 @@ Desktop service extraction patch:
 Structured status/localization patch:
 
 ```bash
+./scripts/status_catalog_tool.py check
 ./scripts/check_localization.py
 ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest
 ```

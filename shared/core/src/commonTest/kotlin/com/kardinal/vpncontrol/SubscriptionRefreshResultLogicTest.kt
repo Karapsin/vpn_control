@@ -1,7 +1,10 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.StatusMessageKey
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,7 +15,7 @@ class SubscriptionRefreshResultLogicTest {
     @Test
     fun manualSummaryUsesScopeSpecificSuccessMessages() {
         assertEquals(
-            "Active subscription refreshed",
+            StatusMessages.activeSubscriptionRefreshed(),
             SubscriptionRefreshResultLogic.manualSummary(
                 scope = SubscriptionRefreshScope.ACTIVE,
                 refreshedCount = 1,
@@ -21,7 +24,7 @@ class SubscriptionRefreshResultLogicTest {
             ),
         )
         assertEquals(
-            "All subscriptions refreshed",
+            StatusMessages.allSubscriptionsRefreshed(),
             SubscriptionRefreshResultLogic.manualSummary(
                 scope = SubscriptionRefreshScope.ALL,
                 refreshedCount = 2,
@@ -34,12 +37,12 @@ class SubscriptionRefreshResultLogicTest {
     @Test
     fun summaryTruncatesLongFailureLists() {
         assertEquals(
-            "Subscriptions refreshed: 2/5. Failed: A, B +1 more",
+            StatusMessages.subscriptionsRefreshedPartial(2, 5, "A, B +1 more"),
             SubscriptionRefreshResultLogic.summary(
                 refreshedCount = 2,
                 failedSubscriptionNames = listOf("A", "B", "C", "A"),
                 totalCount = 5,
-                defaultSuccess = "Subscriptions refreshed",
+                defaultSuccess = StatusMessages.subscriptionsRefreshed(),
             ),
         )
     }
@@ -110,21 +113,46 @@ class SubscriptionRefreshResultLogicTest {
     @Test
     fun backgroundMessagesPreserveExistingWording() {
         assertEquals(
-            "Subscriptions refreshed with partial failures. Switched VPN to Germany (best from Main). Failed to refresh: A",
-            SubscriptionRefreshResultLogic.backgroundSwitchedMessage(
-                connectionLabel = "VPN",
-                selectedProfileName = "Germany",
-                winnerSource = "Main",
-                failedSubscriptionNames = listOf("A"),
-            ),
+            StatusMessageKey.BACKGROUND_REFRESH_SWITCHED_PARTIAL_SOURCE,
+            StatusMessages.decode(
+                SubscriptionRefreshResultLogic.backgroundSwitchedMessage(
+                    appMode = AppMode.VPN,
+                    selectedProfileName = "Germany",
+                    winnerSource = "Main",
+                    failedSubscriptionNames = listOf("A"),
+                ),
+            )?.key,
         )
         assertEquals(
-            "Subscriptions refreshed with partial failures. Current proxy location kept from the previous cache. Failed to refresh: A, B +1 more",
-            SubscriptionRefreshResultLogic.backgroundKeptCurrentMessage(
-                connectionLabel = "proxy",
-                failedSubscriptionNames = listOf("A", "B", "C"),
-                selectedSourceFailed = true,
-            ),
+            listOf("VPN", "Germany", "Main", "A"),
+            StatusMessages.decode(
+                SubscriptionRefreshResultLogic.backgroundSwitchedMessage(
+                    appMode = AppMode.VPN,
+                    selectedProfileName = "Germany",
+                    winnerSource = "Main",
+                    failedSubscriptionNames = listOf("A"),
+                ),
+            )?.args,
+        )
+        assertEquals(
+            StatusMessageKey.BACKGROUND_REFRESH_KEPT_CURRENT_PARTIAL_PREVIOUS_CACHE,
+            StatusMessages.decode(
+                SubscriptionRefreshResultLogic.backgroundKeptCurrentMessage(
+                    appMode = AppMode.PROXY_ONLY,
+                    failedSubscriptionNames = listOf("A", "B", "C"),
+                    selectedSourceFailed = true,
+                ),
+            )?.key,
+        )
+        assertEquals(
+            listOf("PROXY_ONLY", "A, B +1 more"),
+            StatusMessages.decode(
+                SubscriptionRefreshResultLogic.backgroundKeptCurrentMessage(
+                    appMode = AppMode.PROXY_ONLY,
+                    failedSubscriptionNames = listOf("A", "B", "C"),
+                    selectedSourceFailed = true,
+                ),
+            )?.args,
         )
     }
 

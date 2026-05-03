@@ -10,6 +10,7 @@ import com.kardinal.vpncontrol.data.ValidationWalkResult
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
@@ -82,7 +83,7 @@ class DesktopProxyValidationRuntime(
         onProgress: suspend (String) -> Unit = {},
     ): SearchEvaluation = withContext(Dispatchers.IO) {
         val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
-        onProgress("Checking ${profiles.size} locations...")
+        onProgress(StatusMessages.checkingLocations(profiles.size))
         val preflightResults = preflightProfiles(benchmarkableProfiles, settings)
         val reachableProfiles = preflightResults
             .filter { it.connectMillis != null }
@@ -144,7 +145,7 @@ class DesktopProxyValidationRuntime(
         for ((batchIndex, batch) in candidates.chunked(normalizedBatchSize).withIndex()) {
             val start = batchIndex * normalizedBatchSize + 1
             val end = start + batch.size - 1
-            onProgress("Testing locations $start-$end of ${candidates.size}...")
+            onProgress(StatusMessages.testingLocationsRange(start, end, candidates.size))
             val batchBenchmarks = batch.map { candidate ->
                 async(Dispatchers.IO) {
                     semaphore.withPermit {

@@ -13,7 +13,6 @@ internal class DesktopSubscriptionRefreshService(
     private val subscriptionService: DesktopSubscriptionService,
     private val isRuntimeRunning: () -> Boolean,
     private val stopConnection: suspend (String?) -> Result<Unit>,
-    private val activeConnectionName: () -> String,
     private val findBestAfterRefresh: suspend () -> Unit,
     private val commitState: (nextState: MainUiState, nextLocations: List<DesktopLocationRecord>) -> Unit,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
@@ -76,7 +75,10 @@ internal class DesktopSubscriptionRefreshService(
         )
         if (refreshResult.isFailure) {
             updateState { it.copy(isBusy = false, isRefreshing = false) }
-            return Result.failure(refreshResult.exceptionOrNull() ?: IllegalStateException("Refresh failed"))
+            return Result.failure(
+                refreshResult.exceptionOrNull()
+                    ?: IllegalStateException(StatusMessages.failedToRefreshSubscriptions()),
+            )
         }
         val refreshed = refreshResult.getOrThrow()
 
@@ -84,10 +86,10 @@ internal class DesktopSubscriptionRefreshService(
         val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
             refreshed.locations.none { it.matchesSelectedLocation(state) }
         if (removedSelected && state.isVpnRunning && stopVpnIfSelectedRemoved) {
-            val stopResult = stopConnection("${activeConnectionName()} stopped. Refreshed subscriptions removed the selected location.")
+            val stopResult = stopConnection(StatusMessages.subscriptionRefreshRemovedSelectedStopped(state.appMode))
             if (stopResult.isFailure) {
                 updateState { it.copy(isBusy = false) }
-                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException("Failed to stop ${activeConnectionName()}"))
+                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException(StatusMessages.connectionStopFailed(state.appMode)))
             }
         }
 

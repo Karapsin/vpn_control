@@ -59,5 +59,5 @@ Desktop construction is intentionally separate from desktop behavior. `DesktopAp
 | Subscription source activation, add/delete, rename, or source labels | `SubscriptionSourceLogic`, `AndroidProfileActionsService`, desktop subscription management service, shared core tests, platform service tests. |
 | Subscription refresh state/result behavior | `AutoRefreshLogic`, `SubscriptionRefreshResultLogic`, Android manual/background refresh paths, `DesktopSubscriptionRefreshService`, shared core tests. |
 | Selected location matching, remapping, stored-key normalization, or per-location benchmark updates | `SelectionMappingLogic`, `AndroidLocationActionsService`, desktop location/subscription/benchmark services, shared core tests, platform service tests. |
-| User-visible status or log text | `StatusMessages`, `i18n-status/*.json`, `AppStringsCoverageTest`, `docs/localization.md`. |
+| User-visible status or log text | `shared/model/src/commonMain/kotlin/com/kardinal/vpncontrol/model/StatusMessages.kt`, `shared/ui/src/commonMain/resources/i18n-status/*.json`, `shared/ui/src/commonTest/kotlin/com/kardinal/vpncontrol/shared/ui/AppStringsCoverageTest.kt`, `scripts/status_catalog_tool.py`, `docs/localization.md`. |
 | Native runtime binaries or packaging scripts | `docs/native-runtime-artifacts.md`, release checklist, platform packaging scripts, checksum/update notes. |

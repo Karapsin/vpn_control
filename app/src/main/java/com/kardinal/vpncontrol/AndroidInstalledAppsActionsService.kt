@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.InstalledApp
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class AndroidInstalledAppsActionsService(
     private val stateProvider: () -> MainUiState,
@@ -29,7 +30,7 @@ internal class AndroidInstalledAppsActionsService(
                 }
                 .onFailure { error ->
                     updateState { it.copy(installedAppsLoading = false) }
-                    updateStatus(error.message ?: "Failed to load apps")
+                    updateStatus(error.message ?: StatusMessages.appsLoadFailed())
                 }
         }
     }

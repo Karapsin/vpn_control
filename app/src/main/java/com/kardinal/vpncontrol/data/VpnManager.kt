@@ -42,7 +42,7 @@ class VpnManager(
                 context.startForegroundService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to dispatch ${modeLabel(appMode).lowercase()} start",
+                    message = error.message ?: StatusMessages.connectionStartFailed(appMode),
                     cause = error,
                     commandDispatched = false,
                 )
@@ -51,7 +51,7 @@ class VpnManager(
                 waitForStart(initialStatus, appMode)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to start connection",
+                    message = error.message ?: StatusMessages.connectionStartFailed(appMode),
                     cause = error,
                     commandDispatched = true,
                 )
@@ -70,7 +70,7 @@ class VpnManager(
                 context.startService(intent)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to dispatch ${modeLabel(initialState.appMode).lowercase()} stop",
+                    message = error.message ?: StatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
                     commandDispatched = false,
                 )
@@ -79,7 +79,7 @@ class VpnManager(
                 waitForStop(initialStatus)
             } catch (error: Throwable) {
                 throw VpnCommandException(
-                    message = error.message ?: "Failed to stop ${modeLabel(initialState.appMode).lowercase()}",
+                    message = error.message ?: StatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
                     commandDispatched = true,
                 )
@@ -133,12 +133,6 @@ class VpnManager(
             return StatusMessages.connectionStarted(appMode)
         }
 
-        fun modeLabel(appMode: AppMode): String {
-            return when (appMode) {
-                AppMode.VPN -> "VPN"
-                AppMode.PROXY_ONLY -> "Proxy"
-            }
-        }
     }
 }
 

@@ -37,7 +37,7 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(0, refreshCalls)
-        assertEquals(listOf("Add at least one saved location first"), statuses)
+        assertEquals(listOf(StatusMessages.addSavedLocationFirst()), statuses)
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)
     }

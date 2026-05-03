@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.sourceUrlForStoredLocation
 import com.kardinal.vpncontrol.shared.storageapi.SearchStateStore
@@ -86,7 +87,7 @@ class BenchmarkOrchestrator(
                             val loadedProfiles = loaded.allProfiles
                             require(loadedProfiles.isNotEmpty()) {
                                 loaded.failureMessages.lastOrNull()?.takeIf { it.isNotBlank() }
-                                    ?: "No locations were found in the selected subscription"
+                                    ?: StatusMessages.noLocationsFoundSelectedSubscription()
                             }
 
                             val evaluation = evaluateProfilesForSelection(
@@ -94,10 +95,10 @@ class BenchmarkOrchestrator(
                                 validationSettings = validationSettings,
                                 dnsSettings = dnsSettings,
                                 benchmarkUrls = benchmarkUrls,
-                                sourceLabel = if (allSubscriptionsMode) {
-                                    "all subscriptions"
+                                sourceKey = if (allSubscriptionsMode) {
+                                    "ALL_SUBSCRIPTIONS"
                                 } else {
-                                    "selected subscription"
+                                    "SELECTED_SUBSCRIPTION"
                                 },
                             )
                             benchmarkDetails.putAll(evaluation.locationBenchmarkDetails)
@@ -135,7 +136,7 @@ class BenchmarkOrchestrator(
                             )
                         }
                         ProfileSourceMode.CURRENT_LOCATIONS -> {
-                            storage.updateStatus("Loading saved locations...")
+                            storage.updateStatus(StatusMessages.loadingSavedLocations())
                             val profiles = decodeStoredLocations(state.currentLocations)
                             require(profiles.isNotEmpty()) { "No saved locations available" }
                             val evaluation = evaluateProfilesForSelection(
@@ -143,7 +144,7 @@ class BenchmarkOrchestrator(
                                 validationSettings = validationSettings,
                                 dnsSettings = dnsSettings,
                                 benchmarkUrls = benchmarkUrls,
-                                sourceLabel = "saved locations",
+                                sourceKey = "SAVED_LOCATIONS",
                             )
                             val winner = evaluation.winner ?: evaluation.fallback ?: run {
                                 storage.updateLocationBenchmarkDetails(evaluation.locationBenchmarkDetails)
@@ -181,7 +182,7 @@ class BenchmarkOrchestrator(
             var selectedMissing = false
             targets.forEach { target ->
                 val parsed = loadRemoteSourceLocations(target.sourceUrl)
-                require(parsed.isNotEmpty()) { "No locations were found in ${target.displayName}" }
+                require(parsed.isNotEmpty()) { StatusMessages.noLocationsFoundInSource(target.displayName) }
                 val update = storage.updateSubscriptionCache(
                     subscriptionId = target.subscriptionId,
                     rawLinks = parsed.map { it.rawLink },
@@ -230,14 +231,14 @@ class BenchmarkOrchestrator(
                     return@withTimeout benchmark
                 }
 
-                storage.updateStatus("Checking TCP speed for ${profile.remarks}...")
+                storage.updateStatus(StatusMessages.checkingTcpSpeed(profile.remarks))
                 val preflight = validationRuntime.preflightProfile(profile, settings)
                 val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
 
                 val benchmark = if (preflight.connectMillis == null) {
                     BenchmarkSearchLogic.failedBenchmark(profile, preflight, "unreachable")
                 } else {
-                    storage.updateStatus("Testing ${profile.remarks}...")
+                    storage.updateStatus(StatusMessages.testingLocation(profile.remarks))
                     benchmarkPreflightCandidate(
                         candidate = preflight,
                         idx = 0,
@@ -345,10 +346,10 @@ class BenchmarkOrchestrator(
         validationSettings: com.kardinal.vpncontrol.model.BenchmarkValidationSettings,
         dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
-        sourceLabel: String,
+        sourceKey: String,
     ): SearchEvaluation {
         val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
-        storage.updateStatus("Checking ${profiles.size} $sourceLabel...")
+        storage.updateStatus(StatusMessages.checkingLocationSource(profiles.size, sourceKey))
         val preflightResults = validationRuntime.preflightProfiles(benchmarkableProfiles, settings)
         val reachableProfiles = preflightResults
             .filter { it.connectMillis != null }
@@ -356,7 +357,7 @@ class BenchmarkOrchestrator(
 
         val walk = if (benchmarkableProfiles.isNotEmpty() && reachableProfiles.isNotEmpty()) {
             storage.updateStatus(
-                "Testing locations in batches from fastest to slowest until the secondary site works...",
+                StatusMessages.testingFastestCandidates(),
             )
             validateInBatchesUntilSuccess(
                 candidates = reachableProfiles,
@@ -427,7 +428,7 @@ class BenchmarkOrchestrator(
     }
 
     private suspend fun loadRemoteSourceLocations(rawSource: String): List<ProxyProfile> {
-        storage.updateStatus("Downloading remote source...")
+        storage.updateStatus(StatusMessages.downloadingRemoteSource())
         val subscriptionHwid = storage.ensureSubscriptionHwid()
         return SelectionWorkflowService.parseRemoteSourceLocations(
             rawSource = rawSource,
@@ -464,7 +465,7 @@ class BenchmarkOrchestrator(
             val start = batchIndex * normalizedBatchSize + 1
             val end = start + batch.size - 1
             storage.updateStatus(
-                "Testing locations $start-$end of ${candidates.size}...",
+                StatusMessages.testingLocationsRange(start, end, candidates.size),
             )
             val batchBenchmarks = batch.mapIndexed { offset, candidate ->
                 async(Dispatchers.IO) {

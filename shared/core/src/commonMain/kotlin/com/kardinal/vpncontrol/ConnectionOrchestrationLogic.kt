@@ -97,15 +97,19 @@ object ConnectionOrchestrationLogic {
     fun refreshCancelledMessage(): String = StatusMessages.locationSearchCancelled()
 
     fun cancelledWithStopFailureMessage(prefix: String, appMode: AppMode, errorMessage: String?): String {
-        return "$prefix ${errorMessage ?: "Failed to stop ${MainCommandLogic.connectionNoun(appMode)}."}"
+        return if (prefix == StatusMessages.locationSearchCancelled()) {
+            StatusMessages.locationSearchCancelledStopFailed(appMode, errorMessage.orEmpty())
+        } else {
+            "$prefix ${errorMessage ?: StatusMessages.connectionStopFailed(appMode)}"
+        }
     }
 
     fun connectionStartCancelledMessage(appMode: AppMode): String {
-        return "${MainCommandLogic.connectionDisplayName(appMode)} start cancelled"
+        return StatusMessages.connectionStartCancelled(appMode)
     }
 
     fun connectionStopCancelledMessage(appMode: AppMode): String {
-        return "${MainCommandLogic.connectionDisplayName(appMode)} stop cancelled"
+        return StatusMessages.connectionStopCancelled(appMode)
     }
 
     fun connectionStopFailureMessage(appMode: AppMode, errorMessage: String?): String {

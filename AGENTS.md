@@ -165,7 +165,7 @@ Use `docs/test-matrix.md` for path-based test selection.
 - Status/log/freeform message translations live in `shared/ui/src/commonMain/resources/i18n-status/<lang>.json`.
 - Typed `StatusMessages` templates live in the `structured` section of each status catalog. `AppStrings.kt` should only choose keys, parse known message shapes, and substitute placeholders.
 - Do not add `when (AppLanguage...)` branches with translated UI/status text in Kotlin. Add a JSON key, dynamic status template, exact status entry, or replacement entry instead.
-- Do not add rendered English sentence templates for typed statuses in Kotlin. Add a `structured` catalog key in English, mirror that key in every other status catalog, and render it through `StatusMessages`.
+- Do not add rendered English sentence templates for typed statuses in Kotlin. Add a `structured` catalog key in English, mirror that key in every other status catalog, and render it through `StatusMessages`. Use `./scripts/status_catalog_tool.py add-structured ...` and `./scripts/status_catalog_tool.py check` for typed status catalog changes.
 - Structured status placeholders must be preserved exactly: `{0}`, `{refreshInterval}`, `{checkCount}`, `{valueOrNotReady}`, `{ui:KEY}`, `{modeLabel:0}`, and `{connectionLabel:0}` are substituted by `AppStrings.kt`.
 - For dynamic status strings, add placeholder templates under the `dynamic` section and keep placeholder names identical across all status catalogs.
 - For freeform or legacy runtime messages, prefer `legacyExact` for complete messages and `legacyReplacements` for stable prefixes/fragments.

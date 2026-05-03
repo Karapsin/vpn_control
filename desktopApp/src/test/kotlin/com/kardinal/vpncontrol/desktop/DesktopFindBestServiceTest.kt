@@ -6,6 +6,7 @@ import com.kardinal.vpncontrol.data.SearchEvaluation
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,7 +70,10 @@ class DesktopFindBestServiceTest {
             startedLocation?.name,
             "status=${state.statusMessage}; keys=${locations.map { it.normalizedStorageKey() }}; raw=$rawLink",
         )
-        assertTrue(startedSummary.contains("Best: Germany"))
+        assertEquals(
+            StatusMessages.bestLocationSummary("Germany", "primary ok • secondary ok • tcp 50.0ms"),
+            startedSummary,
+        )
         assertTrue(locations.single().isSelected)
         assertEquals("primary ok • secondary ok • tcp 50.0ms", locations.single().benchmarkDetail)
         assertFalse(state.isRefreshing)

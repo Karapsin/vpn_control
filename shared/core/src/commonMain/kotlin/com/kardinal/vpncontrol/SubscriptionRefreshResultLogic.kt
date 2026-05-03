@@ -1,7 +1,9 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.StatusMessages
 
 enum class SubscriptionRefreshScope {
     ACTIVE,
@@ -9,19 +11,16 @@ enum class SubscriptionRefreshScope {
 }
 
 object SubscriptionRefreshResultLogic {
-    const val NO_SUBSCRIPTIONS_MESSAGE = "No subscriptions saved yet"
-    const val NO_REMOTE_SOURCE_MESSAGE = "Set a remote source first"
+    val NO_SUBSCRIPTIONS_MESSAGE: String
+        get() = StatusMessages.noSubscriptionsSaved()
+    val NO_REMOTE_SOURCE_MESSAGE: String
+        get() = StatusMessages.noRemoteSource()
 
     fun refreshStartMessage(
         targetCount: Int,
         auto: Boolean = false,
     ): String {
-        val prefix = if (auto) "Auto-refreshing" else "Refreshing"
-        return if (targetCount == 1) {
-            "$prefix subscription..."
-        } else {
-            "$prefix subscriptions..."
-        }
+        return StatusMessages.subscriptionRefreshStart(targetCount = targetCount, auto = auto)
     }
 
     fun manualSummary(
@@ -31,12 +30,12 @@ object SubscriptionRefreshResultLogic {
         totalCount: Int,
     ): String {
         val defaultSuccess = when (scope) {
-            SubscriptionRefreshScope.ACTIVE -> "Active subscription refreshed"
+            SubscriptionRefreshScope.ACTIVE -> StatusMessages.activeSubscriptionRefreshed()
             SubscriptionRefreshScope.ALL -> {
                 if (totalCount == refreshedCount) {
-                    "All subscriptions refreshed"
+                    StatusMessages.allSubscriptionsRefreshed()
                 } else {
-                    "Subscriptions refreshed: $refreshedCount/$totalCount"
+                    StatusMessages.subscriptionsRefreshedCount(refreshedCount, totalCount)
                 }
             }
         }
@@ -54,9 +53,9 @@ object SubscriptionRefreshResultLogic {
         totalCount: Int,
     ): String {
         val defaultSuccess = if (refreshedCount == 1 && totalCount == 1) {
-            "Subscription refreshed"
+            StatusMessages.subscriptionRefreshed()
         } else {
-            "Subscriptions refreshed"
+            StatusMessages.subscriptionsRefreshed()
         }
         return summary(
             refreshedCount = refreshedCount,
@@ -76,12 +75,12 @@ object SubscriptionRefreshResultLogic {
             return defaultSuccess
         }
         val failedSuffix = failureLabel(failedSubscriptionNames)
-        return "Subscriptions refreshed: $refreshedCount/$totalCount. Failed: $failedSuffix"
+        return StatusMessages.subscriptionsRefreshedPartial(refreshedCount, totalCount, failedSuffix)
     }
 
     fun failureSummary(failedSubscriptionNames: List<String>): String? {
         if (failedSubscriptionNames.isEmpty()) return null
-        return "Failed to refresh: ${failureLabel(failedSubscriptionNames)}"
+        return StatusMessages.failedToRefresh(failureLabel(failedSubscriptionNames))
     }
 
     fun selectedSourceFailed(
@@ -113,83 +112,60 @@ object SubscriptionRefreshResultLogic {
     }
 
     fun backgroundSwitchedMessage(
-        connectionLabel: String,
+        appMode: AppMode,
         selectedProfileName: String,
         winnerSource: String?,
         failedSubscriptionNames: List<String>,
     ): String {
-        return buildString {
-            append("Subscriptions refreshed")
-            if (failedSubscriptionNames.isNotEmpty()) {
-                append(" with partial failures")
-            }
-            append(". Switched $connectionLabel to $selectedProfileName")
-            winnerSource?.let {
-                append(" (best from $it)")
-            }
-            failureSummary(failedSubscriptionNames)?.let {
-                append(". ")
-                append(it)
-            }
-        }
+        return StatusMessages.backgroundRefreshSwitched(
+            appMode = appMode,
+            selectedProfileName = selectedProfileName,
+            winnerSource = winnerSource,
+            failedLabel = failureLabelOrNull(failedSubscriptionNames),
+        )
     }
 
     fun backgroundReplacementFailedMessage(
-        connectionLabel: String,
+        appMode: AppMode,
         failureMessage: String,
         failedSubscriptionNames: List<String>,
         selectedSourceFailed: Boolean,
         rollbackMessage: String,
     ): String {
-        return buildString {
-            append("Subscription refresh finished. ")
-            append(failureMessage)
-            failureSummary(failedSubscriptionNames)?.let {
-                append(". ")
-                append(it)
-            }
-            if (selectedSourceFailed) {
-                append(". Current $connectionLabel location belongs to a subscription that did not refresh")
-            }
-            if (rollbackMessage.isNotBlank()) {
-                append(" ")
-                append(rollbackMessage)
-            }
-        }.trim()
+        return StatusMessages.backgroundRefreshReplacementFailed(
+            appMode = appMode,
+            failureMessage = failureMessage,
+            failedLabel = failureLabelOrNull(failedSubscriptionNames),
+            selectedSourceFailed = selectedSourceFailed,
+            rollbackMessage = rollbackMessage,
+        )
     }
 
     fun backgroundSelectedMissingMessage(
-        connectionLabel: String,
+        appMode: AppMode,
         failedSubscriptionNames: List<String>,
     ): String {
-        return buildString {
-            append("Active subscription changed, but the current $connectionLabel location was kept as a fallback")
-            failureSummary(failedSubscriptionNames)?.let {
-                append(". ")
-                append(it)
-            }
-        }
+        return StatusMessages.backgroundRefreshSelectedMissingKept(
+            appMode = appMode,
+            failedLabel = failureLabelOrNull(failedSubscriptionNames),
+        )
     }
 
     fun backgroundKeptCurrentMessage(
-        connectionLabel: String,
+        appMode: AppMode,
         failedSubscriptionNames: List<String>,
         selectedSourceFailed: Boolean,
     ): String {
-        return buildString {
-            append("Subscriptions refreshed")
-            if (failedSubscriptionNames.isNotEmpty()) {
-                append(" with partial failures")
-            }
-            append(". Current $connectionLabel location kept")
-            if (selectedSourceFailed) {
-                append(" from the previous cache")
-            }
-            failureSummary(failedSubscriptionNames)?.let {
-                append(". ")
-                append(it)
-            }
-        }
+        return StatusMessages.backgroundRefreshKeptCurrent(
+            appMode = appMode,
+            failedLabel = failureLabelOrNull(failedSubscriptionNames),
+            selectedSourceFailed = selectedSourceFailed,
+        )
+    }
+
+    private fun failureLabelOrNull(failedSubscriptionNames: List<String>): String? {
+        if (failedSubscriptionNames.isEmpty()) return null
+        return failureLabel(failedSubscriptionNames)
     }
 
     private fun failureLabel(failedSubscriptionNames: List<String>): String {

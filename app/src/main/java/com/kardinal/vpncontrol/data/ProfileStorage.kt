@@ -23,6 +23,7 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.ProxyProfile
@@ -325,8 +326,7 @@ class ProfileStorage(
                             subscription.copy(
                                 cachedLocations = normalized,
                                 lastRefreshedAtEpochMillis = System.currentTimeMillis(),
-                                lastRefreshStatus = "Updated ${normalized.size} location" +
-                                    if (normalized.size == 1) "" else "s",
+                                lastRefreshStatus = StatusMessages.locationsRefreshed(normalized.size),
                             )
                         } else {
                             subscription

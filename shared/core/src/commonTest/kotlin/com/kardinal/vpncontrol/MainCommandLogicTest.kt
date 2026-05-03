@@ -92,7 +92,7 @@ class MainCommandLogicTest {
             ),
         )
 
-        assertEquals("Set a remote source first", error)
+        assertEquals(StatusMessages.noRemoteSource(), error)
     }
 
     @Test
@@ -101,7 +101,7 @@ class MainCommandLogicTest {
             MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS),
         )
 
-        assertEquals("Add at least one saved location first", error)
+        assertEquals(StatusMessages.addSavedLocationFirst(), error)
     }
 
     @Test

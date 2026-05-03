@@ -6,6 +6,7 @@ import com.kardinal.vpncontrol.data.BenchmarkUrls
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal typealias DesktopLocationBenchmarker = suspend (
     profile: ProxyProfile,
@@ -25,7 +26,7 @@ internal class DesktopLocationBenchmarkService(
         val location = locationsProvider().firstOrNull { it.index == index } ?: return
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
         if (profile.isFailure) {
-            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: "Invalid location config") }
+            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig()) }
             return
         }
 
@@ -59,14 +60,14 @@ internal class DesktopLocationBenchmarkService(
             }
             commitState(
                 stateProvider().copy(isBusy = false).withStatus(
-                    "Benchmarked ${location.name}: ${result.primaryStatus} / ${result.secondaryStatus}",
+                    StatusMessages.benchmarkedLocation(location.name, result.primaryStatus, result.secondaryStatus),
                 ),
                 updatedLocations,
             )
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    benchmark.exceptionOrNull()?.message ?: "Failed to benchmark ${location.name}",
+                    benchmark.exceptionOrNull()?.message ?: StatusMessages.benchmarkLocationFailed(location.name),
                 )
             }
         }

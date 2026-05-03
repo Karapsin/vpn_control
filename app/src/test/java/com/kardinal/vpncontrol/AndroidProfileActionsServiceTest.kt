@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -35,7 +36,7 @@ class AndroidProfileActionsServiceTest {
                 MainControllerEffect.SaveProfileSource(
                     value = "https://example.com/sub.txt",
                     mode = ProfileSourceMode.SUBSCRIPTION,
-                    statusMessage = "Subscription saved",
+                    statusMessage = StatusMessages.subscriptionSaved(),
                 ),
             ),
             capturedEffects,

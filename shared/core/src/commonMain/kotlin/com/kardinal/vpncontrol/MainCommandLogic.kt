@@ -90,20 +90,16 @@ object MainCommandLogic {
         return when {
             state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION &&
                 currentSubscriptionSearchTargets(state).isEmpty() ->
-                "Set a remote source first"
+                StatusMessages.noRemoteSource()
             state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS &&
                 state.currentLocations.isEmpty() ->
-                "Add at least one saved location first"
+                StatusMessages.addSavedLocationFirst()
             else -> null
         }
     }
 
     fun refreshStartMessage(state: MainUiState): String {
-        return if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
-            "Finding the best location from the subscription..."
-        } else {
-            "Finding the best location from saved locations..."
-        }
+        return refreshStartStatus(state)
     }
 
     fun refreshStartStatus(state: MainUiState): String {
@@ -184,8 +180,8 @@ object MainCommandLogic {
                     nextState = next,
                     profileSourceModeUpdate = ProfileSourceMode.SUBSCRIPTION,
                     statusMessage = when (preference) {
-                        ImportPreference.SUBSCRIPTION -> "Subscription received. Review and save it on the Profile tab."
-                        else -> "Subscription link received. Review and save it on the Profile tab."
+                        ImportPreference.SUBSCRIPTION -> StatusMessages.subscriptionReceived()
+                        else -> StatusMessages.subscriptionLinkReceived()
                     },
                 )
             }
@@ -199,10 +195,7 @@ object MainCommandLogic {
                 IncomingImportEffect(
                     nextState = next,
                     profileSourceModeUpdate = ProfileSourceMode.CURRENT_LOCATIONS,
-                    statusMessage = when (preference) {
-                        ImportPreference.LOCATION -> "Location config received. Review and save it on the Locations tab."
-                        else -> "Location config received. Review and save it on the Locations tab."
-                    },
+                    statusMessage = StatusMessages.locationConfigReceived(),
                 )
             }
             is IncomingImportPayload.RoutingRules -> {
@@ -225,15 +218,15 @@ object MainCommandLogic {
     ): Result<String> {
         return runCatching {
             if (mode == ProfileSourceMode.SUBSCRIPTION && value.isBlank()) {
-                error("Paste a subscription URL or choose one from the list")
+                error(StatusMessages.pasteSubscriptionRequired())
             }
             if (mode == ProfileSourceMode.SUBSCRIPTION && value.isNotBlank()) {
                 validateSubscription(value).getOrThrow()
             }
             if (mode == ProfileSourceMode.SUBSCRIPTION) {
-                "Subscription saved"
+                StatusMessages.subscriptionSaved()
             } else {
-                "Profile source set to saved locations"
+                StatusMessages.profileSourceSet(ProfileSourceMode.CURRENT_LOCATIONS)
             }
         }
     }

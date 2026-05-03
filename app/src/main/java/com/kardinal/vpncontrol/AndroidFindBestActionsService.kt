@@ -89,7 +89,7 @@ internal class AndroidFindBestActionsService(
             withContext(NonCancellable) {
                 val message = when {
                     startAttempted && previousState.isVpnRunning ->
-                        rollbackSelectionChange(previousState, "Location search cancelled.")
+                        rollbackSelectionChange(previousState, StatusMessages.locationSearchCancelled())
                     startAttempted -> {
                         val stopResult = stopConnection()
                         stopResult.fold(
@@ -99,7 +99,7 @@ internal class AndroidFindBestActionsService(
                             },
                             onFailure = {
                                 ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
-                                    prefix = "Location search cancelled.",
+                                    prefix = StatusMessages.locationSearchCancelled(),
                                     appMode = stateProvider().appMode,
                                     errorMessage = it.message,
                                 )

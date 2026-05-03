@@ -1,11 +1,13 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -36,11 +38,11 @@ class DesktopSubscriptionServiceTest {
             onProgress = progress::add,
         ).getOrThrow()
 
-        assertEquals(listOf("Refreshing Example..."), progress)
+        assertEquals(listOf(StatusMessages.refreshingSubscriptionNamed("Example")), progress)
         assertEquals(listOf("0123456789abcdef0123456789abcdef"), fetcher.subscriptionHwids)
         assertEquals("0123456789abcdef0123456789abcdef", payload.subscriptionHwid)
         assertEquals(1, payload.refreshedCount)
-        assertTrue(payload.statusMessage.contains("Subscription refreshed"))
+        assertEquals(StatusMessages.subscriptionRefreshed(), payload.statusMessage)
         assertEquals(2, payload.locations.size)
         assertEquals(savedRaw, payload.locations.single { it.sourceUrl.isBlank() }.rawLink)
         val refreshedLocation = payload.locations.single { it.sourceUrl == subscription.url }
@@ -48,7 +50,7 @@ class DesktopSubscriptionServiceTest {
         assertEquals("127.0.0.2", refreshedLocation.server)
         assertTrue(refreshedLocation.rawLink.contains(refreshedRaw))
         assertEquals(1234L, payload.subscriptions.single().lastRefreshedAtEpochMillis)
-        assertEquals("1 locations refreshed", payload.subscriptions.single().lastRefreshStatus)
+        assertEquals(StatusMessages.locationsRefreshed(1), payload.subscriptions.single().lastRefreshStatus)
         assertEquals(1, payload.subscriptions.single().cachedLocations.size)
     }
 
@@ -80,6 +82,42 @@ class DesktopSubscriptionServiceTest {
         assertEquals(5678L, payload.subscriptions.single().lastRefreshedAtEpochMillis)
         assertTrue(payload.subscriptions.single().lastRefreshStatus.contains("Unexpected subscription fetch"))
         assertTrue(payload.statusMessage.contains("Example"))
+    }
+
+    @Test
+    fun refreshStatusHelperUsesTypedMessages() {
+        val subscription = SubscriptionSource(
+            id = "sub",
+            url = "https://example.com/subscription.txt",
+            customName = "Example",
+        )
+
+        assertEquals(
+            StatusMessages.refreshingSubscriptionNamed("Example"),
+            DesktopSubscriptionRefreshStatus.progress(subscription),
+        )
+        assertEquals(
+            StatusMessages.locationsRefreshed(2),
+            DesktopSubscriptionRefreshStatus.successfulLocationRefresh(2),
+        )
+        assertEquals(
+            StatusMessages.failedToRefresh("Example"),
+            DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(subscription, IllegalStateException()),
+        )
+        assertEquals(
+            StatusMessages.subscriptionsRefreshed(),
+            DesktopSubscriptionRefreshStatus.summary(
+                refreshedCount = 1,
+                failedSubscriptionNames = emptyList(),
+                totalCount = 2,
+            ),
+        )
+        assertEquals(
+            StatusMessages.noSubscriptionsToRefresh(),
+            assertFailsWith<IllegalStateException> {
+                throw DesktopSubscriptionRefreshStatus.noSubscriptionsToRefresh()
+            }.message,
+        )
     }
 }
 

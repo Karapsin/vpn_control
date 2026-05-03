@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,7 +20,7 @@ class AndroidDiagnosticsActionsServiceTest {
         service.exportDiagnostics()
 
         assertFalse(busy)
-        assertEquals(listOf("Diagnostics export opened"), statuses)
+        assertEquals(listOf(StatusMessages.diagnosticsExportOpened()), statuses)
     }
 
     @Test

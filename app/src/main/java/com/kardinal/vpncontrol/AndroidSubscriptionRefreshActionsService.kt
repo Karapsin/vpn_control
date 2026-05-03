@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.data.SubscriptionRefreshBatchResult
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
+import com.kardinal.vpncontrol.model.StatusMessages
 
 internal class AndroidSubscriptionRefreshActionsService(
     private val stateProvider: () -> MainUiState,
@@ -41,7 +42,7 @@ internal class AndroidSubscriptionRefreshActionsService(
                                 totalCount = if (refreshAll) state.subscriptions.size else 1,
                             )
                         },
-                        onFailure = { it.message ?: "Failed to refresh the active subscription" },
+                        onFailure = { it.message ?: StatusMessages.failedToRefreshActiveSubscription() },
                     ),
                 )
             } finally {
@@ -75,7 +76,7 @@ internal class AndroidSubscriptionRefreshActionsService(
                                 totalCount = state.subscriptions.size,
                             )
                         },
-                        onFailure = { it.message ?: "Failed to refresh subscriptions" },
+                        onFailure = { it.message ?: StatusMessages.failedToRefreshSubscriptions() },
                     ),
                 )
             } finally {

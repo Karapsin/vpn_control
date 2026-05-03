@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionSourceLogic
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import java.util.UUID
 
 internal class DesktopSubscriptionManagementService(
@@ -10,7 +11,6 @@ internal class DesktopSubscriptionManagementService(
     private val locationsProvider: () -> List<DesktopLocationRecord>,
     private val validateSubscriptionSource: (String) -> Result<Unit>,
     private val stopConnection: suspend (String?) -> Result<Unit>,
-    private val activeConnectionName: () -> String,
     private val commitState: (MainUiState, List<DesktopLocationRecord>) -> Unit,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
@@ -85,7 +85,7 @@ internal class DesktopSubscriptionManagementService(
         )
         if (result.isFailure) {
             updateState {
-                it.withStatus(result.exceptionOrNull()?.message ?: "Invalid subscription URL")
+                it.withStatus(result.exceptionOrNull()?.message ?: StatusMessages.invalidSubscriptionUrl())
             }
             return
         }
@@ -109,7 +109,7 @@ internal class DesktopSubscriptionManagementService(
 
         if (plan.removedSelected && state.isVpnRunning) {
             val stopResult = stopConnection(
-                "${activeConnectionName()} stopped. Deleted subscription removed the selected location.",
+                StatusMessages.subscriptionDeleteRemovedSelectedStopped(state.appMode),
             )
             if (stopResult.isFailure) {
                 return

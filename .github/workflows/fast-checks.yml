@@ -20,6 +20,7 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/check_localization.py"
+      - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
   pull_request:
     paths:
@@ -36,6 +37,7 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/check_localization.py"
+      - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
 
 jobs:
@@ -63,5 +65,8 @@ jobs:
       - name: Check localization catalogs
         run: ./scripts/check_localization.py
 
+      - name: Check typed status catalogs
+        run: ./scripts/status_catalog_tool.py check
+
       - name: Run fast unit tests
-        run: ./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest
+        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest

@@ -65,11 +65,38 @@ Preserve placeholders exactly. If a translation needs different word order, move
 
 When a new typed status needs real translation work across many languages, split the work by language. Each agent or reviewer should own exactly one `shared/ui/src/commonMain/resources/i18n-status/<language-code>.json` file and preserve placeholders byte-for-byte.
 
+## Add A Typed Status
+
+Typed runtime/status messages are defined in `shared/model/src/commonMain/kotlin/com/kardinal/vpncontrol/model/StatusMessages.kt`. To add one:
+
+1. Add a `StatusMessageKey` entry and a `StatusMessages` helper.
+2. Seed the structured catalog entry:
+
+```bash
+./scripts/status_catalog_tool.py add-structured STATUS_KEY "English template with {0} placeholders"
+```
+
+Use a variant suffix when one key has mode-specific wording:
+
+```bash
+./scripts/status_catalog_tool.py add-structured STARTING_CONNECTION.VPN "Starting VPN..."
+```
+
+The tool copies the English template into every status catalog as a translation skeleton. Translate those copied skeletons per language before relying on `--strict`.
+
+Run the status catalog checker after any typed-status change:
+
+```bash
+./scripts/status_catalog_tool.py check
+```
+
 ## Validation
 
 `AppStringsCoverageTest` fails if a UI catalog misses a `UiText` key or a status catalog is missing required benchmark/status data. Kotlin compilation fails if a UI catalog contains an unknown key.
 
 `check_localization.py` validates manifest/catalog alignment, placeholder preservation, status catalog shape, and prints a rough completion percentage. Use `--strict` when unchanged English strings should fail the check instead of being reported as warnings.
+
+`status_catalog_tool.py check` validates `StatusMessageKey` coverage, unknown structured keys, all-language structured key parity, and structured placeholder parity.
 
 For all-language validation, run without `--language`. This validates every UI/status catalog and catches missing `structured` keys across the full language set.
 
@@ -83,6 +110,12 @@ Validate every language catalog:
 
 ```bash
 ./scripts/check_localization.py
+```
+
+Validate typed status catalog parity:
+
+```bash
+./scripts/status_catalog_tool.py check
 ```
 
 Run the shared UI test suite after localization changes:

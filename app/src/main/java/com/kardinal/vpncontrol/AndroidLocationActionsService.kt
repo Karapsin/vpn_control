@@ -86,21 +86,21 @@ internal class AndroidLocationActionsService(
                     restoreSnapshot(previousState)
                     updateStatus(
                         selectionResult.exceptionOrNull()?.message
-                            ?: "Failed to apply updated selected location",
+                            ?: StatusMessages.updatedSelectedLocationApplyFailed(),
                     )
                     return@launch
                 }
                 val applyResult = applyAndPersistSelection(
                     selectionResult.getOrThrow(),
-                    "Applying updated selected location...",
+                    StatusMessages.updatedSelectedLocationApplying(),
                 )
                 if (!applyResult.isSuccess) {
                     val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                         result = applyResult,
                         texts = SelectionCommitFailureTexts(
-                            applyFailureFallback = "Failed to apply updated selected location",
-                            persistFailureWithoutApplyFallback = "Failed to save the updated selected location",
-                            persistFailureAfterApplyFallback = "Updated selected location applied, but failed to save it",
+                            applyFailureFallback = StatusMessages.updatedSelectedLocationApplyFailed(),
+                            persistFailureWithoutApplyFallback = StatusMessages.updatedSelectedLocationSaveFailed(),
+                            persistFailureAfterApplyFallback = StatusMessages.updatedSelectedLocationAppliedSaveFailed(),
                         ),
                     )
                     val resolvedMessage = if (applyResult.requiresLiveRollback) {
@@ -191,19 +191,24 @@ internal class AndroidLocationActionsService(
             } else {
                 val selectionResult = selectionFromRawLink(rawLink, "Selected location manually")
                 if (selectionResult.isFailure) {
-                    Result.failure(selectionResult.exceptionOrNull() ?: IllegalStateException("Failed to select location"))
+                    Result.failure(
+                        selectionResult.exceptionOrNull()
+                            ?: IllegalStateException(StatusMessages.selectedLocationSelectFailed()),
+                    )
                 } else {
                     val applyResult = applyAndPersistSelection(
                         selectionResult.getOrThrow(),
-                        "Applying selected location...",
+                        StatusMessages.selectedLocationApplying(),
                     )
                     if (!applyResult.isSuccess) {
                         val message = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
                             result = applyResult,
                             texts = SelectionCommitFailureTexts(
-                                applyFailureFallback = "Failed to apply selected location",
-                                persistFailureWithoutApplyFallback = "Failed to save selected location",
-                                persistFailureAfterApplyFallback = "Selected location applied, but failed to save it",
+                                applyFailureFallback = StatusMessages.selectedLocationApplyFailed(),
+                                persistFailureWithoutApplyFallback = StatusMessages.selectedLocationSaveFailed(),
+                                persistFailureAfterApplyFallback = StatusMessages.selectedLocationStartedSaveFailed(
+                                    stateProvider().appMode,
+                                ),
                             ),
                         )
                         val resolvedMessage = if (applyResult.requiresLiveRollback) {
@@ -230,7 +235,7 @@ internal class AndroidLocationActionsService(
                         StatusMessages.selectedLocationSet(remarks)
                     }
                 } else {
-                    result.exceptionOrNull()?.message ?: "Failed to select location"
+                    result.exceptionOrNull()?.message ?: StatusMessages.selectedLocationSelectFailed()
                 },
             )
             setBusy(false)

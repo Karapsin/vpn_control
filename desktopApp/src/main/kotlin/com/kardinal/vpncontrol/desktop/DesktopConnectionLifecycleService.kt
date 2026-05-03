@@ -41,7 +41,7 @@ internal class DesktopConnectionLifecycleService(
         val targetMode = state.appMode
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
         if (profile.isFailure) {
-            val error = profile.exceptionOrNull()?.message ?: "Invalid location config"
+            val error = profile.exceptionOrNull()?.message ?: StatusMessages.invalidLocationConfig()
             updateState { it.withStatus(error) }
             return Result.failure(IllegalStateException(error))
         }

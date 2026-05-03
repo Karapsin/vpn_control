@@ -1,29 +1,30 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 
 object RoutingRulesStatusLogic {
     fun saved(isConnectionRunning: Boolean, appMode: AppMode): String {
         return if (isConnectionRunning) {
-            "Routing rules saved. Restart ${MainCommandLogic.connectionNoun(appMode)} to apply"
+            StatusMessages.routingRulesSavedRestartRequired(appMode)
         } else {
-            "Routing rules saved"
+            StatusMessages.routingRulesSaved()
         }
     }
 
     fun imported(isConnectionRunning: Boolean, appMode: AppMode): String {
         return if (isConnectionRunning) {
-            "Routing rules imported. Restart ${MainCommandLogic.connectionNoun(appMode)} to apply"
+            StatusMessages.routingRulesImportedRestartRequired(appMode)
         } else {
-            "Routing rules imported"
+            StatusMessages.routingRulesImported()
         }
     }
 
     fun saveFailed(error: Throwable?): String {
-        return error?.message ?: "Failed to save routing rules"
+        return error?.message ?: StatusMessages.routingRulesSaveFailed()
     }
 
     fun importFailed(error: Throwable?): String {
-        return error?.message ?: "Failed to import routing rules"
+        return error?.message ?: StatusMessages.routingRulesImportFailed()
     }
 }

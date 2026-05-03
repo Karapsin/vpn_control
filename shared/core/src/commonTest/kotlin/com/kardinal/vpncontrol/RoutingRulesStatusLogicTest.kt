@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.StatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -8,11 +9,11 @@ class RoutingRulesStatusLogicTest {
     @Test
     fun savedMessageMentionsRestartOnlyWhenConnectionRuns() {
         assertEquals(
-            "Routing rules saved",
+            StatusMessages.routingRulesSaved(),
             RoutingRulesStatusLogic.saved(isConnectionRunning = false, appMode = AppMode.VPN),
         )
         assertEquals(
-            "Routing rules saved. Restart VPN to apply",
+            StatusMessages.routingRulesSavedRestartRequired(AppMode.VPN),
             RoutingRulesStatusLogic.saved(isConnectionRunning = true, appMode = AppMode.VPN),
         )
     }
@@ -20,7 +21,7 @@ class RoutingRulesStatusLogicTest {
     @Test
     fun importedMessageUsesConnectionModeName() {
         assertEquals(
-            "Routing rules imported. Restart proxy to apply",
+            StatusMessages.routingRulesImportedRestartRequired(AppMode.PROXY_ONLY),
             RoutingRulesStatusLogic.imported(isConnectionRunning = true, appMode = AppMode.PROXY_ONLY),
         )
     }

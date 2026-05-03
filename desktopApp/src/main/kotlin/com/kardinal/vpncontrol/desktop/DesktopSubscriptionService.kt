@@ -2,7 +2,6 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SelectionMappingLogic
-import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.data.DirectRemoteSourceResolution
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.ResolvedRemoteSource
@@ -12,7 +11,6 @@ import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
-import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
@@ -37,7 +35,7 @@ internal class DesktopSubscriptionService(
         onProgress: (String) -> Unit,
     ): Result<DesktopSubscriptionRefreshPayload> {
         if (subscriptionsToRefresh.isEmpty()) {
-            return Result.failure(IllegalStateException(StatusMessages.noSubscriptionsToRefresh()))
+            return Result.failure(DesktopSubscriptionRefreshStatus.noSubscriptionsToRefresh())
         }
 
         val subscriptionHwid = state.subscriptionHwid.trim().ifBlank(hwidGenerator)
@@ -47,7 +45,7 @@ internal class DesktopSubscriptionService(
         var currentSubscriptions = state.subscriptions
 
         for (subscription in subscriptionsToRefresh) {
-            onProgress("Refreshing ${subscriptionDisplayName(subscription)}...")
+            onProgress(DesktopSubscriptionRefreshStatus.progress(subscription))
             val result = runCatching {
                 loadSubscriptionProfiles(subscription.url, subscriptionHwid)
             }
@@ -61,14 +59,14 @@ internal class DesktopSubscriptionService(
                             source.copy(
                                 cachedLocations = profiles.map(LocationConfigs::encodeStoredLocation),
                                 lastRefreshedAtEpochMillis = now,
-                                lastRefreshStatus = "${profiles.size} locations refreshed",
+                                lastRefreshStatus = DesktopSubscriptionRefreshStatus.successfulLocationRefresh(profiles.size),
                             )
                         },
                         onFailure = { error ->
                             failedLabels += subscriptionDisplayName(source)
                             source.copy(
                                 lastRefreshedAtEpochMillis = now,
-                                lastRefreshStatus = error.message ?: "Refresh failed",
+                                lastRefreshStatus = DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(source, error),
                             )
                         },
                     )
@@ -95,7 +93,7 @@ internal class DesktopSubscriptionService(
             }
         }
 
-        val summary = SubscriptionRefreshResultLogic.genericSummary(
+        val summary = DesktopSubscriptionRefreshStatus.summary(
             refreshedCount = loadedByUrl.size,
             failedSubscriptionNames = failedLabels,
             totalCount = subscriptionsToRefresh.size,

@@ -33,7 +33,7 @@ class DesktopSubscriptionManagementServiceTest {
         assertEquals("https://example.com/sub.txt", state.profileUrl)
         assertEquals(listOf("https://example.com/sub.txt"), state.subscriptions.map(SubscriptionSource::url))
         assertFalse(state.showAddSubscriptionEditor)
-        assertEquals("Subscription saved", state.statusMessage)
+        assertEquals(StatusMessages.subscriptionSaved(), state.statusMessage)
     }
 
     @Test
@@ -82,7 +82,7 @@ class DesktopSubscriptionManagementServiceTest {
 
         service.deleteSubscription(subscription.id)
 
-        assertTrue(stopMessage.contains("Deleted subscription removed the selected location"))
+        assertEquals(StatusMessages.subscriptionDeleteRemovedSelectedStopped(AppMode.VPN), stopMessage)
         assertFalse(state.isVpnRunning)
         assertTrue(state.subscriptions.isEmpty())
         assertTrue(locations.isEmpty())
@@ -101,7 +101,6 @@ class DesktopSubscriptionManagementServiceTest {
             locationsProvider = locationsProvider,
             validateSubscriptionSource = { Result.success(Unit) },
             stopConnection = stopConnection,
-            activeConnectionName = { "VPN" },
             commitState = commitState,
             updateState = { transform ->
                 commitState(transform(stateProvider()), locationsProvider())
