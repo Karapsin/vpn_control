@@ -33,6 +33,10 @@ internal class AndroidProfileActionsService(
         controller.onProfileDraftChanged(value)
     }
 
+    fun onProfileTitleDraftChanged(value: String) {
+        controller.onProfileTitleDraftChanged(value)
+    }
+
     fun pasteSubscriptionDraft(raw: String) {
         effectSink.handle(controller.pasteSubscriptionDraft(raw))
     }
@@ -56,6 +60,10 @@ internal class AndroidProfileActionsService(
 
     fun onProfileHistoryRenameDraftChanged(value: String) {
         controller.onProfileHistoryRenameDraftChanged(value)
+    }
+
+    fun onProfileHistoryRenameUrlDraftChanged(value: String) {
+        controller.onProfileHistoryRenameUrlDraftChanged(value)
     }
 
     fun setProfileSourceMode(value: ProfileSourceMode) {
@@ -102,6 +110,6 @@ internal class AndroidProfileActionsService(
     }
 
     fun saveProfileHistoryRename() {
-        effectSink.handle(controller.saveProfileHistoryRename())
+        effectSink.handle(controller.saveProfileHistoryRename(validateProfileSource))
     }
 }

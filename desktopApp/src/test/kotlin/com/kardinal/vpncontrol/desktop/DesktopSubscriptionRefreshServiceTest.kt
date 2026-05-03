@@ -77,6 +77,46 @@ class DesktopSubscriptionRefreshServiceTest {
     }
 
     @Test
+    fun refreshSubscriptionOnlyRefreshesRequestedSubscription() = runTest {
+        val first = SubscriptionSource(
+            id = "sub-1",
+            url = "https://example.com/one.txt",
+            customName = "One",
+        )
+        val second = SubscriptionSource(
+            id = "sub-2",
+            url = "https://example.com/two.txt",
+            customName = "Two",
+        )
+        var state = MainUiState(
+            activeSubscriptionId = first.id,
+            subscriptions = listOf(first, second),
+            profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+        )
+        var locations = emptyList<DesktopLocationRecord>()
+        val service = service(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            fetcher = RefreshSubscriptionFetcher(
+                mapOf(second.url to "socks://user:pass@127.0.0.1:1080#Second"),
+            ),
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        service.refreshSubscription(second.id)
+
+        assertEquals(emptyList(), state.subscriptions.first { it.id == first.id }.cachedLocations)
+        assertEquals(1, state.subscriptions.first { it.id == second.id }.cachedLocations.size)
+        assertEquals(1, locations.size)
+        assertEquals(SubscriptionStatusMessages.subscriptionRefreshed(), state.statusMessage)
+        assertFalse(state.isBusy)
+    }
+
+    @Test
     fun refreshStopsRunningConnectionWhenSelectedLocationWasRemoved() = runTest {
         val subscription = SubscriptionSource(
             id = "sub",

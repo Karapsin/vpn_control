@@ -17,6 +17,7 @@ class AndroidProfileActionsServiceTest {
         val controller = MainController(
             MainUiState(
                 profileDraft = " https://example.com/sub.txt ",
+                profileTitleDraft = "Example",
                 profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
                 showAddSubscriptionEditor = true,
             ),
@@ -36,6 +37,7 @@ class AndroidProfileActionsServiceTest {
                 MainControllerEffect.SaveProfileSource(
                     value = "https://example.com/sub.txt",
                     mode = ProfileSourceMode.SUBSCRIPTION,
+                    normalizedName = "Example",
                     statusMessage = SubscriptionStatusMessages.subscriptionSaved(),
                 ),
             ),
@@ -59,6 +61,7 @@ class AndroidProfileActionsServiceTest {
 
         assertEquals(true, controller.currentState().showProfileHistoryRenameDialog)
         assertEquals("https://example.com/sub.txt", controller.currentState().profileHistoryRenameSource)
+        assertEquals("https://example.com/sub.txt", controller.currentState().profileHistoryRenameUrlDraft)
         assertEquals("Saved Name", controller.currentState().profileHistoryRenameDraft)
     }
 

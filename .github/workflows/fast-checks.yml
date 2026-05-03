@@ -8,37 +8,43 @@ on:
       - master
     paths:
       - ".github/workflows/fast-checks.yml"
+      - "AGENTS.md"
+      - "README.md"
+      - "protocol_smoke_checklist.md"
+      - "docs/**"
       - "app/**"
       - "desktopApp/**"
       - "shared/**"
-      - "i18n/**"
-      - "i18n-status/**"
-      - "languages.json"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
       - "gradlew"
+      - "scripts/add_language.py"
       - "scripts/check_localization.py"
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/check_docs_hygiene.sh"
   pull_request:
     paths:
       - ".github/workflows/fast-checks.yml"
+      - "AGENTS.md"
+      - "README.md"
+      - "protocol_smoke_checklist.md"
+      - "docs/**"
       - "app/**"
       - "desktopApp/**"
       - "shared/**"
-      - "i18n/**"
-      - "i18n-status/**"
-      - "languages.json"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
       - "gradlew"
+      - "scripts/add_language.py"
       - "scripts/check_localization.py"
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/check_docs_hygiene.sh"
 
 jobs:
   fast-checks:
@@ -52,6 +58,22 @@ jobs:
 
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
+
+      - name: Check whitespace
+        run: |
+          if git grep -nI -E '[[:blank:]]$' -- \
+            ':!*.png' \
+            ':!*.jpg' \
+            ':!*.jpeg' \
+            ':!*.webp' \
+            ':!*.ico' \
+            ':!*.aar' \
+            ':!*.so' \
+            ':!*.exe' \
+            ':!*.msi' \
+            ':!*.dmg'; then
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

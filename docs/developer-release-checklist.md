@@ -1,6 +1,6 @@
 # Developer Release Checklist
 
-This document owns developer release packaging. User-facing install instructions stay in `README.md` and should point to GitHub Actions artifacts, not ignored local `dist/` paths.
+This document owns developer release packaging. User-facing install instructions stay in `../README.md` and should point to GitHub Actions artifacts, not ignored local `dist/` paths.
 
 ## Prerequisites
 
@@ -26,6 +26,8 @@ Linux desktop:
 Windows desktop from a Windows host:
 
 - PowerShell is available.
+- Git Bash or another Bash-compatible shell is available as `bash`.
+- Python 3 is available as `python3` for documentation hygiene checks.
 - JDK 17 is available.
 - WiX is downloaded by the Compose packaging task when needed.
 - Package regression scripts validate MSI/EXE payloads and extracted launcher smoke behavior.

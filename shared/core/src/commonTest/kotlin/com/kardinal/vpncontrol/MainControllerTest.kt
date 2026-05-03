@@ -59,6 +59,7 @@ class MainControllerTest {
             MainUiState(
                 showProfileHistoryRenameDialog = true,
                 profileHistoryRenameSource = "https://example.com/sub",
+                profileHistoryRenameUrlDraft = "https://example.com/sub",
                 profileHistoryRenameDraft = "Example",
             ),
         )
@@ -67,6 +68,7 @@ class MainControllerTest {
 
         assertFalse(controller.currentState().showProfileHistoryRenameDialog)
         assertEquals("", controller.currentState().profileHistoryRenameSource)
+        assertEquals("", controller.currentState().profileHistoryRenameUrlDraft)
         assertEquals("", controller.currentState().profileHistoryRenameDraft)
         assertEquals(
             listOf(

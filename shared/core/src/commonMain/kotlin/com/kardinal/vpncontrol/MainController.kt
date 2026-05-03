@@ -28,6 +28,7 @@ sealed interface MainControllerEffect {
     data class SaveProfileSource(
         val value: String,
         val mode: ProfileSourceMode,
+        val normalizedName: String,
         val statusMessage: String,
     ) : MainControllerEffect
     data class DeleteProfileHistoryEntry(
@@ -36,6 +37,7 @@ sealed interface MainControllerEffect {
     ) : MainControllerEffect
     data class SaveProfileHistoryRename(
         val source: String,
+        val normalizedSource: String,
         val normalizedName: String,
         val statusMessage: String,
     ) : MainControllerEffect
@@ -200,6 +202,7 @@ class MainController(
         _state.value = MainUiStateTransitions.navigateToScreen(_state.value, AppScreen.PROFILE).copy(
             profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
             profileDraft = trimmed,
+            profileTitleDraft = "",
             showAddSubscriptionEditor = true,
         )
         return listOf(
@@ -230,9 +233,11 @@ class MainController(
     }
 
     fun showProfileHistoryRenameDialog(source: String, currentName: String) {
+        val normalized = source.trim()
         _state.value = _state.value.copy(
             showProfileHistoryRenameDialog = true,
-            profileHistoryRenameSource = source.trim(),
+            profileHistoryRenameSource = normalized,
+            profileHistoryRenameUrlDraft = normalized,
             profileHistoryRenameDraft = currentName,
         )
     }
@@ -241,6 +246,7 @@ class MainController(
         _state.value = _state.value.copy(
             showProfileHistoryRenameDialog = false,
             profileHistoryRenameSource = "",
+            profileHistoryRenameUrlDraft = "",
             profileHistoryRenameDraft = "",
         )
     }
@@ -249,10 +255,19 @@ class MainController(
         _state.value = _state.value.copy(profileHistoryRenameDraft = value.take(80))
     }
 
+    fun onProfileHistoryRenameUrlDraftChanged(value: String) {
+        _state.value = SubscriptionSourceLogic.updateRenameUrlDraft(_state.value, value)
+    }
+
+    fun onProfileTitleDraftChanged(value: String) {
+        _state.value = _state.value.copy(profileTitleDraft = value.take(80))
+    }
+
     fun setProfileSourceMode(value: ProfileSourceMode): List<MainControllerEffect> {
         _state.value = _state.value.copy(
             profileSourceMode = value,
             profileDraft = _state.value.profileUrl,
+            profileTitleDraft = "",
             showAddSubscriptionEditor = false,
         )
         return listOf(
@@ -530,21 +545,24 @@ class MainController(
                 ),
             )
         }
+        val normalizedName = _state.value.profileTitleDraft.trim()
         _state.value = _state.value.copy(
             profileDraft = value,
+            profileTitleDraft = "",
             showAddSubscriptionEditor = false,
         )
         return listOf(
             MainControllerEffect.SaveProfileSource(
                 value = value,
                 mode = mode,
+                normalizedName = normalizedName,
                 statusMessage = decision.getOrThrow(),
             ),
         )
     }
 
     fun clearProfileSource() {
-        _state.value = _state.value.copy(profileDraft = "")
+        _state.value = _state.value.copy(profileDraft = "", profileTitleDraft = "")
     }
 
     fun deleteProfileHistoryEntry(source: String): List<MainControllerEffect> {
@@ -561,23 +579,29 @@ class MainController(
         )
     }
 
-    fun saveProfileHistoryRename(): List<MainControllerEffect> {
-        val source = _state.value.profileHistoryRenameSource.trim()
-        if (source.isBlank()) {
+    fun saveProfileHistoryRename(
+        validateSubscription: (String) -> Result<Unit>,
+    ): List<MainControllerEffect> {
+        val result = SubscriptionSourceLogic.saveRename(_state.value, validateSubscription)
+        if (result.isFailure) {
+            return listOf(
+                MainControllerEffect.UpdateStatus(
+                    result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.invalidSubscriptionUrl(),
+                ),
+            )
+        }
+        val plan = result.getOrThrow()
+        if (plan.source.isBlank()) {
             closeProfileHistoryRenameDialog()
             return emptyList()
         }
-        val normalizedName = _state.value.profileHistoryRenameDraft.trim()
-        closeProfileHistoryRenameDialog()
+        _state.value = plan.nextState
         return listOf(
             MainControllerEffect.SaveProfileHistoryRename(
-                source = source,
-                normalizedName = normalizedName,
-                statusMessage = if (normalizedName.isBlank()) {
-                    SubscriptionStatusMessages.subscriptionNameReset()
-                } else {
-                    SubscriptionStatusMessages.subscriptionNameSaved()
-                },
+                source = plan.source,
+                normalizedSource = plan.normalizedSource,
+                normalizedName = plan.normalizedName,
+                statusMessage = plan.statusMessage,
             ),
         )
     }
@@ -663,6 +687,7 @@ class MainController(
             .orEmpty()
         _state.value = _state.value.copy(
             profileDraft = if (normalized == com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID) "" else selectedUrl,
+            profileTitleDraft = "",
             profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
             showAddSubscriptionEditor = false,
         )

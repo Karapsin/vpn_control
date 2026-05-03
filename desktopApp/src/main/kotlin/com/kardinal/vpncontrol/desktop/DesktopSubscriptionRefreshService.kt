@@ -38,6 +38,20 @@ internal class DesktopSubscriptionRefreshService(
         )
     }
 
+    suspend fun refreshSubscription(subscriptionId: String) {
+        val target = stateProvider().subscriptions.firstOrNull { subscription ->
+            subscription.id == subscriptionId.trim() && subscription.url.isNotBlank()
+        }
+        if (target == null) {
+            updateState { it.withStatus(SubscriptionStatusMessages.noSubscriptionsToRefresh()) }
+            return
+        }
+        refresh(
+            subscriptionsToRefresh = listOf(target),
+            statusPrefix = SubscriptionRefreshResultLogic.refreshStartMessage(targetCount = 1),
+        )
+    }
+
     suspend fun runAutoRefreshCycle() {
         val plan = AutoRefreshLogic.plan(
             state = stateProvider(),

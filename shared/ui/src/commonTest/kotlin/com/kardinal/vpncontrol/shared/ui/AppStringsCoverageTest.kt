@@ -336,6 +336,21 @@ class AppStringsCoverageTest {
     }
 
     @Test
+    fun languageOptionsCanBeFilteredByVisibleNameAndCode() {
+        val strings = AppStrings(AppLanguage.ENGLISH)
+        val options = sortedLanguageOptions(strings, systemLanguageCode = "en")
+
+        assertTrue(
+            filteredLanguageOptions(options, strings, systemLanguageCode = "en", query = "de")
+                .contains(AppLanguage.GERMAN),
+        )
+        assertTrue(
+            filteredLanguageOptions(options, strings, systemLanguageCode = "en", query = "рус")
+                .contains(AppLanguage.RUSSIAN),
+        )
+    }
+
+    @Test
     fun compactSubscriptionRefreshButtonLabelsRespectReferenceCharacterBudget() {
         val compactLanguages = setOf(AppLanguage.GERMAN, AppLanguage.OLD_RUSSIAN, AppLanguage.SOVIET)
         val referenceLanguages = AppLanguage.entries

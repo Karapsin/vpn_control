@@ -38,6 +38,7 @@ data class MainUiState(
     val profileHistory: List<String> = emptyList(),
     val profileHistoryNames: Map<String, String> = emptyMap(),
     val profileDraft: String = "",
+    val profileTitleDraft: String = "",
     val showAddSubscriptionEditor: Boolean = false,
     val profileSourceMode: ProfileSourceMode = ProfileSourceMode.SUBSCRIPTION,
     val appMode: AppMode = AppMode.VPN,
@@ -111,6 +112,7 @@ data class MainUiState(
     val routingRuleSetActionDraft: RoutingRuleSetAction = RoutingRuleSetAction.DIRECT,
     val routingRuleSetUpdateHoursDraft: String = "24",
     val profileHistoryRenameSource: String = "",
+    val profileHistoryRenameUrlDraft: String = "",
     val profileHistoryRenameDraft: String = "",
     val showLocationMutationBlockedDialog: Boolean = false,
     val locationMutationBlockedMessage: String = "",
@@ -252,6 +254,7 @@ object MainUiStateTransitions {
             } else {
                 state.profileDraft
             },
+            profileTitleDraft = "",
         )
     }
 
@@ -278,6 +281,7 @@ object MainUiStateTransitions {
                     currentScreen = target,
                     screenHistory = history.dropLast(1),
                     profileDraft = if (target == AppScreen.PROFILE) state.profileUrl else state.profileDraft,
+                    profileTitleDraft = if (target == AppScreen.PROFILE) "" else state.profileTitleDraft,
                 )
             }
             state.currentScreen != AppScreen.MAIN -> {
@@ -297,6 +301,7 @@ object MainUiStateTransitions {
             currentScreen = screen,
             screenHistory = state.screenHistory + current,
             profileDraft = if (screen == AppScreen.PROFILE) state.profileUrl else state.profileDraft,
+            profileTitleDraft = if (screen == AppScreen.PROFILE) "" else state.profileTitleDraft,
             showAddSubscriptionEditor = if (screen == AppScreen.PROFILE) false else state.showAddSubscriptionEditor,
         )
     }

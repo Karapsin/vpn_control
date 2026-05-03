@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
@@ -341,6 +342,7 @@ private fun DesktopVpnControlApp(
                         onSetSourceMode = service::setSourceMode,
                         onToggleAddSubscriptionEditor = service::toggleAddSubscriptionEditor,
                         onProfileDraftChange = service::setProfileDraft,
+                        onProfileTitleDraftChange = service::setProfileTitleDraft,
                         onClearProfileDraft = service::clearProfileDraft,
                         onSaveSubscriptionDraft = service::saveSubscriptionDraft,
                         onDeleteSubscription = { subscriptionId ->
@@ -349,11 +351,12 @@ private fun DesktopVpnControlApp(
                         },
                         onShowSubscriptionRenameDialog = service::showSubscriptionRenameDialog,
                         onCloseSubscriptionRenameDialog = service::closeSubscriptionRenameDialog,
+                        onSubscriptionRenameUrlDraftChange = service::setSubscriptionRenameUrlDraft,
                         onSubscriptionRenameDraftChange = service::setSubscriptionRenameDraft,
                         onSaveSubscriptionRename = service::saveSubscriptionRename,
-                        onRefreshActiveSubscriptions = {
+                        onRefreshSubscription = { subscriptionId ->
                             if (state.isBusy) return@DesktopProfileContent
-                            coroutineScope.launch { service.refreshActiveSubscriptions() }
+                            coroutineScope.launch { service.refreshSubscription(subscriptionId) }
                         },
                         onRefreshAllSubscriptions = {
                             if (state.isBusy) return@DesktopProfileContent
@@ -462,14 +465,16 @@ private fun DesktopProfileContent(
     onSetSourceMode: (ProfileSourceMode) -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
     onProfileDraftChange: (String) -> Unit,
+    onProfileTitleDraftChange: (String) -> Unit,
     onClearProfileDraft: () -> Unit,
     onSaveSubscriptionDraft: () -> Unit,
     onDeleteSubscription: (String) -> Unit,
     onShowSubscriptionRenameDialog: (String) -> Unit,
     onCloseSubscriptionRenameDialog: () -> Unit,
+    onSubscriptionRenameUrlDraftChange: (String) -> Unit,
     onSubscriptionRenameDraftChange: (String) -> Unit,
     onSaveSubscriptionRename: () -> Unit,
-    onRefreshActiveSubscriptions: () -> Unit,
+    onRefreshSubscription: (String) -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
@@ -490,14 +495,23 @@ private fun DesktopProfileContent(
                 Text(strings.get(UiText.RENAME_SUBSCRIPTION))
             },
             text = {
-                OutlinedTextField(
-                    value = state.profileHistoryRenameDraft,
-                    onValueChange = onSubscriptionRenameDraftChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
-                    placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
-                    singleLine = true,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = state.profileHistoryRenameUrlDraft,
+                        onValueChange = onSubscriptionRenameUrlDraftChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.SUBSCRIPTION_URL)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.profileHistoryRenameDraft,
+                        onValueChange = onSubscriptionRenameDraftChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
+                        placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
+                        singleLine = true,
+                    )
+                }
             },
         )
     }
@@ -579,32 +593,6 @@ private fun DesktopProfileContent(
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedButton(
-                        onClick = onRefreshActiveSubscriptions,
-                        enabled = !state.isBusy,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White,
-                            disabledContentColor = Color(0xFF9FB8C8),
-                        ),
-                    ) {
-                        Text(strings.get(UiText.REFRESH_ACTIVE))
-                    }
-                    OutlinedButton(
-                        onClick = onRefreshAllSubscriptions,
-                        enabled = !state.isBusy,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White,
-                            disabledContentColor = Color(0xFF9FB8C8),
-                        ),
-                    ) {
-                        Text(strings.get(UiText.REFRESH_ALL))
-                    }
-                }
                 if (state.subscriptions.size > 1) {
                     val allSelected = state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID
                     Card(
@@ -637,7 +625,7 @@ private fun DesktopProfileContent(
                                 )
                             }
                             Column(
-                                modifier = Modifier.fillMaxWidth(0.82f),
+                                modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
@@ -658,17 +646,32 @@ private fun DesktopProfileContent(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
-                            if (allSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color(0xFF2B4F7C), RoundedCornerShape(999.dp))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (allSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color(0xFF2B4F7C), RoundedCornerShape(999.dp))
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    ) {
+                                        Text(
+                                            strings.get(UiText.ACTIVE),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = onRefreshAllSubscriptions,
+                                    enabled = !state.isBusy,
                                 ) {
-                                    Text(
-                                        strings.get(UiText.ACTIVE),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.SemiBold,
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = strings.get(UiText.REFRESH_ALL),
+                                        tint = if (!state.isBusy) Color.White else Color(0xFF9FB8C8),
                                     )
                                 }
                             }
@@ -699,7 +702,7 @@ private fun DesktopProfileContent(
                             verticalAlignment = Alignment.Top,
                         ) {
                             Column(
-                                modifier = Modifier.fillMaxWidth(0.84f),
+                                modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
@@ -723,6 +726,16 @@ private fun DesktopProfileContent(
                                 )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                IconButton(
+                                    onClick = { onRefreshSubscription(subscription.id) },
+                                    enabled = !state.isBusy,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = strings.get(UiText.REFRESH_ACTIVE),
+                                        tint = if (!state.isBusy) Color.White else Color(0xFF9FB8C8),
+                                    )
+                                }
                                 IconButton(onClick = { onShowSubscriptionRenameDialog(subscription.id) }) {
                                     Icon(
                                         imageVector = Icons.Filled.Edit,
@@ -789,6 +802,14 @@ private fun DesktopProfileContent(
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text(strings.get(UiText.SUBSCRIPTION_URL)) },
                             placeholder = { Text("https://example.com/subscription.txt") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.profileTitleDraft,
+                            onValueChange = onProfileTitleDraftChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
+                            placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
                             singleLine = true,
                         )
                         Text(

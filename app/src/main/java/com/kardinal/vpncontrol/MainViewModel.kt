@@ -111,6 +111,7 @@ class MainViewModel(
         setBusy = ::setBusy,
         updateStatus = repository::updateStatus,
         runActiveRefresh = repository::refreshActiveSubscriptionCache,
+        runSubscriptionRefresh = repository::refreshSubscriptionCache,
         runAllRefresh = repository::refreshAllSubscriptionsCaches,
     )
     private val findBestActions = AndroidFindBestActionsService(
@@ -236,6 +237,10 @@ class MainViewModel(
         profileActions.onProfileDraftChanged(value)
     }
 
+    fun onProfileTitleDraftChanged(value: String) {
+        profileActions.onProfileTitleDraftChanged(value)
+    }
+
     fun pasteSubscriptionDraft(raw: String) {
         profileActions.pasteSubscriptionDraft(raw)
     }
@@ -254,6 +259,10 @@ class MainViewModel(
 
     fun onProfileHistoryRenameDraftChanged(value: String) {
         profileActions.onProfileHistoryRenameDraftChanged(value)
+    }
+
+    fun onProfileHistoryRenameUrlDraftChanged(value: String) {
+        profileActions.onProfileHistoryRenameUrlDraftChanged(value)
     }
 
     fun setProfileSourceMode(value: ProfileSourceMode) {
@@ -418,6 +427,10 @@ class MainViewModel(
 
     fun refreshActiveSubscriptionCache() {
         subscriptionRefreshActions.refreshActiveSubscriptionCache()
+    }
+
+    fun refreshSubscriptionCache(subscriptionId: String) {
+        subscriptionRefreshActions.refreshSubscriptionCache(subscriptionId)
     }
 
     fun refreshAllSubscriptionsCaches() {

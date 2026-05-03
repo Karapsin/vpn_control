@@ -7,6 +7,7 @@ cd "$repo_root"
 bad_paths=()
 while IFS= read -r -d '' path; do
   case "$path" in
+    build/*|\
     app/build/*|\
     shared/*/build/*|\
     desktopApp/build/*|\
@@ -26,5 +27,7 @@ if (( ${#bad_paths[@]} > 0 )); then
   } >&2
   exit 1
 fi
+
+bash scripts/check_docs_hygiene.sh
 
 echo "[vpn-control] release hygiene passed"

@@ -110,6 +110,41 @@ class AndroidSubscriptionRefreshActionsServiceTest {
     }
 
     @Test
+    fun subscriptionRefreshUsesRequestedSubscription() {
+        val controller = MainController(
+            MainUiState(
+                activeSubscriptionId = "sub-1",
+                subscriptions = listOf(
+                    SubscriptionSource(id = "sub-1", url = "https://example.com/one", customName = "One"),
+                    SubscriptionSource(id = "sub-2", url = "https://example.com/two", customName = "Two"),
+                ),
+            ),
+        )
+        val statuses = mutableListOf<String>()
+        var refreshedSubscriptionId = ""
+        val service = service(
+            controller = controller,
+            updateStatus = { statuses += it },
+            runSubscriptionRefresh = { subscriptionId ->
+                refreshedSubscriptionId = subscriptionId
+                Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+            },
+        )
+
+        service.refreshSubscriptionCache("sub-2")
+
+        assertEquals("sub-2", refreshedSubscriptionId)
+        assertEquals(
+            listOf(
+                SubscriptionStatusMessages.subscriptionRefreshStart(targetCount = 1),
+                SubscriptionStatusMessages.subscriptionRefreshed(),
+            ),
+            statuses,
+        )
+        assertFalse(controller.currentState().isBusy)
+    }
+
+    @Test
     fun allRefreshUsesFailureFallback() {
         val controller = MainController(
             MainUiState(
@@ -137,6 +172,9 @@ class AndroidSubscriptionRefreshActionsServiceTest {
         runActiveRefresh: suspend () -> Result<SubscriptionRefreshBatchResult> = {
             Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
         },
+        runSubscriptionRefresh: suspend (String) -> Result<SubscriptionRefreshBatchResult> = {
+            Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
+        },
         runAllRefresh: suspend () -> Result<SubscriptionRefreshBatchResult> = {
             Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
         },
@@ -147,6 +185,7 @@ class AndroidSubscriptionRefreshActionsServiceTest {
             setBusy = { busy -> controller.update { it.copy(isBusy = busy) } },
             updateStatus = updateStatus,
             runActiveRefresh = runActiveRefresh,
+            runSubscriptionRefresh = runSubscriptionRefresh,
             runAllRefresh = runAllRefresh,
         )
     }

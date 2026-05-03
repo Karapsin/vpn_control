@@ -9,11 +9,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +39,13 @@ fun LanguageSettingsDialog(
 ) {
     val strings = LocalAppStrings.current
     val displayLanguages = sortedLanguageOptions(strings, systemLanguageCode)
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredLanguages = filteredLanguageOptions(
+        languages = displayLanguages,
+        strings = strings,
+        systemLanguageCode = systemLanguageCode,
+        query = searchQuery,
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(strings.get(UiText.SETTINGS_LANGUAGE_DIALOG_TITLE), color = Color.White) },
@@ -43,13 +58,26 @@ fun LanguageSettingsDialog(
                     color = Color(0xFFD3E3EE),
                     fontSize = 13.sp,
                 )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(strings.get(UiText.SETTINGS_LANGUAGE)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    singleLine = true,
+                )
                 Column(
                     modifier = Modifier
                         .heightIn(max = 440.dp)
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = 8.dp),
                 ) {
-                    displayLanguages.forEach { language ->
+                    filteredLanguages.forEach { language ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -98,4 +126,23 @@ internal fun sortedLanguageOptions(
         .filterNot { it == AppLanguage.SYSTEM }
         .sortedBy { strings.languageDisplayName(it, systemLanguageCode).lowercase() }
     return listOf(AppLanguage.SYSTEM) + sortedLanguages
+}
+
+internal fun filteredLanguageOptions(
+    languages: List<AppLanguage>,
+    strings: AppStrings,
+    systemLanguageCode: String?,
+    query: String,
+): List<AppLanguage> {
+    val normalizedQuery = query.trim().lowercase()
+    if (normalizedQuery.isBlank()) return languages
+    return languages.filter { language ->
+        listOf(
+            strings.languageDisplayName(language, systemLanguageCode),
+            language.nativeName,
+            language.code,
+            language.name,
+            language.name.replace('_', ' '),
+        ).any { value -> value.lowercase().contains(normalizedQuery) }
+    }
 }

@@ -221,6 +221,10 @@ class DesktopAppService internal constructor(
         subscriptionManagementService.setProfileDraft(value)
     }
 
+    fun setProfileTitleDraft(value: String) {
+        subscriptionManagementService.setProfileTitleDraft(value)
+    }
+
     fun clearProfileDraft() {
         subscriptionManagementService.clearProfileDraft()
     }
@@ -235,6 +239,10 @@ class DesktopAppService internal constructor(
 
     fun setSubscriptionRenameDraft(value: String) {
         subscriptionManagementService.setSubscriptionRenameDraft(value)
+    }
+
+    fun setSubscriptionRenameUrlDraft(value: String) {
+        subscriptionManagementService.setSubscriptionRenameUrlDraft(value)
     }
 
     fun saveSubscriptionRename() {
@@ -349,6 +357,10 @@ class DesktopAppService internal constructor(
 
     suspend fun refreshActiveSubscriptions() {
         subscriptionRefreshService.refreshActive()
+    }
+
+    suspend fun refreshSubscription(subscriptionId: String) {
+        subscriptionRefreshService.refreshSubscription(subscriptionId)
     }
 
     suspend fun runAutoRefreshCycle() {

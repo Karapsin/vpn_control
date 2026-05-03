@@ -10,6 +10,7 @@ internal class AndroidSubscriptionRefreshActionsService(
     private val setBusy: (Boolean) -> Unit,
     private val updateStatus: suspend (String) -> Unit,
     private val runActiveRefresh: suspend () -> Result<SubscriptionRefreshBatchResult>,
+    private val runSubscriptionRefresh: suspend (String) -> Result<SubscriptionRefreshBatchResult>,
     private val runAllRefresh: suspend () -> Result<SubscriptionRefreshBatchResult>,
 ) {
     fun refreshActiveSubscriptionCache() {
@@ -43,6 +44,46 @@ internal class AndroidSubscriptionRefreshActionsService(
                             )
                         },
                         onFailure = { it.message ?: SubscriptionStatusMessages.failedToRefreshActiveSubscription() },
+                    ),
+                )
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
+    fun refreshSubscriptionCache(subscriptionId: String) {
+        launch {
+            val state = stateProvider()
+            val normalizedSubscriptionId = subscriptionId.trim()
+            val target = state.subscriptions.firstOrNull { it.id == normalizedSubscriptionId }
+            if (target == null) {
+                updateStatus(
+                    if (state.subscriptions.isEmpty()) {
+                        SubscriptionRefreshResultLogic.NO_SUBSCRIPTIONS_MESSAGE
+                    } else {
+                        SubscriptionStatusMessages.noSubscriptionsToRefresh()
+                    },
+                )
+                return@launch
+            }
+            setBusy(true)
+            try {
+                updateStatus(SubscriptionRefreshResultLogic.refreshStartMessage(targetCount = 1))
+                val targetLabel = SubscriptionSourceLogic.sourceLabelFor(state.subscriptions, target.url)
+                val result = runSubscriptionRefresh(normalizedSubscriptionId)
+                updateStatus(
+                    result.fold(
+                        onSuccess = { refresh ->
+                            SubscriptionRefreshResultLogic.genericSummary(
+                                refreshedCount = refresh.refreshedCount,
+                                failedSubscriptionNames = refresh.failedSubscriptions.map { it.displayName },
+                                totalCount = 1,
+                            )
+                        },
+                        onFailure = { error ->
+                            error.message ?: SubscriptionStatusMessages.failedToRefresh(targetLabel)
+                        },
                     ),
                 )
             } finally {

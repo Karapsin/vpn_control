@@ -12,7 +12,7 @@ Source files that should be edited and committed:
 - Localization catalogs under `shared/ui/src/commonMain/resources/i18n/`.
 - Status localization catalogs under `shared/ui/src/commonMain/resources/i18n-status/`.
 - Language manifest at `shared/model/src/commonMain/resources/languages.json`.
-- Documentation under `docs/`, `README.md`, `AGENTS.md`, and root checklists.
+- Documentation under `docs/`, `../README.md`, `AGENTS.md`, and root checklists.
 - Scripts under `scripts/`.
 
 Generated or local files that should not be committed:
@@ -40,7 +40,7 @@ git diff --name-status
 
 Classify changes by bucket before staging:
 
-- Documentation: `README.md`, `AGENTS.md`, `docs/`, root checklists.
+- Documentation: `../README.md`, `AGENTS.md`, `docs/`, root checklists.
 - Android runtime/config/UI: `app/`.
 - Desktop runtime/tray/lifecycle: `desktopApp/`.
 - Shared model/core behavior: `shared/model/`, `shared/core/`, `shared/storage-api/`.
@@ -61,6 +61,20 @@ Do not use broad cleanup commands such as `git reset --hard` or `git checkout --
 5. Report exactly what was changed and what was not tested.
 
 Keep unrelated docs, localization, Android runtime, desktop runtime, and packaging changes in separate staging units or commits.
+
+## Low-Context Patch Workflow
+
+When you enter the repository without fresh context, route the task before editing:
+
+1. Start from the task router in `docs/README.md`.
+2. Read only the two or three focused docs named by that route.
+3. Check the dirty worktree with `git status --short`, `git diff --stat`, and `git diff --name-status`.
+4. Inspect the owner files named by `docs/architecture.md`, `docs/state-ownership.md`, or the focused subsystem doc.
+5. Choose the smallest patch unit that does not mix unrelated buckets.
+6. Run the minimum validation tier from `docs/test-matrix.md`; expand to a boundary or full tier when the patch crosses subsystem boundaries.
+7. Report changed areas, checks run, and checks skipped with the reason.
+
+If the docs disagree, treat `AGENTS.md` as the hard-rule layer and the focused docs as the subsystem detail layer. Fix the contradiction as part of the patch when the answer is clear; otherwise call it out explicitly.
 
 ## Runtime Safety
 

@@ -8,10 +8,24 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 
 ```bash
 ./scripts/check_release_hygiene.sh
+./scripts/check_docs_hygiene.sh
 ./scripts/check_localization.py
 ./scripts/status_catalog_tool.py check
 ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest
 ```
+
+## Validation Tiers
+
+Use the smallest tier that gives meaningful coverage for the touched boundary.
+
+| Tier | When To Use | Checks |
+| --- | --- | --- |
+| Minimum local | Documentation-only changes, one-file pure logic changes, or early iteration before a larger check | `git diff --check` plus the mapped check set from Quick Mapping |
+| Expanded boundary | A patch crosses shared/platform, status/localization, runtime/config, or packaging boundaries | Run every mapped command for the touched rows and adjacent owner tests named in Common Combined Checks |
+| Full fast guardrails | Before pushing broad behavior, localization, runtime, or release workflow changes | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_localization.py`, `./scripts/status_catalog_tool.py check`, and the Gradle command from CI Shortcut |
+| Manual or risky | Real VPN interruption, emulator/device VPN permission, tray/window-manager behavior, Windows UAC, VM packaging, reboot/autostart | Run only when the touched area requires it; get approval before interrupting VPN and report the closest automated coverage |
+
+If a mapped check cannot run because the environment lacks an Android SDK, emulator, VM, network access, or platform host, run the closest non-risky local check and report the missing prerequisite explicitly.
 
 ## Quick Mapping
 
@@ -49,8 +63,8 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 | Linux packaging | `./scripts/package_linux_desktop.sh` |
 | Windows packaging | `./scripts/package_windows_desktop_vm.sh` when a VM is available, or `.\scripts\package_windows_desktop.ps1` on Windows |
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
-| Documentation only | `git diff --check` |
-| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh` and `git diff --check` |
+| Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
+| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, and `git diff --check` |
 
 ## Common Combined Checks
 

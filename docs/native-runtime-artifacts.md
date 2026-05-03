@@ -42,6 +42,7 @@ scripts/prepare_sing_box_macos_runtime.sh
 scripts/package_linux_desktop.sh
 scripts/package_windows_desktop.ps1
 scripts/package_windows_desktop_vm.sh
+scripts/package_macos_desktop.sh
 ```
 
 ## Runtime Refresh Checklist

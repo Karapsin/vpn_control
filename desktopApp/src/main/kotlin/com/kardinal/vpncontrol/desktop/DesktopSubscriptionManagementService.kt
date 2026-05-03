@@ -40,6 +40,7 @@ internal class DesktopSubscriptionManagementService(
             current.copy(
                 showAddSubscriptionEditor = !current.showAddSubscriptionEditor,
                 profileDraft = if (current.showAddSubscriptionEditor) current.profileDraft else current.profileUrl,
+                profileTitleDraft = "",
             )
         }
     }
@@ -48,8 +49,12 @@ internal class DesktopSubscriptionManagementService(
         updateState { it.copy(profileDraft = value) }
     }
 
+    fun setProfileTitleDraft(value: String) {
+        updateState { it.copy(profileTitleDraft = value.take(80)) }
+    }
+
     fun clearProfileDraft() {
-        updateState { it.copy(profileDraft = "") }
+        updateState { it.copy(profileDraft = "", profileTitleDraft = "") }
     }
 
     fun showSubscriptionRenameDialog(subscriptionId: String) {
@@ -65,15 +70,27 @@ internal class DesktopSubscriptionManagementService(
         updateState { SubscriptionSourceLogic.updateRenameDraft(it, value) }
     }
 
+    fun setSubscriptionRenameUrlDraft(value: String) {
+        updateState { SubscriptionSourceLogic.updateRenameUrlDraft(it, value) }
+    }
+
     fun saveSubscriptionRename() {
-        val plan = SubscriptionSourceLogic.saveRename(stateProvider())
-        if (plan == null) {
-            closeSubscriptionRenameDialog()
+        val result = SubscriptionSourceLogic.saveRename(stateProvider(), validateSubscriptionSource)
+        if (result.isFailure) {
+            updateState {
+                it.withStatus(result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.invalidSubscriptionUrl())
+            }
             return
+        }
+        val plan = result.getOrThrow()
+        val nextLocations = if (plan.sourceChanged) {
+            locationsProvider().filterNot { it.sourceUrl == plan.source }
+        } else {
+            locationsProvider()
         }
         commitState(
             plan.nextState.withStatus(plan.statusMessage),
-            locationsProvider(),
+            nextLocations,
         )
     }
 

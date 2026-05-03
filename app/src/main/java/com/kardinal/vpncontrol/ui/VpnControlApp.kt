@@ -145,16 +145,18 @@ fun VpnControlApp(
     state: MainUiState,
     onNavigateBack: () -> Unit,
     onProfileChange: (String) -> Unit,
+    onProfileTitleChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
-    onRefreshActiveSubscription: () -> Unit,
+    onRefreshSubscription: (String) -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
     onDeleteProfileHistoryEntry: (String) -> Unit,
     onCloseProfileHistoryRenameDialog: () -> Unit,
+    onProfileHistoryRenameUrlChange: (String) -> Unit,
     onProfileHistoryRenameDraftChange: (String) -> Unit,
     onSaveProfileHistoryRename: () -> Unit,
     onCloseLocationMutationBlockedDialog: () -> Unit,
@@ -251,11 +253,12 @@ fun VpnControlApp(
             onOpenRoutingRules = onOpenRoutingRules,
             onOpenStatsTab = onOpenStatsTab,
             onProfileChange = onProfileChange,
+            onProfileTitleChange = onProfileTitleChange,
             onProfileSourceModeChange = onProfileSourceModeChange,
             onSaveProfile = onSaveProfile,
             onClearProfileSource = onClearProfileSource,
             onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
-            onRefreshActiveSubscription = onRefreshActiveSubscription,
+            onRefreshSubscription = onRefreshSubscription,
             onRefreshAllSubscriptions = onRefreshAllSubscriptions,
             onUseProfileHistoryEntry = onUseProfileHistoryEntry,
             onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
@@ -365,11 +368,19 @@ fun VpnControlApp(
     if (state.showProfileHistoryRenameDialog) {
         AlertDialog(
             onDismissRequest = onCloseProfileHistoryRenameDialog,
-            title = { Text(appStrings.get(UiText.SUBSCRIPTION_NAME_TITLE), color = Color.White) },
+            title = { Text(appStrings.get(UiText.RENAME_SUBSCRIPTION), color = Color.White) },
             containerColor = Color(0xFF141F2D),
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = state.profileHistoryRenameUrlDraft,
+                        onValueChange = onProfileHistoryRenameUrlChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.SUBSCRIPTION_URL)) },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
                     OutlinedTextField(
                         value = state.profileHistoryRenameDraft,
                         onValueChange = onProfileHistoryRenameDraftChange,
@@ -852,11 +863,12 @@ private fun HomeTabsScreen(
     onOpenRoutingRules: () -> Unit,
     onOpenStatsTab: () -> Unit,
     onProfileChange: (String) -> Unit,
+    onProfileTitleChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
-    onRefreshActiveSubscription: () -> Unit,
+    onRefreshSubscription: (String) -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
@@ -959,11 +971,12 @@ private fun HomeTabsScreen(
                     ProfileSourceCard(
                         state = state,
                         onProfileChange = onProfileChange,
+                        onProfileTitleChange = onProfileTitleChange,
                         onProfileSourceModeChange = onProfileSourceModeChange,
                         onSaveProfile = onSaveProfile,
                         onClearProfileSource = onClearProfileSource,
                         onToggleAddSubscriptionEditor = onToggleAddSubscriptionEditor,
-                        onRefreshActiveSubscription = onRefreshActiveSubscription,
+                        onRefreshSubscription = onRefreshSubscription,
                         onRefreshAllSubscriptions = onRefreshAllSubscriptions,
                         onUseProfileHistoryEntry = onUseProfileHistoryEntry,
                         onShowProfileHistoryRenameDialog = onShowProfileHistoryRenameDialog,
@@ -1646,11 +1659,12 @@ private fun LocationsScreen(
 private fun ProfileSourceCard(
     state: MainUiState,
     onProfileChange: (String) -> Unit,
+    onProfileTitleChange: (String) -> Unit,
     onProfileSourceModeChange: (ProfileSourceMode) -> Unit,
     onSaveProfile: () -> Unit,
     onClearProfileSource: () -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
-    onRefreshActiveSubscription: () -> Unit,
+    onRefreshSubscription: (String) -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
     onUseProfileHistoryEntry: (String) -> Unit,
     onShowProfileHistoryRenameDialog: (String) -> Unit,
@@ -1744,7 +1758,7 @@ private fun ProfileSourceCard(
                         subscriptions = state.subscriptions,
                         historyNames = state.profileHistoryNames,
                         activeSubscriptionId = state.activeSubscriptionId,
-                        onRefreshActive = onRefreshActiveSubscription,
+                        onRefreshSubscription = onRefreshSubscription,
                         onRefreshAll = onRefreshAllSubscriptions,
                         refreshEnabled = !state.isBusy,
                         onUseEntry = onUseProfileHistoryEntry,
@@ -1813,6 +1827,15 @@ private fun ProfileSourceCard(
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 3,
                             placeholder = { Text(strings.get(UiText.SUBSCRIPTION_URL_PLACEHOLDER)) },
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedTextField(
+                            value = state.profileTitleDraft,
+                            onValueChange = onProfileTitleChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
+                            placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
+                            singleLine = true,
                             colors = routingTextFieldColors(),
                         )
                         Text(
@@ -1909,7 +1932,7 @@ private fun ProfileHistorySection(
     subscriptions: List<SubscriptionSource>,
     historyNames: Map<String, String>,
     activeSubscriptionId: String,
-    onRefreshActive: () -> Unit,
+    onRefreshSubscription: (String) -> Unit,
     onRefreshAll: () -> Unit,
     refreshEnabled: Boolean,
     onUseEntry: (String) -> Unit,
@@ -1924,36 +1947,13 @@ private fun ProfileHistorySection(
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = onRefreshActive,
-                enabled = refreshEnabled,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                colors = darkOutlinedButtonColors(),
-            ) {
-                Text(strings.get(UiText.REFRESH_ACTIVE))
-            }
-            OutlinedButton(
-                onClick = onRefreshAll,
-                enabled = refreshEnabled,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                colors = darkOutlinedButtonColors(),
-            ) {
-                Text(strings.get(UiText.REFRESH_ALL))
-            }
-        }
         if (subscriptions.size > 1) {
             AllSubscriptionsEntryCard(
                 mergedLocationCount = mergedSubscriptionLocations(subscriptions).size,
                 isActive = activeSubscriptionId == ALL_SUBSCRIPTIONS_ID,
                 onUse = { onUseEntry(ALL_SUBSCRIPTIONS_ID) },
+                onRefresh = onRefreshAll,
+                refreshEnabled = refreshEnabled,
             )
         }
         subscriptions.forEach { subscription ->
@@ -1966,8 +1966,10 @@ private fun ProfileHistorySection(
                 preview = preview,
                 isActive = activeSubscriptionId == subscription.id,
                 onUse = { onUseEntry(subscription.id) },
+                onRefresh = { onRefreshSubscription(subscription.id) },
                 onRename = { onRenameEntry(source) },
                 onDelete = { onDeleteEntry(source) },
+                refreshEnabled = refreshEnabled,
             )
         }
     }
@@ -1978,6 +1980,8 @@ private fun AllSubscriptionsEntryCard(
     mergedLocationCount: Int,
     isActive: Boolean,
     onUse: () -> Unit,
+    onRefresh: () -> Unit,
+    refreshEnabled: Boolean,
 ) {
     val strings = LocalAppStrings.current
     Card(
@@ -2026,17 +2030,32 @@ private fun AllSubscriptionsEntryCard(
                     fontSize = 12.sp,
                 )
             }
-            if (isActive) {
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF2B4F7C), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isActive) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF2B4F7C), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = strings.get(UiText.ACTIVE),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = refreshEnabled,
                 ) {
-                    Text(
-                        text = strings.get(UiText.ACTIVE),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = strings.get(UiText.REFRESH_ALL),
+                        tint = if (refreshEnabled) Color.White else Color(0xFF9FB8C8),
                     )
                 }
             }
@@ -2052,8 +2071,10 @@ private fun ProfileHistoryEntryCard(
     preview: RemoteSourcePreview?,
     isActive: Boolean,
     onUse: () -> Unit,
+    onRefresh: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    refreshEnabled: Boolean,
 ) {
     val strings = LocalAppStrings.current
     val displayTitle = customName.ifBlank { preview?.title ?: strings.get(UiText.SAVED_SOURCE) }
@@ -2143,6 +2164,16 @@ private fun ProfileHistoryEntryCard(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = refreshEnabled,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = strings.get(UiText.REFRESH_ACTIVE),
+                        tint = if (refreshEnabled) Color.White else Color(0xFF9FB8C8),
+                    )
+                }
                 IconButton(onClick = onRename) {
                     Icon(
                         imageVector = Icons.Filled.Edit,

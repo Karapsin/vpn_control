@@ -46,7 +46,7 @@ internal class AndroidControllerEffectHandler(
                 is MainControllerEffect.ImportRoutingRules -> importRoutingRules(effect.raw)
                 is MainControllerEffect.SaveProfileSource -> {
                     launch {
-                        repository.updateProfileSource(effect.value, effect.mode)
+                        repository.updateProfileSource(effect.value, effect.mode, effect.normalizedName)
                         repository.updateStatus(effect.statusMessage)
                     }
                 }
@@ -58,7 +58,11 @@ internal class AndroidControllerEffectHandler(
                 }
                 is MainControllerEffect.SaveProfileHistoryRename -> {
                     launch {
-                        repository.updateProfileHistoryName(effect.source, effect.normalizedName)
+                        repository.updateSubscriptionSource(
+                            source = effect.source,
+                            newSource = effect.normalizedSource,
+                            name = effect.normalizedName,
+                        )
                         repository.updateStatus(effect.statusMessage)
                     }
                 }

@@ -95,7 +95,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 
 ## Logs To Capture
 
-Capture these files when a desktop smoke test fails:
+Capture these files locally when a desktop smoke test fails:
 
 ```text
 ~/.vpn-control-desktop/workspace.json
@@ -103,3 +103,5 @@ Capture these files when a desktop smoke test fails:
 ~/.vpn-control-desktop/runtime/runtime-sing-box-vpn.json
 ~/.vpn-control-desktop/runtime/runtime-sing-box-proxy_only.json
 ```
+
+Share only redacted snippets. Do not paste full workspace, log, or generated config dumps into reports; they can contain endpoints, subscription URLs, UUIDs, credentials, or tokens. Use the redacted helpers in `docs/runtime-troubleshooting.md` first.

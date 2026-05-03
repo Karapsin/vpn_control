@@ -49,6 +49,63 @@ class SubscriptionSourceLogicTest {
     }
 
     @Test
+    fun saveSubscriptionDraftUsesOptionalTitle() {
+        val state = MainUiState(
+            profileDraft = " https://example.com/new ",
+            profileTitleDraft = "VLESS (auto)",
+        )
+
+        val plan = SubscriptionSourceLogic.saveSubscriptionDraft(
+            state = state,
+            validateSubscription = { Result.success(Unit) },
+            idGenerator = { "new" },
+        ).getOrThrow()
+
+        assertEquals("VLESS (auto)", plan.nextState.subscriptions.single().customName)
+        assertEquals("", plan.nextState.profileTitleDraft)
+    }
+
+    @Test
+    fun saveRenameCanChangeSubscriptionUrlAndTitle() {
+        val state = MainUiState(
+            activeSubscriptionId = "one",
+            profileUrl = "https://example.com/one",
+            profileDraft = "https://example.com/one",
+            subscriptions = listOf(
+                SubscriptionSource(
+                    id = "one",
+                    url = "https://example.com/one",
+                    customName = "Old",
+                    cachedLocations = listOf("old-location"),
+                    lastRefreshedAtEpochMillis = 42L,
+                    lastRefreshStatus = "fresh",
+                ),
+            ),
+            selectedProfileName = "Selected",
+            selectedProfileSourceUrl = "https://example.com/one",
+            profileHistoryRenameSource = "https://example.com/one",
+            profileHistoryRenameUrlDraft = " https://example.com/two ",
+            profileHistoryRenameDraft = "Two",
+        )
+
+        val plan = SubscriptionSourceLogic.saveRename(
+            state = state,
+            validateSubscription = { Result.success(Unit) },
+        ).getOrThrow()
+
+        val updated = plan.nextState.subscriptions.single()
+        assertEquals("https://example.com/one", plan.source)
+        assertEquals("https://example.com/two", plan.normalizedSource)
+        assertEquals("Two", updated.customName)
+        assertEquals("https://example.com/two", updated.url)
+        assertEquals(emptyList(), updated.cachedLocations)
+        assertEquals("https://example.com/two", plan.nextState.profileUrl)
+        assertEquals("https://example.com/two", plan.nextState.profileDraft)
+        assertEquals("", plan.nextState.selectedProfileSourceUrl)
+        assertFalse(plan.nextState.showProfileHistoryRenameDialog)
+    }
+
+    @Test
     fun deleteSubscriptionClearsSelectionOnlyWhenRemovedSourceWasSelected() {
         val first = subscription("one", "https://example.com/one")
         val second = subscription("two", "https://example.com/two")

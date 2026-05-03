@@ -176,6 +176,7 @@ object MainCommandLogic {
                 val next = MainUiStateTransitions.navigateToScreen(state, AppScreen.PROFILE).copy(
                     profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
                     profileDraft = payload.raw,
+                    profileTitleDraft = "",
                     showAddSubscriptionEditor = true,
                 )
                 IncomingImportEffect(

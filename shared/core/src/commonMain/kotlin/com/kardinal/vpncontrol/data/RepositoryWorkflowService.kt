@@ -61,6 +61,28 @@ object RepositoryWorkflowService {
         }
     }
 
+    suspend fun refreshSubscriptionCache(
+        state: PersistedState,
+        subscriptionId: String,
+        fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,
+        updateSubscriptionCache: suspend (subscriptionId: String, rawLinks: List<String>) -> Unit,
+        updateRefreshStatus: suspend (subscriptionId: String, status: String) -> Unit,
+    ): Result<SubscriptionRefreshBatchResult> {
+        return runCatching {
+            val target = state.subscriptions.firstOrNull { subscription ->
+                subscription.id == subscriptionId && subscription.url.isNotBlank()
+            }
+            require(target != null) { SubscriptionStatusMessages.noSubscriptionsToRefresh() }
+            refreshSingleSubscription(
+                subscription = target,
+                fetchSubscriptionLocations = fetchSubscriptionLocations,
+                updateSubscriptionCache = updateSubscriptionCache,
+                updateRefreshStatus = updateRefreshStatus,
+            ).getOrThrow()
+            SubscriptionRefreshBatchResult(refreshedCount = 1)
+        }
+    }
+
     suspend fun refreshAllSubscriptionsCaches(
         state: PersistedState,
         fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,

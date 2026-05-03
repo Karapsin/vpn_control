@@ -15,6 +15,7 @@ class DesktopSubscriptionManagementServiceTest {
     fun saveSubscriptionDraftCommitsNewSourceAndClosesEditor() {
         var state = MainUiState(
             profileDraft = "https://example.com/sub.txt",
+            profileTitleDraft = "VLESS (auto)",
             showAddSubscriptionEditor = true,
         )
         var locations = emptyList<DesktopLocationRecord>()
@@ -32,8 +33,57 @@ class DesktopSubscriptionManagementServiceTest {
         assertEquals("generated-id", state.activeSubscriptionId)
         assertEquals("https://example.com/sub.txt", state.profileUrl)
         assertEquals(listOf("https://example.com/sub.txt"), state.subscriptions.map(SubscriptionSource::url))
+        assertEquals("VLESS (auto)", state.subscriptions.single().customName)
         assertFalse(state.showAddSubscriptionEditor)
         assertEquals(SubscriptionStatusMessages.subscriptionSaved(), state.statusMessage)
+    }
+
+    @Test
+    fun saveSubscriptionRenameCanChangeSourceAndClearsOldLocations() {
+        val subscription = SubscriptionSource(
+            id = "sub",
+            url = "https://example.com/old.txt",
+            customName = "Old",
+            cachedLocations = listOf("raw"),
+        )
+        var state = MainUiState(
+            activeSubscriptionId = subscription.id,
+            profileUrl = subscription.url,
+            subscriptions = listOf(subscription),
+            profileHistoryRenameSource = subscription.url,
+            profileHistoryRenameUrlDraft = "https://example.com/new.txt",
+            profileHistoryRenameDraft = "New",
+            showProfileHistoryRenameDialog = true,
+        )
+        var locations = listOf(
+            DesktopLocationRecord(
+                index = 0,
+                sourceUrl = subscription.url,
+                rawLink = "raw",
+                name = "Old",
+                server = "127.0.0.1",
+                details = "SOCKS",
+                benchmarkDetail = "not checked",
+                isValid = true,
+            ),
+        )
+        val service = service(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+        )
+
+        service.saveSubscriptionRename()
+
+        assertEquals("https://example.com/new.txt", state.profileUrl)
+        assertEquals("https://example.com/new.txt", state.subscriptions.single().url)
+        assertEquals("New", state.subscriptions.single().customName)
+        assertEquals(emptyList(), state.subscriptions.single().cachedLocations)
+        assertTrue(locations.isEmpty())
+        assertFalse(state.showProfileHistoryRenameDialog)
     }
 
     @Test

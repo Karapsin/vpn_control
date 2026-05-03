@@ -23,6 +23,13 @@ Local unsigned build on a Mac:
 ./scripts/package_macos_desktop.sh
 ```
 
+Secret handling:
+
+- Do not paste real certificate material, passwords, Apple IDs, or app-specific passwords into agent-visible transcripts.
+- Keep `.p12` files and temporary secret files outside the repository.
+- Prefer GitHub repository secrets for shared release workflows.
+- If a local signed build is needed, enter real values in your own terminal/session and redact them from logs before sharing output.
+
 Local signed build on a Mac:
 
 ```bash

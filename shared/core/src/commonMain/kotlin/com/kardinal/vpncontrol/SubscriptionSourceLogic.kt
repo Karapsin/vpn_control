@@ -18,6 +18,15 @@ data class SubscriptionDeletePlan(
     val statusMessage: String,
 )
 
+data class SubscriptionRenamePlan(
+    val source: String,
+    val normalizedSource: String,
+    val normalizedName: String,
+    val sourceChanged: Boolean,
+    val nextState: MainUiState,
+    val statusMessage: String,
+)
+
 object SubscriptionSourceLogic {
     fun sourceLabelFor(
         subscriptions: List<SubscriptionSource>,
@@ -77,6 +86,7 @@ object SubscriptionSourceLogic {
         return state.copy(
             showProfileHistoryRenameDialog = true,
             profileHistoryRenameSource = target.url,
+            profileHistoryRenameUrlDraft = target.url,
             profileHistoryRenameDraft = target.customName,
         )
     }
@@ -85,6 +95,7 @@ object SubscriptionSourceLogic {
         return state.copy(
             showProfileHistoryRenameDialog = false,
             profileHistoryRenameSource = "",
+            profileHistoryRenameUrlDraft = "",
             profileHistoryRenameDraft = "",
         )
     }
@@ -93,28 +104,76 @@ object SubscriptionSourceLogic {
         return state.copy(profileHistoryRenameDraft = value.take(80))
     }
 
-    fun saveRename(state: MainUiState): SubscriptionSavePlan? {
+    fun updateRenameUrlDraft(state: MainUiState, value: String): MainUiState {
+        return state.copy(profileHistoryRenameUrlDraft = value.take(4096))
+    }
+
+    fun saveRename(
+        state: MainUiState,
+        validateSubscription: (String) -> Result<Unit>,
+    ): Result<SubscriptionRenamePlan> = runCatching {
         val source = state.profileHistoryRenameSource.trim()
-        if (source.isBlank()) return null
+        require(source.isNotBlank()) { SubscriptionStatusMessages.invalidSubscriptionUrl() }
+        val target = state.subscriptions.firstOrNull { it.url == source }
+        require(target != null) { SubscriptionStatusMessages.invalidSubscriptionUrl() }
+        val normalizedSource = state.profileHistoryRenameUrlDraft.trim()
+        val validation = MainCommandLogic.validateProfileSourceSave(
+            value = normalizedSource,
+            mode = ProfileSourceMode.SUBSCRIPTION,
+            validateSubscription = validateSubscription,
+        )
+        validation.getOrThrow()
+        require(
+            state.subscriptions.none { subscription ->
+                subscription.id != target.id && subscription.url == normalizedSource
+            },
+        ) {
+            SubscriptionStatusMessages.invalidSubscriptionUrl()
+        }
+
         val normalizedName = state.profileHistoryRenameDraft.trim()
+        val sourceChanged = normalizedSource != source
         val updatedSubscriptions = state.subscriptions.map { subscription ->
-            if (subscription.url == source) {
-                subscription.copy(customName = normalizedName)
+            if (subscription.id == target.id) {
+                subscription.copy(
+                    url = normalizedSource,
+                    customName = normalizedName,
+                    cachedLocations = if (sourceChanged) emptyList() else subscription.cachedLocations,
+                    lastRefreshedAtEpochMillis = if (sourceChanged) 0L else subscription.lastRefreshedAtEpochMillis,
+                    lastRefreshStatus = if (sourceChanged) "" else subscription.lastRefreshStatus,
+                )
             } else {
                 subscription
             }
         }
-        return SubscriptionSavePlan(
+        val nextActiveId = state.activeSubscriptionId
+        val nextProfileUrl = when {
+            nextActiveId == target.id -> normalizedSource
+            isAllSubscriptionsGroupActive(nextActiveId, updatedSubscriptions) -> ""
+            else -> state.profileUrl
+        }
+        val clearSelection = sourceChanged && state.selectedProfileSourceUrl == source
+        SubscriptionRenamePlan(
+            source = source,
+            normalizedSource = normalizedSource,
+            normalizedName = normalizedName,
+            sourceChanged = sourceChanged,
             nextState = state.copy(
                 subscriptions = updatedSubscriptions,
+                profileUrl = nextProfileUrl,
+                profileDraft = if (state.profileDraft.trim() == source) normalizedSource else state.profileDraft,
+                profileHistoryNames = updatedSubscriptions.mapNotNull { subscription ->
+                    subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
+                }.toMap(),
                 showProfileHistoryRenameDialog = false,
                 profileHistoryRenameSource = "",
+                profileHistoryRenameUrlDraft = "",
                 profileHistoryRenameDraft = "",
-            ),
-            statusMessage = if (normalizedName.isBlank()) {
-                SubscriptionStatusMessages.subscriptionNameReset()
-            } else {
-                SubscriptionStatusMessages.subscriptionNameSaved()
+            ).clearSelectedLocationIfNeeded(clearSelection),
+            statusMessage = when {
+                sourceChanged -> SubscriptionStatusMessages.subscriptionSaved()
+                normalizedName.isBlank() -> SubscriptionStatusMessages.subscriptionNameReset()
+                else -> SubscriptionStatusMessages.subscriptionNameSaved()
             },
         )
     }
@@ -136,10 +195,15 @@ object SubscriptionSourceLogic {
 
         val existingIndex = state.subscriptions.indexOfFirst { it.url == trimmed }
         val existing = state.subscriptions.getOrNull(existingIndex)
-        val target = existing ?: SubscriptionSource(
+        val normalizedName = state.profileTitleDraft.trim()
+        val target = (existing ?: SubscriptionSource(
             id = idGenerator(),
             url = trimmed,
-            customName = state.profileHistoryNames[trimmed].orEmpty(),
+            customName = normalizedName.ifBlank { state.profileHistoryNames[trimmed].orEmpty() },
+        )).copy(
+            customName = normalizedName.ifBlank {
+                existing?.customName ?: state.profileHistoryNames[trimmed].orEmpty()
+            },
         )
         val updatedSubscriptions = buildList {
             add(target)
@@ -157,6 +221,7 @@ object SubscriptionSourceLogic {
                     profileUrl = target.url,
                     subscriptions = updatedSubscriptions,
                     profileDraft = target.url,
+                    profileTitleDraft = "",
                     showAddSubscriptionEditor = false,
                 ),
                 statusMessage = validation.getOrThrow(),
@@ -192,6 +257,7 @@ object SubscriptionSourceLogic {
                     else -> nextSubscriptions.firstOrNull { it.id == nextActiveId }?.url.orEmpty()
                 },
                 profileDraft = if (state.profileDraft.trim() == target.url) "" else state.profileDraft,
+                profileTitleDraft = if (state.profileDraft.trim() == target.url) "" else state.profileTitleDraft,
                 showAddSubscriptionEditor = if (state.profileDraft.trim() == target.url) {
                     false
                 } else {

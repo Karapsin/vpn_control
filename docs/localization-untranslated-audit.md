@@ -2,6 +2,16 @@
 
 Date: 2026-04-30
 
+Status: historical point-in-time audit. Use this file as context for past localization debt and terminology exceptions, not as the current source of truth. The raw `/tmp/localization_audits/...` paths below were local to the audit machine and are not reproducible for another agent.
+
+Current validation source:
+
+```bash
+./scripts/check_localization.py
+./scripts/status_catalog_tool.py check
+./gradlew :shared:ui:desktopTest
+```
+
 Scope:
 
 - `shared/ui/src/commonMain/resources/i18n/*.json`

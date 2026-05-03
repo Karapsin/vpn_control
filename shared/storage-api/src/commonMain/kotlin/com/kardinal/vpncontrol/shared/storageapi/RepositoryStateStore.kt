@@ -11,11 +11,13 @@ import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.ProxyProfile
 
 interface RepositoryStateStore : SearchStateStore, RuntimeConfigStore {
-    suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean = false)
+    suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean = false, name: String = "")
 
     suspend fun deleteProfileHistoryEntry(url: String)
 
     suspend fun updateProfileHistoryName(url: String, name: String)
+
+    suspend fun updateSubscriptionSource(source: String, newSource: String, name: String)
 
     suspend fun updateProfileSourceMode(mode: ProfileSourceMode)
 

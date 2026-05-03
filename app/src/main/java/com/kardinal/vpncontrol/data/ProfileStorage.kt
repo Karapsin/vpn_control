@@ -135,9 +135,10 @@ class ProfileStorage(
         return resolved
     }
 
-    override suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean) {
+    override suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean, name: String) {
         context.dataStore.edit { prefs ->
             val trimmed = url.trim()
+            val normalizedName = name.trim()
             val subscriptions = decodeSubscriptions(prefs).toMutableList()
             val names = decodeStringMap(prefs[Keys.profileHistoryNames])
             if (trimmed.isBlank()) {
@@ -146,12 +147,16 @@ class ProfileStorage(
             } else if (rememberInHistory) {
                 val existing = subscriptions.indexOfFirst { it.url == trimmed }
                 val target = if (existing >= 0) {
-                    subscriptions.removeAt(existing)
+                    subscriptions.removeAt(existing).let { subscription ->
+                        subscription.copy(
+                            customName = normalizedName.ifBlank { subscription.customName },
+                        )
+                    }
                 } else {
                     SubscriptionSource(
                         id = UUID.randomUUID().toString(),
                         url = trimmed,
-                        customName = names[trimmed].orEmpty(),
+                        customName = normalizedName.ifBlank { names[trimmed].orEmpty() },
                     )
                 }
                 subscriptions.add(0, target)
@@ -224,6 +229,47 @@ class ProfileStorage(
                 "Profile history name updated"
             },
         )
+    }
+
+    override suspend fun updateSubscriptionSource(source: String, newSource: String, name: String) {
+        val normalizedSource = source.trim()
+        val normalizedNewSource = newSource.trim()
+        val normalizedName = name.trim()
+        context.dataStore.edit { prefs ->
+            val subscriptions = decodeSubscriptions(prefs)
+            val target = subscriptions.firstOrNull { it.url == normalizedSource } ?: return@edit
+            val sourceChanged = normalizedSource != normalizedNewSource
+            val updatedSubscriptions = subscriptions.map { subscription ->
+                if (subscription.id == target.id) {
+                    subscription.copy(
+                        url = normalizedNewSource,
+                        customName = normalizedName,
+                        cachedLocations = if (sourceChanged) emptyList() else subscription.cachedLocations,
+                        lastRefreshedAtEpochMillis = if (sourceChanged) 0L else subscription.lastRefreshedAtEpochMillis,
+                        lastRefreshStatus = if (sourceChanged) "" else subscription.lastRefreshStatus,
+                    )
+                } else {
+                    subscription
+                }
+            }
+            val activeId = resolveActiveSubscriptionId(prefs, subscriptions)
+            prefs[Keys.subscriptions] = encodeSubscriptions(updatedSubscriptions)
+            prefs[Keys.profileHistory] = encodeList(updatedSubscriptions.map { it.url })
+            prefs[Keys.profileHistoryNames] = encodeStringMap(
+                updatedSubscriptions.associateNotNull { subscription ->
+                    subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
+                },
+            )
+            prefs[Keys.profileUrl] = if (isAllSubscriptionsGroupActive(activeId, updatedSubscriptions)) {
+                ""
+            } else {
+                updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
+            }
+            if (sourceChanged && prefs[Keys.selectedProfileSourceUrl].orEmpty() == normalizedSource) {
+                clearStoredSelection(prefs)
+            }
+        }
+        DiagnosticsLogger.append(context, "Subscription source updated")
     }
 
     override suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {

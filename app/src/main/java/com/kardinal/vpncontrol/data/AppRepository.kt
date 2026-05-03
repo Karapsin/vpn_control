@@ -25,10 +25,11 @@ class AppRepository(
 
     suspend fun snapshot(): PersistedState = storage.snapshot()
 
-    suspend fun updateProfileSource(url: String, mode: ProfileSourceMode) {
+    suspend fun updateProfileSource(url: String, mode: ProfileSourceMode, name: String = "") {
         storage.updateProfileUrl(
             url = url,
             rememberInHistory = mode == ProfileSourceMode.SUBSCRIPTION && url.isNotBlank(),
+            name = name,
         )
         storage.updateProfileSourceMode(mode)
         subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
@@ -46,6 +47,11 @@ class AppRepository(
 
     suspend fun updateProfileHistoryName(url: String, name: String) {
         storage.updateProfileHistoryName(url, name)
+    }
+
+    suspend fun updateSubscriptionSource(source: String, newSource: String, name: String) {
+        storage.updateSubscriptionSource(source, newSource, name)
+        subscriptionRefreshScheduler.sync(snapshotAfterSourceChange())
     }
 
     suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
@@ -122,6 +128,26 @@ class AppRepository(
             },
             updateRefreshStatus = { subscriptionId, status ->
                 storage.updateSubscriptionRefreshStatus(subscriptionId, status)
+            },
+        )
+    }
+
+    suspend fun refreshSubscriptionCache(subscriptionId: String): Result<SubscriptionRefreshBatchResult> {
+        val state = storage.snapshot()
+        return RepositoryWorkflowService.refreshSubscriptionCache(
+            state = state,
+            subscriptionId = subscriptionId.trim(),
+            fetchSubscriptionLocations = { sourceUrl ->
+                orchestrator.fetchSubscriptionLocations(sourceUrl).getOrThrow()
+            },
+            updateSubscriptionCache = { targetSubscriptionId, rawLinks ->
+                storage.updateSubscriptionCache(
+                    subscriptionId = targetSubscriptionId,
+                    rawLinks = rawLinks,
+                )
+            },
+            updateRefreshStatus = { targetSubscriptionId, status ->
+                storage.updateSubscriptionRefreshStatus(targetSubscriptionId, status)
             },
         )
     }

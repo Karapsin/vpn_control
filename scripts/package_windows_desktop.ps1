@@ -21,6 +21,7 @@ function Test-GeneratedTrackedPath {
 
     $Normalized = $Path -replace "\\", "/"
     return (
+        $Normalized -like "build/*" -or
         $Normalized -like "app/build/*" -or
         $Normalized -like "shared/*/build/*" -or
         $Normalized -like "desktopApp/build/*" -or
@@ -39,6 +40,10 @@ function Assert-ReleaseHygiene {
     if ($BadPaths.Count -gt 0) {
         $List = ($BadPaths | ForEach-Object { " - $_" }) -join [Environment]::NewLine
         throw "Generated release/runtime artifacts are tracked by Git. Remove these files from the index before packaging:$([Environment]::NewLine)$List"
+    }
+    & bash scripts/check_docs_hygiene.sh
+    if ($LASTEXITCODE -ne 0) {
+        throw "scripts/check_docs_hygiene.sh failed with exit code $LASTEXITCODE"
     }
     Write-Host "[vpn-control] release hygiene passed"
 }
