@@ -57,7 +57,6 @@ class DesktopProxyConfigParityTest {
             routingRules = RoutingRules(
                 ignoreRules = false,
                 proxyPackages = emptyList(),
-                nationalDomainSuffixes = emptyList(),
                 directDomainSuffixes = emptyList(),
                 ruleSets = emptyList(),
             ),

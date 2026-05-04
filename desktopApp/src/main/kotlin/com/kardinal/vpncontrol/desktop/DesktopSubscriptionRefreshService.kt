@@ -84,6 +84,7 @@ internal class DesktopSubscriptionRefreshService(
             state = stateProvider(),
             locations = locationsProvider(),
             subscriptionsToRefresh = subscriptionsToRefresh,
+            concurrency = stateProvider().validationSettings.normalized().subscriptionRefreshConcurrency,
             onProgress = { message ->
                 updateState { it.withStatus(message) }
             },

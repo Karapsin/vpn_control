@@ -154,9 +154,7 @@ class DesktopAppServiceTest {
             assertTrue(service.desktopLocations.isEmpty())
             assertTrue(service.state.routingRules.ruleSets.isEmpty())
             assertTrue(service.state.routingRules.proxyPackages.isEmpty())
-            assertTrue(service.state.routingRules.nationalDomainSuffixes.isEmpty())
             assertTrue(service.state.routingRules.directDomainSuffixes.isEmpty())
-            assertTrue(service.state.routingNationalDomainsDraft.isBlank())
             assertTrue(service.state.routingDirectDomainsDraft.isBlank())
         } finally {
             tempDir.toFile().deleteRecursively()
@@ -200,7 +198,6 @@ class DesktopAppServiceTest {
                         appMode = AppMode.PROXY_ONLY,
                         routingRules = RoutingRules(
                             proxyPackages = listOf("com.example.browser", "org.telegram.messenger"),
-                            nationalDomainSuffixes = listOf("ru", "by"),
                             directDomainSuffixes = listOf("example.com", "intranet.local"),
                         ),
                         selectedProfileRawLink = "vless://desktop-nl",
@@ -216,7 +213,6 @@ class DesktopAppServiceTest {
             ).persistedState
 
             assertEquals(AppMode.VPN, migrated.appMode)
-            assertTrue(migrated.routingRules.nationalDomainSuffixes.isEmpty())
             assertTrue(migrated.routingRules.directDomainSuffixes.isEmpty())
             assertTrue(migrated.routingRules.proxyPackages.isEmpty())
             assertEquals("Desktop VPN shell ready", migrated.statusMessage)
@@ -373,6 +369,7 @@ class DesktopAppServiceTest {
             service.setValidationPrimaryUrlDraft("google.com/generate_204")
             service.setValidationSecondaryUrlDraft("https://chatgpt.com/")
             service.setValidationBatchSizeDraft("4")
+            service.setValidationSubscriptionRefreshConcurrencyDraft("5")
             service.setValidationRetryCountDraft("2")
             service.saveValidationSettings()
 
@@ -380,6 +377,7 @@ class DesktopAppServiceTest {
             assertEquals("https://google.com/generate_204", service.state.validationSettings.primaryUrl)
             assertEquals("https://chatgpt.com/", service.state.validationSettings.secondaryUrl)
             assertEquals(4, service.state.validationSettings.batchSize)
+            assertEquals(5, service.state.validationSettings.subscriptionRefreshConcurrency)
             assertEquals(2, service.state.validationSettings.retryCount)
 
             val reloaded = DesktopStateStore(tempDir).loadWorkspace(
@@ -392,6 +390,7 @@ class DesktopAppServiceTest {
             assertEquals("1.1.1.1", reloaded.customDns)
             assertEquals("https://google.com/generate_204", reloaded.validationSettings.primaryUrl)
             assertEquals(4, reloaded.validationSettings.batchSize)
+            assertEquals(5, reloaded.validationSettings.subscriptionRefreshConcurrency)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

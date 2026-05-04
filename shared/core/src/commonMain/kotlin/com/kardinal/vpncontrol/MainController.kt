@@ -326,6 +326,12 @@ class MainController(
         )
     }
 
+    fun onValidationSubscriptionRefreshConcurrencyDraftChanged(value: String) {
+        _state.value = _state.value.copy(
+            validationSubscriptionRefreshConcurrencyDraft = value.filter { it.isDigit() }.take(2),
+        )
+    }
+
     fun onValidationRetryCountDraftChanged(value: String) {
         _state.value = _state.value.copy(
             validationRetryCountDraft = value.filter { it.isDigit() }.take(3),
@@ -338,10 +344,6 @@ class MainController(
 
     fun onRoutingAppSearchChanged(value: String) {
         _state.value = _state.value.copy(routingAppSearch = value)
-    }
-
-    fun onRoutingNationalDomainsDraftChanged(value: String) {
-        _state.value = _state.value.copy(routingNationalDomainsDraft = value)
     }
 
     fun onRoutingDirectDomainsDraftChanged(value: String) {

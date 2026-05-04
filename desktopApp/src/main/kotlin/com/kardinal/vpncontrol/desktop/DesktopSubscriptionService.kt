@@ -14,6 +14,11 @@ import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 internal data class DesktopSubscriptionRefreshPayload(
     val subscriptionHwid: String,
@@ -33,6 +38,7 @@ internal class DesktopSubscriptionService(
         locations: List<DesktopLocationRecord>,
         subscriptionsToRefresh: List<SubscriptionSource>,
         onProgress: (String) -> Unit,
+        concurrency: Int = com.kardinal.vpncontrol.model.BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
     ): Result<DesktopSubscriptionRefreshPayload> {
         if (subscriptionsToRefresh.isEmpty()) {
             return Result.failure(DesktopSubscriptionRefreshStatus.noSubscriptionsToRefresh())
@@ -44,16 +50,19 @@ internal class DesktopSubscriptionService(
         val failedLabels = mutableListOf<String>()
         var currentSubscriptions = state.subscriptions
 
-        for (subscription in subscriptionsToRefresh) {
-            onProgress(DesktopSubscriptionRefreshStatus.progress(subscription))
-            val result = runCatching {
-                loadSubscriptionProfiles(subscription.url, subscriptionHwid)
-            }
+        val results = loadSubscriptionsConcurrently(
+            subscriptionsToRefresh = subscriptionsToRefresh,
+            subscriptionHwid = subscriptionHwid,
+            concurrency = concurrency,
+            onProgress = onProgress,
+        )
+        for (loaded in results) {
+            val subscription = loaded.subscription
             currentSubscriptions = currentSubscriptions.map { source ->
                 if (source.id != subscription.id) {
                     source
                 } else {
-                    result.fold(
+                    loaded.result.fold(
                         onSuccess = { profiles ->
                             loadedByUrl[source.url] = profiles
                             source.copy(
@@ -109,6 +118,29 @@ internal class DesktopSubscriptionService(
         )
     }
 
+    private suspend fun loadSubscriptionsConcurrently(
+        subscriptionsToRefresh: List<SubscriptionSource>,
+        subscriptionHwid: String,
+        concurrency: Int,
+        onProgress: (String) -> Unit,
+    ): List<DesktopLoadedSubscription> = coroutineScope {
+        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        subscriptionsToRefresh.mapIndexed { index, subscription ->
+            async {
+                semaphore.withPermit {
+                    onProgress(DesktopSubscriptionRefreshStatus.progress(subscription))
+                    DesktopLoadedSubscription(
+                        index = index,
+                        subscription = subscription,
+                        result = runCatching {
+                            loadSubscriptionProfiles(subscription.url, subscriptionHwid)
+                        },
+                    )
+                }
+            }
+        }.awaitAll().sortedBy(DesktopLoadedSubscription::index)
+    }
+
     suspend fun loadSubscriptionProfiles(rawSource: String, subscriptionHwid: String): List<ProxyProfile> {
         return SelectionWorkflowService.parseRemoteSourceLocations(
             rawSource = rawSource,
@@ -154,6 +186,12 @@ internal class DesktopSubscriptionService(
         return mapped to nextIndex
     }
 }
+
+private data class DesktopLoadedSubscription(
+    val index: Int,
+    val subscription: SubscriptionSource,
+    val result: Result<List<ProxyProfile>>,
+)
 
 internal fun subscriptionDisplayName(subscription: SubscriptionSource): String {
     return subscription.customName.ifBlank {

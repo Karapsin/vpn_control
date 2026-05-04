@@ -123,7 +123,7 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             MainActivityTestBridge.setClipboardOverride(payload)
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         runOnUiThread {
             MainActivityTestBridge.invokeImportFromClipboard(composeRule.activity, ImportPreference.ROUTING_RULES)
         }
@@ -131,14 +131,12 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             val state = viewModel.uiState.value
             state.routingIgnoreRulesDraft &&
                 state.routingProxyPackagesDraft.contains("com.example.app") &&
-                state.routingNationalDomainsDraft == "ru" &&
                 state.routingDirectDomainsDraft == "example.com"
         }
 
         val state = viewModel.uiState.value
         assertTrue(state.routingIgnoreRulesDraft)
         assertTrue(state.routingProxyPackagesDraft.contains("com.example.app"))
-        assertTrue(state.routingNationalDomainsDraft == "ru")
         assertTrue(state.routingDirectDomainsDraft == "example.com")
     }
 
@@ -163,14 +161,12 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             val state = viewModel.uiState.value
             !state.routingIgnoreRulesDraft &&
                 state.routingProxyPackagesDraft.contains("com.example.qr") &&
-                state.routingNationalDomainsDraft == "de" &&
                 state.routingDirectDomainsDraft == "qr.example"
         }
 
         val state = viewModel.uiState.value
         assertTrue(!state.routingIgnoreRulesDraft)
         assertTrue(state.routingProxyPackagesDraft.contains("com.example.qr"))
-        assertTrue(state.routingNationalDomainsDraft == "de")
         assertTrue(state.routingDirectDomainsDraft == "qr.example")
     }
 
@@ -195,14 +191,12 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             val state = viewModel.uiState.value
             state.routingIgnoreRulesDraft &&
                 state.routingProxyPackagesDraft.contains("com.example.file") &&
-                state.routingNationalDomainsDraft == "fr" &&
                 state.routingDirectDomainsDraft == "file.example"
         }
 
         val state = viewModel.uiState.value
         assertTrue(state.routingIgnoreRulesDraft)
         assertTrue(state.routingProxyPackagesDraft.contains("com.example.file"))
-        assertTrue(state.routingNationalDomainsDraft == "fr")
         assertTrue(state.routingDirectDomainsDraft == "file.example")
     }
 
@@ -213,7 +207,7 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             viewModel.onRoutingDirectDomainsDraftChanged("example.com")
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         clickText("Export")
         clickTag("export-menu-clipboard")
         waitUntil {
@@ -252,7 +246,7 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             viewModel.onRoutingDirectDomainsDraftChanged("small.example")
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         clickText("Export")
         clickTag("export-menu-qr")
         waitForText("Rules Export")
@@ -269,7 +263,7 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
             viewModel.onRoutingDirectDomainsDraftChanged(oversizedDomains)
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         clickText("Export")
         clickTag("export-menu-qr")
         waitForText("QR Export Too Large")
@@ -287,6 +281,7 @@ class ImportExportActionsInstrumentedTest : ImportExportUiTestBase() {
         val document = viewModel.buildRoutingRulesExport()
         assertTrue(document.content.contains("\"type\": \"vpn_control_routing_rules\""))
         assertTrue(document.content.contains("\"ignore_rules\": true"))
+        assertTrue(!document.content.contains("national_domain_suffixes"))
         assertTrue(document.content.contains("file-export.example"))
     }
 

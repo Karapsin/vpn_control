@@ -115,6 +115,12 @@ internal class DesktopSettingsService(
         updateState { it.copy(validationBatchSizeDraft = value.filter(Char::isDigit).take(3)) }
     }
 
+    fun setValidationSubscriptionRefreshConcurrencyDraft(value: String) {
+        updateState {
+            it.copy(validationSubscriptionRefreshConcurrencyDraft = value.filter(Char::isDigit).take(2))
+        }
+    }
+
     fun setValidationRetryCountDraft(value: String) {
         updateState { it.copy(validationRetryCountDraft = value.filter(Char::isDigit).take(3)) }
     }
@@ -129,6 +135,7 @@ internal class DesktopSettingsService(
                 validationPrimaryUrlDraft = settings.primaryUrl,
                 validationSecondaryUrlDraft = settings.secondaryUrl,
                 validationBatchSizeDraft = settings.batchSize.toString(),
+                validationSubscriptionRefreshConcurrencyDraft = settings.subscriptionRefreshConcurrency.toString(),
                 validationRetryCountDraft = settings.retryCount.toString(),
                 showValidationSettingsDialog = false,
             ).withStatus(plan.statusMessage),

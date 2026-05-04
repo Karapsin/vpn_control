@@ -5,6 +5,11 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class SubscriptionSearchTarget(
     val subscriptionId: String,
@@ -59,42 +64,41 @@ object SelectionWorkflowService {
         targets: List<SubscriptionSearchTarget>,
         onStatus: suspend (String) -> Unit,
         loadProfiles: suspend (String) -> List<ProxyProfile>,
-    ): LoadedSubscriptionProfiles {
+        concurrency: Int = 1,
+    ): LoadedSubscriptionProfiles = coroutineScope {
+        val normalizedConcurrency = concurrency.coerceAtLeast(1)
+        val semaphore = Semaphore(normalizedConcurrency)
+        val results = targets.mapIndexed { index, target ->
+            async {
+                semaphore.withPermit {
+                    loadProfilesForTarget(
+                        index = index,
+                        target = target,
+                        targetCount = targets.size,
+                        onStatus = onStatus,
+                        loadProfiles = loadProfiles,
+                    )
+                }
+            }
+        }.awaitAll().sortedBy(TargetLoadResult::index)
+
         val loadedProfilesById = linkedMapOf<String, List<ProxyProfile>>()
         val profileSourceTargets = linkedMapOf<String, SubscriptionSearchTarget>()
         val failureMessages = mutableListOf<String>()
 
-        for (target in targets) {
-            val sourceLabel = if (targets.size == 1) {
-                "selected subscription"
-            } else {
-                target.displayName
+        results.forEach { result ->
+            if (result.failureMessage != null) {
+                failureMessages += result.failureMessage
+                return@forEach
             }
-            onStatus(BenchmarkStatusMessages.resolvingRemoteSource(sourceLabel))
-            val profilesResult = runCatching { loadProfiles(target.sourceUrl) }
-            if (profilesResult.isFailure) {
-                val error = profilesResult.exceptionOrNull()
-                failureMessages += error?.message ?: BenchmarkStatusMessages.subscriptionSourceLoadFailed(sourceLabel)
-                continue
-            }
-            val profiles = profilesResult.getOrThrow()
-            if (profiles.isEmpty()) {
-                val message = if (targets.size == 1) {
-                    BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
-                } else {
-                    BenchmarkStatusMessages.noLocationsFoundInSource(sourceLabel)
-                }
-                failureMessages += message
-                continue
-            }
-
-            loadedProfilesById[target.subscriptionId] = profiles
+            val profiles = result.profiles.orEmpty()
+            loadedProfilesById[result.target.subscriptionId] = profiles
             profiles.forEach { profile ->
-                profileSourceTargets[LocationConfigs.encodeStoredLocation(profile)] = target
+                profileSourceTargets[LocationConfigs.encodeStoredLocation(profile)] = result.target
             }
         }
 
-        return LoadedSubscriptionProfiles(
+        LoadedSubscriptionProfiles(
             profilesById = loadedProfilesById,
             profileSourceTargets = profileSourceTargets,
             failureMessages = failureMessages,
@@ -133,4 +137,52 @@ object SelectionWorkflowService {
         }
         return profiles
     }
+
+    private suspend fun loadProfilesForTarget(
+        index: Int,
+        target: SubscriptionSearchTarget,
+        targetCount: Int,
+        onStatus: suspend (String) -> Unit,
+        loadProfiles: suspend (String) -> List<ProxyProfile>,
+    ): TargetLoadResult {
+        val sourceLabel = if (targetCount == 1) {
+            "selected subscription"
+        } else {
+            target.displayName
+        }
+        onStatus(BenchmarkStatusMessages.resolvingRemoteSource(sourceLabel))
+        val profilesResult = runCatching { loadProfiles(target.sourceUrl) }
+        if (profilesResult.isFailure) {
+            val error = profilesResult.exceptionOrNull()
+            return TargetLoadResult(
+                index = index,
+                target = target,
+                failureMessage = error?.message ?: BenchmarkStatusMessages.subscriptionSourceLoadFailed(sourceLabel),
+            )
+        }
+        val profiles = profilesResult.getOrThrow()
+        if (profiles.isEmpty()) {
+            return TargetLoadResult(
+                index = index,
+                target = target,
+                failureMessage = if (targetCount == 1) {
+                    BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
+                } else {
+                    BenchmarkStatusMessages.noLocationsFoundInSource(sourceLabel)
+                },
+            )
+        }
+        return TargetLoadResult(
+            index = index,
+            target = target,
+            profiles = profiles,
+        )
+    }
 }
+
+private data class TargetLoadResult(
+    val index: Int,
+    val target: SubscriptionSearchTarget,
+    val profiles: List<ProxyProfile>? = null,
+    val failureMessage: String? = null,
+)

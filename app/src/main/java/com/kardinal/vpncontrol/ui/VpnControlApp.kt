@@ -132,6 +132,7 @@ import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel as sharedActiveProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel as sharedCurrentSubscriptionSelectionLabel
+import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription as sharedSelectedLocationOutsideCurrentSubscription
 import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
 import com.google.zxing.BarcodeFormat
@@ -176,6 +177,7 @@ fun VpnControlApp(
     onValidationPrimaryUrlChange: (String) -> Unit,
     onValidationSecondaryUrlChange: (String) -> Unit,
     onValidationBatchSizeChange: (String) -> Unit,
+    onValidationSubscriptionRefreshConcurrencyChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
@@ -209,7 +211,6 @@ fun VpnControlApp(
     onClearAllProxyApps: () -> Unit,
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
-    onRoutingNationalDomainsChange: (String) -> Unit,
     onRoutingDirectDomainsChange: (String) -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
@@ -222,7 +223,6 @@ fun VpnControlApp(
     onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
     onRuleSetUpdateHoursChange: (String) -> Unit,
     onSaveRuleSet: () -> Unit,
-    onSaveRoutingRules: () -> Unit,
     onExportRoutingRules: () -> Unit,
     onScanRoutingRulesQr: () -> Unit,
     onImportRoutingRulesFromClipboard: () -> Unit,
@@ -276,7 +276,6 @@ fun VpnControlApp(
             onValidationRetryCountChange = onValidationRetryCountChange,
             onSaveValidationSettings = onSaveValidationSettings,
             onToggleLanguageDialog = onToggleLanguageDialog,
-            onToggleAppModeDialog = onToggleAppModeDialog,
             onAppModeChange = onAppModeChange,
             onToggleVpn = onToggleVpn,
             onRefresh = onRefresh,
@@ -300,7 +299,6 @@ fun VpnControlApp(
             onClearAllProxyApps = onClearAllProxyApps,
             onSelectAllDirectApps = onSelectAllDirectApps,
             onClearAllDirectApps = onClearAllDirectApps,
-            onNationalDomainsChange = onRoutingNationalDomainsChange,
             onDirectDomainsChange = onRoutingDirectDomainsChange,
             onShowAddRuleSetDialog = onShowAddRuleSetDialog,
             onEditRuleSet = onEditRuleSet,
@@ -313,7 +311,6 @@ fun VpnControlApp(
             onRuleSetActionChange = onRuleSetActionChange,
             onRuleSetUpdateHoursChange = onRuleSetUpdateHoursChange,
             onSaveRuleSet = onSaveRuleSet,
-            onSaveRoutingRules = onSaveRoutingRules,
             onExportRoutingRules = onExportRoutingRules,
             onScanRoutingRulesQr = onScanRoutingRulesQr,
             onImportRoutingRulesFromClipboard = onImportRoutingRulesFromClipboard,
@@ -714,6 +711,15 @@ fun VpnControlApp(
                         colors = routingTextFieldColors(),
                     )
                     OutlinedTextField(
+                        value = state.validationSubscriptionRefreshConcurrencyDraft,
+                        onValueChange = onValidationSubscriptionRefreshConcurrencyChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)) },
+                        placeholder = { Text("3") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
                         value = state.validationRetryCountDraft,
                         onValueChange = onValidationRetryCountChange,
                         modifier = Modifier.fillMaxWidth(),
@@ -886,7 +892,6 @@ private fun HomeTabsScreen(
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
-    onToggleAppModeDialog: () -> Unit,
     onAppModeChange: (AppMode) -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
@@ -910,7 +915,6 @@ private fun HomeTabsScreen(
     onClearAllProxyApps: () -> Unit,
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
-    onNationalDomainsChange: (String) -> Unit,
     onDirectDomainsChange: (String) -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
@@ -923,7 +927,6 @@ private fun HomeTabsScreen(
     onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
     onRuleSetUpdateHoursChange: (String) -> Unit,
     onSaveRuleSet: () -> Unit,
-    onSaveRoutingRules: () -> Unit,
     onExportRoutingRules: () -> Unit,
     onScanRoutingRulesQr: () -> Unit,
     onImportRoutingRulesFromClipboard: () -> Unit,
@@ -960,7 +963,8 @@ private fun HomeTabsScreen(
                             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
                             onToggleLanguageDialog = onToggleLanguageDialog,
-                            onToggleAppModeDialog = onToggleAppModeDialog,
+                            onSetAppMode = onAppModeChange,
+                            onIgnoreRulesChange = onIgnoreRulesChange,
                         )
                     },
                 )
@@ -1002,7 +1006,6 @@ private fun HomeTabsScreen(
                 )
                 AppScreen.ROUTING_RULES -> RoutingRulesScreen(
                     state = state,
-                    onIgnoreRulesChange = onIgnoreRulesChange,
                     onAppSearchChange = onAppSearchChange,
                     onToggleProxyApp = onToggleProxyApp,
                     onToggleDirectApp = onToggleDirectApp,
@@ -1010,7 +1013,6 @@ private fun HomeTabsScreen(
                     onClearAllProxyApps = onClearAllProxyApps,
                     onSelectAllDirectApps = onSelectAllDirectApps,
                     onClearAllDirectApps = onClearAllDirectApps,
-                    onNationalDomainsChange = onNationalDomainsChange,
                     onDirectDomainsChange = onDirectDomainsChange,
                     onShowAddRuleSetDialog = onShowAddRuleSetDialog,
                     onEditRuleSet = onEditRuleSet,
@@ -1023,7 +1025,6 @@ private fun HomeTabsScreen(
                     onRuleSetActionChange = onRuleSetActionChange,
                     onRuleSetUpdateHoursChange = onRuleSetUpdateHoursChange,
                     onSaveRuleSet = onSaveRuleSet,
-                    onSave = onSaveRoutingRules,
                     onExport = onExportRoutingRules,
                     onScanQr = onScanRoutingRulesQr,
                     onImportFromClipboard = onImportRoutingRulesFromClipboard,
@@ -1043,10 +1044,19 @@ private fun MainAdvancedMenu(
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
-    onToggleAppModeDialog: () -> Unit,
+    onSetAppMode: (AppMode) -> Unit,
+    onIgnoreRulesChange: (Boolean) -> Unit,
 ) {
     var advancedMenuExpanded by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
+    val menuContainerColor = Color(0xFF1D2B3B)
+    val menuTitleColor = Color.White
+    val menuSubtitleColor = Color(0xFFD3E3EE)
+    val refreshScope = if (isAllSubscriptionsActive(state)) {
+        strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
+    } else {
+        strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
+    }
 
     Box {
         IconButton(onClick = { advancedMenuExpanded = true }) {
@@ -1059,14 +1069,15 @@ private fun MainAdvancedMenu(
         DropdownMenu(
             expanded = advancedMenuExpanded,
             onDismissRequest = { advancedMenuExpanded = false },
+            containerColor = menuContainerColor,
         ) {
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(strings.get(UiText.SETTINGS_LANGUAGE))
+                        Text(strings.get(UiText.SETTINGS_LANGUAGE), color = menuTitleColor)
                         Text(
                             strings.languageDisplayName(state.appLanguage, Locale.getDefault().language),
-                            color = Color(0xFF4A6070),
+                            color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )
                     }
@@ -1077,54 +1088,68 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
-                text = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS)) },
-                onClick = {
-                    advancedMenuExpanded = false
-                    onToggleDnsDialog()
-                },
-            )
-            DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(strings.get(UiText.SETTINGS_PROXY_MODE))
+                        Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE), color = menuTitleColor)
                         Text(
                             if (state.appMode == AppMode.VPN) {
                                 strings.get(UiText.SETTINGS_VPN_MODE)
                             } else {
                                 strings.get(UiText.SETTINGS_PROXY_ONLY)
                             },
-                            color = Color(0xFF4A6070),
+                            color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )
                     }
                 },
+                trailingIcon = {
+                    Switch(
+                        checked = state.appMode == AppMode.VPN,
+                        onCheckedChange = { enabled ->
+                            onSetAppMode(if (enabled) AppMode.VPN else AppMode.PROXY_ONLY)
+                        },
+                    )
+                },
                 onClick = {
-                    advancedMenuExpanded = false
-                    onToggleAppModeDialog()
+                    onSetAppMode(
+                        if (state.appMode == AppMode.VPN) {
+                            AppMode.PROXY_ONLY
+                        } else {
+                            AppMode.VPN
+                        },
+                    )
                 },
             )
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH))
+                        Text(strings.get(UiText.IGNORE_RULES), color = menuTitleColor)
                         Text(
-                            buildString {
-                                append(
-                                    strings.refreshPolicyDisplay(
-                                        state.subscriptionRefreshPolicy,
-                                        state.subscriptionRefreshCustomHours,
-                                    ),
-                                )
-                                append(" • ")
-                                append(
-                                    if (isAllSubscriptionsActive(state)) {
-                                        strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
-                                    } else {
-                                        strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
-                                    },
-                                )
-                            },
-                            color = Color(0xFF4A6070),
+                            ignoreRulesDescription(state, showAppAssignments = true, strings = strings),
+                            color = menuSubtitleColor,
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    Switch(
+                        checked = !state.routingIgnoreRulesDraft,
+                        onCheckedChange = { enabled ->
+                            onIgnoreRulesChange(!enabled)
+                        },
+                    )
+                },
+                onClick = {
+                    onIgnoreRulesChange(!state.routingIgnoreRulesDraft)
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH), color = menuTitleColor)
+                        Text(
+                            "${strings.refreshPolicyDisplay(state.subscriptionRefreshPolicy, state.subscriptionRefreshCustomHours)} • $refreshScope",
+                            color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )
                     }
@@ -1137,10 +1162,10 @@ private fun MainAdvancedMenu(
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
+                        Text(strings.get(UiText.SETTINGS_LOCATION_TEST), color = menuTitleColor)
                         Text(
                             strings.validationSummary(state.validationSettings),
-                            color = Color(0xFF4A6070),
+                            color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )
                     }
@@ -1148,6 +1173,26 @@ private fun MainAdvancedMenu(
                 onClick = {
                     advancedMenuExpanded = false
                     onToggleValidationSettingsDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_CUSTOM_DNS), color = menuTitleColor)
+                        Text(
+                            if (state.useCustomDns) {
+                                state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) }
+                            } else {
+                                strings.get(UiText.SETTINGS_DISABLED)
+                            },
+                            color = menuSubtitleColor,
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleDnsDialog()
                 },
             )
         }
@@ -1417,7 +1462,6 @@ private fun buildEditedRoutingRules(state: MainUiState): RoutingRules {
         ignoreRules = state.routingIgnoreRulesDraft,
         proxyPackages = RoutingRules.normalizePackageNames(state.routingProxyPackagesDraft),
         bypassPackages = emptyList(),
-        nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(state.routingNationalDomainsDraft),
         directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
         ruleSets = emptyList(),
     )
@@ -2239,7 +2283,6 @@ private fun RemoteSourcePreviewCard(preview: RemoteSourcePreview) {
 @Composable
 private fun RoutingRulesScreen(
     state: MainUiState,
-    onIgnoreRulesChange: (Boolean) -> Unit,
     onAppSearchChange: (String) -> Unit,
     onToggleProxyApp: (String) -> Unit,
     onToggleDirectApp: (String) -> Unit,
@@ -2247,7 +2290,6 @@ private fun RoutingRulesScreen(
     onClearAllProxyApps: () -> Unit,
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
-    onNationalDomainsChange: (String) -> Unit,
     onDirectDomainsChange: (String) -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
@@ -2260,7 +2302,6 @@ private fun RoutingRulesScreen(
     onRuleSetActionChange: (RoutingRuleSetAction) -> Unit,
     onRuleSetUpdateHoursChange: (String) -> Unit,
     onSaveRuleSet: () -> Unit,
-    onSave: () -> Unit,
     onExport: () -> Unit,
     onScanQr: () -> Unit,
     onImportFromClipboard: () -> Unit,
@@ -2292,14 +2333,11 @@ private fun RoutingRulesScreen(
 
     SharedRoutingRulesScreen(
         state = state,
-        onIgnoreRulesChange = onIgnoreRulesChange,
         onAppSearchChange = onAppSearchChange,
         onToggleProxyApp = onToggleProxyApp,
         onSelectAllProxyApps = onSelectAllProxyApps,
         onClearAllProxyApps = onClearAllProxyApps,
-        onNationalDomainsChange = onNationalDomainsChange,
         onDirectDomainsChange = onDirectDomainsChange,
-        onSave = onSave,
         controls = {
             Row(
                 modifier = Modifier.fillMaxWidth(),

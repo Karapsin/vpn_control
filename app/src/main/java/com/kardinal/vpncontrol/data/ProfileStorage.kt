@@ -73,6 +73,8 @@ class ProfileStorage(
         val validationPrimaryUrl = stringPreferencesKey("validation_primary_url")
         val validationSecondaryUrl = stringPreferencesKey("validation_secondary_url")
         val validationBatchSize = intPreferencesKey("validation_batch_size")
+        val validationSubscriptionRefreshConcurrency =
+            intPreferencesKey("validation_subscription_refresh_concurrency")
         val validationRetryCount = intPreferencesKey("validation_retry_count")
         val legacyValidationGeneralUrl = stringPreferencesKey("validation_general_url")
         val legacyValidationChatGptUrl = stringPreferencesKey("validation_chatgpt_url")
@@ -84,7 +86,6 @@ class ProfileStorage(
         val ignoreRules = booleanPreferencesKey("ignore_rules")
         val proxyPackages = stringPreferencesKey("proxy_packages")
         val bypassPackages = stringPreferencesKey("bypass_packages")
-        val nationalDomainSuffixes = stringPreferencesKey("national_domain_suffixes")
         val directDomainSuffixes = stringPreferencesKey("direct_domain_suffixes")
         val ruleSets = stringPreferencesKey("rule_sets")
         val selectedProfileName = stringPreferencesKey("selected_profile_name")
@@ -344,13 +345,14 @@ class ProfileStorage(
             prefs[Keys.validationPrimaryUrl] = normalized.primaryUrl
             prefs[Keys.validationSecondaryUrl] = normalized.secondaryUrl
             prefs[Keys.validationBatchSize] = normalized.batchSize
+            prefs[Keys.validationSubscriptionRefreshConcurrency] = normalized.subscriptionRefreshConcurrency
             prefs[Keys.validationRetryCount] = normalized.retryCount
             prefs.remove(Keys.legacyValidationGeneralUrl)
             prefs.remove(Keys.legacyValidationChatGptUrl)
         }
         DiagnosticsLogger.append(
             context,
-            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} retries=${normalized.retryCount}",
+            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} refreshConcurrency=${normalized.subscriptionRefreshConcurrency} retries=${normalized.retryCount}",
         )
     }
 
@@ -561,14 +563,13 @@ class ProfileStorage(
             prefs[Keys.ignoreRules] = rules.ignoreRules
             prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
             prefs[Keys.bypassPackages] = encodeList(emptyList())
-            prefs[Keys.nationalDomainSuffixes] = encodeList(rules.nationalDomainSuffixes)
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
             prefs[Keys.ruleSets] = ""
         }
         DiagnosticsLogger.append(
             context,
             "Routing rules updated: ignore=${rules.ignoreRules} vpn_apps=${rules.proxyPackages.size} direct=0 " +
-                "national=${rules.nationalDomainSuffixes.size} domains=${rules.directDomainSuffixes.size}",
+                "domains=${rules.directDomainSuffixes.size}",
         )
     }
 
@@ -878,6 +879,8 @@ class ProfileStorage(
                     ?: BenchmarkValidationSettings.DEFAULT_SECONDARY_URL,
                 batchSize = preferences[Keys.validationBatchSize]
                     ?: BenchmarkValidationSettings.DEFAULT_BATCH_SIZE,
+                subscriptionRefreshConcurrency = preferences[Keys.validationSubscriptionRefreshConcurrency]
+                    ?: BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
                 retryCount = preferences[Keys.validationRetryCount]
                     ?: BenchmarkValidationSettings.DEFAULT_RETRY_COUNT,
             ).normalized(),
@@ -892,13 +895,6 @@ class ProfileStorage(
                     decodeList(preferences[Keys.proxyPackages]),
                 ),
                 bypassPackages = emptyList(),
-                nationalDomainSuffixes = if (rawPreferences.containsKey(Keys.nationalDomainSuffixes)) {
-                    RoutingRules.parseNationalDomainSuffixes(
-                        encodeList(decodeList(preferences[Keys.nationalDomainSuffixes])),
-                    )
-                } else {
-                    RoutingRules.DEFAULT_NATIONAL_DOMAIN_SUFFIXES
-                },
                 directDomainSuffixes = if (rawPreferences.containsKey(Keys.directDomainSuffixes)) {
                     RoutingRules.parseDirectDomainSuffixes(
                         encodeList(decodeList(preferences[Keys.directDomainSuffixes])),

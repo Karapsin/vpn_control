@@ -5,9 +5,9 @@ import com.kardinal.vpncontrol.model.LocationStatusMessages
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.RoutingRulesStatusLogic
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.model.InstalledApp
-import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
@@ -19,7 +19,7 @@ internal class DesktopRoutingRulesService(
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
 ) {
     fun setIgnoreRulesDraft(enabled: Boolean) {
-        updateState { it.copy(routingIgnoreRulesDraft = enabled) }
+        updateRoutingDraftAndSave { it.copy(routingIgnoreRulesDraft = enabled) }
     }
 
     fun setAppSearch(query: String) {
@@ -27,7 +27,7 @@ internal class DesktopRoutingRulesService(
     }
 
     fun toggleProxyApp(packageName: String) {
-        updateState {
+        updateRoutingDraftAndSave {
             it.copy(
                 routingProxyPackagesDraft = if (packageName in it.routingProxyPackagesDraft) {
                     it.routingProxyPackagesDraft - packageName
@@ -39,19 +39,17 @@ internal class DesktopRoutingRulesService(
     }
 
     fun selectAllProxyApps() {
-        updateState { it.copy(routingProxyPackagesDraft = it.installedApps.map(InstalledApp::packageName).toSet()) }
+        updateRoutingDraftAndSave {
+            it.copy(routingProxyPackagesDraft = it.installedApps.map(InstalledApp::packageName).toSet())
+        }
     }
 
     fun clearAllProxyApps() {
-        updateState { it.copy(routingProxyPackagesDraft = emptySet()) }
-    }
-
-    fun setNationalDomainsDraft(value: String) {
-        updateState { it.copy(routingNationalDomainsDraft = value) }
+        updateRoutingDraftAndSave { it.copy(routingProxyPackagesDraft = emptySet()) }
     }
 
     fun setDirectDomainsDraft(value: String) {
-        updateState { it.copy(routingDirectDomainsDraft = value) }
+        updateRoutingDraftAndSave { it.copy(routingDirectDomainsDraft = value) }
     }
 
     fun addSampleRuleSet() {
@@ -87,15 +85,17 @@ internal class DesktopRoutingRulesService(
     }
 
     fun saveRoutingRules() {
+        updateRoutingDraftAndSave { it }
+    }
+
+    private fun updateRoutingDraftAndSave(transform: (MainUiState) -> MainUiState) {
         updateState {
-            it.withStatus(RoutingStatusMessages.routingRulesSaved()).copy(
-                routingRules = RoutingRules(
-                    ignoreRules = it.routingIgnoreRulesDraft,
-                    proxyPackages = RoutingRules.normalizePackageNames(it.routingProxyPackagesDraft),
-                    bypassPackages = emptyList(),
-                    nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(it.routingNationalDomainsDraft),
-                    directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(it.routingDirectDomainsDraft),
-                    ruleSets = emptyList(),
+            val draft = transform(it)
+            val rules = MainDraftLogic.buildEditedRoutingRules(draft)
+            draft.copy(routingRules = rules).withStatus(
+                RoutingRulesStatusLogic.saved(
+                    isConnectionRunning = draft.isVpnRunning,
+                    appMode = draft.appMode,
                 ),
             )
         }

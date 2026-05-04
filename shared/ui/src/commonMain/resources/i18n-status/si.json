@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "දායකත්ව ස්වයං-නැවුම් කිරීම සකසා ඇත්තේ {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "වලංගුකරණ සැකසුම් සුරැකිණි: {0} • {1} • කාණ්ඩය {2} • නැවත උත්සාහ {3}",
+    "VALIDATION_SETTINGS_SAVED": "වලංගුකරණ සැකසුම් සුරැකිණි: {0} • {1} • කාණ්ඩය {2} • නැවත උත්සාහ {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "අභිරුචි DNS සුරැකිණි",
     "CUSTOM_DNS_DISABLED": "අභිරුචි DNS අක්‍රිය කෙරිණි",
     "FIND_BEST_FROM_SUBSCRIPTION": "දායකත්වයෙන් හොඳම ස්ථානය සොයමින්...",

@@ -1,8 +1,8 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
-import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.RoutingStatusMessages
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -32,8 +32,8 @@ class AndroidSettingsActionsServiceTest {
     }
 
     @Test
-    fun setAppModeForwardsControllerEffects() {
-        val controller = MainController(MainUiState(isVpnRunning = true, appMode = AppMode.VPN))
+    fun setAppModePersistsWhenConnectionIsStopped() {
+        val controller = MainController(MainUiState(appMode = AppMode.VPN))
         val effects = mutableListOf<MainControllerEffect>()
         val service = service(
             controller = controller,
@@ -42,11 +42,69 @@ class AndroidSettingsActionsServiceTest {
 
         service.setAppMode(AppMode.PROXY_ONLY)
 
-        assertEquals(AppMode.VPN, controller.currentState().appMode)
+        assertEquals(AppMode.PROXY_ONLY, controller.currentState().appMode)
         assertEquals(
-            listOf(MainControllerEffect.UpdateStatus(ConnectionStatusMessages.disconnectFirstChangeConnectionMode())),
+            listOf(
+                MainControllerEffect.UpdateAppMode(AppMode.PROXY_ONLY),
+                MainControllerEffect.UpdateStatus(RoutingStatusMessages.connectionModeSet(AppMode.PROXY_ONLY)),
+            ),
             effects,
         )
+    }
+
+    @Test
+    fun setAppModeStopsRunningConnectionBeforePersistingMode() {
+        val controller = MainController(
+            MainUiState(
+                isVpnRunning = true,
+                appMode = AppMode.VPN,
+                showAppModeDialog = true,
+            ),
+        )
+        val effects = mutableListOf<MainControllerEffect>()
+        var stopCalls = 0
+        val service = service(
+            controller = controller,
+            effectSink = AndroidControllerEffectSink { effects += it },
+            stopConnection = {
+                stopCalls += 1
+                Result.success(Unit)
+            },
+        )
+
+        service.setAppMode(AppMode.PROXY_ONLY)
+
+        assertEquals(1, stopCalls)
+        assertEquals(false, controller.currentState().isVpnRunning)
+        assertEquals(false, controller.currentState().showAppModeDialog)
+        assertEquals(AppMode.PROXY_ONLY, controller.currentState().appMode)
+        assertEquals(
+            listOf(
+                MainControllerEffect.UpdateAppMode(AppMode.PROXY_ONLY),
+                MainControllerEffect.UpdateStatus(RoutingStatusMessages.connectionModeSet(AppMode.PROXY_ONLY)),
+            ),
+            effects,
+        )
+    }
+
+    @Test
+    fun setAppModeKeepsCurrentModeWhenRunningConnectionStopFails() {
+        val controller = MainController(MainUiState(isVpnRunning = true, appMode = AppMode.VPN))
+        val effects = mutableListOf<MainControllerEffect>()
+        val statuses = mutableListOf<String>()
+        val service = service(
+            controller = controller,
+            effectSink = AndroidControllerEffectSink { effects += it },
+            stopConnection = { Result.failure(IllegalStateException("stop failed")) },
+            updateStatus = { statuses += it },
+        )
+
+        service.setAppMode(AppMode.PROXY_ONLY)
+
+        assertEquals(AppMode.VPN, controller.currentState().appMode)
+        assertEquals(true, controller.currentState().isVpnRunning)
+        assertEquals(emptyList<MainControllerEffect>(), effects)
+        assertEquals(listOf("stop failed"), statuses)
     }
 
     @Test
@@ -82,6 +140,7 @@ class AndroidSettingsActionsServiceTest {
     private fun service(
         controller: MainController,
         effectSink: AndroidControllerEffectSink = AndroidControllerEffectSink {},
+        stopConnection: suspend () -> Result<Unit> = { Result.success(Unit) },
         updateStatus: suspend (String) -> Unit = {},
         updateSessionStatsEnabled: suspend (Boolean) -> Unit = {},
     ): AndroidSettingsActionsService {
@@ -89,6 +148,7 @@ class AndroidSettingsActionsServiceTest {
             controller = controller,
             effectSink = effectSink,
             launch = { block -> runBlocking { block() } },
+            stopConnection = stopConnection,
             updateStatus = updateStatus,
             updateSessionStatsEnabled = updateSessionStatsEnabled,
             updateLiveTrafficStatsEnabled = {},

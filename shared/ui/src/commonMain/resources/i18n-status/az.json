@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Abunəliyin avtomatik yenilənməsi təyin edildi: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Validasiya ayarları saxlandı: {0} • {1} • paket {2} • təkrar cəhd {3}",
+    "VALIDATION_SETTINGS_SAVED": "Validasiya ayarları saxlandı: {0} • {1} • paket {2} • təkrar cəhd {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "Fərdi DNS saxlandı",
     "CUSTOM_DNS_DISABLED": "Fərdi DNS deaktiv edildi",
     "FIND_BEST_FROM_SUBSCRIPTION": "Abunəlikdən ən yaxşı məkan tapılır...",

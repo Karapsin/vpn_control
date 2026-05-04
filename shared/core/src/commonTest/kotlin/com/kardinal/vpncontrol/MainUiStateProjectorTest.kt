@@ -37,13 +37,18 @@ class MainUiStateProjectorTest {
                 primaryUrl = "https://primary.example.com",
                 secondaryUrl = "https://secondary.example.com",
                 batchSize = 4,
+                subscriptionRefreshConcurrency = 5,
                 retryCount = 2,
             ),
             currentLocations = listOf("vless://one"),
             locationBenchmarkDetails = mapOf("vless://one" to "primary ok"),
             customDns = "9.9.9.9",
             useCustomDns = true,
-            routingRules = RoutingRules(ignoreRules = true, proxyPackages = listOf("app.one")),
+            routingRules = RoutingRules(
+                ignoreRules = true,
+                proxyPackages = listOf("app.one"),
+                directDomainSuffixes = listOf("example.com"),
+            ),
             selectedProfileName = "Netherlands",
             selectedProfileServer = "nl.example.com",
             selectedProfileRawLink = "vless://selected",
@@ -73,6 +78,7 @@ class MainUiStateProjectorTest {
         assertEquals("https://primary.example.com", projected.validationPrimaryUrlDraft)
         assertEquals("https://secondary.example.com", projected.validationSecondaryUrlDraft)
         assertEquals("4", projected.validationBatchSizeDraft)
+        assertEquals("5", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("2", projected.validationRetryCountDraft)
         assertEquals(listOf("vless://one"), projected.currentLocations)
         assertEquals("primary ok", projected.locationBenchmarkDetails["vless://one"])
@@ -81,6 +87,9 @@ class MainUiStateProjectorTest {
         assertEquals(true, projected.useCustomDns)
         assertEquals(true, projected.useCustomDnsDraft)
         assertEquals(true, projected.routingRules.ignoreRules)
+        assertEquals(true, projected.routingIgnoreRulesDraft)
+        assertEquals(setOf("app.one"), projected.routingProxyPackagesDraft)
+        assertEquals("example.com", projected.routingDirectDomainsDraft)
         assertEquals("Netherlands", projected.selectedProfileName)
         assertEquals("nl.example.com", projected.selectedProfileServer)
         assertEquals("vless://selected", projected.selectedProfileRawLink)
@@ -90,6 +99,17 @@ class MainUiStateProjectorTest {
         assertEquals(true, projected.isVpnRunning)
         assertEquals(true, projected.sessionStatsEnabled)
         assertEquals("Ready", projected.connectionLog.single().message)
+    }
+
+    @Test
+    fun mergePersistedStateCompactsRepeatedBestSourceSummaryForDisplay() {
+        val persisted = PersistedState(
+            lastBenchmarkSummary = "primary=ok secondary=ok tcp=30.9ms • Best from: One • Best from: One",
+        )
+
+        val projected = MainUiStateProjector.mergePersistedState(MainUiState(), persisted)
+
+        assertEquals("primary=ok secondary=ok tcp=30.9ms • Best from: One", projected.lastBenchmarkSummary)
     }
 
     @Test
@@ -105,6 +125,7 @@ class MainUiStateProjectorTest {
             validationPrimaryUrlDraft = "https://draft-primary.example.com",
             validationSecondaryUrlDraft = "https://draft-secondary.example.com",
             validationBatchSizeDraft = "9",
+            validationSubscriptionRefreshConcurrencyDraft = "6",
             validationRetryCountDraft = "3",
             showDnsDialog = true,
             customDnsDraft = "4.4.4.4",
@@ -119,6 +140,7 @@ class MainUiStateProjectorTest {
                 primaryUrl = "https://persisted-primary.example.com",
                 secondaryUrl = "https://persisted-secondary.example.com",
                 batchSize = 2,
+                subscriptionRefreshConcurrency = 4,
                 retryCount = 1,
             ),
             customDns = "1.1.1.1",
@@ -135,6 +157,7 @@ class MainUiStateProjectorTest {
         assertEquals("https://draft-primary.example.com", projected.validationPrimaryUrlDraft)
         assertEquals("https://draft-secondary.example.com", projected.validationSecondaryUrlDraft)
         assertEquals("9", projected.validationBatchSizeDraft)
+        assertEquals("6", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("3", projected.validationRetryCountDraft)
         assertEquals("1.1.1.1", projected.customDns)
         assertEquals("4.4.4.4", projected.customDnsDraft)

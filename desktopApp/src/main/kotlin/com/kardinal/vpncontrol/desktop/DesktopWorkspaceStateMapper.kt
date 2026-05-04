@@ -50,7 +50,6 @@ internal fun restoreDesktopUiState(
             hasVpnPermission = true,
             routingIgnoreRulesDraft = persistedState.routingRules.ignoreRules,
             routingProxyPackagesDraft = persistedState.routingRules.proxyPackages.toSet(),
-            routingNationalDomainsDraft = persistedState.routingRules.nationalDomainSuffixes.joinToString("\n"),
             routingDirectDomainsDraft = persistedState.routingRules.directDomainSuffixes.joinToString("\n"),
             routingRuleSetsDraft = emptyList(),
         ),
@@ -136,7 +135,6 @@ internal fun MainUiState.toPersistedState(
         ignoreRules = synced.routingIgnoreRulesDraft,
         proxyPackages = RoutingRules.normalizePackageNames(synced.routingProxyPackagesDraft),
         bypassPackages = emptyList(),
-        nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(synced.routingNationalDomainsDraft),
         directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(synced.routingDirectDomainsDraft),
         ruleSets = emptyList(),
     )

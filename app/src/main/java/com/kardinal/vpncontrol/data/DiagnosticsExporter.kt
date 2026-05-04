@@ -94,7 +94,6 @@ class DiagnosticsExporter(
             appendLine("proxy_packages=${state.routingRules.proxyPackages.joinToString(",")}")
             appendLine("android_app_scope=${androidAppScope(state)}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
-            appendLine("national_domain_suffixes=${state.routingRules.nationalDomainSuffixes.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
             appendLine("selected_profile_name=${state.selectedProfileName}")
             appendLine("selected_profile_server=${state.selectedProfileServer}")

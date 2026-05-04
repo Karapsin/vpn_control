@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Жазылымды авто-жаңарту орнатылды: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Тексеру баптаулары сақталды: {0} • {1} • топ {2} • қайталау {3}",
+    "VALIDATION_SETTINGS_SAVED": "Тексеру баптаулары сақталды: {0} • {1} • топ {2} • қайталау {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "Пайдаланушы DNS сақталды",
     "CUSTOM_DNS_DISABLED": "Пайдаланушы DNS өшірілді",
     "FIND_BEST_FROM_SUBSCRIPTION": "Жазылымнан ең жақсы локация ізделуде...",

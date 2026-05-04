@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 
 class DesktopSubscriptionServiceTest {
@@ -82,6 +83,44 @@ class DesktopSubscriptionServiceTest {
         assertEquals(5678L, payload.subscriptions.single().lastRefreshedAtEpochMillis)
         assertTrue(payload.subscriptions.single().lastRefreshStatus.contains("Unexpected subscription fetch"))
         assertTrue(payload.statusMessage.contains("Example"))
+    }
+
+    @Test
+    fun refreshSubscriptionsHonorsConcurrencyLimit() = runTest {
+        val subscriptions = listOf(
+            SubscriptionSource(id = "sub-1", url = "https://example.com/one.txt"),
+            SubscriptionSource(id = "sub-2", url = "https://example.com/two.txt"),
+            SubscriptionSource(id = "sub-3", url = "https://example.com/three.txt"),
+        )
+        var running = 0
+        var maxRunning = 0
+        val service = DesktopSubscriptionService(
+            subscriptionContentFetcher = object : SubscriptionContentFetcher {
+                override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
+                    running += 1
+                    maxRunning = maxOf(maxRunning, running)
+                    delay(10)
+                    running -= 1
+                    return FetchedSubscriptionContent(
+                        body = "socks://user:pass@127.0.0.1:1080#${url.substringAfterLast('/')}",
+                        contentType = "text/plain",
+                    )
+                }
+            },
+            hwidGenerator = { "0123456789abcdef0123456789abcdef" },
+        )
+
+        val payload = service.refreshSubscriptions(
+            state = MainUiState(subscriptions = subscriptions),
+            locations = emptyList(),
+            subscriptionsToRefresh = subscriptions,
+            onProgress = {},
+            concurrency = 2,
+        ).getOrThrow()
+
+        assertEquals(3, payload.refreshedCount)
+        assertEquals(2, maxRunning)
+        assertEquals(subscriptions.map(SubscriptionSource::url), payload.locations.map(DesktopLocationRecord::sourceUrl).distinct())
     }
 
     @Test

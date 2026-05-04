@@ -60,7 +60,7 @@ class ImportExportMenuVisibilityInstrumentedTest : ImportExportUiTestBase() {
             viewModel.openRoutingRules()
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         assertTextExists("Import")
         clickText("Import")
         assertTextExists("QR")
@@ -74,7 +74,7 @@ class ImportExportMenuVisibilityInstrumentedTest : ImportExportUiTestBase() {
             viewModel.openRoutingRules()
         }
 
-        waitForText("Save Rules")
+        waitForText("Direct Domains")
         assertTextExists("Export")
         clickText("Export")
         assertTextExists("QR")

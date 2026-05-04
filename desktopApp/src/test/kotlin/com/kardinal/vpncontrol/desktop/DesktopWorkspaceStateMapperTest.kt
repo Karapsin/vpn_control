@@ -56,7 +56,6 @@ class DesktopWorkspaceStateMapperTest {
                 routingRules = RoutingRules(
                     ignoreRules = true,
                     proxyPackages = listOf("org.example.app"),
-                    nationalDomainSuffixes = listOf("ru"),
                     directDomainSuffixes = listOf("example.com"),
                 ),
                 selectedProfileRawLink = location.rawLink,
@@ -73,7 +72,6 @@ class DesktopWorkspaceStateMapperTest {
         assertEquals("0.5", restored.subscriptionRefreshCustomHoursDraft)
         assertTrue(restored.routingIgnoreRulesDraft)
         assertEquals(setOf("org.example.app"), restored.routingProxyPackagesDraft)
-        assertEquals("ru", restored.routingNationalDomainsDraft)
         assertEquals("example.com", restored.routingDirectDomainsDraft)
         assertEquals(listOf(location.rawLink), restored.currentLocations)
         assertEquals(location.rawLink, restored.selectedProfileRawLink)
@@ -114,14 +112,12 @@ class DesktopWorkspaceStateMapperTest {
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
             routingIgnoreRulesDraft = false,
             routingProxyPackagesDraft = setOf("  org.example.app  ", ""),
-            routingNationalDomainsDraft = "ru\n by ",
             routingDirectDomainsDraft = "example.com\n",
         ).toPersistedState(listOf(saved, remote))
 
         assertEquals(listOf(saved.rawLink), persisted.savedLocations)
         assertEquals(listOf(saved.rawLink), persisted.currentLocations)
         assertEquals(listOf("org.example.app"), persisted.routingRules.proxyPackages)
-        assertEquals(listOf("ru", "by"), persisted.routingRules.nationalDomainSuffixes)
         assertEquals(listOf("example.com"), persisted.routingRules.directDomainSuffixes)
         assertEquals("", persisted.runtimeConfigJson)
     }

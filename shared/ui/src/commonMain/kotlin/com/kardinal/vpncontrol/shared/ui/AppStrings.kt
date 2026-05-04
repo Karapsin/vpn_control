@@ -117,6 +117,7 @@ enum class UiText {
     VALIDATION_ANDROID_SUMMARY,
     VALIDATION_DESKTOP_SUMMARY,
     VALIDATION_SUMMARY,
+    SUBSCRIPTION_REFRESH_CONCURRENCY,
     IMPORT,
     EXPORT,
     FILE,
@@ -200,15 +201,12 @@ enum class UiText {
     PROFILE_SOURCE_DESKTOP_USE_SAVED_HINT,
     PROFILE_SOURCE_DESKTOP_USE_SUBSCRIPTION_HINT,
     ROUTING_RULES_TITLE,
-    SAVE_RULES,
     ROUTING_DESCRIPTION_DESKTOP,
     ROUTING_DESCRIPTION_VPN,
     ROUTING_DESCRIPTION_PROXY,
     APP_ASSIGNMENTS,
     APP_ASSIGNMENTS_DESCRIPTION_VPN,
     APP_ASSIGNMENTS_DESCRIPTION_PROXY,
-    COUNTRY_CODE_DOMAINS,
-    COUNTRY_CODE_DOMAINS_DESCRIPTION,
     BYPASS_DOMAINS,
     BYPASS_DOMAINS_DESCRIPTION,
     CURRENT_RULES,
@@ -314,13 +312,14 @@ class AppStrings(
 
     fun validationSummary(settings: BenchmarkValidationSettings): String {
         val normalized = settings.normalized()
-        return format(
+        val base = format(
             UiText.VALIDATION_SUMMARY,
             normalized.primaryUrl.displayHostForUi(),
             normalized.secondaryUrl.displayHostForUi(),
             normalized.batchSize,
             normalized.retryCount,
         )
+        return "$base • ${get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)} ${normalized.subscriptionRefreshConcurrency}"
     }
 
     fun statusTime(epochMillis: Long): String {

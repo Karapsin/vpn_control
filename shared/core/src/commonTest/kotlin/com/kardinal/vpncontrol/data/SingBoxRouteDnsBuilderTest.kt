@@ -25,8 +25,7 @@ class SingBoxRouteDnsBuilderTest {
             dnsValue = "9.9.9.9",
             routingRules = RoutingRules(
                 ignoreRules = false,
-                nationalDomainSuffixes = listOf("local.example"),
-                directDomainSuffixes = listOf("direct.example"),
+                directDomainSuffixes = listOf("local.example", "direct.example"),
                 ruleSets = listOf(
                     RoutingRuleSet(
                         id = "remote-abc12345",

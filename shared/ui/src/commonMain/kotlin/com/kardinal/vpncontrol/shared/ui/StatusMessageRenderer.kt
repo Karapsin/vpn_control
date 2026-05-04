@@ -71,7 +71,7 @@ internal fun structuredStatusTemplateKeys(status: StructuredStatusMessage): List
     return listOfNotNull(specific, status.key.name)
 }
 
-private val structuredPlaceholderRegex = Regex("\\{([^{}]+)}")
+private val structuredPlaceholderRegex = Regex("\\{([^{}]+)\\}")
 
 private fun renderStructuredStatusTemplate(
     language: AppLanguage,

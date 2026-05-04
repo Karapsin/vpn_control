@@ -29,12 +29,15 @@ object MainDraftLogic {
     fun resolveValidationSettingsSave(state: MainUiState): ValidationSettingsSavePlan {
         val batchSize = state.validationBatchSizeDraft.toIntOrNull()
             ?: BenchmarkValidationSettings.DEFAULT_BATCH_SIZE
+        val subscriptionRefreshConcurrency = state.validationSubscriptionRefreshConcurrencyDraft.toIntOrNull()
+            ?: BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY
         val retryCount = state.validationRetryCountDraft.toIntOrNull()
             ?: BenchmarkValidationSettings.DEFAULT_RETRY_COUNT
         val settings = BenchmarkValidationSettings(
             primaryUrl = state.validationPrimaryUrlDraft,
             secondaryUrl = state.validationSecondaryUrlDraft,
             batchSize = batchSize,
+            subscriptionRefreshConcurrency = subscriptionRefreshConcurrency,
             retryCount = retryCount,
         ).normalized()
         return ValidationSettingsSavePlan(
@@ -59,7 +62,6 @@ object MainDraftLogic {
             ignoreRules = state.routingIgnoreRulesDraft,
             proxyPackages = proxyPackages,
             bypassPackages = emptyList(),
-            nationalDomainSuffixes = RoutingRules.parseNationalDomainSuffixes(state.routingNationalDomainsDraft),
             directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
             ruleSets = emptyList(),
         )
@@ -106,10 +108,10 @@ object MainDraftLogic {
 
     fun applyImportedRoutingRules(state: MainUiState, rules: RoutingRules): MainUiState {
         return state.copy(
+            routingRules = rules,
             routingIgnoreRulesDraft = rules.ignoreRules,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
-            routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
             routingRuleSetsDraft = emptyList(),
             showRuleSetDialog = false,

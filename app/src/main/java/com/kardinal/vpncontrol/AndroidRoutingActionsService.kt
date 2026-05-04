@@ -18,18 +18,16 @@ internal class AndroidRoutingActionsService(
 ) {
     fun onRoutingIgnoreRulesDraftChanged(enabled: Boolean) {
         controller.onRoutingIgnoreRulesDraftChanged(enabled)
+        persistEditedRoutingRules()
     }
 
     fun onRoutingAppSearchChanged(value: String) {
         controller.onRoutingAppSearchChanged(value)
     }
 
-    fun onRoutingNationalDomainsDraftChanged(value: String) {
-        controller.onRoutingNationalDomainsDraftChanged(value)
-    }
-
     fun onRoutingDirectDomainsDraftChanged(value: String) {
         controller.onRoutingDirectDomainsDraftChanged(value)
+        persistEditedRoutingRules()
     }
 
     fun showAddRuleSetDialog() {
@@ -78,36 +76,49 @@ internal class AndroidRoutingActionsService(
 
     fun toggleProxyRoutingApp(packageName: String) {
         controller.toggleProxyRoutingApp(packageName)
+        persistEditedRoutingRules()
     }
 
     fun toggleDirectRoutingApp(packageName: String) {
         controller.toggleDirectRoutingApp(packageName)
+        persistEditedRoutingRules()
     }
 
     fun selectAllVisibleProxyApps() {
         controller.selectAllVisibleProxyApps(filteredRoutingPackages())
+        persistEditedRoutingRules()
     }
 
     fun clearAllVisibleProxyApps() {
         controller.clearAllVisibleProxyApps(filteredRoutingPackages())
+        persistEditedRoutingRules()
     }
 
     fun selectAllVisibleDirectApps() {
         controller.selectAllVisibleDirectApps(filteredRoutingPackages())
+        persistEditedRoutingRules()
     }
 
     fun clearAllVisibleDirectApps() {
         controller.clearAllVisibleDirectApps(filteredRoutingPackages())
+        persistEditedRoutingRules()
     }
 
     fun saveRoutingRules() {
+        persistEditedRoutingRules(showBusy = true)
+    }
+
+    private fun persistEditedRoutingRules(showBusy: Boolean = false) {
         val rules = MainDraftLogic.buildEditedRoutingRules(stateProvider())
         launch {
-            setBusy(true)
+            if (showBusy) {
+                setBusy(true)
+            }
             val result = updateRoutingRules(rules)
             updateStatus(
                 result.fold(
                     onSuccess = {
+                        controller.update { state -> state.copy(routingRules = rules) }
                         RoutingRulesStatusLogic.saved(
                             isConnectionRunning = stateProvider().isVpnRunning,
                             appMode = stateProvider().appMode,
@@ -116,10 +127,9 @@ internal class AndroidRoutingActionsService(
                     onFailure = { RoutingRulesStatusLogic.saveFailed(it) },
                 ),
             )
-            if (result.isSuccess) {
-                effectSink.handle(controller.navigateBack())
+            if (showBusy) {
+                setBusy(false)
             }
-            setBusy(false)
         }
     }
 

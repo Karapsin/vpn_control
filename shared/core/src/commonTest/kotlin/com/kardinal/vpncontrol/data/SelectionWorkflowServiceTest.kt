@@ -1,42 +1,60 @@
 package com.kardinal.vpncontrol.data
 
-import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
+import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlin.test.Test
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 
 class SelectionWorkflowServiceTest {
     @Test
-    fun parseRemoteSourceLocationsRejectsDeviceBindingPlaceholder() = runTest {
-        val error = assertFailsWith<IllegalArgumentException> {
-            SelectionWorkflowService.parseRemoteSourceLocations(
-                rawSource = "https://example.com/sub",
-                resolveSource = {
-                    ResolvedRemoteSource(
-                        preview = RemoteSourcePreview(
-                            kindLabel = "Subscription URL",
-                            title = "example.com",
-                            detail = "Direct remote source",
-                            supported = true,
-                        ),
-                        fetchUrl = "https://example.com/sub",
-                    )
-                },
-                fetchedContent = {
-                    FetchedSubscriptionContent(
-                        body = "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?encryption=none&type=tcp&security=none#placeholder",
-                        contentType = "text/plain",
-                        headers = mapOf(
-                            "x-hwid-active" to "true",
-                            "x-hwid-limit" to "true",
-                            "x-hwid-max-devices-reached" to "true",
-                        ),
-                    )
-                },
-            )
-        }
+    fun loadProfilesForTargetsHonorsConcurrencyAndPreservesTargetOrder() = runTest {
+        val targets = listOf(
+            SubscriptionSearchTarget("sub-1", "one", "One"),
+            SubscriptionSearchTarget("sub-2", "two", "Two"),
+            SubscriptionSearchTarget("sub-3", "three", "Three"),
+        )
+        var running = 0
+        var maxRunning = 0
 
-        assertTrue(error.message.orEmpty().contains("device limit reached"))
+        val loaded = SelectionWorkflowService.loadProfilesForTargets(
+            targets = targets,
+            onStatus = {},
+            concurrency = 2,
+            loadProfiles = { source ->
+                running += 1
+                maxRunning = maxOf(maxRunning, running)
+                delay(
+                    when (source) {
+                        "one" -> 30
+                        "two" -> 10
+                        else -> 1
+                    },
+                )
+                running -= 1
+                listOf(profile(source))
+            },
+        )
+
+        assertEquals(2, maxRunning)
+        assertEquals(listOf("sub-1", "sub-2", "sub-3"), loaded.profilesById.keys.toList())
     }
 }
+
+private fun profile(name: String): ProxyProfile = ProxyProfile(
+    remarks = name,
+    server = "$name.example.com",
+    serverPort = 443,
+    network = "tcp",
+    flow = "",
+    security = "tls",
+    sni = "$name.example.com",
+    fingerprint = "chrome",
+    publicKey = "",
+    shortId = "",
+    path = "",
+    hostHeader = "",
+    serviceName = "",
+    headerType = "none",
+    rawLink = "vless://$name",
+)

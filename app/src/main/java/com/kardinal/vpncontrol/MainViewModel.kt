@@ -132,6 +132,7 @@ class MainViewModel(
         controller = controller,
         effectSink = controllerEffectHandler,
         launch = { block -> viewModelScope.launch { block() } },
+        stopConnection = vpnManager::stop,
         updateStatus = repository::updateStatus,
         updateSessionStatsEnabled = repository::updateSessionStatsEnabled,
         updateLiveTrafficStatsEnabled = repository::updateLiveTrafficStatsEnabled,
@@ -305,6 +306,10 @@ class MainViewModel(
         settingsActions.onValidationBatchSizeDraftChanged(value)
     }
 
+    fun onValidationSubscriptionRefreshConcurrencyDraftChanged(value: String) {
+        settingsActions.onValidationSubscriptionRefreshConcurrencyDraftChanged(value)
+    }
+
     fun onValidationRetryCountDraftChanged(value: String) {
         settingsActions.onValidationRetryCountDraftChanged(value)
     }
@@ -315,10 +320,6 @@ class MainViewModel(
 
     fun onRoutingAppSearchChanged(value: String) {
         routingActions.onRoutingAppSearchChanged(value)
-    }
-
-    fun onRoutingNationalDomainsDraftChanged(value: String) {
-        routingActions.onRoutingNationalDomainsDraftChanged(value)
     }
 
     fun onRoutingDirectDomainsDraftChanged(value: String) {

@@ -14,7 +14,6 @@ class ModelDefaultsTest {
     fun routingRulesDefaultToEmptyDomainLists() {
         val rules = RoutingRules()
 
-        assertTrue(rules.nationalDomainSuffixes.isEmpty())
         assertTrue(rules.directDomainSuffixes.isEmpty())
         assertTrue(rules.allDirectDomainSuffixes.isEmpty())
     }

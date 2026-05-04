@@ -2,12 +2,14 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 
 internal class AndroidSettingsActionsService(
     private val controller: MainController,
     private val effectSink: AndroidControllerEffectSink,
     private val launch: (suspend () -> Unit) -> Unit,
+    private val stopConnection: suspend () -> Result<Unit>,
     private val updateStatus: suspend (String) -> Unit,
     private val updateSessionStatsEnabled: suspend (Boolean) -> Unit,
     private val updateLiveTrafficStatsEnabled: suspend (Boolean) -> Unit,
@@ -93,6 +95,23 @@ internal class AndroidSettingsActionsService(
     }
 
     fun setAppMode(value: AppMode) {
+        val state = controller.currentState()
+        if (state.appMode == value) return
+        if (state.isVpnRunning) {
+            launch {
+                val stopResult = stopConnection()
+                if (stopResult.isFailure) {
+                    updateStatus(
+                        stopResult.exceptionOrNull()?.message
+                            ?: ConnectionStatusMessages.connectionStopFailed(state.appMode),
+                    )
+                    return@launch
+                }
+                controller.update { it.copy(isVpnRunning = false) }
+                effectSink.handle(controller.setAppMode(value))
+            }
+            return
+        }
         effectSink.handle(controller.setAppMode(value))
     }
 
@@ -126,6 +145,10 @@ internal class AndroidSettingsActionsService(
 
     fun onValidationBatchSizeDraftChanged(value: String) {
         controller.onValidationBatchSizeDraftChanged(value)
+    }
+
+    fun onValidationSubscriptionRefreshConcurrencyDraftChanged(value: String) {
+        controller.onValidationSubscriptionRefreshConcurrencyDraftChanged(value)
     }
 
     fun onValidationRetryCountDraftChanged(value: String) {

@@ -84,6 +84,7 @@ class BenchmarkOrchestrator(
                                 targets = searchTargets,
                                 onStatus = storage::updateStatus,
                                 loadProfiles = ::loadRemoteSourceLocations,
+                                concurrency = validationSettings.subscriptionRefreshConcurrency,
                             )
                             val loadedProfiles = loaded.allProfiles
                             require(loadedProfiles.isNotEmpty()) {
@@ -180,13 +181,21 @@ class BenchmarkOrchestrator(
             val state = storage.snapshot()
             val targets = subscriptionSearchTargets(state)
             require(targets.isNotEmpty()) { "Remote source is empty" }
+            val loaded = SelectionWorkflowService.loadProfilesForTargets(
+                targets = targets,
+                onStatus = storage::updateStatus,
+                loadProfiles = ::loadRemoteSourceLocations,
+                concurrency = state.validationSettings.normalized().subscriptionRefreshConcurrency,
+            )
+            require(loaded.allProfiles.isNotEmpty()) {
+                loaded.failureMessages.lastOrNull()?.takeIf { it.isNotBlank() }
+                    ?: BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
+            }
             var selectedMissing = false
-            targets.forEach { target ->
-                val parsed = loadRemoteSourceLocations(target.sourceUrl)
-                require(parsed.isNotEmpty()) { BenchmarkStatusMessages.noLocationsFoundInSource(target.displayName) }
+            loaded.profilesById.forEach { (subscriptionId, profiles) ->
                 val update = storage.updateSubscriptionCache(
-                    subscriptionId = target.subscriptionId,
-                    rawLinks = parsed.map { it.rawLink },
+                    subscriptionId = subscriptionId,
+                    rawLinks = profiles.map { it.rawLink },
                 )
                 selectedMissing = selectedMissing || update.selectedMissing
             }

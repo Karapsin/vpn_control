@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "구독 자동 새로고침 설정: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "검증 설정 저장됨: {0} • {1} • 그룹 {2} • 재시도 {3}",
+    "VALIDATION_SETTINGS_SAVED": "검증 설정 저장됨: {0} • {1} • 그룹 {2} • 재시도 {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "사용자 지정 DNS가 저장되었습니다",
     "CUSTOM_DNS_DISABLED": "사용자 지정 DNS가 비활성화됨",
     "FIND_BEST_FROM_SUBSCRIPTION": "구독에서 최적 위치를 찾는 중...",

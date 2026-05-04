@@ -11,7 +11,7 @@ import org.junit.Test
 
 class AndroidRoutingActionsServiceTest {
     @Test
-    fun saveRoutingRulesPersistsDraftAndNavigatesBack() {
+    fun directDomainDraftChangeAutosavesRulesAndStaysOnScreen() {
         val controller = MainController(
             MainUiState(
                 currentScreen = AppScreen.ROUTING_RULES,
@@ -19,8 +19,6 @@ class AndroidRoutingActionsServiceTest {
                 appMode = AppMode.VPN,
                 isVpnRunning = true,
                 routingProxyPackagesDraft = setOf("org.example.two", "org.example.one"),
-                routingNationalDomainsDraft = "ru\nsu",
-                routingDirectDomainsDraft = "example.com",
             ),
         )
         val statuses = mutableListOf<String>()
@@ -34,14 +32,31 @@ class AndroidRoutingActionsServiceTest {
             },
         )
 
-        service.saveRoutingRules()
+        service.onRoutingDirectDomainsDraftChanged(" *.Example.COM. \nexample.com")
 
         assertEquals(listOf("org.example.one", "org.example.two"), savedRules?.proxyPackages)
-        assertEquals(listOf("ru", "su"), savedRules?.nationalDomainSuffixes)
         assertEquals(listOf("example.com"), savedRules?.directDomainSuffixes)
         assertEquals(listOf(RoutingStatusMessages.routingRulesSavedRestartRequired(AppMode.VPN)), statuses)
-        assertEquals(AppScreen.MAIN, controller.currentState().currentScreen)
+        assertEquals(AppScreen.ROUTING_RULES, controller.currentState().currentScreen)
         assertFalse(controller.currentState().isBusy)
+    }
+
+    @Test
+    fun appAssignmentChangeAutosavesRules() {
+        val controller = MainController(MainUiState())
+        var savedRules: RoutingRules? = null
+        val service = service(
+            controller = controller,
+            updateRoutingRules = {
+                savedRules = it
+                Result.success(Unit)
+            },
+        )
+
+        service.toggleProxyRoutingApp("org.example.one")
+
+        assertEquals(listOf("org.example.one"), savedRules?.proxyPackages)
+        assertEquals(listOf("org.example.one"), controller.currentState().routingRules.proxyPackages)
     }
 
     @Test
@@ -72,8 +87,8 @@ class AndroidRoutingActionsServiceTest {
         assertEquals(true, savedRules?.ignoreRules)
         assertEquals(listOf("org.example.one", "org.example.two"), savedRules?.proxyPackages)
         assertEquals("org.example.one\norg.example.two", controller.currentState().routingProxyPackagesDraft.sorted().joinToString("\n"))
-        assertEquals("ru", controller.currentState().routingNationalDomainsDraft)
         assertEquals("example.com", controller.currentState().routingDirectDomainsDraft)
+        assertEquals(listOf("example.com"), savedRules?.directDomainSuffixes)
         assertEquals(listOf(RoutingStatusMessages.routingRulesImported()), statuses)
         assertFalse(controller.currentState().isBusy)
     }
@@ -90,7 +105,14 @@ class AndroidRoutingActionsServiceTest {
                 ),
             ),
         )
-        val service = service(controller)
+        var savedRules: RoutingRules? = null
+        val service = service(
+            controller = controller,
+            updateRoutingRules = {
+                savedRules = it
+                Result.success(Unit)
+            },
+        )
 
         service.selectAllVisibleProxyApps()
 
@@ -98,6 +120,22 @@ class AndroidRoutingActionsServiceTest {
             setOf("org.example.mail", "org.example.systemmail"),
             controller.currentState().routingProxyPackagesDraft,
         )
+        assertEquals(listOf("org.example.mail", "org.example.systemmail"), savedRules?.proxyPackages)
+    }
+
+    @Test
+    fun exportOmitsLegacyNationalDomainField() {
+        val controller = MainController(
+            MainUiState(
+                routingDirectDomainsDraft = "example.com",
+            ),
+        )
+        val service = service(controller)
+
+        val document = service.buildRoutingRulesExport()
+
+        assertFalse(document.content.contains("national_domain_suffixes"))
+        assertEquals(true, document.content.contains("direct_domain_suffixes"))
     }
 
     private fun service(

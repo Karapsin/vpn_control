@@ -17,6 +17,7 @@ object SettingsStatusMessages {
             normalized.primaryUrl.displayHost(),
             normalized.secondaryUrl.displayHost(),
             normalized.batchSize.toString(),
+            normalized.subscriptionRefreshConcurrency.toString(),
             normalized.retryCount.toString(),
         )
     }

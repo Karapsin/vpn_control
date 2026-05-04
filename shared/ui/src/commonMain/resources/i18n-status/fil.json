@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Nakatakda ang auto-refresh ng subscription sa {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Na-save ang mga setting ng pagsusuri: {0} • {1} • batch na {2} • retry {3}",
+    "VALIDATION_SETTINGS_SAVED": "Na-save ang mga setting ng pagsusuri: {0} • {1} • batch na {2} • retry {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "Na-save ang custom DNS",
     "CUSTOM_DNS_DISABLED": "Na-disable ang custom DNS",
     "FIND_BEST_FROM_SUBSCRIPTION": "Hinahanap ang pinakamainam na lokasyon mula sa subscription...",

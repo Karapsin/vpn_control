@@ -112,9 +112,33 @@ fun routingSummary(state: MainUiState): String {
     return buildString {
         append("${state.routingRules.proxyPackages.size} VPN apps")
         append(" • ")
-        append("${state.routingRules.nationalDomainSuffixes.size} country-code domains")
-        append(" • ")
-        append("${state.routingRules.directDomainSuffixes.size} bypass domains")
+        append("${state.routingRules.directDomainSuffixes.size} direct domains")
+    }
+}
+
+fun ignoreRulesDescription(
+    state: MainUiState,
+    showAppAssignments: Boolean,
+    strings: AppStrings,
+): String {
+    return if (!showAppAssignments) {
+        if (state.routingIgnoreRulesDraft) {
+            strings.get(UiText.IGNORE_RULES_ON_DOMAINS_ONLY)
+        } else {
+            strings.get(UiText.IGNORE_RULES_OFF_DOMAINS_ONLY)
+        }
+    } else if (state.routingIgnoreRulesDraft) {
+        if (state.appMode == AppMode.VPN) {
+            strings.get(UiText.IGNORE_RULES_ON_APPS)
+        } else {
+            strings.get(UiText.IGNORE_RULES_ON_PROXY)
+        }
+    } else {
+        if (state.appMode == AppMode.VPN) {
+            strings.get(UiText.IGNORE_RULES_OFF_APPS)
+        } else {
+            strings.get(UiText.IGNORE_RULES_OFF_PROXY)
+        }
     }
 }
 

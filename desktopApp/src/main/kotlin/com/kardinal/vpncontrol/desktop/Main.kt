@@ -90,6 +90,7 @@ import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
+import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
 import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
 import java.util.Locale
@@ -265,6 +266,8 @@ private fun DesktopVpnControlApp(
         onValidationPrimaryUrlDraftChange = service::setValidationPrimaryUrlDraft,
         onValidationSecondaryUrlDraftChange = service::setValidationSecondaryUrlDraft,
         onValidationBatchSizeDraftChange = service::setValidationBatchSizeDraft,
+        onValidationSubscriptionRefreshConcurrencyDraftChange =
+            service::setValidationSubscriptionRefreshConcurrencyDraft,
         onValidationRetryCountDraftChange = service::setValidationRetryCountDraft,
         onSaveValidationSettings = service::saveValidationSettings,
         onToggleLanguageDialog = service::toggleLanguageDialog,
@@ -323,10 +326,15 @@ private fun DesktopVpnControlApp(
                             state = state,
                             onToggleDnsDialog = service::toggleDnsDialog,
                             onSetStartOnBootEnabled = service::setStartOnBootEnabled,
-                            onToggleAppModeDialog = service::toggleAppModeDialog,
+                            onSetAppMode = { mode ->
+                                if (!state.isBusy) {
+                                    coroutineScope.launch { service.setAppMode(mode) }
+                                }
+                            },
                             onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
                             onToggleLanguageDialog = service::toggleLanguageDialog,
+                            onIgnoreRulesChange = service::setRoutingIgnoreRulesDraft,
                         )
                     },
                 )
@@ -411,14 +419,11 @@ private fun DesktopVpnControlApp(
 
                 AppScreen.ROUTING_RULES -> RoutingRulesScreen(
                     state = state,
-                    onIgnoreRulesChange = service::setRoutingIgnoreRulesDraft,
                     onAppSearchChange = service::setRoutingAppSearch,
                     onToggleProxyApp = service::toggleProxyApp,
                     onSelectAllProxyApps = service::selectAllProxyApps,
                     onClearAllProxyApps = service::clearAllProxyApps,
-                    onNationalDomainsChange = service::setRoutingNationalDomainsDraft,
                     onDirectDomainsChange = service::setRoutingDirectDomainsDraft,
-                    onSave = service::saveRoutingRules,
                     showAppAssignments = false,
                     controls = {
                         DesktopActionRow(
@@ -836,10 +841,11 @@ private fun DesktopAdditionalSettingsMenu(
     state: MainUiState,
     onToggleDnsDialog: () -> Unit,
     onSetStartOnBootEnabled: (Boolean) -> Unit,
-    onToggleAppModeDialog: () -> Unit,
+    onSetAppMode: (AppMode) -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
+    onIgnoreRulesChange: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
@@ -864,22 +870,6 @@ private fun DesktopAdditionalSettingsMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            DropdownMenuItem(
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
-                        Text(
-                            if (state.useCustomDns) state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) } else strings.get(UiText.SETTINGS_DISABLED),
-                            color = Color(0xFF4A6070),
-                            fontSize = 12.sp,
-                        )
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    onToggleDnsDialog()
-                },
-            )
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -911,13 +901,11 @@ private fun DesktopAdditionalSettingsMenu(
                     Switch(
                         checked = state.startOnBootEnabled,
                         onCheckedChange = { enabled ->
-                            expanded = false
                             onSetStartOnBootEnabled(enabled)
                         },
                     )
                 },
                 onClick = {
-                    expanded = false
                     onSetStartOnBootEnabled(!state.startOnBootEnabled)
                 },
             )
@@ -932,9 +920,45 @@ private fun DesktopAdditionalSettingsMenu(
                         )
                     }
                 },
+                trailingIcon = {
+                    Switch(
+                        checked = state.appMode == AppMode.VPN,
+                        onCheckedChange = { enabled ->
+                            onSetAppMode(if (enabled) AppMode.VPN else AppMode.PROXY_ONLY)
+                        },
+                    )
+                },
                 onClick = {
-                    expanded = false
-                    onToggleAppModeDialog()
+                    onSetAppMode(
+                        if (state.appMode == AppMode.VPN) {
+                            AppMode.PROXY_ONLY
+                        } else {
+                            AppMode.VPN
+                        },
+                    )
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.IGNORE_RULES))
+                        Text(
+                            ignoreRulesDescription(state, showAppAssignments = false, strings = strings),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    Switch(
+                        checked = !state.routingIgnoreRulesDraft,
+                        onCheckedChange = { enabled ->
+                            onIgnoreRulesChange(!enabled)
+                        },
+                    )
+                },
+                onClick = {
+                    onIgnoreRulesChange(!state.routingIgnoreRulesDraft)
                 },
             )
             DropdownMenuItem(
@@ -969,6 +993,22 @@ private fun DesktopAdditionalSettingsMenu(
                     onToggleValidationSettingsDialog()
                 },
             )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
+                        Text(
+                            if (state.useCustomDns) state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) } else strings.get(UiText.SETTINGS_DISABLED),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onToggleDnsDialog()
+                },
+            )
         }
     }
 }
@@ -992,6 +1032,7 @@ private fun DesktopSettingsDialogs(
     onValidationPrimaryUrlDraftChange: (String) -> Unit,
     onValidationSecondaryUrlDraftChange: (String) -> Unit,
     onValidationBatchSizeDraftChange: (String) -> Unit,
+    onValidationSubscriptionRefreshConcurrencyDraftChange: (String) -> Unit,
     onValidationRetryCountDraftChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
@@ -1292,6 +1333,14 @@ private fun DesktopSettingsDialogs(
                         onValueChange = onValidationBatchSizeDraftChange,
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(strings.get(UiText.BATCH_SIZE)) },
+                        placeholder = { Text("3") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.validationSubscriptionRefreshConcurrencyDraft,
+                        onValueChange = onValidationSubscriptionRefreshConcurrencyDraftChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)) },
                         placeholder = { Text("3") },
                         singleLine = true,
                     )

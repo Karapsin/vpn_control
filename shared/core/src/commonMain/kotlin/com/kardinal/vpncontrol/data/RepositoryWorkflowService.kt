@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.BenchmarkSummaryFormatter
 import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.PersistedState
@@ -9,6 +10,11 @@ import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.activeSubscriptionUrls
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class SubscriptionRefreshFailure(
     val subscriptionId: String,
@@ -94,22 +100,44 @@ object RepositoryWorkflowService {
             var refreshed = 0
             var lastFailure: Throwable? = null
             val failures = mutableListOf<SubscriptionRefreshFailure>()
-            state.subscriptions.forEach { subscription ->
-                val result = refreshSingleSubscription(
-                    subscription = subscription,
-                    fetchSubscriptionLocations = fetchSubscriptionLocations,
-                    updateSubscriptionCache = updateSubscriptionCache,
-                    updateRefreshStatus = updateRefreshStatus,
-                )
-                if (result.isSuccess) {
-                    refreshed += 1
+            val loaded = loadSubscriptionsConcurrently(
+                subscriptions = state.subscriptions,
+                concurrency = state.validationSettings.normalized().subscriptionRefreshConcurrency,
+                fetchSubscriptionLocations = fetchSubscriptionLocations,
+            )
+            loaded.forEach { load ->
+                val subscription = load.subscription
+                val error = load.error
+                if (error == null) {
+                    val profiles = checkNotNull(load.profiles)
+                    runCatching {
+                        updateSubscriptionCache(subscription.id, profiles.map { it.rawLink })
+                    }.onSuccess {
+                        refreshed += 1
+                    }.onFailure { updateError ->
+                        lastFailure = updateError
+                        updateRefreshStatus(
+                            subscription.id,
+                            updateError.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
+                        )
+                        failures += SubscriptionRefreshFailure(
+                            subscriptionId = subscription.id,
+                            sourceUrl = subscription.url,
+                            displayName = displayLabel(subscription),
+                            message = updateError.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
+                        )
+                    }
                 } else {
-                    lastFailure = result.exceptionOrNull()
+                    lastFailure = error
+                    updateRefreshStatus(
+                        subscription.id,
+                        error.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
+                    )
                     failures += SubscriptionRefreshFailure(
                         subscriptionId = subscription.id,
                         sourceUrl = subscription.url,
                         displayName = displayLabel(subscription),
-                        message = result.exceptionOrNull()?.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
+                        message = error.message ?: SubscriptionStatusMessages.backgroundRefreshFailed(),
                     )
                 }
             }
@@ -122,6 +150,40 @@ object RepositoryWorkflowService {
             )
         }
     }
+
+    private suspend fun loadSubscriptionsConcurrently(
+        subscriptions: List<SubscriptionSource>,
+        concurrency: Int,
+        fetchSubscriptionLocations: suspend (String) -> List<ProxyProfile>,
+    ): List<SubscriptionRefreshLoad> = coroutineScope {
+        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        subscriptions.mapIndexed { index, subscription ->
+            async {
+                semaphore.withPermit {
+                    val result = runCatching {
+                        val profiles = fetchSubscriptionLocations(subscription.url)
+                        require(profiles.isNotEmpty()) {
+                            BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
+                        }
+                        profiles
+                    }
+                    SubscriptionRefreshLoad(
+                        index = index,
+                        subscription = subscription,
+                        profiles = result.getOrNull(),
+                        error = result.exceptionOrNull(),
+                    )
+                }
+            }
+        }.awaitAll().sortedBy(SubscriptionRefreshLoad::index)
+    }
+
+    private data class SubscriptionRefreshLoad(
+        val index: Int,
+        val subscription: SubscriptionSource,
+        val profiles: List<ProxyProfile>?,
+        val error: Throwable?,
+    )
 
     fun hasStoredSelection(
         state: PersistedState,
@@ -201,18 +263,19 @@ object RepositoryWorkflowService {
         sourceUrl: String,
         sourceLabelForUrl: (String) -> String?,
     ): String {
+        val baseDetail = BenchmarkSummaryFormatter.detailWithoutBestSource(detail)
         val normalizedSourceUrl = sourceUrl.trim()
         if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION || normalizedSourceUrl.isBlank()) {
-            return detail
+            return baseDetail
         }
         val shouldShowSource =
             isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions) ||
                 (state.profileUrl.isNotBlank() && normalizedSourceUrl != state.profileUrl)
         if (!shouldShowSource) {
-            return detail
+            return baseDetail
         }
-        val sourceLabel = sourceLabelForUrl(normalizedSourceUrl) ?: return detail
-        return "$detail • Best from: $sourceLabel"
+        val sourceLabel = sourceLabelForUrl(normalizedSourceUrl) ?: return baseDetail
+        return BenchmarkSummaryFormatter.appendBestSource(baseDetail, sourceLabel)
     }
 
     private suspend fun refreshSingleSubscription(

@@ -14,7 +14,6 @@ class DesktopRoutingRulesServiceTest {
         var state = MainUiState(
             routingIgnoreRulesDraft = false,
             routingProxyPackagesDraft = setOf(" org.telegram.messenger ", "org.telegram.messenger", ""),
-            routingNationalDomainsDraft = "ru\n.by\n",
             routingDirectDomainsDraft = "example.com\n.local",
         )
         val service = DesktopRoutingRulesService(
@@ -27,10 +26,28 @@ class DesktopRoutingRulesServiceTest {
 
         assertFalse(state.routingRules.ignoreRules)
         assertEquals(listOf("org.telegram.messenger"), state.routingRules.proxyPackages)
-        assertEquals(listOf("ru", "by"), state.routingRules.nationalDomainSuffixes)
         assertEquals(listOf("example.com", "local"), state.routingRules.directDomainSuffixes)
         assertTrue(state.routingRules.ruleSets.isEmpty())
         assertEquals(RoutingStatusMessages.routingRulesSaved(), state.statusMessage)
+    }
+
+    @Test
+    fun routingDraftChangesAutosaveCommittedRules() {
+        var state = MainUiState(isVpnRunning = true, appMode = AppMode.VPN)
+        val service = DesktopRoutingRulesService(
+            stateProvider = { state },
+            commitState = { nextState -> state = nextState },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        service.setDirectDomainsDraft("*.Example.COM.\n.local")
+        service.toggleProxyApp("org.example.app")
+        service.setIgnoreRulesDraft(true)
+
+        assertTrue(state.routingRules.ignoreRules)
+        assertEquals(listOf("org.example.app"), state.routingRules.proxyPackages)
+        assertEquals(listOf("example.com", "local"), state.routingRules.directDomainSuffixes)
+        assertEquals(RoutingStatusMessages.routingRulesSavedRestartRequired(AppMode.VPN), state.statusMessage)
     }
 
     @Test
@@ -55,8 +72,8 @@ class DesktopRoutingRulesServiceTest {
 
         assertTrue(state.routingRules.ignoreRules)
         assertEquals(setOf("com.example.browser"), state.routingProxyPackagesDraft)
-        assertEquals("ru", state.routingNationalDomainsDraft)
         assertEquals("example.com", state.routingDirectDomainsDraft)
+        assertEquals(listOf("example.com"), state.routingRules.directDomainSuffixes)
         assertEquals(RoutingStatusMessages.routingRulesImportedRestartRequired(AppMode.VPN), state.statusMessage)
     }
 }

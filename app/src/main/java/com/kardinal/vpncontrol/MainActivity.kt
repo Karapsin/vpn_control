@@ -186,6 +186,8 @@ class MainActivity : ComponentActivity() {
                 onValidationPrimaryUrlChange = viewModel::onValidationPrimaryUrlDraftChanged,
                 onValidationSecondaryUrlChange = viewModel::onValidationSecondaryUrlDraftChanged,
                 onValidationBatchSizeChange = viewModel::onValidationBatchSizeDraftChanged,
+                onValidationSubscriptionRefreshConcurrencyChange =
+                    viewModel::onValidationSubscriptionRefreshConcurrencyDraftChanged,
                 onValidationRetryCountChange = viewModel::onValidationRetryCountDraftChanged,
                 onSaveValidationSettings = viewModel::saveValidationSettings,
                 onToggleLanguageDialog = viewModel::toggleLanguageDialog,
@@ -239,7 +241,6 @@ class MainActivity : ComponentActivity() {
                 onClearAllProxyApps = viewModel::clearAllVisibleProxyApps,
                 onSelectAllDirectApps = viewModel::selectAllVisibleDirectApps,
                 onClearAllDirectApps = viewModel::clearAllVisibleDirectApps,
-                onRoutingNationalDomainsChange = viewModel::onRoutingNationalDomainsDraftChanged,
                 onRoutingDirectDomainsChange = viewModel::onRoutingDirectDomainsDraftChanged,
                 onShowAddRuleSetDialog = viewModel::showAddRuleSetDialog,
                 onEditRuleSet = viewModel::editRuleSet,
@@ -252,7 +253,6 @@ class MainActivity : ComponentActivity() {
                 onRuleSetActionChange = viewModel::onRuleSetActionDraftChanged,
                 onRuleSetUpdateHoursChange = viewModel::onRuleSetUpdateHoursDraftChanged,
                 onSaveRuleSet = viewModel::saveRuleSet,
-                onSaveRoutingRules = viewModel::saveRoutingRules,
                 onExportRoutingRules = {
                     val document = viewModel.buildRoutingRulesExport()
                     pendingRoutingRulesExport = document.content

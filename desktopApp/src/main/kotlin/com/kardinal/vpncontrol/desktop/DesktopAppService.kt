@@ -327,6 +327,10 @@ class DesktopAppService internal constructor(
         settingsService.setValidationBatchSizeDraft(value)
     }
 
+    fun setValidationSubscriptionRefreshConcurrencyDraft(value: String) {
+        settingsService.setValidationSubscriptionRefreshConcurrencyDraft(value)
+    }
+
     fun setValidationRetryCountDraft(value: String) {
         settingsService.setValidationRetryCountDraft(value)
     }
@@ -401,10 +405,6 @@ class DesktopAppService internal constructor(
 
     fun clearAllProxyApps() {
         routingRulesService.clearAllProxyApps()
-    }
-
-    fun setRoutingNationalDomainsDraft(value: String) {
-        routingRulesService.setNationalDomainsDraft(value)
     }
 
     fun setRoutingDirectDomainsDraft(value: String) {

@@ -52,6 +52,8 @@ data class MainUiState(
     val validationPrimaryUrlDraft: String = BenchmarkValidationSettings.DEFAULT_PRIMARY_URL,
     val validationSecondaryUrlDraft: String = BenchmarkValidationSettings.DEFAULT_SECONDARY_URL,
     val validationBatchSizeDraft: String = BenchmarkValidationSettings.DEFAULT_BATCH_SIZE.toString(),
+    val validationSubscriptionRefreshConcurrencyDraft: String =
+        BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY.toString(),
     val validationRetryCountDraft: String = BenchmarkValidationSettings.DEFAULT_RETRY_COUNT.toString(),
     val currentLocations: List<String> = emptyList(),
     val locationBenchmarkDetails: Map<String, String> = emptyMap(),
@@ -63,7 +65,6 @@ data class MainUiState(
     val routingIgnoreRulesDraft: Boolean = false,
     val routingProxyPackagesDraft: Set<String> = emptySet(),
     val routingBypassPackagesDraft: Set<String> = emptySet(),
-    val routingNationalDomainsDraft: String = "",
     val routingDirectDomainsDraft: String = "",
     val routingRuleSetsDraft: List<RoutingRuleSet> = emptyList(),
     val routingAppSearch: String = "",
@@ -177,6 +178,11 @@ object MainUiStateProjector {
             } else {
                 persisted.validationSettings.batchSize.toString()
             },
+            validationSubscriptionRefreshConcurrencyDraft = if (current.showValidationSettingsDialog) {
+                current.validationSubscriptionRefreshConcurrencyDraft
+            } else {
+                persisted.validationSettings.subscriptionRefreshConcurrency.toString()
+            },
             validationRetryCountDraft = if (current.showValidationSettingsDialog) {
                 current.validationRetryCountDraft
             } else {
@@ -194,13 +200,23 @@ object MainUiStateProjector {
             } else {
                 persisted.routingRules.ignoreRules
             },
+            routingProxyPackagesDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
+                current.routingProxyPackagesDraft
+            } else {
+                persisted.routingRules.proxyPackages.toSet()
+            },
+            routingDirectDomainsDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
+                current.routingDirectDomainsDraft
+            } else {
+                persisted.routingRules.directDomainSuffixes.joinToString(separator = "\n")
+            },
             routingRuleSetsDraft = emptyList(),
             selectedProfileName = persisted.selectedProfileName,
             selectedProfileServer = persisted.selectedProfileServer,
             selectedProfileRawLink = persisted.selectedProfileRawLink,
             selectedProfileJson = persisted.selectedProfileJson,
             selectedProfileSourceUrl = persisted.selectedProfileSourceUrl,
-            lastBenchmarkSummary = persisted.lastBenchmarkSummary,
+            lastBenchmarkSummary = BenchmarkSummaryFormatter.compactBestSourceRepeats(persisted.lastBenchmarkSummary),
             isVpnRunning = persisted.isVpnRunning,
             statusMessage = persisted.statusMessage,
             sessionStatsEnabled = persisted.sessionStatsEnabled,
@@ -241,6 +257,7 @@ object MainUiStateTransitions {
             validationPrimaryUrlDraft = current.primaryUrl,
             validationSecondaryUrlDraft = current.secondaryUrl,
             validationBatchSizeDraft = current.batchSize.toString(),
+            validationSubscriptionRefreshConcurrencyDraft = current.subscriptionRefreshConcurrency.toString(),
             validationRetryCountDraft = current.retryCount.toString(),
         )
     }
@@ -264,7 +281,6 @@ object MainUiStateTransitions {
             routingIgnoreRulesDraft = rules.ignoreRules,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
-            routingNationalDomainsDraft = rules.nationalDomainSuffixes.joinToString(separator = "\n"),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
             routingRuleSetsDraft = emptyList(),
             routingAppSearch = "",

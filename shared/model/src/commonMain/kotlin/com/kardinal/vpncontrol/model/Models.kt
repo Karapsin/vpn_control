@@ -259,6 +259,7 @@ data class BenchmarkValidationSettings(
     val primaryUrl: String = DEFAULT_PRIMARY_URL,
     val secondaryUrl: String = DEFAULT_SECONDARY_URL,
     val batchSize: Int = DEFAULT_BATCH_SIZE,
+    val subscriptionRefreshConcurrency: Int = DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
     val retryCount: Int = DEFAULT_RETRY_COUNT,
 ) {
     fun normalized(): BenchmarkValidationSettings {
@@ -266,19 +267,26 @@ data class BenchmarkValidationSettings(
             primaryUrl = normalizeUrl(primaryUrl, DEFAULT_PRIMARY_URL),
             secondaryUrl = normalizeUrl(secondaryUrl, DEFAULT_SECONDARY_URL),
             batchSize = batchSize.coerceAtLeast(1),
+            subscriptionRefreshConcurrency = subscriptionRefreshConcurrency.coerceIn(
+                MIN_SUBSCRIPTION_REFRESH_CONCURRENCY,
+                MAX_SUBSCRIPTION_REFRESH_CONCURRENCY,
+            ),
             retryCount = retryCount.coerceAtLeast(0),
         )
     }
 
     fun displaySummary(): String {
         val normalized = normalized()
-        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • retries ${normalized.retryCount}"
+        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • refresh ${normalized.subscriptionRefreshConcurrency} • retries ${normalized.retryCount}"
     }
 
     companion object {
         const val DEFAULT_PRIMARY_URL = "https://www.google.com/generate_204"
         const val DEFAULT_SECONDARY_URL = "https://chatgpt.com/"
         const val DEFAULT_BATCH_SIZE = 3
+        const val DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY = 3
+        const val MIN_SUBSCRIPTION_REFRESH_CONCURRENCY = 1
+        const val MAX_SUBSCRIPTION_REFRESH_CONCURRENCY = 8
         const val DEFAULT_RETRY_COUNT = 1
 
         private fun normalizeUrl(raw: String, fallback: String): String {
@@ -369,17 +377,15 @@ data class RoutingRules(
     val ignoreRules: Boolean = false,
     val proxyPackages: List<String> = emptyList(),
     val bypassPackages: List<String> = emptyList(),
-    val nationalDomainSuffixes: List<String> = DEFAULT_NATIONAL_DOMAIN_SUFFIXES,
     val directDomainSuffixes: List<String> = DEFAULT_DIRECT_DOMAIN_SUFFIXES,
     val ruleSets: List<RoutingRuleSet> = emptyList(),
 ) {
     val allDirectDomainSuffixes: List<String>
-        get() = (nationalDomainSuffixes + directDomainSuffixes)
+        get() = directDomainSuffixes
             .mapNotNull(::toDomainSuffix)
             .distinct()
 
     companion object {
-        val DEFAULT_NATIONAL_DOMAIN_SUFFIXES = emptyList<String>()
         val DEFAULT_DIRECT_DOMAIN_SUFFIXES = emptyList<String>()
 
         fun normalizePackageNames(values: Iterable<String>): List<String> {
@@ -388,19 +394,6 @@ data class RoutingRules(
                 .filter { it.isNotBlank() }
                 .distinct()
                 .sorted()
-        }
-
-        fun parseNationalDomainSuffixes(input: String): List<String> {
-            return tokenize(input)
-                .map { suffix ->
-                    suffix
-                        .removePrefix("*.")
-                        .trimStart('.')
-                        .trimEnd('.')
-                        .lowercase()
-                }
-                .filter { it.isNotBlank() }
-                .distinct()
         }
 
         fun parseDirectDomainSuffixes(input: String): List<String> {

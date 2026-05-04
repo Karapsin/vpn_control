@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "បានកំណត់ការធ្វើបច្ចុប្បន្នភាពការជាវស្វ័យប្រវត្តិទៅ {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "ការកំណត់ផ្ទៀងផ្ទាត់បានរក្សាទុក៖ {0} • {1} • កញ្ចប់ {2} • សាកល្បងឡើងវិញ {3}",
+    "VALIDATION_SETTINGS_SAVED": "ការកំណត់ផ្ទៀងផ្ទាត់បានរក្សាទុក៖ {0} • {1} • កញ្ចប់ {2} • សាកល្បងឡើងវិញ {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "DNS ផ្ទាល់ខ្លួនបានរក្សាទុក",
     "CUSTOM_DNS_DISABLED": "DNS ផ្ទាល់ខ្លួនបានបិទ",
     "FIND_BEST_FROM_SUBSCRIPTION": "កំពុងរកទីតាំងល្អបំផុតពីការជាវ...",

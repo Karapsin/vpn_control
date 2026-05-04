@@ -83,7 +83,7 @@ Rules must preserve these expectations:
 - No default routing rules.
 - If `ignoreRules` is on, all app traffic uses VPN where VPN mode is available.
 - If `ignoreRules` is off and the app assignment set is empty, all apps use VPN.
-- Direct/national domain suffix rules bypass VPN/proxy where configured.
+- Direct domain suffix rules bypass VPN/proxy where configured.
 - Desktop does not expose Android app assignments because desktop app-level routing needs different OS-specific control.
 
 ## Find Best And Benchmarks

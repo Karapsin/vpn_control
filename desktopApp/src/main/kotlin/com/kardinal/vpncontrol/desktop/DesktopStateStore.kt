@@ -309,6 +309,10 @@ class DesktopStateStore(
                     put("primary_url", JsonPrimitive(state.validationSettings.primaryUrl))
                     put("secondary_url", JsonPrimitive(state.validationSettings.secondaryUrl))
                     put("batch_size", JsonPrimitive(state.validationSettings.batchSize))
+                    put(
+                        "subscription_refresh_concurrency",
+                        JsonPrimitive(state.validationSettings.subscriptionRefreshConcurrency),
+                    )
                     put("retry_count", JsonPrimitive(state.validationSettings.retryCount))
                 },
             )
@@ -323,7 +327,6 @@ class DesktopStateStore(
                     put("ignore_rules", JsonPrimitive(state.routingRules.ignoreRules))
                     put("proxy_packages", encodeStringArray(state.routingRules.proxyPackages))
                     put("bypass_packages", encodeStringArray(state.routingRules.bypassPackages))
-                    put("national_domain_suffixes", encodeStringArray(state.routingRules.nationalDomainSuffixes))
                     put("direct_domain_suffixes", encodeStringArray(state.routingRules.directDomainSuffixes))
                     put("rule_sets_json", JsonPrimitive(""))
                 },
@@ -403,6 +406,10 @@ class DesktopStateStore(
                 primaryUrl = validation.string("primary_url"),
                 secondaryUrl = validation.string("secondary_url"),
                 batchSize = validation.int("batch_size", default = BenchmarkValidationSettings.DEFAULT_BATCH_SIZE),
+                subscriptionRefreshConcurrency = validation.int(
+                    "subscription_refresh_concurrency",
+                    default = BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
+                ),
                 retryCount = validation.int("retry_count", default = BenchmarkValidationSettings.DEFAULT_RETRY_COUNT),
             ).normalized(),
             savedLocations = root.stringList("saved_locations"),
@@ -414,7 +421,6 @@ class DesktopStateStore(
                 ignoreRules = routing.boolean("ignore_rules"),
                 proxyPackages = routing.stringList("proxy_packages"),
                 bypassPackages = routing.stringList("bypass_packages"),
-                nationalDomainSuffixes = routing.stringList("national_domain_suffixes"),
                 directDomainSuffixes = routing.stringList("direct_domain_suffixes"),
                 ruleSets = emptyList(),
             ),
@@ -498,7 +504,6 @@ private fun RoutingRules.isLegacyDefaultDesktopRoutingRules(): Boolean {
     return !ignoreRules &&
         proxyPackages == listOf("com.example.browser", "org.telegram.messenger") &&
         bypassPackages.isEmpty() &&
-        nationalDomainSuffixes == listOf("ru", "by") &&
         directDomainSuffixes == listOf("example.com", "intranet.local") &&
         ruleSets.isEmpty()
 }

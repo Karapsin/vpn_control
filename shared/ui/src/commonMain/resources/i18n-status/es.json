@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Actualización automática de suscripción: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Ajustes de validación guardados: {0} • {1} • lote {2} • reintentos {3}",
+    "VALIDATION_SETTINGS_SAVED": "Ajustes de validación guardados: {0} • {1} • lote {2} • reintentos {4} • refresh {3}",
     "CUSTOM_DNS_SAVED": "DNS personalizado guardado",
     "CUSTOM_DNS_DISABLED": "DNS personalizado desactivado",
     "FIND_BEST_FROM_SUBSCRIPTION": "Buscando la mejor ubicación de la suscripción...",
