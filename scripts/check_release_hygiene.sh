@@ -29,5 +29,6 @@ if (( ${#bad_paths[@]} > 0 )); then
 fi
 
 bash scripts/check_docs_hygiene.sh
+bash scripts/test_arch_install_hygiene.sh
 
 echo "[vpn-control] release hygiene passed"

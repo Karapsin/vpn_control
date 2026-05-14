@@ -133,7 +133,7 @@ private fun DesktopApplication(
     val service = remember { DesktopAppServiceFactory.default() }
     val coroutineScope = rememberCoroutineScope()
     val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
-    val traySupported = remember { isDesktopTraySupported() }
+    var traySupported by remember { mutableStateOf(isDesktopTraySupported()) }
     var windowVisible by remember { mutableStateOf(!startInTray || !traySupported) }
     var exitRequested by remember { mutableStateOf(false) }
     val state = service.state
@@ -195,6 +195,10 @@ private fun DesktopApplication(
             onShowWindow = { windowVisible = true },
             onHideWindow = { windowVisible = false },
             onExit = ::exitAfterStoppingRuntime,
+            onTrayUnavailable = {
+                traySupported = false
+                windowVisible = true
+            },
         )
     }
 

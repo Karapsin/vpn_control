@@ -2,9 +2,16 @@ package com.kardinal.vpncontrol.desktop
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import dorkbox.systemTray.MenuItem as DorkboxMenuItem
+import dorkbox.systemTray.Separator as DorkboxSeparator
+import dorkbox.systemTray.SystemTray as DorkboxSystemTray
 import java.awt.BasicStroke
 import java.awt.Color as AwtColor
 import java.awt.Cursor
+import java.awt.Dimension
 import java.awt.GradientPaint
 import java.awt.GraphicsEnvironment
 import java.awt.Graphics
@@ -14,12 +21,12 @@ import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.Polygon
 import java.awt.RenderingHints
-import java.awt.SystemTray
 import java.awt.TrayIcon
 import java.awt.Window
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
+import java.net.URL
 import javax.imageio.ImageIO
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -30,6 +37,19 @@ import javax.swing.JWindow
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 import kotlin.math.roundToInt
+import java.awt.SystemTray as AwtSystemTray
+
+private const val DefaultTrayAppName = "VPN Control"
+private const val DefaultLinuxTrayIconSize = 24
+private const val TinyLinuxTrayIconSize = 12
+private const val MinimumLinuxTrayArtworkSize = 10
+private const val LinuxTrayArtworkInsetRatio = 0.12
+private const val LinuxAwtXEmbedPaintGuardPixels = 4
+private const val MinimumNonLinuxTrayIconSize = 22
+private const val MaximumTrayIconSize = 128
+private const val TrayInstallRetryDelayMillis = 1_000
+private const val TrayInstallMaxAttempts = 60
+private const val LinuxAwtImageRefreshDelayMillis = 250
 
 @Composable
 internal fun DesktopTrayIcon(
@@ -46,20 +66,11 @@ internal fun DesktopTrayIcon(
     onShowWindow: () -> Unit,
     onHideWindow: () -> Unit,
     onExit: () -> Unit,
+    onTrayUnavailable: () -> Unit = {},
 ) {
-    DisposableEffect(
-        appTitle,
-        connectionActionLabel,
-        findBestLabel,
-        showWindowLabel,
-        hideWindowLabel,
-        exitLabel,
-        connectionActionEnabled,
-        findBestEnabled,
-    ) {
-        val popup = TrayPopupController()
-        val trayIcon = installTrayIcon(
-            appTitle = appTitle,
+    val currentAppTitle = rememberUpdatedState(appTitle)
+    val currentMenuState = rememberUpdatedState(
+        TrayMenuState(
             connectionActionLabel = connectionActionLabel,
             findBestLabel = findBestLabel,
             showWindowLabel = showWindowLabel,
@@ -72,65 +83,603 @@ internal fun DesktopTrayIcon(
             onShowWindow = onShowWindow,
             onHideWindow = onHideWindow,
             onExit = onExit,
-            popup = popup,
+        ),
+    )
+    val trayHandleHolder = remember { DesktopTrayHandleHolder() }
+
+    SideEffect {
+        trayHandleHolder.update(appTitle, currentMenuState.value)
+    }
+
+    DisposableEffect(Unit) {
+        val trayHandle = createDesktopTrayBackendInstaller().install(
+            appTitle = { currentAppTitle.value },
+            menuState = { currentMenuState.value },
         )
+        trayHandleHolder.handle = trayHandle
+        trayHandleHolder.update(currentAppTitle.value, currentMenuState.value)
+        if (trayHandle == null) {
+            SwingUtilities.invokeLater(onTrayUnavailable)
+        }
         onDispose {
-            popup.dismiss()
-            trayIcon?.let { icon ->
-                runCatching { SystemTray.getSystemTray().remove(icon) }
-            }
+            trayHandle?.dispose()
+            trayHandleHolder.handle = null
         }
     }
 }
 
 internal fun isDesktopTraySupported(): Boolean {
+    val isHeadless = runCatching { GraphicsEnvironment.isHeadless() }.getOrDefault(true)
+    if (isHeadless) return false
+    return when (desktopTrayPlatform()) {
+        DesktopTrayPlatform.Linux -> true
+        DesktopTrayPlatform.Windows,
+        DesktopTrayPlatform.MacOs,
+        DesktopTrayPlatform.Other,
+        -> isAwtDesktopTraySupported()
+    }
+}
+
+internal enum class DesktopTrayBackendKind {
+    NativeLinux,
+    Awt,
+}
+
+internal enum class LinuxTrayBackendPreference {
+    NativeFirst,
+    AwtFirst,
+}
+
+internal enum class DesktopTrayPlatform {
+    Linux,
+    Windows,
+    MacOs,
+    Other,
+}
+
+internal fun desktopTrayPlatform(osName: String = System.getProperty("os.name")): DesktopTrayPlatform {
+    val normalized = osName.lowercase()
+    return when {
+        "linux" in normalized -> DesktopTrayPlatform.Linux
+        "windows" in normalized -> DesktopTrayPlatform.Windows
+        "mac" in normalized || "darwin" in normalized -> DesktopTrayPlatform.MacOs
+        else -> DesktopTrayPlatform.Other
+    }
+}
+
+internal fun selectDesktopTrayBackendKinds(
+    osName: String = System.getProperty("os.name"),
+    isHeadless: Boolean = runCatching { GraphicsEnvironment.isHeadless() }.getOrDefault(true),
+    awtSupported: Boolean = isAwtDesktopTraySupported(),
+    linuxPreference: LinuxTrayBackendPreference = LinuxTrayBackendPreference.NativeFirst,
+): List<DesktopTrayBackendKind> {
+    if (isHeadless) return emptyList()
+    return when (desktopTrayPlatform(osName)) {
+        DesktopTrayPlatform.Linux -> when (linuxPreference) {
+            LinuxTrayBackendPreference.NativeFirst -> listOf(
+                DesktopTrayBackendKind.NativeLinux,
+                DesktopTrayBackendKind.Awt,
+            )
+            LinuxTrayBackendPreference.AwtFirst -> listOf(
+                DesktopTrayBackendKind.Awt,
+                DesktopTrayBackendKind.NativeLinux,
+            )
+        }
+        DesktopTrayPlatform.Windows,
+        DesktopTrayPlatform.MacOs,
+        DesktopTrayPlatform.Other,
+        -> if (awtSupported) listOf(DesktopTrayBackendKind.Awt) else emptyList()
+    }
+}
+
+internal interface DesktopTrayHandle {
+    fun update(appTitle: String, menuState: TrayMenuState)
+
+    fun dispose()
+}
+
+internal interface DesktopTrayBackend {
+    fun install(
+        appTitle: () -> String,
+        menuState: () -> TrayMenuState,
+    ): DesktopTrayHandle?
+}
+
+internal class DesktopTrayBackendInstaller(
+    private val backends: List<DesktopTrayBackend>,
+) {
+    fun install(
+        appTitle: () -> String,
+        menuState: () -> TrayMenuState,
+    ): DesktopTrayHandle? {
+        for (backend in backends) {
+            val handle = runCatching {
+                backend.install(appTitle = appTitle, menuState = menuState)
+            }.getOrNull()
+            if (handle != null) return handle
+        }
+        return null
+    }
+}
+
+private fun createDesktopTrayBackendInstaller(): DesktopTrayBackendInstaller {
+    val backends = selectDesktopTrayBackendKinds(
+        linuxPreference = detectLinuxTrayBackendPreference(),
+    )
+        .map { kind ->
+            when (kind) {
+                DesktopTrayBackendKind.NativeLinux -> NativeLinuxTrayBackend()
+                DesktopTrayBackendKind.Awt -> AwtTrayBackend()
+            }
+        }
+    return DesktopTrayBackendInstaller(backends)
+}
+
+private fun isAwtDesktopTraySupported(): Boolean {
     return runCatching {
-        !GraphicsEnvironment.isHeadless() && SystemTray.isSupported()
+        !GraphicsEnvironment.isHeadless() && AwtSystemTray.isSupported()
     }.getOrDefault(false)
 }
 
-private fun installTrayIcon(
-    appTitle: String,
-    connectionActionLabel: String,
-    findBestLabel: String,
-    showWindowLabel: String,
-    hideWindowLabel: String,
-    exitLabel: String,
-    connectionActionEnabled: Boolean,
-    findBestEnabled: Boolean,
-    onToggleConnection: () -> Unit,
-    onFindBest: () -> Unit,
-    onShowWindow: () -> Unit,
-    onHideWindow: () -> Unit,
-    onExit: () -> Unit,
-    popup: TrayPopupController,
-): TrayIcon? {
-    if (!isDesktopTraySupported()) return null
+internal fun detectLinuxTrayBackendPreference(
+    env: Map<String, String> = System.getenv(),
+    property: (String) -> String? = { System.getProperty(it) },
+    processCommands: () -> Sequence<String> = { currentUserProcessCommands() },
+): LinuxTrayBackendPreference {
+    explicitLinuxTrayBackend(property, env)?.let { return it }
+    if (isXEmbedFirstDesktopSession(env)) return LinuxTrayBackendPreference.AwtFirst
+    if (isPolybarRunning(processCommands)) return LinuxTrayBackendPreference.AwtFirst
+    return LinuxTrayBackendPreference.NativeFirst
+}
 
-    fun toggleMenu() {
-        val anchor = MouseInfo.getPointerInfo()?.location ?: Point(0, 0)
-        popup.toggle(
-            anchor = anchor,
-            connectionActionLabel = connectionActionLabel,
-            findBestLabel = findBestLabel,
-            showWindowLabel = showWindowLabel,
-            hideWindowLabel = hideWindowLabel,
-            exitLabel = exitLabel,
-            connectionActionEnabled = connectionActionEnabled,
-            findBestEnabled = findBestEnabled,
-            onToggleConnection = onToggleConnection,
-            onFindBest = onFindBest,
-            onShowWindow = onShowWindow,
-            onHideWindow = onHideWindow,
-            onExit = onExit,
+private fun explicitLinuxTrayBackend(
+    property: (String) -> String?,
+    env: Map<String, String>,
+): LinuxTrayBackendPreference? {
+    val explicit = listOfNotNull(
+        property("vpn.control.linux.trayBackend"),
+        env["VPN_CONTROL_LINUX_TRAY_BACKEND"],
+    )
+        .firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.lowercase()
+
+    return when (explicit) {
+        "awt", "xembed" -> LinuxTrayBackendPreference.AwtFirst
+        "native", "dorkbox" -> LinuxTrayBackendPreference.NativeFirst
+        else -> null
+    }
+}
+
+private fun isXEmbedFirstDesktopSession(env: Map<String, String>): Boolean {
+    val sessionText = listOf(
+        env["XDG_CURRENT_DESKTOP"],
+        env["DESKTOP_SESSION"],
+        env["GDMSESSION"],
+    )
+        .filterNotNull()
+        .joinToString(separator = " ")
+        .lowercase()
+    if (sessionText.isBlank()) return false
+
+    val sessionTokens = sessionText.split(':', ';', ',', ' ', '-')
+    return XEmbedFirstDesktopTokens.any { token ->
+        sessionTokens.any { it == token }
+    }
+}
+
+private val XEmbedFirstDesktopTokens = setOf(
+    "i3",
+    "bspwm",
+    "awesome",
+    "xmonad",
+    "herbstluftwm",
+    "qtile",
+    "openbox",
+    "fluxbox",
+    "icewm",
+    "dwm",
+)
+
+private fun isPolybarRunning(processCommands: () -> Sequence<String>): Boolean {
+    return runCatching {
+        processCommands().any { command ->
+            val normalized = command.lowercase()
+            normalized == "polybar" ||
+                normalized.endsWith("/polybar") ||
+                normalized.endsWith(" polybar") ||
+                "/polybar " in normalized
+        }
+    }.getOrDefault(false)
+}
+
+private fun currentUserProcessCommands(): Sequence<String> {
+    return runCatching {
+        ProcessHandle.allProcesses()
+            .iterator()
+            .asSequence()
+            .mapNotNull { process ->
+                process.info().command().orElse(null)
+                    ?: process.info().commandLine().orElse(null)
+            }
+    }.getOrDefault(emptySequence())
+}
+
+private class DesktopTrayHandleHolder {
+    var handle: DesktopTrayHandle? = null
+
+    fun update(appTitle: String, menuState: TrayMenuState) {
+        handle?.update(appTitle, menuState)
+    }
+}
+
+private class AwtTrayBackend : DesktopTrayBackend {
+    override fun install(
+        appTitle: () -> String,
+        menuState: () -> TrayMenuState,
+    ): DesktopTrayHandle? {
+        if (!isAwtDesktopTraySupported()) return null
+        val popup = TrayPopupController()
+        val handle = AwtTrayHandle(popup)
+        val trayRegistration = RetryingTrayRegistration(
+            target = AwtTrayRegistrationTarget(
+                appTitle = appTitle,
+                popup = popup,
+                menuState = menuState,
+            ),
+            scheduler = SwingTrayRetryScheduler,
+            onInstalled = { icon ->
+                handle.trayIcon = icon
+                handle.startLinuxImageRefresh()
+                handle.update(appTitle(), menuState())
+            },
+        )
+        handle.registration = trayRegistration
+        trayRegistration.start()
+        return handle
+    }
+}
+
+private class AwtTrayHandle(
+    private val popup: TrayPopupController,
+) : DesktopTrayHandle {
+    var registration: RetryingTrayRegistration<TrayIcon>? = null
+    var trayIcon: TrayIcon? = null
+    private var linuxImageRefreshTimer: Timer? = null
+
+    override fun update(appTitle: String, menuState: TrayMenuState) {
+        val icon = trayIcon ?: return
+        if (icon.toolTip != appTitle) {
+            icon.toolTip = appTitle
+        }
+    }
+
+    fun startLinuxImageRefresh() {
+        if (desktopTrayPlatform() != DesktopTrayPlatform.Linux || linuxImageRefreshTimer != null) return
+        linuxImageRefreshTimer = Timer(LinuxAwtImageRefreshDelayMillis) {
+            refreshLinuxAwtTrayImage()
+        }.apply {
+            isRepeats = true
+            initialDelay = LinuxAwtImageRefreshDelayMillis
+            start()
+        }
+    }
+
+    private fun refreshLinuxAwtTrayImage() {
+        val icon = trayIcon ?: return
+        val frameSize = currentLinuxAwtTrayFrameSize() ?: return
+        val currentImageSize = icon.image?.getWidth(null) ?: -1
+        if (currentImageSize == frameSize) return
+        icon.image = createTrayImage(
+            DesktopTrayImageConfig(
+                imageSize = frameSize,
+                autoSize = false,
+                preferFixedResource = true,
+            ),
         )
     }
 
-    val tray = SystemTray.getSystemTray()
-    val iconSize = maxOf(tray.trayIconSize.width, tray.trayIconSize.height, 22)
-        .coerceAtMost(128)
-    val trayIcon = TrayIcon(createTrayImage(iconSize), appTitle).apply {
-        isImageAutoSize = true
+    override fun dispose() {
+        popup.dismiss()
+        linuxImageRefreshTimer?.stop()
+        linuxImageRefreshTimer = null
+        registration?.dispose()
+        registration = null
+        trayIcon = null
+    }
+}
+
+internal fun interface NativeLinuxTrayGateway {
+    fun get(appName: String): NativeLinuxTrayPeer?
+}
+
+internal interface NativeLinuxTrayPeer {
+    fun setImage(imageUrl: URL)
+
+    fun setTooltip(text: String)
+
+    fun addMenuItem(
+        text: String,
+        enabled: Boolean,
+        action: () -> Unit,
+    ): NativeLinuxTrayMenuItem
+
+    fun addSeparator()
+
+    fun shutdown()
+}
+
+internal interface NativeLinuxTrayMenuItem {
+    fun setText(text: String)
+
+    fun setEnabled(enabled: Boolean)
+}
+
+internal fun interface NativeTrayIconResolver {
+    fun resolve(): URL?
+}
+
+internal fun interface TrayActionDispatcher {
+    fun dispatch(action: () -> Unit)
+}
+
+private object SwingTrayActionDispatcher : TrayActionDispatcher {
+    override fun dispatch(action: () -> Unit) {
+        SwingUtilities.invokeLater(action)
+    }
+}
+
+internal class NativeLinuxTrayBackend(
+    private val gateway: NativeLinuxTrayGateway = DorkboxNativeLinuxTrayGateway,
+    private val iconResolver: NativeTrayIconResolver = NativeTrayIconResolver { resolveNativeTrayIconUrl() },
+    private val dispatcher: TrayActionDispatcher = SwingTrayActionDispatcher,
+    private val isHeadless: () -> Boolean = { GraphicsEnvironment.isHeadless() },
+) : DesktopTrayBackend {
+    override fun install(
+        appTitle: () -> String,
+        menuState: () -> TrayMenuState,
+    ): DesktopTrayHandle? {
+        if (runCatching { isHeadless() }.getOrDefault(true)) return null
+        val tray = gateway.get(DefaultTrayAppName) ?: return null
+        val imageUrl = iconResolver.resolve() ?: run {
+            runCatching { tray.shutdown() }
+            return null
+        }
+        return runCatching {
+            val handle = NativeLinuxTrayHandle(
+                tray = tray,
+                initialAppTitle = appTitle(),
+                initialMenuState = menuState(),
+                dispatcher = dispatcher,
+            )
+            tray.setImage(imageUrl)
+            handle
+        }.getOrElse {
+            runCatching { tray.shutdown() }
+            null
+        }
+    }
+}
+
+private class NativeLinuxTrayHandle(
+    private val tray: NativeLinuxTrayPeer,
+    initialAppTitle: String,
+    initialMenuState: TrayMenuState,
+    private val dispatcher: TrayActionDispatcher,
+) : DesktopTrayHandle {
+    private var disposed = false
+    private var currentState = initialMenuState
+    private val showWindowItem: NativeLinuxTrayMenuItem
+    private val hideWindowItem: NativeLinuxTrayMenuItem
+    private val connectionItem: NativeLinuxTrayMenuItem
+    private val findBestItem: NativeLinuxTrayMenuItem
+    private val exitItem: NativeLinuxTrayMenuItem
+
+    init {
+        tray.setTooltip(initialAppTitle)
+        showWindowItem = tray.addMenuItem(initialMenuState.showWindowLabel, enabled = true) {
+            dispatchCurrent { it.onShowWindow }
+        }
+        hideWindowItem = tray.addMenuItem(initialMenuState.hideWindowLabel, enabled = true) {
+            dispatchCurrent { it.onHideWindow }
+        }
+        tray.addSeparator()
+        connectionItem = tray.addMenuItem(
+            text = initialMenuState.connectionActionLabel,
+            enabled = initialMenuState.connectionActionEnabled,
+        ) {
+            dispatchCurrentIfEnabled(
+                enabled = { it.connectionActionEnabled },
+                action = { it.onToggleConnection },
+            )
+        }
+        findBestItem = tray.addMenuItem(
+            text = initialMenuState.findBestLabel,
+            enabled = initialMenuState.findBestEnabled,
+        ) {
+            dispatchCurrentIfEnabled(
+                enabled = { it.findBestEnabled },
+                action = { it.onFindBest },
+            )
+        }
+        tray.addSeparator()
+        exitItem = tray.addMenuItem(initialMenuState.exitLabel, enabled = true) {
+            exitFromTray()
+        }
+    }
+
+    override fun update(appTitle: String, menuState: TrayMenuState) {
+        if (disposed) return
+        currentState = menuState
+        tray.setTooltip(appTitle)
+        showWindowItem.setText(menuState.showWindowLabel)
+        showWindowItem.setEnabled(true)
+        hideWindowItem.setText(menuState.hideWindowLabel)
+        hideWindowItem.setEnabled(true)
+        connectionItem.setText(menuState.connectionActionLabel)
+        connectionItem.setEnabled(menuState.connectionActionEnabled)
+        findBestItem.setText(menuState.findBestLabel)
+        findBestItem.setEnabled(menuState.findBestEnabled)
+        exitItem.setText(menuState.exitLabel)
+        exitItem.setEnabled(true)
+    }
+
+    override fun dispose() {
+        if (disposed) return
+        disposed = true
+        runCatching { tray.shutdown() }
+    }
+
+    private fun dispatchCurrent(action: (TrayMenuState) -> (() -> Unit)) {
+        if (disposed) return
+        val callback = action(currentState)
+        dispatcher.dispatch(callback)
+    }
+
+    private fun dispatchCurrentIfEnabled(
+        enabled: (TrayMenuState) -> Boolean,
+        action: (TrayMenuState) -> (() -> Unit),
+    ) {
+        if (!enabled(currentState)) return
+        dispatchCurrent(action)
+    }
+
+    private fun exitFromTray() {
+        if (disposed) return
+        val exit = currentState.onExit
+        dispose()
+        dispatcher.dispatch(exit)
+    }
+}
+
+private object DorkboxNativeLinuxTrayGateway : NativeLinuxTrayGateway {
+    override fun get(appName: String): NativeLinuxTrayPeer? {
+        configureDorkboxAppName(appName)
+        return runCatching { DorkboxSystemTray.get(appName) }
+            .getOrNull()
+            ?.let(::DorkboxNativeLinuxTrayPeer)
+    }
+}
+
+private class DorkboxNativeLinuxTrayPeer(
+    private val tray: DorkboxSystemTray,
+) : NativeLinuxTrayPeer {
+    override fun setImage(imageUrl: URL) {
+        tray.setImage(imageUrl)
+    }
+
+    override fun setTooltip(text: String) {
+        runCatching { tray.setTooltip(text.take(64)) }
+    }
+
+    override fun addMenuItem(
+        text: String,
+        enabled: Boolean,
+        action: () -> Unit,
+    ): NativeLinuxTrayMenuItem {
+        val menuItem = DorkboxMenuItem(text) {
+            action()
+        }
+        menuItem.setEnabled(enabled)
+        tray.menu.add(menuItem)
+        return DorkboxNativeLinuxTrayMenuItem(menuItem)
+    }
+
+    override fun addSeparator() {
+        tray.menu.add(DorkboxSeparator())
+    }
+
+    override fun shutdown() {
+        tray.shutdown()
+    }
+}
+
+private class DorkboxNativeLinuxTrayMenuItem(
+    private val menuItem: DorkboxMenuItem,
+) : NativeLinuxTrayMenuItem {
+    override fun setText(text: String) {
+        menuItem.setText(text)
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        menuItem.setEnabled(enabled)
+    }
+}
+
+private fun configureDorkboxAppName(appName: String) {
+    runCatching {
+        DorkboxSystemTray::class.java.getField("APP_NAME").set(null, appName)
+    }
+}
+
+private class AwtTrayRegistrationTarget(
+    private val appTitle: () -> String,
+    private val popup: TrayPopupController,
+    private val menuState: () -> TrayMenuState,
+) : TrayRegistrationTarget<TrayIcon> {
+    private fun createIcon(trayIconSize: Dimension): TrayIcon {
+        return createTrayIcon(
+            appTitle = appTitle(),
+            trayIconSize = trayIconSize,
+            popup = popup,
+            menuState = menuState,
+        )
+    }
+
+    override fun install(): TrayInstallResult<TrayIcon> {
+        if (!isAwtDesktopTraySupported()) return TrayInstallResult.Unsupported
+        val tray = runCatching { AwtSystemTray.getSystemTray() }
+            .getOrElse { return TrayInstallResult.RetryableFailure }
+        val trayIcon = runCatching { createIcon(tray.trayIconSize) }
+            .getOrElse { return TrayInstallResult.RetryableFailure }
+        return runCatching {
+            tray.add(trayIcon)
+            if (tray.trayIcons.any { it === trayIcon }) {
+                TrayInstallResult.Installed(trayIcon)
+            } else {
+                runCatching { tray.remove(trayIcon) }
+                TrayInstallResult.RetryableFailure
+            }
+        }.getOrElse {
+            runCatching { tray.remove(trayIcon) }
+            TrayInstallResult.RetryableFailure
+        }
+    }
+
+    override fun remove(icon: TrayIcon) {
+        runCatching { AwtSystemTray.getSystemTray().remove(icon) }
+    }
+}
+
+private fun createTrayIcon(
+    appTitle: String,
+    trayIconSize: Dimension,
+    popup: TrayPopupController,
+    menuState: () -> TrayMenuState,
+): TrayIcon {
+    fun toggleMenu() {
+        val anchor = MouseInfo.getPointerInfo()?.location ?: Point(0, 0)
+        val state = menuState()
+        popup.toggle(
+            anchor = anchor,
+            connectionActionLabel = state.connectionActionLabel,
+            findBestLabel = state.findBestLabel,
+            showWindowLabel = state.showWindowLabel,
+            hideWindowLabel = state.hideWindowLabel,
+            exitLabel = state.exitLabel,
+            connectionActionEnabled = state.connectionActionEnabled,
+            findBestEnabled = state.findBestEnabled,
+            onToggleConnection = state.onToggleConnection,
+            onFindBest = state.onFindBest,
+            onShowWindow = state.onShowWindow,
+            onHideWindow = state.onHideWindow,
+            onExit = state.onExit,
+        )
+    }
+
+    val imageConfig = desktopTrayImageConfig(trayIconSize)
+    val trayIcon = TrayIcon(createTrayImage(imageConfig), appTitle).apply {
+        isImageAutoSize = imageConfig.autoSize
         addActionListener { toggleMenu() }
         addMouseListener(
             object : MouseAdapter() {
@@ -148,26 +697,254 @@ private fun installTrayIcon(
             },
         )
     }
-
-    return runCatching {
-        tray.add(trayIcon)
-        trayIcon
-    }.getOrNull()
+    return trayIcon
 }
 
-private fun createTrayImage(size: Int): Image {
-    loadDesktopIconImage()?.let { return scaleDesktopIconForTray(it, size) }
-    return createFallbackTrayImage(size)
+internal sealed class TrayInstallResult<out T> {
+    data class Installed<T>(val icon: T) : TrayInstallResult<T>()
+    object RetryableFailure : TrayInstallResult<Nothing>()
+    object Unsupported : TrayInstallResult<Nothing>()
 }
 
-private fun loadDesktopIconImage(): BufferedImage? {
+internal interface TrayRegistrationTarget<T> {
+    fun install(): TrayInstallResult<T>
+
+    fun remove(icon: T)
+}
+
+internal fun interface TrayRetryScheduler {
+    fun schedule(delayMillis: Int, action: () -> Unit): TrayRetryHandle
+}
+
+internal fun interface TrayRetryHandle {
+    fun cancel()
+}
+
+internal data class TrayRegistrationRetryPolicy(
+    val maxAttempts: Int = TrayInstallMaxAttempts,
+    val retryDelayMillis: Int = TrayInstallRetryDelayMillis,
+) {
+    init {
+        require(maxAttempts >= 1) { "maxAttempts must be at least 1" }
+        require(retryDelayMillis >= 0) { "retryDelayMillis must be non-negative" }
+    }
+}
+
+internal class RetryingTrayRegistration<T>(
+    private val target: TrayRegistrationTarget<T>,
+    private val scheduler: TrayRetryScheduler,
+    private val retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
+    private val onInstalled: (T) -> Unit = {},
+) {
+    private var attempts = 0
+    private var disposed = false
+    private var pendingRetry: TrayRetryHandle? = null
+
+    var installedIcon: T? = null
+        private set
+
+    fun start() {
+        if (attempts > 0 || disposed || installedIcon != null) return
+        attemptInstall()
+    }
+
+    fun dispose() {
+        disposed = true
+        pendingRetry?.cancel()
+        pendingRetry = null
+        installedIcon?.let { icon ->
+            runCatching { target.remove(icon) }
+        }
+        installedIcon = null
+    }
+
+    private fun attemptInstall() {
+        if (disposed || installedIcon != null) return
+        pendingRetry?.cancel()
+        pendingRetry = null
+        attempts += 1
+        when (val result = runCatching { target.install() }.getOrDefault(TrayInstallResult.RetryableFailure)) {
+            is TrayInstallResult.Installed -> {
+                installedIcon = result.icon
+                runCatching { onInstalled(result.icon) }
+            }
+            TrayInstallResult.RetryableFailure -> scheduleRetryIfAvailable()
+            TrayInstallResult.Unsupported -> Unit
+        }
+    }
+
+    private fun scheduleRetryIfAvailable() {
+        if (disposed || attempts >= retryPolicy.maxAttempts) return
+        pendingRetry = scheduler.schedule(retryPolicy.retryDelayMillis) {
+            attemptInstall()
+        }
+    }
+}
+
+private object SwingTrayRetryScheduler : TrayRetryScheduler {
+    override fun schedule(delayMillis: Int, action: () -> Unit): TrayRetryHandle {
+        val timer = Timer(delayMillis) { action() }.apply {
+            isRepeats = false
+            start()
+        }
+        return TrayRetryHandle { timer.stop() }
+    }
+}
+
+internal data class DesktopTrayImageConfig(
+    val imageSize: Int,
+    val autoSize: Boolean,
+    val preferFixedResource: Boolean,
+)
+
+internal fun desktopTrayImageConfig(
+    trayIconSize: Dimension,
+    osName: String = System.getProperty("os.name"),
+): DesktopTrayImageConfig {
+    val isLinux = osName.lowercase().contains("linux")
+    if (isLinux) {
+        return DesktopTrayImageConfig(
+            imageSize = linuxTrayIconSize(trayIconSize),
+            autoSize = false,
+            preferFixedResource = true,
+        )
+    }
+    return DesktopTrayImageConfig(
+        imageSize = maxOf(trayIconSize.width, trayIconSize.height, MinimumNonLinuxTrayIconSize)
+            .coerceAtMost(MaximumTrayIconSize),
+        autoSize = true,
+        preferFixedResource = false,
+    )
+}
+
+private fun linuxTrayIconSize(trayIconSize: Dimension): Int {
+    val positiveDimensions = listOf(trayIconSize.width, trayIconSize.height)
+        .filter { it > 0 }
+    val hostSize = positiveDimensions.maxOrNull() ?: DefaultLinuxTrayIconSize
+    return (hostSize.coerceAtMost(MaximumTrayIconSize) + LinuxAwtXEmbedPaintGuardPixels)
+        .coerceAtMost(MaximumTrayIconSize)
+}
+
+private fun currentLinuxAwtTrayFrameSize(): Int? {
+    return Window.getWindows()
+        .asSequence()
+        .filter { window ->
+            window.isShowing &&
+                window.javaClass.name.contains("TrayIconEmbeddedFrame") &&
+                window.width > 0 &&
+                window.height > 0
+        }
+        .map { window -> maxOf(window.width, window.height).coerceAtMost(MaximumTrayIconSize) }
+        .firstOrNull()
+}
+
+internal data class TrayMenuState(
+    val connectionActionLabel: String,
+    val findBestLabel: String,
+    val showWindowLabel: String,
+    val hideWindowLabel: String,
+    val exitLabel: String,
+    val connectionActionEnabled: Boolean,
+    val findBestEnabled: Boolean,
+    val onToggleConnection: () -> Unit,
+    val onFindBest: () -> Unit,
+    val onShowWindow: () -> Unit,
+    val onHideWindow: () -> Unit,
+    val onExit: () -> Unit,
+)
+
+private fun createTrayImage(config: DesktopTrayImageConfig): Image {
+    if (config.preferFixedResource) {
+        loadDesktopIconImage(listOf("tray_icon_linux.png"))
+            ?.let { return renderLinuxTrayImage(it, config.imageSize) }
+    }
+    loadDesktopIconImage(listOf("tray_icon.png", "gen_icon.png"))
+        ?.let { return scaleDesktopIconForTray(it, config.imageSize) }
+    return createFallbackTrayImage(config.imageSize)
+}
+
+private fun resolveNativeTrayIconUrl(): URL? {
+    return loadDesktopIconUrl(listOf("tray_icon_linux.png", "tray_icon.png", "gen_icon.png"))
+}
+
+private fun loadDesktopIconUrl(resources: List<String>): URL? {
     val classLoader = Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
-    return listOf("tray_icon.png", "gen_icon.png")
+    return resources.firstNotNullOfOrNull(classLoader::getResource)
+}
+
+private fun loadDesktopIconImage(resources: List<String>): BufferedImage? {
+    val classLoader = Thread.currentThread().contextClassLoader ?: ClassLoader.getSystemClassLoader()
+    return resources
         .firstNotNullOfOrNull { resource ->
             runCatching {
                 classLoader.getResourceAsStream(resource)?.use(ImageIO::read)
             }.getOrNull()
         }
+}
+
+internal fun renderLinuxTrayImage(source: BufferedImage, size: Int): BufferedImage {
+    require(size >= 1) { "size must be at least 1" }
+    val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+    val graphics = image.createGraphics()
+    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+    graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+    val background = averageCornerRgb(source)
+    graphics.color = AwtColor(background)
+    graphics.fillRect(0, 0, size, size)
+
+    if (size < TinyLinuxTrayIconSize) {
+        paintTinyLinuxTrayGlyph(graphics, size)
+    } else {
+        val inset = linuxTrayArtworkInset(size)
+        val drawSize = (size - inset * 2).coerceAtLeast(1)
+        graphics.drawImage(
+            source,
+            inset,
+            inset,
+            inset + drawSize,
+            inset + drawSize,
+            0,
+            0,
+            source.width,
+            source.height,
+            null,
+        )
+    }
+
+    graphics.dispose()
+    return image
+}
+
+private fun linuxTrayArtworkInset(size: Int): Int {
+    val preferredInset = maxOf(1, (size * LinuxTrayArtworkInsetRatio).roundToInt())
+    val maxInset = ((size - MinimumLinuxTrayArtworkSize) / 2).coerceAtLeast(0)
+    return preferredInset.coerceAtMost(maxInset)
+}
+
+private fun paintTinyLinuxTrayGlyph(graphics: Graphics2D, size: Int) {
+    if (size < 4) return
+    graphics.scale(size / 16.0, size / 16.0)
+
+    val shield = Polygon(
+        intArrayOf(8, 12, 12, 10, 8, 6, 4, 4),
+        intArrayOf(2, 4, 8, 12, 14, 12, 8, 4),
+        8,
+    )
+    graphics.paint = GradientPaint(
+        4f,
+        2f,
+        AwtColor(255, 255, 255),
+        12f,
+        14f,
+        AwtColor(196, 222, 250),
+    )
+    graphics.fillPolygon(shield)
+
+    graphics.color = AwtColor(0, 70, 188)
+    graphics.stroke = BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+    graphics.drawLine(5, 8, 7, 10)
+    graphics.drawLine(7, 10, 11, 5)
 }
 
 private fun scaleDesktopIconForTray(source: BufferedImage, size: Int): Image {

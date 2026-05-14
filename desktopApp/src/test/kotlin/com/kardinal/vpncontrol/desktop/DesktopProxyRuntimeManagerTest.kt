@@ -2,9 +2,12 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class DesktopProxyRuntimeManagerTest {
     @Test
@@ -62,6 +65,68 @@ class DesktopProxyRuntimeManagerTest {
             assertContains(status, "Proxy-only mode")
         } finally {
             tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun linuxVpnCapabilityFailureNamesResolvedSingBoxBinary() {
+        val detail = linuxNetworkPrivilegesMissingDetail(
+            DesktopSingBoxExecutable(
+                path = Path.of("/opt/vpn-control/bin/sing-box"),
+                source = "VPN_CONTROL_SING_BOX",
+            ),
+        )
+
+        assertContains(detail, "/opt/vpn-control/bin/sing-box")
+        assertContains(detail, "VPN_CONTROL_SING_BOX")
+        assertContains(detail, "sudo setcap cap_net_admin,cap_net_raw+ep '/opt/vpn-control/bin/sing-box'")
+        assertFalse(detail.contains("command -v sing-box"))
+    }
+
+    @Test
+    fun linuxVpnCapabilityRequiresBothInstalledCapabilities() {
+        assertFalse(linuxNetworkCapabilitiesAvailable("/opt/vpn-control/bin/sing-box cap_net_admin=ep"))
+        assertFalse(linuxNetworkCapabilitiesAvailable("/opt/vpn-control/bin/sing-box cap_net_raw=ep"))
+        assertTrue(linuxNetworkCapabilitiesAvailable("/opt/vpn-control/bin/sing-box cap_net_admin,cap_net_raw=ep"))
+    }
+
+    @Test
+    fun linuxTunMissingDetailExplainsKernelModuleMismatch() {
+        val modulesRoot = Files.createTempDirectory("vpn-control-modules-root")
+        try {
+            Files.createDirectories(modulesRoot.resolve("7.0.3-arch1-2"))
+
+            val detail = linuxTunBackendMissingDetail(
+                currentKernel = "6.19.14-arch1-1",
+                modulesRoot = modulesRoot,
+            )
+
+            assertContains(detail, "/dev/net/tun")
+            assertContains(detail, "6.19.14-arch1-1")
+            assertContains(detail, "7.0.3-arch1-2")
+            assertContains(detail, "Reboot into an installed kernel")
+            assertContains(detail, "sudo modprobe tun")
+        } finally {
+            modulesRoot.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun linuxTunMissingDetailKeepsSimpleModprobeGuidanceWhenModulesExist() {
+        val modulesRoot = Files.createTempDirectory("vpn-control-modules-root")
+        try {
+            Files.createDirectories(modulesRoot.resolve("6.19.14-arch1-1"))
+
+            val detail = linuxTunBackendMissingDetail(
+                currentKernel = "6.19.14-arch1-1",
+                modulesRoot = modulesRoot,
+            )
+
+            assertContains(detail, "/dev/net/tun")
+            assertContains(detail, "sudo modprobe tun")
+            assertFalse(detail.contains("Reboot into an installed kernel"))
+        } finally {
+            modulesRoot.toFile().deleteRecursively()
         }
     }
 }

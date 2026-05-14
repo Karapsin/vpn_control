@@ -386,20 +386,29 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private fun hasNetworkPrivileges(): Boolean {
+    private data class LinuxNetworkPrivilegeResult(
+        val hasPrivileges: Boolean,
+        val binary: DesktopSingBoxExecutable?,
+    )
+
+    private fun linuxNetworkPrivilegeResult(): LinuxNetworkPrivilegeResult {
+        val binary = singBoxResolver.resolve()
         if (System.getProperty("user.name") == "root") {
-            return true
+            return LinuxNetworkPrivilegeResult(hasPrivileges = true, binary = binary)
         }
-        val binary = singBoxResolver.resolve()?.path ?: return false
+        val executable = binary?.path ?: return LinuxNetworkPrivilegeResult(hasPrivileges = false, binary = null)
         val output = runCatching {
-            val process = ProcessBuilder("getcap", binary.toString())
+            val process = ProcessBuilder("getcap", executable.toString())
                 .redirectErrorStream(true)
                 .start()
             val text = process.inputStream.bufferedReader().use { it.readText() }
             process.waitFor(1, TimeUnit.SECONDS)
             text
         }.getOrDefault("")
-        return output.contains("cap_net_admin")
+        return LinuxNetworkPrivilegeResult(
+            hasPrivileges = linuxNetworkCapabilitiesAvailable(output),
+            binary = binary,
+        )
     }
 
     private fun hasWindowsAdministratorPrivileges(): Boolean {
@@ -454,7 +463,7 @@ class DesktopProxyRuntimeManager(
                     DesktopPreflightCheck(
                         name = "TUN device",
                         status = DesktopPreflightStatus.FAIL,
-                        detail = "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
+                        detail = linuxTunBackendMissingDetail(),
                     )
                 }
             }
@@ -482,13 +491,14 @@ class DesktopProxyRuntimeManager(
     private fun vpnPrivilegesCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
         return when (os) {
             DesktopRuntimeOs.LINUX -> {
-                if (hasNetworkPrivileges()) {
-                    DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "CAP_NET_ADMIN available")
+                val privileges = linuxNetworkPrivilegeResult()
+                if (privileges.hasPrivileges) {
+                    DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "CAP_NET_ADMIN/CAP_NET_RAW available")
                 } else {
                     DesktopPreflightCheck(
                         name = "network privileges",
                         status = DesktopPreflightStatus.FAIL,
-                        detail = "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep \$(command -v sing-box)",
+                        detail = linuxNetworkPrivilegesMissingDetail(privileges.binary),
                     )
                 }
             }
@@ -651,6 +661,65 @@ class DesktopProxyRuntimeManager(
             runCatching { handle.onExit().get(2, TimeUnit.SECONDS) }
         }
     }
+}
+
+internal fun linuxNetworkCapabilitiesAvailable(getcapOutput: String): Boolean {
+    return getcapOutput.contains("cap_net_admin") && getcapOutput.contains("cap_net_raw")
+}
+
+internal fun linuxTunBackendMissingDetail(
+    currentKernel: String? = currentLinuxKernelRelease(),
+    modulesRoot: Path = Path.of("/lib/modules"),
+): String {
+    val baseMessage = "Linux TUN device is missing at /dev/net/tun."
+    val kernel = currentKernel?.takeIf(String::isNotBlank) ?: return "$baseMessage Try: sudo modprobe tun"
+    val expectedModulesDir = modulesRoot.resolve(kernel)
+    if (Files.isDirectory(expectedModulesDir)) {
+        return "$baseMessage Try: sudo modprobe tun"
+    }
+    val installedKernels = runCatching {
+        Files.list(modulesRoot).use { stream ->
+            stream
+                .filter { Files.isDirectory(it) }
+                .map { it.fileName.toString() }
+                .sorted()
+                .toList()
+        }
+    }.getOrDefault(emptyList())
+    val installedText = installedKernels.takeIf { it.isNotEmpty() }
+        ?.joinToString(", ", prefix = " Installed module directories: ")
+        .orEmpty()
+    return "$baseMessage Kernel modules for the running kernel are missing at $expectedModulesDir." +
+        installedText +
+        " Reboot into an installed kernel or install the matching Arch kernel/modules package, then run: sudo modprobe tun"
+}
+
+private fun currentLinuxKernelRelease(): String? {
+    return runCatching {
+        val process = ProcessBuilder("uname", "-r")
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        if (process.waitFor(1, TimeUnit.SECONDS) && process.exitValue() == 0) {
+            output
+        } else {
+            null
+        }
+    }.getOrNull()
+}
+
+internal fun linuxNetworkPrivilegesMissingDetail(binary: DesktopSingBoxExecutable?): String {
+    if (binary == null) {
+        return "Desktop VPN mode needs CAP_NET_ADMIN/CAP_NET_RAW, but sing-box is not available. " +
+            "Rebuild the desktop package with bundled sing-box, set VPN_CONTROL_SING_BOX, or add sing-box to PATH."
+    }
+    val path = binary.path.toAbsolutePath().normalize().toString()
+    return "Desktop VPN mode needs CAP_NET_ADMIN/CAP_NET_RAW. VPN Control is using sing-box at $path (${binary.source}). " +
+        "Grant that binary capabilities: sudo setcap cap_net_admin,cap_net_raw+ep ${shellQuote(path)}"
+}
+
+private fun shellQuote(value: String): String {
+    return "'${value.replace("'", "'\"'\"'")}'"
 }
 
 private enum class DesktopRuntimeOs {

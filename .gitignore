@@ -3,6 +3,7 @@
 .sandbox-home/
 .sandbox-tmp/
 .runtime/
+.vms/
 .codex
 build/
 **/build/

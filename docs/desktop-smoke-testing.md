@@ -13,6 +13,7 @@ Linux VPN mode prerequisites:
 
 - `/dev/net/tun` exists.
 - The installed `sing-box` has `CAP_NET_ADMIN`.
+- A tray/status-notifier host is available if close-to-tray behavior is being tested. Minimal window-manager panels may need AppIndicator/Ayatana support libraries or an XEmbed tray host; GNOME commonly needs an AppIndicator extension. For i3/polybar and similar XEmbed-only sessions, VPN Control uses the AWT tray backend first; use `VPN_CONTROL_LINUX_TRAY_BACKEND=native` or `awt` to compare backends.
 
 Windows VPN mode prerequisites:
 
@@ -86,6 +87,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - Close the window and confirm the app hides to tray instead of exiting.
    - Launch the app again and confirm it shows the existing instance instead of opening a second one.
    - Use the tray menu to start/stop and run best-location selection.
+   - On Linux, repeat on at least one StatusNotifier/AppIndicator host and one XEmbed-only panel when available.
 
 8. Autostart and reconnect
 

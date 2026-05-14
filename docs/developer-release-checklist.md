@@ -22,6 +22,7 @@ Linux desktop:
 - Package build must run on Linux.
 - `jpackage` requirements for `.deb`/`.rpm` are available through the JDK and host packaging tools.
 - VPN mode after install needs `/dev/net/tun` and `CAP_NET_ADMIN` on the installed `sing-box`.
+- Tray smoke after install needs a desktop tray/status-notifier host. Minimal desktops may need AppIndicator/Ayatana libraries or an XEmbed tray plugin; GNOME commonly needs an AppIndicator extension. i3/polybar-style XEmbed sessions should exercise the AWT-first Linux tray path; `VPN_CONTROL_LINUX_TRAY_BACKEND=native` or `awt` can force either backend for comparison.
 
 Windows desktop from a Windows host:
 
@@ -119,6 +120,7 @@ desktopApp/build/compose/binaries/main/
 - Android release APKs are currently signed with the debug signing config in `app/build.gradle.kts`. Treat these APKs as direct-install/test artifacts, not Play Store release artifacts.
 - Windows VPN mode requires Administrator privileges. Proxy-only mode does not.
 - Linux VPN mode requires `/dev/net/tun` and `CAP_NET_ADMIN` on the installed `sing-box` binary.
+- Linux tray visibility depends on a tray/status-notifier host and optional AppIndicator/Ayatana or XEmbed support packages on minimal desktop installs. On i3/polybar-style XEmbed sessions, verify the AWT-first menu path as well as the native path when forcing `VPN_CONTROL_LINUX_TRAY_BACKEND=native`.
 - macOS DMG packaging exists, but full desktop VPN mode still needs a privileged helper.
 
 ## Release Validation
