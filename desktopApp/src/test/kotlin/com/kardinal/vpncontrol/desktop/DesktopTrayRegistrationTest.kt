@@ -15,11 +15,13 @@ class DesktopTrayRegistrationTest {
         )
         val scheduler = FakeTrayRetryScheduler()
         val installed = mutableListOf<String>()
+        var unavailableCalls = 0
         val registration = RetryingTrayRegistration(
             target = target,
             scheduler = scheduler,
             retryPolicy = TrayRegistrationRetryPolicy(maxAttempts = 5, retryDelayMillis = 250),
             onInstalled = installed::add,
+            onUnavailable = { unavailableCalls += 1 },
         )
 
         registration.start()
@@ -30,6 +32,7 @@ class DesktopTrayRegistrationTest {
         assertEquals(listOf(250, 250), scheduler.scheduledDelays)
         assertEquals("tray-icon", registration.installedIcon)
         assertEquals(listOf("tray-icon"), installed)
+        assertEquals(0, unavailableCalls)
         assertEquals(0, scheduler.pendingCount)
 
         registration.dispose()
@@ -42,9 +45,11 @@ class DesktopTrayRegistrationTest {
     fun unsupportedTrayDoesNotScheduleRetry() {
         val target = FakeTrayRegistrationTarget(TrayInstallResult.Unsupported)
         val scheduler = FakeTrayRetryScheduler()
+        var unavailableCalls = 0
         val registration = RetryingTrayRegistration(
             target = target,
             scheduler = scheduler,
+            onUnavailable = { unavailableCalls += 1 },
         )
 
         registration.start()
@@ -52,6 +57,7 @@ class DesktopTrayRegistrationTest {
         assertEquals(1, target.installCalls)
         assertTrue(scheduler.scheduledDelays.isEmpty())
         assertNull(registration.installedIcon)
+        assertEquals(1, unavailableCalls)
     }
 
     @Test
@@ -63,10 +69,12 @@ class DesktopTrayRegistrationTest {
             TrayInstallResult.Installed("too-late"),
         )
         val scheduler = FakeTrayRetryScheduler()
+        var unavailableCalls = 0
         val registration = RetryingTrayRegistration(
             target = target,
             scheduler = scheduler,
             retryPolicy = TrayRegistrationRetryPolicy(maxAttempts = 3, retryDelayMillis = 10),
+            onUnavailable = { unavailableCalls += 1 },
         )
 
         registration.start()
@@ -77,6 +85,7 @@ class DesktopTrayRegistrationTest {
         assertEquals(listOf(10, 10), scheduler.scheduledDelays)
         assertEquals(0, scheduler.pendingCount)
         assertNull(registration.installedIcon)
+        assertEquals(1, unavailableCalls)
     }
 
     @Test
@@ -86,10 +95,12 @@ class DesktopTrayRegistrationTest {
             TrayInstallResult.Installed("late-icon"),
         )
         val scheduler = FakeTrayRetryScheduler()
+        var unavailableCalls = 0
         val registration = RetryingTrayRegistration(
             target = target,
             scheduler = scheduler,
             retryPolicy = TrayRegistrationRetryPolicy(maxAttempts = 3, retryDelayMillis = 10),
+            onUnavailable = { unavailableCalls += 1 },
         )
 
         registration.start()
@@ -101,6 +112,7 @@ class DesktopTrayRegistrationTest {
         assertTrue(scheduler.scheduledRetries.single().cancelled)
         assertTrue(target.removedIcons.isEmpty())
         assertNull(registration.installedIcon)
+        assertEquals(0, unavailableCalls)
     }
 
     @Test

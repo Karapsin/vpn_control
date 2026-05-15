@@ -93,6 +93,7 @@ import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
 import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
 import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
+import java.awt.GraphicsEnvironment
 import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
@@ -100,6 +101,10 @@ import kotlin.system.exitProcess
 fun main(args: Array<String>) {
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
     DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
+    if (!isDesktopDisplayAvailable()) {
+        println("VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
+        return
+    }
     val instanceLock = DesktopSingleInstanceLock.acquire()
     if (instanceLock == null) {
         if (!DesktopActivationServer.requestShow()) {
@@ -133,13 +138,21 @@ private fun DesktopApplication(
     val service = remember { DesktopAppServiceFactory.default() }
     val coroutineScope = rememberCoroutineScope()
     val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
-    var traySupported by remember { mutableStateOf(isDesktopTraySupported()) }
-    var windowVisible by remember { mutableStateOf(!startInTray || !traySupported) }
+    var trayWindowState by remember {
+        mutableStateOf(
+            initialDesktopTrayWindowState(
+                startInTray = startInTray,
+                traySupported = isDesktopTraySupported(),
+            ),
+        )
+    }
     var exitRequested by remember { mutableStateOf(false) }
     val state = service.state
     val appStrings = rememberAppStrings(state.appLanguage, Locale.getDefault().language)
     DisposableEffect(activationEvents) {
-        activationEvents.setShowWindowHandler { windowVisible = true }
+        activationEvents.setShowWindowHandler {
+            trayWindowState = trayWindowState.withWindowShown()
+        }
         onDispose { activationEvents.setShowWindowHandler(null) }
     }
 
@@ -172,7 +185,7 @@ private fun DesktopApplication(
         }
     }
 
-    if (traySupported) {
+    if (trayWindowState.traySupported) {
         DesktopTrayIcon(
             appTitle = appStrings.get(UiText.APP_TITLE),
             connectionActionLabel = trayConnectionActionLabel(state, appStrings),
@@ -192,29 +205,35 @@ private fun DesktopApplication(
                     coroutineScope.launch { service.findBestLocation() }
                 }
             },
-            onShowWindow = { windowVisible = true },
-            onHideWindow = { windowVisible = false },
+            onShowWindow = {
+                trayWindowState = trayWindowState.withWindowShown()
+            },
+            onHideWindow = {
+                trayWindowState = trayWindowState.withHideWindowRequested()
+            },
             onExit = ::exitAfterStoppingRuntime,
+            onTrayAvailable = {
+                trayWindowState = trayWindowState.withTrayAvailable()
+            },
             onTrayUnavailable = {
-                traySupported = false
-                windowVisible = true
+                trayWindowState = trayWindowState.withTrayUnavailable()
             },
         )
     }
 
     Window(
-        visible = windowVisible,
+        visible = trayWindowState.windowVisible,
         onCloseRequest = {
-            if (traySupported) {
-                windowVisible = false
+            if (trayWindowState.canHideToTray) {
+                trayWindowState = trayWindowState.withCloseRequestHiddenToTray()
             } else {
                 exitAfterStoppingRuntime()
             }
         },
         title = appStrings.get(UiText.APP_TITLE),
     ) {
-        LaunchedEffect(windowVisible) {
-            if (windowVisible) {
+        LaunchedEffect(trayWindowState.windowVisible) {
+            if (trayWindowState.windowVisible) {
                 window.toFront()
                 window.requestFocus()
             }
@@ -231,6 +250,81 @@ private fun DesktopApplication(
                 DesktopVpnControlApp(window, service)
             }
         }
+    }
+}
+
+internal data class DesktopTrayWindowState(
+    val traySupported: Boolean,
+    val trayAvailable: Boolean,
+    val hideOnFirstTrayAvailable: Boolean,
+    val windowVisible: Boolean,
+) {
+    val canHideToTray: Boolean
+        get() = traySupported && trayAvailable
+}
+
+internal fun initialDesktopTrayWindowState(
+    startInTray: Boolean,
+    traySupported: Boolean,
+): DesktopTrayWindowState {
+    return DesktopTrayWindowState(
+        traySupported = traySupported,
+        trayAvailable = false,
+        hideOnFirstTrayAvailable = startInTray,
+        windowVisible = true,
+    )
+}
+
+internal fun DesktopTrayWindowState.withWindowShown(): DesktopTrayWindowState {
+    return copy(windowVisible = true)
+}
+
+internal fun DesktopTrayWindowState.withHideWindowRequested(): DesktopTrayWindowState {
+    return if (canHideToTray) {
+        copy(windowVisible = false)
+    } else {
+        copy(windowVisible = true)
+    }
+}
+
+internal fun DesktopTrayWindowState.withTrayAvailable(): DesktopTrayWindowState {
+    val shouldHide = hideOnFirstTrayAvailable
+    return copy(
+        trayAvailable = true,
+        hideOnFirstTrayAvailable = false,
+        windowVisible = if (shouldHide) false else windowVisible,
+    )
+}
+
+internal fun DesktopTrayWindowState.withTrayUnavailable(): DesktopTrayWindowState {
+    return copy(
+        traySupported = false,
+        trayAvailable = false,
+        hideOnFirstTrayAvailable = false,
+        windowVisible = true,
+    )
+}
+
+internal fun DesktopTrayWindowState.withCloseRequestHiddenToTray(): DesktopTrayWindowState {
+    return if (canHideToTray) {
+        copy(windowVisible = false)
+    } else {
+        copy(windowVisible = true)
+    }
+}
+
+internal fun isDesktopDisplayAvailable(
+    osName: String = System.getProperty("os.name"),
+    env: Map<String, String> = System.getenv(),
+    isHeadless: Boolean = runCatching { GraphicsEnvironment.isHeadless() }.getOrDefault(true),
+): Boolean {
+    if (isHeadless) return false
+    return when (desktopTrayPlatform(osName)) {
+        DesktopTrayPlatform.Linux -> !env["DISPLAY"].isNullOrBlank() || !env["WAYLAND_DISPLAY"].isNullOrBlank()
+        DesktopTrayPlatform.Windows,
+        DesktopTrayPlatform.MacOs,
+        DesktopTrayPlatform.Other,
+        -> true
     }
 }
 

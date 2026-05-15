@@ -137,6 +137,33 @@ start_installed_app() {
   fi
 }
 
+cleanup_legacy_user_systemd_autostart() {
+  local removed=false
+  local legacy_service=false
+
+  if [[ -f "$user_systemd_service" ]] && grep -q 'VPN Control Desktop' "$user_systemd_service"; then
+    legacy_service=true
+    systemctl --user disable vpn-control.service >/dev/null 2>&1 || true
+    rm -f "$user_systemd_service"
+    removed=true
+  fi
+
+  if [[ -L "$user_systemd_wants" ]]; then
+    if [[ "$(readlink "$user_systemd_wants")" == "../vpn-control.service" || "$legacy_service" == true ]]; then
+      rm -f "$user_systemd_wants"
+      removed=true
+    fi
+  elif [[ -e "$user_systemd_wants" && "$legacy_service" == true ]]; then
+    rm -f "$user_systemd_wants"
+    removed=true
+  fi
+
+  if [[ "$removed" == true ]]; then
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    echo "[vpn-control] removed legacy user systemd autostart; XDG autostart is used for GUI startup"
+  fi
+}
+
 ensure_linux_tun_available() {
   if [[ -e /dev/net/tun ]]; then
     echo "[vpn-control] Linux TUN device is available at /dev/net/tun"
@@ -341,24 +368,8 @@ Terminal=false
 Categories=Network;
 X-GNOME-Autostart-enabled=true
 EOF
-
-  mkdir -p "$(dirname "$user_systemd_service")" "$(dirname "$user_systemd_wants")"
-  cat >"$user_systemd_service" <<EOF
-[Unit]
-Description=VPN Control Desktop
-
-[Service]
-Type=simple
-ExecStart=$launcher_path --autostart
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
-  ln -sf ../vpn-control.service "$user_systemd_wants"
-  systemctl --user daemon-reload >/dev/null 2>&1 || true
 fi
+cleanup_legacy_user_systemd_autostart
 
 echo "[vpn-control] installed successfully"
 start_installed_app

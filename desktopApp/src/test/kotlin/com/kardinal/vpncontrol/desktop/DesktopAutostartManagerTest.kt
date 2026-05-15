@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class DesktopAutostartManagerTest {
     @Test
-    fun setEnabledCreatesAndRemovesXdgAutostartEntry() {
+    fun setEnabledCreatesAndRemovesXdgAutostartEntryWithoutSystemdService() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart")
         try {
             val commands = mutableListOf<List<String>>()
@@ -34,9 +34,15 @@ class DesktopAutostartManagerTest {
             assertTrue(content.contains("Name=VPN Control"))
             assertTrue(content.contains("Exec=\"/opt/vpn-control/bin/vpn-control\" --autostart"))
             assertTrue(content.contains("X-GNOME-Autostart-enabled=true"))
-            val service = Files.readString(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service"))
-            assertTrue(service.contains("ExecStart=/opt/vpn-control/bin/vpn-control --autostart"))
-            assertTrue(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("default.target.wants").resolve("vpn-control.service")))
+            assertFalse(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service")))
+            assertFalse(
+                Files.exists(
+                    tempDir.resolve("systemd")
+                        .resolve("user")
+                        .resolve("default.target.wants")
+                        .resolve("vpn-control.service"),
+                ),
+            )
 
             val disabled = manager.setEnabled(false)
 
@@ -44,7 +50,86 @@ class DesktopAutostartManagerTest {
             assertFalse(manager.isEnabled())
             assertFalse(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
             assertFalse(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service")))
+            assertFalse(commands.any { it.takeLast(2) == listOf("--user", "daemon-reload") })
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun setEnabledRemovesLegacyLinuxSystemdAutostartWithoutStoppingRuntime() {
+        val tempDir = Files.createTempDirectory("vpn-control-autostart-legacy")
+        try {
+            val systemdUserDir = tempDir.resolve("systemd").resolve("user")
+            val wantsDir = systemdUserDir.resolve("default.target.wants")
+            Files.createDirectories(wantsDir)
+            Files.writeString(
+                systemdUserDir.resolve("vpn-control.service"),
+                """
+                    |[Unit]
+                    |Description=VPN Control Desktop
+                    |
+                    |[Service]
+                    |ExecStart=/opt/vpn-control/bin/vpn-control --autostart
+                    |
+                """.trimMargin(),
+            )
+            Files.writeString(wantsDir.resolve("vpn-control.service"), "legacy copied service")
+            val commands = mutableListOf<List<String>>()
+            val manager = DesktopAutostartManager(
+                configHome = tempDir,
+                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                platform = DesktopAutostartPlatform.LINUX,
+                commandRunner = { command ->
+                    commands += command
+                    DesktopAutostartCommandResult(0, "")
+                },
+                systemctlResolver = { tempDir.resolve("systemctl") },
+            )
+
+            val enabled = manager.setEnabled(true)
+
+            assertTrue(enabled.isSuccess)
+            assertTrue(manager.isEnabled())
+            assertTrue(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
+            assertFalse(Files.exists(systemdUserDir.resolve("vpn-control.service")))
+            assertFalse(Files.exists(wantsDir.resolve("vpn-control.service")))
+            assertTrue(commands.any { it.takeLast(3) == listOf("--user", "disable", "vpn-control.service") })
             assertTrue(commands.any { it.takeLast(2) == listOf("--user", "daemon-reload") })
+            assertFalse(commands.flatten().any { it == "--now" })
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun isEnabledMigratesLegacyLinuxSystemdAutostartToXdgEntry() {
+        val tempDir = Files.createTempDirectory("vpn-control-autostart-migrate")
+        try {
+            val systemdUserDir = tempDir.resolve("systemd").resolve("user")
+            Files.createDirectories(systemdUserDir)
+            Files.writeString(
+                systemdUserDir.resolve("vpn-control.service"),
+                """
+                    |[Unit]
+                    |Description=VPN Control Desktop
+                    |
+                    |[Service]
+                    |ExecStart=/opt/vpn-control/bin/vpn-control --autostart
+                    |
+                """.trimMargin(),
+            )
+            val manager = DesktopAutostartManager(
+                configHome = tempDir,
+                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                platform = DesktopAutostartPlatform.LINUX,
+                commandRunner = { DesktopAutostartCommandResult(0, "") },
+                systemctlResolver = { tempDir.resolve("systemctl") },
+            )
+
+            assertTrue(manager.isEnabled())
+            assertTrue(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
+            assertFalse(Files.exists(systemdUserDir.resolve("vpn-control.service")))
         } finally {
             tempDir.toFile().deleteRecursively()
         }

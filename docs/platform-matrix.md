@@ -28,7 +28,7 @@ Android:
 Linux desktop:
 
 - VPN mode depends on a usable TUN device and installed runtime capabilities.
-- Tray behavior depends on the desktop environment or window manager exposing a tray/status-notifier host. VPN Control auto-detects native AppIndicator/StatusNotifier/GtkStatusIcon support on Linux and falls back to AWT/XEmbed where possible, but environments with no tray host may not show an icon. i3/polybar-style XEmbed sessions use the AWT tray first because native GTK tray menus can be invisible there; set `VPN_CONTROL_LINUX_TRAY_BACKEND=native` or `awt` to force a backend while debugging.
+- Tray behavior depends on the desktop environment or window manager exposing a tray/status-notifier host. VPN Control auto-detects native AppIndicator/StatusNotifier/GtkStatusIcon support on Linux and falls back to AWT/XEmbed where possible, but environments with no tray host may not show an icon. The desktop window must remain accessible until a tray icon is confirmed available. i3/polybar-style XEmbed sessions use the AWT tray first because native GTK tray menus can be invisible there; set `VPN_CONTROL_LINUX_TRAY_BACKEND=native` or `awt` to force a backend while debugging.
 - Local install behavior is covered by `scripts/arch_install.sh` and package scripts.
 
 Windows desktop:

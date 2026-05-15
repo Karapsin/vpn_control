@@ -80,6 +80,7 @@ class DesktopTrayBackendTest {
     fun linuxFallsBackToAwtWhenNativeBackendIsUnavailable() {
         val attempts = mutableListOf<String>()
         val awtHandle = FakeDesktopTrayHandle()
+        var availableCalls = 0
         val installer = DesktopTrayBackendInstaller(
             listOf(
                 FakeDesktopTrayBackend("native", attempts, handle = null),
@@ -90,10 +91,12 @@ class DesktopTrayBackendTest {
         val handle = installer.install(
             appTitle = { "VPN Control" },
             menuState = { sampleTrayMenuState() },
+            onAvailable = { availableCalls += 1 },
         )
 
         assertSame(awtHandle, handle)
         assertEquals(listOf("native", "awt"), attempts)
+        assertEquals(1, availableCalls)
     }
 
     @Test
@@ -214,10 +217,12 @@ class NativeLinuxTrayBackendTest {
     fun nativeMenuIsBuiltBeforeTrayIconIsActivated() {
         val events = mutableListOf<String>()
         val peer = FakeNativeLinuxTrayPeer(events)
+        var availableCalls = 0
 
         installNativeTray(
             peer = peer,
             menuState = sampleTrayMenuState(),
+            onAvailable = { availableCalls += 1 },
         )
 
         assertEquals(
@@ -234,12 +239,15 @@ class NativeLinuxTrayBackendTest {
             ),
             events,
         )
+        assertEquals(1, availableCalls)
     }
 }
 
 private fun installNativeTray(
     peer: FakeNativeLinuxTrayPeer,
     menuState: TrayMenuState,
+    onAvailable: () -> Unit = {},
+    onUnavailable: () -> Unit = {},
 ): DesktopTrayHandle {
     val backend = NativeLinuxTrayBackend(
         gateway = NativeLinuxTrayGateway { peer },
@@ -251,6 +259,8 @@ private fun installNativeTray(
         backend.install(
             appTitle = { "VPN Control" },
             menuState = { menuState },
+            onAvailable = onAvailable,
+            onUnavailable = onUnavailable,
         ),
     )
 }
@@ -263,8 +273,13 @@ private class FakeDesktopTrayBackend(
     override fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit,
+        onUnavailable: () -> Unit,
     ): DesktopTrayHandle? {
         attempts += name
+        if (handle != null) {
+            onAvailable()
+        }
         return handle
     }
 }

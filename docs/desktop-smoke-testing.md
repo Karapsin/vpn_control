@@ -84,7 +84,8 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 
 7. Tray and single instance
 
-   - Close the window and confirm the app hides to tray instead of exiting.
+   - Close the window and confirm the app hides to tray instead of exiting when the tray icon is visible.
+   - Temporarily run without a tray host, when practical, and confirm close exits or keeps the window accessible instead of hiding it invisibly.
    - Launch the app again and confirm it shows the existing instance instead of opening a second one.
    - Use the tray menu to start/stop and run best-location selection.
    - On Linux, repeat on at least one StatusNotifier/AppIndicator host and one XEmbed-only panel when available.
@@ -92,7 +93,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 8. Autostart and reconnect
 
    - Enable start on boot.
-   - With VPN on, reboot and confirm the app starts in tray and reconnects to the remembered location.
+   - With VPN on, reboot and confirm the app starts in tray after the tray icon appears and reconnects to the remembered location.
    - With VPN off, reboot and confirm the app starts without connecting.
 
 ## Logs To Capture

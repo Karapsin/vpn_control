@@ -49,7 +49,8 @@ private const val MinimumNonLinuxTrayIconSize = 22
 private const val MaximumTrayIconSize = 128
 private const val TrayInstallRetryDelayMillis = 1_000
 private const val TrayInstallMaxAttempts = 60
-private const val LinuxAwtImageRefreshDelayMillis = 250
+private const val LinuxAwtTrayVisibilityCheckDelayMillis = 500
+private const val LinuxAwtTrayVisibilityMaxMisses = 6
 
 @Composable
 internal fun DesktopTrayIcon(
@@ -66,6 +67,7 @@ internal fun DesktopTrayIcon(
     onShowWindow: () -> Unit,
     onHideWindow: () -> Unit,
     onExit: () -> Unit,
+    onTrayAvailable: () -> Unit = {},
     onTrayUnavailable: () -> Unit = {},
 ) {
     val currentAppTitle = rememberUpdatedState(appTitle)
@@ -95,6 +97,8 @@ internal fun DesktopTrayIcon(
         val trayHandle = createDesktopTrayBackendInstaller().install(
             appTitle = { currentAppTitle.value },
             menuState = { currentMenuState.value },
+            onAvailable = { SwingUtilities.invokeLater(onTrayAvailable) },
+            onUnavailable = { SwingUtilities.invokeLater(onTrayUnavailable) },
         )
         trayHandleHolder.handle = trayHandle
         trayHandleHolder.update(currentAppTitle.value, currentMenuState.value)
@@ -182,6 +186,8 @@ internal interface DesktopTrayBackend {
     fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit,
+        onUnavailable: () -> Unit,
     ): DesktopTrayHandle?
 }
 
@@ -191,10 +197,17 @@ internal class DesktopTrayBackendInstaller(
     fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit = {},
+        onUnavailable: () -> Unit = {},
     ): DesktopTrayHandle? {
         for (backend in backends) {
             val handle = runCatching {
-                backend.install(appTitle = appTitle, menuState = menuState)
+                backend.install(
+                    appTitle = appTitle,
+                    menuState = menuState,
+                    onAvailable = onAvailable,
+                    onUnavailable = onUnavailable,
+                )
             }.getOrNull()
             if (handle != null) return handle
         }
@@ -317,22 +330,27 @@ private class AwtTrayBackend : DesktopTrayBackend {
     override fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit,
+        onUnavailable: () -> Unit,
     ): DesktopTrayHandle? {
         if (!isAwtDesktopTraySupported()) return null
-        val popup = TrayPopupController()
-        val handle = AwtTrayHandle(popup)
+        val handle = AwtTrayHandle(
+            popup = TrayPopupController(),
+            onAvailable = onAvailable,
+            onUnavailable = onUnavailable,
+        )
         val trayRegistration = RetryingTrayRegistration(
             target = AwtTrayRegistrationTarget(
                 appTitle = appTitle,
-                popup = popup,
+                popup = handle.popup,
                 menuState = menuState,
             ),
             scheduler = SwingTrayRetryScheduler,
             onInstalled = { icon ->
-                handle.trayIcon = icon
-                handle.startLinuxImageRefresh()
+                handle.installTrayIcon(icon)
                 handle.update(appTitle(), menuState())
             },
+            onUnavailable = handle::markUnavailable,
         )
         handle.registration = trayRegistration
         trayRegistration.start()
@@ -341,48 +359,100 @@ private class AwtTrayBackend : DesktopTrayBackend {
 }
 
 private class AwtTrayHandle(
-    private val popup: TrayPopupController,
+    val popup: TrayPopupController,
+    private val onAvailable: () -> Unit,
+    private val onUnavailable: () -> Unit,
 ) : DesktopTrayHandle {
     var registration: RetryingTrayRegistration<TrayIcon>? = null
-    var trayIcon: TrayIcon? = null
-    private var linuxImageRefreshTimer: Timer? = null
+    private var trayIcon: TrayIcon? = null
+    private var linuxTrayMonitorTimer: Timer? = null
+    private var disposed = false
+    private var available = false
+    private var missingVisibilityChecks = 0
 
     override fun update(appTitle: String, menuState: TrayMenuState) {
+        if (disposed) return
         val icon = trayIcon ?: return
         if (icon.toolTip != appTitle) {
             icon.toolTip = appTitle
         }
     }
 
-    fun startLinuxImageRefresh() {
-        if (desktopTrayPlatform() != DesktopTrayPlatform.Linux || linuxImageRefreshTimer != null) return
-        linuxImageRefreshTimer = Timer(LinuxAwtImageRefreshDelayMillis) {
-            refreshLinuxAwtTrayImage()
+    fun installTrayIcon(icon: TrayIcon) {
+        if (disposed) return
+        trayIcon = icon
+        if (desktopTrayPlatform() != DesktopTrayPlatform.Linux) {
+            markAvailable()
+            return
+        }
+        startLinuxTrayMonitor()
+        checkLinuxTrayVisibility()
+    }
+
+    fun markUnavailable() {
+        if (disposed) return
+        dispose()
+        onUnavailable()
+    }
+
+    private fun markAvailable() {
+        if (disposed || available) return
+        available = true
+        onAvailable()
+    }
+
+    private fun startLinuxTrayMonitor() {
+        if (linuxTrayMonitorTimer != null) return
+        linuxTrayMonitorTimer = Timer(LinuxAwtTrayVisibilityCheckDelayMillis) {
+            checkLinuxTrayVisibility()
         }.apply {
             isRepeats = true
-            initialDelay = LinuxAwtImageRefreshDelayMillis
+            initialDelay = LinuxAwtTrayVisibilityCheckDelayMillis
             start()
         }
     }
 
-    private fun refreshLinuxAwtTrayImage() {
+    private fun checkLinuxTrayVisibility() {
+        if (disposed) return
         val icon = trayIcon ?: return
-        val frameSize = currentLinuxAwtTrayFrameSize() ?: return
+        if (!isAwtTrayIconRegistered(icon)) {
+            markUnavailable()
+            return
+        }
+
+        val frameSize = currentLinuxAwtTrayFrameSize()
+        if (frameSize == null) {
+            missingVisibilityChecks += 1
+            if (missingVisibilityChecks >= LinuxAwtTrayVisibilityMaxMisses) {
+                markUnavailable()
+            }
+            return
+        }
+
+        missingVisibilityChecks = 0
+        markAvailable()
+        refreshLinuxAwtTrayImage(icon, frameSize)
+    }
+
+    private fun refreshLinuxAwtTrayImage(icon: TrayIcon, frameSize: Int) {
         val currentImageSize = icon.image?.getWidth(null) ?: -1
-        if (currentImageSize == frameSize) return
-        icon.image = createTrayImage(
-            DesktopTrayImageConfig(
-                imageSize = frameSize,
-                autoSize = false,
-                preferFixedResource = true,
-            ),
-        )
+        if (currentImageSize != frameSize) {
+            icon.image = createTrayImage(
+                DesktopTrayImageConfig(
+                    imageSize = frameSize,
+                    autoSize = false,
+                    preferFixedResource = true,
+                ),
+            )
+        }
     }
 
     override fun dispose() {
+        if (disposed) return
+        disposed = true
         popup.dismiss()
-        linuxImageRefreshTimer?.stop()
-        linuxImageRefreshTimer = null
+        linuxTrayMonitorTimer?.stop()
+        linuxTrayMonitorTimer = null
         registration?.dispose()
         registration = null
         trayIcon = null
@@ -438,6 +508,8 @@ internal class NativeLinuxTrayBackend(
     override fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit,
+        onUnavailable: () -> Unit,
     ): DesktopTrayHandle? {
         if (runCatching { isHeadless() }.getOrDefault(true)) return null
         val tray = gateway.get(DefaultTrayAppName) ?: return null
@@ -453,6 +525,7 @@ internal class NativeLinuxTrayBackend(
                 dispatcher = dispatcher,
             )
             tray.setImage(imageUrl)
+            onAvailable()
             handle
         }.getOrElse {
             runCatching { tray.shutdown() }
@@ -735,9 +808,11 @@ internal class RetryingTrayRegistration<T>(
     private val scheduler: TrayRetryScheduler,
     private val retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
     private val onInstalled: (T) -> Unit = {},
+    private val onUnavailable: () -> Unit = {},
 ) {
     private var attempts = 0
     private var disposed = false
+    private var unavailableReported = false
     private var pendingRetry: TrayRetryHandle? = null
 
     var installedIcon: T? = null
@@ -766,18 +841,29 @@ internal class RetryingTrayRegistration<T>(
         when (val result = runCatching { target.install() }.getOrDefault(TrayInstallResult.RetryableFailure)) {
             is TrayInstallResult.Installed -> {
                 installedIcon = result.icon
+                unavailableReported = false
                 runCatching { onInstalled(result.icon) }
             }
-            TrayInstallResult.RetryableFailure -> scheduleRetryIfAvailable()
-            TrayInstallResult.Unsupported -> Unit
+            TrayInstallResult.RetryableFailure -> handleRetryableFailure()
+            TrayInstallResult.Unsupported -> reportUnavailable()
         }
     }
 
-    private fun scheduleRetryIfAvailable() {
-        if (disposed || attempts >= retryPolicy.maxAttempts) return
+    private fun handleRetryableFailure() {
+        if (disposed) return
+        if (attempts >= retryPolicy.maxAttempts) {
+            reportUnavailable()
+            return
+        }
         pendingRetry = scheduler.schedule(retryPolicy.retryDelayMillis) {
             attemptInstall()
         }
+    }
+
+    private fun reportUnavailable() {
+        if (disposed || unavailableReported || installedIcon != null) return
+        unavailableReported = true
+        runCatching { onUnavailable() }
     }
 }
 
@@ -836,6 +922,12 @@ private fun currentLinuxAwtTrayFrameSize(): Int? {
         }
         .map { window -> maxOf(window.width, window.height).coerceAtMost(MaximumTrayIconSize) }
         .firstOrNull()
+}
+
+private fun isAwtTrayIconRegistered(icon: TrayIcon): Boolean {
+    return runCatching {
+        AwtSystemTray.getSystemTray().trayIcons.any { it === icon }
+    }.getOrDefault(false)
 }
 
 internal data class TrayMenuState(

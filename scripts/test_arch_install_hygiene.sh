@@ -33,6 +33,9 @@ required_snippets = [
     'installed_caps="$(getcap "$installed_sing_box" || true)"',
     '"cap_net_admin"',
     '"cap_net_raw"',
+    'cleanup_legacy_user_systemd_autostart()',
+    'systemctl --user disable vpn-control.service',
+    'removed legacy user systemd autostart',
 ]
 missing = [snippet for snippet in required_snippets if snippet not in text]
 if missing:
@@ -56,6 +59,17 @@ old_refusal = "refusing to replace $install_dir while VPN Control is running"
 if old_refusal in text:
     print("arch_install.sh must restart the running instance instead of refusing replacement.", file=sys.stderr)
     sys.exit(1)
+
+forbidden_systemd_autostart = [
+    'ExecStart=$launcher_path --autostart',
+    'WantedBy=default.target',
+    'ln -sf ../vpn-control.service',
+]
+for snippet in forbidden_systemd_autostart:
+    if snippet in text:
+        print("arch_install.sh must not install user systemd GUI autostart entries.", file=sys.stderr)
+        print(f"found forbidden snippet: {snippet}", file=sys.stderr)
+        sys.exit(1)
 
 stop_call = text.rfind("\nstop_running_instance\n")
 install_call = text.find('sudo rm -rf "$install_dir"')

@@ -43,31 +43,25 @@ internal class DesktopAutostartManager(
     }
 
     private fun isLinuxAutostartEnabled(): Boolean {
-        return isXdgAutostartEnabled() || Files.exists(systemdServiceFile) || Files.exists(systemdWantsFile)
+        val xdgEntryExists = pathExistsOrSymlink(autostartFile)
+        val legacySystemdExists = legacyLinuxSystemdAutostartExists()
+        if (legacySystemdExists) {
+            if (!xdgEntryExists) {
+                runCatching { setXdgAutostartEnabled(true) }
+            }
+            deleteLegacyLinuxSystemdAutostart()
+        }
+        return isXdgAutostartEnabled()
     }
 
     private fun setLinuxAutostartEnabled(enabled: Boolean): Boolean {
         return if (enabled) {
-            val command = commandResolver()?.takeIf(String::isNotBlank)
-                ?: error("Could not resolve the desktop app launcher path.")
-            Files.createDirectories(autostartFile.parent)
-            Files.writeString(autostartFile, desktopEntry(command))
-            Files.createDirectories(systemdServiceFile.parent)
-            Files.writeString(systemdServiceFile, systemdUserService(command))
-            Files.createDirectories(systemdWantsFile.parent)
-            Files.deleteIfExists(systemdWantsFile)
-            runCatching {
-                Files.createSymbolicLink(systemdWantsFile, Paths.get("..", "vpn-control.service"))
-            }.getOrElse {
-                Files.copy(systemdServiceFile, systemdWantsFile)
-            }
-            reloadSystemdUser()
+            setXdgAutostartEnabled(true)
+            deleteLegacyLinuxSystemdAutostart()
             true
         } else {
             Files.deleteIfExists(autostartFile)
-            Files.deleteIfExists(systemdWantsFile)
-            Files.deleteIfExists(systemdServiceFile)
-            reloadSystemdUser()
+            deleteLegacyLinuxSystemdAutostart()
             false
         }
     }
@@ -93,21 +87,25 @@ internal class DesktopAutostartManager(
         }
     }
 
-    private fun systemdUserService(command: String): String {
-        return """
-            |[Unit]
-            |Description=VPN Control Desktop
-            |
-            |[Service]
-            |Type=simple
-            |ExecStart=${quoteSystemdExec(command)} --autostart
-            |Restart=on-failure
-            |RestartSec=5
-            |
-            |[Install]
-            |WantedBy=default.target
-            |
-        """.trimMargin()
+    private fun legacyLinuxSystemdAutostartExists(): Boolean {
+        return pathExistsOrSymlink(systemdServiceFile) || pathExistsOrSymlink(systemdWantsFile)
+    }
+
+    private fun deleteLegacyLinuxSystemdAutostart() {
+        if (!legacyLinuxSystemdAutostartExists()) return
+        disableSystemdUserService()
+        Files.deleteIfExists(systemdWantsFile)
+        Files.deleteIfExists(systemdServiceFile)
+        reloadSystemdUser()
+    }
+
+    private fun disableSystemdUserService() {
+        val systemctl = systemctlResolver() ?: return
+        commandRunner(listOf(systemctl.toString(), "--user", "disable", "vpn-control.service"))
+    }
+
+    private fun pathExistsOrSymlink(path: Path): Boolean {
+        return Files.exists(path) || Files.isSymbolicLink(path)
     }
 
     private fun reloadSystemdUser() {
@@ -262,14 +260,6 @@ internal class DesktopAutostartManager(
                     }
                 }
             }
-            return "\"$escaped\""
-        }
-
-        private fun quoteSystemdExec(value: String): String {
-            if (!value.any(Char::isWhitespace)) return value
-            val escaped = value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
             return "\"$escaped\""
         }
 

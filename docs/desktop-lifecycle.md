@@ -7,8 +7,8 @@ Desktop lifecycle behavior is easy to break because it crosses UI, tray, persist
 | Invariant | Expected Behavior | Main Coverage |
 | --- | --- | --- |
 | Single instance | Launching VPN Control again should activate/show the existing instance, not create a second independent app instance. | `DesktopSingleInstanceLockTest`, `DesktopActivationEventsTest` |
-| Close hides to tray | Closing the window should hide it to tray instead of terminating the app when tray is supported. | `DesktopSmokeTestTest`, manual tray smoke |
-| Autostart starts in tray | Boot/autostart launches with `--autostart` and starts hidden when tray is supported. | `DesktopAutostartManagerTest`, `DesktopSmokeTestTest` |
+| Close hides to tray | Closing the window should hide it to tray instead of terminating the app only after the tray is confirmed available. | `DesktopTrayWindowStateTest`, `DesktopSmokeTestTest`, manual tray smoke |
+| Autostart starts in tray | Boot/autostart launches with `--autostart` and starts hidden only after the tray is confirmed available; otherwise the window stays visible. | `DesktopAutostartManagerTest`, `DesktopTrayWindowStateTest`, `DesktopSmokeTestTest` |
 | Reconnect after reboot | If VPN/proxy was on before shutdown, app startup should reconnect using the remembered selection. | `DesktopAppServiceTest`, manual reboot smoke |
 | Off stays off | If VPN/proxy was off before shutdown, app startup should not connect automatically. | `DesktopAppServiceTest` |
 | Scheduled refresh keeps runtime usable | Auto-refresh must not leave VPN/proxy stopped. A short controlled restart is acceptable only when config changes require it. | `DesktopAutoRefreshSchedulerTest`, `DesktopAppServiceTest` |
@@ -19,7 +19,7 @@ Desktop lifecycle behavior is easy to break because it crosses UI, tray, persist
 
 - If `Main.kt` window/tray flow changes, re-check close, show, and autostart paths.
 - If `DesktopAppService.kt` startup/shutdown flow changes, re-check reconnect intent and off-stays-off behavior.
-- If `DesktopAutostartManager.kt` changes, test Linux desktop entries, systemd user entries, and Windows startup command generation.
+- If `DesktopAutostartManager.kt` changes, test Linux XDG desktop entries, legacy systemd cleanup, and Windows startup command generation.
 - If validation/probe code changes, confirm direct probe routing still bypasses the active VPN/proxy.
 - If runtime manager code changes, inspect whether scheduled refresh can strand the app in stopped or stale-config state.
 
