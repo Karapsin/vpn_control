@@ -36,6 +36,15 @@ required_snippets = [
     'cleanup_legacy_user_systemd_autostart()',
     'systemctl --user disable vpn-control.service',
     'removed legacy user systemd autostart',
+    'state_dir="\\${VPN_CONTROL_STATE_DIR:-\\$HOME/.vpn-control-desktop}"',
+    'lock_file="\\$state_dir/launcher.lock"',
+    'port_file="\\$state_dir/activation.port"',
+    'request_existing_instance()',
+    "port=\"\\$(tr -dc '0-9' <\"\\$port_file\")\"",
+    'python3 - "\\$port"',
+    'socket.create_connection(("127.0.0.1", port), timeout=0.5)',
+    'exec 8<>"/dev/tcp/127.0.0.1/\\$port"',
+    'flock -n 9',
 ]
 missing = [snippet for snippet in required_snippets if snippet not in text]
 if missing:
@@ -58,6 +67,22 @@ if old_guidance in text:
 old_refusal = "refusing to replace $install_dir while VPN Control is running"
 if old_refusal in text:
     print("arch_install.sh must restart the running instance instead of refusing replacement.", file=sys.stderr)
+    sys.exit(1)
+
+old_pipefail_port_parse = 'tr -dc \'0-9\' <"\\$port_file" | head -c 10'
+if old_pipefail_port_parse in text:
+    print("arch_install.sh launcher wrapper must not parse activation.port with a pipe under pipefail.", file=sys.stderr)
+    sys.exit(1)
+
+launcher_guard = text.find('lock_file="\\$state_dir/launcher.lock"')
+launcher_exec = text.find('exec "$install_dir/bin/vpn-control" "\\$@"')
+if launcher_guard < 0 or launcher_exec < 0 or launcher_guard > launcher_exec:
+    print("arch_install.sh launcher wrapper must guard duplicate launches before execing app binary.", file=sys.stderr)
+    sys.exit(1)
+
+duplicate_launch_exit = text.find('request_existing_instance >/dev/null 2>&1 || true')
+if duplicate_launch_exit < 0 or duplicate_launch_exit > launcher_exec:
+    print("arch_install.sh launcher wrapper must activate the existing instance on duplicate launch.", file=sys.stderr)
     sys.exit(1)
 
 forbidden_systemd_autostart = [

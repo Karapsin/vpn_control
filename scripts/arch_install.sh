@@ -312,7 +312,47 @@ echo "[vpn-control] installing launcher at $launcher_path"
 sudo mkdir -p "$(dirname "$launcher_path")"
 sudo tee "$launcher_path" >/dev/null <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+
 export VPN_CONTROL_SING_BOX="$install_dir/bin/sing-box"
+
+state_dir="\${VPN_CONTROL_STATE_DIR:-\$HOME/.vpn-control-desktop}"
+lock_file="\$state_dir/launcher.lock"
+port_file="\$state_dir/activation.port"
+
+request_existing_instance() {
+  local port
+
+  [[ -r "\$port_file" ]] || return 1
+  port="\$(tr -dc '0-9' <"\$port_file")"
+  [[ -n "\$port" ]] || return 1
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "\$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
+    sock.sendall(b"show\n")
+PY
+  else
+    exec 8<>"/dev/tcp/127.0.0.1/\$port" || return 1
+    printf 'show\n' >&8
+    exec 8<&-
+    exec 8>&-
+  fi
+}
+
+if command -v flock >/dev/null 2>&1; then
+  mkdir -p "\$state_dir"
+  exec 9>"\$lock_file"
+  if ! flock -n 9; then
+    request_existing_instance >/dev/null 2>&1 || true
+    exit 0
+  fi
+fi
+
 exec "$install_dir/bin/vpn-control" "\$@"
 EOF
 sudo chmod +x "$launcher_path"
