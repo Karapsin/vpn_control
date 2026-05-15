@@ -25,6 +25,8 @@ on:
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
       - "scripts/check_docs_hygiene.sh"
+      - "scripts/arch_install.sh"
+      - "scripts/test_arch_install_hygiene.sh"
   pull_request:
     paths:
       - ".github/workflows/fast-checks.yml"
@@ -45,6 +47,8 @@ on:
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
       - "scripts/check_docs_hygiene.sh"
+      - "scripts/arch_install.sh"
+      - "scripts/test_arch_install_hygiene.sh"
 
 jobs:
   fast-checks:

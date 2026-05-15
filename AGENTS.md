@@ -35,6 +35,7 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 - Do not restore old default subscriptions, default rules, or demo data.
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
+- After changes are done and validated, push completed commits to `origin main`.
 - If large work intentionally spans multiple dirty buckets, document the intent in `docs/work-in-progress.md`.
 - Start low-context repository navigation from `docs/README.md`.
 - Use `docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.
