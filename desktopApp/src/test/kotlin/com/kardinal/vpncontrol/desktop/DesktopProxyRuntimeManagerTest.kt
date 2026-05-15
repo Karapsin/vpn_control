@@ -70,16 +70,19 @@ class DesktopProxyRuntimeManagerTest {
 
     @Test
     fun linuxVpnCapabilityFailureNamesResolvedSingBoxBinary() {
+        val binaryPath = Path.of("opt", "vpn-control", "bin", "sing-box")
+        val resolvedPath = binaryPath.toAbsolutePath().normalize().toString()
         val detail = linuxNetworkPrivilegesMissingDetail(
             DesktopSingBoxExecutable(
-                path = Path.of("/opt/vpn-control/bin/sing-box"),
+                path = binaryPath,
                 source = "VPN_CONTROL_SING_BOX",
             ),
         )
 
-        assertContains(detail, "/opt/vpn-control/bin/sing-box")
+        assertContains(detail, resolvedPath)
         assertContains(detail, "VPN_CONTROL_SING_BOX")
-        assertContains(detail, "sudo setcap cap_net_admin,cap_net_raw+ep '/opt/vpn-control/bin/sing-box'")
+        assertContains(detail, "sudo setcap cap_net_admin,cap_net_raw+ep")
+        assertContains(detail, "'$resolvedPath'")
         assertFalse(detail.contains("command -v sing-box"))
     }
 

@@ -8,20 +8,23 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class DesktopRuntimeStatusServiceTest {
+    private val defaultLogPath = Paths.get("tmp", "default.log")
+
     @Test
     fun proxyModeDetailsIncludeRuntimeModePortAndLog() {
+        val currentLogPath = Paths.get("tmp", "current.log")
         val details = service(
             state = MainUiState(appMode = AppMode.PROXY_ONLY),
             currentMode = { AppMode.PROXY_ONLY },
             currentPort = { 2080 },
-            currentLogFile = { Paths.get("/tmp/current.log") },
+            currentLogFile = { currentLogPath },
         ).details()
 
         assertEquals(
             listOf(
                 RuntimeStatusMessages.runtimeMode(AppMode.PROXY_ONLY.name),
                 RuntimeStatusMessages.localProxy("127.0.0.1:2080"),
-                RuntimeStatusMessages.runtimeLog("/tmp/current.log"),
+                RuntimeStatusMessages.runtimeLog(currentLogPath.toString()),
             ),
             details,
         )
@@ -36,7 +39,7 @@ class DesktopRuntimeStatusServiceTest {
 
         assertEquals(RuntimeStatusMessages.runtimeMode(AppMode.VPN.name), details[0])
         assertEquals(RuntimeStatusMessages.desktopVpnCapabilityReady(), details[1])
-        assertEquals(RuntimeStatusMessages.runtimeLog("/tmp/default.log"), details[2])
+        assertEquals(RuntimeStatusMessages.runtimeLog(defaultLogPath.toString()), details[2])
     }
 
     @Test
@@ -58,7 +61,7 @@ class DesktopRuntimeStatusServiceTest {
         assertEquals(RuntimeStatusMessages.preflightFailed(AppMode.VPN, failedChecks = 3), details[1])
         assertEquals("fail first: broken first", details[2])
         assertEquals("fail second: broken second", details[3])
-        assertEquals(RuntimeStatusMessages.runtimeLog("/tmp/default.log"), details[4])
+        assertEquals(RuntimeStatusMessages.runtimeLog(defaultLogPath.toString()), details[4])
         assertEquals(5, details.size)
     }
 
@@ -77,7 +80,7 @@ class DesktopRuntimeStatusServiceTest {
             lastPreflightReport = lastPreflightReport,
             desktopVpnCapabilityStatus = desktopVpnCapabilityStatus,
             currentLogFile = currentLogFile,
-            defaultLogFile = { Paths.get("/tmp/default.log") },
+            defaultLogFile = { defaultLogPath },
         )
     }
 }
