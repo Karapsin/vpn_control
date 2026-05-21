@@ -36,6 +36,15 @@ required_snippets = [
     'cleanup_legacy_user_systemd_autostart()',
     'systemctl --user disable vpn-control.service',
     'removed legacy user systemd autostart',
+    'report_legacy_systemd_autostart_for_other_users()',
+    'inspect_other_user_legacy_systemd_autostart()',
+    'path_exists_or_symlink_sudo()',
+    '/var/lib/systemd/linger',
+    'found legacy user systemd autostart entries outside the current user',
+    'these files were not removed because they belong to another user',
+    'sudo -u %q XDG_RUNTIME_DIR=/run/user/%s systemctl --user disable vpn-control.service || true',
+    'sudo rm -f %q %q',
+    'sudo loginctl disable-linger %q',
     'state_dir="\\${VPN_CONTROL_STATE_DIR:-\\$HOME/.vpn-control-desktop}"',
     'lock_file="\\$state_dir/launcher.lock"',
     'port_file="\\$state_dir/activation.port"',
@@ -95,6 +104,22 @@ for snippet in forbidden_systemd_autostart:
         print("arch_install.sh must not install user systemd GUI autostart entries.", file=sys.stderr)
         print(f"found forbidden snippet: {snippet}", file=sys.stderr)
         sys.exit(1)
+
+forbidden_cross_user_cleanup = [
+    'sudo rm -f "$service" "$wants"',
+    'systemctl --user disable --now vpn-control.service',
+]
+for snippet in forbidden_cross_user_cleanup:
+    if snippet in text:
+        print("arch_install.sh must not directly remove or stop another user's legacy autostart.", file=sys.stderr)
+        print(f"found forbidden snippet: {snippet}", file=sys.stderr)
+        sys.exit(1)
+
+current_cleanup = text.rfind("\ncleanup_legacy_user_systemd_autostart\n")
+other_user_report = text.rfind("\nreport_legacy_systemd_autostart_for_other_users\n")
+if current_cleanup < 0 or other_user_report < 0 or other_user_report < current_cleanup:
+    print("arch_install.sh must clean the current user and then report other-user legacy autostart entries.", file=sys.stderr)
+    sys.exit(1)
 
 stop_call = text.rfind("\nstop_running_instance\n")
 install_call = text.find('sudo rm -rf "$install_dir"')

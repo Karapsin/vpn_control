@@ -164,6 +164,181 @@ cleanup_legacy_user_systemd_autostart() {
   fi
 }
 
+path_exists_or_symlink_sudo() {
+  local path=$1
+
+  [[ -e "$path" || -L "$path" ]] && return 0
+  sudo test -e "$path" >/dev/null 2>&1 || sudo test -L "$path" >/dev/null 2>&1
+}
+
+path_is_symlink_sudo() {
+  local path=$1
+
+  [[ -L "$path" ]] && return 0
+  sudo test -L "$path" >/dev/null 2>&1
+}
+
+readlink_sudo() {
+  local path=$1
+
+  readlink "$path" 2>/dev/null || sudo readlink "$path" 2>/dev/null || true
+}
+
+legacy_systemd_service_marker_present() {
+  local path=$1
+
+  if [[ -r "$path" ]]; then
+    grep -q 'VPN Control Desktop' "$path"
+    return
+  fi
+  sudo grep -q 'VPN Control Desktop' "$path" >/dev/null 2>&1
+}
+
+linger_enabled_for_user() {
+  local username=$1
+  local linger_path="/var/lib/systemd/linger/$username"
+
+  [[ -e "$linger_path" ]] && return 0
+  sudo test -e "$linger_path" >/dev/null 2>&1
+}
+
+other_user_legacy_autostart_reported=false
+
+print_other_user_legacy_autostart_header() {
+  if [[ "$other_user_legacy_autostart_reported" == false ]]; then
+    echo "[vpn-control] found legacy user systemd autostart entries outside the current user"
+    echo "[vpn-control] these files were not removed because they belong to another user"
+    other_user_legacy_autostart_reported=true
+  fi
+}
+
+report_legacy_systemd_autostart_for_user() {
+  local username=$1
+  local uid=$2
+  local home=$3
+  local service=$4
+  local wants=$5
+  local service_found=$6
+  local wants_found=$7
+  local wants_target=$8
+  local linger_state="linger disabled"
+
+  if linger_enabled_for_user "$username"; then
+    linger_state="linger enabled"
+  fi
+
+  print_other_user_legacy_autostart_header
+  printf '[vpn-control] - %s (uid %s, %s): %s\n' "$username" "$uid" "$linger_state" "$home"
+  if [[ "$service_found" == true ]]; then
+    printf '[vpn-control]   service: %s\n' "$service"
+  fi
+  if [[ "$wants_found" == true ]]; then
+    if [[ -n "$wants_target" ]]; then
+      printf '[vpn-control]   enabled link: %s -> %s\n' "$wants" "$wants_target"
+    else
+      printf '[vpn-control]   enabled entry: %s\n' "$wants"
+    fi
+  fi
+  echo "[vpn-control]   remediation:"
+  printf '[vpn-control]     sudo -u %q XDG_RUNTIME_DIR=/run/user/%s systemctl --user disable vpn-control.service || true\n' "$username" "$uid"
+  printf '[vpn-control]     sudo rm -f %q %q\n' "$service" "$wants"
+  if [[ "$linger_state" == "linger enabled" ]]; then
+    printf '[vpn-control]     sudo loginctl disable-linger %q  # if this user should not run services before login\n' "$username"
+  fi
+}
+
+inspect_other_user_legacy_systemd_autostart() {
+  local username=$1
+  local uid=$2
+  local home=$3
+  local current_uid
+  local service
+  local wants
+  local service_found=false
+  local wants_found=false
+  local wants_target=""
+
+  current_uid="$(id -u)"
+  if [[ "$uid" == "$current_uid" || -z "$home" || "$home" == "/" ]]; then
+    return
+  fi
+
+  service="$home/.config/systemd/user/vpn-control.service"
+  wants="$home/.config/systemd/user/default.target.wants/vpn-control.service"
+
+  if path_exists_or_symlink_sudo "$service"; then
+    service_found=true
+  fi
+
+  if path_exists_or_symlink_sudo "$wants"; then
+    if path_is_symlink_sudo "$wants"; then
+      wants_target="$(readlink_sudo "$wants")"
+      if [[ "$wants_target" == "../vpn-control.service" || "$wants_target" == *"/vpn-control.service" ]]; then
+        wants_found=true
+      elif [[ "$service_found" == true ]]; then
+        wants_found=true
+      fi
+    elif [[ "$service_found" == true || "$(basename "$wants")" == "vpn-control.service" ]]; then
+      wants_found=true
+    fi
+  fi
+
+  if [[ "$service_found" != true && "$wants_found" != true ]]; then
+    return
+  fi
+
+  if [[ "$service_found" == true ]] && ! legacy_systemd_service_marker_present "$service"; then
+    echo "[vpn-control] note: $service exists but does not contain the old VPN Control marker; review before removing" >&2
+  fi
+
+  report_legacy_systemd_autostart_for_user \
+    "$username" \
+    "$uid" \
+    "$home" \
+    "$service" \
+    "$wants" \
+    "$service_found" \
+    "$wants_found" \
+    "$wants_target"
+}
+
+report_legacy_systemd_autostart_for_other_users() {
+  local current_user
+  local username
+  local password
+  local uid
+  local gid
+  local gecos
+  local home
+  local shell
+  local linger_path
+  declare -A inspected_users=()
+
+  current_user="$(id -un)"
+
+  while IFS=: read -r username password uid gid gecos home shell; do
+    [[ -n "$username" && "$username" != "$current_user" ]] || continue
+    [[ "$uid" =~ ^[0-9]+$ ]] || continue
+    (( uid >= 1000 )) || continue
+    inspected_users["$username"]=true
+    inspect_other_user_legacy_systemd_autostart "$username" "$uid" "$home"
+  done < <(getent passwd)
+
+  if [[ -d /var/lib/systemd/linger ]]; then
+    while IFS= read -r linger_path; do
+      username="$(basename "$linger_path")"
+      [[ -n "$username" && -z "${inspected_users[$username]:-}" && "$username" != "$current_user" ]] || continue
+      if IFS=: read -r username password uid gid gecos home shell < <(getent passwd "$username"); then
+        [[ "$uid" =~ ^[0-9]+$ ]] || continue
+        inspect_other_user_legacy_systemd_autostart "$username" "$uid" "$home"
+      else
+        echo "[vpn-control] lingering user has no passwd entry: $username" >&2
+        printf '[vpn-control] inspect manually: sudo loginctl disable-linger %q  # if this user is no longer needed\n' "$username" >&2
+      fi
+    done < <(find /var/lib/systemd/linger -mindepth 1 -maxdepth 1 -printf '%p\n' 2>/dev/null | sort)
+  fi
+}
+
 ensure_linux_tun_available() {
   if [[ -e /dev/net/tun ]]; then
     echo "[vpn-control] Linux TUN device is available at /dev/net/tun"
@@ -410,6 +585,7 @@ X-GNOME-Autostart-enabled=true
 EOF
 fi
 cleanup_legacy_user_systemd_autostart
+report_legacy_systemd_autostart_for_other_users
 
 echo "[vpn-control] installed successfully"
 start_installed_app
