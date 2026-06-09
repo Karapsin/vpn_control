@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "အသက်ဝင်သော စာရင်းသွင်းမှုကို မရွေးချယ်ထားပါ",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0} ကို ပြန်လည်ဆန်းသစ်နေသည်...",
     "LOCATION_REFRESHED_COUNT": "တည်နေရာ {0} ခု ပြန်လည်ဆန်းသစ်ပြီးပါပြီ",
-    "LOCATIONS_REFRESHED_COUNT": "တည်နေရာ {0} ခု ပြန်လည်ဆန်းသစ်ပြီးပါပြီ"
+    "LOCATIONS_REFRESHED_COUNT": "တည်နေရာ {0} ခု ပြန်လည်ဆန်းသစ်ပြီးပါပြီ",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

@@ -91,6 +91,7 @@ internal object DesktopSmokeTest {
                     routingRules = RoutingRules(ignoreRules = true),
                     dnsSettings = DesktopDnsSettings(enabled = true, value = "1.1.1.1"),
                     appMode = AppMode.PROXY_ONLY,
+                    activeVerificationPort = null,
                 ).getOrThrow()
                 check(session.listenPort != null) { "proxy smoke did not allocate a listen port" }
                 runtimeManager.stop().getOrThrow()

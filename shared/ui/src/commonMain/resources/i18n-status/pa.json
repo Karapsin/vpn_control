@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "ਕੋਈ ਸਰਗਰਮ ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਚੁਣੀ ਨਹੀਂ ਗਈ",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0} ਰਿਫ੍ਰੈਸ਼ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...",
     "LOCATION_REFRESHED_COUNT": "{0} ਸਥਾਨ ਰਿਫ੍ਰੈਸ਼ ਹੋਇਆ",
-    "LOCATIONS_REFRESHED_COUNT": "{0} ਸਥਾਨ ਰਿਫ੍ਰੈਸ਼ ਹੋਏ"
+    "LOCATIONS_REFRESHED_COUNT": "{0} ਸਥਾਨ ਰਿਫ੍ਰੈਸ਼ ਹੋਏ",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

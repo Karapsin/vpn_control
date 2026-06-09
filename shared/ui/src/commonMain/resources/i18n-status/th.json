@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "ยังไม่ได้เลือกรายการสมัครสมาชิกที่ใช้งานอยู่",
     "REFRESHING_SUBSCRIPTION_NAMED": "กำลังรีเฟรช {0}...",
     "LOCATION_REFRESHED_COUNT": "รีเฟรชตำแหน่ง {0} แห่งแล้ว",
-    "LOCATIONS_REFRESHED_COUNT": "รีเฟรชตำแหน่ง {0} แห่งแล้ว"
+    "LOCATIONS_REFRESHED_COUNT": "รีเฟรชตำแหน่ง {0} แห่งแล้ว",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

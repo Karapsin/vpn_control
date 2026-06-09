@@ -57,6 +57,26 @@ internal class AndroidConnectionLifecycleService(
         selection: ProfileSelection,
         statusMessage: String,
     ): SelectionCommitResult {
+        val startResult = startSelection(selection, statusMessage)
+        if (!startResult.isSuccess) {
+            return startResult
+        }
+        val persistResult = runCatching {
+            persistSelection(selection)
+        }
+        if (persistResult.isFailure) {
+            return SelectionCommitResult(
+                stage = SelectionCommitStage.PERSIST_FAILED_AFTER_APPLY,
+                error = persistResult.exceptionOrNull(),
+            )
+        }
+        return SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+    }
+
+    suspend fun startSelection(
+        selection: ProfileSelection,
+        statusMessage: String,
+    ): SelectionCommitResult {
         updateState { it.copy(isStartingVpn = true) }
         return try {
             updateStatus(statusMessage)
@@ -65,15 +85,6 @@ internal class AndroidConnectionLifecycleService(
                 return SelectionCommitResult(
                     stage = SelectionCommitStage.APPLY_FAILED,
                     error = startResult.exceptionOrNull(),
-                )
-            }
-            val persistResult = runCatching {
-                persistSelection(selection)
-            }
-            if (persistResult.isFailure) {
-                return SelectionCommitResult(
-                    stage = SelectionCommitStage.PERSIST_FAILED_AFTER_APPLY,
-                    error = persistResult.exceptionOrNull(),
                 )
             }
             SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)

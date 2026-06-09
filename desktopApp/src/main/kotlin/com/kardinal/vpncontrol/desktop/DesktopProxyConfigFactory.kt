@@ -89,6 +89,7 @@ object DesktopProxyConfigFactory {
         routingRules: RoutingRules,
         interfaceName: String = DEFAULT_VPN_INTERFACE_NAME,
         directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
+        activeVerificationPort: Int? = null,
     ): String {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop VPN runtime yet"
@@ -97,7 +98,12 @@ object DesktopProxyConfigFactory {
             dnsEnabled = dns.enabled,
             dnsValue = dns.value,
             routingRules = routingRules,
-            leadingRouteRules = listOf(SingBoxRouteDnsBuilder.sniffRouteRule()) +
+            leadingRouteRules = buildList {
+                add(SingBoxRouteDnsBuilder.sniffRouteRule())
+                if (activeVerificationPort != null) {
+                    add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "active-verify-in"))
+                }
+            } +
                 buildDirectProbeRouteRules(directProbeRouting) +
                 listOf(SingBoxRouteDnsBuilder.dnsHijackRouteRule()),
         )
@@ -129,6 +135,16 @@ object DesktopProxyConfigFactory {
                             put("stack", "system")
                         },
                     )
+                    if (activeVerificationPort != null) {
+                        add(
+                            buildJsonObject {
+                                put("type", "mixed")
+                                put("tag", "active-verify-in")
+                                put("listen", "127.0.0.1")
+                                put("listen_port", activeVerificationPort)
+                            },
+                        )
+                    }
                 },
             )
             put(

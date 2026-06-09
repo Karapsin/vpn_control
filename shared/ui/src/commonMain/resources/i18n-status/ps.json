@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "هېڅ فعال ګډون نه دی ټاکل شوی",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0} تازه کېږي...",
     "LOCATION_REFRESHED_COUNT": "{0} ځای تازه شو",
-    "LOCATIONS_REFRESHED_COUNT": "{0} ځایونه تازه شول"
+    "LOCATIONS_REFRESHED_COUNT": "{0} ځایونه تازه شول",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

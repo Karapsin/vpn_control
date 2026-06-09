@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "සක්‍රිය දායකත්වයක් තෝරාගෙන නැත",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0} යාවත්කාලීන වෙමින්...",
     "LOCATION_REFRESHED_COUNT": "{0} ස්ථානයක් යාවත්කාලීන විය",
-    "LOCATIONS_REFRESHED_COUNT": "ස්ථාන {0}ක් යාවත්කාලීන විය"
+    "LOCATIONS_REFRESHED_COUNT": "ස්ථාන {0}ක් යාවත්කාලීන විය",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

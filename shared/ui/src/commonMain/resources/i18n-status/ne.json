@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "कुनै सक्रिय सदस्यता चयन गरिएको छैन",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0} रिफ्रेस हुँदैछ...",
     "LOCATION_REFRESHED_COUNT": "{0} स्थान रिफ्रेस गरियो",
-    "LOCATIONS_REFRESHED_COUNT": "{0} स्थानहरू रिफ्रेस गरिए"
+    "LOCATIONS_REFRESHED_COUNT": "{0} स्थानहरू रिफ्रेस गरिए",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {

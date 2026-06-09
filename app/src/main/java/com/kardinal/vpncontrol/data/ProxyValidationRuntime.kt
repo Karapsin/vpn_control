@@ -45,6 +45,7 @@ class ProxyValidationRuntime(
     private val browserUserAgent: String,
     private val genericSecondaryBlockedMarkers: List<String>,
     private val chatGptBlockedMarkers: List<String>,
+    private val candidateCountryResolver: CandidateCountryResolver = NoopCandidateCountryResolver,
 ) {
     suspend fun preflightProfiles(
         profiles: List<ProxyProfile>,
@@ -65,6 +66,7 @@ class ProxyValidationRuntime(
         settings: ValidationRuntimeSettings,
     ): PreflightResult = withContext(Dispatchers.IO) {
         try {
+            var resolvedServerAddress: String? = null
             val connectMillis = withTimeout(settings.prefilterTimeoutMillis) {
                 val startedAt = System.nanoTime()
                 Socket().use { socket ->
@@ -72,25 +74,35 @@ class ProxyValidationRuntime(
                         InetSocketAddress(profile.server, profile.serverPort),
                         settings.prefilterConnectTimeoutMillis,
                     )
+                    resolvedServerAddress = socket.inetAddress?.hostAddress
                 }
                 (System.nanoTime() - startedAt) / 1_000_000.0
+            }
+            val candidateCountry = resolvedServerAddress?.let {
+                candidateCountryResolver.resolveCandidateCountryCode(it)
             }
             PreflightResult(
                 profile = profile,
                 connectMillis = connectMillis,
-                detail = "${profile.remarks}: tcp=${BenchmarkSearchLogic.formatMillis(connectMillis)}",
+                detail = BenchmarkSearchLogic.preflightDetail(
+                    profile = profile,
+                    connectMillis = connectMillis,
+                    candidateCountryCode = candidateCountry,
+                ),
+                resolvedServerAddress = resolvedServerAddress,
+                candidateCountryCode = candidateCountry,
             )
         } catch (_: TimeoutCancellationException) {
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
-                detail = "${profile.remarks}: tcp_timeout",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_timeout"),
             )
         } catch (error: IOException) {
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
-                detail = "${profile.remarks}: ${error.javaClass.simpleName}",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, null, error.javaClass.simpleName),
             )
         }
     }

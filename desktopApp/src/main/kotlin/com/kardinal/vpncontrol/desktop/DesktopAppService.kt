@@ -113,6 +113,7 @@ class DesktopAppService internal constructor(
         },
         updateState = ::updateState,
     )
+    private val activeConnectionVerifier = DesktopActiveConnectionVerifier()
     private val subscriptionRefreshService = DesktopSubscriptionRefreshService(
         stateProvider = { state },
         locationsProvider = { desktopLocations },
@@ -135,7 +136,25 @@ class DesktopAppService internal constructor(
                 statusPrefix = statusPrefix,
             )
         },
-        startConnection = connectionActions::start,
+        startConnection = { location, summary, activeVerificationPort ->
+            connectionActions.start(
+                location = location,
+                benchmarkSummary = summary,
+                activeVerificationPort = activeVerificationPort,
+            )
+        },
+        stopConnection = { message -> connectionActions.stop(message) },
+        currentRuntimePort = { connectionLifecycle.currentRuntimePort() },
+        activeVerificationPortAllocator = activeConnectionVerifier::allocateListenPort,
+        verifyActiveConnection = { candidate, appMode, proxyPort, benchmarkUrls, settings ->
+            activeConnectionVerifier.verify(
+                candidate = candidate,
+                appMode = appMode,
+                proxyPort = proxyPort,
+                url = benchmarkUrls.secondary,
+                settings = settings,
+            )
+        },
         commitState = { nextLocations, nextState ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },

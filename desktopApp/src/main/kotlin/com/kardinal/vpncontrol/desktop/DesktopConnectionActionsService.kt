@@ -89,6 +89,7 @@ internal class DesktopConnectionActionsService(
     suspend fun start(
         location: DesktopLocationRecord,
         benchmarkSummary: String? = null,
+        activeVerificationPort: Int? = null,
     ): Result<Unit> {
         return connectionLifecycle.startConnection(
             state = stateProvider(),
@@ -99,6 +100,7 @@ internal class DesktopConnectionActionsService(
             setResumeConnectionOnLaunch = setResumeConnectionOnLaunch,
             commitState = commitState,
             updateState = updateState,
+            activeVerificationPort = activeVerificationPort,
         )
     }
 

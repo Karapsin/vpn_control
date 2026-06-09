@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.kardinal.vpncontrol.ConnectionOrchestrationLogic
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
+import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
@@ -111,15 +112,18 @@ class SubscriptionRefreshWorker(
                         orchestrator = orchestrator,
                         retryCount = state.validationSettings.retryCount,
                     )
+                    var switchAttempted = false
                     if (replacement.isSuccess) {
-                        val selection = replacement.getOrThrow()
                         val switchResult = startReplacementLocation(
-                            selection = selection,
-                            sourceUrl = selection.sourceUrl.ifBlank { state.profileUrl },
+                            attemptPlan = replacement.getOrThrow(),
+                            sourceUrl = state.profileUrl,
+                            orchestrator = orchestrator,
                             vpnManager = vpnManager,
                             repository = repository,
+                            onSwitchAttempted = { switchAttempted = true },
                         )
                         if (switchResult.isSuccess) {
+                            val selection = switchResult.getOrThrow()
                             val winnerSource = backgroundSelectionSourceLabel(
                                 sourceUrl = selection.sourceUrl,
                                 state = refreshedState,
@@ -144,7 +148,7 @@ class SubscriptionRefreshWorker(
 
                     val rollbackMessage = recoverAfterReplacementFailure(
                         previousState = state,
-                        switchAttempted = switchFailure?.let(::didDispatchVpnSwitchAttempt) == true,
+                        switchAttempted = switchAttempted || switchFailure?.let(::didDispatchVpnSwitchAttempt) == true,
                         orchestrator = orchestrator,
                         vpnManager = vpnManager,
                     )
@@ -221,37 +225,87 @@ class SubscriptionRefreshWorker(
     private suspend fun findBestProfileWithRetries(
         orchestrator: BenchmarkOrchestrator,
         retryCount: Int,
-    ): kotlin.Result<ProfileSelection> {
+    ): kotlin.Result<ProfileSelectionAttemptPlan> {
         return ConnectionOrchestrationLogic.findBestProfileWithRetries(
             retryCount = retryCount,
             onRetryStatus = storage::updateStatus,
-            action = orchestrator::refreshBestProfile,
+            action = orchestrator::refreshBestProfileAttemptPlan,
         )
     }
 
     private suspend fun startReplacementLocation(
-        selection: ProfileSelection,
+        attemptPlan: ProfileSelectionAttemptPlan,
         sourceUrl: String,
+        orchestrator: BenchmarkOrchestrator,
         vpnManager: VpnManager,
         repository: AppRepository,
-    ): kotlin.Result<Unit> {
-        val appMode = storage.snapshot().appMode
-        storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
-        val startResult = vpnManager.start(selection)
-        if (startResult.isFailure) {
+        onSwitchAttempted: () -> Unit,
+    ): kotlin.Result<ProfileSelection> {
+        if (attemptPlan.attempts.isEmpty()) {
             return kotlin.Result.failure(
-                startResult.exceptionOrNull() ?: IllegalStateException(ConnectionStatusMessages.bestLocationStartFailed(appMode)),
+                IllegalStateException(attemptPlan.failureMessage ?: SubscriptionStatusMessages.replacementLocationSearchFailed()),
             )
         }
-        val persistResult = runCatching {
-            repository.persistSelection(selection, sourceUrl)
-        }
-        if (persistResult.isFailure) {
-            return kotlin.Result.failure(
-                persistResult.exceptionOrNull() ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
+        var lastFailure: Throwable? = null
+        for ((index, attempt) in attemptPlan.attempts.withIndex()) {
+            storage.updateStatus(
+                BenchmarkStatusMessages.tryingBestCandidate(
+                    attempt = index + 1,
+                    total = attemptPlan.attempts.size,
+                    remarks = attempt.selection.profile.remarks,
+                ),
             )
+            val appMode = storage.snapshot().appMode
+            storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
+            onSwitchAttempted()
+            val startResult = vpnManager.start(attempt.selection)
+            if (startResult.isFailure) {
+                lastFailure = startResult.exceptionOrNull()
+                continue
+            }
+
+            storage.updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
+            val verificationBenchmark = orchestrator.verifyActiveSelection(attempt).getOrElse { error ->
+                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                    candidate = attempt.preflight,
+                    reason = error.message ?: "active_verification_failed",
+                    secondaryStatus = "error",
+                )
+            }
+            recordLocationBenchmark(verificationBenchmark)
+            if (verificationBenchmark.secondaryStatus == "ok") {
+                val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
+                val persistResult = runCatching {
+                    repository.persistSelection(
+                        verifiedSelection,
+                        verifiedSelection.sourceUrl.ifBlank { sourceUrl },
+                    )
+                }
+                if (persistResult.isFailure) {
+                    return kotlin.Result.failure(
+                        persistResult.exceptionOrNull()
+                            ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
+                    )
+                }
+                return kotlin.Result.success(verifiedSelection)
+            }
+
+            lastFailure = IllegalStateException(verificationBenchmark.detail)
+            storage.updateStatus(BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks))
+            vpnManager.stop()
         }
-        return kotlin.Result.success(Unit)
+        return kotlin.Result.failure(
+            lastFailure ?: IllegalStateException(
+                attemptPlan.failureMessage ?: SubscriptionStatusMessages.replacementLocationSearchFailed(),
+            ),
+        )
+    }
+
+    private suspend fun recordLocationBenchmark(benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark) {
+        val state = storage.snapshot()
+        val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
+        updatedDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
+        storage.updateLocationBenchmarkDetails(updatedDetails)
     }
 
     private suspend fun recoverAfterReplacementFailure(

@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.net.ServerSocket
 import java.io.IOException
 
 class BenchmarkOrchestrator(
@@ -51,15 +52,22 @@ class BenchmarkOrchestrator(
         "openai's services are not available in your country",
         "you do not have access to chat.openai.com",
     )
+    private val countryResolver = AndroidRemoteCountryResolver()
     private val downloadClient = SubscriptionDownloadClient(subscriptionUserAgent)
     private val validationRuntime = ProxyValidationRuntime(
         context = context,
         browserUserAgent = browserUserAgent,
         genericSecondaryBlockedMarkers = genericSecondaryBlockedMarkers,
         chatGptBlockedMarkers = chatGptBlockedMarkers,
+        candidateCountryResolver = countryResolver,
+    )
+    private val activeConnectionVerifier = AndroidActiveConnectionVerifier(
+        browserUserAgent = browserUserAgent,
+        genericSecondaryBlockedMarkers = genericSecondaryBlockedMarkers,
+        chatGptBlockedMarkers = chatGptBlockedMarkers,
     )
 
-    suspend fun refreshBestProfile(): Result<ProfileSelection> = withContext(Dispatchers.IO) {
+    suspend fun refreshBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> = withContext(Dispatchers.IO) {
         try {
             Result.success(
                 withTimeout(settings.refreshTimeoutMillis) {
@@ -92,7 +100,7 @@ class BenchmarkOrchestrator(
                                     ?: BenchmarkStatusMessages.noLocationsFoundSelectedSubscription()
                             }
 
-                            val evaluation = evaluateProfilesForSelection(
+                            val attemptPlan = evaluateProfilesForSelection(
                                 profiles = loadedProfiles,
                                 validationSettings = validationSettings,
                                 dnsSettings = dnsSettings,
@@ -103,18 +111,7 @@ class BenchmarkOrchestrator(
                                     "SELECTED_SUBSCRIPTION"
                                 },
                             )
-                            benchmarkDetails.putAll(evaluation.locationBenchmarkDetails)
-
-                            val selectedBenchmark = evaluation.winner ?: evaluation.fallback ?: run {
-                                error(
-                                    evaluation.failureMessage?.takeIf { it.isNotBlank() }
-                                        ?: loaded.failureMessages.lastOrNull()?.takeIf { it.isNotBlank() }
-                                        ?: "No location fully reached the secondary site",
-                                )
-                            }
-                            val selectedTarget = loaded.profileSourceTargets[
-                                LocationConfigs.encodeStoredLocation(selectedBenchmark.profile)
-                            ] ?: error("No subscription source was selected")
+                            benchmarkDetails.putAll(attemptPlan.locationBenchmarkDetails)
 
                             loaded.profilesById.forEach { (subscriptionId, profiles) ->
                                 if (subscriptionId == state.activeSubscriptionId) {
@@ -125,45 +122,67 @@ class BenchmarkOrchestrator(
                             }
                             storage.updateLocationBenchmarkDetails(benchmarkDetails)
 
-                            val runtimeConfig = buildRuntimeConfig(
-                                profile = selectedBenchmark.profile,
-                                state = state,
-                                dnsSettings = dnsSettings,
-                            )
-                            ProfileSelection(
-                                profile = selectedBenchmark.profile,
-                                benchmark = selectedBenchmark,
-                                runtimeConfigJson = runtimeConfig,
-                                sourceUrl = selectedTarget.sourceUrl,
+                            val attempts = attemptPlan.orderedAttempts.map { preflight ->
+                                val selectedTarget = loaded.profileSourceTargets[
+                                    LocationConfigs.encodeStoredLocation(preflight.profile)
+                                ] ?: error("No subscription source was selected")
+                                val activeVerificationPort = activeVerificationPortFor(state.appMode)
+                                ProfileSelectionAttempt(
+                                    selection = ProfileSelection(
+                                        profile = preflight.profile,
+                                        benchmark = preflight.toPreflightBenchmark(),
+                                        runtimeConfigJson = buildRuntimeConfig(
+                                            profile = preflight.profile,
+                                            state = state,
+                                            dnsSettings = dnsSettings,
+                                            activeVerificationPort = activeVerificationPort,
+                                        ),
+                                        sourceUrl = selectedTarget.sourceUrl,
+                                    ),
+                                    preflight = preflight,
+                                    activeVerificationPort = activeVerificationPort,
+                                )
+                            }
+                            ProfileSelectionAttemptPlan(
+                                attempts = attempts,
+                                locationBenchmarkDetails = benchmarkDetails,
+                                failureMessage = attemptPlan.failureMessage
+                                    ?: loaded.failureMessages.lastOrNull()?.takeIf { it.isNotBlank() },
                             )
                         }
                         ProfileSourceMode.CURRENT_LOCATIONS -> {
                             storage.updateStatus(BenchmarkStatusMessages.loadingSavedLocations())
                             val profiles = decodeStoredLocations(state.currentLocations)
                             require(profiles.isNotEmpty()) { "No saved locations available" }
-                            val evaluation = evaluateProfilesForSelection(
+                            val attemptPlan = evaluateProfilesForSelection(
                                 profiles = profiles,
                                 validationSettings = validationSettings,
                                 dnsSettings = dnsSettings,
                                 benchmarkUrls = benchmarkUrls,
                                 sourceKey = "SAVED_LOCATIONS",
                             )
-                            val winner = evaluation.winner ?: evaluation.fallback ?: run {
-                                storage.updateLocationBenchmarkDetails(evaluation.locationBenchmarkDetails)
-                                error(evaluation.failureMessage ?: "No location fully reached the secondary site")
+                            storage.updateLocationBenchmarkDetails(attemptPlan.locationBenchmarkDetails)
+                            val attempts = attemptPlan.orderedAttempts.map { preflight ->
+                                val activeVerificationPort = activeVerificationPortFor(state.appMode)
+                                ProfileSelectionAttempt(
+                                    selection = ProfileSelection(
+                                        profile = preflight.profile,
+                                        benchmark = preflight.toPreflightBenchmark(),
+                                        runtimeConfigJson = buildRuntimeConfig(
+                                            profile = preflight.profile,
+                                            state = state,
+                                            dnsSettings = dnsSettings,
+                                            activeVerificationPort = activeVerificationPort,
+                                        ),
+                                    ),
+                                    preflight = preflight,
+                                    activeVerificationPort = activeVerificationPort,
+                                )
                             }
-
-                            storage.updateLocationBenchmarkDetails(evaluation.locationBenchmarkDetails)
-
-                            val runtimeConfig = buildRuntimeConfig(
-                                profile = winner.profile,
-                                state = state,
-                                dnsSettings = dnsSettings,
-                            )
-                            ProfileSelection(
-                                profile = winner.profile,
-                                benchmark = winner,
-                                runtimeConfigJson = runtimeConfig,
+                            ProfileSelectionAttemptPlan(
+                                attempts = attempts,
+                                locationBenchmarkDetails = attemptPlan.locationBenchmarkDetails,
+                                failureMessage = attemptPlan.failureMessage,
                             )
                         }
                     }
@@ -174,6 +193,16 @@ class BenchmarkOrchestrator(
         } catch (error: Throwable) {
             Result.failure(error)
         }
+    }
+
+    suspend fun verifyActiveSelection(attempt: ProfileSelectionAttempt): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
+        val state = storage.snapshot()
+        val validationSettings = state.validationSettings.normalized()
+        activeConnectionVerifier.verify(
+            attempt = attempt,
+            url = validationSettings.secondaryUrl,
+            settings = settings,
+        )
     }
 
     suspend fun syncSubscriptionLocations(): Result<SubscriptionSyncResult> = withContext(Dispatchers.IO) {
@@ -357,38 +386,28 @@ class BenchmarkOrchestrator(
         dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         sourceKey: String,
-    ): SearchEvaluation {
+    ): BestCandidateAttemptPlan {
         val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+        storage.updateStatus(BenchmarkStatusMessages.detectingCountry())
+        val userCountry = countryResolver.resolveUserCountryCode()
         storage.updateStatus(BenchmarkStatusMessages.checkingLocationSource(profiles.size, sourceKey))
         val preflightResults = validationRuntime.preflightProfiles(benchmarkableProfiles, settings)
-        val reachableProfiles = preflightResults
-            .filter { it.connectMillis != null }
-            .sortedBy { it.connectMillis }
-
-        val walk = if (benchmarkableProfiles.isNotEmpty() && reachableProfiles.isNotEmpty()) {
-            storage.updateStatus(
-                BenchmarkStatusMessages.testingFastestCandidates(),
-            )
-            validateInBatchesUntilSuccess(
-                candidates = reachableProfiles,
-                batchSize = validationSettings.batchSize,
-                dnsSettings = dnsSettings,
-                benchmarkUrls = benchmarkUrls,
-            ) { benchmark ->
-                benchmark.primaryStatus == "ok" && benchmark.secondaryStatus == "ok"
-            }
-        } else {
-            ValidationWalkResult(
-                benchmarks = emptyList(),
-                winner = null,
-            )
-        }
-        return BenchmarkSearchLogic.evaluateProfilesForSelection(
+        val plan = BenchmarkSearchLogic.planActiveVerificationAttempts(
             profiles = profiles,
             preflightResults = preflightResults,
-            candidateBenchmarks = walk.benchmarks,
-            winner = walk.winner,
+            userCountryCode = userCountry,
         )
+        if (plan.excluded.isNotEmpty()) {
+            storage.updateStatus(BenchmarkStatusMessages.excludingSameCountryLocations(plan.excluded.size))
+        }
+        return plan
+    }
+
+    private fun activeVerificationPortFor(appMode: AppMode): Int {
+        return when (appMode) {
+            AppMode.PROXY_ONLY -> SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT
+            AppMode.VPN -> ServerSocket(0).use { it.localPort }
+        }
     }
 
     private fun cachedProfile(state: PersistedState): ProxyProfile {
@@ -418,6 +437,7 @@ class BenchmarkOrchestrator(
         profile: ProxyProfile,
         state: PersistedState,
         dnsSettings: DnsSettings,
+        activeVerificationPort: Int? = null,
     ): String {
         if (profile.protocol == ProxyProtocol.CUSTOM) {
             require(profile.customConfigJson.isNotBlank()) { "Custom config is empty" }
@@ -428,13 +448,27 @@ class BenchmarkOrchestrator(
                 profile = profile,
                 dns = dnsSettings,
                 routingRules = state.routingRules,
+                activeVerificationPort = activeVerificationPort,
             )
             AppMode.PROXY_ONLY -> SingBoxConfigFactory.buildProxyOnlyConfig(
                 profile = profile,
                 dns = dnsSettings,
                 routingRules = state.routingRules,
+                listenPort = activeVerificationPort ?: SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT,
             )
         }
+    }
+
+    private fun PreflightResult.toPreflightBenchmark(): ProfileBenchmark {
+        return ProfileBenchmark(
+            profile = profile,
+            primaryStatus = "manual",
+            secondaryStatus = "manual",
+            primaryTotal = null,
+            secondaryTotal = null,
+            score = sortScore,
+            detail = detail,
+        )
     }
 
     private suspend fun loadRemoteSourceLocations(rawSource: String): List<ProxyProfile> {

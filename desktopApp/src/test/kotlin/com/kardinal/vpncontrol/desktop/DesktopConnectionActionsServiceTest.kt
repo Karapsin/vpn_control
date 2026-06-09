@@ -193,6 +193,7 @@ private class FakeConnectionActionsRuntime : DesktopRuntimeController {
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,
+        activeVerificationPort: Int?,
     ): Result<DesktopRuntimeSession> {
         startCalls += 1
         running = true
@@ -219,4 +220,6 @@ private class FakeConnectionActionsRuntime : DesktopRuntimeController {
     override fun isRunning(): Boolean = running
 
     override fun currentMode(): AppMode? = mode.takeIf { running }
+
+    override fun currentPort(): Int? = 1080.takeIf { running }
 }

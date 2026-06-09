@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProfileBenchmark
+import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlin.math.round
@@ -20,14 +21,39 @@ data class PreflightResult(
     val connectMillis: Double?,
     val detail: String,
     val resolvedServerAddress: String? = null,
+    val candidateCountryCode: String? = null,
+    val exclusionReason: PreflightExclusionReason? = null,
 ) {
     val sortScore: Double
         get() = connectMillis ?: Double.POSITIVE_INFINITY
 }
 
+enum class PreflightExclusionReason {
+    SAME_COUNTRY,
+}
+
 data class ValidationWalkResult(
     val benchmarks: List<ProfileBenchmark>,
     val winner: ProfileBenchmark?,
+)
+
+data class BestCandidateAttemptPlan(
+    val orderedAttempts: List<PreflightResult>,
+    val excluded: List<PreflightResult>,
+    val locationBenchmarkDetails: Map<String, String>,
+    val failureMessage: String?,
+)
+
+data class ProfileSelectionAttempt(
+    val selection: ProfileSelection,
+    val preflight: PreflightResult,
+    val activeVerificationPort: Int? = null,
+)
+
+data class ProfileSelectionAttemptPlan(
+    val attempts: List<ProfileSelectionAttempt>,
+    val locationBenchmarkDetails: Map<String, String>,
+    val failureMessage: String?,
 )
 
 data class SearchEvaluation(
@@ -39,6 +65,57 @@ data class SearchEvaluation(
 )
 
 object BenchmarkSearchLogic {
+    fun planActiveVerificationAttempts(
+        profiles: List<ProxyProfile>,
+        preflightResults: List<PreflightResult>,
+        userCountryCode: String?,
+    ): BestCandidateAttemptPlan {
+        val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+        val customProfiles = profiles.filter { it.protocol == ProxyProtocol.CUSTOM }
+        val normalizedUserCountry = normalizeCountryCode(userCountryCode)
+        val resultsByLocation = preflightResults.associateBy {
+            LocationConfigs.encodeStoredLocation(it.profile)
+        }
+        val enrichedResults = benchmarkableProfiles.mapNotNull { profile ->
+            val rawKey = LocationConfigs.encodeStoredLocation(profile)
+            resultsByLocation[rawKey]?.withSelectionMetadata(normalizedUserCountry)
+        }
+        val excluded = enrichedResults.filter { it.exclusionReason != null }
+        val eligible = enrichedResults.filter { it.exclusionReason == null }
+        val reachable = eligible
+            .filter { it.connectMillis != null }
+            .sortedBy { it.connectMillis }
+        val timedOut = eligible
+            .filter { it.connectMillis == null && it.detail.contains("tcp_timeout") }
+        val orderedAttempts = (reachable + timedOut)
+            .distinctBy { LocationConfigs.encodeStoredLocation(it.profile) }
+
+        val locationBenchmarkDetails = linkedMapOf<String, String>()
+        enrichedResults.forEach { result ->
+            locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(result.profile)] = result.detail
+        }
+        customProfiles.forEach { profile ->
+            locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(profile)] =
+                "${profile.remarks}: custom_config_manual_only country=unknown"
+        }
+
+        val failureMessage = when {
+            benchmarkableProfiles.isEmpty() ->
+                "Best location search does not support custom sing-box configs. Select one manually and connect."
+            orderedAttempts.isEmpty() && excluded.isNotEmpty() ->
+                "No eligible location found. Same-country locations were excluded."
+            orderedAttempts.isEmpty() ->
+                "No reachable location found. Best attempt: ${enrichedResults.minByOrNull { it.sortScore }?.detail ?: "no benchmark results"}"
+            else -> null
+        }
+        return BestCandidateAttemptPlan(
+            orderedAttempts = orderedAttempts,
+            excluded = excluded,
+            locationBenchmarkDetails = locationBenchmarkDetails,
+            failureMessage = failureMessage,
+        )
+    }
+
     fun evaluateProfilesForSelection(
         profiles: List<ProxyProfile>,
         preflightResults: List<PreflightResult>,
@@ -108,6 +185,7 @@ object BenchmarkSearchLogic {
         val secondaryMedian = medianOrNull(secondaryResult.totals)
         val primaryStatus = classifyCodes(primaryResult.codes, secondarySite = false)
         val secondaryStatus = classifyCodes(secondaryResult.codes, secondarySite = true)
+            .let { if (it == "bad") "error" else it }
         val score = scorePenalty(primaryStatus, secondaryStatus) +
             (primaryMedian ?: 999_999.0) +
             (secondaryMedian ?: 999_999.0)
@@ -123,6 +201,8 @@ object BenchmarkSearchLogic {
                 append(candidate.profile.remarks)
                 append(": tcp=")
                 append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
+                append(" country=")
+                append(countryLabel(candidate.candidateCountryCode))
                 append(" primary=")
                 append(primaryStatus)
                 append(" primary_codes=")
@@ -133,6 +213,64 @@ object BenchmarkSearchLogic {
                 append(secondaryResult.codes.joinToString(","))
                 append(" score=")
                 append(score)
+            },
+        )
+    }
+
+    fun buildActiveVerificationBenchmark(
+        candidate: PreflightResult,
+        secondaryResult: ProxyRunResult,
+    ): ProfileBenchmark {
+        val secondaryMedian = medianOrNull(secondaryResult.totals)
+        val secondaryStatus = classifyCodes(secondaryResult.codes, secondarySite = true)
+            .let { if (it == "bad") "error" else it }
+        val score = activeVerificationScore(candidate.connectMillis, secondaryMedian, secondaryStatus)
+
+        return ProfileBenchmark(
+            profile = candidate.profile,
+            primaryStatus = "manual",
+            secondaryStatus = secondaryStatus,
+            primaryTotal = null,
+            secondaryTotal = secondaryMedian,
+            score = score,
+            detail = buildString {
+                append(candidate.profile.remarks)
+                append(": tcp=")
+                append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
+                append(" country=")
+                append(countryLabel(candidate.candidateCountryCode))
+                append(" primary=manual secondary=")
+                append(secondaryStatus)
+                append(" secondary_codes=")
+                append(secondaryResult.codes.joinToString(","))
+                append(" score=")
+                append(score)
+            },
+        )
+    }
+
+    fun failedActiveVerificationBenchmark(
+        candidate: PreflightResult,
+        reason: String,
+        secondaryStatus: String = "error",
+    ): ProfileBenchmark {
+        return ProfileBenchmark(
+            profile = candidate.profile,
+            primaryStatus = "manual",
+            secondaryStatus = secondaryStatus,
+            primaryTotal = null,
+            secondaryTotal = null,
+            score = Double.POSITIVE_INFINITY,
+            detail = buildString {
+                append(candidate.profile.remarks)
+                append(": tcp=")
+                append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
+                append(" country=")
+                append(countryLabel(candidate.candidateCountryCode))
+                append(" primary=manual secondary=")
+                append(secondaryStatus)
+                append(' ')
+                append(reason)
             },
         )
     }
@@ -149,14 +287,42 @@ object BenchmarkSearchLogic {
             primaryTotal = null,
             secondaryTotal = null,
             score = Double.POSITIVE_INFINITY,
-            detail = "${profile.remarks}: tcp=${candidate.connectMillis?.let(::formatMillis) ?: "unreachable"} $reason",
+            detail = "${profile.remarks}: tcp=${candidate.connectMillis?.let(::formatMillis) ?: "unreachable"} country=${countryLabel(candidate.candidateCountryCode)} $reason",
         )
+    }
+
+    fun preflightDetail(
+        profile: ProxyProfile,
+        connectMillis: Double?,
+        status: String? = null,
+        candidateCountryCode: String? = null,
+    ): String = buildString {
+        append(profile.remarks)
+        append(": ")
+        if (connectMillis != null) {
+            append("tcp=")
+            append(formatMillis(connectMillis))
+        } else {
+            append(status ?: "tcp_unreachable")
+        }
+        append(" country=")
+        append(countryLabel(candidateCountryCode))
     }
 
     fun formatMillis(value: Double): String {
         val rounded = round(value * 10.0) / 10.0
         return "${rounded}ms"
     }
+
+    fun normalizeCountryCode(raw: String?): String? {
+        val normalized = raw
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { it.matches(Regex("[A-Z]{2}")) }
+        return normalized
+    }
+
+    fun countryLabel(countryCode: String?): String = normalizeCountryCode(countryCode) ?: "unknown"
 
     private fun classifyCodes(codes: List<String>, secondarySite: Boolean): String {
         val numericCodes = codes.mapNotNull { it.toIntOrNull() }
@@ -199,5 +365,46 @@ object BenchmarkSearchLogic {
         if (values.isEmpty()) return null
         val sorted = values.sorted()
         return sorted[sorted.size / 2]
+    }
+
+    private fun activeVerificationScore(
+        connectMillis: Double?,
+        secondaryMedian: Double?,
+        secondaryStatus: String,
+    ): Double {
+        return (connectMillis ?: 999_999.0) +
+            (secondaryMedian ?: 999_999.0) +
+            if (secondaryStatus == "ok") 0.0 else 1_000_000.0
+    }
+
+    private fun PreflightResult.withSelectionMetadata(userCountryCode: String?): PreflightResult {
+        val candidateCountry = normalizeCountryCode(candidateCountryCode)
+        val excludedSameCountry = userCountryCode != null &&
+            candidateCountry != null &&
+            candidateCountry == userCountryCode
+        val reason = if (excludedSameCountry) PreflightExclusionReason.SAME_COUNTRY else exclusionReason
+        return copy(
+            candidateCountryCode = candidateCountry,
+            exclusionReason = reason,
+            detail = buildString {
+                append(detailWithoutCountry(detail))
+                append(" country=")
+                append(countryLabel(candidateCountry))
+                if (userCountryCode == null) {
+                    append(" user_country=unknown")
+                }
+                if (reason == PreflightExclusionReason.SAME_COUNTRY) {
+                    append(" excluded_same_country")
+                }
+            },
+        )
+    }
+
+    private fun detailWithoutCountry(detail: String): String {
+        return detail
+            .replace(Regex("""\s+country=(?:[A-Za-z]{2}|unknown)"""), "")
+            .replace(Regex("""\s+user_country=unknown"""), "")
+            .replace(Regex("""\s+excluded_same_country"""), "")
+            .trim()
     }
 }

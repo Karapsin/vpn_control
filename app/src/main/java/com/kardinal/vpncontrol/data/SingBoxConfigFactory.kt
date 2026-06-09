@@ -18,15 +18,19 @@ object SingBoxConfigFactory {
         profile: ProxyProfile,
         dns: DnsSettings,
         routingRules: RoutingRules,
+        activeVerificationPort: Int? = null,
     ): String {
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsEnabled = dns.enabled,
             dnsValue = dns.value,
             routingRules = routingRules,
-            leadingRouteRules = listOf(
-                SingBoxRouteDnsBuilder.sniffRouteRule(),
-                SingBoxRouteDnsBuilder.dnsHijackRouteRule(),
-            ),
+            leadingRouteRules = buildList {
+                add(SingBoxRouteDnsBuilder.sniffRouteRule())
+                if (activeVerificationPort != null) {
+                    add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "active-verify-in"))
+                }
+                add(SingBoxRouteDnsBuilder.dnsHijackRouteRule())
+            },
         )
 
         val tunInbound = JSONObject()
@@ -51,7 +55,17 @@ object SingBoxConfigFactory {
             .put("dns", routeDns.dns.toAndroidJsonObject())
             .put(
                 "inbounds",
-                JSONArray().put(tunInbound),
+                JSONArray().put(tunInbound).apply {
+                    if (activeVerificationPort != null) {
+                        put(
+                            JSONObject()
+                                .put("type", "mixed")
+                                .put("tag", "active-verify-in")
+                                .put("listen", "127.0.0.1")
+                                .put("listen_port", activeVerificationPort),
+                        )
+                    }
+                },
             )
             .put(
                 "outbounds",

@@ -1,6 +1,9 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.data.PreflightResult
+import com.kardinal.vpncontrol.data.ProfileSelectionAttempt
+import com.kardinal.vpncontrol.data.ProfileSelectionAttemptPlan
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
@@ -29,9 +32,9 @@ class AndroidFindBestActionsServiceTest {
             setBusy = { busy -> state = state.copy(isBusy = busy) },
             setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
             updateStatus = { statuses += it },
-            refreshBestProfile = {
+            refreshBestProfileAttemptPlan = {
                 refreshCalls += 1
-                Result.success(profileSelection("Should not run"))
+                Result.success(attemptPlan("Should not run"))
             },
         )
 
@@ -52,24 +55,26 @@ class AndroidFindBestActionsServiceTest {
         )
         val statuses = mutableListOf<String>()
         val latencies = mutableListOf<LatencyHistoryEntry>()
-        val selection = profileSelection("Germany")
         var startCalls = 0
+        var persistCalls = 0
         val service = service(
             stateProvider = { state },
             setBusy = { busy -> state = state.copy(isBusy = busy) },
             setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
             updateStatus = { statuses += it },
-            refreshBestProfile = { Result.success(selection) },
-            startAndPersistSelection = { _, _ ->
+            refreshBestProfileAttemptPlan = { Result.success(attemptPlan("Germany")) },
+            startSelection = { _, _ ->
                 startCalls += 1
                 SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
             },
+            persistSelection = { persistCalls += 1 },
             appendLatencyHistory = { latencies += it },
         )
 
         service.refresh()
 
         assertEquals(1, startCalls)
+        assertEquals(1, persistCalls)
         assertEquals(
             ConnectionStatusMessages.findBestStart(ProfileSourceMode.CURRENT_LOCATIONS),
             statuses.first(),
@@ -86,7 +91,7 @@ class AndroidFindBestActionsServiceTest {
     }
 
     @Test
-    fun refreshRestoresSnapshotWhenPersistFailsBeforeApply() = runBlocking {
+    fun refreshRestoresSnapshotWhenStartFailsBeforeApply() = runBlocking {
         val previous = PersistedState(selectedProfileName = "Previous")
         var state = MainUiState(
             appMode = AppMode.VPN,
@@ -105,11 +110,11 @@ class AndroidFindBestActionsServiceTest {
                 restored = true
                 state = state.copy(selectedProfileName = it.selectedProfileName)
             },
-            refreshBestProfile = { Result.success(profileSelection("Candidate")) },
-            startAndPersistSelection = { _, _ ->
+            refreshBestProfileAttemptPlan = { Result.success(attemptPlan("Candidate")) },
+            startSelection = { _, _ ->
                 SelectionCommitResult(
-                    stage = SelectionCommitStage.PERSIST_FAILED_WITHOUT_APPLY,
-                    error = IllegalStateException("persist failed"),
+                    stage = SelectionCommitStage.APPLY_FAILED,
+                    error = IllegalStateException("start failed"),
                 )
             },
         )
@@ -118,7 +123,7 @@ class AndroidFindBestActionsServiceTest {
 
         assertTrue(restored)
         assertEquals("Previous", state.selectedProfileName)
-        assertEquals("persist failed", statuses.last())
+        assertEquals("start failed", statuses.last())
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)
     }
@@ -137,15 +142,15 @@ class AndroidFindBestActionsServiceTest {
             setBusy = { busy -> state = state.copy(isBusy = busy) },
             setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
             updateStatus = { statuses += it },
-            refreshBestProfile = {
+            refreshBestProfileAttemptPlan = {
                 refreshCalls += 1
                 if (refreshCalls == 1) {
                     Result.failure(IllegalStateException("first failed"))
                 } else {
-                    Result.success(profileSelection("Retry Winner"))
+                    Result.success(attemptPlan("Retry Winner"))
                 }
             },
-            startAndPersistSelection = { _, _ ->
+            startSelection = { _, _ ->
                 SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
             },
         )
@@ -166,6 +171,68 @@ class AndroidFindBestActionsServiceTest {
         assertFalse(state.isRefreshing)
     }
 
+    @Test
+    fun verificationFailureStopsAndSwitchesToNextCandidate() = runBlocking {
+        var state = MainUiState(
+            appMode = AppMode.VPN,
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf("stored"),
+        )
+        val first = attempt("First")
+        val second = attempt("Second")
+        val starts = mutableListOf<String>()
+        var stops = 0
+        val latencies = mutableListOf<LatencyHistoryEntry>()
+        val service = service(
+            stateProvider = { state },
+            setBusy = { busy -> state = state.copy(isBusy = busy) },
+            setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
+            refreshBestProfileAttemptPlan = {
+                Result.success(
+                    ProfileSelectionAttemptPlan(
+                        attempts = listOf(first, second),
+                        locationBenchmarkDetails = emptyMap(),
+                        failureMessage = null,
+                    ),
+                )
+            },
+            startSelection = { selection, _ ->
+                starts += selection.profile.remarks
+                SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+            },
+            stopConnection = {
+                stops += 1
+                Result.success(Unit)
+            },
+            verifyActiveSelection = { attempt ->
+                if (attempt.selection.profile.remarks == "First") {
+                    Result.success(
+                        ProfileBenchmark(
+                            profile = attempt.selection.profile,
+                            primaryStatus = "manual",
+                            secondaryStatus = "blocked",
+                            primaryTotal = null,
+                            secondaryTotal = null,
+                            score = Double.POSITIVE_INFINITY,
+                            detail = "First: tcp=20.0ms country=DE primary=manual secondary=blocked active_verification_failed",
+                        ),
+                    )
+                } else {
+                    Result.success(verifiedBenchmark("Second"))
+                }
+            },
+            appendLatencyHistory = { latencies += it },
+        )
+
+        service.refresh()
+
+        assertEquals(listOf("First", "Second"), starts)
+        assertEquals(1, stops)
+        assertEquals("Second", latencies.single().profileName)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
     private fun service(
         stateProvider: () -> MainUiState,
         setBusy: (Boolean) -> Unit,
@@ -173,14 +240,19 @@ class AndroidFindBestActionsServiceTest {
         updateStatus: suspend (String) -> Unit = {},
         snapshot: suspend () -> PersistedState = { PersistedState() },
         restoreSnapshot: suspend (PersistedState) -> Unit = {},
-        refreshBestProfile: suspend () -> Result<ProfileSelection> = {
-            Result.success(profileSelection("Winner"))
+        refreshBestProfileAttemptPlan: suspend () -> Result<ProfileSelectionAttemptPlan> = {
+            Result.success(attemptPlan("Winner"))
         },
-        startAndPersistSelection: suspend (ProfileSelection, String) -> SelectionCommitResult = { _, _ ->
+        startSelection: suspend (ProfileSelection, String) -> SelectionCommitResult = { _, _ ->
             SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+        },
+        persistSelection: suspend (ProfileSelection) -> Unit = {},
+        verifyActiveSelection: suspend (ProfileSelectionAttempt) -> Result<ProfileBenchmark> = { attempt ->
+            Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
         },
         rollbackSelectionChange: suspend (PersistedState, String) -> String = { _, message -> message },
         stopConnection: suspend () -> Result<Unit> = { Result.success(Unit) },
+        updateLocationBenchmarkDetails: suspend (Map<String, String>) -> Unit = {},
         appendLatencyHistory: suspend (LatencyHistoryEntry) -> Unit = {},
     ): AndroidFindBestActionsService {
         return AndroidFindBestActionsService(
@@ -191,15 +263,42 @@ class AndroidFindBestActionsServiceTest {
             updateStatus = updateStatus,
             snapshot = snapshot,
             restoreSnapshot = restoreSnapshot,
-            refreshBestProfile = refreshBestProfile,
-            startAndPersistSelection = startAndPersistSelection,
+            refreshBestProfileAttemptPlan = refreshBestProfileAttemptPlan,
+            startSelection = startSelection,
+            persistSelection = persistSelection,
+            verifyActiveSelection = verifyActiveSelection,
             rollbackSelectionChange = rollbackSelectionChange,
             stopConnection = stopConnection,
+            updateLocationBenchmarkDetails = updateLocationBenchmarkDetails,
             appendLatencyHistory = appendLatencyHistory,
             idGenerator = { "fixed-id" },
             clockMillis = { 1234L },
         )
     }
+}
+
+private fun attemptPlan(name: String): ProfileSelectionAttemptPlan {
+    val attempt = attempt(name)
+    return ProfileSelectionAttemptPlan(
+        attempts = listOf(attempt),
+        locationBenchmarkDetails = mapOf(attempt.selection.profile.rawLink to attempt.preflight.detail),
+        failureMessage = null,
+    )
+}
+
+private fun attempt(name: String): ProfileSelectionAttempt {
+    val selection = profileSelection(name)
+    val preflight = PreflightResult(
+        profile = selection.profile,
+        connectMillis = 50.0,
+        detail = "$name: tcp=50.0ms country=DE",
+        candidateCountryCode = "DE",
+    )
+    return ProfileSelectionAttempt(
+        selection = selection,
+        preflight = preflight,
+        activeVerificationPort = 24080,
+    )
 }
 
 private fun profileSelection(name: String): ProfileSelection {
@@ -226,13 +325,26 @@ private fun profileSelection(name: String): ProfileSelection {
         profile = profile,
         benchmark = ProfileBenchmark(
             profile = profile,
-            primaryStatus = "ok",
-            secondaryStatus = "ok",
-            primaryTotal = 50.0,
-            secondaryTotal = 60.0,
+            primaryStatus = "manual",
+            secondaryStatus = "manual",
+            primaryTotal = null,
+            secondaryTotal = null,
             score = 50.0,
-            detail = "primary=ok secondary=ok tcp=50ms",
+            detail = "$name: tcp=50.0ms country=DE",
         ),
         runtimeConfigJson = "{}",
+    )
+}
+
+private fun verifiedBenchmark(name: String): ProfileBenchmark {
+    val selection = profileSelection(name)
+    return ProfileBenchmark(
+        profile = selection.profile,
+        primaryStatus = "manual",
+        secondaryStatus = "ok",
+        primaryTotal = null,
+        secondaryTotal = 60.0,
+        score = 110.0,
+        detail = "$name: tcp=50.0ms country=DE primary=manual secondary=ok secondary_codes=200 score=110.0",
     )
 }

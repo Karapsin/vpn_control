@@ -202,7 +202,8 @@ internal fun String.toCompactBenchmarkLabel(): String {
 internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid: Boolean): Boolean {
     val primary = Regex("""(?:^|\s)primary[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
     if (primary != null) {
-        return primary == "ok"
+        val secondary = Regex("""(?:^|\s)secondary[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
+        return primary == "ok" || (primary == "manual" && secondary == "ok")
     }
 
     if (detail.contains("tcp_unreachable")) {

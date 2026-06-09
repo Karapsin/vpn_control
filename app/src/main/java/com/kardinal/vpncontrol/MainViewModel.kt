@@ -122,10 +122,13 @@ class MainViewModel(
         updateStatus = repository::updateStatus,
         snapshot = repository::snapshot,
         restoreSnapshot = { state -> repository.restoreSnapshot(state) },
-        refreshBestProfile = repository::refreshBestProfile,
-        startAndPersistSelection = connectionLifecycle::startAndPersistSelection,
+        refreshBestProfileAttemptPlan = repository::refreshBestProfileAttemptPlan,
+        startSelection = connectionLifecycle::startSelection,
+        persistSelection = repository::persistSelection,
+        verifyActiveSelection = repository::verifyActiveSelection,
         rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
         stopConnection = vpnManager::stop,
+        updateLocationBenchmarkDetails = repository::updateLocationBenchmarkDetails,
         appendLatencyHistory = repository::appendLatencyHistory,
     )
     private val settingsActions = AndroidSettingsActionsService(

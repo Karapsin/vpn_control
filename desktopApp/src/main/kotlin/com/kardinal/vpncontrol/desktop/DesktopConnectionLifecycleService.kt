@@ -16,6 +16,7 @@ internal interface DesktopRuntimeController {
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,
+        activeVerificationPort: Int? = null,
     ): Result<DesktopRuntimeSession>
 
     suspend fun stop(): Result<Unit>
@@ -23,6 +24,8 @@ internal interface DesktopRuntimeController {
     fun isRunning(): Boolean
 
     fun currentMode(): AppMode?
+
+    fun currentPort(): Int?
 }
 
 internal class DesktopConnectionLifecycleService(
@@ -38,6 +41,7 @@ internal class DesktopConnectionLifecycleService(
         setResumeConnectionOnLaunch: (Boolean) -> Unit,
         commitState: (List<DesktopLocationRecord>, MainUiState) -> Unit,
         updateState: ((MainUiState) -> MainUiState) -> Unit,
+        activeVerificationPort: Int? = null,
     ): Result<Unit> {
         val targetMode = state.appMode
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
@@ -65,6 +69,7 @@ internal class DesktopConnectionLifecycleService(
                 value = startingState.customDns,
             ),
             appMode = targetMode,
+            activeVerificationPort = activeVerificationPort,
         )
         if (result.isSuccess) {
             val session = result.getOrThrow()
@@ -192,4 +197,6 @@ internal class DesktopConnectionLifecycleService(
     fun isRuntimeRunning(): Boolean = runtime.isRunning()
 
     fun currentRuntimeMode(): AppMode? = runtime.currentMode()
+
+    fun currentRuntimePort(): Int? = runtime.currentPort()
 }

@@ -2,9 +2,12 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.data.BenchmarkSearchLogic
+import com.kardinal.vpncontrol.data.BestCandidateAttemptPlan
 import com.kardinal.vpncontrol.data.LocationConfigs
-import com.kardinal.vpncontrol.data.SearchEvaluation
-import com.kardinal.vpncontrol.model.ProfileBenchmark
+import com.kardinal.vpncontrol.data.PreflightResult
+import com.kardinal.vpncontrol.data.ProxyRunResult
+import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.SubscriptionSource
@@ -25,16 +28,29 @@ class DesktopFindBestServiceTest {
         )
         var locations = listOf(testLocation(profile, rawLink))
         var startedLocation: DesktopLocationRecord? = null
-        var startedSummary = ""
         val service = DesktopFindBestService(
             stateProvider = { state },
             visibleLocationsProvider = { locations },
             locationsProvider = { locations },
             refreshSubscriptions = { _, _ -> error("refresh should not run") },
-            startConnection = { location, summary ->
+            startConnection = { location, summary, activeVerificationPort ->
                 startedLocation = location
-                startedSummary = summary.orEmpty()
+                assertEquals(null, summary)
+                assertEquals(28081, activeVerificationPort)
                 Result.success(Unit)
+            },
+            stopConnection = { Result.success(Unit) },
+            currentRuntimePort = { 28080 },
+            activeVerificationPortAllocator = { 28081 },
+            verifyActiveConnection = { candidate, appMode, proxyPort, _, _ ->
+                assertEquals(AppMode.VPN, appMode)
+                assertEquals(28081, proxyPort)
+                Result.success(
+                    BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                        candidate = candidate,
+                        secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(60.0)),
+                    ),
+                )
             },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
@@ -44,20 +60,16 @@ class DesktopFindBestServiceTest {
             evaluateProfiles = { profiles, _, _, _, onProgress ->
                 assertEquals(listOf(profile.rawLink), profiles.map { it.rawLink })
                 onProgress("Testing locations 1-1 of 1...")
-                val benchmark = ProfileBenchmark(
+                val preflight = PreflightResult(
                     profile = profile,
-                    primaryStatus = "ok",
-                    secondaryStatus = "ok",
-                    primaryTotal = 50.0,
-                    secondaryTotal = 60.0,
-                    score = 110.0,
-                    detail = "Germany: tcp=50.0ms primary=ok primary_codes=204 secondary=ok secondary_codes=200",
+                    connectMillis = 50.0,
+                    detail = "Germany: tcp=50.0ms country=DE",
+                    candidateCountryCode = "DE",
                 )
-                SearchEvaluation(
-                    locationBenchmarkDetails = mapOf(rawLink to benchmark.detail),
-                    candidateBenchmarks = listOf(benchmark),
-                    winner = benchmark,
-                    fallback = null,
+                BestCandidateAttemptPlan(
+                    orderedAttempts = listOf(preflight),
+                    excluded = emptyList(),
+                    locationBenchmarkDetails = mapOf(rawLink to preflight.detail),
                     failureMessage = null,
                 )
             },
@@ -71,12 +83,101 @@ class DesktopFindBestServiceTest {
             "status=${state.statusMessage}; keys=${locations.map { it.normalizedStorageKey() }}; raw=$rawLink",
         )
         assertEquals(
-            BenchmarkStatusMessages.bestLocationSummary("Germany", "primary ok • secondary ok • tcp 50.0ms"),
-            startedSummary,
+            BenchmarkStatusMessages.bestLocationSummary("Germany", "primary manual • secondary ok • tcp 50.0ms"),
+            state.lastBenchmarkSummary,
         )
         assertTrue(locations.single().isSelected)
-        assertEquals("primary ok • secondary ok • tcp 50.0ms", locations.single().benchmarkDetail)
+        assertEquals("primary manual • secondary ok • tcp 50.0ms", locations.single().benchmarkDetail)
         assertFalse(state.isRefreshing)
+    }
+
+    @Test
+    fun activeVerificationFailureSwitchesToNextCandidate() = runTest {
+        val first = testProfile("First")
+        val second = testProfile("Second")
+        val firstRaw = LocationConfigs.encodeStoredLocation(first)
+        val secondRaw = LocationConfigs.encodeStoredLocation(second)
+        var state = MainUiState(
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf(firstRaw, secondRaw),
+            appMode = AppMode.PROXY_ONLY,
+        )
+        var locations = listOf(
+            testLocation(first, firstRaw, index = 0),
+            testLocation(second, secondRaw, index = 1),
+        )
+        val starts = mutableListOf<String>()
+        var stopCalls = 0
+        val firstPreflight = PreflightResult(
+            profile = first,
+            connectMillis = 20.0,
+            detail = "First: tcp=20.0ms country=DE",
+            candidateCountryCode = "DE",
+        )
+        val secondPreflight = PreflightResult(
+            profile = second,
+            connectMillis = 40.0,
+            detail = "Second: tcp=40.0ms country=NL",
+            candidateCountryCode = "NL",
+        )
+        val service = DesktopFindBestService(
+            stateProvider = { state },
+            visibleLocationsProvider = { locations },
+            locationsProvider = { locations },
+            refreshSubscriptions = { _, _ -> error("refresh should not run") },
+            startConnection = { location, _, _ ->
+                starts += location.name
+                Result.success(Unit)
+            },
+            stopConnection = {
+                stopCalls += 1
+                Result.success(Unit)
+            },
+            currentRuntimePort = { 28080 },
+            activeVerificationPortAllocator = { 28081 },
+            verifyActiveConnection = { candidate, _, _, _, _ ->
+                if (candidate.profile.remarks == "First") {
+                    Result.success(
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = candidate,
+                            reason = "active_verification_failed",
+                            secondaryStatus = "blocked",
+                        ),
+                    )
+                } else {
+                    Result.success(
+                        BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                            candidate = candidate,
+                            secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(55.0)),
+                        ),
+                    )
+                }
+            },
+            commitState = { nextLocations, nextState ->
+                locations = nextLocations
+                state = nextState
+            },
+            updateState = { transform -> state = transform(state) },
+            evaluateProfiles = { _, _, _, _, _ ->
+                BestCandidateAttemptPlan(
+                    orderedAttempts = listOf(firstPreflight, secondPreflight),
+                    excluded = emptyList(),
+                    locationBenchmarkDetails = mapOf(
+                        firstRaw to firstPreflight.detail,
+                        secondRaw to secondPreflight.detail,
+                    ),
+                    failureMessage = null,
+                )
+            },
+        )
+
+        service.findBestLocation(refreshSubscriptionsFirst = false)
+
+        assertEquals(listOf("First", "Second"), starts)
+        assertEquals(1, stopCalls)
+        assertEquals("Second", locations.single { it.isSelected }.name)
+        assertEquals("primary manual • secondary blocked • tcp 20.0ms", locations.first().benchmarkDetail)
+        assertEquals("primary manual • secondary ok • tcp 40.0ms", locations.last().benchmarkDetail)
     }
 
     @Test
@@ -96,7 +197,11 @@ class DesktopFindBestServiceTest {
             visibleLocationsProvider = { locations },
             locationsProvider = { locations },
             refreshSubscriptions = { _, _ -> Result.failure(IllegalStateException("refresh failed")) },
-            startConnection = { _, _ -> error("start should not run") },
+            startConnection = { _, _, _ -> error("start should not run") },
+            stopConnection = { Result.success(Unit) },
+            currentRuntimePort = { null },
+            activeVerificationPortAllocator = { 0 },
+            verifyActiveConnection = { _, _, _, _, _ -> error("verify should not run") },
             commitState = { _, nextState -> state = nextState },
             updateState = { transform -> state = transform(state) },
             evaluateProfiles = { _, _, _, _, _ ->
@@ -110,9 +215,9 @@ class DesktopFindBestServiceTest {
         assertFalse(evaluated)
     }
 
-    private fun testLocation(profile: ProxyProfile, rawLink: String): DesktopLocationRecord {
+    private fun testLocation(profile: ProxyProfile, rawLink: String, index: Int = 0): DesktopLocationRecord {
         return DesktopLocationRecord(
-            index = 0,
+            index = index,
             sourceUrl = "",
             rawLink = rawLink,
             name = profile.remarks,

@@ -168,6 +168,7 @@ private class FakeDesktopRuntimeController(
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,
+        activeVerificationPort: Int?,
     ): Result<DesktopRuntimeSession> {
         startedProfiles += profile
         if (startResult.isSuccess) {
@@ -188,4 +189,6 @@ private class FakeDesktopRuntimeController(
     override fun isRunning(): Boolean = running
 
     override fun currentMode(): AppMode? = mode.takeIf { running }
+
+    override fun currentPort(): Int? = 1080.takeIf { running }
 }

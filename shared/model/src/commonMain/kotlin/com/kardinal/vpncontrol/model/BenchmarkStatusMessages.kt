@@ -68,6 +68,26 @@ object BenchmarkStatusMessages {
     fun findBestTestingFastest(sourceMode: ProfileSourceMode): String =
         StatusMessageCodec.encode(StatusMessageKey.FIND_BEST_TESTING_FASTEST, sourceMode.name)
 
+    fun detectingCountry(): String =
+        StatusMessageCodec.encode(StatusMessageKey.DETECTING_COUNTRY)
+
+    fun excludingSameCountryLocations(count: Int): String =
+        StatusMessageCodec.encode(StatusMessageKey.EXCLUDING_SAME_COUNTRY_LOCATIONS, count.coerceAtLeast(0).toString())
+
+    fun tryingBestCandidate(attempt: Int, total: Int, remarks: String): String =
+        StatusMessageCodec.encode(
+            StatusMessageKey.TRYING_BEST_CANDIDATE,
+            attempt.coerceAtLeast(1).toString(),
+            total.coerceAtLeast(1).toString(),
+            remarks,
+        )
+
+    fun verifyingBlockedResource(remarks: String): String =
+        StatusMessageCodec.encode(StatusMessageKey.VERIFYING_BLOCKED_RESOURCE, remarks)
+
+    fun switchingAfterVerificationFailure(remarks: String): String =
+        StatusMessageCodec.encode(StatusMessageKey.SWITCHING_AFTER_VERIFICATION_FAILURE, remarks)
+
     fun bestLocationSummary(remarks: String, detail: String): String =
         StatusMessageCodec.encode(StatusMessageKey.BEST_LOCATION_SUMMARY, remarks, detail)
 

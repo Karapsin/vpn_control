@@ -5,6 +5,8 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
+import com.kardinal.vpncontrol.model.LocationStatusMessages
+import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -212,7 +214,7 @@ class AppRepository(
         if (hasStoredSelection && state.selectedProfileName.isNotBlank() && selectedAllowed) {
             return orchestrator.rehydrateSelection(state)
         }
-        return refreshBestProfile()
+        return Result.failure(IllegalStateException(LocationStatusMessages.selectLocationFirst()))
     }
 
     suspend fun selectionFromRawLink(rawLink: String, detail: String): Result<ProfileSelection> = runCatching {
@@ -226,7 +228,15 @@ class AppRepository(
 
     suspend fun benchmarkLocation(rawLink: String) = orchestrator.benchmarkLocation(rawLink)
 
-    suspend fun refreshBestProfile(): Result<ProfileSelection> = orchestrator.refreshBestProfile()
+    suspend fun refreshBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> =
+        orchestrator.refreshBestProfileAttemptPlan()
+
+    suspend fun verifyActiveSelection(attempt: ProfileSelectionAttempt): Result<ProfileBenchmark> =
+        orchestrator.verifyActiveSelection(attempt)
+
+    suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
+        storage.updateLocationBenchmarkDetails(details)
+    }
 
     suspend fun rehydrateSelection(state: PersistedState): Result<ProfileSelection> =
         orchestrator.rehydrateSelection(state)

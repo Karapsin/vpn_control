@@ -3,10 +3,12 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.data.BenchmarkSearchLogic
 import com.kardinal.vpncontrol.data.BenchmarkUrls
+import com.kardinal.vpncontrol.data.BestCandidateAttemptPlan
+import com.kardinal.vpncontrol.data.CandidateCountryResolver
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.PreflightResult
 import com.kardinal.vpncontrol.data.ProxyRunResult
-import com.kardinal.vpncontrol.data.SearchEvaluation
+import com.kardinal.vpncontrol.data.UserCountryResolver
 import com.kardinal.vpncontrol.data.ValidationWalkResult
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProtocol
@@ -56,6 +58,8 @@ class DesktopProxyValidationRuntime(
         "validation",
     ),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
+    private val userCountryResolver: UserCountryResolver = DesktopRemoteCountryResolver(),
+    private val candidateCountryResolver: CandidateCountryResolver = DesktopRemoteCountryResolver(),
 ) {
     private val preflightThreadCounter = AtomicInteger()
 
@@ -81,39 +85,21 @@ class DesktopProxyValidationRuntime(
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
         onProgress: suspend (String) -> Unit = {},
-    ): SearchEvaluation = withContext(Dispatchers.IO) {
+    ): BestCandidateAttemptPlan = withContext(Dispatchers.IO) {
         val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
+        onProgress(BenchmarkStatusMessages.detectingCountry())
+        val userCountry = userCountryResolver.resolveUserCountryCode()
         onProgress(BenchmarkStatusMessages.checkingLocations(profiles.size))
         val preflightResults = preflightProfiles(benchmarkableProfiles, settings)
-        val reachableProfiles = preflightResults
-            .filter { it.connectMillis != null }
-            .sortedBy { it.connectMillis }
-        val timedOutProfiles = preflightResults
-            .filter { it.isPreflightTimeout() }
-        val validationCandidates = (reachableProfiles + timedOutProfiles)
-            .distinctBy { LocationConfigs.encodeStoredLocation(it.profile) }
-        val walk = if (benchmarkableProfiles.isNotEmpty() && validationCandidates.isNotEmpty()) {
-            validateInBatchesUntilSuccess(
-                candidates = validationCandidates,
-                dnsSettings = dnsSettings,
-                benchmarkUrls = benchmarkUrls,
-                settings = settings,
-                onProgress = onProgress,
-            ) { benchmark ->
-                benchmark.primaryStatus == "ok" && benchmark.secondaryStatus == "ok"
-            }
-        } else {
-            ValidationWalkResult(
-                benchmarks = emptyList(),
-                winner = null,
-            )
-        }
-        BenchmarkSearchLogic.evaluateProfilesForSelection(
+        val plan = BenchmarkSearchLogic.planActiveVerificationAttempts(
             profiles = profiles,
             preflightResults = preflightResults,
-            candidateBenchmarks = walk.benchmarks,
-            winner = walk.winner,
+            userCountryCode = userCountry,
         )
+        if (plan.excluded.isNotEmpty()) {
+            onProgress(BenchmarkStatusMessages.excludingSameCountryLocations(plan.excluded.size))
+        }
+        plan
     }
 
     private suspend fun preflightProfiles(
@@ -168,7 +154,7 @@ class DesktopProxyValidationRuntime(
         )
     }
 
-    private fun preflightProfile(
+    private suspend fun preflightProfile(
         profile: ProxyProfile,
         settings: DesktopValidationSettings,
     ): PreflightResult {
@@ -190,12 +176,12 @@ class DesktopProxyValidationRuntime(
                 )
             }
         }
-        return try {
+        val result = try {
             val connection = future.get(settings.preflightTimeoutMillis, TimeUnit.MILLISECONDS)
             PreflightResult(
                 profile = profile,
                 connectMillis = connection.connectMillis,
-                detail = "${profile.remarks}: tcp=${BenchmarkSearchLogic.formatMillis(connection.connectMillis)}",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, connection.connectMillis),
                 resolvedServerAddress = connection.resolvedServerAddress,
             )
         } catch (_: TimeoutException) {
@@ -203,7 +189,7 @@ class DesktopProxyValidationRuntime(
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
-                detail = "${profile.remarks}: tcp_timeout",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_timeout"),
             )
         } catch (error: InterruptedException) {
             future.cancel(true)
@@ -211,7 +197,7 @@ class DesktopProxyValidationRuntime(
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
-                detail = "${profile.remarks}: tcp_cancelled",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_cancelled"),
             )
         } catch (error: ExecutionException) {
             val cause = error.cause
@@ -219,24 +205,38 @@ class DesktopProxyValidationRuntime(
                 PreflightResult(
                     profile = profile,
                     connectMillis = null,
-                    detail = "${profile.remarks}: ${cause.javaClass.simpleName}",
+                    detail = BenchmarkSearchLogic.preflightDetail(profile, null, cause.javaClass.simpleName),
                 )
             } else {
                 PreflightResult(
                     profile = profile,
                     connectMillis = null,
-                    detail = "${profile.remarks}: tcp_error",
+                    detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_error"),
                 )
             }
         } catch (_: IOException) {
             PreflightResult(
                 profile = profile,
                 connectMillis = null,
-                detail = "${profile.remarks}: tcp_unreachable",
+                detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_unreachable"),
             )
         } finally {
             executor.shutdownNow()
         }
+        val candidateCountry = result.resolvedServerAddress?.let {
+            candidateCountryResolver.resolveCandidateCountryCode(it)
+        }
+        if (candidateCountry == null) {
+            return result
+        }
+        return result.copy(
+            detail = BenchmarkSearchLogic.preflightDetail(
+                profile = profile,
+                connectMillis = result.connectMillis,
+                candidateCountryCode = candidateCountry,
+            ),
+            candidateCountryCode = candidateCountry,
+        )
     }
 
     private suspend fun benchmarkCandidate(
@@ -383,9 +383,6 @@ class DesktopProxyValidationRuntime(
         val resolvedServerAddress: String?,
     )
 
-    private fun PreflightResult.isPreflightTimeout(): Boolean {
-        return detail.contains("tcp_timeout")
-    }
 }
 
 internal fun ProxyProfile.withResolvedValidationServer(resolvedServerAddress: String?): ProxyProfile {

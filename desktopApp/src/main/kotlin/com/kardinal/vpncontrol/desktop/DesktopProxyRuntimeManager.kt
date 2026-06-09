@@ -62,6 +62,7 @@ class DesktopProxyRuntimeManager(
         routingRules: RoutingRules,
         dnsSettings: DesktopDnsSettings,
         appMode: AppMode,
+        activeVerificationPort: Int?,
     ): Result<DesktopRuntimeSession> = withContext(Dispatchers.IO) {
         runCatching {
             stopActiveProcess()
@@ -88,6 +89,7 @@ class DesktopProxyRuntimeManager(
                         routingRules = routingRules,
                         interfaceName = checkNotNull(interfaceName),
                         directProbeRouting = directProbeRouting,
+                        activeVerificationPort = activeVerificationPort,
                     )
             }
             val configPath = baseDir.resolve("runtime-sing-box-${appMode.name.lowercase()}.json")
@@ -99,6 +101,7 @@ class DesktopProxyRuntimeManager(
                 appMode = appMode,
                 configPath = configPath,
                 listenPort = port,
+                activeVerificationPort = activeVerificationPort,
             )
             lastPreflightReport = preflight
             if (!preflight.isReady) {
@@ -166,7 +169,7 @@ class DesktopProxyRuntimeManager(
 
     override fun isRunning(): Boolean = process?.isAlive == true
 
-    fun currentPort(): Int? = if (isRunning()) listenPort else null
+    override fun currentPort(): Int? = if (isRunning()) listenPort else null
 
     override fun currentMode(): AppMode? = if (isRunning()) activeMode else null
 
@@ -216,6 +219,7 @@ class DesktopProxyRuntimeManager(
         appMode: AppMode,
         configPath: Path,
         listenPort: Int?,
+        activeVerificationPort: Int?,
     ): DesktopPreflightReport {
         val checks = buildList {
             val binary = singBoxResolver.resolve()
@@ -250,13 +254,7 @@ class DesktopProxyRuntimeManager(
                 add(vpnTunBackendCheck(os))
                 add(vpnPrivilegesCheck(os))
                 add(vpnRouteDnsToolingCheck(os))
-                add(
-                    DesktopPreflightCheck(
-                        name = "local ports",
-                        status = DesktopPreflightStatus.SKIP,
-                        detail = "VPN mode does not open a local proxy port",
-                    ),
-                )
+                add(vpnLocalPortCheck(activeVerificationPort))
             } else {
                 val port = checkNotNull(listenPort)
                 add(
@@ -299,6 +297,27 @@ class DesktopProxyRuntimeManager(
             }
         }
         return DesktopPreflightReport(appMode = appMode, checks = checks)
+    }
+
+    private fun vpnLocalPortCheck(activeVerificationPort: Int?): DesktopPreflightCheck {
+        val port = activeVerificationPort ?: return DesktopPreflightCheck(
+            name = "local ports",
+            status = DesktopPreflightStatus.SKIP,
+            detail = "VPN mode does not open a local proxy port",
+        )
+        return if (isPortAvailable(port)) {
+            DesktopPreflightCheck(
+                name = "active verification port",
+                status = DesktopPreflightStatus.PASS,
+                detail = "127.0.0.1:$port is available",
+            )
+        } else {
+            DesktopPreflightCheck(
+                name = "active verification port",
+                status = DesktopPreflightStatus.FAIL,
+                detail = "Port $port is already in use. Retry Find Best or stop the other process.",
+            )
+        }
     }
 
     private fun runtimeDirectoryCheck(): DesktopPreflightCheck {

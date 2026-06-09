@@ -297,7 +297,12 @@
     "NO_ACTIVE_SUBSCRIPTION_SELECTED": "సక్రియ సబ్‌స్క్రిప్షన్ ఎంచుకోబడలేదు",
     "REFRESHING_SUBSCRIPTION_NAMED": "{0}ను రిఫ్రెష్ చేస్తోంది...",
     "LOCATION_REFRESHED_COUNT": "{0} స్థానం రిఫ్రెష్ అయ్యింది",
-    "LOCATIONS_REFRESHED_COUNT": "{0} స్థానాలు రిఫ్రెష్ అయ్యాయి"
+    "LOCATIONS_REFRESHED_COUNT": "{0} స్థానాలు రిఫ్రెష్ అయ్యాయి",
+    "DETECTING_COUNTRY": "Detecting your country...",
+    "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
+    "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
+    "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
   },
   "freeformReplacements": [
     {
