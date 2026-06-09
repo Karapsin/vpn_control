@@ -44,9 +44,10 @@ internal class DesktopAutostartManager(
 
     private fun isLinuxAutostartEnabled(): Boolean {
         val xdgEntryExists = pathExistsOrSymlink(autostartFile)
+        val xdgEntryEnabled = isXdgAutostartEnabled()
         val legacySystemdExists = legacyLinuxSystemdAutostartExists()
         if (legacySystemdExists) {
-            if (!xdgEntryExists) {
+            if (!xdgEntryExists || !xdgEntryEnabled) {
                 runCatching { setXdgAutostartEnabled(true) }
             }
             deleteLegacyLinuxSystemdAutostart()
@@ -69,9 +70,13 @@ internal class DesktopAutostartManager(
     private fun isXdgAutostartEnabled(): Boolean {
         if (!Files.exists(autostartFile)) return false
         val content = runCatching { Files.readString(autostartFile) }.getOrDefault("")
-        return !content.lineSequence().any { line ->
+        if (content.lineSequence().any { line ->
             line.trim().equals("Hidden=true", ignoreCase = true)
+        }) {
+            return false
         }
+        val command = desktopEntryExecCommand(content) ?: return false
+        return runCatching { Files.isExecutable(Paths.get(command)) }.getOrDefault(false)
     }
 
     private fun setXdgAutostartEnabled(enabled: Boolean): Boolean {
@@ -261,6 +266,39 @@ internal class DesktopAutostartManager(
                 }
             }
             return "\"$escaped\""
+        }
+
+        private fun desktopEntryExecCommand(content: String): String? {
+            val execValue = content.lineSequence()
+                .map(String::trim)
+                .firstOrNull { it.startsWith("Exec=", ignoreCase = true) }
+                ?.substringAfter('=')
+                ?.trim()
+                ?: return null
+            return parseDesktopExecCommand(execValue)
+        }
+
+        private fun parseDesktopExecCommand(value: String): String? {
+            if (value.isBlank()) return null
+            if (value.first() != '"') {
+                return value.takeWhile { !it.isWhitespace() }.takeIf(String::isNotBlank)
+            }
+            val parsed = buildString {
+                var index = 1
+                while (index < value.length) {
+                    val char = value[index]
+                    when {
+                        char == '"' -> return@buildString
+                        char == '\\' && index + 1 < value.length -> {
+                            append(value[index + 1])
+                            index += 1
+                        }
+                        else -> append(char)
+                    }
+                    index += 1
+                }
+            }
+            return parsed.takeIf(String::isNotBlank)
         }
 
         private fun platformSystemctl(): Path? {

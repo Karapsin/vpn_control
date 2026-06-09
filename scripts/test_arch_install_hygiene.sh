@@ -8,6 +8,21 @@ script="scripts/arch_install.sh"
 
 bash -n "$script"
 
+generated_launcher_raw="$(mktemp)"
+generated_launcher="$(mktemp)"
+trap 'rm -f "$generated_launcher_raw" "$generated_launcher"' EXIT
+awk '
+  $0 == "sudo tee \"$launcher_path\" >/dev/null <<EOF" { in_block = 1; next }
+  in_block && $0 == "EOF" { exit }
+  in_block { print }
+' "$script" >"$generated_launcher_raw"
+sed 's/\\\$/\$/g' "$generated_launcher_raw" >"$generated_launcher"
+if [[ ! -s "$generated_launcher" ]]; then
+  echo "arch_install.sh generated launcher wrapper could not be extracted" >&2
+  exit 1
+fi
+bash -n "$generated_launcher"
+
 python3 - <<'PY'
 import pathlib
 import re
@@ -48,12 +63,25 @@ required_snippets = [
     'state_dir="\\${VPN_CONTROL_STATE_DIR:-\\$HOME/.vpn-control-desktop}"',
     'lock_file="\\$state_dir/launcher.lock"',
     'port_file="\\$state_dir/activation.port"',
+    'autostart_log="\\$state_dir/autostart.log"',
+    'AUTOSTART_MAX_ATTEMPTS=3',
+    'AUTOSTART_RETRY_DELAY_SECONDS=5',
+    'AUTOSTART_STARTUP_WINDOW_SECONDS=20',
+    'AUTOSTART_DESKTOP_WAIT_SECONDS=20',
+    'is_autostart_launch()',
+    'log_autostart()',
     'request_existing_instance()',
+    'desktop_session_ready()',
+    'wait_for_desktop_session()',
+    'run_autostart_app_once()',
+    'run_autostart_app_with_retries()',
     "port=\"\\$(tr -dc '0-9' <\"\\$port_file\")\"",
     'python3 - "\\$port"',
     'socket.create_connection(("127.0.0.1", port), timeout=0.5)',
     'exec 8<>"/dev/tcp/127.0.0.1/\\$port"',
     'flock -n 9',
+    'log_autostart "existing instance lock held; requesting activation"',
+    'run_autostart_app_with_retries "\\$@"',
 ]
 missing = [snippet for snippet in required_snippets if snippet not in text]
 if missing:
@@ -92,6 +120,18 @@ if launcher_guard < 0 or launcher_exec < 0 or launcher_guard > launcher_exec:
 duplicate_launch_exit = text.find('request_existing_instance >/dev/null 2>&1 || true')
 if duplicate_launch_exit < 0 or duplicate_launch_exit > launcher_exec:
     print("arch_install.sh launcher wrapper must activate the existing instance on duplicate launch.", file=sys.stderr)
+    sys.exit(1)
+
+autostart_retry = text.find('run_autostart_app_with_retries "\\$@"')
+if autostart_retry < 0 or autostart_retry > launcher_exec:
+    print("arch_install.sh launcher wrapper must run retrying autostart before the normal exec path.", file=sys.stderr)
+    sys.exit(1)
+
+autostart_log = text.find('autostart_log="\\$state_dir/autostart.log"')
+autostart_wait = text.find('wait_for_desktop_session')
+autostart_run = text.find('run_autostart_app_once')
+if not (launcher_guard < autostart_log < autostart_wait < autostart_run < launcher_exec):
+    print("arch_install.sh launcher wrapper must log, wait for desktop readiness, and retry autostart in order.", file=sys.stderr)
     sys.exit(1)
 
 forbidden_systemd_autostart = [

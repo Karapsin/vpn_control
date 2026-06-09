@@ -494,6 +494,25 @@ export VPN_CONTROL_SING_BOX="$install_dir/bin/sing-box"
 state_dir="\${VPN_CONTROL_STATE_DIR:-\$HOME/.vpn-control-desktop}"
 lock_file="\$state_dir/launcher.lock"
 port_file="\$state_dir/activation.port"
+autostart_log="\$state_dir/autostart.log"
+
+AUTOSTART_MAX_ATTEMPTS=3
+AUTOSTART_RETRY_DELAY_SECONDS=5
+AUTOSTART_STARTUP_WINDOW_SECONDS=20
+AUTOSTART_DESKTOP_WAIT_SECONDS=20
+
+is_autostart_launch() {
+  local arg
+  for arg in "\$@"; do
+    [[ "\$arg" == "--autostart" ]] && return 0
+  done
+  return 1
+}
+
+log_autostart() {
+  mkdir -p "\$state_dir" 2>/dev/null || true
+  printf '%s %s\n' "\$(date '+%Y-%m-%dT%H:%M:%S%z')" "\$*" >>"\$autostart_log" 2>/dev/null || true
+}
 
 request_existing_instance() {
   local port
@@ -519,13 +538,128 @@ PY
   fi
 }
 
+desktop_session_ready() {
+  local runtime_dir="\${XDG_RUNTIME_DIR:-}"
+
+  if [[ -z "\$runtime_dir" || ! -d "\$runtime_dir" ]]; then
+    return 1
+  fi
+
+  if [[ -n "\${WAYLAND_DISPLAY:-}" ]]; then
+    local wayland_display="\${WAYLAND_DISPLAY:-}"
+    if [[ "\$wayland_display" == /* ]]; then
+      [[ -S "\$wayland_display" || -e "\$wayland_display" ]] && return 0
+    else
+      [[ -S "\$runtime_dir/\$wayland_display" || -e "\$runtime_dir/\$wayland_display" ]] && return 0
+    fi
+  fi
+
+  if [[ -n "\${DISPLAY:-}" ]]; then
+    if command -v xdpyinfo >/dev/null 2>&1; then
+      xdpyinfo >/dev/null 2>&1 && return 0
+    else
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+wait_for_desktop_session() {
+  local deadline=\$((SECONDS + AUTOSTART_DESKTOP_WAIT_SECONDS))
+
+  if desktop_session_ready; then
+    log_autostart "desktop session ready"
+    return 0
+  fi
+
+  log_autostart "waiting for desktop session"
+  while (( SECONDS < deadline )); do
+    sleep 1
+    if desktop_session_ready; then
+      log_autostart "desktop session ready after wait"
+      return 0
+    fi
+  done
+
+  log_autostart "desktop session was not confirmed; launching anyway DISPLAY=\${DISPLAY:-<unset>} WAYLAND_DISPLAY=\${WAYLAND_DISPLAY:-<unset>} XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-<unset>}"
+}
+
+autostart_exit_was_early=false
+
+run_autostart_app_once() {
+  local pid
+  local exit_code
+  local deadline
+
+  "$install_dir/bin/vpn-control" "\$@" &
+  pid=\$!
+  deadline=\$((SECONDS + AUTOSTART_STARTUP_WINDOW_SECONDS))
+  log_autostart "started app pid=\$pid"
+
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "\$pid" >/dev/null 2>&1; then
+      if wait "\$pid"; then
+        exit_code=0
+      else
+        exit_code=\$?
+      fi
+      autostart_exit_was_early=true
+      log_autostart "app exited during startup window pid=\$pid exit_code=\$exit_code"
+      return "\$exit_code"
+    fi
+    sleep 1
+  done
+
+  autostart_exit_was_early=false
+  log_autostart "app survived startup window pid=\$pid"
+  wait "\$pid"
+}
+
+run_autostart_app_with_retries() {
+  local attempt
+  local exit_code
+
+  wait_for_desktop_session
+
+  for ((attempt = 1; attempt <= AUTOSTART_MAX_ATTEMPTS; attempt++)); do
+    log_autostart "launch attempt \$attempt/\$AUTOSTART_MAX_ATTEMPTS"
+    if run_autostart_app_once "\$@"; then
+      log_autostart "app exited cleanly"
+      return 0
+    fi
+
+    exit_code=\$?
+    if [[ "\$autostart_exit_was_early" != true || "\$attempt" -ge "\$AUTOSTART_MAX_ATTEMPTS" ]]; then
+      log_autostart "autostart failed exit_code=\$exit_code attempts=\$attempt"
+      return "\$exit_code"
+    fi
+
+    log_autostart "retrying after early failure in \$AUTOSTART_RETRY_DELAY_SECONDS seconds"
+    sleep "\$AUTOSTART_RETRY_DELAY_SECONDS"
+  done
+}
+
+autostart_launch=false
+if is_autostart_launch "\$@"; then
+  autostart_launch=true
+fi
+
 if command -v flock >/dev/null 2>&1; then
   mkdir -p "\$state_dir"
   exec 9>"\$lock_file"
   if ! flock -n 9; then
+    if [[ "\$autostart_launch" == true ]]; then
+      log_autostart "existing instance lock held; requesting activation"
+    fi
     request_existing_instance >/dev/null 2>&1 || true
     exit 0
   fi
+fi
+
+if [[ "\$autostart_launch" == true ]]; then
+  run_autostart_app_with_retries "\$@"
+  exit \$?
 fi
 
 exec "$install_dir/bin/vpn-control" "\$@"

@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -10,10 +11,11 @@ class DesktopAutostartManagerTest {
     fun setEnabledCreatesAndRemovesXdgAutostartEntryWithoutSystemdService() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart")
         try {
+            val launcher = createExecutableLauncher(tempDir)
             val commands = mutableListOf<List<String>>()
             val manager = DesktopAutostartManager(
                 configHome = tempDir,
-                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                commandResolver = { launcher },
                 platform = DesktopAutostartPlatform.LINUX,
                 commandRunner = { command ->
                     commands += command
@@ -32,7 +34,7 @@ class DesktopAutostartManagerTest {
             val content = Files.readString(tempDir.resolve("autostart").resolve("vpn-control.desktop"))
             assertTrue(content.contains("Type=Application"))
             assertTrue(content.contains("Name=VPN Control"))
-            assertTrue(content.contains("Exec=\"/opt/vpn-control/bin/vpn-control\" --autostart"))
+            assertTrue(content.contains("Exec=\"$launcher\" --autostart"))
             assertTrue(content.contains("X-GNOME-Autostart-enabled=true"))
             assertFalse(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service")))
             assertFalse(
@@ -60,6 +62,7 @@ class DesktopAutostartManagerTest {
     fun setEnabledRemovesLegacyLinuxSystemdAutostartWithoutStoppingRuntime() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart-legacy")
         try {
+            val launcher = createExecutableLauncher(tempDir)
             val systemdUserDir = tempDir.resolve("systemd").resolve("user")
             val wantsDir = systemdUserDir.resolve("default.target.wants")
             Files.createDirectories(wantsDir)
@@ -78,7 +81,7 @@ class DesktopAutostartManagerTest {
             val commands = mutableListOf<List<String>>()
             val manager = DesktopAutostartManager(
                 configHome = tempDir,
-                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                commandResolver = { launcher },
                 platform = DesktopAutostartPlatform.LINUX,
                 commandRunner = { command ->
                     commands += command
@@ -106,6 +109,7 @@ class DesktopAutostartManagerTest {
     fun isEnabledMigratesLegacyLinuxSystemdAutostartToXdgEntry() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart-migrate")
         try {
+            val launcher = createExecutableLauncher(tempDir)
             val systemdUserDir = tempDir.resolve("systemd").resolve("user")
             Files.createDirectories(systemdUserDir)
             Files.writeString(
@@ -121,7 +125,7 @@ class DesktopAutostartManagerTest {
             )
             val manager = DesktopAutostartManager(
                 configHome = tempDir,
-                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                commandResolver = { launcher },
                 platform = DesktopAutostartPlatform.LINUX,
                 commandRunner = { DesktopAutostartCommandResult(0, "") },
                 systemctlResolver = { tempDir.resolve("systemctl") },
@@ -139,6 +143,7 @@ class DesktopAutostartManagerTest {
     fun disabledHiddenEntryIsReportedAsDisabled() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart-hidden")
         try {
+            val launcher = createExecutableLauncher(tempDir)
             val autostartDir = tempDir.resolve("autostart")
             Files.createDirectories(autostartDir)
             Files.writeString(
@@ -154,11 +159,48 @@ class DesktopAutostartManagerTest {
 
             val manager = DesktopAutostartManager(
                 configHome = tempDir,
-                commandResolver = { "/opt/vpn-control/bin/vpn-control" },
+                commandResolver = { launcher },
                 platform = DesktopAutostartPlatform.LINUX,
             )
 
             assertFalse(manager.isEnabled())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun staleXdgEntryWithMissingExecutableIsDisabledAndRewrittenWhenEnabled() {
+        val tempDir = Files.createTempDirectory("vpn-control-autostart-stale")
+        try {
+            val launcher = createExecutableLauncher(tempDir)
+            val autostartDir = tempDir.resolve("autostart")
+            Files.createDirectories(autostartDir)
+            Files.writeString(
+                autostartDir.resolve("vpn-control.desktop"),
+                """
+                    |[Desktop Entry]
+                    |Type=Application
+                    |Name=VPN Control
+                    |Exec="/missing/vpn-control" --autostart
+                    |
+                """.trimMargin(),
+            )
+
+            val manager = DesktopAutostartManager(
+                configHome = tempDir,
+                commandResolver = { launcher },
+                platform = DesktopAutostartPlatform.LINUX,
+            )
+
+            assertFalse(manager.isEnabled())
+
+            val enabled = manager.setEnabled(true)
+
+            assertTrue(enabled.isSuccess)
+            assertTrue(manager.isEnabled())
+            val content = Files.readString(autostartDir.resolve("vpn-control.desktop"))
+            assertTrue(content.contains("Exec=\"$launcher\" --autostart"))
         } finally {
             tempDir.toFile().deleteRecursively()
         }
@@ -270,5 +312,12 @@ class DesktopAutostartManagerTest {
         assertFalse(legacyRunEnabled)
         assertTrue(commands.any { it.take(2) == listOf("schtasks", "/Create") })
         assertTrue(commands.any { it.take(2) == listOf("reg", "delete") })
+    }
+
+    private fun createExecutableLauncher(tempDir: Path): String {
+        val launcher = tempDir.resolve("vpn-control")
+        Files.writeString(launcher, "#!/usr/bin/env sh\nexit 0\n")
+        assertTrue(launcher.toFile().setExecutable(true))
+        return launcher.toString()
     }
 }
