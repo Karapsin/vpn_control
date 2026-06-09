@@ -35,7 +35,7 @@ class DesktopAutostartManagerTest {
             val content = Files.readString(tempDir.resolve("autostart").resolve("vpn-control.desktop"))
             assertTrue(content.contains("Type=Application"))
             assertTrue(content.contains("Name=VPN Control"))
-            assertTrue(content.contains("Exec=\"$launcher\" --autostart"))
+            assertTrue(content.contains("Exec=${desktopExecCommand(launcher)} --autostart"))
             assertTrue(content.contains("X-GNOME-Autostart-enabled=true"))
             assertFalse(Files.exists(tempDir.resolve("systemd").resolve("user").resolve("vpn-control.service")))
             assertFalse(
@@ -204,7 +204,7 @@ class DesktopAutostartManagerTest {
             assertTrue(enabled.isSuccess)
             assertTrue(manager.isEnabled())
             val content = Files.readString(autostartDir.resolve("vpn-control.desktop"))
-            assertTrue(content.contains("Exec=\"$launcher\" --autostart"))
+            assertTrue(content.contains("Exec=${desktopExecCommand(launcher)} --autostart"))
         } finally {
             tempDir.toFile().deleteRecursively()
         }
@@ -327,5 +327,20 @@ class DesktopAutostartManagerTest {
 
     private fun launcherExecutableChecker(launcher: String): (Path) -> Boolean {
         return { path -> path.toString() == launcher && Files.exists(path) }
+    }
+
+    private fun desktopExecCommand(value: String): String {
+        val escaped = buildString {
+            value.forEach { char ->
+                when (char) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '$' -> append("\\$")
+                    '`' -> append("\\`")
+                    else -> append(char)
+                }
+            }
+        }
+        return "\"$escaped\""
     }
 }
