@@ -12,6 +12,7 @@ internal class DesktopAutostartManager(
     private val platform: DesktopAutostartPlatform = currentAutostartPlatform(),
     private val commandRunner: (List<String>) -> DesktopAutostartCommandResult = ::runCommand,
     private val systemctlResolver: () -> Path? = ::platformSystemctl,
+    private val executableChecker: (Path) -> Boolean = Files::isExecutable,
 ) {
     private val autostartFile = configHome
         .resolve("autostart")
@@ -76,7 +77,7 @@ internal class DesktopAutostartManager(
             return false
         }
         val command = desktopEntryExecCommand(content) ?: return false
-        return runCatching { Files.isExecutable(Paths.get(command)) }.getOrDefault(false)
+        return runCatching { executableChecker(Paths.get(command)) }.getOrDefault(false)
     }
 
     private fun setXdgAutostartEnabled(enabled: Boolean): Boolean {

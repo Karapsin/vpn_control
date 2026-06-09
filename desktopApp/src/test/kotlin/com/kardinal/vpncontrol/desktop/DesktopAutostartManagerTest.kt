@@ -22,6 +22,7 @@ class DesktopAutostartManagerTest {
                     DesktopAutostartCommandResult(0, "")
                 },
                 systemctlResolver = { tempDir.resolve("systemctl") },
+                executableChecker = launcherExecutableChecker(launcher),
             )
 
             assertFalse(manager.isEnabled())
@@ -88,6 +89,7 @@ class DesktopAutostartManagerTest {
                     DesktopAutostartCommandResult(0, "")
                 },
                 systemctlResolver = { tempDir.resolve("systemctl") },
+                executableChecker = launcherExecutableChecker(launcher),
             )
 
             val enabled = manager.setEnabled(true)
@@ -129,6 +131,7 @@ class DesktopAutostartManagerTest {
                 platform = DesktopAutostartPlatform.LINUX,
                 commandRunner = { DesktopAutostartCommandResult(0, "") },
                 systemctlResolver = { tempDir.resolve("systemctl") },
+                executableChecker = launcherExecutableChecker(launcher),
             )
 
             assertTrue(manager.isEnabled())
@@ -191,6 +194,7 @@ class DesktopAutostartManagerTest {
                 configHome = tempDir,
                 commandResolver = { launcher },
                 platform = DesktopAutostartPlatform.LINUX,
+                executableChecker = launcherExecutableChecker(launcher),
             )
 
             assertFalse(manager.isEnabled())
@@ -319,5 +323,9 @@ class DesktopAutostartManagerTest {
         Files.writeString(launcher, "#!/usr/bin/env sh\nexit 0\n")
         assertTrue(launcher.toFile().setExecutable(true))
         return launcher.toString()
+    }
+
+    private fun launcherExecutableChecker(launcher: String): (Path) -> Boolean {
+        return { path -> path.toString() == launcher && Files.exists(path) }
     }
 }

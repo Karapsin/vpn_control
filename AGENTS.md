@@ -35,11 +35,26 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 - Do not restore old default subscriptions, default rules, or demo data.
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
-- After changes are done and validated, push completed commits to `origin main`.
+- After changes are done and validated, push completed commits to `origin main`, then complete the post-push CI verification loop before reporting success.
 - If large work intentionally spans multiple dirty buckets, document the intent in `docs/work-in-progress.md`.
 - Start low-context repository navigation from `docs/README.md`.
 - Use `docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.
 - Use `docs/native-runtime-artifacts.md` before touching native runtime binaries or runtime preparation scripts.
+
+## Post-Push CI Verification
+
+After every push to `origin main`:
+
+1. Capture the exact pushed commit with `git rev-parse HEAD`.
+2. Query GitHub Actions runs for that exact `headSha`; do not rely on branch-latest status alone.
+3. Wait until these expected workflows for that SHA complete:
+   - Fast Checks
+   - Android Release APK
+   - Linux Desktop Package
+   - Windows Desktop Package
+   - macOS Desktop Package
+4. If any expected workflow fails, inspect the failure logs, fix the cause, rerun the relevant local checks, commit the fix, push again, and repeat this verification loop for the new `headSha`.
+5. Do not report the push as complete while any expected workflow for the pushed SHA is pending, missing, or failed.
 
 ## First-Read Docs
 
