@@ -98,6 +98,7 @@
   "BATCH_SIZE": "묶음 크기",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "재시도 수",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com 또는 전체 URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com 또는 전체 URL",
   "VALIDATION_ANDROID_SUMMARY": "동시 실행 수는 현재 묶음 크기와 같으며 최대 5입니다. 재시도 횟수는 사용 가능한 위치가 없을 때 전체 검색을 다시 실행합니다. 현재 설정: {0}",

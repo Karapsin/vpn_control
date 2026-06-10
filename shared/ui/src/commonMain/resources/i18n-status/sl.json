@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Samodejno osveževanje naročnin nastavljeno na {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Nastavitve preverjanja shranjene: {0} • {1} • paket {2} • ponovitve {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "Nastavitve preverjanja shranjene: {0} • {1} • paket {2} • ponovitve {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "DNS po meri shranjen",
     "CUSTOM_DNS_DISABLED": "DNS po meri onemogočen",
     "FIND_BEST_FROM_SUBSCRIPTION": "Iskanje najboljše lokacije iz naročnine...",

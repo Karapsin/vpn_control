@@ -98,6 +98,7 @@
   "BATCH_SIZE": "ขนาดชุด",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ลองใหม่ จำนวน",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com หรือ URL เต็ม",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com หรือ URL เต็ม",
   "VALIDATION_ANDROID_SUMMARY": "จำนวนงานพร้อมกันตรงกับขนาดชุดปัจจุบัน สูงสุด 5 จำนวนลองใหม่จะรันการค้นหาทั้งหมดอีกครั้งถ้าไม่พบตำแหน่งที่ใช้ได้ การตั้งค่าปัจจุบัน: {0}",

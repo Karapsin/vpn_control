@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Batch အရွယ်အစား",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ပြန်ကြိုးစားမှု အရေအတွက်",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com သို့မဟုတ် URL အပြည့်အစုံ",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com သို့မဟုတ် URL အပြည့်အစုံ",
   "VALIDATION_ANDROID_SUMMARY": "တစ်ပြိုင်နက်လုပ်ဆောင်မှုသည် လက်ရှိ batch အရွယ်အစားနှင့် ကိုက်ညီပြီး အများဆုံး ၅ အထိ ဖြစ်သည်။ အသုံးပြုနိုင်သော တည်နေရာ မတွေ့ပါက ပြန်ကြိုးစားမှု အရေအတွက်သည် ရှာဖွေမှုတစ်ခုလုံးကို ပြန်လည်လုပ်ဆောင်သည်။ လက်ရှိ ဆက်တင်များ: {0}",

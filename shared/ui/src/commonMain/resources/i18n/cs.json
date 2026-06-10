@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Velikost dávky",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Počet opakování",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com nebo úplná URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com nebo úplná URL",
   "VALIDATION_ANDROID_SUMMARY": "Souběžnost odpovídá aktuální velikosti dávky, nejvýše 5. Počet opakování znovu spustí celé hledání, pokud se nenajde použitelná lokalita. Aktuální nastavení: {0}",

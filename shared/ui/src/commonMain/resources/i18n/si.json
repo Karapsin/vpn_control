@@ -98,6 +98,7 @@
   "BATCH_SIZE": "කාණ්ඩ ප්‍රමාණය",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "නැවත උත්සාහ ගණන",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com හෝ සම්පූර්ණ URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com හෝ සම්පූර්ණ URL",
   "VALIDATION_ANDROID_SUMMARY": "සමගාමීතාව වත්මන් කාණ්ඩ ප්‍රමාණයට ගැලපේ, උපරිම 5 දක්වා. භාවිත කළ හැකි ස්ථානයක් හමු නොවුවහොත් නැවත උත්සාහ ගණන සම්පූර්ණ සෙවීම නැවත ධාවනය කරයි. වත්මන් සැකසුම්: {0}",

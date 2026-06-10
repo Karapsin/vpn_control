@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Tamaño de lote",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Reintentos",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com o URL completa",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "sitio-secundario.com o URL completa",
   "VALIDATION_ANDROID_SUMMARY": "La concurrencia coincide con el tamaño de grupo actual, hasta 5. El número de reintentos vuelve a ejecutar toda la búsqueda si no se encuentra una ubicación usable. Ajustes actuales: {0}",

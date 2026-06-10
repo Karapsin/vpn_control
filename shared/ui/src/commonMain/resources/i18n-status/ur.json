@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "سبسکرپشن خودکار ریفریش سیٹ ہوا: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "توثیق ترتیبات محفوظ ہو گئیں: {0} • {1} • بیچ {2} • دوبارہ کوششیں {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "توثیق ترتیبات محفوظ ہو گئیں: {0} • {1} • بیچ {2} • دوبارہ کوششیں {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "حسب ضرورت DNS محفوظ ہو گیا",
     "CUSTOM_DNS_DISABLED": "حسب ضرورت DNS غیر فعال ہو گیا",
     "FIND_BEST_FROM_SUBSCRIPTION": "سبسکرپشن سے بہترین مقام تلاش کیا جا رہا ہے...",

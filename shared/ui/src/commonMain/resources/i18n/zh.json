@@ -98,6 +98,7 @@
   "BATCH_SIZE": "批大小",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "重试次数",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com 或完整 URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "备用站点.com 或完整 URL",
   "VALIDATION_ANDROID_SUMMARY": "并发数等于当前组大小，最多 5。若找不到可用节点，重试次数会重新运行整个搜索。当前设置：{0}",

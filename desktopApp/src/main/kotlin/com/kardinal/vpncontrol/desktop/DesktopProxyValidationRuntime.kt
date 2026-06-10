@@ -79,6 +79,17 @@ class DesktopProxyValidationRuntime(
         }
     }
 
+    suspend fun benchmarkPreflightCandidate(
+        candidate: PreflightResult,
+        dnsSettings: DesktopDnsSettings,
+        benchmarkUrls: BenchmarkUrls,
+        settings: DesktopValidationSettings = DesktopValidationSettings(),
+    ): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
+        runCatching {
+            benchmarkCandidate(candidate, dnsSettings, benchmarkUrls, settings)
+        }
+    }
+
     suspend fun evaluateProfiles(
         profiles: List<ProxyProfile>,
         dnsSettings: DesktopDnsSettings,

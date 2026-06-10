@@ -65,6 +65,15 @@ data class SearchEvaluation(
 )
 
 object BenchmarkSearchLogic {
+    fun <T> activeVerificationWindow(
+        attempts: List<T>,
+        currentIndex: Int,
+        windowSize: Int,
+    ): List<T> {
+        if (currentIndex !in attempts.indices) return emptyList()
+        return attempts.drop(currentIndex).take(windowSize.coerceAtLeast(1))
+    }
+
     fun planActiveVerificationAttempts(
         profiles: List<ProxyProfile>,
         preflightResults: List<PreflightResult>,

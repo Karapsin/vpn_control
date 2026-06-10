@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Obunani avtomatik yangilash oʻrnatildi: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Tekshirish sozlamalari saqlandi: {0} • {1} • guruh {2} • urinishlar {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "Tekshirish sozlamalari saqlandi: {0} • {1} • guruh {2} • urinishlar {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "Maxsus DNS saqlandi",
     "CUSTOM_DNS_DISABLED": "Maxsus DNS oʻchirildi",
     "FIND_BEST_FROM_SUBSCRIPTION": "Obunadan eng yaxshi joylashuv qidirilmoqda...",

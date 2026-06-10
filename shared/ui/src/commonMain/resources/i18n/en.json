@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Batch size",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Retry count",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com or full URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com or full URL",
   "VALIDATION_ANDROID_SUMMARY": "Location test concurrency follows batch size, up to 5. Subscription refresh concurrency is configurable from 1 to 8 and controls parallel subscription downloads. Retry count reruns the whole search if no usable location is found. Current settings: {0}",

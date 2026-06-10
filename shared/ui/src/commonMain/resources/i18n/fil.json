@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Laki ng batch",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Bilang ng retry",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com o buong URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com o buong URL",
   "VALIDATION_ANDROID_SUMMARY": "Tumutugma ang concurrency sa kasalukuyang laki ng batch, hanggang 5. Inuulit ng bilang ng retry ang buong paghahanap kung walang makitang magagamit na lokasyon. Kasalukuyang mga setting: {0}",

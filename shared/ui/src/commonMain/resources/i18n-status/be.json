@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Автоабнаўление падпіскі: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Наладки праверки захаванены: {0} • {1} • группа {2} • повторные попытки {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "Наладки праверки захаванены: {0} • {1} • группа {2} • повторные попытки {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "Уласны DNS захаванен",
     "CUSTOM_DNS_DISABLED": "Уласны DNS отключен",
     "FIND_BEST_FROM_SUBSCRIPTION": "Пошук найлепшай лакацыі з падпіскі...",

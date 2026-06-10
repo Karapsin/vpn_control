@@ -371,6 +371,7 @@ class DesktopAppServiceTest {
             service.setValidationBatchSizeDraft("4")
             service.setValidationSubscriptionRefreshConcurrencyDraft("5")
             service.setValidationRetryCountDraft("2")
+            service.setValidationActiveVerificationWindowSizeDraft("6")
             service.saveValidationSettings()
 
             assertFalse(service.state.showValidationSettingsDialog)
@@ -379,6 +380,7 @@ class DesktopAppServiceTest {
             assertEquals(4, service.state.validationSettings.batchSize)
             assertEquals(5, service.state.validationSettings.subscriptionRefreshConcurrency)
             assertEquals(2, service.state.validationSettings.retryCount)
+            assertEquals(6, service.state.validationSettings.activeVerificationWindowSize)
 
             val reloaded = DesktopStateStore(tempDir).loadWorkspace(
                 DesktopWorkspace(
@@ -391,6 +393,7 @@ class DesktopAppServiceTest {
             assertEquals("https://google.com/generate_204", reloaded.validationSettings.primaryUrl)
             assertEquals(4, reloaded.validationSettings.batchSize)
             assertEquals(5, reloaded.validationSettings.subscriptionRefreshConcurrency)
+            assertEquals(6, reloaded.validationSettings.activeVerificationWindowSize)
         } finally {
             tempDir.toFile().deleteRecursively()
         }

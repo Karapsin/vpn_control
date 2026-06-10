@@ -98,6 +98,7 @@
   "BATCH_SIZE": "اندازه دسته",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "تلاش شمار",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com یا URL کامل",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com یا URL کامل",
   "VALIDATION_ANDROID_SUMMARY": "همزمانی با اندازه دسته فعلی هماهنگ است، حداکثر ۵. اگر مکان قابل استفاده‌ای پیدا نشود، تعداد تلاش کل جستجو را دوباره اجرا می‌کند. تنظیمات فعلی: {0}",

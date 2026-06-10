@@ -55,6 +55,8 @@ data class MainUiState(
     val validationSubscriptionRefreshConcurrencyDraft: String =
         BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY.toString(),
     val validationRetryCountDraft: String = BenchmarkValidationSettings.DEFAULT_RETRY_COUNT.toString(),
+    val validationActiveVerificationWindowSizeDraft: String =
+        BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE.toString(),
     val currentLocations: List<String> = emptyList(),
     val locationBenchmarkDetails: Map<String, String> = emptyMap(),
     val customDns: String = "",
@@ -188,6 +190,11 @@ object MainUiStateProjector {
             } else {
                 persisted.validationSettings.retryCount.toString()
             },
+            validationActiveVerificationWindowSizeDraft = if (current.showValidationSettingsDialog) {
+                current.validationActiveVerificationWindowSizeDraft
+            } else {
+                persisted.validationSettings.activeVerificationWindowSize.toString()
+            },
             currentLocations = persisted.currentLocations,
             locationBenchmarkDetails = persisted.locationBenchmarkDetails,
             customDns = persisted.customDns,
@@ -259,6 +266,7 @@ object MainUiStateTransitions {
             validationBatchSizeDraft = current.batchSize.toString(),
             validationSubscriptionRefreshConcurrencyDraft = current.subscriptionRefreshConcurrency.toString(),
             validationRetryCountDraft = current.retryCount.toString(),
+            validationActiveVerificationWindowSizeDraft = current.activeVerificationWindowSize.toString(),
         )
     }
 

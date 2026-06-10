@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Omgångsstorlek",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Antal återförsök",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com eller fullständig URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com eller fullständig URL",
   "VALIDATION_ANDROID_SUMMARY": "Parallelliteten matchar aktuell omgångsstorlek, upp till 5. Antalet återförsök kör om hela sökningen om ingen användbar plats hittas. Aktuella inställningar: {0}",

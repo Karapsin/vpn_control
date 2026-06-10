@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Parti boyutu",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Yeniden deneme sayısı",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com veya tam URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com veya tam URL",
   "VALIDATION_ANDROID_SUMMARY": "Eşzamanlılık, en fazla 5 olacak şekilde geçerli parti boyutuyla eşleşir. Yeniden deneme sayısı, kullanılabilir konum bulunamazsa tüm aramayı tekrar çalıştırır. Geçerli ayarlar: {0}",

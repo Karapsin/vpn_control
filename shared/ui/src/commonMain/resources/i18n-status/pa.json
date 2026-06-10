@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਆਟੋ-ਰੀਫ੍ਰੈਸ਼ ਸੈੱਟ ਕੀਤਾ ਗਿਆ: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "ਵੈਲੀਡੇਸ਼ਨ ਸੈਟਿੰਗਾਂ ਸੰਭਾਲੀਆਂ ਗਈਆਂ: {0} • {1} • ਬੈਚ {2} • ਮੁੜ-ਕੋਸ਼ਿਸ਼ਾਂ {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "ਵੈਲੀਡੇਸ਼ਨ ਸੈਟਿੰਗਾਂ ਸੰਭਾਲੀਆਂ ਗਈਆਂ: {0} • {1} • ਬੈਚ {2} • ਮੁੜ-ਕੋਸ਼ਿਸ਼ਾਂ {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "ਕਸਟਮ DNS ਸੰਭਾਲਿਆ ਗਿਆ",
     "CUSTOM_DNS_DISABLED": "ਕਸਟਮ DNS ਬੰਦ ਕੀਤਾ ਗਿਆ",
     "FIND_BEST_FROM_SUBSCRIPTION": "ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਤੋਂ ਸਭ ਤੋਂ ਵਧੀਆ ਟਿਕਾਣਾ ਲੱਭਿਆ ਜਾ ਰਿਹਾ ਹੈ...",

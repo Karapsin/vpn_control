@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Величина серије",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Број покушаја",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com или пун URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com или пун URL",
   "VALIDATION_ANDROID_SUMMARY": "Паралелност одговара тренутној величини серије, до 5. Број покушаја поново покреће целу претрагу ако није пронађена употребљива локација. Тренутна подешавања: {0}",

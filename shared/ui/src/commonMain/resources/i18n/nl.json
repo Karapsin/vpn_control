@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Batchgrootte",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Aantal pogingen",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com of volledige URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com of volledige URL",
   "VALIDATION_ANDROID_SUMMARY": "Gelijktijdigheid komt overeen met de huidige batchgrootte, tot 5. Aantal pogingen voert de hele zoekactie opnieuw uit als er geen bruikbare locatie wordt gevonden. Huidige instellingen: {0}",

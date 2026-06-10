@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Guruh hajmi",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Qayta urinishlar soni",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com yoki toʻliq URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com yoki toʻliq URL",
   "VALIDATION_ANDROID_SUMMARY": "Parallellik joriy guruh hajmiga mos keladi, eng koʻpi 5. Qayta urinishlar soni yaroqli joylashuv topilmasa butun qidiruvni qayta bajaradi. Joriy sozlamalar: {0}",

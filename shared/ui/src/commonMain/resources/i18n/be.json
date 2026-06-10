@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Памер пакета",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Колькасць паўтораў",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com або поўны URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com або поўны URL",
   "VALIDATION_ANDROID_SUMMARY": "Паралельнасць адпавядае бягучаму памеру пакета, да 5. Колькасць паўтораў запускае ўвесь пошук зноў, калі прыдатная лакацыя не знойдзена. Бягучыя налады: {0}",

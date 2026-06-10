@@ -234,6 +234,9 @@ class AppRepository(
     suspend fun verifyActiveSelection(attempt: ProfileSelectionAttempt): Result<ProfileBenchmark> =
         orchestrator.verifyActiveSelection(attempt)
 
+    suspend fun verifySelectionCandidate(attempt: ProfileSelectionAttempt, attemptIndex: Int): Result<ProfileBenchmark> =
+        orchestrator.verifySelectionCandidate(attempt, attemptIndex)
+
     suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
         storage.updateLocationBenchmarkDetails(details)
     }

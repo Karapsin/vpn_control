@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Kötegméret",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Újrapróbálkozások száma",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com vagy teljes URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com vagy teljes URL",
   "VALIDATION_ANDROID_SUMMARY": "A párhuzamosság az aktuális kötegmérethez igazodik, legfeljebb 5-ig. Az újrapróbálkozások száma újrafuttatja a teljes keresést, ha nem található használható hely. Aktuális beállítások: {0}",

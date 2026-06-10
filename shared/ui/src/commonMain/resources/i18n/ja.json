@@ -98,6 +98,7 @@
   "BATCH_SIZE": "バッチサイズ",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "再試行 数",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com または完全な URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com または完全な URL",
   "VALIDATION_ANDROID_SUMMARY": "並列数は現在のバッチサイズに一致し、最大 5 です。再試行回数は使用可能なロケーションが見つからない場合に検索全体を再実行します。現在の設定: {0}",

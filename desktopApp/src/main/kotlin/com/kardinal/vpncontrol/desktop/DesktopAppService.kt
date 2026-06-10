@@ -155,6 +155,14 @@ class DesktopAppService internal constructor(
                 settings = settings,
             )
         },
+        verifyCandidate = { candidate, dnsSettings, benchmarkUrls, settings ->
+            validationRuntime.benchmarkPreflightCandidate(
+                candidate = candidate,
+                dnsSettings = dnsSettings,
+                benchmarkUrls = benchmarkUrls,
+                settings = settings,
+            )
+        },
         commitState = { nextLocations, nextState ->
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
@@ -352,6 +360,10 @@ class DesktopAppService internal constructor(
 
     fun setValidationRetryCountDraft(value: String) {
         settingsService.setValidationRetryCountDraft(value)
+    }
+
+    fun setValidationActiveVerificationWindowSizeDraft(value: String) {
+        settingsService.setValidationActiveVerificationWindowSizeDraft(value)
     }
 
     fun saveValidationSettings() {

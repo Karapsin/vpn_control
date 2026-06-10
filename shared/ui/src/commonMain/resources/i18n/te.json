@@ -98,6 +98,7 @@
   "BATCH_SIZE": "బ్యాచ్ పరిమాణం",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "మళ్లీ ప్రయత్నాల సంఖ్య",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com లేదా పూర్తి URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com లేదా పూర్తి URL",
   "VALIDATION_ANDROID_SUMMARY": "Concurrency ప్రస్తుత బ్యాచ్ పరిమాణానికి సరిపోతుంది, గరిష్ఠం 5 వరకు. ఉపయోగించగల స్థానం దొరకకపోతే retry count మొత్తం శోధనను మళ్లీ అమలు చేస్తుంది. ప్రస్తుత సెట్టింగ్‌లు: {0}",

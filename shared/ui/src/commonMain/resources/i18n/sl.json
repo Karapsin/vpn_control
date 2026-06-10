@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Velikost paketa",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Število ponovitev",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ali polni URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ali polni URL",
   "VALIDATION_ANDROID_SUMMARY": "Sočasnost se ujema s trenutno velikostjo paketa, največ 5. Število ponovitev znova zažene celotno iskanje, če ni najdena uporabna lokacija. Trenutne nastavitve: {0}",

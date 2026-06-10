@@ -52,6 +52,7 @@ class DesktopFindBestServiceTest {
                     ),
                 )
             },
+            verifyCandidate = { _, _, _, _ -> error("fallback verification should not run") },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
                 state = nextState
@@ -107,6 +108,8 @@ class DesktopFindBestServiceTest {
             testLocation(second, secondRaw, index = 1),
         )
         val starts = mutableListOf<String>()
+        val activeVerifications = mutableListOf<String>()
+        val fallbackVerifications = mutableListOf<String>()
         var stopCalls = 0
         val firstPreflight = PreflightResult(
             profile = first,
@@ -136,6 +139,7 @@ class DesktopFindBestServiceTest {
             currentRuntimePort = { 28080 },
             activeVerificationPortAllocator = { 28081 },
             verifyActiveConnection = { candidate, _, _, _, _ ->
+                activeVerifications += candidate.profile.remarks
                 if (candidate.profile.remarks == "First") {
                     Result.success(
                         BenchmarkSearchLogic.failedActiveVerificationBenchmark(
@@ -145,13 +149,17 @@ class DesktopFindBestServiceTest {
                         ),
                     )
                 } else {
-                    Result.success(
-                        BenchmarkSearchLogic.buildActiveVerificationBenchmark(
-                            candidate = candidate,
-                            secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(55.0)),
-                        ),
-                    )
+                    error("cached fallback verification should be reused")
                 }
+            },
+            verifyCandidate = { candidate, _, _, _ ->
+                fallbackVerifications += candidate.profile.remarks
+                Result.success(
+                    BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                        candidate = candidate,
+                        secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(55.0)),
+                    ),
+                )
             },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
@@ -174,6 +182,8 @@ class DesktopFindBestServiceTest {
         service.findBestLocation(refreshSubscriptionsFirst = false)
 
         assertEquals(listOf("First", "Second"), starts)
+        assertEquals(listOf("First"), activeVerifications)
+        assertEquals(listOf("Second"), fallbackVerifications)
         assertEquals(1, stopCalls)
         assertEquals("Second", locations.single { it.isSelected }.name)
         assertEquals("primary manual • secondary blocked • tcp 20.0ms", locations.first().benchmarkDetail)
@@ -202,6 +212,7 @@ class DesktopFindBestServiceTest {
             currentRuntimePort = { null },
             activeVerificationPortAllocator = { 0 },
             verifyActiveConnection = { _, _, _, _, _ -> error("verify should not run") },
+            verifyCandidate = { _, _, _, _ -> error("fallback verify should not run") },
             commitState = { _, nextState -> state = nextState },
             updateState = { transform -> state = transform(state) },
             evaluateProfiles = { _, _, _, _, _ ->

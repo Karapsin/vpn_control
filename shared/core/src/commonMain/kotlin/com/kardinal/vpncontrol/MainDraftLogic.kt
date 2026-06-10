@@ -33,12 +33,15 @@ object MainDraftLogic {
             ?: BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY
         val retryCount = state.validationRetryCountDraft.toIntOrNull()
             ?: BenchmarkValidationSettings.DEFAULT_RETRY_COUNT
+        val activeVerificationWindowSize = state.validationActiveVerificationWindowSizeDraft.toIntOrNull()
+            ?: BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE
         val settings = BenchmarkValidationSettings(
             primaryUrl = state.validationPrimaryUrlDraft,
             secondaryUrl = state.validationSecondaryUrlDraft,
             batchSize = batchSize,
             subscriptionRefreshConcurrency = subscriptionRefreshConcurrency,
             retryCount = retryCount,
+            activeVerificationWindowSize = activeVerificationWindowSize,
         ).normalized()
         return ValidationSettingsSavePlan(
             settings = settings,

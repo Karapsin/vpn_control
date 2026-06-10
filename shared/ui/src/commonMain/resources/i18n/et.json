@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Partii suurus",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Korduskatsete arv",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com või täielik URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com või täielik URL",
   "VALIDATION_ANDROID_SUMMARY": "Samaaegsus vastab praegusele partii suurusele, kuni 5. Korduskatsete arv käivitab kogu otsingu uuesti, kui kasutatavat asukohta ei leita. Praegused seaded: {0}",

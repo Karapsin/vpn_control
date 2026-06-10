@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Размер на партидата",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Брой повторни опити",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com или пълен URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com или пълен URL",
   "VALIDATION_ANDROID_SUMMARY": "Паралелността съответства на текущия размер на партидата, до 5. Броят повторни опити стартира цялото търсене отново, ако не бъде намерена използваема локация. Текущи настройки: {0}",

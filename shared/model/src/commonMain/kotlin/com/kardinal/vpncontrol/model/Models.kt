@@ -261,6 +261,7 @@ data class BenchmarkValidationSettings(
     val batchSize: Int = DEFAULT_BATCH_SIZE,
     val subscriptionRefreshConcurrency: Int = DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
     val retryCount: Int = DEFAULT_RETRY_COUNT,
+    val activeVerificationWindowSize: Int = DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE,
 ) {
     fun normalized(): BenchmarkValidationSettings {
         return copy(
@@ -272,12 +273,16 @@ data class BenchmarkValidationSettings(
                 MAX_SUBSCRIPTION_REFRESH_CONCURRENCY,
             ),
             retryCount = retryCount.coerceAtLeast(0),
+            activeVerificationWindowSize = activeVerificationWindowSize.coerceIn(
+                MIN_ACTIVE_VERIFICATION_WINDOW_SIZE,
+                MAX_ACTIVE_VERIFICATION_WINDOW_SIZE,
+            ),
         )
     }
 
     fun displaySummary(): String {
         val normalized = normalized()
-        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • refresh ${normalized.subscriptionRefreshConcurrency} • retries ${normalized.retryCount}"
+        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • refresh ${normalized.subscriptionRefreshConcurrency} • retries ${normalized.retryCount} • window ${normalized.activeVerificationWindowSize}"
     }
 
     companion object {
@@ -288,6 +293,9 @@ data class BenchmarkValidationSettings(
         const val MIN_SUBSCRIPTION_REFRESH_CONCURRENCY = 1
         const val MAX_SUBSCRIPTION_REFRESH_CONCURRENCY = 8
         const val DEFAULT_RETRY_COUNT = 1
+        const val DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE = 3
+        const val MIN_ACTIVE_VERIFICATION_WINDOW_SIZE = 1
+        const val MAX_ACTIVE_VERIFICATION_WINDOW_SIZE = 8
 
         private fun normalizeUrl(raw: String, fallback: String): String {
             val parsed = parseHttpUrl(raw) ?: return fallback

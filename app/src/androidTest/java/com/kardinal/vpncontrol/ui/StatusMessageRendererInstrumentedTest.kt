@@ -21,6 +21,7 @@ class StatusMessageRendererInstrumentedTest {
                 batchSize = 4,
                 subscriptionRefreshConcurrency = 2,
                 retryCount = 3,
+                activeVerificationWindowSize = 6,
             ),
         )
 
@@ -30,7 +31,8 @@ class StatusMessageRendererInstrumentedTest {
         assertTrue(rendered.contains("secondary.example"))
         assertTrue(rendered.contains("batch 4"))
         assertTrue(rendered.contains("refresh 2"))
-        assertTrue(rendered.endsWith("retries 3"))
+        assertTrue(rendered.contains("retries 3"))
+        assertTrue(rendered.endsWith("window 6"))
         assertFalse(rendered.contains("{"))
         assertFalse(rendered.contains("}"))
     }

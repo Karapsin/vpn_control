@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Gruppengröße",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Wiederholungen",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com oder vollständige URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "sekundäre-site.com oder vollständige URL",
   "VALIDATION_ANDROID_SUMMARY": "Parallelität entspricht der aktuellen Gruppengröße, maximal 5. Die Wiederholungsanzahl startet die gesamte Suche neu, wenn kein nutzbarer Standort gefunden wird. Aktuelle Einstellungen: {0}",

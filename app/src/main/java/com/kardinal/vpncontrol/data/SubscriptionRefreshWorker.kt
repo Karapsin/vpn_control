@@ -15,6 +15,9 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class SubscriptionRefreshWorker(
     appContext: Context,
@@ -247,6 +250,8 @@ class SubscriptionRefreshWorker(
             )
         }
         var lastFailure: Throwable? = null
+        val candidateBenchmarks = mutableMapOf<String, com.kardinal.vpncontrol.model.ProfileBenchmark>()
+        val verificationWindowSize = storage.snapshot().validationSettings.normalized().activeVerificationWindowSize
         for ((index, attempt) in attemptPlan.attempts.withIndex()) {
             storage.updateStatus(
                 BenchmarkStatusMessages.tryingBestCandidate(
@@ -265,14 +270,58 @@ class SubscriptionRefreshWorker(
             }
 
             storage.updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
-            val verificationBenchmark = orchestrator.verifyActiveSelection(attempt).getOrElse { error ->
-                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                    candidate = attempt.preflight,
-                    reason = error.message ?: "active_verification_failed",
-                    secondaryStatus = "error",
+            val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
+            val verificationBenchmark = coroutineScope {
+                val window = BenchmarkSearchLogic.activeVerificationWindow(
+                    attempts = attemptPlan.attempts,
+                    currentIndex = index,
+                    windowSize = verificationWindowSize,
                 )
+                val fallbackJobs = window.drop(1).mapIndexed { offset, fallback ->
+                    val fallbackRawKey = LocationConfigs.encodeStoredLocation(fallback.selection.profile)
+                    val cached = candidateBenchmarks[fallbackRawKey]
+                    async {
+                        CandidateBenchmarkResult(
+                            rawKey = fallbackRawKey,
+                            benchmark = cached ?: orchestrator.verifySelectionCandidate(
+                                fallback,
+                                index + offset + 1,
+                            ).getOrElse { error ->
+                                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                                    candidate = fallback.preflight,
+                                    reason = error.message ?: "background_verification_failed",
+                                    secondaryStatus = "error",
+                                )
+                            },
+                        )
+                    }
+                }
+                val currentBenchmark = candidateBenchmarks[attemptRawKey] ?: orchestrator.verifyActiveSelection(attempt)
+                    .getOrElse { error ->
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = attempt.preflight,
+                            reason = error.message ?: "active_verification_failed",
+                            secondaryStatus = "error",
+                        )
+                    }
+                candidateBenchmarks[attemptRawKey] = currentBenchmark
+                recordLocationBenchmark(currentBenchmark)
+                if (currentBenchmark.secondaryStatus == "ok") {
+                    fallbackJobs.filter { it.isCompleted && !it.isCancelled }.forEach { job ->
+                        val result = job.await()
+                        candidateBenchmarks[result.rawKey] = result.benchmark
+                        recordLocationBenchmark(result.benchmark)
+                    }
+                    fallbackJobs.forEach { it.cancel() }
+                    return@coroutineScope currentBenchmark
+                }
+                val fallbackResults = fallbackJobs.awaitAll()
+                fallbackResults.forEach { result ->
+                    candidateBenchmarks[result.rawKey] = result.benchmark
+                    recordLocationBenchmark(result.benchmark)
+                }
+                currentBenchmark
             }
-            recordLocationBenchmark(verificationBenchmark)
             if (verificationBenchmark.secondaryStatus == "ok") {
                 val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
                 val persistResult = runCatching {
@@ -307,6 +356,11 @@ class SubscriptionRefreshWorker(
         updatedDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
         storage.updateLocationBenchmarkDetails(updatedDetails)
     }
+
+    private data class CandidateBenchmarkResult(
+        val rawKey: String,
+        val benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark,
+    )
 
     private suspend fun recoverAfterReplacementFailure(
         previousState: com.kardinal.vpncontrol.model.PersistedState,

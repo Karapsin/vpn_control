@@ -19,6 +19,7 @@ object SettingsStatusMessages {
             normalized.batchSize.toString(),
             normalized.subscriptionRefreshConcurrency.toString(),
             normalized.retryCount.toString(),
+            normalized.activeVerificationWindowSize.toString(),
         )
     }
 

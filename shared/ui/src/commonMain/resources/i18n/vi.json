@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Kích thước lô",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Số lần thử lại",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com hoặc URL đầy đủ",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com hoặc URL đầy đủ",
   "VALIDATION_ANDROID_SUMMARY": "Số tác vụ đồng thời khớp với kích thước lô hiện tại, tối đa 5. Số lần thử lại sẽ chạy lại toàn bộ tìm kiếm nếu không tìm thấy vị trí dùng được. Cài đặt hiện tại: {0}",

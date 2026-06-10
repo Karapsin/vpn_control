@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Madhësia e grupit",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Numri i riprovave",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ose URL e plotë",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ose URL e plotë",
   "VALIDATION_ANDROID_SUMMARY": "Bashkëkohësia përputhet me madhësinë aktuale të grupit, deri në 5. Numri i riprovave përsërit të gjithë kërkimin nëse nuk gjendet vendndodhje e përdorshme. Cilësimet aktuale: {0}",

@@ -181,6 +181,8 @@ class AndroidFindBestActionsServiceTest {
         val first = attempt("First")
         val second = attempt("Second")
         val starts = mutableListOf<String>()
+        val activeVerifications = mutableListOf<String>()
+        val fallbackVerifications = mutableListOf<String>()
         var stops = 0
         val latencies = mutableListOf<LatencyHistoryEntry>()
         val service = service(
@@ -205,6 +207,7 @@ class AndroidFindBestActionsServiceTest {
                 Result.success(Unit)
             },
             verifyActiveSelection = { attempt ->
+                activeVerifications += attempt.selection.profile.remarks
                 if (attempt.selection.profile.remarks == "First") {
                     Result.success(
                         ProfileBenchmark(
@@ -218,8 +221,12 @@ class AndroidFindBestActionsServiceTest {
                         ),
                     )
                 } else {
-                    Result.success(verifiedBenchmark("Second"))
+                    error("cached fallback verification should be reused")
                 }
+            },
+            verifySelectionCandidate = { attempt, _ ->
+                fallbackVerifications += attempt.selection.profile.remarks
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
             },
             appendLatencyHistory = { latencies += it },
         )
@@ -227,6 +234,8 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(listOf("First", "Second"), starts)
+        assertEquals(listOf("First"), activeVerifications)
+        assertEquals(listOf("Second"), fallbackVerifications)
         assertEquals(1, stops)
         assertEquals("Second", latencies.single().profileName)
         assertFalse(state.isBusy)
@@ -250,6 +259,9 @@ class AndroidFindBestActionsServiceTest {
         verifyActiveSelection: suspend (ProfileSelectionAttempt) -> Result<ProfileBenchmark> = { attempt ->
             Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
         },
+        verifySelectionCandidate: suspend (ProfileSelectionAttempt, Int) -> Result<ProfileBenchmark> = { attempt, _ ->
+            Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+        },
         rollbackSelectionChange: suspend (PersistedState, String) -> String = { _, message -> message },
         stopConnection: suspend () -> Result<Unit> = { Result.success(Unit) },
         updateLocationBenchmarkDetails: suspend (Map<String, String>) -> Unit = {},
@@ -267,6 +279,7 @@ class AndroidFindBestActionsServiceTest {
             startSelection = startSelection,
             persistSelection = persistSelection,
             verifyActiveSelection = verifyActiveSelection,
+            verifySelectionCandidate = verifySelectionCandidate,
             rollbackSelectionChange = rollbackSelectionChange,
             stopConnection = stopConnection,
             updateLocationBenchmarkDetails = updateLocationBenchmarkDetails,
@@ -319,7 +332,7 @@ private fun profileSelection(name: String): ProfileSelection {
         hostHeader = "",
         serviceName = "",
         headerType = "",
-        rawLink = "vless://test",
+        rawLink = "vless://test#$name",
     )
     return ProfileSelection(
         profile = profile,

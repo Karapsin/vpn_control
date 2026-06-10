@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Топ өлшемі",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Қайталау саны",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com немесе толық URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com немесе толық URL",
   "VALIDATION_ANDROID_SUMMARY": "Параллельдік ағымдағы топ өлшеміне сәйкес, ең көбі 5. Егер жарамды локация табылмаса, қайталау саны бүкіл іздеуді қайта іске қосады. Ағымдағы баптаулар: {0}",

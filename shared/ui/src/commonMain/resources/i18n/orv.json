@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Размеръ группы",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Повторные попытки",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com или полный URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "backup-site.com или полный URL",
   "VALIDATION_ANDROID_SUMMARY": "Параллелизмъ равенъ текущему размеру группы, максимумъ 5. Повторные попытки перезапускаютъ весь поискъ, если рабочая место не найдена. Текущие уставы: {0}",

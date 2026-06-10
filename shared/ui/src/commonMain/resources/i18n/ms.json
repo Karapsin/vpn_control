@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Saiz kelompok",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Bilangan cubaan semula",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com atau URL penuh",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com atau URL penuh",
   "VALIDATION_ANDROID_SUMMARY": "Keserentakan sepadan dengan saiz kelompok semasa, sehingga 5. Bilangan cubaan semula menjalankan semula keseluruhan carian jika tiada lokasi yang boleh digunakan ditemui. Tetapan semasa: {0}",

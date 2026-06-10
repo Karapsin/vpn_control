@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Розмір пакета",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Кількість повторів",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com або повний URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com або повний URL",
   "VALIDATION_ANDROID_SUMMARY": "Паралельність відповідає поточному розміру пакета, максимум 5. Кількість повторів перезапускає весь пошук, якщо придатну локацію не знайдено. Поточні налаштування: {0}",

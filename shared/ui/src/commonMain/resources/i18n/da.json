@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Batchstørrelse",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Antal genforsøg",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com eller fuld URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com eller fuld URL",
   "VALIDATION_ANDROID_SUMMARY": "Samtidighed matcher den aktuelle batchstørrelse, op til 5. Antal genforsøg kører hele søgningen igen, hvis der ikke findes en brugbar placering. Aktuelle indstillinger: {0}",

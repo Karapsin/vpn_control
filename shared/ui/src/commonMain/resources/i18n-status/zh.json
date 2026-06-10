@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "订阅自动刷新：{refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "验证设置已保存：{0} • {1} • 组大小 {2} • 重试 {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "验证设置已保存：{0} • {1} • 组大小 {2} • 重试 {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "自定义 DNS 已保存",
     "CUSTOM_DNS_DISABLED": "自定义 DNS 已禁用",
     "FIND_BEST_FROM_SUBSCRIPTION": "正在从订阅中寻找最佳节点...",

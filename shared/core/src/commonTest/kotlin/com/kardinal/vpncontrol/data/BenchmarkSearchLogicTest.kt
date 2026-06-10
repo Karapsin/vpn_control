@@ -7,6 +7,34 @@ import kotlin.test.assertTrue
 
 class BenchmarkSearchLogicTest {
     @Test
+    fun activeVerificationWindowIncludesCurrentAndNextCandidates() {
+        val attempts = listOf("first", "second", "third", "fourth")
+
+        assertEquals(
+            listOf("second", "third", "fourth"),
+            BenchmarkSearchLogic.activeVerificationWindow(attempts, currentIndex = 1, windowSize = 3),
+        )
+    }
+
+    @Test
+    fun activeVerificationWindowHandlesBoundaries() {
+        val attempts = listOf("first", "second")
+
+        assertEquals(
+            listOf("second"),
+            BenchmarkSearchLogic.activeVerificationWindow(attempts, currentIndex = 1, windowSize = 3),
+        )
+        assertEquals(
+            emptyList(),
+            BenchmarkSearchLogic.activeVerificationWindow(attempts, currentIndex = 2, windowSize = 3),
+        )
+        assertEquals(
+            listOf("first"),
+            BenchmarkSearchLogic.activeVerificationWindow(attempts, currentIndex = 0, windowSize = 0),
+        )
+    }
+
+    @Test
     fun sameCountryCandidateIsExcluded() {
         val sameCountry = preflight("Same", connectMillis = 25.0, country = "US")
         val foreign = preflight("Foreign", connectMillis = 50.0, country = "DE")

@@ -367,6 +367,8 @@ private fun DesktopVpnControlApp(
         onValidationSubscriptionRefreshConcurrencyDraftChange =
             service::setValidationSubscriptionRefreshConcurrencyDraft,
         onValidationRetryCountDraftChange = service::setValidationRetryCountDraft,
+        onValidationActiveVerificationWindowSizeDraftChange =
+            service::setValidationActiveVerificationWindowSizeDraft,
         onSaveValidationSettings = service::saveValidationSettings,
         onToggleLanguageDialog = service::toggleLanguageDialog,
         onSetAppLanguage = service::setAppLanguage,
@@ -1132,6 +1134,7 @@ private fun DesktopSettingsDialogs(
     onValidationBatchSizeDraftChange: (String) -> Unit,
     onValidationSubscriptionRefreshConcurrencyDraftChange: (String) -> Unit,
     onValidationRetryCountDraftChange: (String) -> Unit,
+    onValidationActiveVerificationWindowSizeDraftChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
     onSetAppLanguage: (AppLanguage) -> Unit,
@@ -1448,6 +1451,14 @@ private fun DesktopSettingsDialogs(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(strings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.validationActiveVerificationWindowSizeDraft,
+                        onValueChange = onValidationActiveVerificationWindowSizeDraftChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.ACTIVE_VERIFICATION_WINDOW)) },
+                        placeholder = { Text("3") },
                         singleLine = true,
                     )
                     Text(

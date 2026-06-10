@@ -155,6 +155,10 @@ internal class AndroidSettingsActionsService(
         controller.onValidationRetryCountDraftChanged(value)
     }
 
+    fun onValidationActiveVerificationWindowSizeDraftChanged(value: String) {
+        controller.onValidationActiveVerificationWindowSizeDraftChanged(value)
+    }
+
     fun saveSubscriptionRefreshPolicy() {
         effectSink.handle(controller.saveSubscriptionRefreshPolicy())
     }

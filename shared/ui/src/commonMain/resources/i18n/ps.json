@@ -98,6 +98,7 @@
   "BATCH_SIZE": "د ډلې اندازه",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "د بیا هڅو شمېر",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com یا بشپړ URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com یا بشپړ URL",
   "VALIDATION_ANDROID_SUMMARY": "هممهاله توب د اوسني ډلې اندازې سره سمون لري، تر ۵ پورې. د بیا هڅو شمېر ټول لټون بیا چلوي که کارېدونکی ځای ونه موندل شي. اوسنۍ امستنې: {0}",

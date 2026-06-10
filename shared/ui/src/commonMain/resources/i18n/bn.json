@@ -98,6 +98,7 @@
   "BATCH_SIZE": "ব্যাচের আকার",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "পুনরায় চেষ্টা সংখ্যা",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com বা পূর্ণ URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com বা পূর্ণ URL",
   "VALIDATION_ANDROID_SUMMARY": "সমান্তরালতা বর্তমান ব্যাচ আকারের সঙ্গে মেলে, সর্বোচ্চ ৫। ব্যবহারযোগ্য লোকেশন না পেলে পুনরায় চেষ্টা পুরো অনুসন্ধান আবার চালায়। বর্তমান সেটিং: {0}",

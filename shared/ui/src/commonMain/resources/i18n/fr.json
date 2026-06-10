@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Taille du lot",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Relances",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ou URL complète",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "site-secondaire.com ou URL complète",
   "VALIDATION_ANDROID_SUMMARY": "La concurrence correspond à la taille de groupe actuelle, jusqu'à 5. Le nombre de relances relance toute la recherche si aucun emplacement utilisable n'est trouvé. Paramètres actuels : {0}",

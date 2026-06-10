@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Խմբի չափ",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Կրկնափորձերի քանակ",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com կամ ամբողջական URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com կամ ամբողջական URL",
   "VALIDATION_ANDROID_SUMMARY": "Զուգահեռությունը համապատասխանում է ընթացիկ խմբի չափին՝ մինչև 5։ Կրկնափորձերի քանակը նորից է գործարկում ամբողջ որոնումը, եթե օգտագործելի տեղադրություն չի գտնվել։ Ընթացիկ կարգավորումներ՝ {0}",

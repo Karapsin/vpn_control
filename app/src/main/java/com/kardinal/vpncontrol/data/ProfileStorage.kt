@@ -76,6 +76,7 @@ class ProfileStorage(
         val validationSubscriptionRefreshConcurrency =
             intPreferencesKey("validation_subscription_refresh_concurrency")
         val validationRetryCount = intPreferencesKey("validation_retry_count")
+        val validationActiveVerificationWindowSize = intPreferencesKey("validation_active_verification_window_size")
         val legacyValidationGeneralUrl = stringPreferencesKey("validation_general_url")
         val legacyValidationChatGptUrl = stringPreferencesKey("validation_chatgpt_url")
         val currentLocations = stringPreferencesKey("current_locations")
@@ -347,12 +348,13 @@ class ProfileStorage(
             prefs[Keys.validationBatchSize] = normalized.batchSize
             prefs[Keys.validationSubscriptionRefreshConcurrency] = normalized.subscriptionRefreshConcurrency
             prefs[Keys.validationRetryCount] = normalized.retryCount
+            prefs[Keys.validationActiveVerificationWindowSize] = normalized.activeVerificationWindowSize
             prefs.remove(Keys.legacyValidationGeneralUrl)
             prefs.remove(Keys.legacyValidationChatGptUrl)
         }
         DiagnosticsLogger.append(
             context,
-            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} refreshConcurrency=${normalized.subscriptionRefreshConcurrency} retries=${normalized.retryCount}",
+            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} refreshConcurrency=${normalized.subscriptionRefreshConcurrency} retries=${normalized.retryCount} window=${normalized.activeVerificationWindowSize}",
         )
     }
 
@@ -883,6 +885,8 @@ class ProfileStorage(
                     ?: BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
                 retryCount = preferences[Keys.validationRetryCount]
                     ?: BenchmarkValidationSettings.DEFAULT_RETRY_COUNT,
+                activeVerificationWindowSize = preferences[Keys.validationActiveVerificationWindowSize]
+                    ?: BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE,
             ).normalized(),
             savedLocations = savedLocations,
             currentLocations = currentLocations,

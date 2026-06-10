@@ -189,6 +189,8 @@ class MainActivity : ComponentActivity() {
                 onValidationSubscriptionRefreshConcurrencyChange =
                     viewModel::onValidationSubscriptionRefreshConcurrencyDraftChanged,
                 onValidationRetryCountChange = viewModel::onValidationRetryCountDraftChanged,
+                onValidationActiveVerificationWindowSizeChange =
+                    viewModel::onValidationActiveVerificationWindowSizeDraftChanged,
                 onSaveValidationSettings = viewModel::saveValidationSettings,
                 onToggleLanguageDialog = viewModel::toggleLanguageDialog,
                 onAppLanguageChange = viewModel::setAppLanguage,

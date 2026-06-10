@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Topar ölçegi",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Gaýtadan synanyşma sany",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ýa-da doly URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ýa-da doly URL",
   "VALIDATION_ANDROID_SUMMARY": "Paralel iş sany häzirki topar ölçegine, iň köp 5-e çenli, gabat gelýär. Ulanyp boljak ýer tapylmasa, gaýtadan synanyşma sany tutuş gözlegi täzeden işledýär. Häzirki sazlamalar: {0}",

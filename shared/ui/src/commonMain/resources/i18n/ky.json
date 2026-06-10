@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Топ өлчөмү",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Кайра аракет саны",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com же толук URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com же толук URL",
   "VALIDATION_ANDROID_SUMMARY": "Параллелдүүлүк учурдагы топ өлчөмүнө дал келет, 5ке чейин. Эгер жарактуу локация табылбаса, кайра аракет саны бүт издөө ишин кайра жүргүзөт. Учурдагы жөндөөлөр: {0}",

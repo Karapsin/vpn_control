@@ -112,6 +112,7 @@ enum class UiText {
     SECONDARY_TEST_SITE,
     BATCH_SIZE,
     RETRY_COUNT,
+    ACTIVE_VERIFICATION_WINDOW,
     PRIMARY_TEST_SITE_PLACEHOLDER,
     SECONDARY_TEST_SITE_PLACEHOLDER,
     VALIDATION_ANDROID_SUMMARY,
@@ -319,7 +320,7 @@ class AppStrings(
             normalized.batchSize,
             normalized.retryCount,
         )
-        return "$base • ${get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)} ${normalized.subscriptionRefreshConcurrency}"
+        return "$base • ${get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)} ${normalized.subscriptionRefreshConcurrency} • ${get(UiText.ACTIVE_VERIFICATION_WINDOW)} ${normalized.activeVerificationWindowSize}"
     }
 
     fun statusTime(epochMillis: Long): String {

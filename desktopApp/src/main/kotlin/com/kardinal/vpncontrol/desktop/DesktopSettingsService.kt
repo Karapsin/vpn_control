@@ -125,6 +125,12 @@ internal class DesktopSettingsService(
         updateState { it.copy(validationRetryCountDraft = value.filter(Char::isDigit).take(3)) }
     }
 
+    fun setValidationActiveVerificationWindowSizeDraft(value: String) {
+        updateState {
+            it.copy(validationActiveVerificationWindowSizeDraft = value.filter(Char::isDigit).take(2))
+        }
+    }
+
     fun saveValidationSettings() {
         val state = stateProvider()
         val plan = MainDraftLogic.resolveValidationSettingsSave(state)
@@ -137,6 +143,7 @@ internal class DesktopSettingsService(
                 validationBatchSizeDraft = settings.batchSize.toString(),
                 validationSubscriptionRefreshConcurrencyDraft = settings.subscriptionRefreshConcurrency.toString(),
                 validationRetryCountDraft = settings.retryCount.toString(),
+                validationActiveVerificationWindowSizeDraft = settings.activeVerificationWindowSize.toString(),
                 showValidationSettingsDialog = false,
             ).withStatus(plan.statusMessage),
         )

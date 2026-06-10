@@ -338,6 +338,12 @@ class MainController(
         )
     }
 
+    fun onValidationActiveVerificationWindowSizeDraftChanged(value: String) {
+        _state.value = _state.value.copy(
+            validationActiveVerificationWindowSizeDraft = value.filter { it.isDigit() }.take(2),
+        )
+    }
+
     fun onRoutingIgnoreRulesDraftChanged(enabled: Boolean) {
         _state.value = _state.value.copy(routingIgnoreRulesDraft = enabled)
     }

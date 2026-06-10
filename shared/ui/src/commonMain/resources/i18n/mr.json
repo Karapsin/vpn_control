@@ -98,6 +98,7 @@
   "BATCH_SIZE": "बॅच आकार",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "पुन्हा प्रयत्नांची संख्या",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com किंवा पूर्ण URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com किंवा पूर्ण URL",
   "VALIDATION_ANDROID_SUMMARY": "Concurrency सध्याच्या बॅच आकाराशी जुळते, कमाल 5. वापरण्यायोग्य स्थान न सापडल्यास पुन्हा प्रयत्नांची संख्या संपूर्ण शोध पुन्हा चालवते. सध्याच्या सेटिंग्ज: {0}",

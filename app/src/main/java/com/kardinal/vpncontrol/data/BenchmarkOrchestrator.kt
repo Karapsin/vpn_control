@@ -205,6 +205,30 @@ class BenchmarkOrchestrator(
         )
     }
 
+    suspend fun verifySelectionCandidate(
+        attempt: ProfileSelectionAttempt,
+        attemptIndex: Int,
+    ): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
+        runCatching {
+            val state = storage.snapshot()
+            val validationSettings = state.validationSettings.normalized()
+            val benchmarkUrls = BenchmarkUrls(
+                primary = validationSettings.primaryUrl,
+                secondary = validationSettings.secondaryUrl,
+            )
+            val dnsSettings = DnsSettings(
+                enabled = state.useCustomDns,
+                value = state.customDns,
+            )
+            benchmarkPreflightCandidate(
+                candidate = attempt.preflight,
+                idx = attemptIndex,
+                dnsSettings = dnsSettings,
+                benchmarkUrls = benchmarkUrls,
+            )
+        }
+    }
+
     suspend fun syncSubscriptionLocations(): Result<SubscriptionSyncResult> = withContext(Dispatchers.IO) {
         runCatching {
             val state = storage.snapshot()

@@ -98,6 +98,7 @@
   "BATCH_SIZE": "بیچ سائز",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "دوبارہ کوششوں کی تعداد",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com یا مکمل URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com یا مکمل URL",
   "VALIDATION_ANDROID_SUMMARY": "متوازی عمل موجودہ بیچ سائز کے مطابق ہے، زیادہ سے زیادہ 5۔ اگر کوئی قابل استعمال مقام نہ ملے تو دوبارہ کوششوں کی تعداد پوری تلاش کو دوبارہ چلاتی ہے۔ موجودہ ترتیبات: {0}",

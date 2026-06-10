@@ -98,6 +98,7 @@
   "BATCH_SIZE": "حجم الدفعة",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "عدد المحاولات",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com أو رابط كامل",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com أو رابط كامل",
   "VALIDATION_ANDROID_SUMMARY": "التوازي يطابق حجم الدفعة الحالي حتى 5. عدد المحاولات يعيد البحث بالكامل إذا لم يوجد موقع صالح. الإعدادات الحالية: {0}",

@@ -314,6 +314,10 @@ class DesktopStateStore(
                         JsonPrimitive(state.validationSettings.subscriptionRefreshConcurrency),
                     )
                     put("retry_count", JsonPrimitive(state.validationSettings.retryCount))
+                    put(
+                        "active_verification_window_size",
+                        JsonPrimitive(state.validationSettings.activeVerificationWindowSize),
+                    )
                 },
             )
             put("saved_locations", encodeStringArray(state.savedLocations))
@@ -411,6 +415,10 @@ class DesktopStateStore(
                     default = BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
                 ),
                 retryCount = validation.int("retry_count", default = BenchmarkValidationSettings.DEFAULT_RETRY_COUNT),
+                activeVerificationWindowSize = validation.int(
+                    "active_verification_window_size",
+                    default = BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE,
+                ),
             ).normalized(),
             savedLocations = root.stringList("saved_locations"),
             currentLocations = root.stringList("current_locations"),

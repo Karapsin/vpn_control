@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Tellimuse automaatvärskendus: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Valideerimisseaded salvestatud: {0} • {1} • partii {2} • korduskatsed {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "Valideerimisseaded salvestatud: {0} • {1} • partii {2} • korduskatsed {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "Kohandatud DNS salvestatud",
     "CUSTOM_DNS_DISABLED": "Kohandatud DNS keelatud",
     "FIND_BEST_FROM_SUBSCRIPTION": "Tellimusest parima asukoha otsimine...",

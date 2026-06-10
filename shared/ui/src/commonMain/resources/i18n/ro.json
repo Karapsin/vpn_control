@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Dimensiune lot",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Număr de reîncercări",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com sau URL complet",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "site-secundar.com sau URL complet",
   "VALIDATION_ANDROID_SUMMARY": "Concurența corespunde dimensiunii curente a lotului, până la 5. Numărul de reîncercări rulează din nou întreaga căutare dacă nu se găsește nicio locație utilizabilă. Setări curente: {0}",

@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Partijos dydis",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Pakartojimų skaičius",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com arba visas URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com arba visas URL",
   "VALIDATION_ANDROID_SUMMARY": "Lygiagretumas atitinka dabartinį partijos dydį, iki 5. Pakartojimų skaičius paleidžia visą paiešką iš naujo, jei nerandama tinkama vieta. Dabartiniai nustatymai: {0}",

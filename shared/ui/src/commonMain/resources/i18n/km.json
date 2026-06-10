@@ -98,6 +98,7 @@
   "BATCH_SIZE": "ទំហំកញ្ចប់",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ចំនួនសាកល្បងឡើងវិញ",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ឬ URL ពេញ",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ឬ URL ពេញ",
   "VALIDATION_ANDROID_SUMMARY": "ចំនួនដំណើរការព្រមគ្នាស្មើទំហំកញ្ចប់បច្ចុប្បន្ន រហូតដល់ 5។ ចំនួនសាកល្បងឡើងវិញដំណើរការការស្វែងរកទាំងមូលឡើងវិញ ប្រសិនបើរកមិនឃើញទីតាំងដែលអាចប្រើបាន។ ការកំណត់បច្ចុប្បន្ន៖ {0}",

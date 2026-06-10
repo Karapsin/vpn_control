@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Μέγεθος ομάδας",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "προσπάθειες πλήθος",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ή πλήρες URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ή πλήρες URL",
   "VALIDATION_ANDROID_SUMMARY": "Η παραλληλία αντιστοιχεί στο τρέχον μέγεθος ομάδας, έως 5. Οι επαναλήψεις εκτελούν ξανά όλη την αναζήτηση αν δεν βρεθεί χρήσιμη τοποθεσία. Τρέχουσες ρυθμίσεις: {0}",

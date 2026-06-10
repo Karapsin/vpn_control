@@ -98,6 +98,7 @@
   "BATCH_SIZE": "პარტიის ზომა",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ხელახალი ცდების რაოდენობა",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ან სრული URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ან სრული URL",
   "VALIDATION_ANDROID_SUMMARY": "პარალელურობა ემთხვევა მიმდინარე პარტიის ზომას, მაქსიმუმ 5-ს. ხელახალი ცდების რაოდენობა მთელ ძებნას თავიდან უშვებს, თუ გამოსაყენებელი ლოკაცია ვერ მოიძებნა. მიმდინარე პარამეტრები: {0}",

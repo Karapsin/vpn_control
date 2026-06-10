@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Paket ölçüsü",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Təkrar cəhd sayı",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com və ya tam URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com və ya tam URL",
   "VALIDATION_ANDROID_SUMMARY": "Paralellik cari paket ölçüsünə uyğundur, maksimum 5. İstifadəyə yararlı məkan tapılmasa, təkrar cəhd sayı bütün axtarışı yenidən işə salır. Cari ayarlar: {0}",

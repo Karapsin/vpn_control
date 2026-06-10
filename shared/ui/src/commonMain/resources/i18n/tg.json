@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Андозаи гурӯҳ",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Шумораи такрорҳо",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ё URL-и пурра",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ё URL-и пурра",
   "VALIDATION_ANDROID_SUMMARY": "Ҳамзамонӣ ба андозаи гурӯҳи ҷорӣ мувофиқ аст, то 5. Шумораи такрорҳо агар ҷойи қобили истифода ёфт нашавад, тамоми ҷустуҷӯро дубора иҷро мекунад. Танзимоти ҷорӣ: {0}",

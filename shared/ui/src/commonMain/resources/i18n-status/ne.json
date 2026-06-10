@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "सदस्यता स्वतः-रिफ्रेस सेट गरियो: {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "प्रमाणीकरण सेटिङहरू सुरक्षित गरियो: {0} • {1} • ब्याच {2} • पुनः प्रयास {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "प्रमाणीकरण सेटिङहरू सुरक्षित गरियो: {0} • {1} • ब्याच {2} • पुनः प्रयास {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "अनुकूल DNS सुरक्षित गरियो",
     "CUSTOM_DNS_DISABLED": "अनुकूल DNS अक्षम गरियो",
     "FIND_BEST_FROM_SUBSCRIPTION": "सदस्यताबाट उत्तम स्थान खोजिँदै...",

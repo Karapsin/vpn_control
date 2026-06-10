@@ -98,6 +98,7 @@
   "BATCH_SIZE": "ਬੈਚ ਆਕਾਰ",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ਮੁੜ-ਕੋਸ਼ਿਸ਼ ਗਿਣਤੀ",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ਜਾਂ ਪੂਰਾ URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ਜਾਂ ਪੂਰਾ URL",
   "VALIDATION_ANDROID_SUMMARY": "ਸਮਕਾਲੀਤਾ ਮੌਜੂਦਾ ਬੈਚ ਆਕਾਰ ਨਾਲ ਮਿਲਦੀ ਹੈ, ਵੱਧ ਤੋਂ ਵੱਧ 5। ਜੇ ਕੋਈ ਵਰਤਣਯੋਗ ਟਿਕਾਣਾ ਨਾ ਮਿਲੇ ਤਾਂ ਮੁੜ-ਕੋਸ਼ਿਸ਼ ਗਿਣਤੀ ਪੂਰੀ ਖੋਜ ਮੁੜ ਚਲਾਉਂਦੀ ਹੈ। ਮੌਜੂਦਾ ਸੈਟਿੰਗਾਂ: {0}",

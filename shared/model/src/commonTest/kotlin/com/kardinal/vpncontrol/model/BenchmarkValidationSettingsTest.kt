@@ -19,4 +19,20 @@ class BenchmarkValidationSettingsTest {
                 .subscriptionRefreshConcurrency,
         )
     }
+
+    @Test
+    fun activeVerificationWindowSizeIsClamped() {
+        assertEquals(
+            BenchmarkValidationSettings.MIN_ACTIVE_VERIFICATION_WINDOW_SIZE,
+            BenchmarkValidationSettings(activeVerificationWindowSize = 0)
+                .normalized()
+                .activeVerificationWindowSize,
+        )
+        assertEquals(
+            BenchmarkValidationSettings.MAX_ACTIVE_VERIFICATION_WINDOW_SIZE,
+            BenchmarkValidationSettings(activeVerificationWindowSize = 99)
+                .normalized()
+                .activeVerificationWindowSize,
+        )
+    }
 }

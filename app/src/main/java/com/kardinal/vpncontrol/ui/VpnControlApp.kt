@@ -179,6 +179,7 @@ fun VpnControlApp(
     onValidationBatchSizeChange: (String) -> Unit,
     onValidationSubscriptionRefreshConcurrencyChange: (String) -> Unit,
     onValidationRetryCountChange: (String) -> Unit,
+    onValidationActiveVerificationWindowSizeChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
@@ -725,6 +726,15 @@ fun VpnControlApp(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(appStrings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.validationActiveVerificationWindowSizeDraft,
+                        onValueChange = onValidationActiveVerificationWindowSizeChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.ACTIVE_VERIFICATION_WINDOW)) },
+                        placeholder = { Text("3") },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )

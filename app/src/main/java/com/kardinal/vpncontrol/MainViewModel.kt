@@ -126,6 +126,7 @@ class MainViewModel(
         startSelection = connectionLifecycle::startSelection,
         persistSelection = repository::persistSelection,
         verifyActiveSelection = repository::verifyActiveSelection,
+        verifySelectionCandidate = repository::verifySelectionCandidate,
         rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
         stopConnection = vpnManager::stop,
         updateLocationBenchmarkDetails = repository::updateLocationBenchmarkDetails,
@@ -315,6 +316,10 @@ class MainViewModel(
 
     fun onValidationRetryCountDraftChanged(value: String) {
         settingsActions.onValidationRetryCountDraftChanged(value)
+    }
+
+    fun onValidationActiveVerificationWindowSizeDraftChanged(value: String) {
+        settingsActions.onValidationActiveVerificationWindowSizeDraftChanged(value)
     }
 
     fun onRoutingIgnoreRulesDraftChanged(enabled: Boolean) {

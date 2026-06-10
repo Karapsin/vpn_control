@@ -39,6 +39,7 @@ class MainUiStateProjectorTest {
                 batchSize = 4,
                 subscriptionRefreshConcurrency = 5,
                 retryCount = 2,
+                activeVerificationWindowSize = 6,
             ),
             currentLocations = listOf("vless://one"),
             locationBenchmarkDetails = mapOf("vless://one" to "primary ok"),
@@ -80,6 +81,7 @@ class MainUiStateProjectorTest {
         assertEquals("4", projected.validationBatchSizeDraft)
         assertEquals("5", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("2", projected.validationRetryCountDraft)
+        assertEquals("6", projected.validationActiveVerificationWindowSizeDraft)
         assertEquals(listOf("vless://one"), projected.currentLocations)
         assertEquals("primary ok", projected.locationBenchmarkDetails["vless://one"])
         assertEquals("9.9.9.9", projected.customDns)
@@ -127,6 +129,7 @@ class MainUiStateProjectorTest {
             validationBatchSizeDraft = "9",
             validationSubscriptionRefreshConcurrencyDraft = "6",
             validationRetryCountDraft = "3",
+            validationActiveVerificationWindowSizeDraft = "7",
             showDnsDialog = true,
             customDnsDraft = "4.4.4.4",
             useCustomDnsDraft = true,
@@ -142,6 +145,7 @@ class MainUiStateProjectorTest {
                 batchSize = 2,
                 subscriptionRefreshConcurrency = 4,
                 retryCount = 1,
+                activeVerificationWindowSize = 2,
             ),
             customDns = "1.1.1.1",
             useCustomDns = false,
@@ -159,6 +163,7 @@ class MainUiStateProjectorTest {
         assertEquals("9", projected.validationBatchSizeDraft)
         assertEquals("6", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("3", projected.validationRetryCountDraft)
+        assertEquals("7", projected.validationActiveVerificationWindowSizeDraft)
         assertEquals("1.1.1.1", projected.customDns)
         assertEquals("4.4.4.4", projected.customDnsDraft)
         assertEquals(false, projected.useCustomDns)

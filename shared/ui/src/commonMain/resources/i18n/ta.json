@@ -98,6 +98,7 @@
   "BATCH_SIZE": "தொகுதி அளவு",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "மீண்டும் முயற்சி எண்ணிக்கை",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com அல்லது முழு URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com அல்லது முழு URL",
   "VALIDATION_ANDROID_SUMMARY": "ஒரே நேர சோதனைகளின் எண்ணிக்கை தற்போதைய தொகுதி அளவுக்கு, அதிகபட்சம் 5 வரை, பொருந்தும். பயன்படுத்தக்கூடிய இருப்பிடம் கிடைக்காவிட்டால் மீண்டும் முயற்சி எண்ணிக்கை முழு தேடலையும் மீண்டும் இயக்கும். தற்போதைய அமைப்புகள்: {0}",

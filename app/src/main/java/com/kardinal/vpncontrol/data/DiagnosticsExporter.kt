@@ -87,6 +87,7 @@ class DiagnosticsExporter(
             appendLine("validation_secondary_url=${state.validationSettings.secondaryUrl}")
             appendLine("validation_batch_size=${state.validationSettings.batchSize}")
             appendLine("validation_retry_count=${state.validationSettings.retryCount}")
+            appendLine("validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}")
             appendLine("current_locations_count=${state.currentLocations.size}")
             appendLine("custom_dns=${state.customDns}")
             appendLine("use_custom_dns=${state.useCustomDns}")
@@ -153,6 +154,7 @@ class DiagnosticsExporter(
                     "validation_secondary_url=${state.validationSettings.secondaryUrl}",
                     "validation_batch_size=${state.validationSettings.batchSize}",
                     "validation_retry_count=${state.validationSettings.retryCount}",
+                    "validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}",
                 ).joinToString(separator = "\n"),
             )
             appendSection(

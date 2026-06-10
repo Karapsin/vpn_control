@@ -43,7 +43,7 @@
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
     "SUBSCRIPTION_AUTO_REFRESH_SET": "Actualizarea automată a abonamentului setată la {refreshInterval}",
-    "VALIDATION_SETTINGS_SAVED": "Setări de validare salvate: {0} • {1} • lot {2} • reîncercări {4} • refresh {3}",
+    "VALIDATION_SETTINGS_SAVED": "Setări de validare salvate: {0} • {1} • lot {2} • reîncercări {4} • refresh {3} • window {5}",
     "CUSTOM_DNS_SAVED": "DNS-ul personalizat a fost salvat",
     "CUSTOM_DNS_DISABLED": "DNS-ul personalizat a fost dezactivat",
     "FIND_BEST_FROM_SUBSCRIPTION": "Se caută cea mai bună locație din abonament...",

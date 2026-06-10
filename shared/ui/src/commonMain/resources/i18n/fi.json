@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Erän koko",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Uusintojen määrä",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com tai koko URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com tai koko URL",
   "VALIDATION_ANDROID_SUMMARY": "Rinnakkaisuus vastaa nykyistä erän kokoa, enintään 5. Uusintojen määrä suorittaa koko haun uudelleen, jos käyttökelpoista sijaintia ei löydy. Nykyiset asetukset: {0}",

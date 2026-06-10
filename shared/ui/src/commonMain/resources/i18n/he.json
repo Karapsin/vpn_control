@@ -98,6 +98,7 @@
   "BATCH_SIZE": "גודל אצווה",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "מספר ניסיונות חוזרים",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com או URL מלא",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com או URL מלא",
   "VALIDATION_ANDROID_SUMMARY": "רמת המקביליות תואמת לגודל האצווה הנוכחי, עד 5. מספר הניסיונות החוזרים מריץ מחדש את כל החיפוש אם לא נמצא מיקום שמיש. הגדרות נוכחיות: {0}",

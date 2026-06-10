@@ -98,6 +98,7 @@
   "BATCH_SIZE": "ຂະໜາດຊຸດ",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "ຈຳນວນລອງໃໝ່",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com ຫຼື URL ເຕັມ",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com ຫຼື URL ເຕັມ",
   "VALIDATION_ANDROID_SUMMARY": "ຈຳນວນການເຮັດວຽກພ້ອມກັນຕົງກັບຂະໜາດຊຸດປັດຈຸບັນ, ສູງສຸດ 5. ຈຳນວນລອງໃໝ່ຈະເອີ້ນການຄົ້ນຫາທັງໝົດຄືນໃໝ່ຖ້າບໍ່ພົບຕຳແໜ່ງທີ່ໃຊ້ໄດ້. ການຕັ້ງຄ່າປັດຈຸບັນ: {0}",

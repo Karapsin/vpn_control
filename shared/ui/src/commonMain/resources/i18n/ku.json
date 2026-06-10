@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Mezinahiya komê",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Hejmara dubare ceribandinê",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com an URL ya tevahî",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com an URL ya tevahî",
   "VALIDATION_ANDROID_SUMMARY": "Hevdemî li gorî mezinahiya koma niha ye, heya 5. Hejmara dubare ceribandinê heke cihê bikêr neyê dîtin hemû lêgerînê ji nû ve dixebitîne. Mîhengên niha: {0}",

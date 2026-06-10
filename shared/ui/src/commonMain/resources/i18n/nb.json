@@ -98,6 +98,7 @@
   "BATCH_SIZE": "Puljestørrelse",
   "SUBSCRIPTION_REFRESH_CONCURRENCY": "Subscription refresh concurrency",
   "RETRY_COUNT": "Antall forsøk på nytt",
+  "ACTIVE_VERIFICATION_WINDOW": "Active verification window",
   "PRIMARY_TEST_SITE_PLACEHOLDER": "google.com eller full URL",
   "SECONDARY_TEST_SITE_PLACEHOLDER": "secondary-site.com eller full URL",
   "VALIDATION_ANDROID_SUMMARY": "Samtidighet samsvarer med gjeldende puljestørrelse, opptil 5. Antall forsøk kjører hele søket på nytt hvis ingen brukbar lokasjon blir funnet. Gjeldende innstillinger: {0}",
