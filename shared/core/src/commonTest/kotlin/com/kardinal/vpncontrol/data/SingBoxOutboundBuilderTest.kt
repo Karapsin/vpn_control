@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class SingBoxOutboundBuilderTest {
     @Test
-    fun vlessRealityWebsocketIncludesTlsTransportAndNetwork() {
+    fun vlessRealityWebsocketIncludesTlsAndTransportWithoutNetworkFilter() {
         val outbound = SingBoxOutboundBuilder.buildOutbound(
             profile = profile(
                 protocol = ProxyProtocol.VLESS,
@@ -38,7 +38,7 @@ class SingBoxOutboundBuilderTest {
         assertEquals("00000000-0000-0000-0000-000000000001", outbound.string("uuid"))
         assertEquals("xudp", outbound.string("packet_encoding"))
         assertEquals("xtls-rprx-vision", outbound.string("flow"))
-        assertEquals("ws", outbound.string("network"))
+        assertFalse("network" in outbound)
 
         val tls = outbound.objectValue("tls")
         assertTrue(tls.boolean("enabled"))
@@ -66,7 +66,7 @@ class SingBoxOutboundBuilderTest {
 
         assertEquals("trojan", outbound.string("type"))
         assertEquals("secret", outbound.string("password"))
-        assertEquals("grpc", outbound.string("network"))
+        assertFalse("network" in outbound)
         assertEquals("example.com", outbound.objectValue("tls").string("server_name"))
         assertEquals("grpc", outbound.objectValue("transport").string("type"))
         assertEquals("grpc-service", outbound.objectValue("transport").string("service_name"))
@@ -141,7 +141,7 @@ class SingBoxOutboundBuilderTest {
         )
 
         assertEquals("vless", outbound.string("type"))
-        assertEquals("tcp", outbound.string("network"))
+        assertFalse("network" in outbound)
         assertFalse("tls" in outbound)
         assertFalse("transport" in outbound)
         assertFalse("flow" in outbound)
@@ -163,7 +163,7 @@ class SingBoxOutboundBuilderTest {
         assertEquals("vmess", outbound.string("type"))
         assertEquals("auto", outbound.string("security"))
         assertEquals(2, outbound.int("alter_id"))
-        assertEquals("tcp", outbound.string("network"))
+        assertFalse("network" in outbound)
         assertTrue(outbound.objectValue("tls").boolean("enabled"))
     }
 
@@ -185,7 +185,7 @@ class SingBoxOutboundBuilderTest {
 
         assertEquals("vmess", outbound.string("type"))
         assertEquals("chacha20-poly1305", outbound.string("security"))
-        assertEquals("ws", outbound.string("network"))
+        assertFalse("network" in outbound)
         assertEquals("vmess-sni.example.com", outbound.objectValue("tls").string("server_name"))
         assertEquals("/socket", outbound.objectValue("transport").string("path"))
         assertEquals("front.example.com", outbound.objectValue("transport").objectValue("headers").string("Host"))

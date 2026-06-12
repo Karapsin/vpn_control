@@ -37,7 +37,9 @@ object DesktopAppServiceFactory {
             baseDir = store.validationDirectory(),
         ),
         subscriptionContentFetcher: SubscriptionContentFetcher = DesktopSubscriptionDownloadClient(),
-        autostartManager: DesktopAutostartManager = DesktopAutostartManager.default(),
+        autostartManager: DesktopAutostartManager = DesktopAutostartManager(
+            platform = DesktopAutostartPlatform.UNSUPPORTED,
+        ),
         autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit = { service ->
             service.findBestLocation(refreshSubscriptionsFirst = false)
         },

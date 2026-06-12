@@ -13,6 +13,9 @@ user_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 user_autostart_file="$user_config_home/autostart/vpn-control.desktop"
 user_systemd_service="$user_config_home/systemd/user/vpn-control.service"
 user_systemd_wants="$user_config_home/systemd/user/default.target.wants/vpn-control.service"
+i3_config_file="$user_config_home/i3/config"
+i3_autostart_begin="# VPN Control autostart: begin"
+i3_autostart_end="# VPN Control autostart: end"
 
 skip_deps=false
 skip_build=false
@@ -135,6 +138,85 @@ start_installed_app() {
   else
     echo "[vpn-control] start command exited quickly; check desktop logs if the app did not open" >&2
   fi
+}
+
+is_i3_session() {
+  local value
+  local normalized
+  local token
+
+  if [[ -n "${I3SOCK:-}" ]]; then
+    return 0
+  fi
+
+  for value in "${XDG_CURRENT_DESKTOP:-}" "${DESKTOP_SESSION:-}"; do
+    normalized="${value,,}"
+    normalized="${normalized//:/ }"
+    normalized="${normalized//;/ }"
+    normalized="${normalized//,/ }"
+    for token in $normalized; do
+      if [[ "$token" == "i3" ]]; then
+        return 0
+      fi
+    done
+  done
+
+  return 1
+}
+
+quote_i3_shell_arg() {
+  local value=$1
+  local head
+
+  printf "'"
+  while [[ "$value" == *"'"* ]]; do
+    head="${value%%\'*}"
+    printf "%s'\\\\''" "$head"
+    value="${value#*\'}"
+  done
+  printf "%s'" "$value"
+}
+
+remove_managed_i3_autostart_block() {
+  local source=$1
+
+  awk -v begin="$i3_autostart_begin" -v end="$i3_autostart_end" '
+    $0 == begin { in_block = 1; next }
+    in_block && $0 == end { in_block = 0; next }
+    !in_block { print }
+  ' "$source"
+}
+
+install_i3_autostart_fallback() {
+  local stripped_file
+  local rendered_file
+  local existing_content
+
+  is_i3_session || return 0
+
+  mkdir -p "$(dirname "$i3_config_file")"
+  stripped_file="$(mktemp)"
+  rendered_file="$(mktemp)"
+
+  if [[ -f "$i3_config_file" || -L "$i3_config_file" ]]; then
+    remove_managed_i3_autostart_block "$i3_config_file" >"$stripped_file"
+  else
+    : >"$stripped_file"
+  fi
+
+  existing_content="$(cat "$stripped_file")"
+  {
+    if [[ -n "$existing_content" ]]; then
+      printf '%s\n\n' "$existing_content"
+    fi
+    printf '%s\n' "$i3_autostart_begin"
+    printf '%s\n' "exec --no-startup-id sh -c 'exec \"\$1\" --autostart' vpn-control-i3 $(quote_i3_shell_arg "$launcher_path")"
+    printf '%s\n' "$i3_autostart_end"
+  } >"$rendered_file"
+
+  cat "$rendered_file" >"$i3_config_file"
+  rm -f "$stripped_file" "$rendered_file"
+  echo "[vpn-control] updated i3 autostart fallback at $i3_config_file"
 }
 
 cleanup_legacy_user_systemd_autostart() {
@@ -703,7 +785,9 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   sudo gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 fi
 
+user_autostart_enabled=false
 if [[ -f "$user_autostart_file" ]] && ! grep -qi '^Hidden=true' "$user_autostart_file"; then
+  user_autostart_enabled=true
   echo "[vpn-control] updating existing user autostart entry"
   mkdir -p "$(dirname "$user_autostart_file")"
   cat >"$user_autostart_file" <<EOF
@@ -717,6 +801,9 @@ Terminal=false
 Categories=Network;
 X-GNOME-Autostart-enabled=true
 EOF
+fi
+if [[ "$user_autostart_enabled" == true ]]; then
+  install_i3_autostart_fallback
 fi
 cleanup_legacy_user_systemd_autostart
 report_legacy_systemd_autostart_for_other_users

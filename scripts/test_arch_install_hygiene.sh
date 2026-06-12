@@ -64,6 +64,17 @@ required_snippets = [
     'lock_file="\\$state_dir/launcher.lock"',
     'port_file="\\$state_dir/activation.port"',
     'autostart_log="\\$state_dir/autostart.log"',
+    'i3_config_file="$user_config_home/i3/config"',
+    'i3_autostart_begin="# VPN Control autostart: begin"',
+    'i3_autostart_end="# VPN Control autostart: end"',
+    'user_autostart_enabled=false',
+    'is_i3_session()',
+    'quote_i3_shell_arg()',
+    'remove_managed_i3_autostart_block()',
+    'install_i3_autostart_fallback()',
+    'sh -c \'exec \\"\\$1\\" --autostart\' vpn-control-i3',
+    'cat "$rendered_file" >"$i3_config_file"',
+    'updated i3 autostart fallback',
     'AUTOSTART_MAX_ATTEMPTS=3',
     'AUTOSTART_RETRY_DELAY_SECONDS=5',
     'AUTOSTART_STARTUP_WINDOW_SECONDS=20',
@@ -155,10 +166,27 @@ for snippet in forbidden_cross_user_cleanup:
         print(f"found forbidden snippet: {snippet}", file=sys.stderr)
         sys.exit(1)
 
+forbidden_i3_config_replacement = [
+    'mv "$rendered_file" "$i3_config_file"',
+    'exec --no-startup-id %s --autostart',
+]
+for snippet in forbidden_i3_config_replacement:
+    if snippet in text:
+        print("arch_install.sh must preserve valid managed i3 autostart behavior.", file=sys.stderr)
+        print(f"found forbidden snippet: {snippet}", file=sys.stderr)
+        sys.exit(1)
+
 current_cleanup = text.rfind("\ncleanup_legacy_user_systemd_autostart\n")
 other_user_report = text.rfind("\nreport_legacy_systemd_autostart_for_other_users\n")
 if current_cleanup < 0 or other_user_report < 0 or other_user_report < current_cleanup:
     print("arch_install.sh must clean the current user and then report other-user legacy autostart entries.", file=sys.stderr)
+    sys.exit(1)
+
+i3_fallback_function = text.find("install_i3_autostart_fallback()")
+user_autostart_flag = text.find("user_autostart_enabled=false")
+i3_fallback_call = text.rfind("\n  install_i3_autostart_fallback\n")
+if i3_fallback_function < 0 or user_autostart_flag < 0 or i3_fallback_call < user_autostart_flag:
+    print("arch_install.sh must refresh the i3 fallback only after confirming user autostart is enabled.", file=sys.stderr)
     sys.exit(1)
 
 stop_call = text.rfind("\nstop_running_instance\n")

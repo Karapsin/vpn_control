@@ -67,12 +67,9 @@ object SingBoxOutboundBuilder {
 
         return buildJsonObject {
             base.forEach { (key, value) -> put(key, value) }
-            if (profile.network.isNotBlank() &&
-                profile.protocol != ProxyProtocol.SHADOWSOCKS &&
-                profile.protocol != ProxyProtocol.SOCKS
-            ) {
-                put("network", profile.network)
-            } else if (profile.protocol == ProxyProtocol.SHADOWSOCKS &&
+            // For VLESS/VMess/Trojan, ProxyProfile.network is a stream transport
+            // name. sing-box's outbound.network is a TCP/UDP capability filter.
+            if (profile.protocol == ProxyProtocol.SHADOWSOCKS &&
                 profile.network.isNotBlank() &&
                 profile.network != "tcp"
             ) {

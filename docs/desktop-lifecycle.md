@@ -19,9 +19,11 @@ Desktop lifecycle behavior is easy to break because it crosses UI, tray, persist
 
 - If `Main.kt` window/tray flow changes, re-check close, show, and autostart paths.
 - If `DesktopAppService.kt` startup/shutdown flow changes, re-check reconnect intent and off-stays-off behavior.
-- If `DesktopAutostartManager.kt` changes, test Linux XDG desktop entries, legacy systemd cleanup, and Windows startup command generation.
+- If `DesktopAutostartManager.kt` changes, test Linux XDG desktop entries, the managed i3 fallback block, legacy systemd cleanup, and Windows startup command generation.
 - If validation/probe code changes, confirm direct probe routing still bypasses the active VPN/proxy.
 - If runtime manager code changes, inspect whether scheduled refresh can strand the app in stopped or stale-config state.
+
+On Linux, the canonical user autostart entry is the XDG `vpn-control.desktop` file. Bare i3 sessions do not run XDG autostart entries by default, so VPN Control also maintains a marked app-specific block in the user's i3 config when start-on-boot is enabled from an i3 session. The i3 block must use i3-compatible shell-wrapper syntax; do not reuse the XDG `Exec=` quoted-path form there.
 
 ## Manual Smoke Points
 

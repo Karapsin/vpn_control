@@ -13,6 +13,7 @@ internal class DesktopAutostartManager(
     private val commandRunner: (List<String>) -> DesktopAutostartCommandResult = ::runCommand,
     private val systemctlResolver: () -> Path? = ::platformSystemctl,
     private val executableChecker: (Path) -> Boolean = Files::isExecutable,
+    private val environment: () -> Map<String, String> = System::getenv,
 ) {
     private val autostartFile = configHome
         .resolve("autostart")
@@ -24,6 +25,9 @@ internal class DesktopAutostartManager(
     private val systemdWantsFile = systemdServiceFile.parent
         .resolve("default.target.wants")
         .resolve("vpn-control.service")
+    private val i3ConfigFile = configHome
+        .resolve("i3")
+        .resolve("config")
 
     fun isEnabled(): Boolean {
         return when (platform) {
@@ -53,16 +57,24 @@ internal class DesktopAutostartManager(
             }
             deleteLegacyLinuxSystemdAutostart()
         }
-        return isXdgAutostartEnabled()
+        val currentXdgEntryEnabled = isXdgAutostartEnabled()
+        if (currentXdgEntryEnabled && isI3Session() && !isI3AutostartEnabled()) {
+            runCatching { setI3AutostartEnabled(true) }
+        }
+        return currentXdgEntryEnabled || isI3AutostartEnabled()
     }
 
     private fun setLinuxAutostartEnabled(enabled: Boolean): Boolean {
         return if (enabled) {
             setXdgAutostartEnabled(true)
+            if (isI3Session()) {
+                setI3AutostartEnabled(true)
+            }
             deleteLegacyLinuxSystemdAutostart()
             true
         } else {
             Files.deleteIfExists(autostartFile)
+            setI3AutostartEnabled(false)
             deleteLegacyLinuxSystemdAutostart()
             false
         }
@@ -91,6 +103,156 @@ internal class DesktopAutostartManager(
             Files.deleteIfExists(autostartFile)
             false
         }
+    }
+
+    private fun isI3AutostartEnabled(): Boolean {
+        if (!Files.exists(i3ConfigFile)) return false
+        val content = runCatching { Files.readString(i3ConfigFile) }.getOrDefault("")
+        val block = managedI3AutostartBlock(content) ?: return false
+        return block.lineSequence().any { line ->
+            val command = i3ExecCommand(line) ?: return@any false
+            line.contains("--autostart") &&
+                runCatching { executableChecker(Paths.get(command)) }.getOrDefault(false)
+        }
+    }
+
+    private fun setI3AutostartEnabled(enabled: Boolean): Boolean {
+        if (enabled) {
+            val command = commandResolver()?.takeIf(String::isNotBlank)
+                ?: error("Could not resolve the desktop app launcher path.")
+            Files.createDirectories(i3ConfigFile.parent)
+            val content = runCatching { Files.readString(i3ConfigFile) }.getOrDefault("")
+            Files.writeString(i3ConfigFile, withManagedI3AutostartBlock(content, command))
+            return true
+        }
+
+        if (!Files.exists(i3ConfigFile)) return false
+        val content = runCatching { Files.readString(i3ConfigFile) }.getOrDefault("")
+        if (managedI3AutostartBlock(content) == null) return false
+        Files.writeString(i3ConfigFile, withoutManagedI3AutostartBlock(content))
+        return false
+    }
+
+    private fun isI3Session(): Boolean {
+        val env = environment()
+        if (!env["I3SOCK"].isNullOrBlank()) return true
+        return listOf(env["XDG_CURRENT_DESKTOP"], env["DESKTOP_SESSION"])
+            .filterNotNull()
+            .any { value ->
+                value.lowercase(Locale.ROOT)
+                    .split(':', ';', ',', ' ')
+                    .any { it == "i3" }
+            }
+    }
+
+    private fun managedI3AutostartBlock(content: String): String? {
+        val lines = content.lines()
+        val start = lines.indexOfFirst { it.trim() == I3_AUTOSTART_BEGIN }
+        if (start < 0) return null
+        val end = lines.drop(start + 1).indexOfFirst { it.trim() == I3_AUTOSTART_END }
+        if (end < 0) return null
+        return lines.subList(start + 1, start + 1 + end).joinToString("\n")
+    }
+
+    private fun withManagedI3AutostartBlock(content: String, command: String): String {
+        val stripped = withoutManagedI3AutostartBlock(content).trimEnd()
+        val block = """
+            |$I3_AUTOSTART_BEGIN
+            |${i3AutostartExecLine(command)}
+            |$I3_AUTOSTART_END
+        """.trimMargin()
+        return listOf(stripped, block)
+            .filter(String::isNotBlank)
+            .joinToString("\n\n")
+            .let { if (it.isBlank()) "" else "$it\n" }
+    }
+
+    private fun withoutManagedI3AutostartBlock(content: String): String {
+        val kept = mutableListOf<String>()
+        var inBlock = false
+        content.lines().forEach { line ->
+            when {
+                line.trim() == I3_AUTOSTART_BEGIN -> inBlock = true
+                inBlock && line.trim() == I3_AUTOSTART_END -> inBlock = false
+                !inBlock -> kept += line
+            }
+        }
+        return kept.joinToString("\n").trimEnd() + "\n"
+    }
+
+    private fun i3ExecCommand(line: String): String? {
+        val trimmed = line.trim()
+        if (!trimmed.startsWith("exec ")) return null
+        val command = trimmed
+            .removePrefix("exec")
+            .trim()
+            .removePrefix("--no-startup-id")
+            .trim()
+        return i3ShellWrapperCommand(command)
+    }
+
+    private fun i3ShellWrapperCommand(command: String): String? {
+        val words = splitShellWords(command) ?: return null
+        if (words.size != 5) return null
+        if (words[0] != "sh" || words[1] != "-c") return null
+        if (words[2] != I3_SHELL_SCRIPT || words[3] != I3_SHELL_ARG0) return null
+        return words[4].takeIf(String::isNotBlank)
+    }
+
+    private fun splitShellWords(value: String): List<String>? {
+        val words = mutableListOf<String>()
+        val current = StringBuilder()
+        var index = 0
+        var quote: Char? = null
+        var tokenStarted = false
+
+        while (index < value.length) {
+            val char = value[index]
+            when {
+                quote == '\'' -> {
+                    if (char == '\'') {
+                        quote = null
+                    } else {
+                        current.append(char)
+                    }
+                }
+                quote == '"' -> {
+                    when {
+                        char == '"' -> quote = null
+                        char == '\\' && index + 1 < value.length -> {
+                            current.append(value[index + 1])
+                            index += 1
+                        }
+                        else -> current.append(char)
+                    }
+                }
+                char.isWhitespace() -> {
+                    if (tokenStarted) {
+                        words += current.toString()
+                        current.clear()
+                        tokenStarted = false
+                    }
+                }
+                char == '\'' || char == '"' -> {
+                    quote = char
+                    tokenStarted = true
+                }
+                char == '\\' && index + 1 < value.length -> {
+                    current.append(value[index + 1])
+                    index += 1
+                    tokenStarted = true
+                }
+                else -> {
+                    current.append(char)
+                    tokenStarted = true
+                }
+            }
+            index += 1
+        }
+
+        if (quote != null) return null
+        if (tokenStarted) words += current.toString()
+        return words
     }
 
     private fun legacyLinuxSystemdAutostartExists(): Boolean {
@@ -207,6 +369,10 @@ internal class DesktopAutostartManager(
         private const val WINDOWS_RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
         private const val WINDOWS_RUN_VALUE = "VPN Control"
         private const val WINDOWS_TASK_NAME = "VPN Control"
+        private const val I3_AUTOSTART_BEGIN = "# VPN Control autostart: begin"
+        private const val I3_AUTOSTART_END = "# VPN Control autostart: end"
+        private const val I3_SHELL_SCRIPT = "exec \"\$1\" --autostart"
+        private const val I3_SHELL_ARG0 = "vpn-control-i3"
 
         private fun defaultConfigHome(): Path {
             val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")
@@ -267,6 +433,15 @@ internal class DesktopAutostartManager(
                 }
             }
             return "\"$escaped\""
+        }
+
+        private fun i3AutostartExecLine(command: String): String {
+            return "exec --no-startup-id sh -c ${quoteI3ShellArg(I3_SHELL_SCRIPT)} " +
+                "$I3_SHELL_ARG0 ${quoteI3ShellArg(command)}"
+        }
+
+        private fun quoteI3ShellArg(value: String): String {
+            return "'${value.replace("'", "'\"'\"'")}'"
         }
 
         private fun desktopEntryExecCommand(content: String): String? {

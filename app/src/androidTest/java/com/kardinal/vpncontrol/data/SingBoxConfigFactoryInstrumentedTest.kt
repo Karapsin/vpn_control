@@ -45,7 +45,7 @@ class SingBoxConfigFactoryInstrumentedTest {
         val outbound = outbound(config)
         assertEquals("vless", outbound.getString("type"))
         assertEquals("xtls-rprx-vision", outbound.getString("flow"))
-        assertEquals("ws", outbound.getString("network"))
+        assertFalse(outbound.has("network"))
         assertEquals("/ws", outbound.getJSONObject("transport").getString("path"))
         assertEquals("cdn.example.com", outbound.getJSONObject("transport").getJSONObject("headers").getString("Host"))
         val reality = outbound.getJSONObject("tls").getJSONObject("reality")
@@ -84,7 +84,7 @@ class SingBoxConfigFactoryInstrumentedTest {
 
         val outbound = outbound(config)
         assertEquals("trojan", outbound.getString("type"))
-        assertEquals("grpc", outbound.getString("network"))
+        assertFalse(outbound.has("network"))
         assertEquals("trojan-grpc", outbound.getJSONObject("transport").getString("service_name"))
         assertEquals("edge.example.com", outbound.getJSONObject("tls").getString("server_name"))
     }
@@ -159,6 +159,7 @@ class SingBoxConfigFactoryInstrumentedTest {
         assertEquals("vmess", outbound.getString("type"))
         assertEquals("auto", outbound.getString("security"))
         assertEquals(0, outbound.getInt("alter_id"))
+        assertFalse(outbound.has("network"))
         assertEquals("/vmess", outbound.getJSONObject("transport").getString("path"))
         assertTrue(outbound.getJSONObject("tls").getBoolean("enabled"))
     }
