@@ -10,7 +10,6 @@ import com.kardinal.vpncontrol.data.BenchmarkSearchLogic
 import com.kardinal.vpncontrol.data.BestCandidateAttemptPlan
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.PreflightResult
-import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
@@ -24,14 +23,6 @@ internal typealias DesktopProfileEvaluator = suspend (
     settings: DesktopValidationSettings,
     onProgress: suspend (String) -> Unit,
 ) -> BestCandidateAttemptPlan
-
-internal typealias DesktopActiveConnectionVerifierFn = suspend (
-    candidate: PreflightResult,
-    appMode: AppMode,
-    proxyPort: Int?,
-    benchmarkUrls: BenchmarkUrls,
-    settings: DesktopValidationSettings,
-) -> Result<ProfileBenchmark>
 
 internal typealias DesktopCandidateVerifierFn = suspend (
     candidate: PreflightResult,
@@ -50,10 +41,6 @@ internal class DesktopFindBestService(
         benchmarkSummary: String?,
         activeVerificationPort: Int?,
     ) -> Result<Unit>,
-    private val stopConnection: suspend (message: String?) -> Result<Unit>,
-    private val currentRuntimePort: () -> Int?,
-    private val activeVerificationPortAllocator: () -> Int,
-    private val verifyActiveConnection: DesktopActiveConnectionVerifierFn,
     private val verifyCandidate: DesktopCandidateVerifierFn,
     private val commitState: (locations: List<DesktopLocationRecord>, state: MainUiState) -> Unit,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
@@ -220,12 +207,12 @@ internal class DesktopFindBestService(
                         ),
                     )
                 }
-                val activeVerificationPort = if (stateProvider().appMode == AppMode.VPN) {
-                    activeVerificationPortAllocator()
-                } else {
-                    null
-                }
-                val startResult = startConnection(candidateLocation, null, activeVerificationPort)
+                val selectedBenchmark = winner.benchmark
+                val summary = BenchmarkStatusMessages.bestLocationSummary(
+                    selectedBenchmark.profile.remarks,
+                    selectedBenchmark.detail.toCompactBenchmarkLabel(),
+                )
+                val startResult = startConnection(candidateLocation, summary, null)
                 if (startResult.isFailure) {
                     val benchmark = BenchmarkSearchLogic.failedActiveVerificationBenchmark(
                         candidate = candidate,
@@ -241,68 +228,25 @@ internal class DesktopFindBestService(
                     continue
                 }
 
-                updateState {
-                    it.copy(isBusy = true, isRefreshing = true).withStatus(
-                        BenchmarkStatusMessages.verifyingBlockedResource(candidate.profile.remarks),
-                    )
-                }
-                val proxyPort = when (stateProvider().appMode) {
-                    AppMode.VPN -> activeVerificationPort
-                    AppMode.PROXY_ONLY -> currentRuntimePort()
-                }
-                val verificationBenchmark = verifyActiveConnection(
-                    candidate,
-                    stateProvider().appMode,
-                    proxyPort,
-                    benchmarkUrls,
-                    desktopValidationSettings,
-                ).getOrElse { error ->
-                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                        candidate = candidate,
-                        reason = error.message ?: "active_verification_failed",
-                        secondaryStatus = "error",
-                    )
-                }
-                candidateBenchmarks[candidateRawKey] = verificationBenchmark
+                candidateBenchmarks[candidateRawKey] = selectedBenchmark
                 updateLocationBenchmarks(
-                    detailsByRawKey = mapOf(candidateRawKey to verificationBenchmark.detail),
-                    winningRawKey = if (verificationBenchmark.testStatus == "ok") candidateRawKey else null,
+                    detailsByRawKey = mapOf(candidateRawKey to selectedBenchmark.detail),
+                    winningRawKey = candidateRawKey,
                 )
-                logBenchmarkDetails(listOf(verificationBenchmark))
-                val verified = verificationBenchmark.testStatus == "ok"
-                if (verified) {
-                    val summary = BenchmarkStatusMessages.bestLocationSummary(
-                        verificationBenchmark.profile.remarks,
-                        verificationBenchmark.detail.toCompactBenchmarkLabel(),
-                    )
-                    commitState(
-                        locationsProvider(),
-                        stateProvider().copy(
-                            isBusy = false,
-                            isRefreshing = false,
-                            lastBenchmarkSummary = summary,
-                        ).withStatus(
-                            ConnectionStatusMessages.connectionStartedOnTarget(
-                                stateProvider().appMode,
-                                verificationBenchmark.profile.remarks,
-                            ),
+                commitState(
+                    locationsProvider(),
+                    stateProvider().copy(
+                        isBusy = false,
+                        isRefreshing = false,
+                        lastBenchmarkSummary = summary,
+                    ).withStatus(
+                        ConnectionStatusMessages.connectionStartedOnTarget(
+                            stateProvider().appMode,
+                            selectedBenchmark.profile.remarks,
                         ),
-                    )
-                    return
-                }
-
-                lastFailureMessage = verificationBenchmark.detail
-                val switchMessage = BenchmarkStatusMessages.switchingAfterVerificationFailure(candidate.profile.remarks)
-                updateState { it.withStatus(switchMessage) }
-                val stopResult = stopConnection(switchMessage)
-                if (stopResult.isFailure) {
-                    updateState {
-                        it.copy(isBusy = false, isRefreshing = false).withStatus(
-                            stopResult.exceptionOrNull()?.message ?: switchMessage,
-                        )
-                    }
-                    return
-                }
+                    ),
+                )
+                return
             }
             currentIndex += window.size.coerceAtLeast(1)
         }
