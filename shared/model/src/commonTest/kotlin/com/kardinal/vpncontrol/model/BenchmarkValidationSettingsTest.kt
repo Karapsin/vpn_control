@@ -17,6 +17,14 @@ class BenchmarkValidationSettingsTest {
     }
 
     @Test
+    fun activeVerificationWindowSizeDefaultsToFive() {
+        assertEquals(
+            5,
+            BenchmarkValidationSettings().normalized().activeVerificationWindowSize,
+        )
+    }
+
+    @Test
     fun subscriptionRefreshConcurrencyIsClamped() {
         assertEquals(
             BenchmarkValidationSettings.MIN_SUBSCRIPTION_REFRESH_CONCURRENCY,

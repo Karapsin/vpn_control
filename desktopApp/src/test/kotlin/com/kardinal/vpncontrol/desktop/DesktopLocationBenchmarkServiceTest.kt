@@ -24,6 +24,7 @@ class DesktopLocationBenchmarkServiceTest {
             validationSettings = BenchmarkValidationSettings(
                 testUrl = "https://test.example/path",
                 batchSize = 9,
+                subscriptionRefreshConcurrency = 7,
             ),
         )
         var locations = listOf(

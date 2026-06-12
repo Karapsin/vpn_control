@@ -302,7 +302,7 @@ data class BenchmarkValidationSettings(
         const val MIN_SUBSCRIPTION_REFRESH_CONCURRENCY = 1
         const val MAX_SUBSCRIPTION_REFRESH_CONCURRENCY = 8
         const val DEFAULT_RETRY_COUNT = 1
-        const val DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE = 3
+        const val DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE = 5
         const val MIN_ACTIVE_VERIFICATION_WINDOW_SIZE = 1
         const val MAX_ACTIVE_VERIFICATION_WINDOW_SIZE = 8
 

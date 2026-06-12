@@ -59,7 +59,7 @@ internal fun restoreDesktopUiState(
 
 internal fun BenchmarkValidationSettings.toDesktopValidationSettings(): DesktopValidationSettings {
     val normalized = normalized()
-    val concurrency = minOf(normalized.batchSize.coerceAtLeast(1), 5)
+    val concurrency = minOf(normalized.subscriptionRefreshConcurrency.coerceAtLeast(1), 5)
     return DesktopValidationSettings(
         preflightConcurrency = concurrency,
         batchSize = normalized.batchSize,
