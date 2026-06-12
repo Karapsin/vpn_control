@@ -5,8 +5,7 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlin.math.round
 
@@ -49,7 +48,15 @@ data class CandidatePrecheckResult<T>(
 data class CandidatePrecheckWindowResult<T>(
     val completed: List<CandidatePrecheckResult<T>>,
     val winner: CandidatePrecheckResult<T>?,
-)
+) {
+    val verifiedCandidates: List<CandidatePrecheckResult<T>>
+        get() = completed
+            .filter { it.benchmark.testStatus == "ok" }
+            .sortedWith(
+                compareBy<CandidatePrecheckResult<T>> { it.benchmark.score }
+                    .thenBy { it.attemptIndex },
+            )
+}
 
 data class BestCandidateAttemptPlan(
     val orderedAttempts: List<PreflightResult>,
@@ -93,6 +100,18 @@ object BenchmarkSearchLogic {
         currentIndex: Int,
         windowSize: Int,
         validate: suspend (attempt: T, attemptIndex: Int) -> ProfileBenchmark,
+    ): CandidatePrecheckWindowResult<T> = validateCandidateWindowForBestPass(
+        attempts = attempts,
+        currentIndex = currentIndex,
+        windowSize = windowSize,
+        validate = validate,
+    )
+
+    suspend fun <T> validateCandidateWindowForBestPass(
+        attempts: List<T>,
+        currentIndex: Int,
+        windowSize: Int,
+        validate: suspend (attempt: T, attemptIndex: Int) -> ProfileBenchmark,
     ): CandidatePrecheckWindowResult<T> = coroutineScope {
         val window = activeVerificationWindow(attempts, currentIndex, windowSize)
         if (window.isEmpty()) {
@@ -102,49 +121,26 @@ object BenchmarkSearchLogic {
             )
         }
 
-        val results = Channel<CandidatePrecheckResult<T>>(capacity = Channel.UNLIMITED)
-        val jobs = window.mapIndexed { offset, attempt ->
+        val completed = window.mapIndexed { offset, attempt ->
             val attemptIndex = currentIndex + offset
             async {
                 val benchmark = validate(attempt, attemptIndex)
-                results.send(
-                    CandidatePrecheckResult(
-                        attempt = attempt,
-                        attemptIndex = attemptIndex,
-                        benchmark = benchmark,
-                    ),
+                CandidatePrecheckResult(
+                    attempt = attempt,
+                    attemptIndex = attemptIndex,
+                    benchmark = benchmark,
                 )
             }
-        }
-        val completed = mutableListOf<CandidatePrecheckResult<T>>()
-        try {
-            repeat(window.size) {
-                val result = results.receive()
-                completed += result
-                if (result.benchmark.testStatus == "ok") {
-                    jobs.forEach { job ->
-                        if (!job.isCompleted) {
-                            job.cancel()
-                        }
-                    }
-                    return@coroutineScope CandidatePrecheckWindowResult(
-                        completed = completed,
-                        winner = result,
-                    )
-                }
-            }
-            CandidatePrecheckWindowResult(
-                completed = completed,
-                winner = null,
-            )
-        } finally {
-            jobs.forEach { job ->
-                if (!job.isCompleted) {
-                    job.cancelAndJoin()
-                }
-            }
-            results.close()
-        }
+        }.awaitAll()
+        CandidatePrecheckWindowResult(
+            completed = completed,
+            winner = completed
+                .filter { it.benchmark.testStatus == "ok" }
+                .minWithOrNull(
+                    compareBy<CandidatePrecheckResult<T>> { it.benchmark.score }
+                        .thenBy { it.attemptIndex },
+                ),
+        )
     }
 
     fun planActiveVerificationAttempts(

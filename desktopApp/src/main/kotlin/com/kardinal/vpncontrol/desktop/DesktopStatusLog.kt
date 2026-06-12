@@ -3,6 +3,8 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 
+private const val MAX_DESKTOP_CONNECTION_LOG_ITEMS = 200
+
 internal fun MainUiState.withStatus(message: String): MainUiState {
     val now = System.currentTimeMillis()
     return copy(
@@ -11,6 +13,6 @@ internal fun MainUiState.withStatus(message: String): MainUiState {
             id = "desktop-$now-${connectionLog.size}",
             message = message,
             createdAtEpochMillis = now,
-        )).takeLast(50),
+        )).takeLast(MAX_DESKTOP_CONNECTION_LOG_ITEMS),
     )
 }

@@ -263,7 +263,7 @@ class SubscriptionRefreshWorker(
                     total = attemptPlan.attempts.size,
                 ),
             )
-            val precheck = BenchmarkSearchLogic.validateCandidateWindowUntilFirstPass(
+            val precheck = BenchmarkSearchLogic.validateCandidateWindowForBestPass(
                 attempts = attemptPlan.attempts,
                 currentIndex = currentIndex,
                 windowSize = verificationWindowSize,
@@ -282,63 +282,73 @@ class SubscriptionRefreshWorker(
                 candidateBenchmarks[LocationConfigs.encodeStoredLocation(result.benchmark.profile)] = result.benchmark
                 recordLocationBenchmark(result.benchmark)
             }
-            val winner = precheck.winner
-            if (winner == null) {
+            val verifiedCandidates = precheck.verifiedCandidates
+            if (verifiedCandidates.isEmpty()) {
                 lastFailure = precheck.completed.lastOrNull()?.benchmark?.detail?.let(::IllegalStateException) ?: lastFailure
                 currentIndex += window.size.coerceAtLeast(1)
                 continue
             }
 
-            val attempt = winner.attempt
-            storage.updateStatus(
-                BenchmarkStatusMessages.tryingBestCandidate(
-                    attempt = winner.attemptIndex + 1,
-                    total = attemptPlan.attempts.size,
-                    remarks = attempt.selection.profile.remarks,
-                ),
-            )
-            val appMode = storage.snapshot().appMode
-            storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
-            onSwitchAttempted()
-            val startResult = vpnManager.start(attempt.selection)
-            if (startResult.isFailure) {
-                lastFailure = startResult.exceptionOrNull()
-                currentIndex += window.size.coerceAtLeast(1)
-                continue
-            }
+            for (winner in verifiedCandidates) {
+                val attempt = winner.attempt
+                storage.updateStatus(
+                    BenchmarkStatusMessages.tryingBestCandidate(
+                        attempt = winner.attemptIndex + 1,
+                        total = attemptPlan.attempts.size,
+                        remarks = attempt.selection.profile.remarks,
+                    ),
+                )
+                val appMode = storage.snapshot().appMode
+                storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
+                onSwitchAttempted()
+                val startResult = vpnManager.start(attempt.selection)
+                if (startResult.isFailure) {
+                    lastFailure = startResult.exceptionOrNull()
+                    recordLocationBenchmark(
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = attempt.preflight,
+                            reason = startResult.exceptionOrNull()?.message ?: "start_failed",
+                            secondaryStatus = "error",
+                        ),
+                    )
+                    continue
+                }
 
-            storage.updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
-            val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
-            val verificationBenchmark = orchestrator.verifyActiveSelection(attempt)
-                .getOrElse { error ->
-                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                        candidate = attempt.preflight,
-                        reason = error.message ?: "active_verification_failed",
-                        secondaryStatus = "error",
-                    )
+                storage.updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
+                val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
+                val verificationBenchmark = orchestrator.verifyActiveSelection(attempt)
+                    .getOrElse { error ->
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = attempt.preflight,
+                            reason = error.message ?: "active_verification_failed",
+                            secondaryStatus = "error",
+                        )
+                    }
+                candidateBenchmarks[attemptRawKey] = verificationBenchmark
+                recordLocationBenchmark(verificationBenchmark)
+                if (verificationBenchmark.testStatus == "ok") {
+                    val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
+                    val persistResult = runCatching {
+                        repository.persistSelection(
+                            verifiedSelection,
+                            verifiedSelection.sourceUrl.ifBlank { sourceUrl },
+                        )
+                    }
+                    if (persistResult.isFailure) {
+                        return kotlin.Result.failure(
+                            persistResult.exceptionOrNull()
+                                ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
+                        )
+                    }
+                    return kotlin.Result.success(verifiedSelection)
                 }
-            candidateBenchmarks[attemptRawKey] = verificationBenchmark
-            recordLocationBenchmark(verificationBenchmark)
-            if (verificationBenchmark.testStatus == "ok") {
-                val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
-                val persistResult = runCatching {
-                    repository.persistSelection(
-                        verifiedSelection,
-                        verifiedSelection.sourceUrl.ifBlank { sourceUrl },
-                    )
-                }
-                if (persistResult.isFailure) {
-                    return kotlin.Result.failure(
-                        persistResult.exceptionOrNull()
-                            ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
-                    )
-                }
-                return kotlin.Result.success(verifiedSelection)
-            }
 
-            lastFailure = IllegalStateException(verificationBenchmark.detail)
-            storage.updateStatus(BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks))
-            vpnManager.stop()
+                lastFailure = IllegalStateException(verificationBenchmark.detail)
+                storage.updateStatus(
+                    BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks),
+                )
+                vpnManager.stop()
+            }
             currentIndex += window.size.coerceAtLeast(1)
         }
         return kotlin.Result.failure(
@@ -353,6 +363,7 @@ class SubscriptionRefreshWorker(
         val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
         updatedDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
         storage.updateLocationBenchmarkDetails(updatedDetails)
+        storage.updateStatus(benchmark.detail)
     }
 
     private suspend fun recoverAfterReplacementFailure(

@@ -235,12 +235,12 @@ class AndroidFindBestActionsServiceTest {
     }
 
     @Test
-    fun verificationFailureStopsAndSwitchesToNextCandidate() = runBlocking {
+    fun verificationFailureStopsAndTriesNextVerifiedCandidateInSameWindow() = runBlocking {
         var state = MainUiState(
             appMode = AppMode.VPN,
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
             currentLocations = listOf("stored"),
-            validationSettings = BenchmarkValidationSettings(activeVerificationWindowSize = 1),
+            validationSettings = BenchmarkValidationSettings(activeVerificationWindowSize = 2),
         )
         val first = attempt("First")
         val second = attempt("Second")

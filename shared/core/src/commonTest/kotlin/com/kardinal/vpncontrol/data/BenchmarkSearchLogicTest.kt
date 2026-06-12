@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProxyProfile
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,6 +32,45 @@ class BenchmarkSearchLogicTest {
         assertEquals(
             listOf("first"),
             BenchmarkSearchLogic.activeVerificationWindow(attempts, currentIndex = 0, windowSize = 0),
+        )
+    }
+
+    @Test
+    fun validateCandidateWindowChoosesLowestScorePassingCandidate() = runTest {
+        val fasterTcpSlowerTest = preflight("Faster TCP", connectMillis = 10.0, country = "DE")
+        val slowerTcpFasterTest = preflight("Better Score", connectMillis = 30.0, country = "NL")
+        val blocked = preflight("Blocked", connectMillis = 5.0, country = "FR")
+
+        val result = BenchmarkSearchLogic.validateCandidateWindowForBestPass(
+            attempts = listOf(fasterTcpSlowerTest, slowerTcpFasterTest, blocked),
+            currentIndex = 0,
+            windowSize = 3,
+        ) { candidate, _ ->
+            when (candidate.profile.remarks) {
+                "Faster TCP" -> BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                    candidate = candidate,
+                    testResult = ProxyRunResult(codes = listOf("200"), totals = listOf(100.0)),
+                )
+                "Better Score" -> BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                    candidate = candidate,
+                    testResult = ProxyRunResult(codes = listOf("200"), totals = listOf(20.0)),
+                )
+                else -> BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                    candidate = candidate,
+                    reason = "blocked",
+                    secondaryStatus = "blocked",
+                )
+            }
+        }
+
+        assertEquals(
+            listOf("Faster TCP", "Better Score", "Blocked"),
+            result.completed.map { it.attempt.profile.remarks },
+        )
+        assertEquals("Better Score", result.winner?.attempt?.profile?.remarks)
+        assertEquals(
+            listOf("Better Score", "Faster TCP"),
+            result.verifiedCandidates.map { it.attempt.profile.remarks },
         )
     }
 

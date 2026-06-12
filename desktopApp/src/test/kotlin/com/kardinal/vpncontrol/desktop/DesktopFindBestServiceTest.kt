@@ -15,7 +15,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 
 class DesktopFindBestServiceTest {
@@ -175,7 +174,7 @@ class DesktopFindBestServiceTest {
     }
 
     @Test
-    fun secondCandidateCompletesSuccessfulPrecheckFirstAndStartsImmediately() = runTest {
+    fun lowerScoreCandidateInWindowStartsAfterFullPrecheck() = runTest {
         val first = testProfile("First")
         val second = testProfile("Second")
         val firstRaw = LocationConfigs.encodeStoredLocation(first)
@@ -191,9 +190,9 @@ class DesktopFindBestServiceTest {
         )
         val firstPreflight = preflight(first, connectMillis = 20.0, country = "DE")
         val secondPreflight = preflight(second, connectMillis = 40.0, country = "NL")
-        val firstStarted = CompletableDeferred<Unit>()
         val starts = mutableListOf<String>()
         val activeVerifications = mutableListOf<String>()
+        val prechecks = mutableListOf<String>()
         val service = DesktopFindBestService(
             stateProvider = { state },
             visibleLocationsProvider = { locations },
@@ -211,14 +210,13 @@ class DesktopFindBestServiceTest {
                 Result.success(okBenchmark(candidate, total = 60.0))
             },
             verifyCandidate = { candidate, _, _, _ ->
-                if (candidate.profile.remarks == "First") {
-                    firstStarted.complete(Unit)
-                    CompletableDeferred<Unit>().await()
-                    Result.success(okBenchmark(candidate, total = 80.0))
-                } else {
-                    firstStarted.await()
-                    Result.success(okBenchmark(candidate, total = 45.0))
-                }
+                prechecks += candidate.profile.remarks
+                Result.success(
+                    okBenchmark(
+                        candidate = candidate,
+                        total = if (candidate.profile.remarks == "First") 80.0 else 45.0,
+                    ),
+                )
             },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
@@ -240,15 +238,16 @@ class DesktopFindBestServiceTest {
 
         service.findBestLocation(refreshSubscriptionsFirst = false)
 
+        assertEquals(listOf("First", "Second"), prechecks)
         assertEquals(listOf("Second"), starts)
         assertEquals(listOf("Second"), activeVerifications)
         assertEquals("Second", locations.single { it.isSelected }.name)
-        assertEquals("First  tcp=20.0ms country=DE", locations.first().benchmarkDetail)
+        assertEquals("test ok • tcp 20.0ms", locations.first().benchmarkDetail)
         assertEquals("test ok • tcp 40.0ms", locations.last().benchmarkDetail)
     }
 
     @Test
-    fun activeVerificationFailureAfterPrecheckContinuesToNextUncheckedWindow() = runTest {
+    fun activeVerificationFailureAfterPrecheckTriesNextVerifiedCandidateInSameWindow() = runTest {
         val first = testProfile("First")
         val second = testProfile("Second")
         val third = testProfile("Third")
@@ -273,7 +272,6 @@ class DesktopFindBestServiceTest {
         val thirdPreflight = preflight(third, connectMillis = 40.0, country = "FR")
         val starts = mutableListOf<String>()
         val prechecks = mutableListOf<String>()
-        val secondStarted = CompletableDeferred<Unit>()
         var stopCalls = 0
         val service = DesktopFindBestService(
             stateProvider = { state },
@@ -299,13 +297,6 @@ class DesktopFindBestServiceTest {
             },
             verifyCandidate = { candidate, _, _, _ ->
                 prechecks += candidate.profile.remarks
-                when (candidate.profile.remarks) {
-                    "First" -> secondStarted.await()
-                    "Second" -> {
-                        secondStarted.complete(Unit)
-                        CompletableDeferred<Unit>().await()
-                    }
-                }
                 Result.success(okBenchmark(candidate, total = 50.0))
             },
             commitState = { nextLocations, nextState ->
@@ -329,11 +320,11 @@ class DesktopFindBestServiceTest {
 
         service.findBestLocation(refreshSubscriptionsFirst = false)
 
-        assertEquals(listOf("First", "Third"), starts)
-        assertEquals(listOf("First", "Second", "Third"), prechecks)
+        assertEquals(listOf("First", "Second"), starts)
+        assertEquals(listOf("First", "Second"), prechecks)
         assertEquals(1, stopCalls)
-        assertEquals("Third", locations.single { it.isSelected }.name)
-        assertFalse(locations.single { it.name == "Second" }.isSelected)
+        assertEquals("Second", locations.single { it.isSelected }.name)
+        assertFalse(locations.single { it.name == "Third" }.isSelected)
     }
 
     @Test

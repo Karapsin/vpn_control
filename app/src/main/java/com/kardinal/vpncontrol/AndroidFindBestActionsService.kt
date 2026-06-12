@@ -117,7 +117,7 @@ internal class AndroidFindBestActionsService(
                     total = plan.attempts.size,
                 ),
             )
-            val precheck = BenchmarkSearchLogic.validateCandidateWindowUntilFirstPass(
+            val precheck = BenchmarkSearchLogic.validateCandidateWindowForBestPass(
                 attempts = plan.attempts,
                 currentIndex = currentIndex,
                 windowSize = verificationWindowSize,
@@ -136,86 +136,89 @@ internal class AndroidFindBestActionsService(
                 candidateBenchmarks[LocationConfigs.encodeStoredLocation(result.benchmark.profile)] = result.benchmark
                 recordBenchmark(result.benchmark, benchmarkDetails)
             }
-            val winner = precheck.winner
-            if (winner == null) {
+            val verifiedCandidates = precheck.verifiedCandidates
+            if (verifiedCandidates.isEmpty()) {
                 lastFailureMessage = precheck.completed.lastOrNull()?.benchmark?.detail ?: lastFailureMessage
                 currentIndex += window.size.coerceAtLeast(1)
                 continue
             }
 
-            val attempt = winner.attempt
-            updateStatus(
-                BenchmarkStatusMessages.tryingBestCandidate(
-                    attempt = winner.attemptIndex + 1,
-                    total = plan.attempts.size,
-                    remarks = attempt.selection.profile.remarks,
-                ),
-            )
-            markStartAttempted()
-            val startResult = startSelection(
-                attempt.selection,
-                MainCommandLogic.bestSelectionStartMessage(stateProvider().appMode),
-            )
-            if (!startResult.isSuccess) {
-                if (startResult.shouldRestoreSnapshot) {
-                    restoreSnapshot(previousState)
-                }
-                lastFailureMessage = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
-                    result = startResult,
-                    texts = ConnectionOrchestrationLogic.refreshSelectionFailureTexts(stateProvider().appMode),
-                )
-                recordBenchmark(
-                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                        candidate = attempt.preflight,
-                        reason = lastFailureMessage,
-                        secondaryStatus = "error",
+            for (winner in verifiedCandidates) {
+                val attempt = winner.attempt
+                updateStatus(
+                    BenchmarkStatusMessages.tryingBestCandidate(
+                        attempt = winner.attemptIndex + 1,
+                        total = plan.attempts.size,
+                        remarks = attempt.selection.profile.remarks,
                     ),
-                    benchmarkDetails,
                 )
-                currentIndex += window.size.coerceAtLeast(1)
-                continue
-            }
+                markStartAttempted()
+                val startResult = startSelection(
+                    attempt.selection,
+                    MainCommandLogic.bestSelectionStartMessage(stateProvider().appMode),
+                )
+                if (!startResult.isSuccess) {
+                    if (startResult.shouldRestoreSnapshot) {
+                        restoreSnapshot(previousState)
+                    }
+                    lastFailureMessage = ConnectionOrchestrationLogic.selectionCommitFailureMessage(
+                        result = startResult,
+                        texts = ConnectionOrchestrationLogic.refreshSelectionFailureTexts(stateProvider().appMode),
+                    )
+                    recordBenchmark(
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = attempt.preflight,
+                            reason = lastFailureMessage,
+                            secondaryStatus = "error",
+                        ),
+                        benchmarkDetails,
+                    )
+                    continue
+                }
 
-            updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
-            val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
-            val verificationBenchmark = verifyActiveSelection(attempt)
-                .getOrElse { error ->
-                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                        candidate = attempt.preflight,
-                        reason = error.message ?: "active_verification_failed",
-                        secondaryStatus = "error",
+                updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
+                val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
+                val verificationBenchmark = verifyActiveSelection(attempt)
+                    .getOrElse { error ->
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = attempt.preflight,
+                            reason = error.message ?: "active_verification_failed",
+                            secondaryStatus = "error",
+                        )
+                    }
+                candidateBenchmarks[attemptRawKey] = verificationBenchmark
+                recordBenchmark(verificationBenchmark, benchmarkDetails)
+                if (verificationBenchmark.testStatus == "ok") {
+                    val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
+                    val persistResult = runCatching {
+                        persistSelection(verifiedSelection)
+                    }
+                    if (persistResult.isFailure) {
+                        return rollbackSelectionChange(
+                            previousState,
+                            persistResult.exceptionOrNull()?.message
+                                ?: ConnectionStatusMessages.bestLocationStartedSaveFailed(stateProvider().appMode),
+                        )
+                    }
+                    appendLatencyHistory(verificationBenchmark)
+                    return ConnectionOrchestrationLogic.refreshSelectionStartedMessage(
+                        appMode = stateProvider().appMode,
+                        remarks = verifiedSelection.profile.remarks,
                     )
                 }
-            candidateBenchmarks[attemptRawKey] = verificationBenchmark
-            recordBenchmark(verificationBenchmark, benchmarkDetails)
-            if (verificationBenchmark.testStatus == "ok") {
-                val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
-                val persistResult = runCatching {
-                    persistSelection(verifiedSelection)
-                }
-                if (persistResult.isFailure) {
-                    return rollbackSelectionChange(
-                        previousState,
-                        persistResult.exceptionOrNull()?.message
-                            ?: ConnectionStatusMessages.bestLocationStartedSaveFailed(stateProvider().appMode),
+
+                lastFailureMessage = verificationBenchmark.detail
+                updateStatus(BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks))
+                val stopResult = stopConnection()
+                if (stopResult.isFailure) {
+                    return ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
+                        prefix = BenchmarkStatusMessages.switchingAfterVerificationFailure(
+                            attempt.selection.profile.remarks,
+                        ),
+                        appMode = stateProvider().appMode,
+                        errorMessage = stopResult.exceptionOrNull()?.message,
                     )
                 }
-                appendLatencyHistory(verificationBenchmark)
-                return ConnectionOrchestrationLogic.refreshSelectionStartedMessage(
-                    appMode = stateProvider().appMode,
-                    remarks = verifiedSelection.profile.remarks,
-                )
-            }
-
-            lastFailureMessage = verificationBenchmark.detail
-            updateStatus(BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks))
-            val stopResult = stopConnection()
-            if (stopResult.isFailure) {
-                return ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
-                    prefix = BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks),
-                    appMode = stateProvider().appMode,
-                    errorMessage = stopResult.exceptionOrNull()?.message,
-                )
             }
             currentIndex += window.size.coerceAtLeast(1)
         }
@@ -260,6 +263,7 @@ internal class AndroidFindBestActionsService(
     ) {
         benchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
         updateLocationBenchmarkDetails(benchmarkDetails)
+        updateStatus(benchmark.detail)
     }
 
     private suspend fun appendLatencyHistory(benchmark: ProfileBenchmark) {
