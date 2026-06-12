@@ -34,15 +34,14 @@ class MainUiStateProjectorTest {
             findBestAfterSubscriptionRefresh = false,
             subscriptionRefreshCustomHours = 0.5,
             validationSettings = BenchmarkValidationSettings(
-                primaryUrl = "https://primary.example.com",
-                secondaryUrl = "https://secondary.example.com",
+                testUrl = "https://test.example.com",
                 batchSize = 4,
                 subscriptionRefreshConcurrency = 5,
                 retryCount = 2,
                 activeVerificationWindowSize = 6,
             ),
             currentLocations = listOf("vless://one"),
-            locationBenchmarkDetails = mapOf("vless://one" to "primary ok"),
+            locationBenchmarkDetails = mapOf("vless://one" to "test ok"),
             customDns = "9.9.9.9",
             useCustomDns = true,
             routingRules = RoutingRules(
@@ -76,14 +75,13 @@ class MainUiStateProjectorTest {
         assertEquals(SubscriptionRefreshPolicy.CUSTOM, projected.subscriptionRefreshPolicy)
         assertEquals(false, projected.findBestAfterSubscriptionRefresh)
         assertEquals("0.5", projected.subscriptionRefreshCustomHoursDraft)
-        assertEquals("https://primary.example.com", projected.validationPrimaryUrlDraft)
-        assertEquals("https://secondary.example.com", projected.validationSecondaryUrlDraft)
+        assertEquals("https://test.example.com", projected.validationTestUrlDraft)
         assertEquals("4", projected.validationBatchSizeDraft)
         assertEquals("5", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("2", projected.validationRetryCountDraft)
         assertEquals("6", projected.validationActiveVerificationWindowSizeDraft)
         assertEquals(listOf("vless://one"), projected.currentLocations)
-        assertEquals("primary ok", projected.locationBenchmarkDetails["vless://one"])
+        assertEquals("test ok", projected.locationBenchmarkDetails["vless://one"])
         assertEquals("9.9.9.9", projected.customDns)
         assertEquals("9.9.9.9", projected.customDnsDraft)
         assertEquals(true, projected.useCustomDns)
@@ -106,12 +104,12 @@ class MainUiStateProjectorTest {
     @Test
     fun mergePersistedStateCompactsRepeatedBestSourceSummaryForDisplay() {
         val persisted = PersistedState(
-            lastBenchmarkSummary = "primary=ok secondary=ok tcp=30.9ms • Best from: One • Best from: One",
+            lastBenchmarkSummary = "test=ok tcp=30.9ms • Best from: One • Best from: One",
         )
 
         val projected = MainUiStateProjector.mergePersistedState(MainUiState(), persisted)
 
-        assertEquals("primary=ok secondary=ok tcp=30.9ms • Best from: One", projected.lastBenchmarkSummary)
+        assertEquals("test=ok tcp=30.9ms • Best from: One", projected.lastBenchmarkSummary)
     }
 
     @Test
@@ -124,8 +122,7 @@ class MainUiStateProjectorTest {
             findBestAfterSubscriptionRefreshDraft = false,
             subscriptionRefreshCustomHoursDraft = "0.25",
             showValidationSettingsDialog = true,
-            validationPrimaryUrlDraft = "https://draft-primary.example.com",
-            validationSecondaryUrlDraft = "https://draft-secondary.example.com",
+            validationTestUrlDraft = "https://draft-test.example.com",
             validationBatchSizeDraft = "9",
             validationSubscriptionRefreshConcurrencyDraft = "6",
             validationRetryCountDraft = "3",
@@ -140,8 +137,7 @@ class MainUiStateProjectorTest {
             findBestAfterSubscriptionRefresh = true,
             subscriptionRefreshCustomHours = 2.0,
             validationSettings = BenchmarkValidationSettings(
-                primaryUrl = "https://persisted-primary.example.com",
-                secondaryUrl = "https://persisted-secondary.example.com",
+                testUrl = "https://persisted-test.example.com",
                 batchSize = 2,
                 subscriptionRefreshConcurrency = 4,
                 retryCount = 1,
@@ -158,8 +154,7 @@ class MainUiStateProjectorTest {
         assertEquals(SubscriptionRefreshPolicy.CUSTOM, projected.subscriptionRefreshPolicyDraft)
         assertEquals(false, projected.findBestAfterSubscriptionRefreshDraft)
         assertEquals("0.25", projected.subscriptionRefreshCustomHoursDraft)
-        assertEquals("https://draft-primary.example.com", projected.validationPrimaryUrlDraft)
-        assertEquals("https://draft-secondary.example.com", projected.validationSecondaryUrlDraft)
+        assertEquals("https://draft-test.example.com", projected.validationTestUrlDraft)
         assertEquals("9", projected.validationBatchSizeDraft)
         assertEquals("6", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("3", projected.validationRetryCountDraft)

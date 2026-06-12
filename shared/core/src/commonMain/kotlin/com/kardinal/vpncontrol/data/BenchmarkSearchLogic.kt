@@ -4,11 +4,14 @@ import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.ProxyProfile
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlin.math.round
 
 data class BenchmarkUrls(
-    val primary: String = "https://www.google.com/generate_204",
-    val secondary: String = "https://chatgpt.com/",
+    val test: String = "https://chatgpt.com/",
 )
 
 data class ProxyRunResult(
@@ -35,6 +38,17 @@ enum class PreflightExclusionReason {
 data class ValidationWalkResult(
     val benchmarks: List<ProfileBenchmark>,
     val winner: ProfileBenchmark?,
+)
+
+data class CandidatePrecheckResult<T>(
+    val attempt: T,
+    val attemptIndex: Int,
+    val benchmark: ProfileBenchmark,
+)
+
+data class CandidatePrecheckWindowResult<T>(
+    val completed: List<CandidatePrecheckResult<T>>,
+    val winner: CandidatePrecheckResult<T>?,
 )
 
 data class BestCandidateAttemptPlan(
@@ -72,6 +86,65 @@ object BenchmarkSearchLogic {
     ): List<T> {
         if (currentIndex !in attempts.indices) return emptyList()
         return attempts.drop(currentIndex).take(windowSize.coerceAtLeast(1))
+    }
+
+    suspend fun <T> validateCandidateWindowUntilFirstPass(
+        attempts: List<T>,
+        currentIndex: Int,
+        windowSize: Int,
+        validate: suspend (attempt: T, attemptIndex: Int) -> ProfileBenchmark,
+    ): CandidatePrecheckWindowResult<T> = coroutineScope {
+        val window = activeVerificationWindow(attempts, currentIndex, windowSize)
+        if (window.isEmpty()) {
+            return@coroutineScope CandidatePrecheckWindowResult(
+                completed = emptyList(),
+                winner = null,
+            )
+        }
+
+        val results = Channel<CandidatePrecheckResult<T>>(capacity = Channel.UNLIMITED)
+        val jobs = window.mapIndexed { offset, attempt ->
+            val attemptIndex = currentIndex + offset
+            async {
+                val benchmark = validate(attempt, attemptIndex)
+                results.send(
+                    CandidatePrecheckResult(
+                        attempt = attempt,
+                        attemptIndex = attemptIndex,
+                        benchmark = benchmark,
+                    ),
+                )
+            }
+        }
+        val completed = mutableListOf<CandidatePrecheckResult<T>>()
+        try {
+            repeat(window.size) {
+                val result = results.receive()
+                completed += result
+                if (result.benchmark.testStatus == "ok") {
+                    jobs.forEach { job ->
+                        if (!job.isCompleted) {
+                            job.cancel()
+                        }
+                    }
+                    return@coroutineScope CandidatePrecheckWindowResult(
+                        completed = completed,
+                        winner = result,
+                    )
+                }
+            }
+            CandidatePrecheckWindowResult(
+                completed = completed,
+                winner = null,
+            )
+        } finally {
+            jobs.forEach { job ->
+                if (!job.isCompleted) {
+                    job.cancelAndJoin()
+                }
+            }
+            results.close()
+        }
     }
 
     fun planActiveVerificationAttempts(
@@ -169,10 +242,10 @@ object BenchmarkSearchLogic {
         candidateBenchmarks.forEach { benchmark ->
             locationBenchmarkDetails[LocationConfigs.encodeStoredLocation(benchmark.profile)] = benchmark.detail
         }
-        val fallback = if (winner == null) bestSecondaryFallback(candidateBenchmarks) else null
+        val fallback = if (winner == null) bestTestFallback(candidateBenchmarks) else null
         val failureMessage = if (winner == null && fallback == null) {
             val bestAttempt = candidateBenchmarks.minByOrNull { it.score }?.detail
-            "No location fully reached the secondary site. Best attempt: ${bestAttempt ?: "no benchmark results"}"
+            "No location reached the test site. Best attempt: ${bestAttempt ?: "no benchmark results"}"
         } else {
             null
         }
@@ -187,24 +260,19 @@ object BenchmarkSearchLogic {
 
     fun buildValidatedBenchmark(
         candidate: PreflightResult,
-        primaryResult: ProxyRunResult,
-        secondaryResult: ProxyRunResult,
+        testResult: ProxyRunResult,
     ): ProfileBenchmark {
-        val primaryMedian = medianOrNull(primaryResult.totals)
-        val secondaryMedian = medianOrNull(secondaryResult.totals)
-        val primaryStatus = classifyCodes(primaryResult.codes, secondarySite = false)
-        val secondaryStatus = classifyCodes(secondaryResult.codes, secondarySite = true)
+        val testMedian = medianOrNull(testResult.totals)
+        val testStatus = classifyTestCodes(testResult.codes)
             .let { if (it == "bad") "error" else it }
-        val score = scorePenalty(primaryStatus, secondaryStatus) +
-            (primaryMedian ?: 999_999.0) +
-            (secondaryMedian ?: 999_999.0)
+        val score = activeVerificationScore(candidate.connectMillis, testMedian, testStatus)
 
         return ProfileBenchmark(
             profile = candidate.profile,
-            primaryStatus = primaryStatus,
-            secondaryStatus = secondaryStatus,
-            primaryTotal = primaryMedian,
-            secondaryTotal = secondaryMedian,
+            primaryStatus = "manual",
+            secondaryStatus = testStatus,
+            primaryTotal = null,
+            secondaryTotal = testMedian,
             score = score,
             detail = buildString {
                 append(candidate.profile.remarks)
@@ -212,14 +280,10 @@ object BenchmarkSearchLogic {
                 append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
                 append(" country=")
                 append(countryLabel(candidate.candidateCountryCode))
-                append(" primary=")
-                append(primaryStatus)
-                append(" primary_codes=")
-                append(primaryResult.codes.joinToString(","))
-                append(" secondary=")
-                append(secondaryStatus)
-                append(" secondary_codes=")
-                append(secondaryResult.codes.joinToString(","))
+                append(" test=")
+                append(testStatus)
+                append(" test_codes=")
+                append(testResult.codes.joinToString(","))
                 append(" score=")
                 append(score)
             },
@@ -228,19 +292,19 @@ object BenchmarkSearchLogic {
 
     fun buildActiveVerificationBenchmark(
         candidate: PreflightResult,
-        secondaryResult: ProxyRunResult,
+        testResult: ProxyRunResult,
     ): ProfileBenchmark {
-        val secondaryMedian = medianOrNull(secondaryResult.totals)
-        val secondaryStatus = classifyCodes(secondaryResult.codes, secondarySite = true)
+        val testMedian = medianOrNull(testResult.totals)
+        val testStatus = classifyTestCodes(testResult.codes)
             .let { if (it == "bad") "error" else it }
-        val score = activeVerificationScore(candidate.connectMillis, secondaryMedian, secondaryStatus)
+        val score = activeVerificationScore(candidate.connectMillis, testMedian, testStatus)
 
         return ProfileBenchmark(
             profile = candidate.profile,
             primaryStatus = "manual",
-            secondaryStatus = secondaryStatus,
+            secondaryStatus = testStatus,
             primaryTotal = null,
-            secondaryTotal = secondaryMedian,
+            secondaryTotal = testMedian,
             score = score,
             detail = buildString {
                 append(candidate.profile.remarks)
@@ -248,10 +312,10 @@ object BenchmarkSearchLogic {
                 append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
                 append(" country=")
                 append(countryLabel(candidate.candidateCountryCode))
-                append(" primary=manual secondary=")
-                append(secondaryStatus)
-                append(" secondary_codes=")
-                append(secondaryResult.codes.joinToString(","))
+                append(" test=")
+                append(testStatus)
+                append(" test_codes=")
+                append(testResult.codes.joinToString(","))
                 append(" score=")
                 append(score)
             },
@@ -276,7 +340,7 @@ object BenchmarkSearchLogic {
                 append(candidate.connectMillis?.let(::formatMillis) ?: "unreachable")
                 append(" country=")
                 append(countryLabel(candidate.candidateCountryCode))
-                append(" primary=manual secondary=")
+                append(" test=")
                 append(secondaryStatus)
                 append(' ')
                 append(reason)
@@ -333,35 +397,26 @@ object BenchmarkSearchLogic {
 
     fun countryLabel(countryCode: String?): String = normalizeCountryCode(countryCode) ?: "unknown"
 
-    private fun classifyCodes(codes: List<String>, secondarySite: Boolean): String {
+    private fun classifyTestCodes(codes: List<String>): String {
         val numericCodes = codes.mapNotNull { it.toIntOrNull() }
-        val has2xx = numericCodes.any { it in 200..299 }
+        val has2xxOr3xx = numericCodes.any { it in 200..399 }
         val has403 = codes.any { it == "403" }
         val has451 = codes.any { it == "451" }
         return when {
-            has2xx && secondarySite && (has403 || has451) -> "partial"
-            has2xx -> "ok"
-            secondarySite && has451 -> "blocked"
-            secondarySite && has403 -> "challenge"
+            has2xxOr3xx && (has403 || has451) -> "partial"
+            has2xxOr3xx -> "ok"
+            has451 -> "blocked"
+            has403 -> "challenge"
             else -> "bad"
         }
     }
 
-    private fun scorePenalty(primaryStatus: String, secondaryStatus: String): Double {
-        return when (primaryStatus to secondaryStatus) {
-            "ok" to "ok" -> 0.0
-            "ok" to "partial" -> 100.0
-            "ok" to "challenge" -> 150.0
-            else -> 1_000_000.0
-        }
-    }
-
-    private fun bestSecondaryFallback(benchmarks: List<ProfileBenchmark>): ProfileBenchmark? {
-        val acceptableSecondaryStatuses = listOf("partial", "challenge")
-        for (secondaryStatus in acceptableSecondaryStatuses) {
+    private fun bestTestFallback(benchmarks: List<ProfileBenchmark>): ProfileBenchmark? {
+        val acceptableTestStatuses = listOf("partial", "challenge")
+        for (testStatus in acceptableTestStatuses) {
             val best = benchmarks
                 .asSequence()
-                .filter { it.primaryStatus == "ok" && it.secondaryStatus == secondaryStatus }
+                .filter { it.testStatus == testStatus }
                 .minByOrNull { it.score }
             if (best != null) {
                 return best

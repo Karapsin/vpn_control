@@ -22,8 +22,7 @@ class DesktopLocationBenchmarkServiceTest {
             useCustomDns = true,
             customDns = "1.1.1.1",
             validationSettings = BenchmarkValidationSettings(
-                primaryUrl = "https://primary.example/path",
-                secondaryUrl = "https://secondary.example/",
+                testUrl = "https://test.example/path",
                 batchSize = 9,
             ),
         )
@@ -44,12 +43,12 @@ class DesktopLocationBenchmarkServiceTest {
                 Result.success(
                     ProfileBenchmark(
                         profile = checkedProfile,
-                        primaryStatus = "ok",
+                        primaryStatus = "manual",
                         secondaryStatus = "timeout",
-                        primaryTotal = 40.0,
+                        primaryTotal = null,
                         secondaryTotal = null,
                         score = 40.0,
-                        detail = "Germany: tcp=40.0ms primary=ok secondary=timeout",
+                        detail = "Germany: tcp=40.0ms test=timeout",
                     ),
                 )
             },
@@ -63,12 +62,11 @@ class DesktopLocationBenchmarkServiceTest {
         service.benchmark(7)
 
         assertFalse(state.isBusy)
-        assertEquals(BenchmarkStatusMessages.benchmarkedLocation("Germany", "ok", "timeout"), state.statusMessage)
-        assertEquals("primary ok • secondary timeout • tcp 40.0ms", locations.single().benchmarkDetail)
-        assertTrue(locations.single().isValid)
+        assertEquals(BenchmarkStatusMessages.benchmarkedLocation("Germany", "timeout"), state.statusMessage)
+        assertEquals("test timeout • tcp 40.0ms", locations.single().benchmarkDetail)
+        assertFalse(locations.single().isValid)
         assertEquals(DesktopDnsSettings(enabled = true, value = "1.1.1.1"), capturedDns)
-        assertEquals("https://primary.example/path", capturedUrls?.primary)
-        assertEquals("https://secondary.example/", capturedUrls?.secondary)
+        assertEquals("https://test.example/path", capturedUrls?.test)
         assertEquals(9, capturedSettings?.batchSize)
         assertEquals(5, capturedSettings?.preflightConcurrency)
     }

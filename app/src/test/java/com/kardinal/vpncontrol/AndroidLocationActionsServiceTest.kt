@@ -185,7 +185,7 @@ class AndroidLocationActionsServiceTest {
                 primaryTotal = 50.0,
                 secondaryTotal = 60.0,
                 score = 50.0,
-                detail = "primary=ok secondary=ok tcp=50ms",
+                detail = "test=ok test_codes=200 tcp=50ms",
             ),
             runtimeConfigJson = "{}",
         )

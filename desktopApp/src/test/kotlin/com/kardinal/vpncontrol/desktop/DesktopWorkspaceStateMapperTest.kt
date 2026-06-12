@@ -42,7 +42,7 @@ class DesktopWorkspaceStateMapperTest {
             sourceUrl = subscription.url,
             rawLink = "socks://user:pass@127.0.0.1:1080#Selected",
             name = "Selected",
-            benchmarkDetail = "primary ok",
+            benchmarkDetail = "test ok",
             isSelected = true,
         )
         val restored = restoreDesktopUiState(
@@ -76,7 +76,7 @@ class DesktopWorkspaceStateMapperTest {
         assertEquals(listOf(location.rawLink), restored.currentLocations)
         assertEquals(location.rawLink, restored.selectedProfileRawLink)
         assertEquals("Selected", restored.selectedProfileName)
-        assertEquals("primary ok", restored.locationBenchmarkDetails[location.rawLink])
+        assertEquals("test ok", restored.locationBenchmarkDetails[location.rawLink])
     }
 
     @Test
@@ -126,6 +126,8 @@ class DesktopWorkspaceStateMapperTest {
     fun benchmarkDetailSelectableRulesCoverCompactAndRawDetails() {
         assertTrue(benchmarkDetailIndicatesSelectable("Example: tcp=80.0ms", previousIsValid = false))
         assertFalse(benchmarkDetailIndicatesSelectable("Example: tcp=unreachable", previousIsValid = true))
+        assertTrue(benchmarkDetailIndicatesSelectable("Example: tcp=39.4ms test=ok test_codes=200", previousIsValid = false))
+        assertFalse(benchmarkDetailIndicatesSelectable("test blocked • tcp 39.4ms", previousIsValid = true))
         assertTrue(
             benchmarkDetailIndicatesSelectable(
                 "Example: tcp=39.4ms primary=ok primary_codes=204 secondary=ok secondary_codes=200",

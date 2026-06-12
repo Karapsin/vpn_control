@@ -41,8 +41,7 @@ internal class DesktopLocationBenchmarkService(
                 value = state.customDns,
             ),
             BenchmarkUrls(
-                primary = validationSettings.primaryUrl,
-                secondary = validationSettings.secondaryUrl,
+                test = validationSettings.testUrl,
             ),
             validationSettings.toDesktopValidationSettings(),
         )
@@ -53,7 +52,7 @@ internal class DesktopLocationBenchmarkService(
                 if (existing.index == index) {
                     existing.copy(
                         benchmarkDetail = result.detail.toCompactBenchmarkLabel(),
-                        isValid = result.primaryStatus == "ok",
+                        isValid = result.testStatus == "ok",
                     )
                 } else {
                     existing
@@ -61,7 +60,7 @@ internal class DesktopLocationBenchmarkService(
             }
             commitState(
                 stateProvider().copy(isBusy = false).withStatus(
-                    BenchmarkStatusMessages.benchmarkedLocation(location.name, result.primaryStatus, result.secondaryStatus),
+                    BenchmarkStatusMessages.benchmarkedLocation(location.name, result.testStatus),
                 ),
                 updatedLocations,
             )

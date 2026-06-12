@@ -91,8 +91,8 @@ object BenchmarkStatusMessages {
     fun bestLocationSummary(remarks: String, detail: String): String =
         StatusMessageCodec.encode(StatusMessageKey.BEST_LOCATION_SUMMARY, remarks, detail)
 
-    fun benchmarkedLocation(locationName: String, primaryStatus: String, secondaryStatus: String): String =
-        StatusMessageCodec.encode(StatusMessageKey.BENCHMARKED_LOCATION, locationName, primaryStatus, secondaryStatus)
+    fun benchmarkedLocation(locationName: String, testStatus: String): String =
+        StatusMessageCodec.encode(StatusMessageKey.BENCHMARKED_LOCATION, locationName, testStatus)
 
     fun benchmarkLocationFailed(locationName: String): String =
         StatusMessageCodec.encode(StatusMessageKey.BENCHMARK_LOCATION_FAILED, locationName)

@@ -183,8 +183,7 @@ class MainActivity : ComponentActivity() {
                 onSubscriptionRefreshCustomHoursChange = viewModel::onSubscriptionRefreshCustomHoursDraftChanged,
                 onSaveSubscriptionRefreshPolicy = viewModel::saveSubscriptionRefreshPolicy,
                 onToggleValidationSettingsDialog = viewModel::toggleValidationSettingsDialog,
-                onValidationPrimaryUrlChange = viewModel::onValidationPrimaryUrlDraftChanged,
-                onValidationSecondaryUrlChange = viewModel::onValidationSecondaryUrlDraftChanged,
+                onValidationTestUrlChange = viewModel::onValidationTestUrlDraftChanged,
                 onValidationBatchSizeChange = viewModel::onValidationBatchSizeDraftChanged,
                 onValidationSubscriptionRefreshConcurrencyChange =
                     viewModel::onValidationSubscriptionRefreshConcurrencyDraftChanged,

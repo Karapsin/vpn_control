@@ -74,8 +74,7 @@ class BenchmarkOrchestrator(
                     val state = storage.snapshot()
                     val validationSettings = state.validationSettings.normalized()
                     val benchmarkUrls = BenchmarkUrls(
-                        primary = validationSettings.primaryUrl,
-                        secondary = validationSettings.secondaryUrl,
+                        test = validationSettings.testUrl,
                     )
                     val dnsSettings = DnsSettings(
                         enabled = state.useCustomDns,
@@ -200,7 +199,7 @@ class BenchmarkOrchestrator(
         val validationSettings = state.validationSettings.normalized()
         activeConnectionVerifier.verify(
             attempt = attempt,
-            url = validationSettings.secondaryUrl,
+            url = validationSettings.testUrl,
             settings = settings,
         )
     }
@@ -213,8 +212,7 @@ class BenchmarkOrchestrator(
             val state = storage.snapshot()
             val validationSettings = state.validationSettings.normalized()
             val benchmarkUrls = BenchmarkUrls(
-                primary = validationSettings.primaryUrl,
-                secondary = validationSettings.secondaryUrl,
+                test = validationSettings.testUrl,
             )
             val dnsSettings = DnsSettings(
                 enabled = state.useCustomDns,
@@ -268,8 +266,7 @@ class BenchmarkOrchestrator(
                 val state = storage.snapshot()
                 val validationSettings = state.validationSettings.normalized()
                 val benchmarkUrls = BenchmarkUrls(
-                    primary = validationSettings.primaryUrl,
-                    secondary = validationSettings.secondaryUrl,
+                    test = validationSettings.testUrl,
                 )
                 val profile = LocationConfigs.decodeStoredLocation(rawLink)
                 val normalizedRawLink = LocationConfigs.encodeStoredLocation(profile)

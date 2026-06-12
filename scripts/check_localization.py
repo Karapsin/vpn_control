@@ -176,7 +176,7 @@ def status_items(catalog: dict[str, Any]) -> list[tuple[str, str, str]]:
                 items.append((f"dynamic.{key}", value, value))
     benchmark = catalog.get("benchmark", {})
     if isinstance(benchmark, dict):
-        for key in ("best", "primary", "secondary", "tcp", "millisUnit"):
+        for key in ("best", "test", "primary", "secondary", "tcp", "millisUnit"):
             value = benchmark.get(key)
             if isinstance(value, str):
                 items.append((f"benchmark.{key}", value, value))
@@ -233,7 +233,7 @@ def validate_status_catalog(
     benchmark = catalog.get("benchmark", {})
     english_benchmark = english.get("benchmark", {})
     if isinstance(benchmark, dict) and isinstance(english_benchmark, dict):
-        for key in ("best", "primary", "secondary", "tcp", "millisUnit"):
+        for key in ("best", "test", "primary", "secondary", "tcp", "millisUnit"):
             if not isinstance(benchmark.get(key), str):
                 errors.append(f"{path.relative_to(ROOT)} benchmark.{key} must be a string")
         statuses = benchmark.get("statuses")

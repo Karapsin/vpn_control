@@ -16,8 +16,7 @@ class StatusMessageRendererInstrumentedTest {
     fun structuredStatusRendererRendersPlaceholdersOnAndroid() {
         val message = SettingsStatusMessages.validationSettingsSaved(
             BenchmarkValidationSettings(
-                primaryUrl = "https://primary.example/check",
-                secondaryUrl = "https://secondary.example/path",
+                testUrl = "https://test.example/path",
                 batchSize = 4,
                 subscriptionRefreshConcurrency = 2,
                 retryCount = 3,
@@ -27,8 +26,7 @@ class StatusMessageRendererInstrumentedTest {
 
         val rendered = AppStrings(AppLanguage.ENGLISH).statusMessage(message)
 
-        assertTrue(rendered.startsWith("Validation settings saved: primary.example"))
-        assertTrue(rendered.contains("secondary.example"))
+        assertTrue(rendered.startsWith("Validation settings saved: test.example"))
         assertTrue(rendered.contains("batch 4"))
         assertTrue(rendered.contains("refresh 2"))
         assertTrue(rendered.contains("retries 3"))

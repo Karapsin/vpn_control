@@ -366,8 +366,7 @@ class DesktopAppServiceTest {
             assertEquals("1.1.1.1", service.state.customDns)
 
             service.toggleValidationSettingsDialog()
-            service.setValidationPrimaryUrlDraft("google.com/generate_204")
-            service.setValidationSecondaryUrlDraft("https://chatgpt.com/")
+            service.setValidationTestUrlDraft("chatgpt.com/")
             service.setValidationBatchSizeDraft("4")
             service.setValidationSubscriptionRefreshConcurrencyDraft("5")
             service.setValidationRetryCountDraft("2")
@@ -375,8 +374,7 @@ class DesktopAppServiceTest {
             service.saveValidationSettings()
 
             assertFalse(service.state.showValidationSettingsDialog)
-            assertEquals("https://google.com/generate_204", service.state.validationSettings.primaryUrl)
-            assertEquals("https://chatgpt.com/", service.state.validationSettings.secondaryUrl)
+            assertEquals("https://chatgpt.com/", service.state.validationSettings.testUrl)
             assertEquals(4, service.state.validationSettings.batchSize)
             assertEquals(5, service.state.validationSettings.subscriptionRefreshConcurrency)
             assertEquals(2, service.state.validationSettings.retryCount)
@@ -390,7 +388,7 @@ class DesktopAppServiceTest {
             ).persistedState
             assertTrue(reloaded.useCustomDns)
             assertEquals("1.1.1.1", reloaded.customDns)
-            assertEquals("https://google.com/generate_204", reloaded.validationSettings.primaryUrl)
+            assertEquals("https://chatgpt.com/", reloaded.validationSettings.testUrl)
             assertEquals(4, reloaded.validationSettings.batchSize)
             assertEquals(5, reloaded.validationSettings.subscriptionRefreshConcurrency)
             assertEquals(6, reloaded.validationSettings.activeVerificationWindowSize)
@@ -754,6 +752,18 @@ class DesktopAppServiceTest {
         assertFalse(
             benchmarkDetailIndicatesSelectable(
                 detail = "Example: tcp=unreachable",
+                previousIsValid = true,
+            ),
+        )
+        assertTrue(
+            benchmarkDetailIndicatesSelectable(
+                detail = "Example: tcp=39.4ms test=ok test_codes=200",
+                previousIsValid = false,
+            ),
+        )
+        assertFalse(
+            benchmarkDetailIndicatesSelectable(
+                detail = "test blocked • tcp 39.4ms",
                 previousIsValid = true,
             ),
         )

@@ -31,8 +31,7 @@ data class ValidationRuntimeSettings(
     val prefilterConcurrency: Int = 8,
     val prefilterConnectTimeoutMillis: Int = 1_500,
     val prefilterTimeoutMillis: Long = 2_000L,
-    val primaryRuns: Int = 1,
-    val secondaryRuns: Int = 1,
+    val testRuns: Int = 1,
     val connectTimeoutSeconds: Int = 5,
     val maxTimeSeconds: Int = 5,
     val portWaitMillis: Long = 2_000L,
@@ -131,9 +130,8 @@ class ProxyValidationRuntime(
                     return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(profile, candidate, "proxy_not_ready")
                 }
 
-                val primaryResult = runProxyRuns(httpPort, benchmarkUrls.primary, settings.primaryRuns, settings)
-                val secondaryResult = runProxyRuns(httpPort, benchmarkUrls.secondary, settings.secondaryRuns, settings)
-                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, primaryResult, secondaryResult)
+                val testResult = runProxyRuns(httpPort, benchmarkUrls.test, settings.testRuns, settings)
+                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, testResult)
             }
 
             benchmark ?: BenchmarkSearchLogic.failedBenchmark(profile, candidate, "validation_timeout")

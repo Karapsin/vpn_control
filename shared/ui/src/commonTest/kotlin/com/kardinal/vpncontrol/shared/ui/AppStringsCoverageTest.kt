@@ -492,8 +492,7 @@ class AppStringsCoverageTest {
             SettingsStatusMessages.subscriptionAutoRefreshSet(SubscriptionRefreshPolicy.CUSTOM, 0.5),
             SettingsStatusMessages.validationSettingsSaved(
                 BenchmarkValidationSettings(
-                    primaryUrl = "https://www.google.com/generate_204",
-                    secondaryUrl = "https://chatgpt.com/",
+                    testUrl = "https://chatgpt.com/",
                     batchSize = 4,
                     retryCount = 2,
                 ),
@@ -555,7 +554,7 @@ class AppStringsCoverageTest {
             BenchmarkStatusMessages.testingLocationsRange(start = 1, end = 3, total = 12),
             BenchmarkStatusMessages.findBestTestingFastest(ProfileSourceMode.SUBSCRIPTION),
             BenchmarkStatusMessages.findBestTestingFastest(ProfileSourceMode.CURRENT_LOCATIONS),
-            BenchmarkStatusMessages.bestLocationSummary("Germany", "primary ok"),
+            BenchmarkStatusMessages.bestLocationSummary("Germany", "test ok"),
             SubscriptionStatusMessages.activatedAllSubscriptions(),
             SubscriptionStatusMessages.activatedSubscription("Example"),
             SubscriptionStatusMessages.profileSourceMode(ProfileSourceMode.SUBSCRIPTION),
@@ -693,7 +692,7 @@ class AppStringsCoverageTest {
             SubscriptionStatusMessages.invalidSubscriptionUrl(),
             SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(AppMode.VPN),
             SubscriptionStatusMessages.subscriptionDeleteRemovedSelectedStopped(AppMode.PROXY_ONLY),
-            BenchmarkStatusMessages.benchmarkedLocation("Germany", "primary ok", "secondary ok"),
+            BenchmarkStatusMessages.benchmarkedLocation("Germany", "ok"),
             BenchmarkStatusMessages.benchmarkLocationFailed("Germany"),
             DiagnosticsStatusMessages.appsLoadFailed(),
             SubscriptionStatusMessages.backgroundRefreshSwitched(
@@ -951,9 +950,9 @@ class AppStringsCoverageTest {
         val benchmarkMessages = listOf(
             "Checking 45 locations...",
             "Testing locations 4-6 of 45...",
-            "Finding the best location from the subscription... Testing fastest candidates in batches...",
-            "Finding the best location from saved locations... Testing fastest candidates in batches...",
-            "Best: 🇺🇸США • primary ok • secondary timeout • tcp 50.0ms",
+            "Finding the best location from the subscription... Testing fastest candidates in windows...",
+            "Finding the best location from saved locations... Testing fastest candidates in windows...",
+            "Best: 🇺🇸США • test timeout • tcp 50.0ms",
         )
         assertMessagesAreLocalized(benchmarkMessages)
 
@@ -967,7 +966,7 @@ class AppStringsCoverageTest {
             "Finding the best",
             "Testing fastest",
             "candidates",
-            "batches",
+            "windows",
         )
 
         val leftovers = nonEnglishLanguages.flatMap { language ->
@@ -1000,7 +999,7 @@ class AppStringsCoverageTest {
                 UiText.VALIDATION_DESCRIPTION_SELECTED,
                 UiText.VALIDATION_DESCRIPTION_DESKTOP,
                 UiText.BATCH_SIZE,
-                UiText.SECONDARY_TEST_SITE,
+                UiText.TEST_SITE,
                 UiText.DESKTOP_SUBSCRIPTION_URL_HELP,
                 UiText.DESKTOP_SHELL,
                 UiText.DESKTOP_SHELL_DESCRIPTION,
@@ -1017,7 +1016,7 @@ class AppStringsCoverageTest {
                 russian.statusMessage("Runtime log: /tmp/sing-box.log") + "\n" +
                 russian.statusMessage("VPN mode preflight passed") + "\n" +
                 russian.statusMessage("Desktop VPN capability: ready") + "\n" +
-                russian.statusMessage("Best: 🇩🇪 Германия • primary ok • secondary ok • tcp 50.0ms"),
+                russian.statusMessage("Best: 🇩🇪 Германия • test ok • tcp 50.0ms"),
             fragments = listOf(
                 "Find best",
                 "desktop",

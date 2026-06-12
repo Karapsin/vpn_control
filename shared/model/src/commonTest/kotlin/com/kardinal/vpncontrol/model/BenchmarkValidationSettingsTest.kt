@@ -5,6 +5,18 @@ import kotlin.test.assertEquals
 
 class BenchmarkValidationSettingsTest {
     @Test
+    fun testUrlDefaultsToChatGptAndNormalizesHostInput() {
+        assertEquals(
+            "https://chatgpt.com/",
+            BenchmarkValidationSettings().normalized().testUrl,
+        )
+        assertEquals(
+            "https://example.com/path",
+            BenchmarkValidationSettings(testUrl = "example.com/path").normalized().testUrl,
+        )
+    }
+
+    @Test
     fun subscriptionRefreshConcurrencyIsClamped() {
         assertEquals(
             BenchmarkValidationSettings.MIN_SUBSCRIPTION_REFRESH_CONCURRENCY,

@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 
 class DesktopFindBestServiceTest {
@@ -28,12 +29,14 @@ class DesktopFindBestServiceTest {
         )
         var locations = listOf(testLocation(profile, rawLink))
         var startedLocation: DesktopLocationRecord? = null
+        val events = mutableListOf<String>()
         val service = DesktopFindBestService(
             stateProvider = { state },
             visibleLocationsProvider = { locations },
             locationsProvider = { locations },
             refreshSubscriptions = { _, _ -> error("refresh should not run") },
             startConnection = { location, summary, activeVerificationPort ->
+                events += "start ${location.name}"
                 startedLocation = location
                 assertEquals(null, summary)
                 assertEquals(28081, activeVerificationPort)
@@ -43,16 +46,15 @@ class DesktopFindBestServiceTest {
             currentRuntimePort = { 28080 },
             activeVerificationPortAllocator = { 28081 },
             verifyActiveConnection = { candidate, appMode, proxyPort, _, _ ->
+                events += "active ${candidate.profile.remarks}"
                 assertEquals(AppMode.VPN, appMode)
                 assertEquals(28081, proxyPort)
-                Result.success(
-                    BenchmarkSearchLogic.buildActiveVerificationBenchmark(
-                        candidate = candidate,
-                        secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(60.0)),
-                    ),
-                )
+                Result.success(okBenchmark(candidate, total = 60.0))
             },
-            verifyCandidate = { _, _, _, _ -> error("fallback verification should not run") },
+            verifyCandidate = { candidate, _, _, _ ->
+                events += "precheck ${candidate.profile.remarks}"
+                Result.success(okBenchmark(candidate, total = 55.0))
+            },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
                 state = nextState
@@ -84,16 +86,17 @@ class DesktopFindBestServiceTest {
             "status=${state.statusMessage}; keys=${locations.map { it.normalizedStorageKey() }}; raw=$rawLink",
         )
         assertEquals(
-            BenchmarkStatusMessages.bestLocationSummary("Germany", "primary manual • secondary ok • tcp 50.0ms"),
+            BenchmarkStatusMessages.bestLocationSummary("Germany", "test ok • tcp 50.0ms"),
             state.lastBenchmarkSummary,
         )
+        assertEquals(listOf("precheck Germany", "start Germany", "active Germany"), events)
         assertTrue(locations.single().isSelected)
-        assertEquals("primary manual • secondary ok • tcp 50.0ms", locations.single().benchmarkDetail)
+        assertEquals("test ok • tcp 50.0ms", locations.single().benchmarkDetail)
         assertFalse(state.isRefreshing)
     }
 
     @Test
-    fun activeVerificationFailureSwitchesToNextCandidate() = runTest {
+    fun firstCandidateInWindowFailsPrecheckSecondStarts() = runTest {
         val first = testProfile("First")
         val second = testProfile("Second")
         val firstRaw = LocationConfigs.encodeStoredLocation(first)
@@ -108,9 +111,7 @@ class DesktopFindBestServiceTest {
             testLocation(second, secondRaw, index = 1),
         )
         val starts = mutableListOf<String>()
-        val activeVerifications = mutableListOf<String>()
-        val fallbackVerifications = mutableListOf<String>()
-        var stopCalls = 0
+        val prechecks = mutableListOf<String>()
         val firstPreflight = PreflightResult(
             profile = first,
             connectMillis = 20.0,
@@ -132,34 +133,19 @@ class DesktopFindBestServiceTest {
                 starts += location.name
                 Result.success(Unit)
             },
-            stopConnection = {
-                stopCalls += 1
-                Result.success(Unit)
-            },
+            stopConnection = { Result.success(Unit) },
             currentRuntimePort = { 28080 },
             activeVerificationPortAllocator = { 28081 },
             verifyActiveConnection = { candidate, _, _, _, _ ->
-                activeVerifications += candidate.profile.remarks
-                if (candidate.profile.remarks == "First") {
-                    Result.success(
-                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                            candidate = candidate,
-                            reason = "active_verification_failed",
-                            secondaryStatus = "blocked",
-                        ),
-                    )
-                } else {
-                    error("cached fallback verification should be reused")
-                }
+                Result.success(okBenchmark(candidate, total = 60.0))
             },
             verifyCandidate = { candidate, _, _, _ ->
-                fallbackVerifications += candidate.profile.remarks
-                Result.success(
-                    BenchmarkSearchLogic.buildActiveVerificationBenchmark(
-                        candidate = candidate,
-                        secondaryResult = ProxyRunResult(codes = listOf("200"), totals = listOf(55.0)),
-                    ),
-                )
+                prechecks += candidate.profile.remarks
+                if (candidate.profile.remarks == "First") {
+                    Result.success(blockedBenchmark(candidate))
+                } else {
+                    Result.success(okBenchmark(candidate, total = 55.0))
+                }
             },
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
@@ -181,13 +167,173 @@ class DesktopFindBestServiceTest {
 
         service.findBestLocation(refreshSubscriptionsFirst = false)
 
-        assertEquals(listOf("First", "Second"), starts)
-        assertEquals(listOf("First"), activeVerifications)
-        assertEquals(listOf("Second"), fallbackVerifications)
-        assertEquals(1, stopCalls)
+        assertEquals(listOf("First", "Second"), prechecks)
+        assertEquals(listOf("Second"), starts)
         assertEquals("Second", locations.single { it.isSelected }.name)
-        assertEquals("primary manual • secondary blocked • tcp 20.0ms", locations.first().benchmarkDetail)
-        assertEquals("primary manual • secondary ok • tcp 40.0ms", locations.last().benchmarkDetail)
+        assertEquals("test blocked • tcp 20.0ms", locations.first().benchmarkDetail)
+        assertEquals("test ok • tcp 40.0ms", locations.last().benchmarkDetail)
+    }
+
+    @Test
+    fun secondCandidateCompletesSuccessfulPrecheckFirstAndStartsImmediately() = runTest {
+        val first = testProfile("First")
+        val second = testProfile("Second")
+        val firstRaw = LocationConfigs.encodeStoredLocation(first)
+        val secondRaw = LocationConfigs.encodeStoredLocation(second)
+        var state = MainUiState(
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf(firstRaw, secondRaw),
+            appMode = AppMode.PROXY_ONLY,
+        )
+        var locations = listOf(
+            testLocation(first, firstRaw, index = 0),
+            testLocation(second, secondRaw, index = 1),
+        )
+        val firstPreflight = preflight(first, connectMillis = 20.0, country = "DE")
+        val secondPreflight = preflight(second, connectMillis = 40.0, country = "NL")
+        val firstStarted = CompletableDeferred<Unit>()
+        val starts = mutableListOf<String>()
+        val activeVerifications = mutableListOf<String>()
+        val service = DesktopFindBestService(
+            stateProvider = { state },
+            visibleLocationsProvider = { locations },
+            locationsProvider = { locations },
+            refreshSubscriptions = { _, _ -> error("refresh should not run") },
+            startConnection = { location, _, _ ->
+                starts += location.name
+                Result.success(Unit)
+            },
+            stopConnection = { Result.success(Unit) },
+            currentRuntimePort = { 28080 },
+            activeVerificationPortAllocator = { 28081 },
+            verifyActiveConnection = { candidate, _, _, _, _ ->
+                activeVerifications += candidate.profile.remarks
+                Result.success(okBenchmark(candidate, total = 60.0))
+            },
+            verifyCandidate = { candidate, _, _, _ ->
+                if (candidate.profile.remarks == "First") {
+                    firstStarted.complete(Unit)
+                    CompletableDeferred<Unit>().await()
+                    Result.success(okBenchmark(candidate, total = 80.0))
+                } else {
+                    firstStarted.await()
+                    Result.success(okBenchmark(candidate, total = 45.0))
+                }
+            },
+            commitState = { nextLocations, nextState ->
+                locations = nextLocations
+                state = nextState
+            },
+            updateState = { transform -> state = transform(state) },
+            evaluateProfiles = { _, _, _, _, _ ->
+                BestCandidateAttemptPlan(
+                    orderedAttempts = listOf(firstPreflight, secondPreflight),
+                    excluded = emptyList(),
+                    locationBenchmarkDetails = mapOf(
+                        firstRaw to firstPreflight.detail,
+                        secondRaw to secondPreflight.detail,
+                    ),
+                    failureMessage = null,
+                )
+            },
+        )
+
+        service.findBestLocation(refreshSubscriptionsFirst = false)
+
+        assertEquals(listOf("Second"), starts)
+        assertEquals(listOf("Second"), activeVerifications)
+        assertEquals("Second", locations.single { it.isSelected }.name)
+        assertEquals("First  tcp=20.0ms country=DE", locations.first().benchmarkDetail)
+        assertEquals("test ok • tcp 40.0ms", locations.last().benchmarkDetail)
+    }
+
+    @Test
+    fun activeVerificationFailureAfterPrecheckContinuesToNextUncheckedWindow() = runTest {
+        val first = testProfile("First")
+        val second = testProfile("Second")
+        val third = testProfile("Third")
+        val firstRaw = LocationConfigs.encodeStoredLocation(first)
+        val secondRaw = LocationConfigs.encodeStoredLocation(second)
+        val thirdRaw = LocationConfigs.encodeStoredLocation(third)
+        var state = MainUiState(
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf(firstRaw, secondRaw, thirdRaw),
+            appMode = AppMode.PROXY_ONLY,
+            validationSettings = com.kardinal.vpncontrol.model.BenchmarkValidationSettings(
+                activeVerificationWindowSize = 2,
+            ),
+        )
+        var locations = listOf(
+            testLocation(first, firstRaw, index = 0),
+            testLocation(second, secondRaw, index = 1),
+            testLocation(third, thirdRaw, index = 2),
+        )
+        val firstPreflight = preflight(first, connectMillis = 20.0, country = "DE")
+        val secondPreflight = preflight(second, connectMillis = 30.0, country = "NL")
+        val thirdPreflight = preflight(third, connectMillis = 40.0, country = "FR")
+        val starts = mutableListOf<String>()
+        val prechecks = mutableListOf<String>()
+        val secondStarted = CompletableDeferred<Unit>()
+        var stopCalls = 0
+        val service = DesktopFindBestService(
+            stateProvider = { state },
+            visibleLocationsProvider = { locations },
+            locationsProvider = { locations },
+            refreshSubscriptions = { _, _ -> error("refresh should not run") },
+            startConnection = { location, _, _ ->
+                starts += location.name
+                Result.success(Unit)
+            },
+            stopConnection = {
+                stopCalls += 1
+                Result.success(Unit)
+            },
+            currentRuntimePort = { 28080 },
+            activeVerificationPortAllocator = { 28081 },
+            verifyActiveConnection = { candidate, _, _, _, _ ->
+                if (candidate.profile.remarks == "First") {
+                    Result.success(blockedBenchmark(candidate))
+                } else {
+                    Result.success(okBenchmark(candidate, total = 60.0))
+                }
+            },
+            verifyCandidate = { candidate, _, _, _ ->
+                prechecks += candidate.profile.remarks
+                when (candidate.profile.remarks) {
+                    "First" -> secondStarted.await()
+                    "Second" -> {
+                        secondStarted.complete(Unit)
+                        CompletableDeferred<Unit>().await()
+                    }
+                }
+                Result.success(okBenchmark(candidate, total = 50.0))
+            },
+            commitState = { nextLocations, nextState ->
+                locations = nextLocations
+                state = nextState
+            },
+            updateState = { transform -> state = transform(state) },
+            evaluateProfiles = { _, _, _, _, _ ->
+                BestCandidateAttemptPlan(
+                    orderedAttempts = listOf(firstPreflight, secondPreflight, thirdPreflight),
+                    excluded = emptyList(),
+                    locationBenchmarkDetails = mapOf(
+                        firstRaw to firstPreflight.detail,
+                        secondRaw to secondPreflight.detail,
+                        thirdRaw to thirdPreflight.detail,
+                    ),
+                    failureMessage = null,
+                )
+            },
+        )
+
+        service.findBestLocation(refreshSubscriptionsFirst = false)
+
+        assertEquals(listOf("First", "Third"), starts)
+        assertEquals(listOf("First", "Second", "Third"), prechecks)
+        assertEquals(1, stopCalls)
+        assertEquals("Third", locations.single { it.isSelected }.name)
+        assertFalse(locations.single { it.name == "Second" }.isSelected)
     }
 
     @Test
@@ -257,6 +403,34 @@ class DesktopFindBestServiceTest {
             serviceName = "",
             headerType = "",
             rawLink = "vless://00000000-0000-4000-8000-000000000000@example.com:443?security=tls#$name",
+        )
+    }
+
+    private fun preflight(
+        profile: ProxyProfile,
+        connectMillis: Double,
+        country: String,
+    ): PreflightResult {
+        return PreflightResult(
+            profile = profile,
+            connectMillis = connectMillis,
+            detail = "${profile.remarks}: tcp=${connectMillis}ms country=$country",
+            candidateCountryCode = country,
+        )
+    }
+
+    private fun okBenchmark(candidate: PreflightResult, total: Double): com.kardinal.vpncontrol.model.ProfileBenchmark {
+        return BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+            candidate = candidate,
+            testResult = ProxyRunResult(codes = listOf("200"), totals = listOf(total)),
+        )
+    }
+
+    private fun blockedBenchmark(candidate: PreflightResult): com.kardinal.vpncontrol.model.ProfileBenchmark {
+        return BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+            candidate = candidate,
+            reason = "active_verification_failed",
+            secondaryStatus = "blocked",
         )
     }
 }

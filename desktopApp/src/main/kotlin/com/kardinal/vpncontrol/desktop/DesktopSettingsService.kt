@@ -103,12 +103,8 @@ internal class DesktopSettingsService(
         updateState { it.copy(subscriptionHwid = normalized).withStatus(status) }
     }
 
-    fun setValidationPrimaryUrlDraft(value: String) {
-        updateState { it.copy(validationPrimaryUrlDraft = value) }
-    }
-
-    fun setValidationSecondaryUrlDraft(value: String) {
-        updateState { it.copy(validationSecondaryUrlDraft = value) }
+    fun setValidationTestUrlDraft(value: String) {
+        updateState { it.copy(validationTestUrlDraft = value) }
     }
 
     fun setValidationBatchSizeDraft(value: String) {
@@ -138,8 +134,7 @@ internal class DesktopSettingsService(
         commitState(
             state.copy(
                 validationSettings = settings,
-                validationPrimaryUrlDraft = settings.primaryUrl,
-                validationSecondaryUrlDraft = settings.secondaryUrl,
+                validationTestUrlDraft = settings.testUrl,
                 validationBatchSizeDraft = settings.batchSize.toString(),
                 validationSubscriptionRefreshConcurrencyDraft = settings.subscriptionRefreshConcurrency.toString(),
                 validationRetryCountDraft = settings.retryCount.toString(),

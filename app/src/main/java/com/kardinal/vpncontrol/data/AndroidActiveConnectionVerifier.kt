@@ -41,7 +41,7 @@ class AndroidActiveConnectionVerifier(
             }
             BenchmarkSearchLogic.buildActiveVerificationBenchmark(
                 candidate = attempt.preflight,
-                secondaryResult = ProxyRunResult(
+                testResult = ProxyRunResult(
                     codes = listOf(result.code),
                     totals = listOfNotNull(result.total),
                 ),

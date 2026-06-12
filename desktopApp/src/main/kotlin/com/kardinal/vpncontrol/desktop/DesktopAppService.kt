@@ -151,7 +151,7 @@ class DesktopAppService internal constructor(
                 candidate = candidate,
                 appMode = appMode,
                 proxyPort = proxyPort,
-                url = benchmarkUrls.secondary,
+                url = benchmarkUrls.test,
                 settings = settings,
             )
         },
@@ -342,12 +342,8 @@ class DesktopAppService internal constructor(
         settingsService.setSubscriptionHwid(value)
     }
 
-    fun setValidationPrimaryUrlDraft(value: String) {
-        settingsService.setValidationPrimaryUrlDraft(value)
-    }
-
-    fun setValidationSecondaryUrlDraft(value: String) {
-        settingsService.setValidationSecondaryUrlDraft(value)
+    fun setValidationTestUrlDraft(value: String) {
+        settingsService.setValidationTestUrlDraft(value)
     }
 
     fun setValidationBatchSizeDraft(value: String) {

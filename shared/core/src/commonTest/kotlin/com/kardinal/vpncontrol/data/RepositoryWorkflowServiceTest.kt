@@ -79,12 +79,12 @@ class RepositoryWorkflowServiceTest {
                 activeSubscriptionId = first.id,
                 subscriptions = listOf(first, second),
             ),
-            detail = "primary=ok secondary=ok tcp=30.9ms • Best from: One • Best from: One",
+            detail = "test=ok tcp=30.9ms • Best from: One • Best from: One",
             sourceUrl = second.url,
             sourceLabelForUrl = { url -> listOf(first, second).firstOrNull { it.url == url }?.customName },
         )
 
-        assertEquals("primary=ok secondary=ok tcp=30.9ms • Best from: Two", summary)
+        assertEquals("test=ok tcp=30.9ms • Best from: Two", summary)
     }
 
     @Test
@@ -98,12 +98,12 @@ class RepositoryWorkflowServiceTest {
                 activeSubscriptionId = subscription.id,
                 subscriptions = listOf(subscription),
             ),
-            detail = "primary=ok secondary=ok tcp=30.9ms • Best from: Sub",
+            detail = "test=ok tcp=30.9ms • Best from: Sub",
             sourceUrl = subscription.url,
             sourceLabelForUrl = { subscription.customName },
         )
 
-        assertEquals("primary=ok secondary=ok tcp=30.9ms", summary)
+        assertEquals("test=ok tcp=30.9ms", summary)
     }
 }
 

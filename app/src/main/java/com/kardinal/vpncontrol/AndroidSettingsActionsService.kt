@@ -135,12 +135,8 @@ internal class AndroidSettingsActionsService(
         controller.onSubscriptionRefreshCustomHoursDraftChanged(value)
     }
 
-    fun onValidationPrimaryUrlDraftChanged(value: String) {
-        controller.onValidationPrimaryUrlDraftChanged(value)
-    }
-
-    fun onValidationSecondaryUrlDraftChanged(value: String) {
-        controller.onValidationSecondaryUrlDraftChanged(value)
+    fun onValidationTestUrlDraftChanged(value: String) {
+        controller.onValidationTestUrlDraftChanged(value)
     }
 
     fun onValidationBatchSizeDraftChanged(value: String) {

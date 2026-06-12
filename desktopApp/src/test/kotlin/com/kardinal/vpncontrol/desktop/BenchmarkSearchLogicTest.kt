@@ -15,12 +15,12 @@ class BenchmarkSearchLogicTest {
         val profile = testProfile("Timeout Candidate")
         val benchmark = ProfileBenchmark(
             profile = profile,
-            primaryStatus = "ok",
+            primaryStatus = "manual",
             secondaryStatus = "ok",
-            primaryTotal = 130.0,
+            primaryTotal = null,
             secondaryTotal = 180.0,
             score = 310.0,
-            detail = "Timeout Candidate: tcp=unreachable primary=ok primary_codes=204 secondary=ok secondary_codes=200 score=310.0",
+            detail = "Timeout Candidate: tcp=unreachable test=ok test_codes=200 score=310.0",
         )
 
         val evaluation = BenchmarkSearchLogic.evaluateProfilesForSelection(

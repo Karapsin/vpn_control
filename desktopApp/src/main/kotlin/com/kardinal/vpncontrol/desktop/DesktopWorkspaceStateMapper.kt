@@ -186,10 +186,15 @@ internal fun MainUiState.toPersistedState(
 }
 
 internal fun String.toCompactBenchmarkLabel(): String {
+    val test = Regex("""test=([a-z]+)""").find(this)?.groupValues?.getOrNull(1)
     val primary = Regex("""primary=([a-z]+)""").find(this)?.groupValues?.getOrNull(1)
     val secondary = Regex("""secondary=([a-z]+)""").find(this)?.groupValues?.getOrNull(1)
     val tcp = Regex("""tcp=([0-9.]+ms|unreachable)""").find(this)?.groupValues?.getOrNull(1)
     return when {
+        test != null && tcp != null ->
+            "test $test • tcp $tcp"
+        test != null ->
+            "test $test"
         primary != null && secondary != null && tcp != null ->
             "primary $primary • secondary $secondary • tcp $tcp"
         primary != null && secondary != null ->
@@ -200,6 +205,11 @@ internal fun String.toCompactBenchmarkLabel(): String {
 }
 
 internal fun benchmarkDetailIndicatesSelectable(detail: String, previousIsValid: Boolean): Boolean {
+    val test = Regex("""(?:^|\s)test[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
+    if (test != null) {
+        return test == "ok"
+    }
+
     val primary = Regex("""(?:^|\s)primary[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)
     if (primary != null) {
         val secondary = Regex("""(?:^|\s)secondary[= ]([a-z]+)""").find(detail)?.groupValues?.getOrNull(1)

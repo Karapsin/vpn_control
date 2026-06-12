@@ -306,8 +306,7 @@ class DesktopStateStore(
             put(
                 "validation_settings",
                 buildJsonObject {
-                    put("primary_url", JsonPrimitive(state.validationSettings.primaryUrl))
-                    put("secondary_url", JsonPrimitive(state.validationSettings.secondaryUrl))
+                    put("test_url", JsonPrimitive(state.validationSettings.testUrl))
                     put("batch_size", JsonPrimitive(state.validationSettings.batchSize))
                     put(
                         "subscription_refresh_concurrency",
@@ -407,8 +406,11 @@ class DesktopStateStore(
                 default = 3.0,
             ).let(::normalizeSubscriptionRefreshCustomHours),
             validationSettings = BenchmarkValidationSettings(
-                primaryUrl = validation.string("primary_url"),
-                secondaryUrl = validation.string("secondary_url"),
+                testUrl = validation.string("test_url").ifBlank {
+                    validation.string("secondary_url").ifBlank {
+                        validation.string("primary_url")
+                    }
+                },
                 batchSize = validation.int("batch_size", default = BenchmarkValidationSettings.DEFAULT_BATCH_SIZE),
                 subscriptionRefreshConcurrency = validation.int(
                     "subscription_refresh_concurrency",

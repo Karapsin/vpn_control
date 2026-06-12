@@ -55,7 +55,7 @@ internal class DesktopActiveConnectionVerifier(
             }
             BenchmarkSearchLogic.buildActiveVerificationBenchmark(
                 candidate = candidate,
-                secondaryResult = ProxyRunResult(
+                testResult = ProxyRunResult(
                     codes = listOf(call.code),
                     totals = listOfNotNull(call.total),
                 ),

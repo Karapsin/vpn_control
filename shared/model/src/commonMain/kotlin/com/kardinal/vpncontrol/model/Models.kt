@@ -156,7 +156,13 @@ data class ProfileBenchmark(
     val secondaryTotal: Double?,
     val score: Double,
     val detail: String,
-)
+) {
+    val testStatus: String
+        get() = secondaryStatus
+
+    val testTotal: Double?
+        get() = secondaryTotal
+}
 
 data class ProfileSelection(
     val profile: ProxyProfile,
@@ -192,7 +198,13 @@ data class LatencyHistoryEntry(
     val primaryTotalMs: Double? = null,
     val secondaryTotalMs: Double? = null,
     val createdAtEpochMillis: Long = 0L,
-)
+) {
+    val testStatus: String
+        get() = secondaryStatus
+
+    val testTotalMs: Double?
+        get() = secondaryTotalMs
+}
 
 data class ConnectionLogEntry(
     val id: String,
@@ -256,8 +268,7 @@ data class PersistedState(
 )
 
 data class BenchmarkValidationSettings(
-    val primaryUrl: String = DEFAULT_PRIMARY_URL,
-    val secondaryUrl: String = DEFAULT_SECONDARY_URL,
+    val testUrl: String = DEFAULT_TEST_URL,
     val batchSize: Int = DEFAULT_BATCH_SIZE,
     val subscriptionRefreshConcurrency: Int = DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY,
     val retryCount: Int = DEFAULT_RETRY_COUNT,
@@ -265,8 +276,7 @@ data class BenchmarkValidationSettings(
 ) {
     fun normalized(): BenchmarkValidationSettings {
         return copy(
-            primaryUrl = normalizeUrl(primaryUrl, DEFAULT_PRIMARY_URL),
-            secondaryUrl = normalizeUrl(secondaryUrl, DEFAULT_SECONDARY_URL),
+            testUrl = normalizeUrl(testUrl, DEFAULT_TEST_URL),
             batchSize = batchSize.coerceAtLeast(1),
             subscriptionRefreshConcurrency = subscriptionRefreshConcurrency.coerceIn(
                 MIN_SUBSCRIPTION_REFRESH_CONCURRENCY,
@@ -282,12 +292,11 @@ data class BenchmarkValidationSettings(
 
     fun displaySummary(): String {
         val normalized = normalized()
-        return "${normalized.primaryUrl.displayHost()} • ${normalized.secondaryUrl.displayHost()} • batch ${normalized.batchSize} • refresh ${normalized.subscriptionRefreshConcurrency} • retries ${normalized.retryCount} • window ${normalized.activeVerificationWindowSize}"
+        return "${normalized.testUrl.displayHost()} • batch ${normalized.batchSize} • refresh ${normalized.subscriptionRefreshConcurrency} • retries ${normalized.retryCount} • window ${normalized.activeVerificationWindowSize}"
     }
 
     companion object {
-        const val DEFAULT_PRIMARY_URL = "https://www.google.com/generate_204"
-        const val DEFAULT_SECONDARY_URL = "https://chatgpt.com/"
+        const val DEFAULT_TEST_URL = "https://chatgpt.com/"
         const val DEFAULT_BATCH_SIZE = 3
         const val DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY = 3
         const val MIN_SUBSCRIPTION_REFRESH_CONCURRENCY = 1

@@ -19,6 +19,7 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -60,6 +61,8 @@ class DesktopProxyValidationRuntime(
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
     private val userCountryResolver: UserCountryResolver = DesktopRemoteCountryResolver(),
     private val candidateCountryResolver: CandidateCountryResolver = DesktopRemoteCountryResolver(),
+    private val genericBlockedMarkers: List<String> = defaultGenericBlockedMarkers,
+    private val chatGptBlockedMarkers: List<String> = defaultChatGptBlockedMarkers,
 ) {
     private val preflightThreadCounter = AtomicInteger()
 
@@ -298,9 +301,8 @@ class DesktopProxyValidationRuntime(
                     )
                 }
 
-                val primary = runProxyRuns(port, benchmarkUrls.primary, settings)
-                val secondary = runProxyRuns(port, benchmarkUrls.secondary, settings)
-                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, primary, secondary)
+                val test = runProxyRuns(port, benchmarkUrls.test, settings)
+                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, test)
             }
             return benchmark ?: BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "validation_timeout")
         } catch (_: IOException) {
@@ -348,11 +350,15 @@ class DesktopProxyValidationRuntime(
             setRequestProperty("Accept", "*/*")
         }
         return try {
-            val code = connection.responseCode
-            runCatching { connection.inputStream?.use { it.readNBytes(512) } }
+            val responseCode = connection.responseCode
+            val bodyPreview = runCatching {
+                (connection.inputStream ?: connection.errorStream)
+                    ?.bufferedReader()
+                    ?.use { it.readText().take(64 * 1024) }
+            }.getOrNull().orEmpty()
             val duration = (System.nanoTime() - startedAt) / 1_000_000.0
             ProxyCallResult(
-                code = code.toString(),
+                code = inspectResponseCode(url, responseCode, bodyPreview),
                 total = ((duration * 10.0).roundToInt() / 10.0),
             )
         } finally {
@@ -384,6 +390,29 @@ class DesktopProxyValidationRuntime(
         }
     }
 
+    private fun inspectResponseCode(url: String, responseCode: Int, bodyPreview: String): String {
+        val code = responseCode.toString()
+        if (responseCode !in 200..399) {
+            return code
+        }
+        val lowered = bodyPreview.lowercase()
+        val blockedMarkers = buildList {
+            addAll(genericBlockedMarkers)
+            if (looksLikeChatGptHost(url)) {
+                addAll(chatGptBlockedMarkers)
+            }
+        }
+        return if (blockedMarkers.any { marker -> marker in lowered }) "451" else code
+    }
+
+    private fun looksLikeChatGptHost(url: String): Boolean {
+        val host = runCatching { URI(url).host.orEmpty().lowercase() }
+            .getOrDefault("")
+        return host == "chatgpt.com" ||
+            host.endsWith(".chatgpt.com") ||
+            host == "chat.openai.com"
+    }
+
     private data class ProxyCallResult(
         val code: String,
         val total: Double?,
@@ -394,6 +423,23 @@ class DesktopProxyValidationRuntime(
         val resolvedServerAddress: String?,
     )
 
+    private companion object {
+        val defaultGenericBlockedMarkers = listOf(
+            "not available in your country",
+            "not available in your region",
+            "not available in your country, region, or territory",
+            "unsupported country",
+            "service is unavailable in your country",
+            "service is not available in your country",
+            "this content is not available in your country",
+            "access from your country is not allowed",
+            "unavailable in your country",
+        )
+        val defaultChatGptBlockedMarkers = listOf(
+            "openai's services are not available in your country",
+            "you do not have access to chat.openai.com",
+        )
+    }
 }
 
 internal fun ProxyProfile.withResolvedValidationServer(resolvedServerAddress: String?): ProxyProfile {

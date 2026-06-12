@@ -14,8 +14,7 @@ object SettingsStatusMessages {
         val normalized = settings.normalized()
         return StatusMessageCodec.encode(
             StatusMessageKey.VALIDATION_SETTINGS_SAVED,
-            normalized.primaryUrl.displayHost(),
-            normalized.secondaryUrl.displayHost(),
+            normalized.testUrl.displayHost(),
             normalized.batchSize.toString(),
             normalized.subscriptionRefreshConcurrency.toString(),
             normalized.retryCount.toString(),

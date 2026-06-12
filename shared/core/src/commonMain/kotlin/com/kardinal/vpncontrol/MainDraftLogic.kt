@@ -36,8 +36,7 @@ object MainDraftLogic {
         val activeVerificationWindowSize = state.validationActiveVerificationWindowSizeDraft.toIntOrNull()
             ?: BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE
         val settings = BenchmarkValidationSettings(
-            primaryUrl = state.validationPrimaryUrlDraft,
-            secondaryUrl = state.validationSecondaryUrlDraft,
+            testUrl = state.validationTestUrlDraft,
             batchSize = batchSize,
             subscriptionRefreshConcurrency = subscriptionRefreshConcurrency,
             retryCount = retryCount,

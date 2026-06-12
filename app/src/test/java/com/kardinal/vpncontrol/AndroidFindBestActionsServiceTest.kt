@@ -55,6 +55,7 @@ class AndroidFindBestActionsServiceTest {
         )
         val statuses = mutableListOf<String>()
         val latencies = mutableListOf<LatencyHistoryEntry>()
+        val events = mutableListOf<String>()
         var startCalls = 0
         var persistCalls = 0
         val service = service(
@@ -63,9 +64,18 @@ class AndroidFindBestActionsServiceTest {
             setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
             updateStatus = { statuses += it },
             refreshBestProfileAttemptPlan = { Result.success(attemptPlan("Germany")) },
-            startSelection = { _, _ ->
+            verifySelectionCandidate = { attempt, _ ->
+                events += "precheck ${attempt.selection.profile.remarks}"
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+            },
+            startSelection = { selection, _ ->
+                events += "start ${selection.profile.remarks}"
                 startCalls += 1
                 SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+            },
+            verifyActiveSelection = { attempt ->
+                events += "active ${attempt.selection.profile.remarks}"
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
             },
             persistSelection = { persistCalls += 1 },
             appendLatencyHistory = { latencies += it },
@@ -83,6 +93,7 @@ class AndroidFindBestActionsServiceTest {
             ConnectionStatusMessages.connectionStartedOnTarget(AppMode.VPN, "Germany"),
             statuses.last(),
         )
+        assertEquals(listOf("precheck Germany", "start Germany", "active Germany"), events)
         assertEquals("fixed-id", latencies.single().id)
         assertEquals("Germany", latencies.single().profileName)
         assertEquals(1234L, latencies.single().createdAtEpochMillis)
@@ -172,7 +183,7 @@ class AndroidFindBestActionsServiceTest {
     }
 
     @Test
-    fun verificationFailureStopsAndSwitchesToNextCandidate() = runBlocking {
+    fun failingFastestCandidateIsNeverStarted() = runBlocking {
         var state = MainUiState(
             appMode = AppMode.VPN,
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
@@ -181,8 +192,61 @@ class AndroidFindBestActionsServiceTest {
         val first = attempt("First")
         val second = attempt("Second")
         val starts = mutableListOf<String>()
+        val prechecks = mutableListOf<String>()
         val activeVerifications = mutableListOf<String>()
-        val fallbackVerifications = mutableListOf<String>()
+        val service = service(
+            stateProvider = { state },
+            setBusy = { busy -> state = state.copy(isBusy = busy) },
+            setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
+            refreshBestProfileAttemptPlan = {
+                Result.success(
+                    ProfileSelectionAttemptPlan(
+                        attempts = listOf(first, second),
+                        locationBenchmarkDetails = emptyMap(),
+                        failureMessage = null,
+                    ),
+                )
+            },
+            verifySelectionCandidate = { attempt, _ ->
+                prechecks += attempt.selection.profile.remarks
+                if (attempt.selection.profile.remarks == "First") {
+                    Result.success(blockedBenchmark(attempt.selection.profile.remarks))
+                } else {
+                    Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+                }
+            },
+            startSelection = { selection, _ ->
+                starts += selection.profile.remarks
+                SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+            },
+            verifyActiveSelection = { attempt ->
+                activeVerifications += attempt.selection.profile.remarks
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+            },
+        )
+
+        service.refresh()
+
+        assertEquals(listOf("First", "Second"), prechecks)
+        assertEquals(listOf("Second"), starts)
+        assertEquals(listOf("Second"), activeVerifications)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
+    @Test
+    fun verificationFailureStopsAndSwitchesToNextCandidate() = runBlocking {
+        var state = MainUiState(
+            appMode = AppMode.VPN,
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf("stored"),
+            validationSettings = BenchmarkValidationSettings(activeVerificationWindowSize = 1),
+        )
+        val first = attempt("First")
+        val second = attempt("Second")
+        val starts = mutableListOf<String>()
+        val activeVerifications = mutableListOf<String>()
+        val prechecks = mutableListOf<String>()
         var stops = 0
         val latencies = mutableListOf<LatencyHistoryEntry>()
         val service = service(
@@ -209,23 +273,13 @@ class AndroidFindBestActionsServiceTest {
             verifyActiveSelection = { attempt ->
                 activeVerifications += attempt.selection.profile.remarks
                 if (attempt.selection.profile.remarks == "First") {
-                    Result.success(
-                        ProfileBenchmark(
-                            profile = attempt.selection.profile,
-                            primaryStatus = "manual",
-                            secondaryStatus = "blocked",
-                            primaryTotal = null,
-                            secondaryTotal = null,
-                            score = Double.POSITIVE_INFINITY,
-                            detail = "First: tcp=20.0ms country=DE primary=manual secondary=blocked active_verification_failed",
-                        ),
-                    )
+                    Result.success(blockedBenchmark("First"))
                 } else {
-                    error("cached fallback verification should be reused")
+                    Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
                 }
             },
             verifySelectionCandidate = { attempt, _ ->
-                fallbackVerifications += attempt.selection.profile.remarks
+                prechecks += attempt.selection.profile.remarks
                 Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
             },
             appendLatencyHistory = { latencies += it },
@@ -234,8 +288,8 @@ class AndroidFindBestActionsServiceTest {
         service.refresh()
 
         assertEquals(listOf("First", "Second"), starts)
-        assertEquals(listOf("First"), activeVerifications)
-        assertEquals(listOf("Second"), fallbackVerifications)
+        assertEquals(listOf("First", "Second"), activeVerifications)
+        assertEquals(listOf("First", "Second"), prechecks)
         assertEquals(1, stops)
         assertEquals("Second", latencies.single().profileName)
         assertFalse(state.isBusy)
@@ -358,6 +412,19 @@ private fun verifiedBenchmark(name: String): ProfileBenchmark {
         primaryTotal = null,
         secondaryTotal = 60.0,
         score = 110.0,
-        detail = "$name: tcp=50.0ms country=DE primary=manual secondary=ok secondary_codes=200 score=110.0",
+        detail = "$name: tcp=50.0ms country=DE test=ok test_codes=200 score=110.0",
+    )
+}
+
+private fun blockedBenchmark(name: String): ProfileBenchmark {
+    val selection = profileSelection(name)
+    return ProfileBenchmark(
+        profile = selection.profile,
+        primaryStatus = "manual",
+        secondaryStatus = "blocked",
+        primaryTotal = null,
+        secondaryTotal = null,
+        score = Double.POSITIVE_INFINITY,
+        detail = "$name: tcp=50.0ms country=DE test=blocked active_verification_failed",
     )
 }

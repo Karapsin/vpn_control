@@ -361,8 +361,7 @@ private fun DesktopVpnControlApp(
         onSubscriptionRefreshCustomHoursDraftChange = service::setSubscriptionRefreshCustomHoursDraft,
         onSaveSubscriptionRefreshPolicy = service::saveSubscriptionRefreshPolicy,
         onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
-        onValidationPrimaryUrlDraftChange = service::setValidationPrimaryUrlDraft,
-        onValidationSecondaryUrlDraftChange = service::setValidationSecondaryUrlDraft,
+        onValidationTestUrlDraftChange = service::setValidationTestUrlDraft,
         onValidationBatchSizeDraftChange = service::setValidationBatchSizeDraft,
         onValidationSubscriptionRefreshConcurrencyDraftChange =
             service::setValidationSubscriptionRefreshConcurrencyDraft,
@@ -1129,8 +1128,7 @@ private fun DesktopSettingsDialogs(
     onSubscriptionRefreshCustomHoursDraftChange: (String) -> Unit,
     onSaveSubscriptionRefreshPolicy: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
-    onValidationPrimaryUrlDraftChange: (String) -> Unit,
-    onValidationSecondaryUrlDraftChange: (String) -> Unit,
+    onValidationTestUrlDraftChange: (String) -> Unit,
     onValidationBatchSizeDraftChange: (String) -> Unit,
     onValidationSubscriptionRefreshConcurrencyDraftChange: (String) -> Unit,
     onValidationRetryCountDraftChange: (String) -> Unit,
@@ -1414,19 +1412,11 @@ private fun DesktopSettingsDialogs(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedTextField(
-                        value = state.validationPrimaryUrlDraft,
-                        onValueChange = onValidationPrimaryUrlDraftChange,
+                        value = state.validationTestUrlDraft,
+                        onValueChange = onValidationTestUrlDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(strings.get(UiText.PRIMARY_TEST_SITE)) },
-                        placeholder = { Text(strings.get(UiText.PRIMARY_TEST_SITE_PLACEHOLDER)) },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = state.validationSecondaryUrlDraft,
-                        onValueChange = onValidationSecondaryUrlDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(strings.get(UiText.SECONDARY_TEST_SITE)) },
-                        placeholder = { Text(strings.get(UiText.SECONDARY_TEST_SITE_PLACEHOLDER)) },
+                        label = { Text(strings.get(UiText.TEST_SITE)) },
+                        placeholder = { Text(strings.get(UiText.TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
                     )
                     OutlinedTextField(

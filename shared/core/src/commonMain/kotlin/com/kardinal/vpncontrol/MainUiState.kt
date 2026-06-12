@@ -49,8 +49,7 @@ data class MainUiState(
     val subscriptionRefreshCustomHours: Double = DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS,
     val subscriptionRefreshCustomHoursDraft: String = "3",
     val validationSettings: BenchmarkValidationSettings = BenchmarkValidationSettings(),
-    val validationPrimaryUrlDraft: String = BenchmarkValidationSettings.DEFAULT_PRIMARY_URL,
-    val validationSecondaryUrlDraft: String = BenchmarkValidationSettings.DEFAULT_SECONDARY_URL,
+    val validationTestUrlDraft: String = BenchmarkValidationSettings.DEFAULT_TEST_URL,
     val validationBatchSizeDraft: String = BenchmarkValidationSettings.DEFAULT_BATCH_SIZE.toString(),
     val validationSubscriptionRefreshConcurrencyDraft: String =
         BenchmarkValidationSettings.DEFAULT_SUBSCRIPTION_REFRESH_CONCURRENCY.toString(),
@@ -165,15 +164,10 @@ object MainUiStateProjector {
                 formatSubscriptionRefreshHoursInput(persisted.subscriptionRefreshCustomHours)
             },
             validationSettings = persisted.validationSettings,
-            validationPrimaryUrlDraft = if (current.showValidationSettingsDialog) {
-                current.validationPrimaryUrlDraft
+            validationTestUrlDraft = if (current.showValidationSettingsDialog) {
+                current.validationTestUrlDraft
             } else {
-                persisted.validationSettings.primaryUrl
-            },
-            validationSecondaryUrlDraft = if (current.showValidationSettingsDialog) {
-                current.validationSecondaryUrlDraft
-            } else {
-                persisted.validationSettings.secondaryUrl
+                persisted.validationSettings.testUrl
             },
             validationBatchSizeDraft = if (current.showValidationSettingsDialog) {
                 current.validationBatchSizeDraft
@@ -261,8 +255,7 @@ object MainUiStateTransitions {
         val current = state.validationSettings
         return state.copy(
             showValidationSettingsDialog = !state.showValidationSettingsDialog,
-            validationPrimaryUrlDraft = current.primaryUrl,
-            validationSecondaryUrlDraft = current.secondaryUrl,
+            validationTestUrlDraft = current.testUrl,
             validationBatchSizeDraft = current.batchSize.toString(),
             validationSubscriptionRefreshConcurrencyDraft = current.subscriptionRefreshConcurrency.toString(),
             validationRetryCountDraft = current.retryCount.toString(),

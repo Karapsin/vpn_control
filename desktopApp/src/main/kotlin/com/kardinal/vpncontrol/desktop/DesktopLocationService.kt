@@ -41,7 +41,7 @@ internal class DesktopLocationService(
             name = "Desktop Node $nextIndex",
             server = "desktop-$nextIndex.example.net",
             details = "VLESS TCP",
-            benchmarkDetail = "primary ok • secondary ok • ${120 + nextIndex} ms",
+            benchmarkDetail = "test ok • tcp ${120 + nextIndex}.0ms",
             isValid = true,
         )
         commitState(

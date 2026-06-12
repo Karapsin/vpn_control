@@ -70,6 +70,7 @@ class ProfileStorage(
         val findBestAfterSubscriptionRefresh = booleanPreferencesKey("find_best_after_subscription_refresh")
         val subscriptionRefreshCustomHours = doublePreferencesKey("subscription_refresh_custom_hours_v2")
         val legacySubscriptionRefreshCustomHours = intPreferencesKey("subscription_refresh_custom_hours")
+        val validationTestUrl = stringPreferencesKey("validation_test_url")
         val validationPrimaryUrl = stringPreferencesKey("validation_primary_url")
         val validationSecondaryUrl = stringPreferencesKey("validation_secondary_url")
         val validationBatchSize = intPreferencesKey("validation_batch_size")
@@ -343,18 +344,19 @@ class ProfileStorage(
     override suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
         val normalized = settings.normalized()
         context.dataStore.edit { prefs ->
-            prefs[Keys.validationPrimaryUrl] = normalized.primaryUrl
-            prefs[Keys.validationSecondaryUrl] = normalized.secondaryUrl
+            prefs[Keys.validationTestUrl] = normalized.testUrl
             prefs[Keys.validationBatchSize] = normalized.batchSize
             prefs[Keys.validationSubscriptionRefreshConcurrency] = normalized.subscriptionRefreshConcurrency
             prefs[Keys.validationRetryCount] = normalized.retryCount
             prefs[Keys.validationActiveVerificationWindowSize] = normalized.activeVerificationWindowSize
+            prefs.remove(Keys.validationPrimaryUrl)
+            prefs.remove(Keys.validationSecondaryUrl)
             prefs.remove(Keys.legacyValidationGeneralUrl)
             prefs.remove(Keys.legacyValidationChatGptUrl)
         }
         DiagnosticsLogger.append(
             context,
-            "Validation settings updated: primary=${normalized.primaryUrl} secondary=${normalized.secondaryUrl} batch=${normalized.batchSize} refreshConcurrency=${normalized.subscriptionRefreshConcurrency} retries=${normalized.retryCount} window=${normalized.activeVerificationWindowSize}",
+            "Validation settings updated: test=${normalized.testUrl} batch=${normalized.batchSize} refreshConcurrency=${normalized.subscriptionRefreshConcurrency} retries=${normalized.retryCount} window=${normalized.activeVerificationWindowSize}",
         )
     }
 
@@ -873,12 +875,12 @@ class ProfileStorage(
             findBestAfterSubscriptionRefresh = findBestAfterRefresh,
             subscriptionRefreshCustomHours = refreshSettings.second,
             validationSettings = BenchmarkValidationSettings(
-                primaryUrl = preferences[Keys.validationPrimaryUrl]
-                    ?: preferences[Keys.legacyValidationGeneralUrl]
-                    ?: BenchmarkValidationSettings.DEFAULT_PRIMARY_URL,
-                secondaryUrl = preferences[Keys.validationSecondaryUrl]
+                testUrl = preferences[Keys.validationTestUrl]
+                    ?: preferences[Keys.validationSecondaryUrl]
                     ?: preferences[Keys.legacyValidationChatGptUrl]
-                    ?: BenchmarkValidationSettings.DEFAULT_SECONDARY_URL,
+                    ?: preferences[Keys.validationPrimaryUrl]
+                    ?: preferences[Keys.legacyValidationGeneralUrl]
+                    ?: BenchmarkValidationSettings.DEFAULT_TEST_URL,
                 batchSize = preferences[Keys.validationBatchSize]
                     ?: BenchmarkValidationSettings.DEFAULT_BATCH_SIZE,
                 subscriptionRefreshConcurrency = preferences[Keys.validationSubscriptionRefreshConcurrency]

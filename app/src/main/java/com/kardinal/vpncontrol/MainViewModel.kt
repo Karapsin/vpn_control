@@ -298,12 +298,8 @@ class MainViewModel(
         settingsActions.onSubscriptionRefreshCustomHoursDraftChanged(value)
     }
 
-    fun onValidationPrimaryUrlDraftChanged(value: String) {
-        settingsActions.onValidationPrimaryUrlDraftChanged(value)
-    }
-
-    fun onValidationSecondaryUrlDraftChanged(value: String) {
-        settingsActions.onValidationSecondaryUrlDraftChanged(value)
+    fun onValidationTestUrlDraftChanged(value: String) {
+        settingsActions.onValidationTestUrlDraftChanged(value)
     }
 
     fun onValidationBatchSizeDraftChanged(value: String) {

@@ -108,13 +108,11 @@ enum class UiText {
     VALIDATION_DESCRIPTION_ALL,
     VALIDATION_DESCRIPTION_SELECTED,
     VALIDATION_DESCRIPTION_DESKTOP,
-    PRIMARY_TEST_SITE,
-    SECONDARY_TEST_SITE,
+    TEST_SITE,
     BATCH_SIZE,
     RETRY_COUNT,
     ACTIVE_VERIFICATION_WINDOW,
-    PRIMARY_TEST_SITE_PLACEHOLDER,
-    SECONDARY_TEST_SITE_PLACEHOLDER,
+    TEST_SITE_PLACEHOLDER,
     VALIDATION_ANDROID_SUMMARY,
     VALIDATION_DESKTOP_SUMMARY,
     VALIDATION_SUMMARY,
@@ -313,14 +311,14 @@ class AppStrings(
 
     fun validationSummary(settings: BenchmarkValidationSettings): String {
         val normalized = settings.normalized()
-        val base = format(
+        return format(
             UiText.VALIDATION_SUMMARY,
-            normalized.primaryUrl.displayHostForUi(),
-            normalized.secondaryUrl.displayHostForUi(),
+            normalized.testUrl.displayHostForUi(),
             normalized.batchSize,
+            normalized.subscriptionRefreshConcurrency,
             normalized.retryCount,
+            normalized.activeVerificationWindowSize,
         )
-        return "$base • ${get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)} ${normalized.subscriptionRefreshConcurrency} • ${get(UiText.ACTIVE_VERIFICATION_WINDOW)} ${normalized.activeVerificationWindowSize}"
     }
 
     fun statusTime(epochMillis: Long): String {

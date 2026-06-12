@@ -312,12 +312,8 @@ class MainController(
         )
     }
 
-    fun onValidationPrimaryUrlDraftChanged(value: String) {
-        _state.value = _state.value.copy(validationPrimaryUrlDraft = value)
-    }
-
-    fun onValidationSecondaryUrlDraftChanged(value: String) {
-        _state.value = _state.value.copy(validationSecondaryUrlDraft = value)
+    fun onValidationTestUrlDraftChanged(value: String) {
+        _state.value = _state.value.copy(validationTestUrlDraft = value)
     }
 
     fun onValidationBatchSizeDraftChanged(value: String) {

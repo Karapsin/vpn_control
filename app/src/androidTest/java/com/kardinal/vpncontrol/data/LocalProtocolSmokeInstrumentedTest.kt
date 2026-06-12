@@ -22,8 +22,7 @@ class LocalProtocolSmokeInstrumentedTest {
     fun prepareValidationSettings() = runBlocking {
         storage.updateValidationSettings(
             BenchmarkValidationSettings(
-                primaryUrl = "https://www.google.com/generate_204",
-                secondaryUrl = "https://example.com/",
+                testUrl = "https://example.com/",
                 batchSize = 1,
                 retryCount = 0,
             ),
@@ -72,8 +71,8 @@ class LocalProtocolSmokeInstrumentedTest {
 
         val benchmark = orchestrator.benchmarkLocation(link).getOrThrow()
 
-        assertEquals("ok", benchmark.primaryStatus)
-        assertEquals("ok", benchmark.secondaryStatus)
+        assertEquals("manual", benchmark.primaryStatus)
+        assertEquals("ok", benchmark.testStatus)
     }
 
     private fun isServerReachable(port: Int): Boolean {

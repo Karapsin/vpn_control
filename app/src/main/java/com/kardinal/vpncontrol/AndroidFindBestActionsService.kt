@@ -13,9 +13,6 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 internal class AndroidFindBestActionsService(
@@ -106,10 +103,50 @@ internal class AndroidFindBestActionsService(
         val candidateBenchmarks = mutableMapOf<String, ProfileBenchmark>()
         val verificationWindowSize = stateProvider().validationSettings.normalized().activeVerificationWindowSize
         var lastFailureMessage: String? = plan.failureMessage
-        for ((index, attempt) in plan.attempts.withIndex()) {
+        var currentIndex = 0
+        while (currentIndex < plan.attempts.size) {
+            val window = BenchmarkSearchLogic.activeVerificationWindow(
+                attempts = plan.attempts,
+                currentIndex = currentIndex,
+                windowSize = verificationWindowSize,
+            )
+            updateStatus(
+                BenchmarkStatusMessages.testingLocationsRange(
+                    start = currentIndex + 1,
+                    end = currentIndex + window.size,
+                    total = plan.attempts.size,
+                ),
+            )
+            val precheck = BenchmarkSearchLogic.validateCandidateWindowUntilFirstPass(
+                attempts = plan.attempts,
+                currentIndex = currentIndex,
+                windowSize = verificationWindowSize,
+            ) { candidate, attemptIndex ->
+                val rawKey = LocationConfigs.encodeStoredLocation(candidate.selection.profile)
+                candidateBenchmarks[rawKey] ?: verifySelectionCandidate(candidate, attemptIndex)
+                    .getOrElse { error ->
+                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                            candidate = candidate.preflight,
+                            reason = error.message ?: "candidate_verification_failed",
+                            secondaryStatus = "error",
+                        )
+                    }
+            }
+            precheck.completed.forEach { result ->
+                candidateBenchmarks[LocationConfigs.encodeStoredLocation(result.benchmark.profile)] = result.benchmark
+                recordBenchmark(result.benchmark, benchmarkDetails)
+            }
+            val winner = precheck.winner
+            if (winner == null) {
+                lastFailureMessage = precheck.completed.lastOrNull()?.benchmark?.detail ?: lastFailureMessage
+                currentIndex += window.size.coerceAtLeast(1)
+                continue
+            }
+
+            val attempt = winner.attempt
             updateStatus(
                 BenchmarkStatusMessages.tryingBestCandidate(
-                    attempt = index + 1,
+                    attempt = winner.attemptIndex + 1,
                     total = plan.attempts.size,
                     remarks = attempt.selection.profile.remarks,
                 ),
@@ -135,63 +172,23 @@ internal class AndroidFindBestActionsService(
                     ),
                     benchmarkDetails,
                 )
+                currentIndex += window.size.coerceAtLeast(1)
                 continue
             }
 
             updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
             val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
-            val verificationBenchmark = coroutineScope {
-                val window = BenchmarkSearchLogic.activeVerificationWindow(
-                    attempts = plan.attempts,
-                    currentIndex = index,
-                    windowSize = verificationWindowSize,
-                )
-                val fallbackJobs = window.drop(1).mapIndexed { offset, fallback ->
-                    val fallbackRawKey = LocationConfigs.encodeStoredLocation(fallback.selection.profile)
-                    val cached = candidateBenchmarks[fallbackRawKey]
-                    async {
-                        CandidateBenchmarkResult(
-                            rawKey = fallbackRawKey,
-                            benchmark = cached ?: verifySelectionCandidate(
-                                fallback,
-                                index + offset + 1,
-                            ).getOrElse { error ->
-                                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                                    candidate = fallback.preflight,
-                                    reason = error.message ?: "background_verification_failed",
-                                    secondaryStatus = "error",
-                                )
-                            },
-                        )
-                    }
+            val verificationBenchmark = verifyActiveSelection(attempt)
+                .getOrElse { error ->
+                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                        candidate = attempt.preflight,
+                        reason = error.message ?: "active_verification_failed",
+                        secondaryStatus = "error",
+                    )
                 }
-                val currentBenchmark = candidateBenchmarks[attemptRawKey] ?: verifyActiveSelection(attempt)
-                    .getOrElse { error ->
-                        BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                            candidate = attempt.preflight,
-                            reason = error.message ?: "active_verification_failed",
-                            secondaryStatus = "error",
-                        )
-                    }
-                candidateBenchmarks[attemptRawKey] = currentBenchmark
-                recordBenchmark(currentBenchmark, benchmarkDetails)
-                if (currentBenchmark.secondaryStatus == "ok") {
-                    fallbackJobs.filter { it.isCompleted && !it.isCancelled }.forEach { job ->
-                        val result = job.await()
-                        candidateBenchmarks[result.rawKey] = result.benchmark
-                        recordBenchmark(result.benchmark, benchmarkDetails)
-                    }
-                    fallbackJobs.forEach { it.cancel() }
-                    return@coroutineScope currentBenchmark
-                }
-                val fallbackResults = fallbackJobs.awaitAll()
-                fallbackResults.forEach { result ->
-                    candidateBenchmarks[result.rawKey] = result.benchmark
-                    recordBenchmark(result.benchmark, benchmarkDetails)
-                }
-                currentBenchmark
-            }
-            if (verificationBenchmark.secondaryStatus == "ok") {
+            candidateBenchmarks[attemptRawKey] = verificationBenchmark
+            recordBenchmark(verificationBenchmark, benchmarkDetails)
+            if (verificationBenchmark.testStatus == "ok") {
                 val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
                 val persistResult = runCatching {
                     persistSelection(verifiedSelection)
@@ -220,6 +217,7 @@ internal class AndroidFindBestActionsService(
                     errorMessage = stopResult.exceptionOrNull()?.message,
                 )
             }
+            currentIndex += window.size.coerceAtLeast(1)
         }
 
         return if (previousState.isVpnRunning) {
@@ -279,8 +277,4 @@ internal class AndroidFindBestActionsService(
         )
     }
 
-    private data class CandidateBenchmarkResult(
-        val rawKey: String,
-        val benchmark: ProfileBenchmark,
-    )
 }

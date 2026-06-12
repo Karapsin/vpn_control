@@ -83,8 +83,7 @@ class DiagnosticsExporter(
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
             appendLine("find_best_after_subscription_refresh=${state.findBestAfterSubscriptionRefresh}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
-            appendLine("validation_primary_url=${state.validationSettings.primaryUrl}")
-            appendLine("validation_secondary_url=${state.validationSettings.secondaryUrl}")
+            appendLine("validation_test_url=${state.validationSettings.testUrl}")
             appendLine("validation_batch_size=${state.validationSettings.batchSize}")
             appendLine("validation_retry_count=${state.validationSettings.retryCount}")
             appendLine("validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}")
@@ -150,8 +149,7 @@ class DiagnosticsExporter(
                     "last_benchmark_summary=${state.lastBenchmarkSummary.ifBlank { "not_run" }}",
                     "latency_history_count=${state.latencyHistory.size}",
                     "latest_latency=${state.latencyHistory.lastOrNull()?.detail ?: "none"}",
-                    "validation_primary_url=${state.validationSettings.primaryUrl}",
-                    "validation_secondary_url=${state.validationSettings.secondaryUrl}",
+                    "validation_test_url=${state.validationSettings.testUrl}",
                     "validation_batch_size=${state.validationSettings.batchSize}",
                     "validation_retry_count=${state.validationSettings.retryCount}",
                     "validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}",
@@ -205,8 +203,7 @@ class DiagnosticsExporter(
                 state.latencyHistory.joinToString(separator = "\n") { entry ->
                     listOf(
                         "name=${entry.profileName}",
-                        "primary=${entry.primaryStatus}:${entry.primaryTotalMs ?: "n/a"}",
-                        "secondary=${entry.secondaryStatus}:${entry.secondaryTotalMs ?: "n/a"}",
+                        "test=${entry.testStatus}:${entry.testTotalMs ?: "n/a"}",
                         "created=${entry.createdAtEpochMillis}",
                         "detail=${entry.detail}",
                     ).joinToString(" | ")

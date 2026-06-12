@@ -233,6 +233,10 @@ internal fun localizedBenchmarkMessage(language: AppLanguage, text: String): Str
                 changed = true
                 words.best + segment.removePrefix(sourceWords.best)
             }
+            segment.startsWith(sourceWords.test) -> {
+                changed = true
+                words.test + translateBenchmarkStatus(segment.removePrefix(sourceWords.test), words, sourceWords)
+            }
             segment.startsWith(sourceWords.primary) -> {
                 changed = true
                 words.primary + translateBenchmarkStatus(segment.removePrefix(sourceWords.primary), words, sourceWords)

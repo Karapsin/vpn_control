@@ -15,9 +15,6 @@ import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.SubscriptionSource
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal typealias DesktopProfileEvaluator = suspend (
@@ -101,8 +98,7 @@ internal class DesktopFindBestService(
         val wasRunning = state.isVpnRunning
         val validationSettings = state.validationSettings.normalized()
         val benchmarkUrls = BenchmarkUrls(
-            primary = validationSettings.primaryUrl,
-            secondary = validationSettings.secondaryUrl,
+            test = validationSettings.testUrl,
         )
         val desktopValidationSettings = validationSettings.toDesktopValidationSettings()
         val attemptPlan = withTimeoutOrNull(desktopValidationSettings.searchTimeoutMillis) {
@@ -145,20 +141,79 @@ internal class DesktopFindBestService(
         val verificationWindowSize = validationSettings.activeVerificationWindowSize
         val candidateBenchmarks = mutableMapOf<String, ProfileBenchmark>()
         var lastFailureMessage: String? = attemptPlan.failureMessage
-        for ((index, candidate) in attemptPlan.orderedAttempts.withIndex()) {
+        var currentIndex = 0
+        while (currentIndex < attemptPlan.orderedAttempts.size) {
+            val window = BenchmarkSearchLogic.activeVerificationWindow(
+                attempts = attemptPlan.orderedAttempts,
+                currentIndex = currentIndex,
+                windowSize = verificationWindowSize,
+            )
+            val windowStart = currentIndex + 1
+            val windowEnd = currentIndex + window.size
+            updateState {
+                it.copy(isBusy = true, isRefreshing = true).withStatus(
+                    BenchmarkStatusMessages.testingLocationsRange(
+                        start = windowStart,
+                        end = windowEnd,
+                        total = attemptPlan.orderedAttempts.size,
+                    ),
+                )
+            }
+            val precheck = BenchmarkSearchLogic.validateCandidateWindowUntilFirstPass(
+                attempts = attemptPlan.orderedAttempts,
+                currentIndex = currentIndex,
+                windowSize = verificationWindowSize,
+            ) { candidate, _ ->
+                val rawKey = normalizedProfileKey(candidate.profile)
+                candidateBenchmarks[rawKey] ?: verifyCandidate(
+                    candidate,
+                    DesktopDnsSettings(
+                        enabled = state.useCustomDns,
+                        value = state.customDns,
+                    ),
+                    benchmarkUrls,
+                    desktopValidationSettings,
+                ).getOrElse { error ->
+                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                        candidate = candidate,
+                        reason = error.message ?: "candidate_verification_failed",
+                        secondaryStatus = "error",
+                    )
+                }
+            }
+            precheck.completed.forEach { result ->
+                val rawKey = normalizedProfileKey(result.benchmark.profile)
+                candidateBenchmarks[rawKey] = result.benchmark
+            }
+            updateLocationBenchmarks(
+                detailsByRawKey = precheck.completed.associate { result ->
+                    normalizedProfileKey(result.benchmark.profile) to result.benchmark.detail
+                },
+                winningRawKey = null,
+            )
+
+            val winner = precheck.winner
+            if (winner == null) {
+                lastFailureMessage = precheck.completed.lastOrNull()?.benchmark?.detail ?: lastFailureMessage
+                currentIndex += window.size.coerceAtLeast(1)
+                continue
+            }
+
+            val candidate = winner.attempt
             val candidateRawKey = normalizedProfileKey(candidate.profile)
             val candidateLocation = locationsProvider().firstOrNull {
                 it.normalizedStorageKey() == candidateRawKey
             }
             if (candidateLocation == null) {
                 lastFailureMessage = BenchmarkStatusMessages.bestLocationNotMapped()
+                currentIndex += window.size.coerceAtLeast(1)
                 continue
             }
 
             updateState {
                 it.copy(isBusy = true, isRefreshing = true).withStatus(
                     BenchmarkStatusMessages.tryingBestCandidate(
-                        attempt = index + 1,
+                        attempt = winner.attemptIndex + 1,
                         total = attemptPlan.orderedAttempts.size,
                         remarks = candidate.profile.remarks,
                     ),
@@ -181,6 +236,7 @@ internal class DesktopFindBestService(
                     winningRawKey = null,
                 )
                 lastFailureMessage = benchmark.detail
+                currentIndex += window.size.coerceAtLeast(1)
                 continue
             }
 
@@ -193,77 +249,25 @@ internal class DesktopFindBestService(
                 AppMode.VPN -> activeVerificationPort
                 AppMode.PROXY_ONLY -> currentRuntimePort()
             }
-            val verificationBenchmark = coroutineScope {
-                val window = BenchmarkSearchLogic.activeVerificationWindow(
-                    attempts = attemptPlan.orderedAttempts,
-                    currentIndex = index,
-                    windowSize = verificationWindowSize,
+            val verificationBenchmark = verifyActiveConnection(
+                candidate,
+                stateProvider().appMode,
+                proxyPort,
+                benchmarkUrls,
+                desktopValidationSettings,
+            ).getOrElse { error ->
+                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
+                    candidate = candidate,
+                    reason = error.message ?: "active_verification_failed",
+                    secondaryStatus = "error",
                 )
-                val fallbackJobs = window.drop(1).map { fallback ->
-                    val rawKey = normalizedProfileKey(fallback.profile)
-                    val cached = candidateBenchmarks[rawKey]
-                    async {
-                        CandidateBenchmarkResult(
-                            rawKey = rawKey,
-                            benchmark = cached ?: verifyCandidate(
-                                fallback,
-                                DesktopDnsSettings(
-                                    enabled = state.useCustomDns,
-                                    value = state.customDns,
-                                ),
-                                benchmarkUrls,
-                                desktopValidationSettings,
-                            ).getOrElse { error ->
-                                BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                                    candidate = fallback,
-                                    reason = error.message ?: "background_verification_failed",
-                                    secondaryStatus = "error",
-                                )
-                            },
-                        )
-                    }
-                }
-                val currentBenchmark = candidateBenchmarks[candidateRawKey] ?: verifyActiveConnection(
-                    candidate,
-                    stateProvider().appMode,
-                    proxyPort,
-                    benchmarkUrls,
-                    desktopValidationSettings,
-                ).getOrElse { error ->
-                    BenchmarkSearchLogic.failedActiveVerificationBenchmark(
-                        candidate = candidate,
-                        reason = error.message ?: "active_verification_failed",
-                        secondaryStatus = "error",
-                    )
-                }
-                candidateBenchmarks[candidateRawKey] = currentBenchmark
-                updateLocationBenchmarks(
-                    detailsByRawKey = mapOf(candidateRawKey to currentBenchmark.detail),
-                    winningRawKey = if (currentBenchmark.secondaryStatus == "ok") candidateRawKey else null,
-                )
-                if (currentBenchmark.secondaryStatus == "ok") {
-                    fallbackJobs.filter { it.isCompleted && !it.isCancelled }.forEach { job ->
-                        val result = job.await()
-                        candidateBenchmarks[result.rawKey] = result.benchmark
-                        updateLocationBenchmarks(
-                            detailsByRawKey = mapOf(result.rawKey to result.benchmark.detail),
-                            winningRawKey = null,
-                        )
-                    }
-                    fallbackJobs.forEach { it.cancel() }
-                    return@coroutineScope currentBenchmark
-                }
-                val fallbackResults = fallbackJobs.awaitAll()
-                fallbackResults.forEach { result ->
-                    candidateBenchmarks[result.rawKey] = result.benchmark
-                }
-                updateLocationBenchmarks(
-                    detailsByRawKey = fallbackResults.associate { it.rawKey to it.benchmark.detail },
-                    winningRawKey = null,
-                )
-                currentBenchmark
             }
-            val verified = verificationBenchmark.secondaryStatus == "ok"
+            candidateBenchmarks[candidateRawKey] = verificationBenchmark
+            updateLocationBenchmarks(
+                detailsByRawKey = mapOf(candidateRawKey to verificationBenchmark.detail),
+                winningRawKey = if (verificationBenchmark.testStatus == "ok") candidateRawKey else null,
+            )
+            val verified = verificationBenchmark.testStatus == "ok"
             if (verified) {
                 val summary = BenchmarkStatusMessages.bestLocationSummary(
                     verificationBenchmark.profile.remarks,
@@ -297,6 +301,7 @@ internal class DesktopFindBestService(
                 }
                 return
             }
+            currentIndex += window.size.coerceAtLeast(1)
         }
 
         val finalMessage = lastFailureMessage ?: BenchmarkStatusMessages.noSuitableLocationFound()
@@ -345,9 +350,4 @@ internal class DesktopFindBestService(
 
     private fun normalizedProfileKey(profile: ProxyProfile): String =
         LocationConfigs.normalizeStoredReference(LocationConfigs.encodeStoredLocation(profile))
-
-    private data class CandidateBenchmarkResult(
-        val rawKey: String,
-        val benchmark: ProfileBenchmark,
-    )
 }
