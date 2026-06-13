@@ -3,9 +3,11 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
+import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class DesktopRuntimeStatusServiceTest {
     private val defaultLogPath = Paths.get("tmp", "default.log")
@@ -63,6 +65,34 @@ class DesktopRuntimeStatusServiceTest {
         assertEquals("fail second: broken second", details[3])
         assertEquals(RuntimeStatusMessages.runtimeLog(defaultLogPath.toString()), details[4])
         assertEquals(5, details.size)
+    }
+
+    @Test
+    fun runningDetailsIncludeRedactedOutboundTimeoutHint() {
+        val logFile = Files.createTempFile("vpn-control-runtime-status", ".log")
+        try {
+            Files.writeString(
+                logFile,
+                listOf(
+                    "INFO inbound/tun[tun-in]: inbound connection",
+                    "ERROR connection using outbound/vless[proxy]: dial tcp 203.0.113.10:8443: i/o timeout",
+                    "ERROR connection using outbound/vless[proxy]: read: connection timed out",
+                    "ERROR connection using outbound/vless[proxy]: read: connection reset by peer",
+                ).joinToString("\n"),
+            )
+
+            val details = service(
+                state = MainUiState(appMode = AppMode.VPN, isVpnRunning = true),
+                currentLogFile = { logFile },
+            ).details()
+
+            assertTrue(
+                details.contains("Runtime outbound has repeated timeouts or resets; try another location or Find Best."),
+            )
+            assertEquals(RuntimeStatusMessages.runtimeLog(logFile.toString()), details.last())
+        } finally {
+            Files.deleteIfExists(logFile)
+        }
     }
 
     private fun service(

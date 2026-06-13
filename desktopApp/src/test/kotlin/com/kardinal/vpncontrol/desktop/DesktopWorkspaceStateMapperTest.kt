@@ -104,6 +104,31 @@ class DesktopWorkspaceStateMapperTest {
     }
 
     @Test
+    fun syncDesktopLocationsWithSelectionKeepsOnlyPersistedSelectedLocation() {
+        val stale = location(index = 1, sourceUrl = "", rawLink = "socks://a#a", isSelected = true)
+        val selected = location(index = 2, sourceUrl = "", rawLink = "socks://b#b", isSelected = true)
+
+        val synced = syncDesktopLocationsWithSelection(
+            state = MainUiState(selectedProfileRawLink = selected.rawLink),
+            locations = listOf(stale, selected),
+        )
+
+        assertEquals(listOf(false, true), synced.map { it.isSelected })
+    }
+
+    @Test
+    fun syncDesktopLocationsWithSelectionClearsSelectionWhenPersistedLocationIsMissing() {
+        val stale = location(index = 1, sourceUrl = "", rawLink = "socks://a#a", isSelected = true)
+
+        val synced = syncDesktopLocationsWithSelection(
+            state = MainUiState(selectedProfileRawLink = "socks://missing#missing"),
+            locations = listOf(stale),
+        )
+
+        assertEquals(listOf(false), synced.map { it.isSelected })
+    }
+
+    @Test
     fun toPersistedStateStoresSavedLocationsAndNormalizedRoutingDrafts() {
         val saved = location(index = 0, sourceUrl = "", rawLink = "socks://saved#saved")
         val remote = location(index = 1, sourceUrl = "https://example.com/sub", rawLink = "socks://remote#remote")

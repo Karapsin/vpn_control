@@ -162,6 +162,55 @@ class DesktopAppServiceTest {
     }
 
     @Test
+    fun restoredWorkspaceNormalizesStaleSelectedLocationFlags() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-normalize-selection")
+        try {
+            val stale = DesktopLocationRecord(
+                index = 0,
+                sourceUrl = "",
+                rawLink = "socks://user:pass@127.0.0.1:1080#Stale",
+                name = "Stale",
+                server = "127.0.0.1",
+                details = "SOCKS",
+                benchmarkDetail = "Imported • not checked yet",
+                isValid = true,
+                isSelected = true,
+            )
+            val selected = DesktopLocationRecord(
+                index = 1,
+                sourceUrl = "",
+                rawLink = "socks://user:pass@127.0.0.2:1080#Selected",
+                name = "Selected",
+                server = "127.0.0.2",
+                details = "SOCKS",
+                benchmarkDetail = "Imported • not checked yet",
+                isValid = true,
+                isSelected = false,
+            )
+            val service = DesktopAppServiceFactory.createForTesting(
+                store = DesktopStateStore(tempDir),
+                initialWorkspace = DesktopWorkspace(
+                    persistedState = PersistedState(
+                        profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+                        currentLocations = listOf(stale.rawLink, selected.rawLink),
+                        selectedProfileRawLink = selected.rawLink,
+                    ),
+                    locations = listOf(stale, selected),
+                ),
+            )
+
+            assertEquals(
+                listOf(false, true),
+                service.visibleDesktopLocations()
+                    .sortedBy(DesktopLocationRecord::index)
+                    .map(DesktopLocationRecord::isSelected),
+            )
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun selectedAppLanguagePersistsAcrossRestart() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-language")
         try {

@@ -28,12 +28,20 @@ class DesktopAppService internal constructor(
     private var resumeConnectionOnLaunch = initialWorkspace.resumeConnectionOnLaunch ||
         initialWorkspace.persistedState.isVpnRunning
     private var launchResumeAttempted = false
+    private val restoredInitialState = restoreDesktopUiState(
+        initialWorkspace.persistedState,
+        initialWorkspace.locations,
+    )
+    private val normalizedInitialLocations = syncDesktopLocationsWithSelection(
+        restoredInitialState,
+        initialWorkspace.locations,
+    )
 
-    var desktopLocations by mutableStateOf(initialWorkspace.locations)
+    var desktopLocations by mutableStateOf(normalizedInitialLocations)
         private set
 
     var state by mutableStateOf(
-        restoreDesktopUiState(initialWorkspace.persistedState, initialWorkspace.locations).copy(
+        syncDesktopUiStateWithLocations(restoredInitialState, normalizedInitialLocations).copy(
             isVpnRunning = false,
             statusMessage = if (resumeConnectionOnLaunch) {
                 ConnectionStatusMessages.previousConnectionRestorePending()
@@ -536,12 +544,13 @@ class DesktopAppService internal constructor(
         nextLocations: List<DesktopLocationRecord> = desktopLocations,
     ) {
         val syncedState = syncDesktopUiStateWithLocations(nextState, nextLocations)
-        desktopLocations = nextLocations
+        val syncedLocations = syncDesktopLocationsWithSelection(syncedState, nextLocations)
+        desktopLocations = syncedLocations
         state = syncedState
         desktopStore.writeWorkspace(
             DesktopWorkspace(
-                persistedState = syncedState.toPersistedState(nextLocations),
-                locations = nextLocations,
+                persistedState = syncedState.toPersistedState(syncedLocations),
+                locations = syncedLocations,
                 resumeConnectionOnLaunch = resumeConnectionOnLaunch,
             ),
         )

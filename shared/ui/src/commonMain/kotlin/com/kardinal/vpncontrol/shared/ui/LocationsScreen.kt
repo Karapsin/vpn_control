@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.SelectionMappingLogic
 
 data class SavedLocationRow(
     val index: Int,
@@ -52,6 +53,37 @@ data class SavedLocationRow(
     val isValid: Boolean,
     val isSelected: Boolean,
 )
+
+internal data class SavedLocationVisualState(
+    val isSelected: Boolean,
+    val isInUse: Boolean,
+    val togglesConnection: Boolean,
+)
+
+internal fun savedLocationVisualState(
+    location: SavedLocationRow,
+    state: MainUiState,
+): SavedLocationVisualState {
+    val selectedKey = SelectionMappingLogic.selectedStoredKey(
+        selectedProfileJson = state.selectedProfileJson,
+        selectedProfileRawLink = state.selectedProfileRawLink,
+    )
+    val normalizedSelectedKey = SelectionMappingLogic.normalizedStoredKey(selectedKey)
+    val matchesPersistedSelection = selectedKey.isNotBlank() &&
+        (
+            location.rawLink == state.selectedProfileRawLink ||
+                location.rawLink == selectedKey ||
+                SelectionMappingLogic.normalizedStoredKey(location.rawLink) == normalizedSelectedKey
+            )
+    val fallbackSelected = selectedKey.isBlank() && !state.isVpnRunning && location.isSelected
+    val isSelected = matchesPersistedSelection || fallbackSelected
+    val isInUse = state.isVpnRunning && matchesPersistedSelection
+    return SavedLocationVisualState(
+        isSelected = isSelected,
+        isInUse = isInUse,
+        togglesConnection = isInUse || (!state.isVpnRunning && isSelected),
+    )
+}
 
 @Composable
 fun LocationsScreen(
@@ -161,13 +193,14 @@ fun LocationsScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(locations, key = { "${it.index}:${it.rawLink}" }) { location ->
+                            val visualState = savedLocationVisualState(location, state)
                             LocationRowCard(
                                 location = location,
                                 appMode = state.appMode,
-                                isVpnRunning = state.isVpnRunning,
+                                visualState = visualState,
                                 enabled = !state.isBusy,
                                 onPrimaryAction = {
-                                    if (location.isSelected) {
+                                    if (visualState.togglesConnection) {
                                         onToggleSelectedLocationVpn()
                                     } else {
                                         onSelectLocation(location.index)
@@ -189,7 +222,7 @@ fun LocationsScreen(
 private fun LocationRowCard(
     location: SavedLocationRow,
     appMode: com.kardinal.vpncontrol.model.AppMode,
-    isVpnRunning: Boolean,
+    visualState: SavedLocationVisualState,
     enabled: Boolean,
     onPrimaryAction: () -> Unit,
     onRefresh: () -> Unit,
@@ -197,7 +230,6 @@ private fun LocationRowCard(
     onDelete: (() -> Unit)?,
 ) {
     val strings = LocalAppStrings.current
-    val isSelectedAndRunning = location.isSelected && isVpnRunning
     val connection = if (appMode == com.kardinal.vpncontrol.model.AppMode.VPN) {
         strings.get(UiText.VPN)
     } else {
@@ -209,7 +241,7 @@ private fun LocationRowCard(
         colors = CardDefaults.cardColors(
             containerColor = when {
                 !location.isValid -> Color(0x33A44A4A)
-                location.isSelected -> Color(0x334B7BE5)
+                visualState.isSelected -> Color(0x334B7BE5)
                 else -> Color(0x1F203041)
             },
         ),
@@ -252,9 +284,9 @@ private fun LocationRowCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (location.isSelected) {
+                if (visualState.isInUse || visualState.isSelected) {
                     Text(
-                        text = if (isVpnRunning) strings.get(UiText.IN_USE) else strings.get(UiText.SELECTED),
+                        text = if (visualState.isInUse) strings.get(UiText.IN_USE) else strings.get(UiText.SELECTED),
                         color = Color(0xFFFFE0A3),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -272,17 +304,17 @@ private fun LocationRowCard(
                     contentPadding = PaddingValues(0.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (location.isSelected) Color(0xFFFFE0A3) else Color.White,
+                        contentColor = if (visualState.isSelected) Color(0xFFFFE0A3) else Color.White,
                     ),
                 ) {
                     Icon(
                         imageVector = when {
-                            isSelectedAndRunning -> Icons.Filled.Close
+                            visualState.isInUse -> Icons.Filled.Close
                             else -> Icons.Filled.PlayArrow
                         },
                         contentDescription = when {
-                            isSelectedAndRunning -> strings.format(UiText.STOP_CONNECTION_FOR_LOCATION, connection)
-                            location.isSelected -> strings.format(UiText.START_CONNECTION_FOR_LOCATION, connection)
+                            visualState.isInUse -> strings.format(UiText.STOP_CONNECTION_FOR_LOCATION, connection)
+                            visualState.togglesConnection -> strings.format(UiText.START_CONNECTION_FOR_LOCATION, connection)
                             else -> strings.get(UiText.SELECT_THIS_LOCATION)
                         },
                     )

@@ -114,6 +114,24 @@ internal fun syncDesktopUiStateWithLocations(
     )
 }
 
+internal fun syncDesktopLocationsWithSelection(
+    state: MainUiState,
+    locations: List<DesktopLocationRecord>,
+): List<DesktopLocationRecord> {
+    var selectedApplied = false
+    return locations.map { location ->
+        val isSelected = !selectedApplied && location.matchesSelectedLocation(state)
+        if (isSelected) {
+            selectedApplied = true
+        }
+        if (location.isSelected == isSelected) {
+            location
+        } else {
+            location.copy(isSelected = isSelected)
+        }
+    }
+}
+
 internal fun syncSubscriptionsWithLocations(
     subscriptions: List<SubscriptionSource>,
     locations: List<DesktopLocationRecord>,
