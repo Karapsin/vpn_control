@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class DesktopActivationEventsTest {
     @Test
@@ -29,6 +30,19 @@ class DesktopActivationEventsTest {
         drainSwingEvents()
 
         assertEquals(2, requests)
+    }
+
+    @Test
+    fun cliRequestIsDeliveredToRegisteredHandler() {
+        val events = DesktopActivationEvents()
+        events.setCliCommandHandler { command, future ->
+            future.complete(DesktopCliResponse.success("handled $command"))
+        }
+
+        val response = events.requestCliCommand(DesktopCliCommand.Off)
+
+        assertTrue(response.success)
+        assertEquals("handled Off", response.message)
     }
 
     private fun drainSwingEvents() {

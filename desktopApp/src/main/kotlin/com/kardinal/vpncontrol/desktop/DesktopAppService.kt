@@ -401,6 +401,10 @@ class DesktopAppService internal constructor(
         locationService.applySelection(index, messagePrefix)
     }
 
+    fun applyCliLocationSelection(target: String): Result<DesktopLocationRecord> {
+        return locationService.applyCliSelection(target)
+    }
+
     fun setRoutingIgnoreRulesDraft(enabled: Boolean) {
         routingRulesService.setIgnoreRulesDraft(enabled)
     }
@@ -523,8 +527,8 @@ class DesktopAppService internal constructor(
 
     suspend fun findBestLocation(
         refreshSubscriptionsFirst: Boolean = true,
-    ) {
-        findBestService.findBestLocation(refreshSubscriptionsFirst)
+    ): Result<Unit> {
+        return findBestService.findBestLocation(refreshSubscriptionsFirst)
     }
 
     private fun commitState(

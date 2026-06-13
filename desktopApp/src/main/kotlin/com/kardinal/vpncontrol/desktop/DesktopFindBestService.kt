@@ -46,11 +46,11 @@ internal class DesktopFindBestService(
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
     private val evaluateProfiles: DesktopProfileEvaluator,
 ) {
-    suspend fun findBestLocation(refreshSubscriptionsFirst: Boolean = true) {
+    suspend fun findBestLocation(refreshSubscriptionsFirst: Boolean = true): Result<Unit> {
         val preconditionError = MainCommandLogic.refreshPreconditionError(stateProvider())
         if (preconditionError != null) {
             updateState { it.withStatus(preconditionError) }
-            return
+            return Result.failure(IllegalStateException(preconditionError))
         }
 
         if (refreshSubscriptionsFirst && stateProvider().profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
@@ -60,7 +60,7 @@ internal class DesktopFindBestService(
                 SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
             )
             if (refreshResult.isFailure) {
-                return
+                return refreshResult.map { Unit }
             }
         }
 
@@ -68,8 +68,9 @@ internal class DesktopFindBestService(
             runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }.getOrNull()
         }
         if (profiles.isEmpty()) {
-            updateState { it.withStatus(BenchmarkStatusMessages.noLocationsAvailableForBenchmarking()) }
-            return
+            val message = BenchmarkStatusMessages.noLocationsAvailableForBenchmarking()
+            updateState { it.withStatus(message) }
+            return Result.failure(IllegalStateException(message))
         }
 
         updateState {
@@ -103,12 +104,13 @@ internal class DesktopFindBestService(
                 }
             }
         } ?: run {
+            val message = BenchmarkStatusMessages.bestLocationSearchTimedOut()
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    BenchmarkStatusMessages.bestLocationSearchTimedOut(),
+                    message,
                 )
             }
-            return
+            return Result.failure(IllegalStateException(message))
         }
 
         updateLocationBenchmarks(
@@ -117,12 +119,13 @@ internal class DesktopFindBestService(
         )
 
         if (attemptPlan.orderedAttempts.isEmpty()) {
+            val message = attemptPlan.failureMessage ?: BenchmarkStatusMessages.noSuitableLocationFound()
             updateState {
                 it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    attemptPlan.failureMessage ?: BenchmarkStatusMessages.noSuitableLocationFound(),
+                    message,
                 )
             }
-            return
+            return Result.failure(IllegalStateException(message))
         }
 
         val verificationWindowSize = validationSettings.activeVerificationWindowSize
@@ -246,7 +249,7 @@ internal class DesktopFindBestService(
                         ),
                     ),
                 )
-                return
+                return Result.success(Unit)
             }
             currentIndex += window.size.coerceAtLeast(1)
         }
@@ -269,6 +272,7 @@ internal class DesktopFindBestService(
                 state.copy(isBusy = false, isRefreshing = false, isVpnRunning = false).withStatus(finalMessage),
             )
         }
+        return Result.failure(IllegalStateException(finalMessage))
     }
 
     private fun updateLocationBenchmarks(

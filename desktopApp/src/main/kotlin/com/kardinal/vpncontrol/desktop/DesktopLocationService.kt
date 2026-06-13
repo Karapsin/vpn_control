@@ -102,6 +102,27 @@ internal class DesktopLocationService(
         )
     }
 
+    fun applyCliSelection(target: String): Result<DesktopLocationRecord> {
+        val visibleLocations = visibleLocations()
+        val nameMatches = visibleLocations.filter { it.name == target }
+        if (nameMatches.size > 1) {
+            val message = "Multiple visible locations are named \"$target\"."
+            updateState { it.withStatus(message) }
+            return Result.failure(IllegalArgumentException(message))
+        }
+        val selected = nameMatches.singleOrNull()
+            ?: target.toIntOrNull()
+                ?.takeIf { it > 0 }
+                ?.let { visibleLocations.getOrNull(it - 1) }
+        if (selected == null) {
+            val message = "Location not found: $target"
+            updateState { it.withStatus(message) }
+            return Result.failure(IllegalArgumentException(message))
+        }
+        applySelection(selected.index)
+        return Result.success(selected)
+    }
+
     suspend fun importRaw(raw: String) {
         when (val decision = LocationMutationLogic.planImportLocations(stateProvider(), raw)) {
             is ImportLocationsDecision.Blocked -> {

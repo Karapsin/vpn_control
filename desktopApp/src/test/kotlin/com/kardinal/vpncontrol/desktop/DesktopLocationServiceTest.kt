@@ -79,6 +79,115 @@ class DesktopLocationServiceTest {
     }
 
     @Test
+    fun cliSelectLocationUsesExactVisibleName() {
+        var state = MainUiState(
+            currentLocations = listOf("vless://first", "vless://second"),
+        )
+        var locations = listOf(
+            desktopLocation(index = 1, rawLink = "vless://first", name = "First"),
+            desktopLocation(index = 2, rawLink = "vless://second", name = "Second"),
+        )
+        val service = desktopLocationService(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        val result = service.applyCliSelection("Second")
+
+        assertTrue(result.isSuccess)
+        assertEquals("Second", result.getOrThrow().name)
+        assertEquals("Second", state.selectedProfileName)
+        assertTrue(locations[1].isSelected)
+    }
+
+    @Test
+    fun cliSelectLocationUsesOneBasedVisibleIndexWhenNameDoesNotMatch() {
+        var state = MainUiState(
+            currentLocations = listOf("vless://second", "vless://third"),
+        )
+        var locations = listOf(
+            desktopLocation(index = 1, rawLink = "vless://first", name = "First"),
+            desktopLocation(index = 2, rawLink = "vless://second", name = "Second"),
+            desktopLocation(index = 3, rawLink = "vless://third", name = "Third"),
+        )
+        val service = desktopLocationService(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        val result = service.applyCliSelection("2")
+
+        assertTrue(result.isSuccess)
+        assertEquals("Third", result.getOrThrow().name)
+        assertEquals("Third", state.selectedProfileName)
+        assertFalse(locations[1].isSelected)
+        assertTrue(locations[2].isSelected)
+    }
+
+    @Test
+    fun cliSelectLocationFailsOnDuplicateVisibleNames() {
+        var state = MainUiState(
+            currentLocations = listOf("vless://first", "vless://second"),
+        )
+        var locations = listOf(
+            desktopLocation(index = 1, rawLink = "vless://first", name = "Duplicate"),
+            desktopLocation(index = 2, rawLink = "vless://second", name = "Duplicate"),
+        )
+        val service = desktopLocationService(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        val result = service.applyCliSelection("Duplicate")
+
+        assertTrue(result.isFailure)
+        assertEquals("", state.selectedProfileName)
+        assertEquals("Multiple visible locations are named \"Duplicate\".", state.statusMessage)
+        assertFalse(locations.any { it.isSelected })
+    }
+
+    @Test
+    fun cliSelectLocationFailsWhenTargetIsMissing() {
+        var state = MainUiState(
+            currentLocations = listOf("vless://first"),
+        )
+        var locations = listOf(
+            desktopLocation(index = 1, rawLink = "vless://first", name = "First"),
+        )
+        val service = desktopLocationService(
+            stateProvider = { state },
+            locationsProvider = { locations },
+            commitState = { nextState, nextLocations ->
+                state = nextState
+                locations = nextLocations
+            },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        val result = service.applyCliSelection("Missing")
+
+        assertTrue(result.isFailure)
+        assertEquals("", state.selectedProfileName)
+        assertEquals("Location not found: Missing", state.statusMessage)
+        assertFalse(locations.single().isSelected)
+    }
+
+    @Test
     fun importRawReportsStructuredBlockedStatusInSubscriptionMode() = runTest {
         var state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION)
         var locations = emptyList<DesktopLocationRecord>()
@@ -97,6 +206,22 @@ class DesktopLocationServiceTest {
         service.importRaw("not relevant")
 
         assertEquals(LocationStatusMessages.importLocationsBlocked(), state.statusMessage)
+    }
+
+    private fun desktopLocationService(
+        stateProvider: () -> MainUiState,
+        locationsProvider: () -> List<DesktopLocationRecord>,
+        commitState: (MainUiState, List<DesktopLocationRecord>) -> Unit,
+        updateState: ((MainUiState) -> MainUiState) -> Unit,
+    ): DesktopLocationService {
+        return DesktopLocationService(
+            stateProvider = stateProvider,
+            locationsProvider = locationsProvider,
+            currentRuntimeMode = { null },
+            stopConnection = { Result.success(Unit) },
+            commitState = commitState,
+            updateState = updateState,
+        )
     }
 }
 

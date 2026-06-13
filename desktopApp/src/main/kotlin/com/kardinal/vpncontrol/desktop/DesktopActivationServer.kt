@@ -21,14 +21,20 @@ internal class DesktopActivationServer private constructor(
     }
 
     companion object {
-        private val stateDir: Path = Path.of(
+        private val defaultStateDir: Path = Path.of(
             System.getProperty("user.home"),
             ".vpn-control-desktop",
         )
-        private val portFile: Path = stateDir.resolve("activation.port")
+        private val defaultPortFile: Path = defaultStateDir.resolve("activation.port")
 
-        fun start(onShowWindow: () -> Unit): DesktopActivationServer? = runCatching {
-            Files.createDirectories(stateDir)
+        fun start(
+            onShowWindow: () -> Unit,
+            onCliCommand: (DesktopCliCommand) -> DesktopCliResponse = {
+                DesktopCliResponse.failure("VPN Control desktop app is not ready.", exitCode = 2)
+            },
+            portFile: Path = defaultPortFile,
+        ): DesktopActivationServer? = runCatching {
+            Files.createDirectories(portFile.parent)
             val serverSocket = ServerSocket().apply {
                 reuseAddress = true
                 bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
@@ -51,6 +57,21 @@ internal class DesktopActivationServer private constructor(
                         if (command == "show") {
                             onShowWindow()
                             socket.getOutputStream().write("ok\n".toByteArray(StandardCharsets.UTF_8))
+                        } else if (command != null) {
+                            val response = DesktopCliProtocol.decodeCommand(command)
+                                .fold(
+                                    onSuccess = onCliCommand,
+                                    onFailure = { error ->
+                                        DesktopCliResponse.failure(
+                                            error.message ?: "Invalid VPN Control CLI command.",
+                                            exitCode = 1,
+                                        )
+                                    },
+                                )
+                            socket.getOutputStream().write(
+                                "${DesktopCliProtocol.encodeResponse(response)}\n"
+                                    .toByteArray(StandardCharsets.UTF_8),
+                            )
                         }
                     }
                 }
@@ -58,7 +79,7 @@ internal class DesktopActivationServer private constructor(
             DesktopActivationServer(serverSocket, serverThread, portFile)
         }.getOrNull()
 
-        fun requestShow(): Boolean = runCatching {
+        fun requestShow(portFile: Path = defaultPortFile): Boolean = runCatching {
             val port = Files.readString(portFile).trim().toInt()
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
@@ -68,5 +89,29 @@ internal class DesktopActivationServer private constructor(
             }
             true
         }.getOrDefault(false)
+
+        fun requestCliCommand(
+            command: DesktopCliCommand,
+            portFile: Path = defaultPortFile,
+        ): DesktopCliResponse = runCatching {
+            val port = Files.readString(portFile).trim().toInt()
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
+                socket.getOutputStream().write(
+                    "${DesktopCliProtocol.encodeCommand(command)}\n".toByteArray(StandardCharsets.UTF_8),
+                )
+                socket.getOutputStream().flush()
+                val responseLine = socket.getInputStream()
+                    .bufferedReader(StandardCharsets.UTF_8)
+                    .readLine()
+                if (responseLine == null) {
+                    DesktopCliResponse.failure("No response from VPN Control desktop app.", exitCode = 2)
+                } else {
+                    DesktopCliProtocol.decodeResponse(responseLine)
+                }
+            }
+        }.getOrElse {
+            DesktopCliResponse.failure("VPN Control desktop app is not running.", exitCode = 2)
+        }
     }
 }

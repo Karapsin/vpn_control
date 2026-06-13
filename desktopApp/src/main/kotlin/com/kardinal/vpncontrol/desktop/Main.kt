@@ -100,6 +100,7 @@ import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
+    DesktopCli.handleArgs(args)?.let { exitProcess(it) }
     DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
         println("VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
@@ -113,7 +114,10 @@ fun main(args: Array<String>) {
         return
     }
     val activationEvents = DesktopActivationEvents()
-    val activationServer = DesktopActivationServer.start(activationEvents::requestShowWindow)
+    val activationServer = DesktopActivationServer.start(
+        onShowWindow = activationEvents::requestShowWindow,
+        onCliCommand = activationEvents::requestCliCommand,
+    )
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
     try {
         application {
@@ -153,7 +157,19 @@ private fun DesktopApplication(
         activationEvents.setShowWindowHandler {
             trayWindowState = trayWindowState.withWindowShown()
         }
-        onDispose { activationEvents.setShowWindowHandler(null) }
+        activationEvents.setCliCommandHandler { command, future ->
+            coroutineScope.launch {
+                val response = runCatching { service.executeCliCommand(command) }
+                    .getOrElse { error ->
+                        DesktopCliResponse.failure(error.message ?: "VPN Control CLI command failed.")
+                    }
+                future.complete(response)
+            }
+        }
+        onDispose {
+            activationEvents.setShowWindowHandler(null)
+            activationEvents.setCliCommandHandler(null)
+        }
     }
 
     fun exitAfterStoppingRuntime() {
