@@ -12,22 +12,24 @@ import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.shared.storageapi.RefreshScheduler
 import java.util.concurrent.TimeUnit
 
-class SubscriptionRefreshScheduler(
-    private val context: Context,
+internal class SubscriptionRefreshScheduler(
+    private val workOperations: SubscriptionRefreshWorkOperations,
+    private val diagnosticsLogger: (String) -> Unit = {},
 ) : RefreshScheduler {
+    constructor(context: Context) : this(
+        workOperations = AndroidSubscriptionRefreshWorkOperations(context),
+        diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
+    )
+
     override suspend fun sync(state: PersistedState) {
-        schedule(state, appendToCurrentChain = false)
+        schedule(state)
     }
 
     override suspend fun scheduleNext(state: PersistedState) {
-        schedule(state, appendToCurrentChain = true)
+        schedule(state)
     }
 
-    private suspend fun schedule(
-        state: PersistedState,
-        appendToCurrentChain: Boolean,
-    ) {
-        val workManager = WorkManager.getInstance(context)
+    private suspend fun schedule(state: PersistedState) {
         val intervalMinutes = state.subscriptionRefreshPolicy
             .effectiveIntervalMinutes(state.subscriptionRefreshCustomHours)
         val refreshAll = isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
@@ -43,36 +45,20 @@ class SubscriptionRefreshScheduler(
             intervalMinutes == null ||
             !validSource
         ) {
-            workManager.cancelUniqueWork(WORK_NAME)
-            DiagnosticsLogger.append(
-                context,
+            workOperations.cancelUniqueWork(WORK_NAME)
+            diagnosticsLogger(
                 "Subscription refresh scheduling canceled: mode=${state.profileSourceMode} activeUrlSet=${state.profileUrl.isNotBlank()} subscriptions=${state.subscriptions.size} policy=${state.subscriptionRefreshPolicy} refreshAll=$refreshAll validSource=$validSource",
             )
             return
         }
 
-        val request = OneTimeWorkRequestBuilder<SubscriptionRefreshWorker>()
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
-            )
-            .setInitialDelay(intervalMinutes, TimeUnit.MINUTES)
-            .addTag(WORK_NAME)
-            .build()
-
-        workManager.enqueueUniqueWork(
-            WORK_NAME,
-            if (appendToCurrentChain) {
-                ExistingWorkPolicy.APPEND_OR_REPLACE
-            } else {
-                ExistingWorkPolicy.REPLACE
-            },
-            request,
+        workOperations.enqueueUniqueRefresh(
+            workName = WORK_NAME,
+            policy = ExistingWorkPolicy.REPLACE,
+            intervalMinutes = intervalMinutes,
         )
-        DiagnosticsLogger.append(
-            context,
-            "Subscription refresh scheduled: policy=${state.subscriptionRefreshPolicy} refreshAll=$refreshAll intervalMinutes=$intervalMinutes append=$appendToCurrentChain",
+        diagnosticsLogger(
+            "Subscription refresh scheduled: policy=${state.subscriptionRefreshPolicy} refreshAll=$refreshAll intervalMinutes=$intervalMinutes workPolicy=${ExistingWorkPolicy.REPLACE}",
         )
     }
 
@@ -81,6 +67,48 @@ class SubscriptionRefreshScheduler(
     }
 
     override fun cancel() {
-        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        workOperations.cancelUniqueWork(WORK_NAME)
+    }
+}
+
+internal interface SubscriptionRefreshWorkOperations {
+    fun cancelUniqueWork(workName: String)
+
+    fun enqueueUniqueRefresh(
+        workName: String,
+        policy: ExistingWorkPolicy,
+        intervalMinutes: Long,
+    )
+}
+
+private class AndroidSubscriptionRefreshWorkOperations(
+    context: Context,
+) : SubscriptionRefreshWorkOperations {
+    private val workManager = WorkManager.getInstance(context)
+
+    override fun cancelUniqueWork(workName: String) {
+        workManager.cancelUniqueWork(workName)
+    }
+
+    override fun enqueueUniqueRefresh(
+        workName: String,
+        policy: ExistingWorkPolicy,
+        intervalMinutes: Long,
+    ) {
+        val request = OneTimeWorkRequestBuilder<SubscriptionRefreshWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build(),
+            )
+            .setInitialDelay(intervalMinutes, TimeUnit.MINUTES)
+            .addTag(workName)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            workName,
+            policy,
+            request,
+        )
     }
 }
