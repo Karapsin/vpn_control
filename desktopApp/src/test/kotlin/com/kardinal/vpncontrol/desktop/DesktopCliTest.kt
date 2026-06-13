@@ -23,6 +23,7 @@ class DesktopCliTest {
                 command = it
                 DesktopCliResponse.success("VPN started.")
             },
+            startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(0, exitCode)
@@ -41,6 +42,7 @@ class DesktopCliTest {
                 command = it
                 DesktopCliResponse.success("selected")
             },
+            startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(0, exitCode)
@@ -55,6 +57,7 @@ class DesktopCliTest {
             args = arrayOf("unknown"),
             printLine = lines::add,
             requestCommand = { error("request should not be sent") },
+            startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(1, exitCode)
@@ -69,10 +72,33 @@ class DesktopCliTest {
         val exitCode = DesktopCli.handleArgs(
             args = arrayOf("off"),
             printLine = lines::add,
-            requestCommand = { DesktopCliResponse.failure("VPN Control desktop app is not running.", exitCode = 2) },
+            requestCommand = { DesktopCliResponse.notRunning() },
+            startHeadlessController = {
+                DesktopCliResponse.failure("VPN Control desktop app is not running.", exitCode = 2)
+            },
         )
 
         assertEquals(2, exitCode)
         assertEquals(listOf("VPN Control desktop app is not running."), lines)
+    }
+
+    @Test
+    fun missingServerStartsHeadlessControllerAndPrintsResponse() {
+        val lines = mutableListOf<String>()
+        var startedCommand: DesktopCliCommand? = null
+
+        val exitCode = DesktopCli.handleArgs(
+            args = arrayOf("find-best"),
+            printLine = lines::add,
+            requestCommand = { DesktopCliResponse.notRunning() },
+            startHeadlessController = {
+                startedCommand = it
+                DesktopCliResponse.success("Best location selected: Berlin")
+            },
+        )
+
+        assertEquals(0, exitCode)
+        assertEquals(DesktopCliCommand.FindBest, startedCommand)
+        assertEquals(listOf("Best location selected: Berlin"), lines)
     }
 }

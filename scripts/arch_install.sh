@@ -591,6 +591,17 @@ is_autostart_launch() {
   return 1
 }
 
+is_cli_launch() {
+  case "\${1:-}" in
+    on|off|find-best|select)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 log_autostart() {
   mkdir -p "\$state_dir" 2>/dev/null || true
   printf '%s %s\n' "\$(date '+%Y-%m-%dT%H:%M:%S%z')" "\$*" >>"\$autostart_log" 2>/dev/null || true
@@ -725,6 +736,10 @@ run_autostart_app_with_retries() {
 autostart_launch=false
 if is_autostart_launch "\$@"; then
   autostart_launch=true
+fi
+
+if is_cli_launch "\$@"; then
+  exec "$install_dir/bin/vpn-control" "\$@"
 fi
 
 if command -v flock >/dev/null 2>&1; then

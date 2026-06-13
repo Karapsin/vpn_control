@@ -80,6 +80,7 @@ required_snippets = [
     'AUTOSTART_STARTUP_WINDOW_SECONDS=20',
     'AUTOSTART_DESKTOP_WAIT_SECONDS=20',
     'is_autostart_launch()',
+    'is_cli_launch()',
     'log_autostart()',
     'request_existing_instance()',
     'desktop_session_ready()',
@@ -93,6 +94,7 @@ required_snippets = [
     'flock -n 9',
     'log_autostart "existing instance lock held; requesting activation"',
     'run_autostart_app_with_retries "\\$@"',
+    'if is_cli_launch "\\$@"; then',
 ]
 missing = [snippet for snippet in required_snippets if snippet not in text]
 if missing:
@@ -123,7 +125,7 @@ if old_pipefail_port_parse in text:
     sys.exit(1)
 
 launcher_guard = text.find('lock_file="\\$state_dir/launcher.lock"')
-launcher_exec = text.find('exec "$install_dir/bin/vpn-control" "\\$@"')
+launcher_exec = text.rfind('exec "$install_dir/bin/vpn-control" "\\$@"')
 if launcher_guard < 0 or launcher_exec < 0 or launcher_guard > launcher_exec:
     print("arch_install.sh launcher wrapper must guard duplicate launches before execing app binary.", file=sys.stderr)
     sys.exit(1)
@@ -136,6 +138,12 @@ if duplicate_launch_exit < 0 or duplicate_launch_exit > launcher_exec:
 autostart_retry = text.find('run_autostart_app_with_retries "\\$@"')
 if autostart_retry < 0 or autostart_retry > launcher_exec:
     print("arch_install.sh launcher wrapper must run retrying autostart before the normal exec path.", file=sys.stderr)
+    sys.exit(1)
+
+cli_bypass = text.find('if is_cli_launch "\\$@"; then')
+flock_guard = text.find('if command -v flock >/dev/null 2>&1; then')
+if cli_bypass < 0 or flock_guard < 0 or cli_bypass > flock_guard:
+    print("arch_install.sh launcher wrapper must bypass duplicate-launch activation for CLI commands.", file=sys.stderr)
     sys.exit(1)
 
 autostart_log = text.find('autostart_log="\\$state_dir/autostart.log"')

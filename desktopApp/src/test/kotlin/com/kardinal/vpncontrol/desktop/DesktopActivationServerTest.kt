@@ -15,13 +15,40 @@ class DesktopActivationServerTest {
             var showRequests = 0
             val portFile = tempDir.resolve("activation.port")
             val server = DesktopActivationServer.start(
-                onShowWindow = { showRequests += 1 },
+                onShowWindow = {
+                    showRequests += 1
+                    DesktopActivationShowResult.SHOWN
+                },
                 portFile = portFile,
             )
             assertNotNull(server)
             server.use {
-                assertTrue(DesktopActivationServer.requestShow(portFile = portFile))
+                assertEquals(
+                    DesktopActivationShowResult.SHOWN,
+                    DesktopActivationServer.requestShow(portFile = portFile),
+                )
                 assertEquals(1, showRequests)
+            }
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun requestShowReportsHeadlessController() {
+        val tempDir = Files.createTempDirectory("vpn-control-activation-headless-show")
+        try {
+            val portFile = tempDir.resolve("activation.port")
+            val server = DesktopActivationServer.start(
+                onShowWindow = { DesktopActivationShowResult.HEADLESS },
+                portFile = portFile,
+            )
+            assertNotNull(server)
+            server.use {
+                assertEquals(
+                    DesktopActivationShowResult.HEADLESS,
+                    DesktopActivationServer.requestShow(portFile = portFile),
+                )
             }
         } finally {
             tempDir.toFile().deleteRecursively()
@@ -35,7 +62,7 @@ class DesktopActivationServerTest {
             var command: DesktopCliCommand? = null
             val portFile = tempDir.resolve("activation.port")
             val server = DesktopActivationServer.start(
-                onShowWindow = {},
+                onShowWindow = { DesktopActivationShowResult.SHOWN },
                 onCliCommand = {
                     command = it
                     DesktopCliResponse.success("Selected location: New York")

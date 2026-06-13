@@ -12,12 +12,21 @@ internal data class DesktopCliResponse(
     val message: String,
     val exitCode: Int = if (success) 0 else 1,
 ) {
+    val isDesktopAppNotRunning: Boolean
+        get() = !success && exitCode == UNAVAILABLE_EXIT_CODE && message == NOT_RUNNING_MESSAGE
+
     companion object {
+        const val UNAVAILABLE_EXIT_CODE = 2
+        const val NOT_RUNNING_MESSAGE = "VPN Control desktop app is not running."
+
         fun success(message: String): DesktopCliResponse =
             DesktopCliResponse(success = true, message = message, exitCode = 0)
 
         fun failure(message: String, exitCode: Int = 1): DesktopCliResponse =
             DesktopCliResponse(success = false, message = message, exitCode = exitCode)
+
+        fun notRunning(): DesktopCliResponse =
+            failure(NOT_RUNNING_MESSAGE, exitCode = UNAVAILABLE_EXIT_CODE)
     }
 }
 
@@ -34,10 +43,16 @@ internal object DesktopCli {
         args: Array<String>,
         printLine: (String) -> Unit = ::println,
         requestCommand: (DesktopCliCommand) -> DesktopCliResponse = DesktopActivationServer::requestCliCommand,
+        startHeadlessController: (DesktopCliCommand) -> DesktopCliResponse = DesktopHeadlessController::startForCliCommand,
     ): Int? {
         return when (val parsed = parse(args.toList()) ?: return null) {
             is DesktopCliParseResult.Valid -> {
-                val response = requestCommand(parsed.command)
+                val firstResponse = requestCommand(parsed.command)
+                val response = if (firstResponse.isDesktopAppNotRunning) {
+                    startHeadlessController(parsed.command)
+                } else {
+                    firstResponse
+                }
                 printLine(response.message)
                 response.exitCode
             }

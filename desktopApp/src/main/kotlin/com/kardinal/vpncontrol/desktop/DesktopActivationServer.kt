@@ -9,6 +9,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.concurrent.thread
 
+internal enum class DesktopActivationShowResult {
+    SHOWN,
+    HEADLESS,
+    UNAVAILABLE,
+}
+
 internal class DesktopActivationServer private constructor(
     private val serverSocket: ServerSocket,
     private val serverThread: Thread,
@@ -28,9 +34,12 @@ internal class DesktopActivationServer private constructor(
         private val defaultPortFile: Path = defaultStateDir.resolve("activation.port")
 
         fun start(
-            onShowWindow: () -> Unit,
+            onShowWindow: () -> DesktopActivationShowResult,
             onCliCommand: (DesktopCliCommand) -> DesktopCliResponse = {
-                DesktopCliResponse.failure("VPN Control desktop app is not ready.", exitCode = 2)
+                DesktopCliResponse.failure(
+                    "VPN Control desktop app is not ready.",
+                    exitCode = DesktopCliResponse.UNAVAILABLE_EXIT_CODE,
+                )
             },
             portFile: Path = defaultPortFile,
         ): DesktopActivationServer? = runCatching {
@@ -55,12 +64,23 @@ internal class DesktopActivationServer private constructor(
                             .bufferedReader(StandardCharsets.UTF_8)
                             .readLine()
                         if (command == "show") {
-                            onShowWindow()
-                            socket.getOutputStream().write("ok\n".toByteArray(StandardCharsets.UTF_8))
+                            val response = when (onShowWindow()) {
+                                DesktopActivationShowResult.SHOWN -> "ok"
+                                DesktopActivationShowResult.HEADLESS -> "headless"
+                                DesktopActivationShowResult.UNAVAILABLE -> "unavailable"
+                            }
+                            socket.getOutputStream().write("$response\n".toByteArray(StandardCharsets.UTF_8))
                         } else if (command != null) {
                             val response = DesktopCliProtocol.decodeCommand(command)
                                 .fold(
-                                    onSuccess = onCliCommand,
+                                    onSuccess = { decodedCommand ->
+                                        runCatching { onCliCommand(decodedCommand) }
+                                            .getOrElse { error ->
+                                                DesktopCliResponse.failure(
+                                                    error.message ?: "VPN Control CLI command failed.",
+                                                )
+                                            }
+                                    },
                                     onFailure = { error ->
                                         DesktopCliResponse.failure(
                                             error.message ?: "Invalid VPN Control CLI command.",
@@ -79,16 +99,24 @@ internal class DesktopActivationServer private constructor(
             DesktopActivationServer(serverSocket, serverThread, portFile)
         }.getOrNull()
 
-        fun requestShow(portFile: Path = defaultPortFile): Boolean = runCatching {
+        fun requestShow(portFile: Path = defaultPortFile): DesktopActivationShowResult = runCatching {
             val port = Files.readString(portFile).trim().toInt()
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
                 socket.soTimeout = 500
                 socket.getOutputStream().write("show\n".toByteArray(StandardCharsets.UTF_8))
                 socket.getOutputStream().flush()
+                when (
+                    socket.getInputStream()
+                        .bufferedReader(StandardCharsets.UTF_8)
+                        .readLine()
+                ) {
+                    "ok" -> DesktopActivationShowResult.SHOWN
+                    "headless" -> DesktopActivationShowResult.HEADLESS
+                    else -> DesktopActivationShowResult.UNAVAILABLE
+                }
             }
-            true
-        }.getOrDefault(false)
+        }.getOrDefault(DesktopActivationShowResult.UNAVAILABLE)
 
         fun requestCliCommand(
             command: DesktopCliCommand,
@@ -111,7 +139,7 @@ internal class DesktopActivationServer private constructor(
                 }
             }
         }.getOrElse {
-            DesktopCliResponse.failure("VPN Control desktop app is not running.", exitCode = 2)
+            DesktopCliResponse.notRunning()
         }
     }
 }

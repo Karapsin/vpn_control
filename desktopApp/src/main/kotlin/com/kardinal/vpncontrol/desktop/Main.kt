@@ -100,6 +100,7 @@ import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
+    DesktopHeadlessController.handleArgs(args)?.let { exitProcess(it) }
     DesktopCli.handleArgs(args)?.let { exitProcess(it) }
     DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
@@ -108,14 +109,20 @@ fun main(args: Array<String>) {
     }
     val instanceLock = DesktopSingleInstanceLock.acquire()
     if (instanceLock == null) {
-        if (!DesktopActivationServer.requestShow()) {
-            println("VPN Control is already running.")
+        when (DesktopActivationServer.requestShow()) {
+            DesktopActivationShowResult.SHOWN -> Unit
+            DesktopActivationShowResult.HEADLESS ->
+                println("VPN Control is running headless. Run `vpn-control off` before launching the GUI.")
+            DesktopActivationShowResult.UNAVAILABLE -> println("VPN Control is already running.")
         }
         return
     }
     val activationEvents = DesktopActivationEvents()
     val activationServer = DesktopActivationServer.start(
-        onShowWindow = activationEvents::requestShowWindow,
+        onShowWindow = {
+            activationEvents.requestShowWindow()
+            DesktopActivationShowResult.SHOWN
+        },
         onCliCommand = activationEvents::requestCliCommand,
     )
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
