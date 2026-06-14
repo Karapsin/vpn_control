@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.data.DiagnosticsSanitizer
 import com.kardinal.vpncontrol.model.AppMode
 import java.nio.file.Files
 import java.nio.file.Path
@@ -35,6 +36,7 @@ object DesktopDiagnosticsExporter {
                         .joinToString(separator = "\n")
                 }.getOrNull()
             }
+            ?.let(DiagnosticsSanitizer::redactText)
             .orEmpty()
 
         return buildString {
@@ -49,11 +51,11 @@ object DesktopDiagnosticsExporter {
             appendLine("subscription_hwid_present=${state.subscriptionHwid.isNotBlank()}")
             appendLine("active_subscription_id=${state.activeSubscriptionId}")
             appendLine("selected_profile_name=${state.selectedProfileName}")
-            appendLine("selected_profile_server=${state.selectedProfileServer}")
-            appendLine("selected_profile_source_url=${state.selectedProfileSourceUrl}")
+            appendLine("selected_profile_server_present=${state.selectedProfileServer.isNotBlank()}")
+            appendLine("selected_profile_source_url=${DiagnosticsSanitizer.redactText(state.selectedProfileSourceUrl).ifBlank { "<empty>" }}")
             appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")
             appendLine("current_proxy_port=${currentPort ?: "none"}")
-            appendLine("runtime_log_file=${logFile?.toAbsolutePath() ?: "none"}")
+            appendLine("runtime_log_file=${logFile?.toAbsolutePath()?.let { DiagnosticsSanitizer.redactText(it.toString()) } ?: "none"}")
             appendLine("last_benchmark_summary=${state.lastBenchmarkSummary}")
             appendLine("find_best_state=${findBestState(state)}")
             appendLine("successful_starts=${state.successfulStarts}")
@@ -61,7 +63,7 @@ object DesktopDiagnosticsExporter {
             appendLine("os_name=${System.getProperty("os.name")}")
             appendLine("os_arch=${System.getProperty("os.arch")}")
             appendLine("java_version=${System.getProperty("java.version")}")
-            appendLine("user_name=${System.getProperty("user.name")}")
+            appendLine("user_name_present=${!System.getProperty("user.name").isNullOrBlank()}")
             appendLine()
             appendLine("[subscription_refresh]")
             if (state.subscriptions.isEmpty()) {
@@ -72,6 +74,7 @@ object DesktopDiagnosticsExporter {
                         listOf(
                             "id=${subscription.id}",
                             "name=${subscription.customName.ifBlank { subscription.url.substringAfter("://").substringBefore('/') }}",
+                            "url=${DiagnosticsSanitizer.redactText(subscription.url).ifBlank { "<empty>" }}",
                             "cached=${subscription.cachedLocations.size}",
                             "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
                             "status=${subscription.lastRefreshStatus.ifBlank { "not refreshed yet" }}",
@@ -81,21 +84,26 @@ object DesktopDiagnosticsExporter {
             }
             appendLine()
             appendLine("[vpn_capability]")
-            appendLine(vpnCapabilityStatus ?: "<unknown>")
+            appendLine(vpnCapabilityStatus?.let(DiagnosticsSanitizer::redactText) ?: "<unknown>")
             appendLine()
             appendLine("[preflight]")
             if (preflightReport == null) {
                 appendLine("<none>")
             } else {
-                preflightReport.lines().forEach(::appendLine)
+                preflightReport.lines()
+                    .map(DiagnosticsSanitizer::redactText)
+                    .forEach(::appendLine)
             }
             appendLine()
-            appendLine("[runtime_config]")
-            appendLine(runtimeConfigJson?.ifBlank { "<empty>" } ?: "<none>")
+            appendLine("[selected_profile]")
+            appendLine(DiagnosticsSanitizer.summarizeStoredLocation(state.selectedProfileRawLink))
+            appendLine()
+            appendLine("[runtime_config_summary]")
+            appendLine(DiagnosticsSanitizer.summarizeSingBoxConfig(runtimeConfigJson))
             appendLine()
             appendLine("[connection_log]")
             state.connectionLog.forEach { entry ->
-                appendLine("${entry.createdAtEpochMillis}: ${entry.message}")
+                appendLine("${entry.createdAtEpochMillis}: ${DiagnosticsSanitizer.redactText(entry.message)}")
             }
             appendLine()
             appendLine("[runtime_log_tail]")

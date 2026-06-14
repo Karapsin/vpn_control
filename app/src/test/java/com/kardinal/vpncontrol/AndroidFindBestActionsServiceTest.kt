@@ -296,6 +296,53 @@ class AndroidFindBestActionsServiceTest {
         assertFalse(state.isRefreshing)
     }
 
+    @Test
+    fun allActiveVerificationFailuresRestorePreviousRunningConnectionStatus() = runBlocking {
+        val previous = PersistedState(isVpnRunning = true, selectedProfileName = "Previous")
+        var state = MainUiState(
+            appMode = AppMode.VPN,
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf("stored"),
+            isVpnRunning = true,
+        )
+        val statuses = mutableListOf<String>()
+        var stops = 0
+        var rollbackReason = ""
+        val service = service(
+            stateProvider = { state },
+            setBusy = { busy -> state = state.copy(isBusy = busy) },
+            setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
+            updateStatus = { statuses += it },
+            snapshot = { previous },
+            refreshBestProfileAttemptPlan = { Result.success(attemptPlan("Candidate")) },
+            startSelection = { _, _ ->
+                SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+            },
+            verifySelectionCandidate = { attempt, _ ->
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+            },
+            verifyActiveSelection = { attempt ->
+                Result.success(blockedBenchmark(attempt.selection.profile.remarks))
+            },
+            stopConnection = {
+                stops += 1
+                Result.success(Unit)
+            },
+            rollbackSelectionChange = { _, reason ->
+                rollbackReason = reason
+                "previous restored after: $reason"
+            },
+        )
+
+        service.refresh()
+
+        assertEquals(1, stops)
+        assertTrue(rollbackReason.contains("Candidate"))
+        assertEquals("previous restored after: $rollbackReason", statuses.last())
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
     private fun service(
         stateProvider: () -> MainUiState,
         setBusy: (Boolean) -> Unit,

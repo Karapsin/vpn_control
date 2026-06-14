@@ -83,7 +83,7 @@ class DiagnosticsExporter(
             appendLine("subscription_refresh_policy=${state.subscriptionRefreshPolicy}")
             appendLine("find_best_after_subscription_refresh=${state.findBestAfterSubscriptionRefresh}")
             appendLine("subscription_refresh_custom_hours=${state.subscriptionRefreshCustomHours}")
-            appendLine("validation_test_url=${state.validationSettings.testUrl}")
+            appendLine("validation_test_url=${DiagnosticsSanitizer.redactText(state.validationSettings.testUrl)}")
             appendLine("validation_batch_size=${state.validationSettings.batchSize}")
             appendLine("validation_retry_count=${state.validationSettings.retryCount}")
             appendLine("validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}")
@@ -96,7 +96,7 @@ class DiagnosticsExporter(
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
             appendLine("selected_profile_name=${state.selectedProfileName}")
-            appendLine("selected_profile_server=${state.selectedProfileServer}")
+            appendLine("selected_profile_server_present=${state.selectedProfileServer.isNotBlank()}")
             appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")
             appendLine("status_message=${state.statusMessage}")
             appendLine("is_vpn_running=${state.isVpnRunning}")
@@ -118,16 +118,21 @@ class DiagnosticsExporter(
             appendLine("connection_log_count=${state.connectionLog.size}")
             appendLine("proxy_only_port=${SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT}")
             appendLine()
+            val nativeLibrary = bundledNativeLibrary()
+            val legacyCopiedBinary = RuntimeFiles.singBoxBinary(context)
             appendSection(
                 "runtime",
                 listOf(
                     "mode=${state.appMode}",
                     "is_vpn_running=${state.isVpnRunning}",
                     "vpn_permission_granted=${vpnPermissionGranted()}",
-                    "sing_box_path=${RuntimeFiles.singBoxBinary(context).absolutePath}",
-                    "sing_box_exists=${RuntimeFiles.singBoxBinary(context).exists()}",
-                    "sing_box_executable=${RuntimeFiles.singBoxBinary(context).canExecute()}",
-                    "sing_box_size=${RuntimeFiles.singBoxBinary(context).takeIf(File::exists)?.length() ?: 0L}",
+                    "runtime_backend=libbox",
+                    "native_library_path=${nativeLibrary.absolutePath}",
+                    "native_library_exists=${nativeLibrary.exists()}",
+                    "native_library_readable=${nativeLibrary.canRead()}",
+                    "native_library_size=${nativeLibrary.takeIf(File::exists)?.length() ?: 0L}",
+                    "legacy_copied_binary_path=${legacyCopiedBinary.absolutePath}",
+                    "legacy_copied_binary_exists=${legacyCopiedBinary.exists()}",
                     "runtime_config_exists=${RuntimeFiles.runtimeConfigFile(context).exists()}",
                     "selected_profile_file_exists=${RuntimeFiles.selectedProfileFile(context).exists()}",
                 ).joinToString(separator = "\n"),
@@ -149,7 +154,7 @@ class DiagnosticsExporter(
                     "last_benchmark_summary=${state.lastBenchmarkSummary.ifBlank { "not_run" }}",
                     "latency_history_count=${state.latencyHistory.size}",
                     "latest_latency=${state.latencyHistory.lastOrNull()?.detail ?: "none"}",
-                    "validation_test_url=${state.validationSettings.testUrl}",
+                    "validation_test_url=${DiagnosticsSanitizer.redactText(state.validationSettings.testUrl)}",
                     "validation_batch_size=${state.validationSettings.batchSize}",
                     "validation_retry_count=${state.validationSettings.retryCount}",
                     "validation_active_verification_window_size=${state.validationSettings.activeVerificationWindowSize}",
@@ -169,21 +174,25 @@ class DiagnosticsExporter(
                 }.ifBlank { "<empty>" },
             )
             appendSection(
-                "selected_profile_link",
-                fileOrFallback(
-                    file = RuntimeFiles.selectedProfileFile(context),
-                    fallback = state.selectedProfileRawLink,
+                "selected_profile",
+                DiagnosticsSanitizer.summarizeStoredLocation(
+                    fileOrFallback(
+                        file = RuntimeFiles.selectedProfileFile(context),
+                        fallback = state.selectedProfileRawLink,
+                    ),
                 ),
             )
             appendSection(
                 "current_locations",
-                state.currentLocations.joinToString(separator = "\n").ifBlank { "<empty>" },
+                DiagnosticsSanitizer.summarizeStoredLocations(state.currentLocations),
             )
             appendSection(
-                "runtime_sing_box_json",
-                fileOrFallback(
-                    file = RuntimeFiles.runtimeConfigFile(context),
-                    fallback = state.runtimeConfigJson,
+                "runtime_config_summary",
+                DiagnosticsSanitizer.summarizeSingBoxConfig(
+                    fileOrFallback(
+                        file = RuntimeFiles.runtimeConfigFile(context),
+                        fallback = state.runtimeConfigJson,
+                    ),
                 ),
             )
             appendSection(
@@ -217,9 +226,13 @@ class DiagnosticsExporter(
             )
             appendSection(
                 "diagnostics_log",
-                safeRead(RuntimeFiles.diagnosticsLogFile(context)),
+                DiagnosticsSanitizer.redactText(safeRead(RuntimeFiles.diagnosticsLogFile(context))),
             )
         }
+    }
+
+    private fun bundledNativeLibrary(): File {
+        return File(context.applicationInfo.nativeLibraryDir, "libsing-box.so")
     }
 
     private fun safeRead(file: File): String {
