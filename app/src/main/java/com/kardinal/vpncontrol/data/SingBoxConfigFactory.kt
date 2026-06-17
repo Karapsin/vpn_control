@@ -28,6 +28,7 @@ object SingBoxConfigFactory {
                 add(SingBoxRouteDnsBuilder.sniffRouteRule())
                 if (activeVerificationPort != null) {
                     add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "active-verify-in"))
+                    add(SingBoxRouteDnsBuilder.inboundProxyRouteRule("active-verify-in"))
                 }
                 add(SingBoxRouteDnsBuilder.dnsHijackRouteRule())
             },

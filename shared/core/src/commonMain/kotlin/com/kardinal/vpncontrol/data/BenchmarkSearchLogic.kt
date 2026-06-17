@@ -280,6 +280,7 @@ object BenchmarkSearchLogic {
                 append(testStatus)
                 append(" test_codes=")
                 append(testResult.codes.joinToString(","))
+                appendStrictTargetSkip(testStatus)
                 append(" score=")
                 append(score)
             },
@@ -312,6 +313,7 @@ object BenchmarkSearchLogic {
                 append(testStatus)
                 append(" test_codes=")
                 append(testResult.codes.joinToString(","))
+                appendStrictTargetSkip(testStatus)
                 append(" score=")
                 append(score)
             },
@@ -340,8 +342,33 @@ object BenchmarkSearchLogic {
                 append(secondaryStatus)
                 append(' ')
                 append(reason)
+                appendStrictTargetSkip(secondaryStatus)
             },
         )
+    }
+
+    fun strictTargetSkipSummary(benchmarks: List<ProfileBenchmark>): String {
+        val skipped = benchmarks
+            .filterNot { it.testStatus == "ok" }
+        if (skipped.isEmpty()) return ""
+        val reasonCounts = skipped
+            .groupingBy { strictTargetSkipReason(it.testStatus) }
+            .eachCount()
+            .toSortedMap()
+            .entries
+            .joinToString(",") { "${it.key}:${it.value}" }
+        val bestAttempt = skipped.minByOrNull { it.score }?.profile?.remarks.orEmpty()
+        return buildString {
+            append("strict_target_skipped=")
+            append(skipped.size)
+            append(" reasons=")
+            append(reasonCounts.ifBlank { "target_error:${skipped.size}" })
+            if (bestAttempt.isNotBlank()) {
+                append(" best_attempt=")
+                append(bestAttempt)
+            }
+            append(" auto_select=false manual_selection_may_still_connect=true")
+        }
     }
 
     fun failedBenchmark(
@@ -419,6 +446,25 @@ object BenchmarkSearchLogic {
             }
         }
         return null
+    }
+
+    private fun StringBuilder.appendStrictTargetSkip(testStatus: String) {
+        val reason = strictTargetSkipReason(testStatus)
+        if (reason == "none") return
+        append(" strict_target_skip_reason=")
+        append(reason)
+        append(" auto_select=false manual_selection_may_still_connect=true")
+    }
+
+    private fun strictTargetSkipReason(testStatus: String): String {
+        return when (testStatus) {
+            "ok" -> "none"
+            "partial" -> "partial_target_response"
+            "challenge" -> "target_challenge"
+            "blocked" -> "target_blocked"
+            "timeout" -> "target_timeout"
+            else -> "target_error"
+        }
     }
 
     private fun medianOrNull(values: List<Double>): Double? {

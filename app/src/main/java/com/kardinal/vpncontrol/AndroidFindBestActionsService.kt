@@ -138,7 +138,12 @@ internal class AndroidFindBestActionsService(
             }
             val verifiedCandidates = precheck.verifiedCandidates
             if (verifiedCandidates.isEmpty()) {
-                lastFailureMessage = precheck.completed.lastOrNull()?.benchmark?.detail ?: lastFailureMessage
+                val skipSummary = BenchmarkSearchLogic.strictTargetSkipSummary(
+                    precheck.completed.map { it.benchmark },
+                )
+                lastFailureMessage = skipSummary.ifBlank {
+                    precheck.completed.lastOrNull()?.benchmark?.detail ?: lastFailureMessage
+                }
                 currentIndex += window.size.coerceAtLeast(1)
                 continue
             }

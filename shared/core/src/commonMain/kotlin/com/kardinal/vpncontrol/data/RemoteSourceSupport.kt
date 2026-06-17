@@ -78,13 +78,7 @@ fun redactRemoteSourceUrl(raw: String): String {
         append(parsed.scheme)
         append("://")
         append(parsed.authority)
-        append(parsed.path)
-        if (parsed.hasQuery) {
-            append("?<redacted>")
-        }
-        if (parsed.hasFragment) {
-            append("#<redacted>")
-        }
+        append("/<redacted>")
     }
 }
 
@@ -99,9 +93,6 @@ private data class ParsedSimpleUrl(
     val scheme: String,
     val authority: String,
     val host: String,
-    val path: String,
-    val hasQuery: Boolean,
-    val hasFragment: Boolean,
 )
 
 private fun parseSimpleUrl(raw: String): ParsedSimpleUrl? {
@@ -116,17 +107,12 @@ private fun parseSimpleUrl(raw: String): ParsedSimpleUrl? {
     }
     val authorityRaw = remainder.substring(0, authorityEnd)
     if (authorityRaw.isBlank()) return null
-    val suffix = remainder.substring(authorityEnd)
     val authority = authorityRaw.substringAfterLast('@')
     val host = extractHost(authority) ?: return null
-    val path = suffix.substringBefore('?').substringBefore('#')
     return ParsedSimpleUrl(
         scheme = scheme,
         authority = authority,
         host = host,
-        path = path,
-        hasQuery = '?' in suffix,
-        hasFragment = '#' in suffix,
     )
 }
 

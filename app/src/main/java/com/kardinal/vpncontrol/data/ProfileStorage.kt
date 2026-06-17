@@ -107,10 +107,14 @@ class ProfileStorage(
         val connectionTestToolsEnabled = booleanPreferencesKey("connection_test_tools_enabled")
         val sessionStartedAtEpochMillis = longPreferencesKey("session_started_at_epoch_millis")
         val sessionStoppedAtEpochMillis = longPreferencesKey("session_stopped_at_epoch_millis")
+        val runtimeStartSequence = longPreferencesKey("runtime_start_sequence")
         val sessionStartRxBytes = longPreferencesKey("session_start_rx_bytes")
         val sessionStartTxBytes = longPreferencesKey("session_start_tx_bytes")
         val successfulStarts = intPreferencesKey("successful_starts")
         val successfulStops = intPreferencesKey("successful_stops")
+        val backgroundRefreshLeaseOwner = stringPreferencesKey("background_refresh_lease_owner")
+        val backgroundRefreshLeaseStartedAtEpochMillis =
+            longPreferencesKey("background_refresh_lease_started_at_epoch_millis")
         val profileTrafficTotals = stringPreferencesKey("profile_traffic_totals")
         val latencyHistory = stringPreferencesKey("latency_history")
         val connectionLog = stringPreferencesKey("connection_log")
@@ -719,6 +723,9 @@ class ProfileStorage(
         context.dataStore.edit { prefs ->
             val wasRunning = prefs[Keys.isVpnRunning] ?: false
             prefs[Keys.isVpnRunning] = running
+            if (running) {
+                prefs[Keys.runtimeStartSequence] = (prefs[Keys.runtimeStartSequence] ?: 0L) + 1L
+            }
             if (!wasRunning && running) {
                 val (rxBytes, txBytes) = currentUidTrafficBytes()
                 prefs[Keys.sessionStartedAtEpochMillis] = System.currentTimeMillis()
@@ -773,6 +780,53 @@ class ProfileStorage(
             }
         }
         DiagnosticsLogger.append(context, "VPN running flag: $running")
+    }
+
+    suspend fun tryAcquireBackgroundRefreshLease(
+        owner: String,
+        nowMillis: Long = System.currentTimeMillis(),
+        staleAfterMillis: Long = BACKGROUND_REFRESH_LEASE_STALE_MILLIS,
+    ): Boolean {
+        var acquired = false
+        context.dataStore.edit { prefs ->
+            val currentOwner = prefs[Keys.backgroundRefreshLeaseOwner].orEmpty()
+            val startedAt = prefs[Keys.backgroundRefreshLeaseStartedAtEpochMillis] ?: 0L
+            if (BackgroundRefreshLeaseLogic.canAcquire(
+                    currentOwner = currentOwner,
+                    currentStartedAtMillis = startedAt,
+                    requestedOwner = owner,
+                    nowMillis = nowMillis,
+                    staleAfterMillis = staleAfterMillis,
+                )
+            ) {
+                prefs[Keys.backgroundRefreshLeaseOwner] = owner
+                prefs[Keys.backgroundRefreshLeaseStartedAtEpochMillis] = nowMillis
+                acquired = true
+            }
+        }
+        DiagnosticsLogger.append(
+            context,
+            if (acquired) {
+                "Background refresh lease acquired"
+            } else {
+                "Background refresh lease busy"
+            },
+        )
+        return acquired
+    }
+
+    suspend fun releaseBackgroundRefreshLease(owner: String) {
+        var released = false
+        context.dataStore.edit { prefs ->
+            if (prefs[Keys.backgroundRefreshLeaseOwner] == owner) {
+                prefs.remove(Keys.backgroundRefreshLeaseOwner)
+                prefs.remove(Keys.backgroundRefreshLeaseStartedAtEpochMillis)
+                released = true
+            }
+        }
+        if (released) {
+            DiagnosticsLogger.append(context, "Background refresh lease released")
+        }
     }
 
     override suspend fun snapshot(): PersistedState = state.first()
@@ -927,10 +981,14 @@ class ProfileStorage(
             connectionTestToolsEnabled = preferences[Keys.connectionTestToolsEnabled] ?: false,
             sessionStartedAtEpochMillis = preferences[Keys.sessionStartedAtEpochMillis] ?: 0L,
             sessionStoppedAtEpochMillis = preferences[Keys.sessionStoppedAtEpochMillis] ?: 0L,
+            runtimeStartSequence = preferences[Keys.runtimeStartSequence] ?: 0L,
             sessionStartRxBytes = preferences[Keys.sessionStartRxBytes] ?: -1L,
             sessionStartTxBytes = preferences[Keys.sessionStartTxBytes] ?: -1L,
             successfulStarts = preferences[Keys.successfulStarts] ?: 0,
             successfulStops = preferences[Keys.successfulStops] ?: 0,
+            backgroundRefreshLeaseOwner = preferences[Keys.backgroundRefreshLeaseOwner].orEmpty(),
+            backgroundRefreshLeaseStartedAtEpochMillis =
+                preferences[Keys.backgroundRefreshLeaseStartedAtEpochMillis] ?: 0L,
             profileTrafficTotals = StatsCodec.decodeProfileTrafficTotals(preferences[Keys.profileTrafficTotals]),
             latencyHistory = StatsCodec.decodeLatencyHistory(preferences[Keys.latencyHistory]),
             connectionLog = StatsCodec.decodeConnectionLog(preferences[Keys.connectionLog]),
@@ -1196,9 +1254,26 @@ class ProfileStorage(
         const val MAX_CONNECTION_LOG_ITEMS = 120
         const val MAX_LATENCY_HISTORY_ITEMS = 50
         const val MAX_PROFILE_TOTALS_ITEMS = 100
+        const val BACKGROUND_REFRESH_LEASE_STALE_MILLIS = 15 * 60 * 1000L
 
         fun generateSubscriptionHwid(): String {
             return UUID.randomUUID().toString().replace("-", "")
         }
+    }
+}
+
+internal object BackgroundRefreshLeaseLogic {
+    fun canAcquire(
+        currentOwner: String,
+        currentStartedAtMillis: Long,
+        requestedOwner: String,
+        nowMillis: Long,
+        staleAfterMillis: Long,
+    ): Boolean {
+        if (requestedOwner.isBlank()) return false
+        if (currentOwner.isBlank()) return true
+        if (currentOwner == requestedOwner) return true
+        return currentStartedAtMillis <= 0L ||
+            nowMillis - currentStartedAtMillis >= staleAfterMillis
     }
 }

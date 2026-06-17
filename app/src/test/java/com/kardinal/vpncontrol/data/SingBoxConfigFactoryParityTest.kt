@@ -121,6 +121,36 @@ class SingBoxConfigFactoryParityTest {
         assertTrue(directCidrs.contains("9.9.9.9/32"))
     }
 
+    @Test
+    fun androidVpnActiveVerificationInboundRoutesToProxyBeforeDirectRules() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                directDomainSuffixes = listOf("chatgpt.com"),
+            ),
+            activeVerificationPort = 24080,
+        )
+        val root = parseConfig(config)
+        val inbounds = root.getValue("inbounds").jsonArray
+        val routeRules = root.getValue("route")
+            .jsonObject
+            .getValue("rules")
+            .jsonArray
+        val activeInbound = inbounds[1].jsonObject
+        val activeProxyRule = routeRules[2].jsonObject
+        val directDomainIndex = routeRules.indexOfFirstRuleWith("domain_suffix")
+
+        assertEquals("active-verify-in", activeInbound.getValue("tag").jsonPrimitive.content)
+        assertEquals(24080, activeInbound.getValue("listen_port").jsonPrimitive.content.toInt())
+        assertEquals("active-verify-in", routeRules[1].jsonObject.getValue("inbound").jsonPrimitive.content)
+        assertEquals("active-verify-in", activeProxyRule.getValue("inbound").jsonPrimitive.content)
+        assertEquals("route", activeProxyRule.getValue("action").jsonPrimitive.content)
+        assertEquals("proxy", activeProxyRule.getValue("outbound").jsonPrimitive.content)
+        assertTrue(directDomainIndex > 2)
+    }
+
     private fun protocolProfiles(): List<ProxyProfile> {
         return listOf(
             ProxyProfile(

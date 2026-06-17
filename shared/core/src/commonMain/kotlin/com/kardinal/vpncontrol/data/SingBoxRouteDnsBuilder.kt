@@ -111,6 +111,14 @@ object SingBoxRouteDnsBuilder {
         }
     }
 
+    fun inboundProxyRouteRule(inboundTag: String): JsonObject {
+        return buildJsonObject {
+            put("inbound", inboundTag)
+            put("action", "route")
+            put("outbound", "proxy")
+        }
+    }
+
     fun directCidrRouteRule(directCidrs: List<String>): JsonObject {
         return buildJsonObject {
             put("ip_cidr", directCidrs.asJsonArray())

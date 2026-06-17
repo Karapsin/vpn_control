@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.data
 import com.kardinal.vpncontrol.model.ProxyProfile
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -72,6 +73,34 @@ class BenchmarkSearchLogicTest {
             listOf("Better Score", "Faster TCP"),
             result.verifiedCandidates.map { it.attempt.profile.remarks },
         )
+    }
+
+    @Test
+    fun strictTargetVerificationSkipsChallengeCandidatesWithReason() = runTest {
+        val challenged = preflight("Challenge", connectMillis = 10.0, country = "NL")
+
+        val result = BenchmarkSearchLogic.validateCandidateWindowForBestPass(
+            attempts = listOf(challenged),
+            currentIndex = 0,
+            windowSize = 1,
+        ) { candidate, _ ->
+            BenchmarkSearchLogic.buildActiveVerificationBenchmark(
+                candidate = candidate,
+                testResult = ProxyRunResult(codes = listOf("403"), totals = listOf(30.0)),
+            )
+        }
+
+        val benchmark = result.completed.single().benchmark
+        val summary = BenchmarkSearchLogic.strictTargetSkipSummary(result.completed.map { it.benchmark })
+
+        assertEquals("challenge", benchmark.testStatus)
+        assertTrue(result.verifiedCandidates.isEmpty())
+        assertEquals(null, result.winner)
+        assertContains(benchmark.detail, "strict_target_skip_reason=target_challenge")
+        assertContains(benchmark.detail, "auto_select=false")
+        assertContains(benchmark.detail, "manual_selection_may_still_connect=true")
+        assertContains(summary, "strict_target_skipped=1")
+        assertContains(summary, "target_challenge:1")
     }
 
     @Test

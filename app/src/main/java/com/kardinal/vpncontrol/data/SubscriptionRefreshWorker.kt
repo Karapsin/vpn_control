@@ -15,6 +15,7 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
+import java.util.UUID
 
 class SubscriptionRefreshWorker(
     appContext: Context,
@@ -56,6 +57,16 @@ class SubscriptionRefreshWorker(
             return Result.success()
         }
 
+        val leaseOwner = "background-refresh-${UUID.randomUUID()}"
+        if (!storage.tryAcquireBackgroundRefreshLease(leaseOwner)) {
+            DiagnosticsLogger.append(
+                applicationContext,
+                "Background subscription sync skipped: another refresh is already running",
+            )
+            subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
+            return Result.success()
+        }
+        return try {
         val orchestrator = BenchmarkOrchestrator(applicationContext, storage)
         val vpnManager = VpnManager(applicationContext, storage)
         val repository = AppRepository(
@@ -76,7 +87,7 @@ class SubscriptionRefreshWorker(
         } else {
             repository.refreshActiveSubscriptionCache()
         }
-        return refreshResult.fold(
+        refreshResult.fold(
             onSuccess = { refresh ->
                 val refreshedState = storage.snapshot()
                 val failedSubscriptions = refresh.failedSubscriptions
@@ -220,6 +231,9 @@ class SubscriptionRefreshWorker(
                 finishAndScheduleNext()
             },
         )
+        } finally {
+            storage.releaseBackgroundRefreshLease(leaseOwner)
+        }
     }
 
     private suspend fun findBestProfileWithRetries(
@@ -284,7 +298,19 @@ class SubscriptionRefreshWorker(
             }
             val verifiedCandidates = precheck.verifiedCandidates
             if (verifiedCandidates.isEmpty()) {
-                lastFailure = precheck.completed.lastOrNull()?.benchmark?.detail?.let(::IllegalStateException) ?: lastFailure
+                val skipSummary = BenchmarkSearchLogic.strictTargetSkipSummary(
+                    precheck.completed.map { it.benchmark },
+                )
+                if (skipSummary.isNotBlank()) {
+                    DiagnosticsLogger.append(
+                        applicationContext,
+                        "Background best-location strict target skipped window: $skipSummary",
+                    )
+                    lastFailure = IllegalStateException(skipSummary)
+                } else {
+                    lastFailure = precheck.completed.lastOrNull()?.benchmark?.detail?.let(::IllegalStateException)
+                        ?: lastFailure
+                }
                 currentIndex += window.size.coerceAtLeast(1)
                 continue
             }

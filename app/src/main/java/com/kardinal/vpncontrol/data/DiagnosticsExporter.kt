@@ -95,10 +95,10 @@ class DiagnosticsExporter(
             appendLine("android_app_scope=${androidAppScope(state)}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
             appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
-            appendLine("selected_profile_name=${state.selectedProfileName}")
+            appendLine("selected_profile_name=${DiagnosticsSanitizer.redactText(state.selectedProfileName)}")
             appendLine("selected_profile_server_present=${state.selectedProfileServer.isNotBlank()}")
             appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")
-            appendLine("status_message=${state.statusMessage}")
+            appendLine("status_message=${DiagnosticsSanitizer.redactText(state.statusMessage)}")
             appendLine("is_vpn_running=${state.isVpnRunning}")
             appendLine("session_stats_enabled=${state.sessionStatsEnabled}")
             appendLine("live_traffic_stats_enabled=${state.liveTrafficStatsEnabled}")
@@ -108,11 +108,12 @@ class DiagnosticsExporter(
             appendLine("connection_test_tools_enabled=${state.connectionTestToolsEnabled}")
             appendLine("session_started_at_epoch_millis=${state.sessionStartedAtEpochMillis}")
             appendLine("session_stopped_at_epoch_millis=${state.sessionStoppedAtEpochMillis}")
+            appendLine("runtime_start_sequence=${state.runtimeStartSequence}")
             appendLine("session_start_rx_bytes=${state.sessionStartRxBytes}")
             appendLine("session_start_tx_bytes=${state.sessionStartTxBytes}")
             appendLine("successful_starts=${state.successfulStarts}")
             appendLine("successful_stops=${state.successfulStops}")
-            appendLine("last_benchmark_summary=${state.lastBenchmarkSummary}")
+            appendLine("last_benchmark_summary=${DiagnosticsSanitizer.redactText(state.lastBenchmarkSummary)}")
             appendLine("profile_traffic_totals_count=${state.profileTrafficTotals.size}")
             appendLine("latency_history_count=${state.latencyHistory.size}")
             appendLine("connection_log_count=${state.connectionLog.size}")
@@ -139,21 +140,27 @@ class DiagnosticsExporter(
             )
             appendSection(
                 "subscription_refresh",
-                state.subscriptions.joinToString(separator = "\n") { subscription ->
-                    listOf(
-                        "id=${subscription.id}",
-                        "cached=${subscription.cachedLocations.size}",
-                        "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
-                        "status=${subscription.lastRefreshStatus.ifBlank { "not refreshed yet" }}",
-                    ).joinToString(" | ")
-                }.ifBlank { "<empty>" },
+                buildString {
+                    appendLine("lease_active=${state.backgroundRefreshLeaseOwner.isNotBlank()}")
+                    appendLine("lease_started_at=${state.backgroundRefreshLeaseStartedAtEpochMillis}")
+                    append(
+                        state.subscriptions.joinToString(separator = "\n") { subscription ->
+                            listOf(
+                                "id=${subscription.id}",
+                                "cached=${subscription.cachedLocations.size}",
+                                "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
+                                "status=${DiagnosticsSanitizer.redactText(subscription.lastRefreshStatus.ifBlank { "not refreshed yet" })}",
+                            ).joinToString(" | ")
+                        }.ifBlank { "<empty>" },
+                    )
+                },
             )
             appendSection(
                 "find_best",
                 listOf(
-                    "last_benchmark_summary=${state.lastBenchmarkSummary.ifBlank { "not_run" }}",
+                    "last_benchmark_summary=${DiagnosticsSanitizer.redactText(state.lastBenchmarkSummary.ifBlank { "not_run" })}",
                     "latency_history_count=${state.latencyHistory.size}",
-                    "latest_latency=${state.latencyHistory.lastOrNull()?.detail ?: "none"}",
+                    "latest_latency=${DiagnosticsSanitizer.redactText(state.latencyHistory.lastOrNull()?.detail ?: "none")}",
                     "validation_test_url=${DiagnosticsSanitizer.redactText(state.validationSettings.testUrl)}",
                     "validation_batch_size=${state.validationSettings.batchSize}",
                     "validation_retry_count=${state.validationSettings.retryCount}",
@@ -169,18 +176,28 @@ class DiagnosticsExporter(
                         "url=${RemoteSourceResolver.redactForDiagnostics(subscription.url)}",
                         "cached=${subscription.cachedLocations.size}",
                         "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
-                        "status=${subscription.lastRefreshStatus}",
+                        "status=${DiagnosticsSanitizer.redactText(subscription.lastRefreshStatus)}",
                     ).joinToString(" | ")
                 }.ifBlank { "<empty>" },
             )
+            val selectedProfileFile = RuntimeFiles.selectedProfileFile(context)
+            val selectedProfileSource = when {
+                selectedProfileFile.exists() -> "runtime_file"
+                state.selectedProfileRawLink.isNotBlank() || state.selectedProfileJson.isNotBlank() -> "persisted_state"
+                else -> "none"
+            }
             appendSection(
                 "selected_profile",
-                DiagnosticsSanitizer.summarizeStoredLocation(
-                    fileOrFallback(
-                        file = RuntimeFiles.selectedProfileFile(context),
-                        fallback = state.selectedProfileRawLink,
+                listOf(
+                    "summary_source=$selectedProfileSource",
+                    "persisted_profile_present=${state.selectedProfileRawLink.isNotBlank() || state.selectedProfileJson.isNotBlank()}",
+                    DiagnosticsSanitizer.summarizeStoredLocation(
+                        fileOrFallback(
+                            file = selectedProfileFile,
+                            fallback = state.selectedProfileRawLink.ifBlank { state.selectedProfileJson },
+                        ),
                     ),
-                ),
+                ).joinToString(separator = "\n"),
             )
             appendSection(
                 "current_locations",
@@ -199,7 +216,7 @@ class DiagnosticsExporter(
                 "profile_traffic_totals",
                 state.profileTrafficTotals.joinToString(separator = "\n") { total ->
                     listOf(
-                        "name=${total.profileName}",
+                        "name=${DiagnosticsSanitizer.redactText(total.profileName)}",
                         "source=${RemoteSourceResolver.redactForDiagnostics(total.sourceUrl)}",
                         "rx=${total.rxBytes}",
                         "tx=${total.txBytes}",
@@ -214,14 +231,14 @@ class DiagnosticsExporter(
                         "name=${entry.profileName}",
                         "test=${entry.testStatus}:${entry.testTotalMs ?: "n/a"}",
                         "created=${entry.createdAtEpochMillis}",
-                        "detail=${entry.detail}",
+                        "detail=${DiagnosticsSanitizer.redactText(entry.detail)}",
                     ).joinToString(" | ")
                 }.ifBlank { "<empty>" },
             )
             appendSection(
                 "connection_log",
                 state.connectionLog.joinToString(separator = "\n") { entry ->
-                    "${entry.createdAtEpochMillis} | ${entry.message}"
+                    "${entry.createdAtEpochMillis} | ${DiagnosticsSanitizer.redactText(entry.message)}"
                 }.ifBlank { "<empty>" },
             )
             appendSection(

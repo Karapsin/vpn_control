@@ -3,7 +3,6 @@ package com.kardinal.vpncontrol.data
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import android.content.Context
 import android.content.Intent
-import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.vpn.AndroidVpnService
 import java.io.IOException
@@ -23,6 +22,7 @@ class VpnManager(
         runCatching {
             val initialState = storage.snapshot()
             val initialStatus = initialState.statusMessage
+            val initialRuntimeStartSequence = initialState.runtimeStartSequence
             val appMode = initialState.appMode
             storage.runtimeConfigFile().apply {
                 parentFile?.mkdirs()
@@ -48,7 +48,10 @@ class VpnManager(
                 )
             }
             try {
-                waitForStart(initialStatus, appMode)
+                waitForStart(
+                    initialStatus = initialStatus,
+                    initialRuntimeStartSequence = initialRuntimeStartSequence,
+                )
             } catch (error: Throwable) {
                 throw VpnCommandException(
                     message = error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode),
@@ -87,26 +90,15 @@ class VpnManager(
         }
     }
 
-    private suspend fun waitForStart(initialStatus: String) {
-        waitForStart(initialStatus, storage.snapshot().appMode)
-    }
-
-    private suspend fun waitForStart(initialStatus: String, appMode: AppMode) {
-        withTimeout(START_TIMEOUT_MILLIS) {
-            while (true) {
-                val state = storage.snapshot()
-                if (state.isVpnRunning && state.statusMessage == startedStatus(appMode)) {
-                    return@withTimeout
-                }
-                if (!state.isVpnRunning &&
-                    state.statusMessage.isNotBlank() &&
-                    state.statusMessage != initialStatus
-                ) {
-                    error(state.statusMessage)
-                }
-                delay(POLL_INTERVAL_MILLIS)
-            }
-        }
+    private suspend fun waitForStart(
+        initialStatus: String,
+        initialRuntimeStartSequence: Long,
+    ) {
+        VpnStartWaiter.waitForStart(
+            snapshot = storage::snapshot,
+            initialStatus = initialStatus,
+            initialRuntimeStartSequence = initialRuntimeStartSequence,
+        )
     }
 
     private suspend fun waitForStop(initialStatus: String) {
@@ -126,13 +118,34 @@ class VpnManager(
 
     private companion object {
         const val POLL_INTERVAL_MILLIS = 100L
-        const val START_TIMEOUT_MILLIS = 15_000L
         const val STOP_TIMEOUT_MILLIS = 10_000L
+    }
+}
 
-        fun startedStatus(appMode: AppMode): String {
-            return ConnectionStatusMessages.connectionStarted(appMode)
+internal object VpnStartWaiter {
+    suspend fun waitForStart(
+        snapshot: suspend () -> com.kardinal.vpncontrol.model.PersistedState,
+        initialStatus: String,
+        initialRuntimeStartSequence: Long,
+        timeoutMillis: Long = 15_000L,
+        pollIntervalMillis: Long = 100L,
+        delayFn: suspend (Long) -> Unit = { delay(it) },
+    ) {
+        withTimeout(timeoutMillis) {
+            while (true) {
+                val state = snapshot()
+                if (state.runtimeStartSequence > initialRuntimeStartSequence) {
+                    return@withTimeout
+                }
+                if (!state.isVpnRunning &&
+                    state.statusMessage.isNotBlank() &&
+                    state.statusMessage != initialStatus
+                ) {
+                    error(state.statusMessage)
+                }
+                delayFn(pollIntervalMillis)
+            }
         }
-
     }
 }
 
