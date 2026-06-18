@@ -34,6 +34,7 @@ internal class AndroidFindBestActionsService(
     private val appendLatencyHistory: suspend (LatencyHistoryEntry) -> Unit,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
+    private val diagnosticsLogger: (String) -> Unit = {},
 ) {
     fun refresh() {
         launchTrackedBusyOperation {
@@ -183,8 +184,17 @@ internal class AndroidFindBestActionsService(
 
                 updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
                 val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
+                diagnosticsLogger(
+                    "Find Best active verification begin: profile=${attempt.selection.profile.remarks} " +
+                        "attempt=${winner.attemptIndex + 1}/${plan.attempts.size}",
+                )
                 val verificationBenchmark = verifyActiveSelection(attempt)
                     .getOrElse { error ->
+                        diagnosticsLogger(
+                            "Find Best active verification call failed: profile=${attempt.selection.profile.remarks} " +
+                                "attempt=${winner.attemptIndex + 1}/${plan.attempts.size} " +
+                                "error=${diagnosticsErrorSummary(error)}",
+                        )
                         BenchmarkSearchLogic.failedActiveVerificationBenchmark(
                             candidate = attempt.preflight,
                             reason = error.message ?: "active_verification_failed",
@@ -194,11 +204,19 @@ internal class AndroidFindBestActionsService(
                 candidateBenchmarks[attemptRawKey] = verificationBenchmark
                 recordBenchmark(verificationBenchmark, benchmarkDetails)
                 if (verificationBenchmark.testStatus == "ok") {
+                    diagnosticsLogger(
+                        "Find Best active verification accepted: profile=${attempt.selection.profile.remarks} " +
+                            "attempt=${winner.attemptIndex + 1}/${plan.attempts.size} detail=${verificationBenchmark.detail}",
+                    )
                     val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
                     val persistResult = runCatching {
                         persistSelection(verifiedSelection)
                     }
                     if (persistResult.isFailure) {
+                        diagnosticsLogger(
+                            "Find Best verified selection persist failed: profile=${attempt.selection.profile.remarks} " +
+                                "error=${diagnosticsErrorSummary(persistResult.exceptionOrNull())}",
+                        )
                         return rollbackSelectionChange(
                             previousState,
                             persistResult.exceptionOrNull()?.message
@@ -213,9 +231,18 @@ internal class AndroidFindBestActionsService(
                 }
 
                 lastFailureMessage = verificationBenchmark.detail
+                diagnosticsLogger(
+                    "Find Best active verification rejected: profile=${attempt.selection.profile.remarks} " +
+                        "attempt=${winner.attemptIndex + 1}/${plan.attempts.size} status=${verificationBenchmark.testStatus} " +
+                        "detail=${verificationBenchmark.detail}",
+                )
                 updateStatus(BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks))
                 val stopResult = stopConnection()
                 if (stopResult.isFailure) {
+                    diagnosticsLogger(
+                        "Find Best stop after verification failure failed: profile=${attempt.selection.profile.remarks} " +
+                            "error=${diagnosticsErrorSummary(stopResult.exceptionOrNull())}",
+                    )
                     return ConnectionOrchestrationLogic.cancelledWithStopFailureMessage(
                         prefix = BenchmarkStatusMessages.switchingAfterVerificationFailure(
                             attempt.selection.profile.remarks,
@@ -284,6 +311,21 @@ internal class AndroidFindBestActionsService(
                 createdAtEpochMillis = clockMillis(),
             ),
         )
+    }
+
+    private fun diagnosticsErrorSummary(error: Throwable?): String {
+        if (error == null) return "Unknown"
+        val message = error.message
+            ?.replace(Regex("[\\r\\n]+"), " ")
+            ?.take(180)
+            ?.takeIf { it.isNotBlank() }
+        return buildString {
+            append(error.javaClass.simpleName)
+            if (message != null) {
+                append(": ")
+                append(message)
+            }
+        }
     }
 
 }

@@ -65,6 +65,7 @@ class BenchmarkOrchestrator(
         browserUserAgent = browserUserAgent,
         genericSecondaryBlockedMarkers = genericSecondaryBlockedMarkers,
         chatGptBlockedMarkers = chatGptBlockedMarkers,
+        diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
     )
 
     suspend fun refreshBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> = withContext(Dispatchers.IO) {

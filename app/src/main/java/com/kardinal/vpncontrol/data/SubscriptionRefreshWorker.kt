@@ -66,6 +66,7 @@ class SubscriptionRefreshWorker(
             subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
             return Result.success()
         }
+        var leaseOutcome = "started"
         return try {
         val orchestrator = BenchmarkOrchestrator(applicationContext, storage)
         val vpnManager = VpnManager(applicationContext, storage)
@@ -74,7 +75,12 @@ class SubscriptionRefreshWorker(
             orchestrator = orchestrator,
             subscriptionRefreshScheduler = subscriptionRefreshScheduler,
         )
-        suspend fun finishAndScheduleNext(): Result {
+        suspend fun finishAndScheduleNext(outcome: String = "success"): Result {
+            leaseOutcome = outcome
+            DiagnosticsLogger.append(
+                applicationContext,
+                "Background subscription refresh finishing: outcome=$outcome",
+            )
             subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
             return Result.success()
         }
@@ -115,7 +121,7 @@ class SubscriptionRefreshWorker(
                             applicationContext,
                             "Background subscription sync skipped auto-switch because VPN permission is not available in background",
                         )
-                        return@fold finishAndScheduleNext()
+                        return@fold finishAndScheduleNext("vpn_permission_unavailable")
                     }
                     storage.updateStatus(SubscriptionStatusMessages.backgroundRefreshFindingBest())
                     var switchFailure: Throwable? = null
@@ -152,9 +158,13 @@ class SubscriptionRefreshWorker(
                                 "Background subscription sync switched ${connectionLabel(state.appMode)} to refreshed best location: ${selection.profile.remarks}" +
                                     (winnerSource?.let { " from $it" } ?: ""),
                             )
-                            return@fold finishAndScheduleNext()
+                            return@fold finishAndScheduleNext("switched_to_best")
                         }
                         switchFailure = switchResult.exceptionOrNull()
+                        DiagnosticsLogger.append(
+                            applicationContext,
+                            "Background replacement switch failed: ${diagnosticsErrorSummary(switchFailure)}",
+                        )
                     }
 
                     val rollbackMessage = recoverAfterReplacementFailure(
@@ -179,7 +189,7 @@ class SubscriptionRefreshWorker(
                         applicationContext,
                         "Background subscription sync could not switch to refreshed best location: $failureMessage",
                     )
-                    return@fold finishAndScheduleNext()
+                    return@fold finishAndScheduleNext("replacement_failed")
                 }
 
                 if (selectedMissing && state.isVpnRunning) {
@@ -198,7 +208,7 @@ class SubscriptionRefreshWorker(
                         applicationContext,
                         "Background subscription sync kept previous ${connectionLabel(state.appMode)} location as fallback after active subscription changed",
                     )
-                    return@fold finishAndScheduleNext()
+                    return@fold finishAndScheduleNext("selected_missing_kept_previous")
                 }
 
                 if (state.isVpnRunning) {
@@ -215,7 +225,7 @@ class SubscriptionRefreshWorker(
                     applicationContext,
                     "Background subscription sync complete: refreshed=${refresh.refreshedCount} failed=${refresh.failedCount} selectedMissing=$selectedMissing refreshAll=$refreshAll",
                 )
-                finishAndScheduleNext()
+                finishAndScheduleNext("refreshed_without_switch")
             },
             onFailure = { error ->
                 if (!refreshAll && state.activeSubscriptionId.isNotBlank()) {
@@ -228,10 +238,21 @@ class SubscriptionRefreshWorker(
                     applicationContext,
                     "Background subscription sync failed: ${error.message ?: error::class.java.simpleName}",
                 )
-                finishAndScheduleNext()
+                finishAndScheduleNext("refresh_failed")
             },
         )
+        } catch (error: Throwable) {
+            leaseOutcome = "exception_${error.javaClass.simpleName}"
+            DiagnosticsLogger.append(
+                applicationContext,
+                "Background subscription refresh failed with exception: ${diagnosticsErrorSummary(error)}",
+            )
+            throw error
         } finally {
+            DiagnosticsLogger.append(
+                applicationContext,
+                "Background subscription refresh lease releasing: outcome=$leaseOutcome",
+            )
             storage.releaseBackgroundRefreshLease(leaseOwner)
         }
     }
@@ -342,8 +363,19 @@ class SubscriptionRefreshWorker(
 
                 storage.updateStatus(BenchmarkStatusMessages.verifyingBlockedResource(attempt.selection.profile.remarks))
                 val attemptRawKey = LocationConfigs.encodeStoredLocation(attempt.selection.profile)
+                DiagnosticsLogger.append(
+                    applicationContext,
+                    "Background active verification begin: profile=${attempt.selection.profile.remarks} " +
+                        "attempt=${winner.attemptIndex + 1}/${attemptPlan.attempts.size}",
+                )
                 val verificationBenchmark = orchestrator.verifyActiveSelection(attempt)
                     .getOrElse { error ->
+                        DiagnosticsLogger.append(
+                            applicationContext,
+                            "Background active verification call failed: profile=${attempt.selection.profile.remarks} " +
+                                "attempt=${winner.attemptIndex + 1}/${attemptPlan.attempts.size} " +
+                                "error=${diagnosticsErrorSummary(error)}",
+                        )
                         BenchmarkSearchLogic.failedActiveVerificationBenchmark(
                             candidate = attempt.preflight,
                             reason = error.message ?: "active_verification_failed",
@@ -353,6 +385,11 @@ class SubscriptionRefreshWorker(
                 candidateBenchmarks[attemptRawKey] = verificationBenchmark
                 recordLocationBenchmark(verificationBenchmark)
                 if (verificationBenchmark.testStatus == "ok") {
+                    DiagnosticsLogger.append(
+                        applicationContext,
+                        "Background active verification accepted: profile=${attempt.selection.profile.remarks} " +
+                            "attempt=${winner.attemptIndex + 1}/${attemptPlan.attempts.size} detail=${verificationBenchmark.detail}",
+                    )
                     val verifiedSelection = attempt.selection.copy(benchmark = verificationBenchmark)
                     val persistResult = runCatching {
                         repository.persistSelection(
@@ -361,19 +398,41 @@ class SubscriptionRefreshWorker(
                         )
                     }
                     if (persistResult.isFailure) {
+                        DiagnosticsLogger.append(
+                            applicationContext,
+                            "Background verified selection persist failed: profile=${attempt.selection.profile.remarks} " +
+                                "error=${diagnosticsErrorSummary(persistResult.exceptionOrNull())}",
+                        )
                         return kotlin.Result.failure(
                             persistResult.exceptionOrNull()
                                 ?: IllegalStateException(SubscriptionStatusMessages.replacementLocationSaveFailed()),
                         )
                     }
+                    DiagnosticsLogger.append(
+                        applicationContext,
+                        "Background verified selection persisted: profile=${attempt.selection.profile.remarks}",
+                    )
                     return kotlin.Result.success(verifiedSelection)
                 }
 
                 lastFailure = IllegalStateException(verificationBenchmark.detail)
+                DiagnosticsLogger.append(
+                    applicationContext,
+                    "Background active verification rejected: profile=${attempt.selection.profile.remarks} " +
+                        "attempt=${winner.attemptIndex + 1}/${attemptPlan.attempts.size} " +
+                        "status=${verificationBenchmark.testStatus} detail=${verificationBenchmark.detail}",
+                )
                 storage.updateStatus(
                     BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks),
                 )
-                vpnManager.stop()
+                val stopResult = vpnManager.stop()
+                stopResult.exceptionOrNull()?.let { error ->
+                    DiagnosticsLogger.append(
+                        applicationContext,
+                        "Background stop after verification failure failed: profile=${attempt.selection.profile.remarks} " +
+                            "error=${diagnosticsErrorSummary(error)}",
+                    )
+                }
             }
             currentIndex += window.size.coerceAtLeast(1)
         }
@@ -453,6 +512,21 @@ class SubscriptionRefreshWorker(
 
     private fun didDispatchVpnSwitchAttempt(error: Throwable): Boolean {
         return (error as? VpnCommandException)?.commandDispatched ?: true
+    }
+
+    private fun diagnosticsErrorSummary(error: Throwable?): String {
+        if (error == null) return "Unknown"
+        val message = error.message
+            ?.replace(Regex("[\\r\\n]+"), " ")
+            ?.take(180)
+            ?.takeIf { it.isNotBlank() }
+        return buildString {
+            append(error.javaClass.simpleName)
+            if (message != null) {
+                append(": ")
+                append(message)
+            }
+        }
     }
 
     private fun connectionLabel(appMode: AppMode): String {

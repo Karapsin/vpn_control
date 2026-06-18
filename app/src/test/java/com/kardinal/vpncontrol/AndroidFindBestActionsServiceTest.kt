@@ -297,6 +297,65 @@ class AndroidFindBestActionsServiceTest {
     }
 
     @Test
+    fun activeVerificationTimeoutStopsAndTriesNextVerifiedCandidateInSameWindow() = runBlocking {
+        var state = MainUiState(
+            appMode = AppMode.VPN,
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf("stored"),
+            validationSettings = BenchmarkValidationSettings(activeVerificationWindowSize = 2),
+        )
+        val first = attempt("First")
+        val second = attempt("Second")
+        val starts = mutableListOf<String>()
+        val activeVerifications = mutableListOf<String>()
+        var stops = 0
+        val latencies = mutableListOf<LatencyHistoryEntry>()
+        val service = service(
+            stateProvider = { state },
+            setBusy = { busy -> state = state.copy(isBusy = busy) },
+            setRefreshing = { refreshing -> state = state.copy(isRefreshing = refreshing) },
+            refreshBestProfileAttemptPlan = {
+                Result.success(
+                    ProfileSelectionAttemptPlan(
+                        attempts = listOf(first, second),
+                        locationBenchmarkDetails = emptyMap(),
+                        failureMessage = null,
+                    ),
+                )
+            },
+            startSelection = { selection, _ ->
+                starts += selection.profile.remarks
+                SelectionCommitResult(stage = SelectionCommitStage.SUCCESS)
+            },
+            stopConnection = {
+                stops += 1
+                Result.success(Unit)
+            },
+            verifyActiveSelection = { attempt ->
+                activeVerifications += attempt.selection.profile.remarks
+                if (attempt.selection.profile.remarks == "First") {
+                    Result.success(timeoutBenchmark("First"))
+                } else {
+                    Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+                }
+            },
+            verifySelectionCandidate = { attempt, _ ->
+                Result.success(verifiedBenchmark(attempt.selection.profile.remarks))
+            },
+            appendLatencyHistory = { latencies += it },
+        )
+
+        service.refresh()
+
+        assertEquals(listOf("First", "Second"), starts)
+        assertEquals(listOf("First", "Second"), activeVerifications)
+        assertEquals(1, stops)
+        assertEquals("Second", latencies.single().profileName)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
+    @Test
     fun allActiveVerificationFailuresRestorePreviousRunningConnectionStatus() = runBlocking {
         val previous = PersistedState(isVpnRunning = true, selectedProfileName = "Previous")
         var state = MainUiState(
@@ -473,5 +532,18 @@ private fun blockedBenchmark(name: String): ProfileBenchmark {
         secondaryTotal = null,
         score = Double.POSITIVE_INFINITY,
         detail = "$name: tcp=50.0ms country=DE test=blocked active_verification_failed",
+    )
+}
+
+private fun timeoutBenchmark(name: String): ProfileBenchmark {
+    val selection = profileSelection(name)
+    return ProfileBenchmark(
+        profile = selection.profile,
+        primaryStatus = "manual",
+        secondaryStatus = "timeout",
+        primaryTotal = null,
+        secondaryTotal = null,
+        score = Double.POSITIVE_INFINITY,
+        detail = "$name: tcp=50.0ms country=DE test=timeout active_verification_timeout",
     )
 }

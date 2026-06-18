@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.kardinal.vpncontrol.data.AppRepository
 import com.kardinal.vpncontrol.data.BenchmarkOrchestrator
 import com.kardinal.vpncontrol.data.DiagnosticsExporter
+import com.kardinal.vpncontrol.data.DiagnosticsLogger
 import com.kardinal.vpncontrol.data.InstalledAppsCatalog
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.LocationsExportDocument
@@ -33,6 +34,7 @@ class MainViewModel(
     private val vpnManager: VpnManager,
     private val diagnosticsExporter: DiagnosticsExporter,
     private val installedAppsCatalog: InstalledAppsCatalog,
+    private val diagnosticsLogger: (String) -> Unit = {},
 ) : ViewModel() {
     private val controller = MainController()
     private val _uiState = controller.mutableState
@@ -131,6 +133,7 @@ class MainViewModel(
         stopConnection = vpnManager::stop,
         updateLocationBenchmarkDetails = repository::updateLocationBenchmarkDetails,
         appendLatencyHistory = repository::appendLatencyHistory,
+        diagnosticsLogger = diagnosticsLogger,
     )
     private val settingsActions = AndroidSettingsActionsService(
         controller = controller,
@@ -576,6 +579,7 @@ class MainViewModel(
                     vpnManager = vpnManager,
                     diagnosticsExporter = diagnosticsExporter,
                     installedAppsCatalog = installedAppsCatalog,
+                    diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
                 ) as T
             }
         }
