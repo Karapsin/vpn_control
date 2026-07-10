@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.model.RoutingRules
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidRoutingActionsServiceTest {
@@ -60,6 +61,24 @@ class AndroidRoutingActionsServiceTest {
     }
 
     @Test
+    fun quicCompatibilityChangeAutosavesRules() {
+        val controller = MainController(MainUiState())
+        var savedRules: RoutingRules? = null
+        val service = service(
+            controller = controller,
+            updateRoutingRules = {
+                savedRules = it
+                Result.success(Unit)
+            },
+        )
+
+        service.onRoutingBlockQuicUdp443DraftChanged(true)
+
+        assertEquals(true, savedRules?.blockQuicUdp443)
+        assertEquals(true, controller.currentState().routingRules.blockQuicUdp443)
+    }
+
+    @Test
     fun importRoutingRulesSanitizesAndAppliesDrafts() {
         val controller = MainController(MainUiState(isVpnRunning = false))
         val statuses = mutableListOf<String>()
@@ -77,6 +96,7 @@ class AndroidRoutingActionsServiceTest {
             """
             {
               "ignore_rules": true,
+              "block_quic_udp_443": true,
               "proxy_packages": ["org.example.two", "org.example.one", "org.example.one"],
               "national_domain_suffixes": ["ru"],
               "direct_domain_suffixes": ["example.com"]
@@ -85,7 +105,9 @@ class AndroidRoutingActionsServiceTest {
         )
 
         assertEquals(true, savedRules?.ignoreRules)
+        assertEquals(true, savedRules?.blockQuicUdp443)
         assertEquals(listOf("org.example.one", "org.example.two"), savedRules?.proxyPackages)
+        assertEquals(true, controller.currentState().routingBlockQuicUdp443Draft)
         assertEquals("org.example.one\norg.example.two", controller.currentState().routingProxyPackagesDraft.sorted().joinToString("\n"))
         assertEquals("example.com", controller.currentState().routingDirectDomainsDraft)
         assertEquals(listOf("example.com"), savedRules?.directDomainSuffixes)
@@ -128,6 +150,7 @@ class AndroidRoutingActionsServiceTest {
         val controller = MainController(
             MainUiState(
                 routingDirectDomainsDraft = "example.com",
+                routingBlockQuicUdp443Draft = true,
             ),
         )
         val service = service(controller)
@@ -135,7 +158,8 @@ class AndroidRoutingActionsServiceTest {
         val document = service.buildRoutingRulesExport()
 
         assertFalse(document.content.contains("national_domain_suffixes"))
-        assertEquals(true, document.content.contains("direct_domain_suffixes"))
+        assertTrue(document.content.contains("direct_domain_suffixes"))
+        assertTrue(document.content.contains("block_quic_udp_443"))
     }
 
     private fun service(

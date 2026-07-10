@@ -75,6 +75,7 @@ fun RoutingRulesScreen(
     onSelectAllProxyApps: () -> Unit,
     onClearAllProxyApps: () -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onBlockQuicUdp443Change: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     showAppAssignments: Boolean = true,
     controls: @Composable () -> Unit = {},
@@ -143,6 +144,14 @@ fun RoutingRulesScreen(
                     value = state.routingDirectDomainsDraft,
                     onValueChange = onDirectDomainsChange,
                 )
+            }
+            if (showAppAssignments && state.appMode == AppMode.VPN) {
+                item {
+                    QuicCompatibilityCard(
+                        enabled = state.routingBlockQuicUdp443Draft,
+                        onEnabledChange = onBlockQuicUdp443Change,
+                    )
+                }
             }
             if (showAppAssignments) {
                 item {
@@ -273,6 +282,63 @@ fun RoutingRulesScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuicCompatibilityCard(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    val strings = LocalAppStrings.current
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = strings.get(UiText.QUIC_COMPATIBILITY),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = strings.get(UiText.QUIC_COMPATIBILITY_DESCRIPTION),
+                    color = Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                )
+                Text(
+                    text = strings.get(UiText.BLOCK_QUIC_UDP_443_HELP),
+                    color = Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = strings.get(UiText.BLOCK_QUIC_UDP_443),
+                    color = if (enabled) Color(0xFF83B7FF) else Color(0xFFD3E3EE),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange,
+                )
             }
         }
     }

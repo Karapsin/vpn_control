@@ -151,6 +151,7 @@ internal fun MainUiState.toPersistedState(
     val synced = syncDesktopUiStateWithLocations(this, locations)
     val routingRules = RoutingRules(
         ignoreRules = synced.routingIgnoreRulesDraft,
+        blockQuicUdp443 = synced.routingBlockQuicUdp443Draft,
         proxyPackages = RoutingRules.normalizePackageNames(synced.routingProxyPackagesDraft),
         bypassPackages = emptyList(),
         directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(synced.routingDirectDomainsDraft),

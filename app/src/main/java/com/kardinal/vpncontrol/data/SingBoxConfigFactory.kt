@@ -31,6 +31,9 @@ object SingBoxConfigFactory {
                     add(SingBoxRouteDnsBuilder.inboundProxyRouteRule("active-verify-in"))
                 }
                 add(SingBoxRouteDnsBuilder.dnsHijackRouteRule())
+                if (!routingRules.ignoreRules && routingRules.blockQuicUdp443) {
+                    add(SingBoxRouteDnsBuilder.quicCompatibilityBlockRouteRule())
+                }
             },
         )
 

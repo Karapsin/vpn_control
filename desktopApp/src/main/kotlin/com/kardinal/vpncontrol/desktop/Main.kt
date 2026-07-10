@@ -546,6 +546,7 @@ private fun DesktopVpnControlApp(
                     onSelectAllProxyApps = service::selectAllProxyApps,
                     onClearAllProxyApps = service::clearAllProxyApps,
                     onDirectDomainsChange = service::setRoutingDirectDomainsDraft,
+                    onBlockQuicUdp443Change = {},
                     showAppAssignments = false,
                     controls = {
                         DesktopActionRow(

@@ -21,6 +21,11 @@ internal class AndroidRoutingActionsService(
         persistEditedRoutingRules()
     }
 
+    fun onRoutingBlockQuicUdp443DraftChanged(enabled: Boolean) {
+        controller.onRoutingBlockQuicUdp443DraftChanged(enabled)
+        persistEditedRoutingRules()
+    }
+
     fun onRoutingAppSearchChanged(value: String) {
         controller.onRoutingAppSearchChanged(value)
     }

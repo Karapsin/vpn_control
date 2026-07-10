@@ -395,6 +395,7 @@ data class RoutingRuleSet(
 
 data class RoutingRules(
     val ignoreRules: Boolean = false,
+    val blockQuicUdp443: Boolean = false,
     val proxyPackages: List<String> = emptyList(),
     val bypassPackages: List<String> = emptyList(),
     val directDomainSuffixes: List<String> = DEFAULT_DIRECT_DOMAIN_SUFFIXES,

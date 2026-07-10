@@ -344,6 +344,10 @@ class MainController(
         _state.value = _state.value.copy(routingIgnoreRulesDraft = enabled)
     }
 
+    fun onRoutingBlockQuicUdp443DraftChanged(enabled: Boolean) {
+        _state.value = _state.value.copy(routingBlockQuicUdp443Draft = enabled)
+    }
+
     fun onRoutingAppSearchChanged(value: String) {
         _state.value = _state.value.copy(routingAppSearch = value)
     }

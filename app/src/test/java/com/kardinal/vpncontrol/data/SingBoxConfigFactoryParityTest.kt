@@ -151,6 +151,52 @@ class SingBoxConfigFactoryParityTest {
         assertTrue(directDomainIndex > 2)
     }
 
+    @Test
+    fun androidVpnConfigPreservesUdp443ByDefault() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                blockQuicUdp443 = false,
+            ),
+        )
+        val routeRules = parseConfig(config)
+            .getValue("route")
+            .jsonObject
+            .getValue("rules")
+            .jsonArray
+
+        assertEquals(-1, routeRules.indexOfQuicCompatibilityBlockRule())
+    }
+
+    @Test
+    fun androidVpnConfigCanBlockUdp443ForQuicCompatibility() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(enabled = false, value = ""),
+            routingRules = RoutingRules(
+                ignoreRules = false,
+                blockQuicUdp443 = true,
+                directDomainSuffixes = listOf("example.com"),
+            ),
+        )
+        val routeRules = parseConfig(config)
+            .getValue("route")
+            .jsonObject
+            .getValue("rules")
+            .jsonArray
+        val blockIndex = routeRules.indexOfQuicCompatibilityBlockRule()
+        val blockRule = routeRules[blockIndex].jsonObject
+        val directDomainIndex = routeRules.indexOfFirstRuleWith("domain_suffix")
+
+        assertEquals(2, blockIndex)
+        assertEquals("udp", blockRule.getValue("network").jsonPrimitive.content)
+        assertEquals(443, blockRule.getValue("port").jsonPrimitive.content.toInt())
+        assertEquals("block", blockRule.getValue("outbound").jsonPrimitive.content)
+        assertTrue(directDomainIndex > blockIndex)
+    }
+
     private fun protocolProfiles(): List<ProxyProfile> {
         return listOf(
             ProxyProfile(
@@ -274,6 +320,15 @@ class SingBoxConfigFactoryParityTest {
     private fun JsonArray.indexOfFirstRuleWith(key: String): Int {
         return indexOfFirst { element ->
             (element as? JsonObject)?.containsKey(key) == true
+        }
+    }
+
+    private fun JsonArray.indexOfQuicCompatibilityBlockRule(): Int {
+        return indexOfFirst { element ->
+            val rule = (element as? JsonObject) ?: return@indexOfFirst false
+            rule["network"]?.jsonPrimitive?.content == "udp" &&
+                rule["port"]?.jsonPrimitive?.content == "443" &&
+                rule["outbound"]?.jsonPrimitive?.content == "block"
         }
     }
 }

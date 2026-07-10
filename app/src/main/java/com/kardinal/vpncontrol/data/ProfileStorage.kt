@@ -86,6 +86,7 @@ class ProfileStorage(
         val customDns = stringPreferencesKey("custom_dns")
         val useCustomDns = booleanPreferencesKey("use_custom_dns")
         val ignoreRules = booleanPreferencesKey("ignore_rules")
+        val blockQuicUdp443 = booleanPreferencesKey("block_quic_udp_443")
         val proxyPackages = stringPreferencesKey("proxy_packages")
         val bypassPackages = stringPreferencesKey("bypass_packages")
         val directDomainSuffixes = stringPreferencesKey("direct_domain_suffixes")
@@ -569,6 +570,7 @@ class ProfileStorage(
     override suspend fun updateRoutingRules(rules: RoutingRules) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
+            prefs[Keys.blockQuicUdp443] = rules.blockQuicUdp443
             prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
             prefs[Keys.bypassPackages] = encodeList(emptyList())
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
@@ -577,7 +579,7 @@ class ProfileStorage(
         DiagnosticsLogger.append(
             context,
             "Routing rules updated: ignore=${rules.ignoreRules} vpn_apps=${rules.proxyPackages.size} direct=0 " +
-                "domains=${rules.directDomainSuffixes.size}",
+                "domains=${rules.directDomainSuffixes.size} block_quic_udp_443=${rules.blockQuicUdp443}",
         )
     }
 
@@ -951,6 +953,7 @@ class ProfileStorage(
             useCustomDns = preferences[Keys.useCustomDns] ?: false,
             routingRules = RoutingRules(
                 ignoreRules = preferences[Keys.ignoreRules] ?: false,
+                blockQuicUdp443 = preferences[Keys.blockQuicUdp443] ?: false,
                 proxyPackages = sanitizePackageNames(
                     decodeList(preferences[Keys.proxyPackages]),
                 ),

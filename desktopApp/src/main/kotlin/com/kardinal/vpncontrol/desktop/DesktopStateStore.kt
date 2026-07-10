@@ -328,6 +328,7 @@ class DesktopStateStore(
                 "routing_rules",
                 buildJsonObject {
                     put("ignore_rules", JsonPrimitive(state.routingRules.ignoreRules))
+                    put("block_quic_udp_443", JsonPrimitive(state.routingRules.blockQuicUdp443))
                     put("proxy_packages", encodeStringArray(state.routingRules.proxyPackages))
                     put("bypass_packages", encodeStringArray(state.routingRules.bypassPackages))
                     put("direct_domain_suffixes", encodeStringArray(state.routingRules.directDomainSuffixes))
@@ -429,6 +430,7 @@ class DesktopStateStore(
             useCustomDns = root.boolean("use_custom_dns"),
             routingRules = RoutingRules(
                 ignoreRules = routing.boolean("ignore_rules"),
+                blockQuicUdp443 = routing.boolean("block_quic_udp_443"),
                 proxyPackages = routing.stringList("proxy_packages"),
                 bypassPackages = routing.stringList("bypass_packages"),
                 directDomainSuffixes = routing.stringList("direct_domain_suffixes"),

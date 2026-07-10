@@ -325,6 +325,10 @@ class MainViewModel(
         routingActions.onRoutingIgnoreRulesDraftChanged(enabled)
     }
 
+    fun onRoutingBlockQuicUdp443DraftChanged(enabled: Boolean) {
+        routingActions.onRoutingBlockQuicUdp443DraftChanged(enabled)
+    }
+
     fun onRoutingAppSearchChanged(value: String) {
         routingActions.onRoutingAppSearchChanged(value)
     }

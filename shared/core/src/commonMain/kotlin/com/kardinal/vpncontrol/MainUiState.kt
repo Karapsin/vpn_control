@@ -64,6 +64,7 @@ data class MainUiState(
     val useCustomDnsDraft: Boolean = false,
     val routingRules: RoutingRules = RoutingRules(),
     val routingIgnoreRulesDraft: Boolean = false,
+    val routingBlockQuicUdp443Draft: Boolean = false,
     val routingProxyPackagesDraft: Set<String> = emptySet(),
     val routingBypassPackagesDraft: Set<String> = emptySet(),
     val routingDirectDomainsDraft: String = "",
@@ -201,6 +202,11 @@ object MainUiStateProjector {
             } else {
                 persisted.routingRules.ignoreRules
             },
+            routingBlockQuicUdp443Draft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
+                current.routingBlockQuicUdp443Draft
+            } else {
+                persisted.routingRules.blockQuicUdp443
+            },
             routingProxyPackagesDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
                 current.routingProxyPackagesDraft
             } else {
@@ -280,6 +286,7 @@ object MainUiStateTransitions {
         val rules = state.routingRules
         return state.copy(
             routingIgnoreRulesDraft = rules.ignoreRules,
+            routingBlockQuicUdp443Draft = rules.blockQuicUdp443,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),

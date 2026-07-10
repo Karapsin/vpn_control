@@ -62,6 +62,7 @@ object MainDraftLogic {
         val proxyPackages = RoutingRules.normalizePackageNames(state.routingProxyPackagesDraft)
         return RoutingRules(
             ignoreRules = state.routingIgnoreRulesDraft,
+            blockQuicUdp443 = state.routingBlockQuicUdp443Draft,
             proxyPackages = proxyPackages,
             bypassPackages = emptyList(),
             directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
@@ -112,6 +113,7 @@ object MainDraftLogic {
         return state.copy(
             routingRules = rules,
             routingIgnoreRulesDraft = rules.ignoreRules,
+            routingBlockQuicUdp443Draft = rules.blockQuicUdp443,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
             routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),

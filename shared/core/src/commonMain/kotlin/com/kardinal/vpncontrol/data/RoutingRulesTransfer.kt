@@ -18,7 +18,7 @@ data class RoutingRulesExportDocument(
 
 object RoutingRulesTransfer {
     private const val FORMAT_TYPE = "vpn_control_routing_rules"
-    private const val FORMAT_VERSION = 6
+    private const val FORMAT_VERSION = 7
 
     fun export(rules: RoutingRules): RoutingRulesExportDocument {
         val timestamp = Clock.System.now().toString()
@@ -32,6 +32,7 @@ object RoutingRulesTransfer {
                     "rules",
                     buildJsonObject {
                         put("ignore_rules", JsonPrimitive(rules.ignoreRules))
+                        put("block_quic_udp_443", JsonPrimitive(rules.blockQuicUdp443))
                         put("proxy_packages", stringArray(rules.proxyPackages))
                         put("direct_domain_suffixes", stringArray(rules.directDomainSuffixes))
                     },
@@ -52,6 +53,7 @@ object RoutingRulesTransfer {
         }
         return RoutingRules(
             ignoreRules = rules["ignore_rules"]?.jsonPrimitive?.contentOrNull == "true",
+            blockQuicUdp443 = rules["block_quic_udp_443"]?.jsonPrimitive?.contentOrNull == "true",
             proxyPackages = RoutingRules.normalizePackageNames(
                 readStringArray(rules, "proxy_packages"),
             ),
@@ -68,6 +70,7 @@ object RoutingRulesTransfer {
             return true
         }
         return rules.containsKey("ignore_rules") ||
+            rules.containsKey("block_quic_udp_443") ||
             rules.containsKey("proxy_packages") ||
             rules.containsKey("national_domain_suffixes") ||
             rules.containsKey("direct_domain_suffixes") ||

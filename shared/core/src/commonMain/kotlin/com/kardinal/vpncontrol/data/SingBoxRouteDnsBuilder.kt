@@ -119,6 +119,15 @@ object SingBoxRouteDnsBuilder {
         }
     }
 
+    fun quicCompatibilityBlockRouteRule(): JsonObject {
+        return buildJsonObject {
+            put("network", "udp")
+            put("port", 443)
+            put("action", "route")
+            put("outbound", "block")
+        }
+    }
+
     fun directCidrRouteRule(directCidrs: List<String>): JsonObject {
         return buildJsonObject {
             put("ip_cidr", directCidrs.asJsonArray())

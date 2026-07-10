@@ -204,6 +204,7 @@ fun VpnControlApp(
     onLocationDraftChange: (String) -> Unit,
     onSaveLocation: () -> Unit,
     onRoutingIgnoreRulesChange: (Boolean) -> Unit,
+    onRoutingBlockQuicUdp443Change: (Boolean) -> Unit,
     onRoutingAppSearchChange: (String) -> Unit,
     onToggleProxyRoutingApp: (String) -> Unit,
     onToggleDirectRoutingApp: (String) -> Unit,
@@ -291,6 +292,7 @@ fun VpnControlApp(
             onSelectLocation = onSelectLocation,
             onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
             onIgnoreRulesChange = onRoutingIgnoreRulesChange,
+            onBlockQuicUdp443Change = onRoutingBlockQuicUdp443Change,
             onAppSearchChange = onRoutingAppSearchChange,
             onToggleProxyApp = onToggleProxyRoutingApp,
             onToggleDirectApp = onToggleDirectRoutingApp,
@@ -906,6 +908,7 @@ private fun HomeTabsScreen(
     onSelectLocation: (Int) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
+    onBlockQuicUdp443Change: (Boolean) -> Unit,
     onAppSearchChange: (String) -> Unit,
     onToggleProxyApp: (String) -> Unit,
     onToggleDirectApp: (String) -> Unit,
@@ -1012,6 +1015,7 @@ private fun HomeTabsScreen(
                     onSelectAllDirectApps = onSelectAllDirectApps,
                     onClearAllDirectApps = onClearAllDirectApps,
                     onDirectDomainsChange = onDirectDomainsChange,
+                    onBlockQuicUdp443Change = onBlockQuicUdp443Change,
                     onShowAddRuleSetDialog = onShowAddRuleSetDialog,
                     onEditRuleSet = onEditRuleSet,
                     onDeleteRuleSet = onDeleteRuleSet,
@@ -1458,6 +1462,7 @@ private fun buildLocationsExportDocument(state: MainUiState): LocationsExportDoc
 private fun buildEditedRoutingRules(state: MainUiState): RoutingRules {
     return RoutingRules(
         ignoreRules = state.routingIgnoreRulesDraft,
+        blockQuicUdp443 = state.routingBlockQuicUdp443Draft,
         proxyPackages = RoutingRules.normalizePackageNames(state.routingProxyPackagesDraft),
         bypassPackages = emptyList(),
         directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
@@ -2289,6 +2294,7 @@ private fun RoutingRulesScreen(
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onBlockQuicUdp443Change: (Boolean) -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
     onDeleteRuleSet: (String) -> Unit,
@@ -2336,6 +2342,7 @@ private fun RoutingRulesScreen(
         onSelectAllProxyApps = onSelectAllProxyApps,
         onClearAllProxyApps = onClearAllProxyApps,
         onDirectDomainsChange = onDirectDomainsChange,
+        onBlockQuicUdp443Change = onBlockQuicUdp443Change,
         controls = {
             Row(
                 modifier = Modifier.fillMaxWidth(),

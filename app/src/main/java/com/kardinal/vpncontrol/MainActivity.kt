@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
                 onLocationDraftChange = viewModel::onLocationDraftChanged,
                 onSaveLocation = viewModel::saveLocation,
                 onRoutingIgnoreRulesChange = viewModel::onRoutingIgnoreRulesDraftChanged,
+                onRoutingBlockQuicUdp443Change = viewModel::onRoutingBlockQuicUdp443DraftChanged,
                 onRoutingAppSearchChange = viewModel::onRoutingAppSearchChanged,
                 onToggleProxyRoutingApp = viewModel::toggleProxyRoutingApp,
                 onToggleDirectRoutingApp = viewModel::toggleDirectRoutingApp,

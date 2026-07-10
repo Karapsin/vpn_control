@@ -91,6 +91,7 @@ class DiagnosticsExporter(
             appendLine("custom_dns=${state.customDns}")
             appendLine("use_custom_dns=${state.useCustomDns}")
             appendLine("ignore_rules=${state.routingRules.ignoreRules}")
+            appendLine("block_quic_udp_443=${state.routingRules.blockQuicUdp443}")
             appendLine("proxy_packages=${state.routingRules.proxyPackages.joinToString(",")}")
             appendLine("android_app_scope=${androidAppScope(state)}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
@@ -212,6 +213,15 @@ class DiagnosticsExporter(
                     ),
                 ),
             )
+            val diagnosticsLog = DiagnosticsSanitizer.redactText(safeRead(RuntimeFiles.diagnosticsLogFile(context)))
+            appendSection(
+                "android_routing_diagnostics",
+                AndroidRoutingDiagnostics.buildSection(
+                    routingRules = state.routingRules,
+                    diagnosticsLog = diagnosticsLog,
+                    lastBenchmarkSummary = state.lastBenchmarkSummary,
+                ),
+            )
             appendSection(
                 "profile_traffic_totals",
                 state.profileTrafficTotals.joinToString(separator = "\n") { total ->
@@ -243,7 +253,7 @@ class DiagnosticsExporter(
             )
             appendSection(
                 "diagnostics_log",
-                DiagnosticsSanitizer.redactText(safeRead(RuntimeFiles.diagnosticsLogFile(context))),
+                diagnosticsLog,
             )
         }
     }
