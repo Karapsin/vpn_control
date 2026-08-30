@@ -61,12 +61,25 @@ jobs:
           keystore_path="$RUNNER_TEMP/vpn-control-release.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
           chmod 600 "$keystore_path"
+          expected=$(printf '%s' "$CERT_SHA256" | tr -cd '[:xdigit:]' | tr '[:upper:]' '[:lower:]')
+          keystore_cert=$(keytool -list -v \
+            -keystore "$keystore_path" \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -keypass "$KEY_PASSWORD" 2>/dev/null \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | tr -cd '[:xdigit:]' \
+            | tr '[:upper:]' '[:lower:]')
+          [[ ${#expected} -eq 64 && "$keystore_cert" == "$expected" ]] || {
+            echo "Decoded keystore signer does not match ANDROID_SIGNING_CERT_SHA256" >&2
+            exit 1
+          }
           {
             echo "VPN_CONTROL_ANDROID_KEYSTORE_PATH=$keystore_path"
             echo "VPN_CONTROL_ANDROID_STORE_PASSWORD=$STORE_PASSWORD"
             echo "VPN_CONTROL_ANDROID_KEY_ALIAS=$KEY_ALIAS"
             echo "VPN_CONTROL_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "VPN_CONTROL_ANDROID_CERT_SHA256=$CERT_SHA256"
+            echo "VPN_CONTROL_ANDROID_CERT_SHA256=$keystore_cert"
           } >> "$GITHUB_ENV"
 
       - name: Build release APK
@@ -78,8 +91,13 @@ jobs:
         run: |
           apk_path=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
           apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          actual=$($apksigner verify --print-certs "$apk_path" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')
-          expected=$(printf '%s' "$VPN_CONTROL_ANDROID_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          actual=$($apksigner verify --print-certs "$apk_path" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+            | tr -cd '[:xdigit:]' \
+            | tr '[:upper:]' '[:lower:]')
+          expected=$(printf '%s' "$VPN_CONTROL_ANDROID_CERT_SHA256" \
+            | tr -cd '[:xdigit:]' \
+            | tr '[:upper:]' '[:lower:]')
           [[ -n "$actual" && "$actual" == "$expected" ]] || {
             echo "Release APK signer does not match ANDROID_SIGNING_CERT_SHA256" >&2
             exit 1
