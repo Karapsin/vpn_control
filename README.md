@@ -1,79 +1,43 @@
 # VPN Control Install Files
 
-Install files are available on the GitHub repository page under `Actions` artifacts.
+Install files are available from the latest GitHub Release. In an installed app, open the settings menu and choose `Update` to download and install the compatible package.
 
 Artifacts can include `SHA256SUMS.txt` checksum files where the packaging workflow produces them.
 
 | Platform | GitHub Location | File To Use |
 | --- | --- | --- |
-| Windows | `Actions` -> `Windows Desktop Package` -> latest successful run -> `vpn-control-windows-installers` | `vpn-control-<version>.exe` |
-| Android | `Actions` -> `Android Release APK` -> latest successful run -> `vpn-control-android-release-apk` | `app-release.apk` |
-| Linux | `Actions` -> `Linux Desktop Package` -> latest successful run -> `vpn-control-linux-packages` | `.deb` or `.rpm` |
-| macOS | `Actions` -> `macOS Desktop Package` -> latest successful run -> `vpn-control-macos-package` | `.dmg` |
+| Windows | `Releases` -> latest release | `.msi` or `.exe` |
+| Android | `Releases` -> latest release | `.apk` |
+| Linux | `Releases` -> latest release | `.deb`, `.rpm`, or the Arch update bundle |
+| macOS | `Releases` -> latest release | `.dmg` |
 
 ## Windows
-
-Open:
-
-```text
-Actions -> Windows Desktop Package -> latest successful run -> Artifacts
-```
-
-Download:
-
-```text
-vpn-control-windows-installers
-```
 
 Use:
 
 ```text
-vpn-control-<version>.exe
+vpn-control-windows-x86_64-v<version>.exe
 ```
 
 Install by double-clicking it. For VPN mode on Windows, launch VPN Control as Administrator.
 
 ## Android
 
-Open:
-
-```text
-Actions -> Android Release APK -> latest successful run -> Artifacts
-```
-
-Download:
-
-```text
-vpn-control-android-release-apk
-```
-
 Use:
 
 ```text
-app-release.apk
+vpn-control-android-arm64-v<version>.apk
 ```
 
 Install on a connected phone with:
 
 ```bash
-adb install -r app-release.apk
+adb install -r vpn-control-android-arm64-v<version>.apk
 ```
 
-Note: the current release APK is signed with the Android debug signing config, so treat it as a direct-install artifact rather than a Play Store release artifact.
+Release APKs use the project's stable signing key so later versions can update in place and retain Android app data.
 
 ## Linux
-
-Open:
-
-```text
-Actions -> Linux Desktop Package -> latest successful run -> Artifacts
-```
-
-Download:
-
-```text
-vpn-control-linux-packages
-```
 
 Use one package:
 
@@ -106,19 +70,9 @@ For Arch Linux, the repo also includes this local installer script:
 scripts/arch_install.sh
 ```
 
+Installed Arch copies can use the in-app updater, which downloads the release update bundle and preserves `~/.vpn-control-desktop`.
+
 ## macOS
-
-Open:
-
-```text
-Actions -> macOS Desktop Package -> latest successful run -> Artifacts
-```
-
-Download:
-
-```text
-vpn-control-macos-package
-```
 
 Use:
 

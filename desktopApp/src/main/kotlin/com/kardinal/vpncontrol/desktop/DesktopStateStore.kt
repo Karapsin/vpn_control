@@ -84,6 +84,8 @@ class DesktopStateStore(
 
     fun validationDirectory(): Path = baseDir.resolve("validation")
 
+    fun updateDirectory(): Path = baseDir.resolve("updates")
+
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
         val loadedWorkspace = loadStoredWorkspace(defaultWorkspace)
         val workspace = loadedWorkspace.migrateLegacyDesktopDefaults()

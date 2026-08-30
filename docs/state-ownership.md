@@ -38,13 +38,14 @@ Android owns platform operations that need Android APIs, permissions, WorkManage
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidSettingsActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidDiagnosticsActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidInstalledAppsActionsService.kt`
+- `app/src/main/java/com/kardinal/vpncontrol/AndroidUpdateActionsService.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/AndroidControllerEffectHandler.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/ProfileStorage.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/InstalledAppsCatalog.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/data/SubscriptionRefreshWorker.kt`
 - `app/src/main/java/com/kardinal/vpncontrol/vpn/AndroidVpnService.kt`
 
-Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService`, connection UI commands in `AndroidConnectionActionsService`, start/stop selection lifecycle in `AndroidConnectionLifecycleService`, Find Best command orchestration in `AndroidFindBestActionsService`, location mutation/selection orchestration in `AndroidLocationActionsService`, routing draft/import/save orchestration in `AndroidRoutingActionsService`, manual subscription refresh orchestration in `AndroidSubscriptionRefreshActionsService`, settings persistence in `AndroidSettingsActionsService`, diagnostics export orchestration in `AndroidDiagnosticsActionsService`, installed-app catalog/effect orchestration in `AndroidInstalledAppsActionsService`, and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
+Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService`, connection UI commands in `AndroidConnectionActionsService`, start/stop selection lifecycle in `AndroidConnectionLifecycleService`, Find Best command orchestration in `AndroidFindBestActionsService`, location mutation/selection orchestration in `AndroidLocationActionsService`, routing draft/import/save orchestration in `AndroidRoutingActionsService`, manual subscription refresh orchestration in `AndroidSubscriptionRefreshActionsService`, settings persistence in `AndroidSettingsActionsService`, diagnostics export orchestration in `AndroidDiagnosticsActionsService`, installed-app catalog/effect orchestration in `AndroidInstalledAppsActionsService`, GitHub update/APK installer orchestration in `AndroidUpdateActionsService`, and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
 
 ## Desktop Owns Desktop IO And Runtime Side Effects
 
@@ -67,6 +68,7 @@ Desktop owns file persistence, tray/single-instance lifecycle, autostart, proces
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopRoutingRulesService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopRuntimeStatusService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSettingsService.kt`
+- `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopUpdateService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionSourceValidation.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionManagementService.kt`
 - `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopSubscriptionRefreshService.kt`
@@ -80,6 +82,7 @@ Desktop currently bypasses some `MainController` actions while its service owns 
 - Connection/runtime: connection command glue in `DesktopConnectionActionsService`, start/stop lifecycle in `DesktopConnectionLifecycleService`, runtime process control in `DesktopProxyRuntimeManager`, validation probes in `DesktopProxyValidationRuntime`, status-detail assembly in `DesktopRuntimeStatusService`, and active-name decisions in `DesktopConnectionNameLogic`.
 - Subscriptions/locations: subscription source labels and parsing in `DesktopSubscriptionService`, source validation in `DesktopSubscriptionSourceValidation`, add/delete/rename/activation in `DesktopSubscriptionManagementService`, refresh orchestration in `DesktopSubscriptionRefreshService`, location selection/mutation in `DesktopLocationService`, per-location benchmarks in `DesktopLocationBenchmarkService`, and broad Find Best selection in `DesktopFindBestService`.
 - Settings/rules/diagnostics/lifecycle: settings and autostart orchestration in `DesktopSettingsService`, routing save/import behavior in `DesktopRoutingRulesService`, diagnostics collection/export in `DesktopDiagnosticsService` and `DesktopDiagnosticsExportLogic`, tray behavior in `DesktopTrayController`, and OS autostart entry management in `DesktopAutostartManager`.
+- Updates: manifest/download verification and platform installer authorization in `DesktopUpdateService`; package replacement stays in the external helper so it can wait for a clean app exit.
 
 New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 

@@ -193,6 +193,14 @@ class MainActivity : ComponentActivity() {
                 onSaveValidationSettings = viewModel::saveValidationSettings,
                 onToggleLanguageDialog = viewModel::toggleLanguageDialog,
                 onAppLanguageChange = viewModel::setAppLanguage,
+                onCheckAndDownloadUpdate = viewModel::checkAndDownloadUpdate,
+                onDismissOrCancelUpdate = viewModel::dismissOrCancelUpdate,
+                onInstallUpdate = {
+                    viewModel.buildUpdateInstallIntent()?.let(::startActivity)
+                },
+                onOpenUpdateReleaseNotes = { url ->
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                },
                 onToggleAppModeDialog = viewModel::toggleAppModeDialog,
                 onAppModeChange = viewModel::setAppMode,
                 onOpenMainTab = viewModel::openMainTab,

@@ -20,7 +20,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Shared state/action boundary | `state-ownership.md`, `architecture.md`, `test-matrix.md` | `shared/core/`, `MainController`, Android ViewModel, desktop services | Shared tests plus one affected platform compile/test |
 | Packaging, release, native runtime | `developer-release-checklist.md`, `native-runtime-artifacts.md`, `platform-matrix.md` | `scripts/`, `.github/workflows/`, runtime artifact paths | `./scripts/check_release_hygiene.sh` plus package-specific checks |
 | CI or workflow-only changes | `developer-release-checklist.md`, `test-matrix.md` | `.github/workflows/`, scripts called by workflows, artifact names in `../README.md` | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check`; run package checks only when workflow behavior needs it |
-| User-facing install docs | `../README.md`, `developer-release-checklist.md` | Root `../README.md`, GitHub Actions artifact names | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check` |
+| User-facing install docs | `../README.md`, `developer-release-checklist.md` | Root `../README.md`, GitHub Release asset names | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check` |
 
 Use the smallest row that covers the change. If a patch crosses rows, run the union of their mapped check sets or state exactly what was skipped.
 

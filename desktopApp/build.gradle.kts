@@ -47,6 +47,23 @@ val macosNotarizationPassword = providers.gradleProperty("vpnControlMacosNotariz
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD"))
 val macosNotarizationTeamId = providers.gradleProperty("vpnControlMacosNotarizationTeamId")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID"))
+val desktopRuntimeDisplayVersion = if (hostOs.isMacOsX) macosPackageVersion else desktopPackageVersion
+val generatedVersionResources = layout.buildDirectory.dir("generated/resources/version/main")
+
+val generateDesktopVersionResource by tasks.registering {
+    val outputDir = generatedVersionResources
+    inputs.property("buildNumber", gitCommitCount)
+    inputs.property("displayVersion", desktopRuntimeDisplayVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val target = outputDir.get().file("vpn-control-version.properties").asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            "buildNumber=${gitCommitCount.get()}\n" +
+                "displayVersion=${desktopRuntimeDisplayVersion.get()}\n",
+        )
+    }
+}
 
 fun Provider<String>.nonBlankOrNull(): String? = orNull?.trim()?.takeIf(String::isNotEmpty)
 
@@ -78,7 +95,12 @@ dependencies {
 sourceSets {
     main {
         resources.srcDir(project.file("../app/src/main/res/drawable-nodpi"))
+        resources.srcDir(generatedVersionResources)
     }
+}
+
+tasks.named("processResources") {
+    dependsOn(generateDesktopVersionResource)
 }
 
 compose.desktop {

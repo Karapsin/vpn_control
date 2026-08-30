@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.kardinal.vpncontrol.AppScreen
+import com.kardinal.vpncontrol.BuildConfig
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
@@ -123,6 +124,7 @@ import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
+import com.kardinal.vpncontrol.shared.ui.AppUpdateDialog
 import com.kardinal.vpncontrol.shared.ui.LanguageSettingsDialog
 import com.kardinal.vpncontrol.shared.ui.LocalAppStrings
 import com.kardinal.vpncontrol.shared.ui.LocationsScreen as SharedLocationsScreen
@@ -184,6 +186,10 @@ fun VpnControlApp(
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
     onAppLanguageChange: (AppLanguage) -> Unit,
+    onCheckAndDownloadUpdate: () -> Unit,
+    onDismissOrCancelUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
+    onOpenUpdateReleaseNotes: (String) -> Unit,
     onToggleAppModeDialog: () -> Unit,
     onAppModeChange: (AppMode) -> Unit,
     onOpenMainTab: () -> Unit,
@@ -278,6 +284,7 @@ fun VpnControlApp(
             onValidationRetryCountChange = onValidationRetryCountChange,
             onSaveValidationSettings = onSaveValidationSettings,
             onToggleLanguageDialog = onToggleLanguageDialog,
+            onCheckAndDownloadUpdate = onCheckAndDownloadUpdate,
             onAppModeChange = onAppModeChange,
             onToggleVpn = onToggleVpn,
             onRefresh = onRefresh,
@@ -328,6 +335,14 @@ fun VpnControlApp(
             onCancel = onCancelBusyAction,
         )
     }
+
+    AppUpdateDialog(
+        state = state.appUpdate,
+        onDismiss = onDismissOrCancelUpdate,
+        onRetry = onCheckAndDownloadUpdate,
+        onInstall = onInstallUpdate,
+        onOpenReleaseNotes = { onOpenUpdateReleaseNotes(state.appUpdate.releaseNotesUrl) },
+    )
 
     BackHandler(
         enabled = !showBlockingProgress && (
@@ -906,6 +921,7 @@ private fun HomeTabsScreen(
     onValidationRetryCountChange: (String) -> Unit,
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
+    onCheckAndDownloadUpdate: () -> Unit,
     onAppModeChange: (AppMode) -> Unit,
     onToggleVpn: () -> Unit,
     onRefresh: () -> Unit,
@@ -978,6 +994,7 @@ private fun HomeTabsScreen(
                             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
                             onToggleLanguageDialog = onToggleLanguageDialog,
+                            onCheckAndDownloadUpdate = onCheckAndDownloadUpdate,
                             onSetAppMode = onAppModeChange,
                             onIgnoreRulesChange = onIgnoreRulesChange,
                         )
@@ -1060,6 +1077,7 @@ private fun MainAdvancedMenu(
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
+    onCheckAndDownloadUpdate: () -> Unit,
     onSetAppMode: (AppMode) -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
 ) {
@@ -1205,6 +1223,22 @@ private fun MainAdvancedMenu(
                 onClick = {
                     advancedMenuExpanded = false
                     onToggleDnsDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_UPDATE), color = menuTitleColor)
+                        Text(
+                            strings.format(UiText.SETTINGS_CURRENT_VERSION, BuildConfig.VERSION_NAME),
+                            color = menuSubtitleColor,
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onCheckAndDownloadUpdate()
                 },
             )
         }

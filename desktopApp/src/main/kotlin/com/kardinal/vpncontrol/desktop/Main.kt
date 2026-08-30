@@ -81,6 +81,7 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
 import com.kardinal.vpncontrol.shared.ui.LanguageSettingsDialog
+import com.kardinal.vpncontrol.shared.ui.AppUpdateDialog
 import com.kardinal.vpncontrol.shared.ui.LocalAppStrings
 import com.kardinal.vpncontrol.shared.ui.LocationsScreen
 import com.kardinal.vpncontrol.shared.ui.MainScreen
@@ -98,6 +99,7 @@ import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
 import java.awt.GraphicsEnvironment
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -160,6 +162,7 @@ private fun DesktopApplication(
         )
     }
     var exitRequested by remember { mutableStateOf(false) }
+    var updateJob by remember { mutableStateOf<Job?>(null) }
     val state = service.state
     val appStrings = rememberAppStrings(state.appLanguage, Locale.getDefault().language)
     DisposableEffect(activationEvents) {
@@ -187,6 +190,39 @@ private fun DesktopApplication(
         coroutineScope.launch {
             service.shutdownForExit()
             onExitApplication()
+        }
+    }
+
+    fun checkAndDownloadUpdate() {
+        if (updateJob?.isActive == true) return
+        updateJob = coroutineScope.launch {
+            service.checkAndDownloadUpdate()
+            updateJob = null
+        }
+    }
+
+    fun dismissOrCancelUpdate() {
+        updateJob?.cancel()
+        updateJob = null
+        service.dismissUpdate()
+    }
+
+    fun installPreparedUpdate() {
+        if (updateJob?.isActive == true) return
+        updateJob = coroutineScope.launch {
+            val authorized = service.authorizeUpdateInstaller()
+            if (authorized.isSuccess) {
+                val stopped = service.shutdownForExit()
+                if (stopped.isSuccess) {
+                    onExitApplication()
+                } else {
+                    service.cancelUpdateInstaller()
+                    service.reportUpdateInstallFailure(
+                        stopped.exceptionOrNull()?.message ?: "Could not stop the active connection for update",
+                    )
+                }
+            }
+            updateJob = null
         }
     }
 
@@ -272,7 +308,13 @@ private fun DesktopApplication(
             ),
         ) {
             Surface(color = Color.Transparent) {
-                DesktopVpnControlApp(window, service)
+                DesktopVpnControlApp(
+                    window = window,
+                    service = service,
+                    onCheckAndDownloadUpdate = ::checkAndDownloadUpdate,
+                    onDismissOrCancelUpdate = ::dismissOrCancelUpdate,
+                    onInstallUpdate = ::installPreparedUpdate,
+                )
             }
         }
     }
@@ -357,6 +399,9 @@ internal fun isDesktopDisplayAvailable(
 private fun DesktopVpnControlApp(
     window: ComposeWindow,
     service: DesktopAppService,
+    onCheckAndDownloadUpdate: () -> Unit,
+    onDismissOrCancelUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val state = service.state
@@ -367,6 +412,17 @@ private fun DesktopVpnControlApp(
     val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor, appStrings)
 
     CompositionLocalProvider(LocalAppStrings provides appStrings) {
+    AppUpdateDialog(
+        state = state.appUpdate,
+        onDismiss = onDismissOrCancelUpdate,
+        onRetry = onCheckAndDownloadUpdate,
+        onInstall = onInstallUpdate,
+        onOpenReleaseNotes = {
+            runCatching {
+                java.awt.Desktop.getDesktop().browse(java.net.URI(state.appUpdate.releaseNotesUrl))
+            }
+        },
+    )
     DesktopSettingsDialogs(
         state = state,
         systemLanguageCode = systemLanguageCode,
@@ -458,6 +514,7 @@ private fun DesktopVpnControlApp(
                             onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
                             onToggleLanguageDialog = service::toggleLanguageDialog,
+                            onCheckAndDownloadUpdate = onCheckAndDownloadUpdate,
                             onIgnoreRulesChange = service::setRoutingIgnoreRulesDraft,
                         )
                     },
@@ -970,6 +1027,7 @@ private fun DesktopAdditionalSettingsMenu(
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
+    onCheckAndDownloadUpdate: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1132,6 +1190,22 @@ private fun DesktopAdditionalSettingsMenu(
                 onClick = {
                     expanded = false
                     onToggleDnsDialog()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_UPDATE))
+                        Text(
+                            strings.format(UiText.SETTINGS_CURRENT_VERSION, DesktopBuildInfo.current().displayVersion),
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onCheckAndDownloadUpdate()
                 },
             )
         }

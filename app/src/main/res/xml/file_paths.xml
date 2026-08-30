@@ -3,4 +3,7 @@
     <cache-path
         name="diagnostics_exports"
         path="exports/" />
+    <cache-path
+        name="app_updates"
+        path="updates/" />
 </paths>

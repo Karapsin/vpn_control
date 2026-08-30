@@ -55,6 +55,8 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Desktop runtime status detail assembly | `./gradlew :desktopApp:test` |
 | Desktop diagnostics/export status mapping | `./gradlew :desktopApp:test` |
 | Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
+| Android or desktop self-update flow | `./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Arch update bundle | `./scripts/package_arch_desktop_update.sh` and `./scripts/test_arch_desktop_update.sh <bundle>` |
 | Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
 | Desktop active-connection naming, selected-location toggle, or subscription-source validation helpers | `./gradlew :desktopApp:test` |
 | Desktop subscription refresh orchestration | `./gradlew :desktopApp:test` |

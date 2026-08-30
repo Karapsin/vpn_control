@@ -181,6 +181,11 @@ class DesktopAppService internal constructor(
         currentLogFile = runtimeManager::currentLogFile,
         defaultLogFile = runtimeManager::defaultLogFile,
     )
+    private val updateService = DesktopUpdateService(
+        stateProvider = { state },
+        updateState = ::updateState,
+        updateDirectory = desktopStore.updateDirectory(),
+    )
 
     internal fun installShutdownHook(): DesktopAppService {
         runCatching { shutdownHook.install() }
@@ -203,9 +208,29 @@ class DesktopAppService internal constructor(
         connectionActions.resumePreviousConnectionIfNeeded()
     }
 
-    suspend fun shutdownForExit() {
-        connectionActions.shutdownForExit()
+    suspend fun shutdownForExit(): Result<Unit> = connectionActions.shutdownForExit()
+
+    suspend fun checkAndDownloadUpdate() {
+        updateService.checkAndDownload()
     }
+
+    fun dismissUpdate() {
+        updateService.dismiss()
+    }
+
+    suspend fun authorizeUpdateInstaller(): Result<Unit> {
+        return updateService.authorizeInstallerAndWaitUntilReady(ProcessHandle.current().pid())
+    }
+
+    fun reportUpdateInstallFailure(message: String) {
+        updateService.reportInstallFailure(message)
+    }
+
+    fun cancelUpdateInstaller() {
+        updateService.cancelPreparedInstaller()
+    }
+
+    fun currentVersion(): String = DesktopBuildInfo.current().displayVersion
 
     fun openScreen(screen: AppScreen) {
         updateState { it.copy(currentScreen = screen) }

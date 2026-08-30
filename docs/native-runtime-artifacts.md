@@ -43,7 +43,10 @@ scripts/package_linux_desktop.sh
 scripts/package_windows_desktop.ps1
 scripts/package_windows_desktop_vm.sh
 scripts/package_macos_desktop.sh
+scripts/package_arch_desktop_update.sh
 ```
+
+The generated Arch update bundle contains the Compose app image and prepared Linux `sing-box` runtime. It is written under `dist/arch/`, remains untracked, and reapplies capabilities only while installing the verified release bundle.
 
 ## Runtime Refresh Checklist
 

@@ -46,9 +46,7 @@ internal class DesktopConnectionActionsService(
         )
     }
 
-    suspend fun shutdownForExit() {
-        stopRuntimeForAppExit()
-    }
+    suspend fun shutdownForExit(): Result<Unit> = stopRuntimeForAppExit()
 
     suspend fun toggleSelectedLocationProxy(): Result<Unit> {
         if (stateProvider().isVpnRunning) {

@@ -6,20 +6,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - ".github/workflows/macos-desktop.yml"
-      - "desktopApp/**"
-      - "shared/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradlew"
-      - "scripts/prepare_sing_box_macos_runtime.sh"
-      - "scripts/setup_macos_signing.sh"
-      - "scripts/check_release_hygiene.sh"
-      - "scripts/package_macos_desktop.sh"
-      - "scripts/test_macos_desktop_package.sh"
   pull_request:
     paths:
       - ".github/workflows/macos-desktop.yml"
@@ -69,6 +55,9 @@ jobs:
           VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
+      - name: Record macOS package architecture
+        run: uname -m > dist/macos/ARCHITECTURE.txt
+
       - name: Upload macOS package
         uses: actions/upload-artifact@v4
         with:
@@ -76,4 +65,5 @@ jobs:
           path: |
             dist/macos/*.dmg
             dist/macos/SHA256SUMS.txt
+            dist/macos/ARCHITECTURE.txt
           if-no-files-found: error

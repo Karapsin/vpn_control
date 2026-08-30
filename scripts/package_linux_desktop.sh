@@ -70,3 +70,10 @@ if [[ "$skip_package_regression_tests" != true ]]; then
 else
   echo "[vpn-control] skipping Linux package regression tests"
 fi
+
+echo "[vpn-control] building Arch update bundle"
+./scripts/package_arch_desktop_update.sh --skip-build
+if [[ "$skip_package_regression_tests" != true ]]; then
+  arch_bundle=$(find "$repo_root/dist/arch" -maxdepth 1 -type f -name '*.tar.gz' | sort | head -n 1)
+  ./scripts/test_arch_desktop_update.sh "$arch_bundle"
+fi

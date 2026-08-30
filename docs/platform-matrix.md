@@ -9,6 +9,8 @@ This matrix summarizes platform behavior so patches do not accidentally apply An
 | Windows desktop | Compose Desktop | Supported through bundled `sing-box` and Wintun path | Supported | Administrator required for VPN mode | `.exe`, `.msi` | Autostart/elevation behavior must be checked carefully. |
 | macOS desktop | Compose Desktop | Not fully implemented | Supported | Full VPN mode still needs a privileged helper | `.dmg` | Package exists; use proxy-only for smoke testing. |
 
+All packaged platforms expose an in-app `Update` action backed by the latest GitHub Release. Checking, downloading, and checksum verification do not stop an active connection. Installation uses the platform confirmation/elevation flow and may briefly disconnect; desktop relaunch preserves the existing reconnect/off intent. Linux selects DEB, RPM, or the Arch update bundle from the detected installation family.
+
 ## Shared Behavior That Should Stay Aligned
 
 - Subscription parsing and profile selection should stay in shared logic when possible.

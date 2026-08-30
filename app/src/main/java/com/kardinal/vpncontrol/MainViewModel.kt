@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class MainViewModel(
+    private val appContext: Context,
     private val repository: AppRepository,
     private val vpnManager: VpnManager,
     private val diagnosticsExporter: DiagnosticsExporter,
@@ -154,6 +155,12 @@ class MainViewModel(
         updateStatus = repository::updateStatus,
         exportAndShare = diagnosticsExporter::exportAndShare,
     )
+    private val updateActions = AndroidUpdateActionsService(
+        context = appContext,
+        stateProvider = { _uiState.value },
+        updateState = { transform -> _uiState.value = transform(_uiState.value) },
+        launch = { block -> viewModelScope.launch { block() } },
+    )
 
     init {
         repository.state.onEach { persisted ->
@@ -215,6 +222,18 @@ class MainViewModel(
 
     fun setAppLanguage(language: AppLanguage) {
         settingsActions.setAppLanguage(language)
+    }
+
+    fun checkAndDownloadUpdate() {
+        updateActions.checkAndDownload()
+    }
+
+    fun dismissOrCancelUpdate() {
+        updateActions.dismissOrCancel()
+    }
+
+    fun buildUpdateInstallIntent(): android.content.Intent? {
+        return updateActions.buildInstallIntent()
     }
 
     fun openRoutingRules() {
@@ -579,6 +598,7 @@ class MainViewModel(
                 val diagnosticsExporter = DiagnosticsExporter(context, storage)
                 val installedAppsCatalog = InstalledAppsCatalog(context)
                 return MainViewModel(
+                    appContext = context.applicationContext,
                     repository = repository,
                     vpnManager = vpnManager,
                     diagnosticsExporter = diagnosticsExporter,

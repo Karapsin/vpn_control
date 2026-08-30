@@ -6,27 +6,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - ".github/workflows/fast-checks.yml"
-      - "AGENTS.md"
-      - "README.md"
-      - "protocol_smoke_checklist.md"
-      - "docs/**"
-      - "app/**"
-      - "desktopApp/**"
-      - "shared/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradlew"
-      - "scripts/add_language.py"
-      - "scripts/check_localization.py"
-      - "scripts/status_catalog_tool.py"
-      - "scripts/check_release_hygiene.sh"
-      - "scripts/check_docs_hygiene.sh"
-      - "scripts/arch_install.sh"
-      - "scripts/test_arch_install_hygiene.sh"
   pull_request:
     paths:
       - ".github/workflows/fast-checks.yml"

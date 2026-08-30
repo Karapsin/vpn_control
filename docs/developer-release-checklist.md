@@ -1,6 +1,6 @@
 # Developer Release Checklist
 
-This document owns developer release packaging. User-facing install instructions stay in `../README.md` and should point to GitHub Actions artifacts, not ignored local `dist/` paths.
+This document owns developer release packaging. User-facing install instructions stay in `../README.md` and should point to published GitHub Releases, not ignored local `dist/` paths.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Android:
 
 - Android SDK and build tools are installed.
 - `local.properties` points to the Android SDK when needed.
-- Release APKs are currently signed with the debug signing config in `app/build.gradle.kts`; treat them as direct-install/test artifacts, not Play Store artifacts.
+- Local release APKs use the configured stable signing key when the `VPN_CONTROL_ANDROID_*` environment variables are present; otherwise local builds retain the debug-signing fallback for development only.
 
 Linux desktop:
 
@@ -59,6 +59,10 @@ The script first runs `scripts/check_release_hygiene.sh` to fail fast if generat
 
 GitHub Actions package workflows run the same release hygiene check immediately after checkout, before platform setup or packaging starts.
 
+Every successful package set for the current `main` commit is promoted automatically to the latest GitHub Release. The publisher waits for Fast Checks plus Android, Linux, Windows, and macOS packages for that exact commit, then publishes versioned assets, checksums, and `update-manifest.json` for the in-app updater.
+
+Stable Android releases require these repository secrets: `ANDROID_SIGNING_KEYSTORE_BASE64`, `ANDROID_SIGNING_STORE_PASSWORD`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_KEY_PASSWORD`, and `ANDROID_SIGNING_CERT_SHA256`. The Android workflow rejects a release whose signer fingerprint does not match the configured certificate.
+
 Useful skip flags:
 
 | Flag | Effect |
@@ -84,6 +88,8 @@ Linux:
 ```text
 desktopApp/build/compose/binaries/main/**/*.deb
 desktopApp/build/compose/binaries/main/**/*.rpm
+dist/arch/vpn-control-arch-*.tar.gz
+dist/arch/SHA256SUMS.txt
 ```
 
 Windows from a Windows host:
@@ -117,7 +123,7 @@ desktopApp/build/compose/binaries/main/
 
 ## Platform Notes
 
-- Android release APKs are currently signed with the debug signing config in `app/build.gradle.kts`. Treat these APKs as direct-install/test artifacts, not Play Store release artifacts.
+- Published Android release APKs use the stable repository signing key so the package installer can update an existing installation without clearing app data. A local fallback-signed APK is not eligible for publication.
 - Windows VPN mode requires Administrator privileges. Proxy-only mode does not.
 - Linux VPN mode requires `/dev/net/tun` and `CAP_NET_ADMIN` on the installed `sing-box` binary.
 - Linux tray visibility depends on a tray/status-notifier host and optional AppIndicator/Ayatana or XEmbed support packages on minimal desktop installs. On i3/polybar-style XEmbed sessions, verify the AWT-first menu path as well as the native path when forcing `VPN_CONTROL_LINUX_TRAY_BACKEND=native`.

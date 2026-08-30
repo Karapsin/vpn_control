@@ -30,5 +30,9 @@ fi
 
 bash scripts/check_docs_hygiene.sh
 bash scripts/test_arch_install_hygiene.sh
+python3 scripts/test_assemble_update_release.py
+bash -n scripts/install_arch_desktop_update.sh
+bash -n scripts/package_arch_desktop_update.sh
+bash -n scripts/test_arch_desktop_update.sh
 
 echo "[vpn-control] release hygiene passed"

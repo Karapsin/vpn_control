@@ -35,6 +35,16 @@ val generatedVersionCode = providers.gradleProperty("vpnControlVersionCode")
 val generatedVersionName = providers.gradleProperty("vpnControlVersionName")
     .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
     .orElse(generatedVersionCode.map { code -> "0.1.$code" })
+val releaseKeystorePath = providers.environmentVariable("VPN_CONTROL_ANDROID_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("VPN_CONTROL_ANDROID_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("VPN_CONTROL_ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("VPN_CONTROL_ANDROID_KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.kardinal.vpncontrol"
@@ -58,6 +68,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("stableRelease") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             ndk {
@@ -67,7 +88,11 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("stableRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

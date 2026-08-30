@@ -6,19 +6,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - ".github/workflows/linux-desktop.yml"
-      - "desktopApp/**"
-      - "shared/**"
-      - "gradle/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradlew"
-      - "scripts/prepare_sing_box_desktop_runtime.sh"
-      - "scripts/check_release_hygiene.sh"
-      - "scripts/package_linux_desktop.sh"
-      - "scripts/test_linux_desktop_package.sh"
   pull_request:
     paths:
       - ".github/workflows/linux-desktop.yml"
@@ -33,6 +20,9 @@ on:
       - "scripts/check_release_hygiene.sh"
       - "scripts/package_linux_desktop.sh"
       - "scripts/test_linux_desktop_package.sh"
+      - "scripts/package_arch_desktop_update.sh"
+      - "scripts/install_arch_desktop_update.sh"
+      - "scripts/test_arch_desktop_update.sh"
 
 jobs:
   package-linux-desktop:
@@ -71,4 +61,6 @@ jobs:
           path: |
             desktopApp/build/compose/binaries/main/**/*.deb
             desktopApp/build/compose/binaries/main/**/*.rpm
+            dist/arch/*.tar.gz
+            dist/arch/SHA256SUMS.txt
           if-no-files-found: error

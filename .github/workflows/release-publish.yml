@@ -1,0 +1,108 @@
+name: Publish Stable Release
+
+on:
+  workflow_run:
+    workflows:
+      - Fast Checks
+      - Android Release APK
+      - Linux Desktop Package
+      - Windows Desktop Package
+      - macOS Desktop Package
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-stable-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+      REPOSITORY: ${{ github.repository }}
+
+    steps:
+      - name: Require successful exact-SHA workflows
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch=$(gh api "repos/$REPOSITORY" --jq .default_branch)
+          current_sha=$(gh api "repos/$REPOSITORY/git/ref/heads/$default_branch" --jq .object.sha)
+          if [[ "$TARGET_SHA" != "$current_sha" ]]; then
+            echo "Current default-branch head is $current_sha; refusing to publish older SHA $TARGET_SHA"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mkdir -p incoming
+          workflows=(fast-checks.yml android-release.yml linux-desktop.yml windows-desktop.yml macos-desktop.yml)
+          artifact_names=("" vpn-control-android-release-apk vpn-control-linux-packages vpn-control-windows-installers vpn-control-macos-package)
+          for index in "${!workflows[@]}"; do
+            workflow=${workflows[$index]}
+            run_id=$(gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?branch=$default_branch&status=completed&per_page=100" \
+              --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\")) | first | select(.conclusion == \"success\") | .id" || true)
+            if [[ -z "$run_id" ]]; then
+              echo "Exact-SHA success is not available yet for $workflow"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            artifact_name=${artifact_names[$index]}
+            if [[ -n "$artifact_name" ]]; then
+              gh run download "$run_id" --repo "$REPOSITORY" --name "$artifact_name" --dir "incoming/$artifact_name"
+            fi
+          done
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact release source
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+          clean: false
+
+      - name: Assemble release assets and manifest
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_number=$(git rev-list --count HEAD)
+          version="0.1.$build_number"
+          tag="v$version"
+          mac_arch=$(cat incoming/vpn-control-macos-package/ARCHITECTURE.txt)
+          python3 scripts/assemble_update_release.py \
+            --incoming incoming \
+            --output release \
+            --build-number "$build_number" \
+            --version "$version" \
+            --tag "$tag" \
+            --mac-architecture "$mac_arch"
+          echo "tag=$tag" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$tag" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; publisher is idempotent."
+            exit 0
+          fi
+          gh release create "$tag" release/* \
+            --repo "$REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "VPN Control $version" \
+            --generate-notes \
+            --latest
