@@ -83,7 +83,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build release APK
-        run: ./gradlew :app:assembleRelease
+        run: ./gradlew --no-build-cache clean :app:assembleRelease
 
       - name: Verify stable APK signer
         if: github.event_name != 'pull_request'
@@ -100,6 +100,8 @@ jobs:
             | tr '[:upper:]' '[:lower:]')
           [[ -n "$actual" && "$actual" == "$expected" ]] || {
             echo "Release APK signer does not match ANDROID_SIGNING_CERT_SHA256" >&2
+            echo "APK signer: ${actual:-unavailable}" >&2
+            echo "Keystore signer: $expected" >&2
             exit 1
           }
 
