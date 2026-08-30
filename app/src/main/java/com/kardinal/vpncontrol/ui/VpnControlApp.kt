@@ -65,6 +65,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -109,6 +110,7 @@ import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SingBoxConfigFactory
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -165,7 +167,7 @@ fun VpnControlApp(
     onImportSubscriptionFromClipboard: () -> Unit,
     onImportSubscriptionFromFile: () -> Unit,
     onToggleDnsDialog: () -> Unit,
-    onDnsEnabledChange: (Boolean) -> Unit,
+    onDnsModeChange: (DnsMode) -> Unit,
     onDnsChange: (String) -> Unit,
     onSaveDns: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
@@ -436,23 +438,35 @@ fun VpnControlApp(
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(appStrings.get(UiText.USE_CUSTOM_DNS))
-                        Switch(
-                            checked = state.useCustomDnsDraft,
-                            onCheckedChange = onDnsEnabledChange,
+                    DnsMode.entries.forEach { mode ->
+                        SecureDnsModeOption(
+                            label = appStrings.get(mode.uiText()),
+                            selected = state.dnsModeDraft == mode,
+                            onClick = { onDnsModeChange(mode) },
+                        )
+                    }
+                    if (state.dnsSettings.legacyRawAddress.isNotBlank()) {
+                        Text(
+                            appStrings.get(UiText.DNS_LEGACY_MIGRATION_NOTICE),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFFD18B),
                         )
                     }
                     OutlinedTextField(
-                        value = state.customDnsDraft,
+                        value = state.customDnsEndpointDraft,
                         onValueChange = onDnsChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(appStrings.get(UiText.DNS_IP_ADDRESS)) },
-                        enabled = state.useCustomDnsDraft,
+                        label = { Text(appStrings.get(UiText.DNS_SECURE_ENDPOINT)) },
+                        placeholder = {
+                            Text(
+                                if (state.dnsModeDraft == DnsMode.CUSTOM_DOT) {
+                                    "tls://dns.example:853"
+                                } else {
+                                    "https://dns.example/dns-query"
+                                },
+                            )
+                        },
+                        enabled = state.dnsModeDraft != DnsMode.AUTOMATIC,
                         colors = routingTextFieldColors(),
                     )
                 }
@@ -1182,11 +1196,7 @@ private fun MainAdvancedMenu(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_CUSTOM_DNS), color = menuTitleColor)
                         Text(
-                            if (state.useCustomDns) {
-                                state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) }
-                            } else {
-                                strings.get(UiText.SETTINGS_DISABLED)
-                            },
+                            strings.get(state.dnsSettings.mode.uiText()),
                             color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )
@@ -1231,6 +1241,27 @@ private fun SourceModeOption(
             }
         }
     }
+}
+
+@Composable
+private fun SecureDnsModeOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label)
+    }
+}
+
+private fun DnsMode.uiText(): UiText = when (this) {
+    DnsMode.AUTOMATIC -> UiText.DNS_MODE_AUTOMATIC
+    DnsMode.CUSTOM_DOH -> UiText.DNS_MODE_DOH
+    DnsMode.CUSTOM_DOT -> UiText.DNS_MODE_DOT
 }
 
 @Composable

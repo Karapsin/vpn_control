@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.DnsSettings
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -20,12 +22,15 @@ class SingBoxConfigFactoryParityTest {
         protocolProfiles().forEach { profile ->
             val config = SingBoxConfigFactory.buildTunConfig(
                 profile = profile,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(ignoreRules = true),
             )
 
             assertEquals(
-                SingBoxOutboundBuilder.buildOutbound(profile),
+                SingBoxOutboundBuilder.buildOutbound(
+                    profile,
+                    domainResolverTag = "bootstrap-dns",
+                ),
                 proxyOutbound(config),
             )
         }
@@ -36,13 +41,16 @@ class SingBoxConfigFactoryParityTest {
         protocolProfiles().forEach { profile ->
             val config = SingBoxConfigFactory.buildProxyOnlyConfig(
                 profile = profile,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(ignoreRules = true),
                 listenPort = 2080,
             )
 
             assertEquals(
-                SingBoxOutboundBuilder.buildOutbound(profile),
+                SingBoxOutboundBuilder.buildOutbound(
+                    profile,
+                    domainResolverTag = "bootstrap-dns",
+                ),
                 proxyOutbound(config),
             )
         }
@@ -52,7 +60,7 @@ class SingBoxConfigFactoryParityTest {
     fun androidVpnConfigWithEmptyActiveRulesRoutesAllAppsThroughProxy() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 proxyPackages = emptyList(),
@@ -76,7 +84,7 @@ class SingBoxConfigFactoryParityTest {
     fun androidVpnConfigWithProxyPackagesLimitsTunInbound() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 proxyPackages = listOf("org.example.browser", "org.example.chat"),
@@ -93,10 +101,13 @@ class SingBoxConfigFactoryParityTest {
     }
 
     @Test
-    fun androidVpnConfigRoutesCustomDnsDirect() {
+    fun androidVpnConfigRoutesCustomDnsOverTheProxy() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = true, value = "9.9.9.9"),
+            dns = DnsSettings(
+                mode = DnsMode.CUSTOM_DOH,
+                endpoint = "https://dns.example/dns-query",
+            ),
             routingRules = RoutingRules(ignoreRules = true),
         )
         val root = parseConfig(config)
@@ -104,7 +115,7 @@ class SingBoxConfigFactoryParityTest {
             .jsonObject
             .getValue("servers")
             .jsonArray
-            .single()
+            .last()
             .jsonObject
         val directCidrs = root.getValue("route")
             .jsonObject
@@ -116,16 +127,18 @@ class SingBoxConfigFactoryParityTest {
             .jsonArray
             .map { it.jsonPrimitive.content }
 
-        assertEquals("custom-dns", dnsServer.getValue("tag").jsonPrimitive.content)
-        assertEquals("9.9.9.9", dnsServer.getValue("server").jsonPrimitive.content)
-        assertTrue(directCidrs.contains("9.9.9.9/32"))
+        assertEquals("secure-dns", dnsServer.getValue("tag").jsonPrimitive.content)
+        assertEquals("dns.example", dnsServer.getValue("server").jsonPrimitive.content)
+        assertEquals("proxy", dnsServer.getValue("detour").jsonPrimitive.content)
+        assertEquals("bootstrap-dns", dnsServer.getValue("domain_resolver").jsonPrimitive.content)
+        assertTrue(directCidrs.contains("1.1.1.1/32"))
     }
 
     @Test
     fun androidVpnActiveVerificationInboundRoutesToProxyBeforeDirectRules() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 directDomainSuffixes = listOf("chatgpt.com"),
@@ -155,7 +168,7 @@ class SingBoxConfigFactoryParityTest {
     fun androidVpnConfigPreservesUdp443ByDefault() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 blockQuicUdp443 = false,
@@ -174,7 +187,7 @@ class SingBoxConfigFactoryParityTest {
     fun androidVpnConfigCanBlockUdp443ForQuicCompatibility() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 blockQuicUdp443 = true,

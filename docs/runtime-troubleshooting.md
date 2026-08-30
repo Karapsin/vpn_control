@@ -81,6 +81,33 @@ for name in ("runtime-sing-box-vpn.json", "runtime-sing-box-proxy_only.json"):
 PY
 ```
 
+Inspect the DNS wiring without printing the custom endpoint hostname or path:
+
+```bash
+python3 - <<'PY'
+import json
+import pathlib
+
+runtime_dir = pathlib.Path.home() / ".vpn-control-desktop" / "runtime"
+for name in ("runtime-sing-box-vpn.json", "runtime-sing-box-proxy_only.json"):
+    path = runtime_dir / name
+    if not path.exists():
+        continue
+    root = json.loads(path.read_text())
+    servers = root.get("dns", {}).get("servers", [])
+    print(name, [
+        {
+            "tag": item.get("tag"),
+            "type": item.get("type"),
+            "detour": item.get("detour"),
+            "domain_resolver": item.get("domain_resolver"),
+            "server_present": bool(item.get("server")),
+        }
+        for item in servers
+    ])
+PY
+```
+
 If the redacted helpers are not enough, inspect full local files only for yourself and sanitize before reporting:
 
 ```bash
@@ -120,6 +147,8 @@ These commands are diagnostic only. They should not interrupt the connection.
 - local port conflicts
 - readiness probe timeouts
 - remote connection errors
+- DNS answers that contain only `AAAA` (IPv6) records when the TUN is IPv4-only
+- failures establishing the `https` or `tls` secure-DNS server through the proxy
 
 Generated config JSON:
 
@@ -127,6 +156,10 @@ Generated config JSON:
 - route rules
 - TUN inbound vs proxy-only inbound
 - direct probe or direct route settings
+- a direct `bootstrap-dns` server and a `secure-dns` server with `detour: proxy`
+- `dns.final` and `route.default_domain_resolver` set to `secure-dns`
+
+If most sites work but YouTube does not, compare IPv4 (`A`) and IPv6 (`AAAA`) answers. An IPv4-only VPN cannot use an answer containing only IPv6 addresses. If raw port-53 DNS returns a negative answer while DNS-over-HTTPS through the selected proxy returns IPv4 answers, use Automatic DNS, custom DoH, or custom DoT; do not add the raw DNS server to direct routing.
 
 ## Desktop-Specific Guide
 

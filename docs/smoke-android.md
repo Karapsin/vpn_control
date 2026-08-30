@@ -106,6 +106,9 @@ Local fixture ports expected by `LocalProtocolSmokeInstrumentedTest`:
 
    - Open a real site through the connection.
    - Confirm ordinary browsing works.
+   - Select Automatic DNS and confirm both YouTube and an ordinary non-Google site load.
+   - Repeat with one known-good custom DoH endpoint and one known-good custom DoT endpoint.
+   - Confirm malformed or plaintext DNS endpoints are rejected and remain editable.
 
 7. Disconnect / reconnect
 

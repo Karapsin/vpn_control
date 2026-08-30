@@ -238,5 +238,10 @@
   "PROXY": "Proxy",
   "SHOW_WINDOW": "ဝင်းဒိုး ပြရန်",
   "HIDE_WINDOW": "ဝင်းဒိုး ဖျောက်ရန်",
-  "EXIT": "ထွက်ရန်"
+  "EXIT": "ထွက်ရန်",
+  "DNS_MODE_AUTOMATIC": "Automatic secure DNS",
+  "DNS_MODE_DOH": "Custom DNS over HTTPS (DoH)",
+  "DNS_MODE_DOT": "Custom DNS over TLS (DoT)",
+  "DNS_SECURE_ENDPOINT": "Secure DNS endpoint",
+  "DNS_LEGACY_MIGRATION_NOTICE": "Your previous DNS IP was preserved but is no longer used. Add your provider's DoH or DoT endpoint."
 }

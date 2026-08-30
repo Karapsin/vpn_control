@@ -5,6 +5,7 @@ import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
@@ -23,6 +24,27 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopAppServiceTest {
+    @Test
+    fun loadWorkspaceMigratesLegacyRawDnsToAutomaticSecureDns() {
+        val tempDir = Files.createTempDirectory("vpn-control-desktop-legacy-dns")
+        try {
+            Files.writeString(
+                tempDir.resolve("workspace.json"),
+                """{"persisted_state":{"custom_dns":"9.9.9.9","use_custom_dns":true},"locations":[]}""",
+            )
+
+            val loaded = DesktopStateStore(tempDir).loadWorkspace(
+                DesktopWorkspace(persistedState = PersistedState(), locations = emptyList()),
+            ).persistedState
+
+            assertEquals(DnsMode.AUTOMATIC, loaded.dnsSettings.mode)
+            assertEquals("", loaded.dnsSettings.endpoint)
+            assertEquals("9.9.9.9", loaded.dnsSettings.legacyRawAddress)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun workspaceWriteSurvivesNonFiniteMetrics() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-desktop-non-finite")
@@ -406,13 +428,13 @@ class DesktopAppServiceTest {
             val service = DesktopAppServiceFactory.createForTesting(store = store)
 
             service.toggleDnsDialog()
-            service.setUseCustomDnsDraft(true)
-            service.setCustomDnsDraft("1.1.1.1")
+            service.setDnsModeDraft(DnsMode.CUSTOM_DOH)
+            service.setCustomDnsDraft("https://dns.example/dns-query")
             service.saveDns()
 
             assertFalse(service.state.showDnsDialog)
-            assertTrue(service.state.useCustomDns)
-            assertEquals("1.1.1.1", service.state.customDns)
+            assertEquals(DnsMode.CUSTOM_DOH, service.state.dnsSettings.mode)
+            assertEquals("https://dns.example/dns-query", service.state.dnsSettings.endpoint)
 
             service.toggleValidationSettingsDialog()
             service.setValidationTestUrlDraft("chatgpt.com/")
@@ -435,8 +457,8 @@ class DesktopAppServiceTest {
                     locations = emptyList(),
                 ),
             ).persistedState
-            assertTrue(reloaded.useCustomDns)
-            assertEquals("1.1.1.1", reloaded.customDns)
+            assertEquals(DnsMode.CUSTOM_DOH, reloaded.dnsSettings.mode)
+            assertEquals("https://dns.example/dns-query", reloaded.dnsSettings.endpoint)
             assertEquals("https://chatgpt.com/", reloaded.validationSettings.testUrl)
             assertEquals(4, reloaded.validationSettings.batchSize)
             assertEquals(5, reloaded.validationSettings.subscriptionRefreshConcurrency)

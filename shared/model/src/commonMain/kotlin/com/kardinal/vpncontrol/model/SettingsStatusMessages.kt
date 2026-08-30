@@ -25,6 +25,17 @@ object SettingsStatusMessages {
     fun customDnsSaved(enabled: Boolean): String =
         StatusMessageCodec.encode(if (enabled) StatusMessageKey.CUSTOM_DNS_SAVED else StatusMessageKey.CUSTOM_DNS_DISABLED)
 
+    fun dnsSettingsSaved(mode: DnsMode): String = StatusMessageCodec.encode(
+        if (mode == DnsMode.AUTOMATIC) {
+            StatusMessageKey.SECURE_DNS_AUTOMATIC_SAVED
+        } else {
+            StatusMessageKey.CUSTOM_DNS_SAVED
+        },
+    )
+
+    fun customDnsEndpointInvalid(): String =
+        StatusMessageCodec.encode(StatusMessageKey.CUSTOM_DNS_ENDPOINT_INVALID)
+
     fun uiSettingVisibilityChanged(
         item: UiSettingsStatusItem,
         enabled: Boolean,

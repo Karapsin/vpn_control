@@ -11,6 +11,8 @@ import com.kardinal.vpncontrol.data.IncomingImportPayload
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,8 +54,7 @@ sealed interface MainControllerEffect {
         val statusMessage: String,
     ) : MainControllerEffect
     data class SaveDns(
-        val dns: String,
-        val enabled: Boolean,
+        val settings: DnsSettings,
         val statusMessage: String,
     ) : MainControllerEffect
 }
@@ -84,8 +85,8 @@ class MainController(
     fun toggleDnsDialog() {
         _state.value = _state.value.copy(
             showDnsDialog = !_state.value.showDnsDialog,
-            customDnsDraft = _state.value.customDns,
-            useCustomDnsDraft = _state.value.useCustomDns,
+            dnsModeDraft = _state.value.dnsSettings.mode,
+            customDnsEndpointDraft = _state.value.dnsSettings.endpoint,
         )
     }
 
@@ -291,11 +292,11 @@ class MainController(
     }
 
     fun onDnsDraftChanged(value: String) {
-        _state.value = _state.value.copy(customDnsDraft = value)
+        _state.value = _state.value.copy(customDnsEndpointDraft = value.take(2048))
     }
 
-    fun onCustomDnsEnabledChanged(enabled: Boolean) {
-        _state.value = _state.value.copy(useCustomDnsDraft = enabled)
+    fun onDnsModeChanged(mode: DnsMode) {
+        _state.value = _state.value.copy(dnsModeDraft = mode)
     }
 
     fun onSubscriptionRefreshPolicyDraftChanged(policy: com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy) {
@@ -647,12 +648,15 @@ class MainController(
     }
 
     fun saveDns(): List<MainControllerEffect> {
-        val plan = MainDraftLogic.resolveDnsSave(_state.value)
+        val result = MainDraftLogic.resolveDnsSave(_state.value)
+        if (result.isFailure) {
+            return listOf(MainControllerEffect.UpdateStatus(SettingsStatusMessages.customDnsEndpointInvalid()))
+        }
+        val plan = result.getOrThrow()
         _state.value = _state.value.copy(showDnsDialog = false)
         return listOf(
             MainControllerEffect.SaveDns(
-                dns = plan.dns,
-                enabled = plan.enabled,
+                settings = plan.settings,
                 statusMessage = plan.statusMessage,
             ),
         )

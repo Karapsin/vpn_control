@@ -1,6 +1,8 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
@@ -21,8 +23,10 @@ class SingBoxRouteDnsBuilderTest {
     @Test
     fun routeDnsConfigPreservesLeadingRulesDirectCidrsDomainsAndRuleSets() {
         val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = true,
-            dnsValue = "9.9.9.9",
+            dnsSettings = DnsSettings(
+                mode = DnsMode.CUSTOM_DOH,
+                endpoint = "https://dns.example/dns-query",
+            ),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 directDomainSuffixes = listOf("local.example", "direct.example"),
@@ -51,11 +55,17 @@ class SingBoxRouteDnsBuilderTest {
         val ruleSetRule = routeRules[4].jsonObject
         val ruleSetDefinition = config.route.array("rule_set").single().jsonObject
 
-        assertEquals("custom-dns", config.dnsServerTag)
-        assertEquals("9.9.9.9", config.dns.array("servers").single().jsonObject.string("server"))
+        assertEquals("secure-dns", config.dnsServerTag)
+        val dnsServers = config.dns.array("servers").map { it.jsonObject }
+        assertEquals("1.1.1.1", dnsServers[0].string("server"))
+        assertEquals("https", dnsServers[1].string("type"))
+        assertEquals("dns.example", dnsServers[1].string("server"))
+        assertEquals("/dns-query", dnsServers[1].string("path"))
+        assertEquals("proxy", dnsServers[1].string("detour"))
+        assertEquals("bootstrap-dns", dnsServers[1].string("domain_resolver"))
         assertEquals("sniff", routeRules[0].jsonObject.string("action"))
         assertEquals("hijack-dns", routeRules[1].jsonObject.string("action"))
-        assertTrue(directCidrs.contains("9.9.9.9/32"))
+        assertTrue(directCidrs.contains("1.1.1.1/32"))
         assertEquals("direct", directRule.string("outbound"))
         assertEquals(
             listOf(".local.example", ".direct.example"),
@@ -74,8 +84,7 @@ class SingBoxRouteDnsBuilderTest {
     @Test
     fun ignoredRulesSkipDomainsRuleSetsAndExperimentalCache() {
         val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = false,
-            dnsValue = "",
+            dnsSettings = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = true,
                 directDomainSuffixes = listOf("direct.example"),
@@ -94,8 +103,11 @@ class SingBoxRouteDnsBuilderTest {
 
         val routeRules = config.route.array("rules")
 
-        assertEquals("remote-dns", config.dnsServerTag)
-        assertEquals("1.1.1.1", config.dns.array("servers").single().jsonObject.string("server"))
+        assertEquals("secure-dns", config.dnsServerTag)
+        val dnsServers = config.dns.array("servers").map { it.jsonObject }
+        assertEquals("1.1.1.1", dnsServers[0].string("server"))
+        assertEquals("https", dnsServers[1].string("type"))
+        assertEquals("1.1.1.1", dnsServers[1].string("server"))
         assertEquals(1, routeRules.size)
         assertFalse("rule_set" in config.route)
         assertEquals(null, config.experimental)
@@ -104,8 +116,7 @@ class SingBoxRouteDnsBuilderTest {
     @Test
     fun inlineRuleSetUsesInlineDefinitionAndDoesNotEnableCacheFile() {
         val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = false,
-            dnsValue = "",
+            dnsSettings = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 ruleSets = listOf(
@@ -133,26 +144,28 @@ class SingBoxRouteDnsBuilderTest {
     }
 
     @Test
-    fun directCidrsIncludeCustomDnsOnlyWhenEnabled() {
-        assertFalse(
-            SingBoxRouteDnsBuilder.directCidrs(dnsEnabled = false, dnsValue = "9.9.9.9")
-                .contains("9.9.9.9/32"),
-        )
-        assertTrue(
-            SingBoxRouteDnsBuilder.directCidrs(dnsEnabled = true, dnsValue = "9.9.9.9")
-                .contains("9.9.9.9/32"),
-        )
+    fun directCidrsAlwaysIncludeOnlyTheBootstrapResolver() {
+        val directCidrs = SingBoxRouteDnsBuilder.directCidrs()
+
+        assertTrue(directCidrs.contains("1.1.1.1/32"))
+        assertFalse(directCidrs.contains("9.9.9.9/32"))
     }
 
     @Test
     fun validationDnsConfigDoesNotAddRouteRules() {
         val dns = SingBoxRouteDnsBuilder.buildValidationDnsConfig(
-            dnsEnabled = true,
-            dnsValue = "8.8.8.8",
+            settings = DnsSettings(
+                mode = DnsMode.CUSTOM_DOT,
+                endpoint = "tls://dns.example:853",
+            ),
         )
 
-        assertEquals("validation-dns", dns.array("servers").single().jsonObject.string("tag"))
-        assertEquals("8.8.8.8", dns.array("servers").single().jsonObject.string("server"))
+        val servers = dns.array("servers").map { it.jsonObject }
+        assertEquals("bootstrap-dns", servers[0].string("tag"))
+        assertEquals("secure-dns", servers[1].string("tag"))
+        assertEquals("tls", servers[1].string("type"))
+        assertEquals("dns.example", servers[1].string("server"))
+        assertEquals("proxy", servers[1].string("detour"))
         assertFalse("rules" in dns)
         assertTrue(dns.boolean("independent_cache"))
     }

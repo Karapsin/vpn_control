@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,8 +13,8 @@ class DesktopSettingsServiceTest {
     @Test
     fun saveDnsPersistsDraftsAndClosesDialog() {
         var state = MainUiState(
-            customDnsDraft = " 1.1.1.1 ",
-            useCustomDnsDraft = true,
+            dnsModeDraft = DnsMode.CUSTOM_DOH,
+            customDnsEndpointDraft = " https://dns.example/dns-query ",
             showDnsDialog = true,
         )
         val service = service(
@@ -24,10 +25,29 @@ class DesktopSettingsServiceTest {
 
         service.saveDns()
 
-        assertEquals("1.1.1.1", state.customDns)
-        assertEquals("1.1.1.1", state.customDnsDraft)
-        assertEquals(true, state.useCustomDns)
+        assertEquals(DnsMode.CUSTOM_DOH, state.dnsSettings.mode)
+        assertEquals("https://dns.example/dns-query", state.dnsSettings.endpoint)
+        assertEquals("https://dns.example/dns-query", state.customDnsEndpointDraft)
         assertFalse(state.showDnsDialog)
+    }
+
+    @Test
+    fun invalidDnsEndpointKeepsDialogOpen() {
+        var state = MainUiState(
+            dnsModeDraft = DnsMode.CUSTOM_DOH,
+            customDnsEndpointDraft = "http://dns.example/dns-query",
+            showDnsDialog = true,
+        )
+        val service = service(
+            stateProvider = { state },
+            commitState = { state = it },
+            updateState = { transform -> state = transform(state) },
+        )
+
+        service.saveDns()
+
+        assertEquals(true, state.showDnsDialog)
+        assertEquals(SettingsStatusMessages.customDnsEndpointInvalid(), state.statusMessage)
     }
 
     @Test

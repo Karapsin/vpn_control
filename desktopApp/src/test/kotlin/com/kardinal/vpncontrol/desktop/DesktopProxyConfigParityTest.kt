@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.data.SingBoxOutboundBuilder
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
@@ -20,13 +21,16 @@ class DesktopProxyConfigParityTest {
         protocolProfiles().forEach { profile ->
             val config = DesktopProxyConfigFactory.buildVpnConfig(
                 profile = profile,
-                dns = DesktopDnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(ignoreRules = true),
                 directProbeRouting = DesktopDirectProbeRouting(),
             )
 
             assertEquals(
-                SingBoxOutboundBuilder.buildOutbound(profile),
+                SingBoxOutboundBuilder.buildOutbound(
+                    profile,
+                    domainResolverTag = "bootstrap-dns",
+                ),
                 proxyOutbound(config),
             )
         }
@@ -37,13 +41,16 @@ class DesktopProxyConfigParityTest {
         protocolProfiles().forEach { profile ->
             val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
                 profile = profile,
-                dns = DesktopDnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(ignoreRules = true),
                 listenPort = 2080,
             )
 
             assertEquals(
-                SingBoxOutboundBuilder.buildOutbound(profile),
+                SingBoxOutboundBuilder.buildOutbound(
+                    profile,
+                    domainResolverTag = "bootstrap-dns",
+                ),
                 proxyOutbound(config),
             )
         }
@@ -53,7 +60,7 @@ class DesktopProxyConfigParityTest {
     fun desktopVpnConfigWithEmptyActiveRulesRoutesEverythingThroughProxy() {
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = socksProfile(),
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 proxyPackages = emptyList(),

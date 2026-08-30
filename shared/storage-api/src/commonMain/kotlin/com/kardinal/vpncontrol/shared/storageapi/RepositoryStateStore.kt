@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.shared.storageapi
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -35,7 +36,7 @@ interface RepositoryStateStore : SearchStateStore, RuntimeConfigStore {
 
     suspend fun updateValidationSettings(settings: BenchmarkValidationSettings)
 
-    suspend fun updateDns(dns: String, enabled: Boolean)
+    suspend fun updateDns(settings: DnsSettings)
 
     suspend fun updateRoutingRules(rules: RoutingRules)
 

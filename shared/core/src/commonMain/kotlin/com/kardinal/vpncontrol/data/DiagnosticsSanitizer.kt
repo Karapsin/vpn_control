@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 object DiagnosticsSanitizer {
     private val proxyLinkRegex = Regex("""(?i)\b(vless|trojan|ss|vmess|socks)://[^\s"'<>]+""")
     private val httpUrlRegex = Regex("""(?i)\bhttps?://[^\s"'<>]+""")
+    private val tlsUrlRegex = Regex("""(?i)\btls://[^\s"'<>]+""")
     private val uuidRegex = Regex(
         """(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b""",
     )
@@ -30,6 +31,7 @@ object DiagnosticsSanitizer {
             .replace(httpUrlRegex) { match ->
                 redactHttpUrl(match.value)
             }
+            .replace(tlsUrlRegex, "tls://<redacted>")
             .replace(uuidRegex, "<uuid-redacted>")
             .replace(publicIpv4Regex) { match ->
                 if (isPrivateIpv4(match.value)) match.value else "<ip-redacted>"
@@ -107,6 +109,13 @@ object DiagnosticsSanitizer {
                 ?.jsonObject
                 ?.arrayOrEmpty("servers")
                 .orEmpty()
+            val dnsServerTypes = dnsServers
+                .mapNotNull { (it as? JsonObject)?.string("type")?.takeIf(String::isNotBlank) }
+                .joinToString(",")
+                .ifBlank { "<none>" }
+            val detouredDnsServers = dnsServers.count {
+                (it as? JsonObject)?.string("detour")?.isNotBlank() == true
+            }
             val inboundTypes = inbounds
                 .mapNotNull { (it as? JsonObject)?.string("type")?.takeIf(String::isNotBlank) }
                 .joinToString(",")
@@ -120,6 +129,8 @@ object DiagnosticsSanitizer {
                 "outbound_count=${outbounds.size}",
                 "route_rules_count=${routeRules.size}",
                 "dns_servers_count=${dnsServers.size}",
+                "dns_server_types=$dnsServerTypes",
+                "dns_detoured_servers_count=$detouredDnsServers",
             ).joinToString(separator = "\n")
         }.getOrElse { error ->
             listOf(

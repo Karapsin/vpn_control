@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.BenchmarkUrls
@@ -19,8 +21,10 @@ class DesktopLocationBenchmarkServiceTest {
         val profile = testProfile("Germany")
         val rawLink = LocationConfigs.encodeStoredLocation(profile)
         var state = MainUiState(
-            useCustomDns = true,
-            customDns = "1.1.1.1",
+            dnsSettings = DnsSettings(
+                mode = DnsMode.CUSTOM_DOH,
+                endpoint = "https://1.1.1.1/dns-query",
+            ),
             validationSettings = BenchmarkValidationSettings(
                 testUrl = "https://test.example/path",
                 batchSize = 9,
@@ -30,7 +34,7 @@ class DesktopLocationBenchmarkServiceTest {
         var locations = listOf(
             testLocation(index = 7, profile = profile, rawLink = rawLink, benchmarkDetail = "Imported"),
         )
-        var capturedDns: DesktopDnsSettings? = null
+        var capturedDns: DnsSettings? = null
         var capturedUrls: BenchmarkUrls? = null
         var capturedSettings: DesktopValidationSettings? = null
         val service = DesktopLocationBenchmarkService(
@@ -66,7 +70,7 @@ class DesktopLocationBenchmarkServiceTest {
         assertEquals(BenchmarkStatusMessages.benchmarkedLocation("Germany", "timeout"), state.statusMessage)
         assertEquals("test timeout • tcp 40.0ms", locations.single().benchmarkDetail)
         assertFalse(locations.single().isValid)
-        assertEquals(DesktopDnsSettings(enabled = true, value = "1.1.1.1"), capturedDns)
+        assertEquals(DnsSettings(mode = DnsMode.CUSTOM_DOH, endpoint = "https://1.1.1.1/dns-query"), capturedDns)
         assertEquals("https://test.example/path", capturedUrls?.test)
         assertEquals(9, capturedSettings?.batchSize)
         assertEquals(5, capturedSettings?.preflightConcurrency)

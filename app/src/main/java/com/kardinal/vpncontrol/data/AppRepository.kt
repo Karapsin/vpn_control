@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
@@ -182,7 +183,7 @@ class AppRepository(
         storage.restoreSelection(state, restoreRuntimeArtifacts = restoreRuntimeArtifacts)
     }
 
-    suspend fun updateCustomDns(dns: String, enabled: Boolean) = storage.updateDns(dns, enabled)
+    suspend fun updateDns(settings: com.kardinal.vpncontrol.model.DnsSettings) = storage.updateDns(settings)
 
     suspend fun updateRoutingRules(rules: RoutingRules): Result<Unit> = runCatching {
         storage.updateRoutingRules(rules)

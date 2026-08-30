@@ -84,10 +84,7 @@ internal class AndroidControllerEffectHandler(
                 }
                 is MainControllerEffect.SaveDns -> {
                     launch {
-                        repository.updateCustomDns(
-                            dns = effect.dns,
-                            enabled = effect.enabled,
-                        )
+                        repository.updateDns(effect.settings)
                         repository.updateStatus(effect.statusMessage)
                     }
                 }

@@ -76,13 +76,21 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - Confirm ordinary browsing goes through the VPN.
    - Stop and reconnect using the saved selection.
 
-6. Scheduled refresh
+6. Secure DNS
+
+   - With VPN mode connected, select Automatic DNS and confirm `https://www.youtube.com/` and an ordinary non-Google site both load.
+   - Select a known-good custom DoH endpoint, reconnect, and repeat both checks.
+   - Select a known-good custom DoT endpoint, reconnect, and repeat both checks.
+   - Confirm malformed or plaintext endpoints are rejected without closing the DNS dialog.
+   - When upgrading a workspace that used an enabled raw-IP DNS server, confirm the app selects Automatic DNS and displays the migration notice.
+
+7. Scheduled refresh
 
    - Set a short refresh interval of at least 5 minutes.
    - Leave VPN running through one refresh.
    - Confirm refresh does not leave VPN stopped. A short restart is acceptable when config changes.
 
-7. Tray and single instance
+8. Tray and single instance
 
    - Close the window and confirm the app hides to tray instead of exiting when the tray icon is visible.
    - Temporarily run without a tray host, when practical, and confirm close exits or keeps the window accessible instead of hiding it invisibly.
@@ -90,7 +98,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - Use the tray menu to start/stop and run best-location selection.
    - On Linux, repeat on at least one StatusNotifier/AppIndicator host and one XEmbed-only panel when available.
 
-8. Autostart and reconnect
+9. Autostart and reconnect
 
    - Enable start on boot.
    - With VPN on, reboot and confirm the app starts in tray after the tray icon appears and reconnects to the remembered location.

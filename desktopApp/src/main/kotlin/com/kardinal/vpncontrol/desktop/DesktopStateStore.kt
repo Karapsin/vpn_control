@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.data.StatsCodec
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -15,6 +16,7 @@ import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
+import com.kardinal.vpncontrol.model.restoreDnsSettings
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
@@ -322,8 +324,11 @@ class DesktopStateStore(
             put("saved_locations", encodeStringArray(state.savedLocations))
             put("current_locations", encodeStringArray(state.currentLocations))
             put("location_benchmark_details", encodeStringMap(state.locationBenchmarkDetails))
-            put("custom_dns", JsonPrimitive(state.customDns))
-            put("use_custom_dns", JsonPrimitive(state.useCustomDns))
+            put("dns_mode", JsonPrimitive(state.dnsSettings.mode.name))
+            put("custom_dns_endpoint", JsonPrimitive(state.dnsSettings.endpoint))
+            put("legacy_custom_dns_address", JsonPrimitive(state.dnsSettings.legacyRawAddress))
+            put("custom_dns", JsonPrimitive(state.dnsSettings.legacyRawAddress))
+            put("use_custom_dns", JsonPrimitive(false))
             put(
                 "routing_rules",
                 buildJsonObject {
@@ -426,8 +431,16 @@ class DesktopStateStore(
             savedLocations = root.stringList("saved_locations"),
             currentLocations = root.stringList("current_locations"),
             locationBenchmarkDetails = root.stringMap("location_benchmark_details"),
-            customDns = root.string("custom_dns"),
-            useCustomDns = root.boolean("use_custom_dns"),
+            dnsSettings = restoreDnsSettings(
+                modeName = root["dns_mode"]?.jsonPrimitive?.contentOrNull,
+                endpoint = root.string("custom_dns_endpoint"),
+                legacyRawAddress = if (root["dns_mode"] == null) {
+                    root.string("custom_dns")
+                } else {
+                    root.string("legacy_custom_dns_address")
+                },
+                legacyEnabled = root.boolean("use_custom_dns"),
+            ),
             routingRules = RoutingRules(
                 ignoreRules = routing.boolean("ignore_rules"),
                 blockQuicUdp443 = routing.boolean("block_quic_udp_443"),

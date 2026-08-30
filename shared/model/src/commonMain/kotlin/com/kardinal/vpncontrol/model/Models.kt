@@ -221,6 +221,43 @@ enum class UiSettingsStatusItem {
     CONNECTION_TEST_TOOLS,
 }
 
+enum class DnsMode {
+    AUTOMATIC,
+    CUSTOM_DOH,
+    CUSTOM_DOT,
+}
+
+data class DnsSettings(
+    val mode: DnsMode = DnsMode.AUTOMATIC,
+    val endpoint: String = "",
+    val legacyRawAddress: String = "",
+)
+
+fun restoreDnsSettings(
+    modeName: String?,
+    endpoint: String,
+    legacyRawAddress: String,
+    legacyEnabled: Boolean,
+): DnsSettings {
+    val persistedMode = modeName?.let { raw -> DnsMode.entries.firstOrNull { it.name == raw } }
+    if (persistedMode != null) {
+        return DnsSettings(
+            mode = persistedMode,
+            endpoint = endpoint.trim(),
+            legacyRawAddress = legacyRawAddress.trim(),
+        )
+    }
+    val legacy = legacyRawAddress.trim()
+    if (!legacyEnabled || legacy.isBlank()) return DnsSettings()
+    return when {
+        legacy.startsWith("https://", ignoreCase = true) ->
+            DnsSettings(mode = DnsMode.CUSTOM_DOH, endpoint = legacy)
+        legacy.startsWith("tls://", ignoreCase = true) ->
+            DnsSettings(mode = DnsMode.CUSTOM_DOT, endpoint = legacy)
+        else -> DnsSettings(mode = DnsMode.AUTOMATIC, legacyRawAddress = legacy)
+    }
+}
+
 data class PersistedState(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val subscriptionHwid: String = "",
@@ -238,8 +275,7 @@ data class PersistedState(
     val savedLocations: List<String> = emptyList(),
     val currentLocations: List<String> = emptyList(),
     val locationBenchmarkDetails: Map<String, String> = emptyMap(),
-    val customDns: String = "",
-    val useCustomDns: Boolean = false,
+    val dnsSettings: DnsSettings = DnsSettings(),
     val routingRules: RoutingRules = RoutingRules(),
     val selectedProfileName: String = "",
     val selectedProfileServer: String = "",

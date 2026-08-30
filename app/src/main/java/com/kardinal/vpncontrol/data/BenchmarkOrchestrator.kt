@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.model.PersistedState
@@ -77,10 +78,7 @@ class BenchmarkOrchestrator(
                     val benchmarkUrls = BenchmarkUrls(
                         test = validationSettings.testUrl,
                     )
-                    val dnsSettings = DnsSettings(
-                        enabled = state.useCustomDns,
-                        value = state.customDns,
-                    )
+                    val dnsSettings = state.dnsSettings
                     when (state.profileSourceMode) {
                         ProfileSourceMode.SUBSCRIPTION -> {
                             val searchTargets = subscriptionSearchTargets(state)
@@ -215,10 +213,7 @@ class BenchmarkOrchestrator(
             val benchmarkUrls = BenchmarkUrls(
                 test = validationSettings.testUrl,
             )
-            val dnsSettings = DnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            )
+            val dnsSettings = state.dnsSettings
             benchmarkPreflightCandidate(
                 candidate = attempt.preflight,
                 idx = attemptIndex,
@@ -271,10 +266,7 @@ class BenchmarkOrchestrator(
                 )
                 val profile = LocationConfigs.decodeStoredLocation(rawLink)
                 val normalizedRawLink = LocationConfigs.encodeStoredLocation(profile)
-                val dnsSettings = DnsSettings(
-                    enabled = state.useCustomDns,
-                    value = state.customDns,
-                )
+                val dnsSettings = state.dnsSettings
 
                 if (profile.protocol == ProxyProtocol.CUSTOM) {
                     val benchmark = ProfileBenchmark(
@@ -327,10 +319,7 @@ class BenchmarkOrchestrator(
             } else {
                 cachedProfile(state)
             }
-            val dnsSettings = DnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            )
+            val dnsSettings = state.dnsSettings
             ProfileSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(
@@ -363,10 +352,7 @@ class BenchmarkOrchestrator(
     ): Result<ProfileSelection> = withContext(Dispatchers.Default) {
         runCatching {
             val profile = LocationConfigs.parseLocationInput(rawLink)
-            val dnsSettings = DnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            )
+            val dnsSettings = state.dnsSettings
             ProfileSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(

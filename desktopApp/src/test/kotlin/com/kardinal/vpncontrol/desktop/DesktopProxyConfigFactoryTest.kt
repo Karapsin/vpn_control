@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.ProxyProfile
@@ -20,7 +22,7 @@ class DesktopProxyConfigFactoryTest {
     fun buildProxyOnlyConfigUsesSingBoxThirteenCompatibleSniffRule() {
         val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = testProfile(),
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(ignoreRules = true),
             listenPort = 40999,
         )
@@ -42,7 +44,7 @@ class DesktopProxyConfigFactoryTest {
     fun buildVpnConfigUsesTunInboundAndProxyOutbound() {
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = testProfile(),
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(ignoreRules = true),
         )
 
@@ -66,7 +68,7 @@ class DesktopProxyConfigFactoryTest {
         val probePath = Path.of("/tmp/vpn-control-validation/vpn-control-probe-sing-box").toString()
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = testProfile(),
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(ignoreRules = true),
             directProbeRouting = DesktopDirectProbeRouting(
                 processNames = DesktopDirectProbeRouting.defaultProcessNames(),
@@ -107,10 +109,13 @@ class DesktopProxyConfigFactoryTest {
     }
 
     @Test
-    fun buildVpnConfigRoutesCustomDnsDirect() {
+    fun buildVpnConfigRoutesCustomDnsOverTheProxy() {
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = testProfile(),
-            dns = DesktopDnsSettings(enabled = true, value = "9.9.9.9"),
+            dns = DnsSettings(
+                mode = DnsMode.CUSTOM_DOH,
+                endpoint = "https://dns.example/dns-query",
+            ),
             routingRules = RoutingRules(ignoreRules = true),
         )
 
@@ -119,7 +124,7 @@ class DesktopProxyConfigFactoryTest {
             .jsonObject
             .getValue("servers")
             .jsonArray
-            .single()
+            .last()
             .jsonObject
         val directCidrs = root.getValue("route")
             .jsonObject
@@ -131,16 +136,18 @@ class DesktopProxyConfigFactoryTest {
             .jsonArray
             .map { it.jsonPrimitive.content }
 
-        assertEquals("custom-dns", dnsServer.getValue("tag").jsonPrimitive.content)
-        assertEquals("9.9.9.9", dnsServer.getValue("server").jsonPrimitive.content)
-        assertTrue(directCidrs.contains("9.9.9.9/32"))
+        assertEquals("secure-dns", dnsServer.getValue("tag").jsonPrimitive.content)
+        assertEquals("dns.example", dnsServer.getValue("server").jsonPrimitive.content)
+        assertEquals("proxy", dnsServer.getValue("detour").jsonPrimitive.content)
+        assertEquals("bootstrap-dns", dnsServer.getValue("domain_resolver").jsonPrimitive.content)
+        assertTrue(directCidrs.contains("1.1.1.1/32"))
     }
 
     @Test
     fun buildProxyOnlyConfigDoesNotInjectDesktopProbeRouting() {
         val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = testProfile(),
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(ignoreRules = true),
             listenPort = 40999,
         )
@@ -181,7 +188,7 @@ class DesktopProxyConfigFactoryTest {
         val validationProfile = profile.withResolvedValidationServer("203.0.113.10")
         val config = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = validationProfile,
-            dns = DesktopDnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(ignoreRules = true),
             listenPort = 40999,
         )

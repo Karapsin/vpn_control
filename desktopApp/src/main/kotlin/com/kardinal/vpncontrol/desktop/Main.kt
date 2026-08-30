@@ -42,6 +42,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -75,6 +76,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
@@ -369,7 +371,7 @@ private fun DesktopVpnControlApp(
         state = state,
         systemLanguageCode = systemLanguageCode,
         onToggleDnsDialog = service::toggleDnsDialog,
-        onUseCustomDnsDraftChange = service::setUseCustomDnsDraft,
+        onDnsModeDraftChange = service::setDnsModeDraft,
         onCustomDnsDraftChange = service::setCustomDnsDraft,
         onSaveDns = service::saveDns,
         onToggleAppModeDialog = service::toggleAppModeDialog,
@@ -1121,7 +1123,7 @@ private fun DesktopAdditionalSettingsMenu(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
                         Text(
-                            if (state.useCustomDns) state.customDns.ifBlank { strings.get(UiText.SETTINGS_ENABLED) } else strings.get(UiText.SETTINGS_DISABLED),
+                            strings.get(state.dnsSettings.mode.uiText()),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )
@@ -1141,7 +1143,7 @@ private fun DesktopSettingsDialogs(
     state: MainUiState,
     systemLanguageCode: String?,
     onToggleDnsDialog: () -> Unit,
-    onUseCustomDnsDraftChange: (Boolean) -> Unit,
+    onDnsModeDraftChange: (DnsMode) -> Unit,
     onCustomDnsDraftChange: (String) -> Unit,
     onSaveDns: () -> Unit,
     onToggleAppModeDialog: () -> Unit,
@@ -1180,34 +1182,40 @@ private fun DesktopSettingsDialogs(
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(0.76f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(strings.get(UiText.USE_CUSTOM_DNS), color = Color.White)
-                            Text(
-                                strings.get(UiText.DNS_APPLIES_NEW_DESKTOP_SESSIONS),
-                                color = Color(0xFFD3E3EE),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Switch(
-                            checked = state.useCustomDnsDraft,
-                            onCheckedChange = onUseCustomDnsDraftChange,
+                    Text(
+                        strings.get(UiText.DNS_APPLIES_NEW_DESKTOP_SESSIONS),
+                        color = Color(0xFFD3E3EE),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    DnsMode.entries.forEach { mode ->
+                        DesktopSecureDnsModeOption(
+                            label = strings.get(mode.uiText()),
+                            selected = state.dnsModeDraft == mode,
+                            onClick = { onDnsModeDraftChange(mode) },
+                        )
+                    }
+                    if (state.dnsSettings.legacyRawAddress.isNotBlank()) {
+                        Text(
+                            strings.get(UiText.DNS_LEGACY_MIGRATION_NOTICE),
+                            color = Color(0xFFFFD18B),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     OutlinedTextField(
-                        value = state.customDnsDraft,
+                        value = state.customDnsEndpointDraft,
                         onValueChange = onCustomDnsDraftChange,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(strings.get(UiText.DNS_IP_ADDRESS)) },
-                        placeholder = { Text("1.1.1.1") },
-                        enabled = state.useCustomDnsDraft,
+                        label = { Text(strings.get(UiText.DNS_SECURE_ENDPOINT)) },
+                        placeholder = {
+                            Text(
+                                if (state.dnsModeDraft == DnsMode.CUSTOM_DOT) {
+                                    "tls://dns.example:853"
+                                } else {
+                                    "https://dns.example/dns-query"
+                                },
+                            )
+                        },
+                        enabled = state.dnsModeDraft != DnsMode.AUTOMATIC,
                         singleLine = true,
                     )
                 }
@@ -1497,6 +1505,27 @@ private fun DesktopSettingsDialogs(
             },
         )
     }
+}
+
+@Composable
+private fun DesktopSecureDnsModeOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, color = Color.White)
+    }
+}
+
+private fun DnsMode.uiText(): UiText = when (this) {
+    DnsMode.AUTOMATIC -> UiText.DNS_MODE_AUTOMATIC
+    DnsMode.CUSTOM_DOH -> UiText.DNS_MODE_DOH
+    DnsMode.CUSTOM_DOT -> UiText.DNS_MODE_DOT
 }
 
 @Composable

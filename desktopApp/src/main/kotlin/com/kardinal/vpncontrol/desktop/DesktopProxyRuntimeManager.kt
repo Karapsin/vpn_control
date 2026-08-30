@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -60,7 +61,7 @@ class DesktopProxyRuntimeManager(
     override suspend fun start(
         profile: ProxyProfile,
         routingRules: RoutingRules,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int?,
     ): Result<DesktopRuntimeSession> = withContext(Dispatchers.IO) {

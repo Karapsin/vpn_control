@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.data.BenchmarkSearchLogic
 import com.kardinal.vpncontrol.data.BenchmarkUrls
@@ -68,7 +69,7 @@ class DesktopProxyValidationRuntime(
 
     suspend fun benchmarkLocation(
         profile: ProxyProfile,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
     ): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
@@ -84,7 +85,7 @@ class DesktopProxyValidationRuntime(
 
     suspend fun benchmarkPreflightCandidate(
         candidate: PreflightResult,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
     ): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
@@ -95,7 +96,7 @@ class DesktopProxyValidationRuntime(
 
     suspend fun evaluateProfiles(
         profiles: List<ProxyProfile>,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings = DesktopValidationSettings(),
         onProgress: suspend (String) -> Unit = {},
@@ -132,7 +133,7 @@ class DesktopProxyValidationRuntime(
 
     private suspend fun validateInBatchesUntilSuccess(
         candidates: List<PreflightResult>,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings,
         onProgress: suspend (String) -> Unit,
@@ -255,7 +256,7 @@ class DesktopProxyValidationRuntime(
 
     private suspend fun benchmarkCandidate(
         candidate: PreflightResult,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         benchmarkUrls: BenchmarkUrls,
         settings: DesktopValidationSettings,
     ): ProfileBenchmark {

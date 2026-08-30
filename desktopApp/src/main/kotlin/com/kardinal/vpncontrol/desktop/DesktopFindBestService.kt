@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.MainCommandLogic
@@ -18,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal typealias DesktopProfileEvaluator = suspend (
     profiles: List<ProxyProfile>,
-    dnsSettings: DesktopDnsSettings,
+    dnsSettings: DnsSettings,
     benchmarkUrls: BenchmarkUrls,
     settings: DesktopValidationSettings,
     onProgress: suspend (String) -> Unit,
@@ -26,7 +27,7 @@ internal typealias DesktopProfileEvaluator = suspend (
 
 internal typealias DesktopCandidateVerifierFn = suspend (
     candidate: PreflightResult,
-    dnsSettings: DesktopDnsSettings,
+    dnsSettings: DnsSettings,
     benchmarkUrls: BenchmarkUrls,
     settings: DesktopValidationSettings,
 ) -> Result<ProfileBenchmark>
@@ -92,10 +93,7 @@ internal class DesktopFindBestService(
         val attemptPlan = withTimeoutOrNull(desktopValidationSettings.searchTimeoutMillis) {
             evaluateProfiles(
                 profiles,
-                DesktopDnsSettings(
-                    enabled = state.useCustomDns,
-                    value = state.customDns,
-                ),
+                state.dnsSettings,
                 benchmarkUrls,
                 desktopValidationSettings,
             ) { progress ->
@@ -157,10 +155,7 @@ internal class DesktopFindBestService(
                 val rawKey = normalizedProfileKey(candidate.profile)
                 candidateBenchmarks[rawKey] ?: verifyCandidate(
                     candidate,
-                    DesktopDnsSettings(
-                        enabled = state.useCustomDns,
-                        value = state.customDns,
-                    ),
+                    state.dnsSettings,
                     benchmarkUrls,
                     desktopValidationSettings,
                 ).getOrElse { error ->

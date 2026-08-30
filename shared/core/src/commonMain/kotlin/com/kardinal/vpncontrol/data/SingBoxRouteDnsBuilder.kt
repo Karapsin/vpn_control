@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.put
 
 data class SingBoxRouteDnsConfig(
     val dnsServerTag: String,
+    val bootstrapDnsServerTag: String,
     val directCidrs: List<String>,
     val dns: JsonObject,
     val route: JsonObject,
@@ -22,7 +24,9 @@ data class SingBoxRouteDnsConfig(
 )
 
 object SingBoxRouteDnsBuilder {
-    const val DEFAULT_DNS_SERVER = "1.1.1.1"
+    const val BOOTSTRAP_DNS_SERVER = "1.1.1.1"
+    const val BOOTSTRAP_DNS_SERVER_TAG = "bootstrap-dns"
+    const val SECURE_DNS_SERVER_TAG = "secure-dns"
     private val json = Json { explicitNulls = false }
     private val localDirectCidrs = listOf(
         "127.0.0.0/8",
@@ -33,16 +37,11 @@ object SingBoxRouteDnsBuilder {
     )
 
     fun buildRouteDnsConfig(
-        dnsEnabled: Boolean,
-        dnsValue: String,
+        dnsSettings: DnsSettings,
         routingRules: RoutingRules,
         leadingRouteRules: List<JsonObject> = emptyList(),
     ): SingBoxRouteDnsConfig {
-        val customDnsEnabled = dnsEnabled && dnsValue.isNotBlank()
-        val dnsServerTag = if (customDnsEnabled) "custom-dns" else "remote-dns"
-        val directCidrs = localDirectCidrs + listOfNotNull(
-            dnsValue.takeIf { customDnsEnabled }?.let { "$it/32" },
-        )
+        val directCidrs = directCidrs()
         val routeRules = buildRouteRules(
             routingRules = routingRules,
             directCidrs = directCidrs,
@@ -50,7 +49,7 @@ object SingBoxRouteDnsBuilder {
         )
         val route = buildJsonObject {
             put("auto_detect_interface", true)
-            put("default_domain_resolver", dnsServerTag)
+            put("default_domain_resolver", SECURE_DNS_SERVER_TAG)
             put("final", "proxy")
             put("rules", routeRules)
             val definitions = buildRuleSetDefinitions(routingRules.ruleSets)
@@ -59,11 +58,11 @@ object SingBoxRouteDnsBuilder {
             }
         }
         return SingBoxRouteDnsConfig(
-            dnsServerTag = dnsServerTag,
+            dnsServerTag = SECURE_DNS_SERVER_TAG,
+            bootstrapDnsServerTag = BOOTSTRAP_DNS_SERVER_TAG,
             directCidrs = directCidrs,
             dns = buildDnsConfig(
-                dnsServerTag = dnsServerTag,
-                dnsServer = dnsValue.takeIf { customDnsEnabled } ?: DEFAULT_DNS_SERVER,
+                settings = dnsSettings,
             ),
             route = route,
             experimental = buildExperimentalConfig(routingRules),
@@ -71,22 +70,15 @@ object SingBoxRouteDnsBuilder {
     }
 
     fun buildValidationDnsConfig(
-        dnsEnabled: Boolean,
-        dnsValue: String,
+        settings: DnsSettings,
     ): JsonObject {
-        val dnsServer = dnsValue.takeIf { dnsEnabled && it.isNotBlank() } ?: DEFAULT_DNS_SERVER
         return buildDnsConfig(
-            dnsServerTag = "validation-dns",
-            dnsServer = dnsServer,
+            settings = settings,
             includeRouteRule = false,
         )
     }
 
-    fun directCidrs(dnsEnabled: Boolean, dnsValue: String): List<String> {
-        return localDirectCidrs + listOfNotNull(
-            dnsValue.takeIf { dnsEnabled && it.isNotBlank() }?.let { "$it/32" },
-        )
-    }
+    fun directCidrs(): List<String> = localDirectCidrs + "$BOOTSTRAP_DNS_SERVER/32"
 
     fun sniffRouteRule(inboundTag: String? = null): JsonObject {
         return buildJsonObject {
@@ -160,10 +152,10 @@ object SingBoxRouteDnsBuilder {
     }
 
     private fun buildDnsConfig(
-        dnsServerTag: String,
-        dnsServer: String,
+        settings: DnsSettings,
         includeRouteRule: Boolean = true,
     ): JsonObject {
+        val endpoint = SecureDnsEndpointParser.resolve(settings)
         return buildJsonObject {
             put(
                 "servers",
@@ -171,9 +163,37 @@ object SingBoxRouteDnsBuilder {
                     add(
                         buildJsonObject {
                             put("type", "udp")
-                            put("tag", dnsServerTag)
-                            put("server", dnsServer)
+                            put("tag", BOOTSTRAP_DNS_SERVER_TAG)
+                            put("server", BOOTSTRAP_DNS_SERVER)
                             put("server_port", 53)
+                        },
+                    )
+                    add(
+                        buildJsonObject {
+                            put(
+                                "type",
+                                when (endpoint.transport) {
+                                    SecureDnsTransport.HTTPS -> "https"
+                                    SecureDnsTransport.TLS -> "tls"
+                                },
+                            )
+                            put("tag", SECURE_DNS_SERVER_TAG)
+                            put("server", endpoint.server)
+                            put("server_port", endpoint.serverPort)
+                            if (endpoint.transport == SecureDnsTransport.HTTPS) {
+                                put("path", endpoint.path)
+                            }
+                            put("detour", "proxy")
+                            if (endpoint.requiresBootstrap) {
+                                put("domain_resolver", BOOTSTRAP_DNS_SERVER_TAG)
+                            }
+                            put(
+                                "tls",
+                                buildJsonObject {
+                                    put("enabled", true)
+                                    put("server_name", endpoint.server)
+                                },
+                            )
                         },
                     )
                 },
@@ -185,14 +205,14 @@ object SingBoxRouteDnsBuilder {
                         add(
                             buildJsonObject {
                                 put("action", "route")
-                                put("server", dnsServerTag)
+                                put("server", SECURE_DNS_SERVER_TAG)
                             },
                         )
                     },
                 )
             }
-            put("final", dnsServerTag)
-            put("strategy", "prefer_ipv4")
+            put("final", SECURE_DNS_SERVER_TAG)
+            put("strategy", "ipv4_only")
             put("independent_cache", true)
         }
     }

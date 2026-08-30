@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 
 internal class AndroidSettingsActionsService(
@@ -119,8 +120,8 @@ internal class AndroidSettingsActionsService(
         controller.onDnsDraftChanged(value)
     }
 
-    fun onCustomDnsEnabledChanged(enabled: Boolean) {
-        controller.onCustomDnsEnabledChanged(enabled)
+    fun onDnsModeChanged(mode: DnsMode) {
+        controller.onDnsModeChanged(mode)
     }
 
     fun onSubscriptionRefreshPolicyDraftChanged(policy: SubscriptionRefreshPolicy) {

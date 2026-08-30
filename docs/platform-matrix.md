@@ -16,6 +16,7 @@ This matrix summarizes platform behavior so patches do not accidentally apply An
 - `Find Best` should evaluate candidates independently of current VPN state.
 - Default subscriptions and default routing rules must not be reintroduced.
 - Empty app assignment rules with `ignoreRules = false` should route all apps through VPN.
+- Automatic DNS and custom DoH/DoT behavior, validation, and legacy raw-DNS migration should stay aligned across Android and desktop.
 
 ## Platform-Specific Behavior
 

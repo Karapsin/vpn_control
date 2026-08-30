@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.BenchmarkStatusMessages
 import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.LocationStatusLogic
@@ -11,7 +12,7 @@ import com.kardinal.vpncontrol.model.ProxyProfile
 
 internal typealias DesktopLocationBenchmarker = suspend (
     profile: ProxyProfile,
-    dnsSettings: DesktopDnsSettings,
+    dnsSettings: DnsSettings,
     benchmarkUrls: BenchmarkUrls,
     settings: DesktopValidationSettings,
 ) -> Result<ProfileBenchmark>
@@ -36,10 +37,7 @@ internal class DesktopLocationBenchmarkService(
         val validationSettings = state.validationSettings.normalized()
         val benchmark = benchmarkLocation(
             profile.getOrThrow(),
-            DesktopDnsSettings(
-                enabled = state.useCustomDns,
-                value = state.customDns,
-            ),
+            state.dnsSettings,
             BenchmarkUrls(
                 test = validationSettings.testUrl,
             ),

@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.MainUiStateTransitions
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 
@@ -25,30 +26,34 @@ internal class DesktopSettingsService(
             } else {
                 it.copy(
                     showDnsDialog = true,
-                    customDnsDraft = it.customDns,
-                    useCustomDnsDraft = it.useCustomDns,
+                    dnsModeDraft = it.dnsSettings.mode,
+                    customDnsEndpointDraft = it.dnsSettings.endpoint,
                 )
             }
         }
     }
 
-    fun setUseCustomDnsDraft(enabled: Boolean) {
-        updateState { it.copy(useCustomDnsDraft = enabled) }
+    fun setDnsModeDraft(mode: DnsMode) {
+        updateState { it.copy(dnsModeDraft = mode) }
     }
 
     fun setCustomDnsDraft(value: String) {
-        updateState { it.copy(customDnsDraft = value.take(80)) }
+        updateState { it.copy(customDnsEndpointDraft = value.take(2048)) }
     }
 
     fun saveDns() {
         val state = stateProvider()
-        val plan = MainDraftLogic.resolveDnsSave(state)
+        val result = MainDraftLogic.resolveDnsSave(state)
+        if (result.isFailure) {
+            updateState { it.withStatus(SettingsStatusMessages.customDnsEndpointInvalid()) }
+            return
+        }
+        val plan = result.getOrThrow()
         commitState(
             state.copy(
-                customDns = plan.dns,
-                customDnsDraft = plan.dns,
-                useCustomDns = plan.enabled,
-                useCustomDnsDraft = plan.enabled,
+                dnsSettings = plan.settings,
+                dnsModeDraft = plan.settings.mode,
+                customDnsEndpointDraft = plan.settings.endpoint,
                 showDnsDialog = false,
             ).withStatus(plan.statusMessage),
         )

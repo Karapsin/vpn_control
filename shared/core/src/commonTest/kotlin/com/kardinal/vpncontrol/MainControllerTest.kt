@@ -5,11 +5,32 @@ import com.kardinal.vpncontrol.model.GeneralStatusMessages
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class MainControllerTest {
+    @Test
+    fun invalidSecureDnsEndpointStaysEditable() {
+        val controller = MainController(
+            MainUiState(
+                dnsModeDraft = DnsMode.CUSTOM_DOH,
+                customDnsEndpointDraft = "http://dns.example/dns-query",
+                showDnsDialog = true,
+            ),
+        )
+
+        val effects = controller.saveDns()
+
+        assertEquals(true, controller.currentState().showDnsDialog)
+        assertEquals(
+            listOf(MainControllerEffect.UpdateStatus(SettingsStatusMessages.customDnsEndpointInvalid())),
+            effects,
+        )
+    }
+
     @Test
     fun setAppLanguageClosesDialogAndEmitsPersistableEffect() {
         val controller = MainController(

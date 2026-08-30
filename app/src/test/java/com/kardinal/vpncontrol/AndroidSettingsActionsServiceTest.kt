@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RoutingStatusMessages
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlinx.coroutines.runBlocking
@@ -111,8 +113,8 @@ class AndroidSettingsActionsServiceTest {
     fun saveDnsForwardsPersistableEffect() {
         val controller = MainController(
             MainUiState(
-                customDnsDraft = " 1.1.1.1 ",
-                useCustomDnsDraft = true,
+                dnsModeDraft = DnsMode.CUSTOM_DOH,
+                customDnsEndpointDraft = " https://dns.example/dns-query ",
                 showDnsDialog = true,
             ),
         )
@@ -128,9 +130,11 @@ class AndroidSettingsActionsServiceTest {
         assertEquals(
             listOf(
                 MainControllerEffect.SaveDns(
-                    dns = "1.1.1.1",
-                    enabled = true,
-                    statusMessage = SettingsStatusMessages.customDnsSaved(true),
+                    settings = DnsSettings(
+                        mode = DnsMode.CUSTOM_DOH,
+                        endpoint = "https://dns.example/dns-query",
+                    ),
+                    statusMessage = SettingsStatusMessages.dnsSettingsSaved(DnsMode.CUSTOM_DOH),
                 ),
             ),
             effects,

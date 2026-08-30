@@ -5,6 +5,8 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
@@ -58,10 +60,9 @@ data class MainUiState(
         BenchmarkValidationSettings.DEFAULT_ACTIVE_VERIFICATION_WINDOW_SIZE.toString(),
     val currentLocations: List<String> = emptyList(),
     val locationBenchmarkDetails: Map<String, String> = emptyMap(),
-    val customDns: String = "",
-    val customDnsDraft: String = "",
-    val useCustomDns: Boolean = false,
-    val useCustomDnsDraft: Boolean = false,
+    val dnsSettings: DnsSettings = DnsSettings(),
+    val dnsModeDraft: DnsMode = DnsMode.AUTOMATIC,
+    val customDnsEndpointDraft: String = "",
     val routingRules: RoutingRules = RoutingRules(),
     val routingIgnoreRulesDraft: Boolean = false,
     val routingBlockQuicUdp443Draft: Boolean = false,
@@ -192,10 +193,13 @@ object MainUiStateProjector {
             },
             currentLocations = persisted.currentLocations,
             locationBenchmarkDetails = persisted.locationBenchmarkDetails,
-            customDns = persisted.customDns,
-            customDnsDraft = if (current.showDnsDialog) current.customDnsDraft else persisted.customDns,
-            useCustomDns = persisted.useCustomDns,
-            useCustomDnsDraft = if (current.showDnsDialog) current.useCustomDnsDraft else persisted.useCustomDns,
+            dnsSettings = persisted.dnsSettings,
+            dnsModeDraft = if (current.showDnsDialog) current.dnsModeDraft else persisted.dnsSettings.mode,
+            customDnsEndpointDraft = if (current.showDnsDialog) {
+                current.customDnsEndpointDraft
+            } else {
+                persisted.dnsSettings.endpoint
+            },
             routingRules = persisted.routingRules.copy(ruleSets = emptyList()),
             routingIgnoreRulesDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
                 current.routingIgnoreRulesDraft

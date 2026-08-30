@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
@@ -38,7 +39,7 @@ class SingBoxConfigFactoryInstrumentedTest {
                     rawLink = "",
                 ),
                 httpPort = 8080,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
             ),
         )
 
@@ -78,7 +79,7 @@ class SingBoxConfigFactoryInstrumentedTest {
                     rawLink = "",
                 ),
                 httpPort = 8080,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
             ),
         )
 
@@ -114,7 +115,7 @@ class SingBoxConfigFactoryInstrumentedTest {
                     rawLink = "",
                 ),
                 httpPort = 8080,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
             ),
         )
 
@@ -151,7 +152,7 @@ class SingBoxConfigFactoryInstrumentedTest {
                     rawLink = "",
                 ),
                 httpPort = 8080,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
             ),
         )
 
@@ -189,7 +190,7 @@ class SingBoxConfigFactoryInstrumentedTest {
                     rawLink = "",
                 ),
                 httpPort = 8080,
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
             ),
         )
 
@@ -206,7 +207,7 @@ class SingBoxConfigFactoryInstrumentedTest {
         val config = JSONObject(
             SingBoxConfigFactory.buildTunConfig(
                 profile = socksProfile(),
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(
                     ignoreRules = false,
                     proxyPackages = listOf("com.example.app"),
@@ -224,7 +225,7 @@ class SingBoxConfigFactoryInstrumentedTest {
     fun buildTunConfigRoutesAllAppsWhenAssignmentsAreEmpty() {
         val rawConfig = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
-            dns = DnsSettings(enabled = false, value = ""),
+            dns = DnsSettings(),
             routingRules = RoutingRules(
                 ignoreRules = false,
                 proxyPackages = emptyList(),
@@ -242,7 +243,7 @@ class SingBoxConfigFactoryInstrumentedTest {
         val config = JSONObject(
             SingBoxConfigFactory.buildTunConfig(
                 profile = socksProfile(),
-                dns = DnsSettings(enabled = false, value = ""),
+                dns = DnsSettings(),
                 routingRules = RoutingRules(
                     ignoreRules = true,
                     proxyPackages = listOf("com.example.app"),

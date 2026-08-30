@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
+import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.data.ProxyParser
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
@@ -59,7 +61,7 @@ internal object DesktopSmokeTest {
         val profile = smokeProfile()
         val proxyConfig = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = profile,
-            dns = DesktopDnsSettings(enabled = true, value = "1.1.1.1"),
+            dns = DnsSettings(mode = DnsMode.CUSTOM_DOH, endpoint = "https://1.1.1.1/dns-query"),
             routingRules = RoutingRules(),
             listenPort = 2080,
         )
@@ -67,7 +69,7 @@ internal object DesktopSmokeTest {
 
         val vpnConfig = DesktopProxyConfigFactory.buildVpnConfig(
             profile = profile,
-            dns = DesktopDnsSettings(enabled = true, value = "1.1.1.1"),
+            dns = DnsSettings(mode = DnsMode.CUSTOM_DOH, endpoint = "https://1.1.1.1/dns-query"),
             routingRules = RoutingRules(),
             interfaceName = DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME,
         )
@@ -89,7 +91,10 @@ internal object DesktopSmokeTest {
                 val session = runtimeManager.start(
                     profile = profile,
                     routingRules = RoutingRules(ignoreRules = true),
-                    dnsSettings = DesktopDnsSettings(enabled = true, value = "1.1.1.1"),
+                    dnsSettings = DnsSettings(
+                        mode = DnsMode.CUSTOM_DOH,
+                        endpoint = "https://1.1.1.1/dns-query",
+                    ),
                     appMode = AppMode.PROXY_ONLY,
                     activeVerificationPort = null,
                 ).getOrThrow()

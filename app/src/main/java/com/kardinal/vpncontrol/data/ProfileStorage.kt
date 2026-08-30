@@ -19,6 +19,7 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
@@ -32,6 +33,7 @@ import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.model.mergedSubscriptionLocations
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
 import com.kardinal.vpncontrol.model.supportsAllSubscriptionsGroup
+import com.kardinal.vpncontrol.model.restoreDnsSettings
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RepositoryStateStore
@@ -85,6 +87,9 @@ class ProfileStorage(
         val locationBenchmarkDetails = stringPreferencesKey("location_benchmark_details")
         val customDns = stringPreferencesKey("custom_dns")
         val useCustomDns = booleanPreferencesKey("use_custom_dns")
+        val dnsMode = stringPreferencesKey("dns_mode")
+        val customDnsEndpoint = stringPreferencesKey("custom_dns_endpoint")
+        val legacyCustomDnsAddress = stringPreferencesKey("legacy_custom_dns_address")
         val ignoreRules = booleanPreferencesKey("ignore_rules")
         val blockQuicUdp443 = booleanPreferencesKey("block_quic_udp_443")
         val proxyPackages = stringPreferencesKey("proxy_packages")
@@ -559,12 +564,20 @@ class ProfileStorage(
         DiagnosticsLogger.append(context, "Location benchmark details updated: count=${details.size}")
     }
 
-    override suspend fun updateDns(dns: String, enabled: Boolean) {
+    override suspend fun updateDns(settings: DnsSettings) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.customDns] = dns
-            prefs[Keys.useCustomDns] = enabled
+            prefs[Keys.dnsMode] = settings.mode.name
+            prefs[Keys.customDnsEndpoint] = settings.endpoint
+            prefs[Keys.legacyCustomDnsAddress] = settings.legacyRawAddress
+            prefs[Keys.useCustomDns] = false
+            if (settings.legacyRawAddress.isNotBlank()) {
+                prefs[Keys.customDns] = settings.legacyRawAddress
+            }
         }
-        DiagnosticsLogger.append(context, "Custom DNS updated: enabled=$enabled value=$dns")
+        DiagnosticsLogger.append(
+            context,
+            "Secure DNS updated: mode=${settings.mode.name} endpoint_present=${settings.endpoint.isNotBlank()}",
+        )
     }
 
     override suspend fun updateRoutingRules(rules: RoutingRules) {
@@ -949,8 +962,16 @@ class ProfileStorage(
             savedLocations = savedLocations,
             currentLocations = currentLocations,
             locationBenchmarkDetails = decodeStringMap(preferences[Keys.locationBenchmarkDetails]),
-            customDns = preferences[Keys.customDns].orEmpty(),
-            useCustomDns = preferences[Keys.useCustomDns] ?: false,
+            dnsSettings = restoreDnsSettings(
+                modeName = preferences[Keys.dnsMode],
+                endpoint = preferences[Keys.customDnsEndpoint].orEmpty(),
+                legacyRawAddress = if (preferences[Keys.dnsMode] == null) {
+                    preferences[Keys.customDns].orEmpty()
+                } else {
+                    preferences[Keys.legacyCustomDnsAddress].orEmpty()
+                },
+                legacyEnabled = preferences[Keys.useCustomDns] ?: false,
+            ),
             routingRules = RoutingRules(
                 ignoreRules = preferences[Keys.ignoreRules] ?: false,
                 blockQuicUdp443 = preferences[Keys.blockQuicUdp443] ?: false,

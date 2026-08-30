@@ -238,5 +238,10 @@
   "PROXY": "proxyserver",
   "SHOW_WINDOW": "Vis vindue",
   "HIDE_WINDOW": "Skjul vindue",
-  "EXIT": "Afslut"
+  "EXIT": "Afslut",
+  "DNS_MODE_AUTOMATIC": "Automatic secure DNS",
+  "DNS_MODE_DOH": "Custom DNS over HTTPS (DoH)",
+  "DNS_MODE_DOT": "Custom DNS over TLS (DoT)",
+  "DNS_SECURE_ENDPOINT": "Secure DNS endpoint",
+  "DNS_LEGACY_MIGRATION_NOTICE": "Your previous DNS IP was preserved but is no longer used. Add your provider's DoH or DoT endpoint."
 }

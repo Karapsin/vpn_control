@@ -55,13 +55,28 @@ desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFac
 ```
 
 Desktop uses the same shared outbound builder as Android for non-custom profiles. It also uses the shared route/DNS builder for common DNS, direct CIDR, domain bypass, and rule-set behavior. Platform factories still own inbounds, direct probe routing, app-assignment behavior where applicable, and runtime-specific wrappers.
-Desktop VPN config must keep custom DNS servers in direct CIDR routing and must only inject direct probe process rules in VPN mode, before DNS hijack rules.
+Desktop VPN config must only inject direct probe process rules in VPN mode, before DNS hijack rules.
+
+## Secure DNS
+
+Desktop and Android share these DNS modes and generated-config behavior:
+
+- `AUTOMATIC` uses the built-in `https://1.1.1.1/dns-query` DNS-over-HTTPS endpoint.
+- `CUSTOM_DOH` accepts an `https://` endpoint. A missing path is normalized to `/dns-query`.
+- `CUSTOM_DOT` accepts a `tls://` endpoint and uses port `853` unless an explicit port is supplied.
+- The secure resolver is tagged `secure-dns`, is selected as the final resolver, uses IPv4 answers, and is sent through the `proxy` outbound.
+- A separate `bootstrap-dns` UDP resolver at `1.1.1.1:53` is routed directly. It resolves only hostnames needed to establish the proxy or encrypted-DNS connection; ordinary application DNS does not use it.
+- The bootstrap address, not the custom secure-DNS server address, is included in direct CIDR routing.
+- Plain UDP/TCP custom DNS endpoints are not accepted. Legacy enabled raw-IP DNS settings migrate to automatic secure DNS and retain the old address only long enough to show a migration notice.
+
+Endpoint validation rejects credentials, query strings, fragments, invalid ports, a DoH scheme other than `https://`, and a DoT scheme other than `tls://`. DoT endpoints cannot contain a path.
 
 Primary coverage:
 
 ```text
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
 shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilderTest.kt
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SecureDnsEndpointParserTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyRuntimeManagerTest.kt

@@ -2,7 +2,9 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.data.CompactJson
+import com.kardinal.vpncontrol.data.SecureDnsEndpointParser
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.RoutingRuleSet
 import com.kardinal.vpncontrol.model.RoutingRuleSetAction
@@ -15,8 +17,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 
 data class DnsSavePlan(
-    val dns: String,
-    val enabled: Boolean,
+    val settings: DnsSettings,
     val statusMessage: String,
 )
 
@@ -48,14 +49,19 @@ object MainDraftLogic {
         )
     }
 
-    fun resolveDnsSave(state: MainUiState): DnsSavePlan {
-        val dns = state.customDnsDraft.trim()
-        val enabled = state.useCustomDnsDraft && dns.isNotBlank()
-        return DnsSavePlan(
-            dns = dns,
-            enabled = enabled,
-            statusMessage = SettingsStatusMessages.customDnsSaved(enabled),
+    fun resolveDnsSave(state: MainUiState): Result<DnsSavePlan> {
+        val draft = DnsSettings(
+            mode = state.dnsModeDraft,
+            endpoint = state.customDnsEndpointDraft.trim(),
+            // Saving is an explicit acknowledgement of any legacy raw-DNS migration notice.
+            legacyRawAddress = "",
         )
+        return SecureDnsEndpointParser.normalize(draft).map { settings ->
+            DnsSavePlan(
+                settings = settings,
+                statusMessage = SettingsStatusMessages.dnsSettingsSaved(settings.mode),
+            )
+        }
     }
 
     fun buildEditedRoutingRules(state: MainUiState): RoutingRules {

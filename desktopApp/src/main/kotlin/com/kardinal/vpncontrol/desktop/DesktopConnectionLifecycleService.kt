@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
 
@@ -14,7 +15,7 @@ internal interface DesktopRuntimeController {
     suspend fun start(
         profile: ProxyProfile,
         routingRules: RoutingRules,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int? = null,
     ): Result<DesktopRuntimeSession>
@@ -64,10 +65,7 @@ internal class DesktopConnectionLifecycleService(
         val result = runtime.start(
             profile = profile.getOrThrow(),
             routingRules = MainDraftLogic.buildEditedRoutingRules(startingState),
-            dnsSettings = DesktopDnsSettings(
-                enabled = startingState.useCustomDns,
-                value = startingState.customDns,
-            ),
+            dnsSettings = startingState.dnsSettings,
             appMode = targetMode,
             activeVerificationPort = activeVerificationPort,
         )

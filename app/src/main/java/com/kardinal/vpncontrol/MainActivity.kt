@@ -174,7 +174,7 @@ class MainActivity : ComponentActivity() {
                     launchImportFilePicker(ImportPreference.SUBSCRIPTION)
                 },
                 onToggleDnsDialog = viewModel::toggleDnsDialog,
-                onDnsEnabledChange = viewModel::onCustomDnsEnabledChanged,
+                onDnsModeChange = viewModel::onDnsModeChanged,
                 onDnsChange = viewModel::onDnsDraftChanged,
                 onSaveDns = viewModel::saveDns,
                 onToggleRefreshPolicyDialog = viewModel::toggleRefreshPolicyDialog,

@@ -4,6 +4,8 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -42,8 +44,10 @@ class MainUiStateProjectorTest {
             ),
             currentLocations = listOf("vless://one"),
             locationBenchmarkDetails = mapOf("vless://one" to "test ok"),
-            customDns = "9.9.9.9",
-            useCustomDns = true,
+            dnsSettings = DnsSettings(
+                mode = DnsMode.CUSTOM_DOT,
+                endpoint = "tls://dns.example:853",
+            ),
             routingRules = RoutingRules(
                 ignoreRules = true,
                 proxyPackages = listOf("app.one"),
@@ -82,10 +86,10 @@ class MainUiStateProjectorTest {
         assertEquals("6", projected.validationActiveVerificationWindowSizeDraft)
         assertEquals(listOf("vless://one"), projected.currentLocations)
         assertEquals("test ok", projected.locationBenchmarkDetails["vless://one"])
-        assertEquals("9.9.9.9", projected.customDns)
-        assertEquals("9.9.9.9", projected.customDnsDraft)
-        assertEquals(true, projected.useCustomDns)
-        assertEquals(true, projected.useCustomDnsDraft)
+        assertEquals(DnsMode.CUSTOM_DOT, projected.dnsSettings.mode)
+        assertEquals("tls://dns.example:853", projected.dnsSettings.endpoint)
+        assertEquals(DnsMode.CUSTOM_DOT, projected.dnsModeDraft)
+        assertEquals("tls://dns.example:853", projected.customDnsEndpointDraft)
         assertEquals(true, projected.routingRules.ignoreRules)
         assertEquals(true, projected.routingIgnoreRulesDraft)
         assertEquals(setOf("app.one"), projected.routingProxyPackagesDraft)
@@ -128,8 +132,8 @@ class MainUiStateProjectorTest {
             validationRetryCountDraft = "3",
             validationActiveVerificationWindowSizeDraft = "7",
             showDnsDialog = true,
-            customDnsDraft = "4.4.4.4",
-            useCustomDnsDraft = true,
+            dnsModeDraft = DnsMode.CUSTOM_DOT,
+            customDnsEndpointDraft = "tls://draft.example:853",
         )
         val persisted = PersistedState(
             profileUrl = "https://persisted.example.com/sub",
@@ -143,8 +147,7 @@ class MainUiStateProjectorTest {
                 retryCount = 1,
                 activeVerificationWindowSize = 2,
             ),
-            customDns = "1.1.1.1",
-            useCustomDns = false,
+            dnsSettings = DnsSettings(),
         )
 
         val projected = MainUiStateProjector.mergePersistedState(current, persisted)
@@ -159,9 +162,8 @@ class MainUiStateProjectorTest {
         assertEquals("6", projected.validationSubscriptionRefreshConcurrencyDraft)
         assertEquals("3", projected.validationRetryCountDraft)
         assertEquals("7", projected.validationActiveVerificationWindowSizeDraft)
-        assertEquals("1.1.1.1", projected.customDns)
-        assertEquals("4.4.4.4", projected.customDnsDraft)
-        assertEquals(false, projected.useCustomDns)
-        assertEquals(true, projected.useCustomDnsDraft)
+        assertEquals(DnsSettings(), projected.dnsSettings)
+        assertEquals(DnsMode.CUSTOM_DOT, projected.dnsModeDraft)
+        assertEquals("tls://draft.example:853", projected.customDnsEndpointDraft)
     }
 }

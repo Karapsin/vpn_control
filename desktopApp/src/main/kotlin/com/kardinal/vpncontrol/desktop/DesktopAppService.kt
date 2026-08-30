@@ -297,8 +297,8 @@ class DesktopAppService internal constructor(
         settingsService.toggleDnsDialog()
     }
 
-    fun setUseCustomDnsDraft(enabled: Boolean) {
-        settingsService.setUseCustomDnsDraft(enabled)
+    fun setDnsModeDraft(mode: com.kardinal.vpncontrol.model.DnsMode) {
+        settingsService.setDnsModeDraft(mode)
     }
 
     fun setCustomDnsDraft(value: String) {

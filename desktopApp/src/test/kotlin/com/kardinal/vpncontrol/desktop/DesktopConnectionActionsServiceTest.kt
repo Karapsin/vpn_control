@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.LocationStatusLogic
 import com.kardinal.vpncontrol.MainUiState
@@ -191,7 +192,7 @@ private class FakeConnectionActionsRuntime : DesktopRuntimeController {
     override suspend fun start(
         profile: ProxyProfile,
         routingRules: RoutingRules,
-        dnsSettings: DesktopDnsSettings,
+        dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int?,
     ): Result<DesktopRuntimeSession> {

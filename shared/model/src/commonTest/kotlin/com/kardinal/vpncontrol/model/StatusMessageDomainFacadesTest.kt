@@ -130,6 +130,14 @@ class StatusMessageDomainFacadesTest {
             key = StatusMessageKey.CUSTOM_DNS_SAVED,
         )
         assertStructured(
+            message = SettingsStatusMessages.dnsSettingsSaved(DnsMode.AUTOMATIC),
+            key = StatusMessageKey.SECURE_DNS_AUTOMATIC_SAVED,
+        )
+        assertStructured(
+            message = SettingsStatusMessages.customDnsEndpointInvalid(),
+            key = StatusMessageKey.CUSTOM_DNS_ENDPOINT_INVALID,
+        )
+        assertStructured(
             message = SettingsStatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY),
             key = StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE,
             args = listOf(AppMode.VPN.name, AppMode.PROXY_ONLY.name),

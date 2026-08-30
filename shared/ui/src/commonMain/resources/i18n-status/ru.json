@@ -303,7 +303,9 @@
     "SWITCHING_AFTER_VERIFICATION_FAILURE": "Verification failed for {0}; trying the next location...",
     "EXCLUDING_SAME_COUNTRY_LOCATIONS": "Excluded same-country locations: {0}",
     "TRYING_BEST_CANDIDATE": "Trying candidate {0}/{1}: {2}",
-    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}..."
+    "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}...",
+    "SECURE_DNS_AUTOMATIC_SAVED": "Автоматический защищённый DNS сохранён",
+    "CUSTOM_DNS_ENDPOINT_INVALID": "Введите корректный адрес DoH или DoT"
   },
   "freeformReplacements": [
     {

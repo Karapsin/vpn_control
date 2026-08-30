@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import com.kardinal.vpncontrol.model.DnsSettings
 import android.content.Context
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProfile

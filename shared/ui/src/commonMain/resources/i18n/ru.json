@@ -238,5 +238,10 @@
   "PROXY": "прокси",
   "SHOW_WINDOW": "Показать окно",
   "HIDE_WINDOW": "Скрыть окно",
-  "EXIT": "Выход"
+  "EXIT": "Выход",
+  "DNS_MODE_AUTOMATIC": "Автоматический защищённый DNS",
+  "DNS_MODE_DOH": "Пользовательский DNS через HTTPS (DoH)",
+  "DNS_MODE_DOT": "Пользовательский DNS через TLS (DoT)",
+  "DNS_SECURE_ENDPOINT": "Адрес защищённого DNS",
+  "DNS_LEGACY_MIGRATION_NOTICE": "Предыдущий IP-адрес DNS сохранён, но больше не используется. Добавьте адрес DoH или DoT вашего провайдера."
 }

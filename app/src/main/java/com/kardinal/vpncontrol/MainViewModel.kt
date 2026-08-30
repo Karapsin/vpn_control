@@ -285,8 +285,8 @@ class MainViewModel(
         settingsActions.onDnsDraftChanged(value)
     }
 
-    fun onCustomDnsEnabledChanged(enabled: Boolean) {
-        settingsActions.onCustomDnsEnabledChanged(enabled)
+    fun onDnsModeChanged(mode: com.kardinal.vpncontrol.model.DnsMode) {
+        settingsActions.onDnsModeChanged(mode)
     }
 
     fun onSubscriptionRefreshPolicyDraftChanged(policy: SubscriptionRefreshPolicy) {

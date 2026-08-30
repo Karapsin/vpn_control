@@ -7,6 +7,7 @@ import com.kardinal.vpncontrol.data.SingBoxRouteDnsBuilder
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.DnsSettings
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -14,11 +15,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-
-data class DesktopDnsSettings(
-    val enabled: Boolean,
-    val value: String,
-)
 
 object DesktopProxyConfigFactory {
     const val DEFAULT_VPN_INTERFACE_NAME = "vpn-control"
@@ -30,7 +26,7 @@ object DesktopProxyConfigFactory {
 
     fun buildProxyOnlyConfig(
         profile: ProxyProfile,
-        dns: DesktopDnsSettings,
+        dns: DnsSettings,
         routingRules: RoutingRules,
         listenPort: Int,
     ): String {
@@ -38,8 +34,7 @@ object DesktopProxyConfigFactory {
             "Custom configs are not supported by the desktop proxy runtime yet"
         }
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = dns.enabled,
-            dnsValue = dns.value,
+            dnsSettings = dns,
             routingRules = routingRules,
             leadingRouteRules = listOf(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "mixed-in")),
         )
@@ -85,7 +80,7 @@ object DesktopProxyConfigFactory {
 
     fun buildVpnConfig(
         profile: ProxyProfile,
-        dns: DesktopDnsSettings,
+        dns: DnsSettings,
         routingRules: RoutingRules,
         interfaceName: String = DEFAULT_VPN_INTERFACE_NAME,
         directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
@@ -95,8 +90,7 @@ object DesktopProxyConfigFactory {
             "Custom configs are not supported by the desktop VPN runtime yet"
         }
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = dns.enabled,
-            dnsValue = dns.value,
+            dnsSettings = dns,
             routingRules = routingRules,
             leadingRouteRules = buildList {
                 add(SingBoxRouteDnsBuilder.sniffRouteRule())
@@ -164,6 +158,7 @@ object DesktopProxyConfigFactory {
     private fun buildOutbound(profile: ProxyProfile): JsonObject {
         return SingBoxOutboundBuilder.buildOutbound(
             profile = profile,
+            domainResolverTag = SingBoxRouteDnsBuilder.BOOTSTRAP_DNS_SERVER_TAG,
             customConfigErrorMessage = "Custom configs are not supported by the desktop proxy runtime yet",
         )
     }

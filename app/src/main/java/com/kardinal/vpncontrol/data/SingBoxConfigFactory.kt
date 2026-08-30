@@ -2,14 +2,10 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.DnsSettings
 import kotlinx.serialization.json.JsonObject
 import org.json.JSONArray
 import org.json.JSONObject
-
-data class DnsSettings(
-    val enabled: Boolean,
-    val value: String,
-)
 
 object SingBoxConfigFactory {
     const val DEFAULT_PROXY_ONLY_PORT = 2080
@@ -21,8 +17,7 @@ object SingBoxConfigFactory {
         activeVerificationPort: Int? = null,
     ): String {
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = dns.enabled,
-            dnsValue = dns.value,
+            dnsSettings = dns,
             routingRules = routingRules,
             leadingRouteRules = buildList {
                 add(SingBoxRouteDnsBuilder.sniffRouteRule())
@@ -100,8 +95,7 @@ object SingBoxConfigFactory {
         listenPort: Int = DEFAULT_PROXY_ONLY_PORT,
     ): String {
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
-            dnsEnabled = dns.enabled,
-            dnsValue = dns.value,
+            dnsSettings = dns,
             routingRules = routingRules,
         )
 
@@ -138,10 +132,7 @@ object SingBoxConfigFactory {
         inboundType: String,
         inboundTag: String,
     ): String {
-        val directCidrs = SingBoxRouteDnsBuilder.directCidrs(
-            dnsEnabled = dns.enabled,
-            dnsValue = dns.value,
-        )
+        val directCidrs = SingBoxRouteDnsBuilder.directCidrs()
         val outbound = buildOutbound(profile)
         val inbounds = JSONArray().put(
             JSONObject()
@@ -158,7 +149,7 @@ object SingBoxConfigFactory {
             .put("log", JSONObject().put("level", "warning"))
             .put(
                 "dns",
-                SingBoxRouteDnsBuilder.buildValidationDnsConfig(dns.enabled, dns.value)
+                SingBoxRouteDnsBuilder.buildValidationDnsConfig(dns)
                     .toAndroidJsonObject(),
             )
             .put("inbounds", inbounds)
@@ -172,14 +163,19 @@ object SingBoxConfigFactory {
                             SingBoxRouteDnsBuilder.directCidrRouteRule(directCidrs).toAndroidJsonObject(),
                         ),
                     )
-                    .put("default_domain_resolver", "validation-dns")
+                    .put("default_domain_resolver", SingBoxRouteDnsBuilder.SECURE_DNS_SERVER_TAG)
                     .put("final", "proxy"),
             )
             .toString(2)
     }
 
     private fun buildOutbound(profile: ProxyProfile): JSONObject {
-        return JSONObject(SingBoxOutboundBuilder.buildOutbound(profile).toString())
+        return JSONObject(
+            SingBoxOutboundBuilder.buildOutbound(
+                profile = profile,
+                domainResolverTag = SingBoxRouteDnsBuilder.BOOTSTRAP_DNS_SERVER_TAG,
+            ).toString(),
+        )
     }
 }
 
