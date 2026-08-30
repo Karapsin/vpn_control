@@ -45,7 +45,7 @@ jobs:
             exit 0
           fi
 
-          mkdir -p incoming
+          mkdir -p "$RUNNER_TEMP/incoming"
           workflows=(fast-checks.yml android-release.yml linux-desktop.yml windows-desktop.yml macos-desktop.yml)
           artifact_names=("" vpn-control-android-release-apk vpn-control-linux-packages vpn-control-windows-installers vpn-control-macos-package)
           for index in "${!workflows[@]}"; do
@@ -59,7 +59,8 @@ jobs:
             fi
             artifact_name=${artifact_names[$index]}
             if [[ -n "$artifact_name" ]]; then
-              gh run download "$run_id" --repo "$REPOSITORY" --name "$artifact_name" --dir "incoming/$artifact_name"
+              gh run download "$run_id" --repo "$REPOSITORY" --name "$artifact_name" \
+                --dir "$RUNNER_TEMP/incoming/$artifact_name"
             fi
           done
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -70,7 +71,6 @@ jobs:
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
-          clean: false
 
       - name: Assemble release assets and manifest
         if: steps.gate.outputs.ready == 'true'
@@ -80,9 +80,9 @@ jobs:
           build_number=$(git rev-list --count HEAD)
           version="0.1.$build_number"
           tag="v$version"
-          mac_arch=$(cat incoming/vpn-control-macos-package/ARCHITECTURE.txt)
+          mac_arch=$(cat "$RUNNER_TEMP/incoming/vpn-control-macos-package/ARCHITECTURE.txt")
           python3 scripts/assemble_update_release.py \
-            --incoming incoming \
+            --incoming "$RUNNER_TEMP/incoming" \
             --output release \
             --build-number "$build_number" \
             --version "$version" \
