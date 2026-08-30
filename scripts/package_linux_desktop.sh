@@ -51,7 +51,7 @@ if [[ "$skip_tests" != true ]]; then
 fi
 
 echo "[vpn-control] building Linux desktop packages"
-./gradlew :desktopApp:packageDistributionForCurrentOS
+./gradlew :desktopApp:packageDistributionForCurrentOS :desktopApp:createDistributable
 
 output_root="$repo_root/desktopApp/build/compose/binaries/main"
 echo "[vpn-control] packages written under: $output_root"
