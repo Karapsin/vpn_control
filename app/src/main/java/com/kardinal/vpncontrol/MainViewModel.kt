@@ -148,6 +148,8 @@ class MainViewModel(
         updateLatencyHistoryEnabled = repository::updateLatencyHistoryEnabled,
         updateConnectionLogEnabled = repository::updateConnectionLogEnabled,
         updateConnectionTestToolsEnabled = repository::updateConnectionTestToolsEnabled,
+        credentialStore = com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore(appContext),
+        updateHomeSshRouteSettings = repository::updateHomeSshRouteSettings,
     )
     private val diagnosticsActions = AndroidDiagnosticsActionsService(
         launch = { block -> viewModelScope.launch { block() } },
@@ -174,6 +176,52 @@ class MainViewModel(
 
     fun toggleDnsDialog() {
         settingsActions.toggleDnsDialog()
+    }
+
+    fun toggleHomeSshRouteDialog() = settingsActions.toggleHomeSshRouteDialog()
+
+    fun setHomeSshEnabledDraft(value: Boolean) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshEnabledDraft = value)
+    }
+
+    fun setHomeSshHostDraft(value: String) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshHostDraft = value.take(255))
+    }
+
+    fun setHomeSshPortDraft(value: String) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshPortDraft = value.filter(Char::isDigit).take(5))
+    }
+
+    fun setHomeSshUserDraft(value: String) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshUserDraft = value.take(128))
+    }
+
+    fun setHomeSshHostKeysDraft(value: String) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshHostKeysDraft = value.take(8192))
+    }
+
+    fun setHomeSshRelayPortDraft(value: String) = settingsActions.updateHomeSshDraft {
+        it.copy(homeSshRelayPortDraft = value.filter(Char::isDigit).take(5))
+    }
+
+    fun importHomeSshPrivateKey(content: String) = settingsActions.importHomeSshPrivateKey(content)
+
+    fun saveHomeSshRoute() = settingsActions.saveHomeSshRoute()
+
+    fun dismissHomeSshRestartDialog() = settingsActions.dismissHomeSshRestartDialog()
+
+    fun restartForHomeSshSettings() {
+        launchTrackedBusyOperation {
+            val state = repository.snapshot()
+            val selection = repository.rehydrateSelection(state).getOrThrow()
+            val result = connectionLifecycle.reapplyConnectionIfRunning(
+                selection = selection,
+                statusMessage = com.kardinal.vpncontrol.model.SettingsStatusMessages.homeSshRouteRestarting(),
+            )
+            result.getOrThrow()
+            repository.persistSelection(selection)
+            settingsActions.markHomeSshRestartApplied()
+        }
     }
 
     fun toggleUiSettingsDialog() {

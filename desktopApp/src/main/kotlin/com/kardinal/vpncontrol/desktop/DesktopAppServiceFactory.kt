@@ -6,6 +6,7 @@ object DesktopAppServiceFactory {
     fun default(): DesktopAppService {
         val store = DesktopStateStore.default()
         val validationDirectory = store.validationDirectory()
+        val credentialStore = DesktopHomeSshCredentialStore(store.runtimeDirectory().parent)
         val runtimeManager = DesktopProxyRuntimeManager(
             runtimeConfigStore = store,
             baseDir = store.runtimeDirectory(),
@@ -16,7 +17,16 @@ object DesktopAppServiceFactory {
             runtimeManager = runtimeManager,
             validationRuntime = DesktopProxyValidationRuntime(baseDir = validationDirectory),
             connectionLifecycle = DesktopConnectionLifecycleService(runtimeManager),
-            subscriptionService = DesktopSubscriptionService(DesktopSubscriptionDownloadClient()),
+            subscriptionService = DesktopSubscriptionService(
+                DesktopSubscriptionDownloadClient(
+                    stateProvider = store::snapshot,
+                    runtimeIsActive = runtimeManager::isRunning,
+                    runtimeProxyPort = runtimeManager::currentManagementProxyPort,
+                    credentialStore = credentialStore,
+                    bootstrapBaseDir = store.runtimeDirectory(),
+                    singBoxResolver = DesktopSingBoxResolver(store.runtimeDirectory().resolve("tools")),
+                ),
+            ),
             autostartManager = DesktopAutostartManager.default(),
             autoRefreshBestSelectionAction = { service ->
                 service.findBestLocation(refreshSubscriptionsFirst = false)

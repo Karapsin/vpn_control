@@ -114,6 +114,36 @@ class SingBoxRouteDnsBuilderTest {
     }
 
     @Test
+    fun customDirectOutboundTagAppliesToBypassesAndRemoteDownloads() {
+        val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsSettings = DnsSettings(),
+            routingRules = RoutingRules(
+                directDomainSuffixes = listOf("home.example"),
+                ruleSets = listOf(
+                    RoutingRuleSet(
+                        id = "remote-home",
+                        name = "Home",
+                        sourceType = RoutingRuleSetSourceType.REMOTE,
+                        format = RoutingRuleSetFormat.SOURCE,
+                        source = "https://example.com/rules.json",
+                        action = RoutingRuleSetAction.DIRECT,
+                    ),
+                ),
+            ),
+            directOutboundTag = "home-egress",
+        )
+
+        val rules = config.route.array("rules").map { it.jsonObject }
+        assertEquals("home-egress", rules.first { "ip_cidr" in it }.string("outbound"))
+        assertEquals("home-egress", rules.first { "domain_suffix" in it }.string("outbound"))
+        assertEquals("home-egress", rules.first { "rule_set" in it }.string("outbound"))
+        assertEquals(
+            "home-egress",
+            config.route.array("rule_set").single().jsonObject.string("download_detour"),
+        )
+    }
+
+    @Test
     fun inlineRuleSetUsesInlineDefinitionAndDoesNotEnableCacheFile() {
         val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = DnsSettings(),

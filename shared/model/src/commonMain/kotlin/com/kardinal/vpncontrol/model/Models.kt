@@ -169,6 +169,7 @@ data class ProfileSelection(
     val benchmark: ProfileBenchmark,
     val runtimeConfigJson: String,
     val sourceUrl: String = "",
+    val managementProxyPort: Int? = null,
 )
 
 data class SubscriptionSource(
@@ -233,6 +234,21 @@ data class DnsSettings(
     val legacyRawAddress: String = "",
 )
 
+data class HomeSshRouteSettings(
+    val enabled: Boolean = false,
+    val host: String = "",
+    val port: Int = DEFAULT_SSH_PORT,
+    val user: String = "",
+    val hostKeys: List<String> = emptyList(),
+    val relayPort: Int = DEFAULT_HOME_RELAY_PORT,
+    val credentialVersion: Long = 0L,
+) {
+    companion object {
+        const val DEFAULT_SSH_PORT = 22
+        const val DEFAULT_HOME_RELAY_PORT = 10808
+    }
+}
+
 fun restoreDnsSettings(
     modeName: String?,
     endpoint: String,
@@ -276,6 +292,7 @@ data class PersistedState(
     val currentLocations: List<String> = emptyList(),
     val locationBenchmarkDetails: Map<String, String> = emptyMap(),
     val dnsSettings: DnsSettings = DnsSettings(),
+    val homeSshRouteSettings: HomeSshRouteSettings = HomeSshRouteSettings(),
     val routingRules: RoutingRules = RoutingRules(),
     val selectedProfileName: String = "",
     val selectedProfileServer: String = "",
@@ -286,6 +303,7 @@ data class PersistedState(
     val runtimeConfigJson: String = "",
     val statusMessage: String = "Idle",
     val isVpnRunning: Boolean = false,
+    val managementProxyPort: Int = 0,
     val sessionStatsEnabled: Boolean = false,
     val liveTrafficStatsEnabled: Boolean = false,
     val profileTotalsEnabled: Boolean = false,

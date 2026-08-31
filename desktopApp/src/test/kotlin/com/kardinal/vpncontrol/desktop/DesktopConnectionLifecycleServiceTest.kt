@@ -170,6 +170,7 @@ private class FakeDesktopRuntimeController(
         dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int?,
+        homeSshRouteSettings: com.kardinal.vpncontrol.model.HomeSshRouteSettings,
     ): Result<DesktopRuntimeSession> {
         startedProfiles += profile
         if (startResult.isSuccess) {

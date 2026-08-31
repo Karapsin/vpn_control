@@ -10,6 +10,7 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 
 internal interface DesktopRuntimeController {
     suspend fun start(
@@ -18,6 +19,7 @@ internal interface DesktopRuntimeController {
         dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int? = null,
+        homeSshRouteSettings: HomeSshRouteSettings = HomeSshRouteSettings(),
     ): Result<DesktopRuntimeSession>
 
     suspend fun stop(): Result<Unit>
@@ -27,6 +29,8 @@ internal interface DesktopRuntimeController {
     fun currentMode(): AppMode?
 
     fun currentPort(): Int?
+
+    fun currentManagementProxyPort(): Int? = currentPort()
 }
 
 internal class DesktopConnectionLifecycleService(
@@ -68,6 +72,7 @@ internal class DesktopConnectionLifecycleService(
             dnsSettings = startingState.dnsSettings,
             appMode = targetMode,
             activeVerificationPort = activeVerificationPort,
+            homeSshRouteSettings = startingState.homeSshRouteSettings,
         )
         if (result.isSuccess) {
             val session = result.getOrThrow()

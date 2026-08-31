@@ -104,6 +104,7 @@ class DesktopAppService internal constructor(
         stopConnection = { message -> connectionActions.stop(message) },
         commitState = { nextState -> commitState(nextState = nextState) },
         updateState = ::updateState,
+        homeSshCredentialStore = DesktopHomeSshCredentialStore(desktopStore.runtimeDirectory().parent),
     )
     private val locationBenchmarkService = DesktopLocationBenchmarkService(
         stateProvider = { state },
@@ -216,6 +217,10 @@ class DesktopAppService internal constructor(
 
     fun dismissUpdate() {
         updateService.dismiss()
+    }
+
+    fun postStatus(message: String) {
+        updateState { it.withStatus(message) }
     }
 
     suspend fun authorizeUpdateInstaller(): Result<Unit> {
@@ -332,6 +337,46 @@ class DesktopAppService internal constructor(
 
     fun saveDns() {
         settingsService.saveDns()
+    }
+
+    fun toggleHomeSshRouteDialog() = settingsService.toggleHomeSshRouteDialog()
+
+    fun setHomeSshEnabledDraft(value: Boolean) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshEnabledDraft = value)
+    }
+
+    fun setHomeSshHostDraft(value: String) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshHostDraft = value.take(255))
+    }
+
+    fun setHomeSshPortDraft(value: String) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshPortDraft = value.filter(Char::isDigit).take(5))
+    }
+
+    fun setHomeSshUserDraft(value: String) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshUserDraft = value.take(128))
+    }
+
+    fun setHomeSshHostKeysDraft(value: String) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshHostKeysDraft = value.take(8192))
+    }
+
+    fun setHomeSshRelayPortDraft(value: String) = settingsService.updateHomeSshDraft {
+        it.copy(homeSshRelayPortDraft = value.filter(Char::isDigit).take(5))
+    }
+
+    fun importHomeSshPrivateKey(content: String) = settingsService.importHomeSshPrivateKey(content)
+
+    fun saveHomeSshRoute() = settingsService.saveHomeSshRoute()
+
+    fun dismissHomeSshRestartDialog() = settingsService.dismissHomeSshRestartDialog()
+
+    suspend fun restartForHomeSshSettings(): Result<Unit> {
+        val location = desktopLocations.firstOrNull { it.matchesSelectedLocation(state) }
+            ?: return Result.failure(IllegalStateException("Selected location is unavailable"))
+        val result = connectionActions.start(location, state.lastBenchmarkSummary)
+        if (result.isSuccess) settingsService.markHomeSshRestartApplied()
+        return result
     }
 
     fun setStartOnBootEnabled(enabled: Boolean) {

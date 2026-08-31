@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -37,6 +38,36 @@ class SingBoxConfigFactoryParityTest {
     }
 
     @Test
+    fun androidVpnConfigChainsProxyAndBypassesThroughHomeSsh() {
+        val config = SingBoxConfigFactory.buildTunConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(),
+            routingRules = RoutingRules(
+                directDomainSuffixes = listOf("home.example"),
+            ),
+            activeVerificationPort = SingBoxConfigFactory.DEFAULT_VPN_MANAGEMENT_PROXY_PORT,
+            homeRoute = homeOptions(),
+        )
+        val root = parseConfig(config)
+        val outbounds = root.getValue("outbounds").jsonArray.map { it.jsonObject }
+        val byTag = outbounds.associateBy { it.getValue("tag").jsonPrimitive.content }
+        val routeRules = root.getValue("route").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
+
+        assertEquals(HomeSshRouteConfigBuilder.HOME_EGRESS_TAG, byTag.getValue("proxy").string("detour"))
+        assertFalse("domain_resolver" in byTag.getValue("proxy"))
+        assertEquals("socks", byTag.getValue(HomeSshRouteConfigBuilder.HOME_EGRESS_TAG).string("type"))
+        assertEquals(
+            HomeSshRouteConfigBuilder.SSH_OUTBOUND_TAG,
+            byTag.getValue(HomeSshRouteConfigBuilder.HOME_EGRESS_TAG).string("detour"),
+        )
+        assertEquals("ssh", byTag.getValue(HomeSshRouteConfigBuilder.SSH_OUTBOUND_TAG).string("type"))
+        assertEquals(
+            HomeSshRouteConfigBuilder.HOME_EGRESS_TAG,
+            routeRules.first { "domain_suffix" in it }.string("outbound"),
+        )
+    }
+
+    @Test
     fun androidProxyOnlyConfigUsesSharedOutboundShapeForSupportedProtocols() {
         protocolProfiles().forEach { profile ->
             val config = SingBoxConfigFactory.buildProxyOnlyConfig(
@@ -54,6 +85,33 @@ class SingBoxConfigFactoryParityTest {
                 proxyOutbound(config),
             )
         }
+    }
+
+    @Test
+    fun androidProxyOnlyManagementInboundForcesSubscriptionThroughProxy() {
+        val config = SingBoxConfigFactory.buildProxyOnlyConfig(
+            profile = socksProfile(),
+            dns = DnsSettings(),
+            routingRules = RoutingRules(directDomainSuffixes = listOf("subscription.example")),
+            listenPort = 2080,
+            managementProxyPort = 2081,
+        )
+        val root = parseConfig(config)
+        val inbounds = root.getValue("inbounds").jsonArray.map { it.jsonObject }
+        val rules = root.getValue("route").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
+        val managementRuleIndex = rules.indexOfFirst {
+            it["inbound"]?.jsonPrimitive?.content == HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG &&
+                it["outbound"]?.jsonPrimitive?.content == "proxy"
+        }
+        val directDomainIndex = rules.indexOfFirst { "domain_suffix" in it }
+
+        assertEquals(2, inbounds.size)
+        assertEquals(
+            "2081",
+            inbounds.first { it.string("tag") == HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG }
+                .getValue("listen_port").jsonPrimitive.content,
+        )
+        assertTrue(managementRuleIndex in 0 until directDomainIndex)
     }
 
     @Test
@@ -293,6 +351,24 @@ class SingBoxConfigFactoryParityTest {
             ),
             socksProfile(),
         )
+    }
+
+    private fun homeOptions() = HomeSshRouteRuntimeOptions(
+        settings = HomeSshRouteSettings(
+            enabled = true,
+            host = "ssh.example",
+            port = 228,
+            user = "vpn",
+            hostKeys = listOf("ssh-ed25519 $TEST_HOST_KEY"),
+        ),
+        privateKeyPath = "/private/key",
+    )
+
+    private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
+
+    private companion object {
+        const val TEST_HOST_KEY =
+            "AAAAC3NzaC1lZDI1NTE5AAAAIGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"
     }
 
     private fun socksProfile(): ProxyProfile {

@@ -74,11 +74,13 @@ class DesktopProxyValidationRuntime(
         settings: DesktopValidationSettings = DesktopValidationSettings(),
     ): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
         runCatching {
-            val candidate = preflightProfile(profile, settings)
-            if (candidate.connectMillis == null) {
-                BenchmarkSearchLogic.failedBenchmark(profile, candidate, "tcp_unreachable")
-            } else {
-                benchmarkCandidate(candidate, dnsSettings, benchmarkUrls, settings)
+            DesktopDirectProbeProxy(baseDir, singBoxResolver).useProxy { directProxyPort ->
+                val candidate = preflightProfile(profile, settings, directProxyPort)
+                if (candidate.connectMillis == null) {
+                    BenchmarkSearchLogic.failedBenchmark(profile, candidate, "tcp_unreachable")
+                } else {
+                    benchmarkCandidate(candidate, dnsSettings, benchmarkUrls, settings)
+                }
             }
         }
     }
@@ -103,9 +105,29 @@ class DesktopProxyValidationRuntime(
     ): BestCandidateAttemptPlan = withContext(Dispatchers.IO) {
         val benchmarkableProfiles = profiles.filterNot { it.protocol == ProxyProtocol.CUSTOM }
         onProgress(BenchmarkStatusMessages.detectingCountry())
-        val userCountry = userCountryResolver.resolveUserCountryCode()
-        onProgress(BenchmarkStatusMessages.checkingLocations(profiles.size))
-        val preflightResults = preflightProfiles(benchmarkableProfiles, settings)
+        val directResults = runCatching {
+            DesktopDirectProbeProxy(baseDir, singBoxResolver).useProxy { directProxyPort ->
+                val userCountry = when (val resolver = userCountryResolver) {
+                    is DesktopRemoteCountryResolver -> resolver.resolveUserCountryCode(directProxyPort)
+                    else -> resolver.resolveUserCountryCode()
+                }
+                onProgress(BenchmarkStatusMessages.checkingLocations(profiles.size))
+                userCountry to preflightProfiles(benchmarkableProfiles, settings, directProxyPort)
+            }
+        }
+        val (userCountry, preflightResults) = directResults.getOrElse { error ->
+            null to benchmarkableProfiles.map { profile ->
+                PreflightResult(
+                    profile = profile,
+                    connectMillis = null,
+                    detail = BenchmarkSearchLogic.preflightDetail(
+                        profile,
+                        null,
+                        error.message ?: "direct_probe_unavailable",
+                    ),
+                )
+            }
+        }
         val plan = BenchmarkSearchLogic.planActiveVerificationAttempts(
             profiles = profiles,
             preflightResults = preflightResults,
@@ -120,12 +142,13 @@ class DesktopProxyValidationRuntime(
     private suspend fun preflightProfiles(
         profiles: List<ProxyProfile>,
         settings: DesktopValidationSettings,
+        directProxyPort: Int,
     ): List<PreflightResult> {
         val concurrency = settings.preflightConcurrency.coerceAtLeast(1)
         return profiles.chunked(concurrency).flatMap { batch ->
             coroutineScope {
                 batch.map { profile ->
-                    async { preflightProfile(profile, settings) }
+                    async { preflightProfile(profile, settings, directProxyPort) }
                 }.awaitAll()
             }
         }
@@ -172,6 +195,7 @@ class DesktopProxyValidationRuntime(
     private suspend fun preflightProfile(
         profile: ProxyProfile,
         settings: DesktopValidationSettings,
+        directProxyPort: Int,
     ): PreflightResult {
         val executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "vpn-control-preflight-${preflightThreadCounter.incrementAndGet()}").apply {
@@ -180,14 +204,14 @@ class DesktopProxyValidationRuntime(
         }
         val future = executor.submit<PreflightConnection> {
             val startedAt = System.nanoTime()
-            Socket().use { socket ->
+            Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", directProxyPort))).use { socket ->
                 socket.connect(
-                    InetSocketAddress(profile.server, profile.serverPort),
+                    InetSocketAddress.createUnresolved(profile.server, profile.serverPort),
                     settings.preflightConnectTimeoutMillis,
                 )
                 PreflightConnection(
                     connectMillis = (System.nanoTime() - startedAt) / 1_000_000.0,
-                    resolvedServerAddress = socket.inetAddress?.hostAddress,
+                    resolvedServerAddress = profile.server.takeIf(::looksLikeIpAddress),
                 )
             }
         }
@@ -216,19 +240,15 @@ class DesktopProxyValidationRuntime(
             )
         } catch (error: ExecutionException) {
             val cause = error.cause
-            if (cause is IOException) {
-                PreflightResult(
-                    profile = profile,
-                    connectMillis = null,
-                    detail = BenchmarkSearchLogic.preflightDetail(profile, null, cause.javaClass.simpleName),
-                )
-            } else {
-                PreflightResult(
-                    profile = profile,
-                    connectMillis = null,
-                    detail = BenchmarkSearchLogic.preflightDetail(profile, null, "tcp_error"),
-                )
-            }
+            PreflightResult(
+                profile = profile,
+                connectMillis = null,
+                detail = BenchmarkSearchLogic.preflightDetail(
+                    profile,
+                    null,
+                    if (cause is IOException) cause.javaClass.simpleName else "tcp_error",
+                ),
+            )
         } catch (_: IOException) {
             PreflightResult(
                 profile = profile,
@@ -238,20 +258,24 @@ class DesktopProxyValidationRuntime(
         } finally {
             executor.shutdownNow()
         }
-        val candidateCountry = result.resolvedServerAddress?.let {
-            candidateCountryResolver.resolveCandidateCountryCode(it)
+        val candidateCountry = result.resolvedServerAddress?.let { address ->
+            when (val resolver = candidateCountryResolver) {
+                is DesktopRemoteCountryResolver -> resolver.resolveCandidateCountryCode(address, directProxyPort)
+                else -> resolver.resolveCandidateCountryCode(address)
+            }
         }
-        if (candidateCountry == null) {
-            return result
-        }
-        return result.copy(
-            detail = BenchmarkSearchLogic.preflightDetail(
-                profile = profile,
-                connectMillis = result.connectMillis,
+        return if (candidateCountry == null) {
+            result
+        } else {
+            result.copy(
+                detail = BenchmarkSearchLogic.preflightDetail(
+                    profile = profile,
+                    connectMillis = result.connectMillis,
+                    candidateCountryCode = candidateCountry,
+                ),
                 candidateCountryCode = candidateCountry,
-            ),
-            candidateCountryCode = candidateCountry,
-        )
+            )
+        }
     }
 
     private suspend fun benchmarkCandidate(
@@ -423,6 +447,11 @@ class DesktopProxyValidationRuntime(
         val connectMillis: Double,
         val resolvedServerAddress: String?,
     )
+
+    private fun looksLikeIpAddress(value: String): Boolean {
+        val normalized = value.trim().removePrefix("[").removeSuffix("]")
+        return normalized.matches(Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")) || ':' in normalized
+    }
 
     private companion object {
         val defaultGenericBlockedMarkers = listOf(

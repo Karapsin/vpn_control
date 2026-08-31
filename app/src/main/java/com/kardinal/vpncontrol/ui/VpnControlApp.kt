@@ -172,6 +172,17 @@ fun VpnControlApp(
     onDnsModeChange: (DnsMode) -> Unit,
     onDnsChange: (String) -> Unit,
     onSaveDns: () -> Unit,
+    onToggleHomeSshRouteDialog: () -> Unit,
+    onHomeSshEnabledChange: (Boolean) -> Unit,
+    onHomeSshHostChange: (String) -> Unit,
+    onHomeSshPortChange: (String) -> Unit,
+    onHomeSshUserChange: (String) -> Unit,
+    onHomeSshHostKeysChange: (String) -> Unit,
+    onHomeSshRelayPortChange: (String) -> Unit,
+    onImportHomeSshPrivateKey: () -> Unit,
+    onSaveHomeSshRoute: () -> Unit,
+    onDismissHomeSshRestart: () -> Unit,
+    onRestartForHomeSsh: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshPolicyChange: (SubscriptionRefreshPolicy) -> Unit,
     onFindBestAfterSubscriptionRefreshChange: (Boolean) -> Unit,
@@ -276,6 +287,7 @@ fun VpnControlApp(
             onImportSubscriptionFromClipboard = onImportSubscriptionFromClipboard,
             onImportSubscriptionFromFile = onImportSubscriptionFromFile,
             onToggleDnsDialog = onToggleDnsDialog,
+            onToggleHomeSshRouteDialog = onToggleHomeSshRouteDialog,
             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
             onSubscriptionRefreshCustomHoursChange = onSubscriptionRefreshCustomHoursChange,
             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
@@ -349,6 +361,8 @@ fun VpnControlApp(
             state.showProfileHistoryRenameDialog ||
             state.showLocationMutationBlockedDialog ||
             state.showDnsDialog ||
+            state.showHomeSshRouteDialog ||
+            state.showHomeSshRestartDialog ||
             state.showAppModeDialog ||
             state.showRefreshPolicyDialog ||
             state.showValidationSettingsDialog ||
@@ -362,6 +376,8 @@ fun VpnControlApp(
             state.showProfileHistoryRenameDialog -> onCloseProfileHistoryRenameDialog()
             state.showLocationMutationBlockedDialog -> onCloseLocationMutationBlockedDialog()
             state.showDnsDialog -> onToggleDnsDialog()
+            state.showHomeSshRouteDialog -> onToggleHomeSshRouteDialog()
+            state.showHomeSshRestartDialog -> onDismissHomeSshRestart()
             state.showAppModeDialog -> onToggleAppModeDialog()
             state.showRefreshPolicyDialog -> onToggleRefreshPolicyDialog()
             state.showValidationSettingsDialog -> onToggleValidationSettingsDialog()
@@ -494,6 +510,118 @@ fun VpnControlApp(
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showHomeSshRouteDialog) {
+        AlertDialog(
+            onDismissRequest = onToggleHomeSshRouteDialog,
+            title = { Text(appStrings.get(UiText.SETTINGS_HOME_SSH_ROUTE), color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(appStrings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(appStrings.get(UiText.HOME_SSH_ENABLED))
+                        Switch(checked = state.homeSshEnabledDraft, onCheckedChange = onHomeSshEnabledChange)
+                    }
+                    OutlinedTextField(
+                        value = state.homeSshHostDraft,
+                        onValueChange = onHomeSshHostChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.HOME_SSH_HOST)) },
+                        placeholder = { Text("ssh.karapsin.com") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshPortDraft,
+                        onValueChange = onHomeSshPortChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.HOME_SSH_PORT)) },
+                        placeholder = { Text("228") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshUserDraft,
+                        onValueChange = onHomeSshUserChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.HOME_SSH_USER)) },
+                        placeholder = { Text("kardinal") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshHostKeysDraft,
+                        onValueChange = onHomeSshHostKeysChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS)) },
+                        supportingText = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
+                        minLines = 2,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshRelayPortDraft,
+                        onValueChange = onHomeSshRelayPortChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(appStrings.get(UiText.HOME_SSH_RELAY_PORT)) },
+                        placeholder = { Text("10808") },
+                        singleLine = true,
+                        colors = routingTextFieldColors(),
+                    )
+                    OutlinedButton(onClick = onImportHomeSshPrivateKey, modifier = Modifier.fillMaxWidth()) {
+                        Text(appStrings.get(UiText.IMPORT_PRIVATE_KEY))
+                    }
+                    Text(
+                        appStrings.get(
+                            if (state.homeSshRouteSettings.credentialVersion > 0L) {
+                                UiText.HOME_SSH_KEY_IMPORTED
+                            } else {
+                                UiText.HOME_SSH_KEY_MISSING
+                            },
+                        ),
+                        color = Color(0xFFD3E3EE),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onSaveHomeSshRoute) {
+                    Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onToggleHomeSshRouteDialog) {
+                    Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showHomeSshRestartDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissHomeSshRestart,
+            title = { Text(appStrings.get(UiText.HOME_SSH_RESTART_TITLE), color = Color.White) },
+            text = { Text(appStrings.get(UiText.HOME_SSH_RESTART_DESCRIPTION), color = Color(0xFFD3E3EE)) },
+            containerColor = Color(0xFF141F2D),
+            confirmButton = {
+                TextButton(onClick = onRestartForHomeSsh) {
+                    Text(appStrings.get(UiText.RESTART_NOW), color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissHomeSshRestart) {
+                    Text(appStrings.get(UiText.RESTART_LATER), color = Color(0xFFD3E3EE))
                 }
             },
         )
@@ -913,6 +1041,7 @@ private fun HomeTabsScreen(
     onImportSubscriptionFromClipboard: () -> Unit,
     onImportSubscriptionFromFile: () -> Unit,
     onToggleDnsDialog: () -> Unit,
+    onToggleHomeSshRouteDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onSubscriptionRefreshCustomHoursChange: (String) -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
@@ -991,6 +1120,7 @@ private fun HomeTabsScreen(
                         MainAdvancedMenu(
                             state = state,
                             onToggleDnsDialog = onToggleDnsDialog,
+                            onToggleHomeSshRouteDialog = onToggleHomeSshRouteDialog,
                             onToggleRefreshPolicyDialog = onToggleRefreshPolicyDialog,
                             onToggleValidationSettingsDialog = onToggleValidationSettingsDialog,
                             onToggleLanguageDialog = onToggleLanguageDialog,
@@ -1074,6 +1204,7 @@ private fun HomeTabsScreen(
 private fun MainAdvancedMenu(
     state: MainUiState,
     onToggleDnsDialog: () -> Unit,
+    onToggleHomeSshRouteDialog: () -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
     onToggleValidationSettingsDialog: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
@@ -1105,6 +1236,24 @@ private fun MainAdvancedMenu(
             onDismissRequest = { advancedMenuExpanded = false },
             containerColor = menuContainerColor,
         ) {
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_HOME_SSH_ROUTE), color = menuTitleColor)
+                        Text(
+                            strings.get(
+                                if (state.homeSshRouteSettings.enabled) UiText.SETTINGS_ENABLED else UiText.SETTINGS_DISABLED,
+                            ) + if (state.homeSshRestartPending) " • ${strings.get(UiText.HOME_SSH_PENDING)}" else "",
+                            color = menuSubtitleColor,
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    advancedMenuExpanded = false
+                    onToggleHomeSshRouteDialog()
+                },
+            )
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

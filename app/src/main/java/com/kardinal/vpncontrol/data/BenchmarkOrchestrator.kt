@@ -22,7 +22,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.net.ServerSocket
 import java.io.IOException
 
 class BenchmarkOrchestrator(
@@ -54,7 +53,12 @@ class BenchmarkOrchestrator(
         "you do not have access to chat.openai.com",
     )
     private val countryResolver = AndroidRemoteCountryResolver()
-    private val downloadClient = SubscriptionDownloadClient(subscriptionUserAgent)
+    private val downloadClient = SubscriptionDownloadClient(
+        userAgent = subscriptionUserAgent,
+        context = context,
+        stateProvider = storage::snapshot,
+    )
+    private val homeSshCredentialStore = AndroidHomeSshCredentialStore(context)
     private val validationRuntime = ProxyValidationRuntime(
         context = context,
         browserUserAgent = browserUserAgent,
@@ -136,6 +140,7 @@ class BenchmarkOrchestrator(
                                             activeVerificationPort = activeVerificationPort,
                                         ),
                                         sourceUrl = selectedTarget.sourceUrl,
+                                        managementProxyPort = activeVerificationPort,
                                     ),
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
@@ -172,6 +177,7 @@ class BenchmarkOrchestrator(
                                             dnsSettings = dnsSettings,
                                             activeVerificationPort = activeVerificationPort,
                                         ),
+                                        managementProxyPort = activeVerificationPort,
                                     ),
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
@@ -320,6 +326,7 @@ class BenchmarkOrchestrator(
                 cachedProfile(state)
             }
             val dnsSettings = state.dnsSettings
+            val managementProxyPort = activeVerificationPortFor(state.appMode)
             ProfileSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(
@@ -336,11 +343,13 @@ class BenchmarkOrchestrator(
                         profile = profile,
                         state = state,
                         dnsSettings = dnsSettings,
+                        activeVerificationPort = managementProxyPort,
                     )
                 } else {
                     state.runtimeConfigJson
                 },
                 sourceUrl = state.selectedProfileSourceUrl,
+                managementProxyPort = managementProxyPort,
             )
         }
     }
@@ -353,6 +362,7 @@ class BenchmarkOrchestrator(
         runCatching {
             val profile = LocationConfigs.parseLocationInput(rawLink)
             val dnsSettings = state.dnsSettings
+            val managementProxyPort = activeVerificationPortFor(state.appMode)
             ProfileSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(
@@ -368,6 +378,7 @@ class BenchmarkOrchestrator(
                     profile = profile,
                     state = state,
                     dnsSettings = dnsSettings,
+                    activeVerificationPort = managementProxyPort,
                 ),
                 sourceUrl = if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
                     if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
@@ -378,6 +389,7 @@ class BenchmarkOrchestrator(
                 } else {
                     state.selectedProfileSourceUrl
                 },
+                managementProxyPort = managementProxyPort,
             )
         }
     }
@@ -411,11 +423,8 @@ class BenchmarkOrchestrator(
         return plan
     }
 
-    private fun activeVerificationPortFor(appMode: AppMode): Int {
-        return when (appMode) {
-            AppMode.PROXY_ONLY -> SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT
-            AppMode.VPN -> ServerSocket(0).use { it.localPort }
-        }
+    private fun activeVerificationPortFor(@Suppress("UNUSED_PARAMETER") appMode: AppMode): Int {
+        return SingBoxConfigFactory.DEFAULT_VPN_MANAGEMENT_PROXY_PORT
     }
 
     private fun cachedProfile(state: PersistedState): ProxyProfile {
@@ -447,9 +456,22 @@ class BenchmarkOrchestrator(
         dnsSettings: DnsSettings,
         activeVerificationPort: Int? = null,
     ): String {
+        val homeRoute = state.homeSshRouteSettings
+            .takeIf { it.enabled }
+            ?.let { settings ->
+                HomeSshRouteRuntimeOptions(
+                    settings = settings,
+                    privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
+                        ?: error("Home SSH private key is missing"),
+                ).validated()
+            }
         if (profile.protocol == ProxyProtocol.CUSTOM) {
             require(profile.customConfigJson.isNotBlank()) { "Custom config is empty" }
-            return profile.customConfigJson
+            return SingBoxCustomConfigTransformer.transform(
+                rawConfig = profile.customConfigJson,
+                managementProxyPort = activeVerificationPort ?: activeVerificationPortFor(state.appMode),
+                homeRoute = homeRoute,
+            )
         }
         return when (state.appMode) {
             AppMode.VPN -> SingBoxConfigFactory.buildTunConfig(
@@ -457,12 +479,15 @@ class BenchmarkOrchestrator(
                 dns = dnsSettings,
                 routingRules = state.routingRules,
                 activeVerificationPort = activeVerificationPort,
+                homeRoute = homeRoute,
             )
             AppMode.PROXY_ONLY -> SingBoxConfigFactory.buildProxyOnlyConfig(
                 profile = profile,
                 dns = dnsSettings,
                 routingRules = state.routingRules,
-                listenPort = activeVerificationPort ?: SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT,
+                listenPort = SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT,
+                managementProxyPort = activeVerificationPort ?: activeVerificationPortFor(state.appMode),
+                homeRoute = homeRoute,
             )
         }
     }

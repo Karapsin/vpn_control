@@ -175,6 +175,7 @@ internal fun MainUiState.toPersistedState(
         currentLocations = synced.currentLocations,
         locationBenchmarkDetails = synced.locationBenchmarkDetails,
         dnsSettings = synced.dnsSettings,
+        homeSshRouteSettings = synced.homeSshRouteSettings,
         routingRules = routingRules,
         selectedProfileName = synced.selectedProfileName,
         selectedProfileServer = synced.selectedProfileServer,

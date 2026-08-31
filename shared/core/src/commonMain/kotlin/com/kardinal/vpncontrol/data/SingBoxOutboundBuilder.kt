@@ -11,6 +11,7 @@ object SingBoxOutboundBuilder {
         profile: ProxyProfile,
         tag: String = "proxy",
         domainResolverTag: String? = null,
+        detourTag: String? = null,
         customConfigErrorMessage: String = "Custom configs must be used as direct runtime JSON",
     ): JsonObject {
         val base = when (profile.protocol) {
@@ -78,7 +79,11 @@ object SingBoxOutboundBuilder {
             }
             buildTls(profile)?.let { put("tls", it) }
             buildTransport(profile)?.let { put("transport", it) }
-            domainResolverTag?.takeIf(String::isNotBlank)?.let { put("domain_resolver", it) }
+            if (!detourTag.isNullOrBlank()) {
+                put("detour", detourTag)
+            } else {
+                domainResolverTag?.takeIf(String::isNotBlank)?.let { put("domain_resolver", it) }
+            }
         }
     }
 

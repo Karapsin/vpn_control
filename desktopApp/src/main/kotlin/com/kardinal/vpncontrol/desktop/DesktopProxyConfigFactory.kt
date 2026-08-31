@@ -3,6 +3,8 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.data.SingBoxOutboundBuilder
+import com.kardinal.vpncontrol.data.HomeSshRouteConfigBuilder
+import com.kardinal.vpncontrol.data.HomeSshRouteRuntimeOptions
 import com.kardinal.vpncontrol.data.SingBoxRouteDnsBuilder
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
@@ -29,14 +31,28 @@ object DesktopProxyConfigFactory {
         dns: DnsSettings,
         routingRules: RoutingRules,
         listenPort: Int,
+        managementProxyPort: Int? = null,
+        homeRoute: HomeSshRouteRuntimeOptions? = null,
     ): String {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop proxy runtime yet"
         }
+        require(managementProxyPort == null || managementProxyPort != listenPort) {
+            "Management proxy port must differ from the user proxy port"
+        }
+        val validatedHomeRoute = homeRoute?.validated()
+        val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = dns,
             routingRules = routingRules,
-            leadingRouteRules = listOf(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "mixed-in")),
+            leadingRouteRules = buildList {
+                add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "mixed-in"))
+                managementProxyPort?.let {
+                    add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG))
+                    add(SingBoxRouteDnsBuilder.inboundProxyRouteRule(HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG))
+                }
+            },
+            directOutboundTag = directOutboundTag,
         )
 
         val root = buildJsonObject {
@@ -62,15 +78,21 @@ object DesktopProxyConfigFactory {
                             put("listen_port", listenPort)
                         },
                     )
+                    managementProxyPort?.let { port ->
+                        add(
+                            buildJsonObject {
+                                put("type", "mixed")
+                                put("tag", HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG)
+                                put("listen", "127.0.0.1")
+                                put("listen_port", port)
+                            },
+                        )
+                    }
                 },
             )
             put(
                 "outbounds",
-                buildJsonArray {
-                    add(buildOutbound(profile))
-                    add(buildJsonObject { put("type", "direct"); put("tag", "direct") })
-                    add(buildJsonObject { put("type", "block"); put("tag", "block") })
-                },
+                buildOutbounds(profile, validatedHomeRoute),
             )
             put("route", routeDns.route)
             routeDns.experimental?.let { put("experimental", it) }
@@ -85,10 +107,13 @@ object DesktopProxyConfigFactory {
         interfaceName: String = DEFAULT_VPN_INTERFACE_NAME,
         directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
         activeVerificationPort: Int? = null,
+        homeRoute: HomeSshRouteRuntimeOptions? = null,
     ): String {
         require(profile.protocol != ProxyProtocol.CUSTOM) {
             "Custom configs are not supported by the desktop VPN runtime yet"
         }
+        val validatedHomeRoute = homeRoute?.validated()
+        val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = dns,
             routingRules = routingRules,
@@ -96,10 +121,12 @@ object DesktopProxyConfigFactory {
                 add(SingBoxRouteDnsBuilder.sniffRouteRule())
                 if (activeVerificationPort != null) {
                     add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = "active-verify-in"))
+                    add(SingBoxRouteDnsBuilder.inboundProxyRouteRule("active-verify-in"))
                 }
             } +
                 buildDirectProbeRouteRules(directProbeRouting) +
                 listOf(SingBoxRouteDnsBuilder.dnsHijackRouteRule()),
+            directOutboundTag = directOutboundTag,
         )
 
         val root = buildJsonObject {
@@ -143,11 +170,7 @@ object DesktopProxyConfigFactory {
             )
             put(
                 "outbounds",
-                buildJsonArray {
-                    add(buildOutbound(profile))
-                    add(buildJsonObject { put("type", "direct"); put("tag", "direct") })
-                    add(buildJsonObject { put("type", "block"); put("tag", "block") })
-                },
+                buildOutbounds(profile, validatedHomeRoute),
             )
             put("route", routeDns.route)
             routeDns.experimental?.let { put("experimental", it) }
@@ -155,15 +178,34 @@ object DesktopProxyConfigFactory {
         return json.encodeToString(JsonObject.serializer(), root)
     }
 
-    private fun buildOutbound(profile: ProxyProfile): JsonObject {
+    private fun buildOutbounds(
+        profile: ProxyProfile,
+        homeRoute: HomeSshRouteRuntimeOptions?,
+    ): JsonArray {
+        return buildJsonArray {
+            add(buildOutbound(profile, homeRoute))
+            homeRoute?.let { HomeSshRouteConfigBuilder.buildOutbounds(it).forEach(::add) }
+            add(buildJsonObject { put("type", "direct"); put("tag", "direct") })
+            add(buildJsonObject { put("type", "block"); put("tag", "block") })
+        }
+    }
+
+    private fun buildOutbound(
+        profile: ProxyProfile,
+        homeRoute: HomeSshRouteRuntimeOptions?,
+    ): JsonObject {
         return SingBoxOutboundBuilder.buildOutbound(
             profile = profile,
             domainResolverTag = SingBoxRouteDnsBuilder.BOOTSTRAP_DNS_SERVER_TAG,
+            detourTag = homeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG },
             customConfigErrorMessage = "Custom configs are not supported by the desktop proxy runtime yet",
         )
     }
 
-    private fun buildDirectProbeRouteRules(routing: DesktopDirectProbeRouting): List<JsonObject> {
+    internal fun buildDirectProbeRouteRules(
+        routing: DesktopDirectProbeRouting,
+        outboundTag: String = "direct",
+    ): List<JsonObject> {
         val processNames = routing.processNames
             .map(String::trim)
             .filter(String::isNotEmpty)
@@ -178,7 +220,7 @@ object DesktopProxyConfigFactory {
                     buildJsonObject {
                         put("process_name", processNames.asJsonArray())
                         put("action", "route")
-                        put("outbound", "direct")
+                        put("outbound", outboundTag)
                     },
                 )
             }
@@ -187,7 +229,7 @@ object DesktopProxyConfigFactory {
                     buildJsonObject {
                         put("process_path", processPaths.asJsonArray())
                         put("action", "route")
-                        put("outbound", "direct")
+                        put("outbound", outboundTag)
                     },
                 )
             }

@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ConnectionStatusMessages
 import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 
 internal class AndroidSettingsActionsService(
@@ -18,9 +19,97 @@ internal class AndroidSettingsActionsService(
     private val updateLatencyHistoryEnabled: suspend (Boolean) -> Unit,
     private val updateConnectionLogEnabled: suspend (Boolean) -> Unit,
     private val updateConnectionTestToolsEnabled: suspend (Boolean) -> Unit,
+    private val credentialStore: com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore? = null,
+    private val updateHomeSshRouteSettings: suspend (com.kardinal.vpncontrol.model.HomeSshRouteSettings) -> Unit = {},
 ) {
     fun toggleDnsDialog() {
         controller.toggleDnsDialog()
+    }
+
+    fun toggleHomeSshRouteDialog() {
+        controller.update { state ->
+            if (state.showHomeSshRouteDialog) {
+                state.copy(showHomeSshRouteDialog = false)
+            } else {
+                val settings = state.homeSshRouteSettings
+                state.copy(
+                    showHomeSshRouteDialog = true,
+                    homeSshEnabledDraft = settings.enabled,
+                    homeSshHostDraft = settings.host,
+                    homeSshPortDraft = settings.port.toString(),
+                    homeSshUserDraft = settings.user,
+                    homeSshHostKeysDraft = settings.hostKeys.joinToString("\n"),
+                    homeSshRelayPortDraft = settings.relayPort.toString(),
+                )
+            }
+        }
+    }
+
+    fun updateHomeSshDraft(transform: (MainUiState) -> MainUiState) {
+        controller.update(transform)
+    }
+
+    fun importHomeSshPrivateKey(content: String) {
+        launch {
+            runCatching {
+                (credentialStore ?: error("Home SSH credential storage is unavailable"))
+                    .importPrivateKey(content)
+            }
+                .onSuccess {
+                    val state = controller.currentState()
+                    val updated = state.homeSshRouteSettings.copy(
+                        credentialVersion = state.homeSshRouteSettings.credentialVersion + 1L,
+                    )
+                    val restartRequired = state.isVpnRunning && updated.enabled
+                    updateHomeSshRouteSettings(updated)
+                    controller.update {
+                        it.copy(
+                            homeSshRouteSettings = updated,
+                            showHomeSshRestartDialog = restartRequired,
+                            homeSshRestartPending = restartRequired,
+                        )
+                    }
+                    updateStatus(SettingsStatusMessages.homeSshPrivateKeyImported())
+                }
+                .onFailure { error ->
+                    updateStatus(SettingsStatusMessages.homeSshPrivateKeyImportFailed(error.message.orEmpty()))
+                }
+        }
+    }
+
+    fun saveHomeSshRoute() {
+        val state = controller.currentState()
+        val resolved = HomeSshRouteLogic.fromDraft(state).mapCatching { settings ->
+            HomeSshRouteLogic.validate(settings, credentialStore?.hasPrivateKey() == true).getOrThrow()
+        }
+        if (resolved.isFailure) {
+            postStatus(SettingsStatusMessages.homeSshSettingsInvalid(resolved.exceptionOrNull()?.message.orEmpty()))
+            return
+        }
+        val settings = resolved.getOrThrow()
+        val restartRequired = state.isVpnRunning &&
+            HomeSshRouteLogic.runtimeFingerprint(settings) !=
+            HomeSshRouteLogic.runtimeFingerprint(state.homeSshRouteSettings)
+        controller.update {
+            it.copy(
+                homeSshRouteSettings = settings,
+                showHomeSshRouteDialog = false,
+                showHomeSshRestartDialog = restartRequired,
+                homeSshRestartPending = restartRequired,
+            )
+        }
+        launch {
+            updateHomeSshRouteSettings(settings)
+            updateStatus(SettingsStatusMessages.homeSshRouteSaved(restartRequired))
+        }
+    }
+
+    fun dismissHomeSshRestartDialog() {
+        controller.update { it.copy(showHomeSshRestartDialog = false) }
+    }
+
+    fun markHomeSshRestartApplied() {
+        controller.update { it.copy(showHomeSshRestartDialog = false, homeSshRestartPending = false) }
     }
 
     fun toggleUiSettingsDialog() {

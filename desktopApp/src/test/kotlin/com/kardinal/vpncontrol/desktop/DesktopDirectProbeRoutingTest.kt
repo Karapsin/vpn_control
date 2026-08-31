@@ -17,7 +17,6 @@ class DesktopDirectProbeRoutingTest {
                 osName = "Linux",
             )
 
-            assertTrue(routing.processNames.contains("vpn-control"))
             assertTrue(routing.processNames.contains("vpn-control-probe-sing-box"))
             assertTrue(
                 routing.processPaths.contains(
@@ -27,14 +26,7 @@ class DesktopDirectProbeRoutingTest {
                         .toString(),
                 ),
             )
-            assertTrue(
-                routing.processPaths.contains(
-                    validationDir.resolve("vpn-control")
-                        .toAbsolutePath()
-                        .normalize()
-                        .toString(),
-                ),
-            )
+            assertEquals(1, routing.processPaths.size)
         } finally {
             validationDir.toFile().deleteRecursively()
         }

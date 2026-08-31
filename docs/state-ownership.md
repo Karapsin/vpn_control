@@ -86,6 +86,14 @@ Desktop currently bypasses some `MainController` actions while its service owns 
 
 New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 
+## Home SSH Route Ownership
+
+- Shared model/core owns the persisted non-secret settings, validation, subscription route truth table, sing-box SSH/home-egress builders, and fail-closed custom-config transformation.
+- Android owns private-key storage in the app sandbox, temporary bootstrap runtime processes for inactive-session subscription downloads, and management-proxy persistence for the running VPN service.
+- Desktop owns private-key file permissions/ACLs, temporary bootstrap processes, management-proxy lifecycle, and the dedicated direct-probe executable.
+- The private key is never serialized into `PersistedState`, DataStore, `workspace.json`, generated documentation, or exported diagnostics.
+- Saving runtime-affecting settings never stops a live connection automatically. Platform settings services set the pending state, and the explicit restart action owns reconnection.
+
 ## Patch Rules
 
 - Put pure validation, draft mutation, selection decisions, and status-message keys in shared core.

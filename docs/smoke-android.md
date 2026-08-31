@@ -138,3 +138,15 @@ For every protocol above, watch for:
 - export/import changes the payload meaningfully
 - background refresh drops cached locations for that protocol
 - source labeling becomes wrong when `All` is active
+
+## Home SSH Route
+
+Use a reachable home SSH host and the loopback relay from `docs/home-ssh-route.md`:
+
+1. Import a dedicated private key, paste the verified host key, enable the route, and connect to a known-good VPN location.
+2. Confirm the resulting public address belongs to the selected VPN, not the home ISP, proving both relay legs are active.
+3. Refresh a subscription while connected and confirm it succeeds through the active session.
+4. Disconnect without disabling Home SSH Route, refresh again, and confirm it succeeds through the home relay.
+5. Stop the home relay and confirm refresh fails without a direct-network fallback.
+6. Change one SSH setting while connected. Confirm the current connection stays up until `Restart now` is accepted and the pending indicator clears afterward.
+7. Run Find Best with the route and VPN active; confirm candidate results remain comparable to a run without the active VPN.

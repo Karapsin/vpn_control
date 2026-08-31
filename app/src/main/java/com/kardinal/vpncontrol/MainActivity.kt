@@ -137,6 +137,16 @@ class MainActivity : ComponentActivity() {
             viewModel.postStatus(error.message ?: SubscriptionStatusMessages.sharedTextUnsupportedImport())
         }
     }
+    private val importHomeSshPrivateKeyLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: error("Could not open selected SSH private key")
+        }.onSuccess(viewModel::importHomeSshPrivateKey)
+            .onFailure { error -> viewModel.postStatus(error.message ?: "SSH private key import failed") }
+    }
     private val qrScanLauncher = registerForActivityResult(
         ScanContract(),
     ) { result ->
@@ -177,6 +187,19 @@ class MainActivity : ComponentActivity() {
                 onDnsModeChange = viewModel::onDnsModeChanged,
                 onDnsChange = viewModel::onDnsDraftChanged,
                 onSaveDns = viewModel::saveDns,
+                onToggleHomeSshRouteDialog = viewModel::toggleHomeSshRouteDialog,
+                onHomeSshEnabledChange = viewModel::setHomeSshEnabledDraft,
+                onHomeSshHostChange = viewModel::setHomeSshHostDraft,
+                onHomeSshPortChange = viewModel::setHomeSshPortDraft,
+                onHomeSshUserChange = viewModel::setHomeSshUserDraft,
+                onHomeSshHostKeysChange = viewModel::setHomeSshHostKeysDraft,
+                onHomeSshRelayPortChange = viewModel::setHomeSshRelayPortDraft,
+                onImportHomeSshPrivateKey = {
+                    importHomeSshPrivateKeyLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
+                },
+                onSaveHomeSshRoute = viewModel::saveHomeSshRoute,
+                onDismissHomeSshRestart = viewModel::dismissHomeSshRestartDialog,
+                onRestartForHomeSsh = viewModel::restartForHomeSshSettings,
                 onToggleRefreshPolicyDialog = viewModel::toggleRefreshPolicyDialog,
                 onSubscriptionRefreshPolicyChange = viewModel::onSubscriptionRefreshPolicyDraftChanged,
                 onFindBestAfterSubscriptionRefreshChange = viewModel::onFindBestAfterSubscriptionRefreshDraftChanged,

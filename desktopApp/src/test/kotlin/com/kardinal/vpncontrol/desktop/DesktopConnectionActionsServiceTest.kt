@@ -195,6 +195,7 @@ private class FakeConnectionActionsRuntime : DesktopRuntimeController {
         dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int?,
+        homeSshRouteSettings: com.kardinal.vpncontrol.model.HomeSshRouteSettings,
     ): Result<DesktopRuntimeSession> {
         startCalls += 1
         running = true

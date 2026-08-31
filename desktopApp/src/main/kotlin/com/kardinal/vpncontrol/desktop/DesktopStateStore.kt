@@ -9,6 +9,7 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
@@ -332,6 +333,18 @@ class DesktopStateStore(
             put("custom_dns", JsonPrimitive(state.dnsSettings.legacyRawAddress))
             put("use_custom_dns", JsonPrimitive(false))
             put(
+                "home_ssh_route",
+                buildJsonObject {
+                    put("enabled", JsonPrimitive(state.homeSshRouteSettings.enabled))
+                    put("host", JsonPrimitive(state.homeSshRouteSettings.host))
+                    put("port", JsonPrimitive(state.homeSshRouteSettings.port))
+                    put("user", JsonPrimitive(state.homeSshRouteSettings.user))
+                    put("host_keys", encodeStringArray(state.homeSshRouteSettings.hostKeys))
+                    put("relay_port", JsonPrimitive(state.homeSshRouteSettings.relayPort))
+                    put("credential_version", JsonPrimitive(state.homeSshRouteSettings.credentialVersion))
+                },
+            )
+            put(
                 "routing_rules",
                 buildJsonObject {
                     put("ignore_rules", JsonPrimitive(state.routingRules.ignoreRules))
@@ -372,6 +385,7 @@ class DesktopStateStore(
     private fun decodePersistedState(root: JsonObject): PersistedState {
         val validation = root["validation_settings"]?.jsonObject ?: JsonObject(emptyMap())
         val routing = root["routing_rules"]?.jsonObject ?: JsonObject(emptyMap())
+        val homeSshRoute = root["home_ssh_route"]?.jsonObject ?: JsonObject(emptyMap())
         return PersistedState(
             appLanguage = root.enum(
                 key = "app_language",
@@ -442,6 +456,18 @@ class DesktopStateStore(
                     root.string("legacy_custom_dns_address")
                 },
                 legacyEnabled = root.boolean("use_custom_dns"),
+            ),
+            homeSshRouteSettings = HomeSshRouteSettings(
+                enabled = homeSshRoute.boolean("enabled"),
+                host = homeSshRoute.string("host"),
+                port = homeSshRoute.int("port", HomeSshRouteSettings.DEFAULT_SSH_PORT),
+                user = homeSshRoute.string("user"),
+                hostKeys = homeSshRoute.stringList("host_keys"),
+                relayPort = homeSshRoute.int(
+                    "relay_port",
+                    HomeSshRouteSettings.DEFAULT_HOME_RELAY_PORT,
+                ),
+                credentialVersion = homeSshRoute.long("credential_version"),
             ),
             routingRules = RoutingRules(
                 ignoreRules = routing.boolean("ignore_rules"),

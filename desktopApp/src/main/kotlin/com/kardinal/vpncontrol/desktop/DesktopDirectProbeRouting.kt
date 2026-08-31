@@ -9,6 +9,7 @@ data class DesktopDirectProbeRouting(
     val processPaths: List<String> = emptyList(),
 ) {
     companion object {
+        @Suppress("UNUSED_PARAMETER")
         fun forValidationDirectory(
             validationDirectory: Path,
             currentProcessCommand: String? = ProcessHandle.current().info().command().orElse(null),
@@ -18,16 +19,9 @@ data class DesktopDirectProbeRouting(
                 .toAbsolutePath()
                 .normalize()
                 .toString()
-            val currentAppPath = currentProcessCommand
-                ?.let(Path::of)
-                ?.toAbsolutePath()
-                ?.normalize()
-                ?.takeIf { it.fileName?.toString()?.isVpnControlExecutableName() == true }
-                ?.toString()
-
             return DesktopDirectProbeRouting(
                 processNames = defaultProcessNames(),
-                processPaths = listOfNotNull(probePath, currentAppPath),
+                processPaths = listOf(probePath),
             )
         }
 
@@ -41,8 +35,6 @@ data class DesktopDirectProbeRouting(
 
         fun defaultProcessNames(): List<String> {
             return listOf(
-                "vpn-control",
-                "vpn-control.exe",
                 PROBE_SING_BOX_BASENAME,
                 "$PROBE_SING_BOX_BASENAME.exe",
             )
@@ -89,9 +81,4 @@ private fun shouldRefreshProbeBinary(source: Path, target: Path): Boolean {
         Files.size(source) != Files.size(target) ||
             Files.getLastModifiedTime(source) > Files.getLastModifiedTime(target)
     }.getOrDefault(true)
-}
-
-private fun String.isVpnControlExecutableName(): Boolean {
-    val withoutExtension = removeSuffix(".exe")
-    return withoutExtension == "vpn-control"
 }

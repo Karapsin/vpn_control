@@ -9,13 +9,17 @@ import org.json.JSONObject
 
 object SingBoxConfigFactory {
     const val DEFAULT_PROXY_ONLY_PORT = 2080
+    const val DEFAULT_VPN_MANAGEMENT_PROXY_PORT = 2081
 
     fun buildTunConfig(
         profile: ProxyProfile,
         dns: DnsSettings,
         routingRules: RoutingRules,
         activeVerificationPort: Int? = null,
+        homeRoute: HomeSshRouteRuntimeOptions? = null,
     ): String {
+        val validatedHomeRoute = homeRoute?.validated()
+        val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = dns,
             routingRules = routingRules,
@@ -30,6 +34,7 @@ object SingBoxConfigFactory {
                     add(SingBoxRouteDnsBuilder.quicCompatibilityBlockRouteRule())
                 }
             },
+            directOutboundTag = directOutboundTag,
         )
 
         val tunInbound = JSONObject()
@@ -68,23 +73,26 @@ object SingBoxConfigFactory {
             )
             .put(
                 "outbounds",
-                JSONArray()
-                    .put(buildOutbound(profile))
-                    .put(JSONObject().put("type", "direct").put("tag", "direct"))
-                    .put(JSONObject().put("type", "block").put("tag", "block")),
+                buildOutbounds(profile, validatedHomeRoute),
             )
             .put("route", routeDns.route.toAndroidJsonObject())
         routeDns.experimental?.let { root.put("experimental", it.toAndroidJsonObject()) }
         return root.toString(2)
     }
 
-    fun buildProxyValidationConfig(profile: ProxyProfile, httpPort: Int, dns: DnsSettings): String {
+    fun buildProxyValidationConfig(
+        profile: ProxyProfile,
+        httpPort: Int,
+        dns: DnsSettings,
+        homeRoute: HomeSshRouteRuntimeOptions? = null,
+    ): String {
         return buildValidationConfig(
             profile = profile,
             listenPort = httpPort,
             dns = dns,
             inboundType = "http",
             inboundTag = "http-in",
+            homeRoute = homeRoute,
         )
     }
 
@@ -93,10 +101,24 @@ object SingBoxConfigFactory {
         dns: DnsSettings,
         routingRules: RoutingRules,
         listenPort: Int = DEFAULT_PROXY_ONLY_PORT,
+        managementProxyPort: Int? = null,
+        homeRoute: HomeSshRouteRuntimeOptions? = null,
     ): String {
+        require(managementProxyPort == null || managementProxyPort != listenPort) {
+            "Management proxy port must differ from the user proxy port"
+        }
+        val validatedHomeRoute = homeRoute?.validated()
+        val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
         val routeDns = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = dns,
             routingRules = routingRules,
+            leadingRouteRules = buildList {
+                managementProxyPort?.let {
+                    add(SingBoxRouteDnsBuilder.sniffRouteRule(inboundTag = HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG))
+                    add(SingBoxRouteDnsBuilder.inboundProxyRouteRule(HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG))
+                }
+            },
+            directOutboundTag = directOutboundTag,
         )
 
         val root = JSONObject()
@@ -104,21 +126,30 @@ object SingBoxConfigFactory {
             .put("dns", routeDns.dns.toAndroidJsonObject())
             .put(
                 "inbounds",
-                JSONArray().put(
-                    JSONObject()
-                        .put("type", "mixed")
-                        .put("tag", "mixed-in")
-                        .put("listen", "127.0.0.1")
-                        .put("listen_port", listenPort)
-                        .put("sniff", true),
-                ),
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("type", "mixed")
+                            .put("tag", "mixed-in")
+                            .put("listen", "127.0.0.1")
+                            .put("listen_port", listenPort)
+                            .put("sniff", true),
+                    )
+                    .apply {
+                        managementProxyPort?.let { port ->
+                            put(
+                                JSONObject()
+                                    .put("type", "mixed")
+                                    .put("tag", HomeSshRouteConfigBuilder.MANAGEMENT_INBOUND_TAG)
+                                    .put("listen", "127.0.0.1")
+                                    .put("listen_port", port),
+                            )
+                        }
+                    },
             )
             .put(
                 "outbounds",
-                JSONArray()
-                    .put(buildOutbound(profile))
-                    .put(JSONObject().put("type", "direct").put("tag", "direct"))
-                    .put(JSONObject().put("type", "block").put("tag", "block")),
+                buildOutbounds(profile, validatedHomeRoute),
             )
             .put("route", routeDns.route.toAndroidJsonObject())
         routeDns.experimental?.let { root.put("experimental", it.toAndroidJsonObject()) }
@@ -131,9 +162,11 @@ object SingBoxConfigFactory {
         dns: DnsSettings,
         inboundType: String,
         inboundTag: String,
+        homeRoute: HomeSshRouteRuntimeOptions?,
     ): String {
+        val validatedHomeRoute = homeRoute?.validated()
+        val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
         val directCidrs = SingBoxRouteDnsBuilder.directCidrs()
-        val outbound = buildOutbound(profile)
         val inbounds = JSONArray().put(
             JSONObject()
                 .put("type", inboundType)
@@ -141,10 +174,7 @@ object SingBoxConfigFactory {
                 .put("listen", "127.0.0.1")
                 .put("listen_port", listenPort),
         )
-        val outbounds = JSONArray()
-            .put(outbound)
-            .put(JSONObject().put("type", "direct").put("tag", "direct"))
-            .put(JSONObject().put("type", "block").put("tag", "block"))
+        val outbounds = buildOutbounds(profile, validatedHomeRoute)
         return JSONObject()
             .put("log", JSONObject().put("level", "warning"))
             .put(
@@ -160,7 +190,10 @@ object SingBoxConfigFactory {
                     .put(
                         "rules",
                         JSONArray().put(
-                            SingBoxRouteDnsBuilder.directCidrRouteRule(directCidrs).toAndroidJsonObject(),
+                            SingBoxRouteDnsBuilder.directCidrRouteRule(
+                                directCidrs,
+                                directOutboundTag,
+                            ).toAndroidJsonObject(),
                         ),
                     )
                     .put("default_domain_resolver", SingBoxRouteDnsBuilder.SECURE_DNS_SERVER_TAG)
@@ -169,11 +202,32 @@ object SingBoxConfigFactory {
             .toString(2)
     }
 
-    private fun buildOutbound(profile: ProxyProfile): JSONObject {
+    private fun buildOutbounds(
+        profile: ProxyProfile,
+        homeRoute: HomeSshRouteRuntimeOptions?,
+    ): JSONArray {
+        return JSONArray()
+            .put(buildOutbound(profile, homeRoute))
+            .apply {
+                homeRoute?.let { options ->
+                    HomeSshRouteConfigBuilder.buildOutbounds(options).forEach {
+                        put(it.toAndroidJsonObject())
+                    }
+                }
+            }
+            .put(JSONObject().put("type", "direct").put("tag", "direct"))
+            .put(JSONObject().put("type", "block").put("tag", "block"))
+    }
+
+    private fun buildOutbound(
+        profile: ProxyProfile,
+        homeRoute: HomeSshRouteRuntimeOptions?,
+    ): JSONObject {
         return JSONObject(
             SingBoxOutboundBuilder.buildOutbound(
                 profile = profile,
                 domainResolverTag = SingBoxRouteDnsBuilder.BOOTSTRAP_DNS_SERVER_TAG,
+                detourTag = homeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG },
             ).toString(),
         )
     }

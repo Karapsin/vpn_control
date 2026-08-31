@@ -13,7 +13,21 @@ The app models these proxy protocols:
 - `SOCKS`
 - `CUSTOM`
 
-Non-custom profiles are generated from structured model fields. Custom profiles are treated as direct runtime JSON and must not be forced through structured outbound generation.
+Non-custom profiles are generated from structured model fields. Custom profiles remain full runtime JSON and are not passed through structured profile generation. VPN Control may apply narrowly scoped runtime transformations for the localhost management proxy, isolated desktop probes, and the optional Home SSH Route. Home-route transformation is fail-closed: unknown outbound/DNS types, unsupported top-level network features, invalid detour graphs, and reserved-tag collisions reject the config.
+
+## Home SSH Route
+
+When enabled, generated runtime configs form this outbound chain:
+
+```text
+application traffic -> selected proxy -> home SOCKS relay -> pinned SSH outbound -> public network
+```
+
+The SOCKS relay is reached as `127.0.0.1` from the remote side of the SSH connection. UDP uses sing-box UDP-over-TCP v2 for the SSH leg. The SSH host uses the dedicated bootstrap resolver; this establishment traffic is the intentional direct exception.
+
+Routing-rule `DIRECT` actions, direct domain suffixes, and remote rule-set downloads use the home egress while the feature is enabled. Each active runtime also exposes a loopback-only mixed management inbound so subscription downloads can use the already-selected session even though the VPN Control app process itself is excluded from Android VPN routing and desktop direct-probe exemptions no longer include the app process.
+
+Desktop direct probes run from the dedicated `vpn-control-probe-sing-box` executable and use a reserved direct outbound. That exception is added to both generated and accepted custom configs, so the currently active VPN does not affect Find Best. Custom profiles remain excluded as Find Best candidates.
 
 ## Android Config Shape
 

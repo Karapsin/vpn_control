@@ -5,6 +5,10 @@ import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
+import com.kardinal.vpncontrol.data.HomeSshRouteRuntimeOptions
+import com.kardinal.vpncontrol.data.SingBoxCustomConfigTransformer
+import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -22,6 +26,7 @@ import kotlinx.coroutines.withContext
 data class DesktopRuntimeSession(
     val appMode: AppMode,
     val listenPort: Int?,
+    val managementProxyPort: Int? = listenPort,
     val interfaceName: String?,
     val configJson: String,
     val logFile: Path,
@@ -39,12 +44,18 @@ class DesktopProxyRuntimeManager(
     private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,
     private val windowsAdministratorOverride: Boolean? = null,
+    private val homeSshCredentialStore: DesktopHomeSshCredentialStore = DesktopHomeSshCredentialStore(
+        baseDir.parent ?: baseDir,
+    ),
 ) : DesktopRuntimeController {
     @Volatile
     private var process: Process? = null
 
     @Volatile
     private var listenPort: Int? = null
+
+    @Volatile
+    private var managementProxyPort: Int? = null
 
     @Volatile
     private var logFile: Path? = null
@@ -64,24 +75,49 @@ class DesktopProxyRuntimeManager(
         dnsSettings: DnsSettings,
         appMode: AppMode,
         activeVerificationPort: Int?,
+        homeSshRouteSettings: HomeSshRouteSettings,
     ): Result<DesktopRuntimeSession> = withContext(Dispatchers.IO) {
         runCatching {
             stopActiveProcess()
             runtimeConfigStore.clearRuntimeConfig()
 
             Files.createDirectories(baseDir)
-            val port = if (appMode == AppMode.PROXY_ONLY) allocateListenPort() else null
+            val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: allocateListenPort()
+            val userProxyPort = when {
+                appMode != AppMode.PROXY_ONLY -> managementPort
+                profile.protocol == ProxyProtocol.CUSTOM -> managementPort
+                else -> allocateListenPort(excluding = managementPort)
+            }
+            val homeRoute = homeSshRouteSettings.takeIf { it.enabled }?.let { settings ->
+                HomeSshRouteRuntimeOptions(
+                    settings = settings,
+                    privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
+                        ?: error("Home SSH private key is missing"),
+                ).validated()
+            }
             val interfaceName = if (appMode == AppMode.VPN) {
                 DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
             } else {
                 null
             }
-            val configJson = when (appMode) {
+            val configJson = if (profile.protocol == ProxyProtocol.CUSTOM) {
+                SingBoxCustomConfigTransformer.transform(
+                    rawConfig = profile.customConfigJson,
+                    managementProxyPort = managementPort,
+                    homeRoute = homeRoute,
+                    trustedDirectBypassRules = DesktopProxyConfigFactory.buildDirectProbeRouteRules(
+                        routing = directProbeRouting,
+                        outboundTag = SingBoxCustomConfigTransformer.TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG,
+                    ),
+                )
+            } else when (appMode) {
                 AppMode.PROXY_ONLY -> DesktopProxyConfigFactory.buildProxyOnlyConfig(
                     profile = profile,
                     dns = dnsSettings,
                     routingRules = routingRules,
-                    listenPort = checkNotNull(port),
+                    listenPort = userProxyPort,
+                    managementProxyPort = managementPort,
+                    homeRoute = homeRoute,
                 )
                 AppMode.VPN ->
                     DesktopProxyConfigFactory.buildVpnConfig(
@@ -90,7 +126,8 @@ class DesktopProxyRuntimeManager(
                         routingRules = routingRules,
                         interfaceName = checkNotNull(interfaceName),
                         directProbeRouting = directProbeRouting,
-                        activeVerificationPort = activeVerificationPort,
+                        activeVerificationPort = managementPort,
+                        homeRoute = homeRoute,
                     )
             }
             val configPath = baseDir.resolve("runtime-sing-box-${appMode.name.lowercase()}.json")
@@ -101,8 +138,8 @@ class DesktopProxyRuntimeManager(
             val preflight = runPreflight(
                 appMode = appMode,
                 configPath = configPath,
-                listenPort = port,
-                activeVerificationPort = activeVerificationPort,
+                listenPort = userProxyPort,
+                activeVerificationPort = managementPort,
             )
             lastPreflightReport = preflight
             if (!preflight.isReady) {
@@ -128,13 +165,16 @@ class DesktopProxyRuntimeManager(
             }
 
             process = started
-            listenPort = port
+            listenPort = userProxyPort
+            managementProxyPort = managementPort
             logFile = runtimeLogFile
             activeMode = appMode
 
             val startedSuccessfully = when (appMode) {
-                AppMode.PROXY_ONLY -> waitForPort(checkNotNull(port))
-                AppMode.VPN -> waitForVpnProcess()
+                AppMode.PROXY_ONLY ->
+                    waitForPort(userProxyPort) &&
+                        (managementPort == userProxyPort || waitForPort(managementPort))
+                AppMode.VPN -> waitForVpnProcess() && waitForPort(managementPort)
             }
             if (!startedSuccessfully) {
                 val failureMessage = buildStartupFailureMessage(runtimeLogFile)
@@ -145,7 +185,8 @@ class DesktopProxyRuntimeManager(
 
             DesktopRuntimeSession(
                 appMode = appMode,
-                listenPort = port,
+                listenPort = userProxyPort,
+                managementProxyPort = managementPort,
                 interfaceName = interfaceName,
                 configJson = configJson,
                 logFile = runtimeLogFile,
@@ -172,6 +213,8 @@ class DesktopProxyRuntimeManager(
 
     override fun currentPort(): Int? = if (isRunning()) listenPort else null
 
+    override fun currentManagementProxyPort(): Int? = if (isRunning()) managementProxyPort else null
+
     override fun currentMode(): AppMode? = if (isRunning()) activeMode else null
 
     fun currentProcessId(): Long? = process?.takeIf { it.isAlive }?.pid()
@@ -193,9 +236,10 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private fun allocateListenPort(): Int {
-        ServerSocket(0).use { socket ->
-            return socket.localPort
+    private fun allocateListenPort(excluding: Int? = null): Int {
+        while (true) {
+            val candidate = ServerSocket(0).use { socket -> socket.localPort }
+            if (candidate != excluding) return candidate
         }
     }
 
@@ -258,17 +302,10 @@ class DesktopProxyRuntimeManager(
                 add(vpnLocalPortCheck(activeVerificationPort))
             } else {
                 val port = checkNotNull(listenPort)
-                add(
-                    if (isPortAvailable(port)) {
-                        DesktopPreflightCheck("local proxy port", DesktopPreflightStatus.PASS, "127.0.0.1:$port is available")
-                    } else {
-                        DesktopPreflightCheck(
-                            name = "local proxy port",
-                            status = DesktopPreflightStatus.FAIL,
-                            detail = "Port $port is already in use. Stop the other process or retry.",
-                        )
-                    },
-                )
+                add(localProxyPortCheck("local proxy port", port))
+                activeVerificationPort
+                    ?.takeIf { it != port }
+                    ?.let { add(localProxyPortCheck("management proxy port", it)) }
             }
 
             if (binary != null) {
@@ -317,6 +354,18 @@ class DesktopProxyRuntimeManager(
                 name = "active verification port",
                 status = DesktopPreflightStatus.FAIL,
                 detail = "Port $port is already in use. Retry Find Best or stop the other process.",
+            )
+        }
+    }
+
+    private fun localProxyPortCheck(name: String, port: Int): DesktopPreflightCheck {
+        return if (isPortAvailable(port)) {
+            DesktopPreflightCheck(name, DesktopPreflightStatus.PASS, "127.0.0.1:$port is available")
+        } else {
+            DesktopPreflightCheck(
+                name = name,
+                status = DesktopPreflightStatus.FAIL,
+                detail = "Port $port is already in use. Stop the other process or retry.",
             )
         }
     }
@@ -642,6 +691,7 @@ class DesktopProxyRuntimeManager(
         stopOrphanRuntimeProcesses(excludedPid = active?.pid())
         process = null
         listenPort = null
+        managementProxyPort = null
         logFile = null
         activeMode = null
     }

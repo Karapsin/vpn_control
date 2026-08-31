@@ -430,6 +430,25 @@ private fun DesktopVpnControlApp(
         onDnsModeDraftChange = service::setDnsModeDraft,
         onCustomDnsDraftChange = service::setCustomDnsDraft,
         onSaveDns = service::saveDns,
+        onToggleHomeSshRouteDialog = service::toggleHomeSshRouteDialog,
+        onHomeSshEnabledChange = service::setHomeSshEnabledDraft,
+        onHomeSshHostChange = service::setHomeSshHostDraft,
+        onHomeSshPortChange = service::setHomeSshPortDraft,
+        onHomeSshUserChange = service::setHomeSshUserDraft,
+        onHomeSshHostKeysChange = service::setHomeSshHostKeysDraft,
+        onHomeSshRelayPortChange = service::setHomeSshRelayPortDraft,
+        onImportHomeSshPrivateKey = {
+            DesktopTextTransfer.openTextFile(
+                window,
+                appStrings.get(UiText.IMPORT_PRIVATE_KEY),
+            ).onSuccess { content -> content?.let(service::importHomeSshPrivateKey) }
+                .onFailure { error -> service.postStatus(error.message ?: "SSH private key import failed") }
+        },
+        onSaveHomeSshRoute = service::saveHomeSshRoute,
+        onDismissHomeSshRestart = service::dismissHomeSshRestartDialog,
+        onRestartForHomeSsh = {
+            coroutineScope.launch { service.restartForHomeSshSettings() }
+        },
         onToggleAppModeDialog = service::toggleAppModeDialog,
         onSetAppMode = { mode ->
             if (!state.isBusy) {
@@ -505,6 +524,7 @@ private fun DesktopVpnControlApp(
                         DesktopAdditionalSettingsMenu(
                             state = state,
                             onToggleDnsDialog = service::toggleDnsDialog,
+                            onToggleHomeSshRouteDialog = service::toggleHomeSshRouteDialog,
                             onSetStartOnBootEnabled = service::setStartOnBootEnabled,
                             onSetAppMode = { mode ->
                                 if (!state.isBusy) {
@@ -1022,6 +1042,7 @@ private fun DesktopProfileContent(
 private fun DesktopAdditionalSettingsMenu(
     state: MainUiState,
     onToggleDnsDialog: () -> Unit,
+    onToggleHomeSshRouteDialog: () -> Unit,
     onSetStartOnBootEnabled: (Boolean) -> Unit,
     onSetAppMode: (AppMode) -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
@@ -1053,6 +1074,24 @@ private fun DesktopAdditionalSettingsMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            DropdownMenuItem(
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(strings.get(UiText.SETTINGS_HOME_SSH_ROUTE))
+                        Text(
+                            strings.get(
+                                if (state.homeSshRouteSettings.enabled) UiText.SETTINGS_ENABLED else UiText.SETTINGS_DISABLED,
+                            ) + if (state.homeSshRestartPending) " • ${strings.get(UiText.HOME_SSH_PENDING)}" else "",
+                            color = Color(0xFF4A6070),
+                            fontSize = 12.sp,
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onToggleHomeSshRouteDialog()
+                },
+            )
             DropdownMenuItem(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1220,6 +1259,17 @@ private fun DesktopSettingsDialogs(
     onDnsModeDraftChange: (DnsMode) -> Unit,
     onCustomDnsDraftChange: (String) -> Unit,
     onSaveDns: () -> Unit,
+    onToggleHomeSshRouteDialog: () -> Unit,
+    onHomeSshEnabledChange: (Boolean) -> Unit,
+    onHomeSshHostChange: (String) -> Unit,
+    onHomeSshPortChange: (String) -> Unit,
+    onHomeSshUserChange: (String) -> Unit,
+    onHomeSshHostKeysChange: (String) -> Unit,
+    onHomeSshRelayPortChange: (String) -> Unit,
+    onImportHomeSshPrivateKey: () -> Unit,
+    onSaveHomeSshRoute: () -> Unit,
+    onDismissHomeSshRestart: () -> Unit,
+    onRestartForHomeSsh: () -> Unit,
     onToggleAppModeDialog: () -> Unit,
     onSetAppMode: (AppMode) -> Unit,
     onToggleRefreshPolicyDialog: () -> Unit,
@@ -1302,6 +1352,113 @@ private fun DesktopSettingsDialogs(
             dismissButton = {
                 TextButton(onClick = onToggleDnsDialog) {
                     Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showHomeSshRouteDialog) {
+        AlertDialog(
+            onDismissRequest = onToggleHomeSshRouteDialog,
+            title = { Text(strings.get(UiText.SETTINGS_HOME_SSH_ROUTE), color = Color.White) },
+            containerColor = Color(0xFF141F2D),
+            textContentColor = Color.White,
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(strings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(strings.get(UiText.HOME_SSH_ENABLED))
+                        Switch(checked = state.homeSshEnabledDraft, onCheckedChange = onHomeSshEnabledChange)
+                    }
+                    OutlinedTextField(
+                        value = state.homeSshHostDraft,
+                        onValueChange = onHomeSshHostChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.HOME_SSH_HOST)) },
+                        placeholder = { Text("ssh.karapsin.com") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshPortDraft,
+                        onValueChange = onHomeSshPortChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.HOME_SSH_PORT)) },
+                        placeholder = { Text("228") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshUserDraft,
+                        onValueChange = onHomeSshUserChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.HOME_SSH_USER)) },
+                        placeholder = { Text("kardinal") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshHostKeysDraft,
+                        onValueChange = onHomeSshHostKeysChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.HOME_SSH_HOST_KEYS)) },
+                        supportingText = { Text(strings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
+                        minLines = 2,
+                    )
+                    OutlinedTextField(
+                        value = state.homeSshRelayPortDraft,
+                        onValueChange = onHomeSshRelayPortChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(strings.get(UiText.HOME_SSH_RELAY_PORT)) },
+                        placeholder = { Text("10808") },
+                        singleLine = true,
+                    )
+                    OutlinedButton(onClick = onImportHomeSshPrivateKey, modifier = Modifier.fillMaxWidth()) {
+                        Text(strings.get(UiText.IMPORT_PRIVATE_KEY))
+                    }
+                    Text(
+                        strings.get(
+                            if (state.homeSshRouteSettings.credentialVersion > 0L) {
+                                UiText.HOME_SSH_KEY_IMPORTED
+                            } else {
+                                UiText.HOME_SSH_KEY_MISSING
+                            },
+                        ),
+                        color = Color(0xFFD3E3EE),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onSaveHomeSshRoute) {
+                    Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onToggleHomeSshRouteDialog) {
+                    Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
+                }
+            },
+        )
+    }
+
+    if (state.showHomeSshRestartDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissHomeSshRestart,
+            title = { Text(strings.get(UiText.HOME_SSH_RESTART_TITLE), color = Color.White) },
+            text = { Text(strings.get(UiText.HOME_SSH_RESTART_DESCRIPTION), color = Color(0xFFD3E3EE)) },
+            containerColor = Color(0xFF141F2D),
+            confirmButton = {
+                TextButton(onClick = onRestartForHomeSsh) {
+                    Text(strings.get(UiText.RESTART_NOW), color = Color(0xFF9ED6FF))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissHomeSshRestart) {
+                    Text(strings.get(UiText.RESTART_LATER), color = Color(0xFFD3E3EE))
                 }
             },
         )

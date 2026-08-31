@@ -104,6 +104,15 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - With VPN on, reboot and confirm the app starts in tray after the tray icon appears and reconnects to the remembered location.
    - With VPN off, reboot and confirm the app starts without connecting.
 
+10. Home SSH Route
+
+   - Prepare the loopback-only relay from `docs/home-ssh-route.md`, import a dedicated unencrypted key, and paste the verified host key.
+   - Enable the route and connect. Confirm the public address belongs to the selected VPN rather than the home ISP.
+   - Refresh a subscription while connected; then disconnect and refresh again with Home SSH Route still enabled. Both should succeed through their specified routes.
+   - Stop the home relay and confirm inactive-session refresh fails without direct fallback.
+   - Change one SSH setting while connected. Confirm no automatic interruption occurs, the pending marker appears, and only `Restart now` reapplies it.
+   - Repeat Find Best while connected and confirm the dedicated probe result is not biased by the active VPN, including when the active location is a custom config.
+
 ## Logs To Capture
 
 Capture these files locally when a desktop smoke test fails:

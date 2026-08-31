@@ -21,6 +21,7 @@ import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -90,6 +91,13 @@ class ProfileStorage(
         val dnsMode = stringPreferencesKey("dns_mode")
         val customDnsEndpoint = stringPreferencesKey("custom_dns_endpoint")
         val legacyCustomDnsAddress = stringPreferencesKey("legacy_custom_dns_address")
+        val homeSshEnabled = booleanPreferencesKey("home_ssh_enabled")
+        val homeSshHost = stringPreferencesKey("home_ssh_host")
+        val homeSshPort = intPreferencesKey("home_ssh_port")
+        val homeSshUser = stringPreferencesKey("home_ssh_user")
+        val homeSshHostKeys = stringPreferencesKey("home_ssh_host_keys")
+        val homeSshRelayPort = intPreferencesKey("home_ssh_relay_port")
+        val homeSshCredentialVersion = longPreferencesKey("home_ssh_credential_version")
         val ignoreRules = booleanPreferencesKey("ignore_rules")
         val blockQuicUdp443 = booleanPreferencesKey("block_quic_udp_443")
         val proxyPackages = stringPreferencesKey("proxy_packages")
@@ -105,6 +113,7 @@ class ProfileStorage(
         val runtimeConfigJson = stringPreferencesKey("runtime_config_json")
         val statusMessage = stringPreferencesKey("status_message")
         val isVpnRunning = booleanPreferencesKey("is_vpn_running")
+        val managementProxyPort = intPreferencesKey("management_proxy_port")
         val sessionStatsEnabled = booleanPreferencesKey("session_stats_enabled")
         val liveTrafficStatsEnabled = booleanPreferencesKey("live_traffic_stats_enabled")
         val profileTotalsEnabled = booleanPreferencesKey("profile_totals_enabled")
@@ -580,6 +589,23 @@ class ProfileStorage(
         )
     }
 
+    override suspend fun updateHomeSshRouteSettings(settings: HomeSshRouteSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.homeSshEnabled] = settings.enabled
+            prefs[Keys.homeSshHost] = settings.host
+            prefs[Keys.homeSshPort] = settings.port
+            prefs[Keys.homeSshUser] = settings.user
+            prefs[Keys.homeSshHostKeys] = encodeList(settings.hostKeys)
+            prefs[Keys.homeSshRelayPort] = settings.relayPort
+            prefs[Keys.homeSshCredentialVersion] = settings.credentialVersion
+        }
+        DiagnosticsLogger.append(
+            context,
+            "Home SSH route updated: enabled=${settings.enabled} host_present=${settings.host.isNotBlank()} " +
+                "host_key_count=${settings.hostKeys.size} credential_version=${settings.credentialVersion}",
+        )
+    }
+
     override suspend fun updateRoutingRules(rules: RoutingRules) {
         context.dataStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
@@ -601,6 +627,7 @@ class ProfileStorage(
         summary: String,
         runtimeConfigJson: String,
         sourceUrl: String,
+        managementProxyPort: Int,
     ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.selectedProfileName] = profile.remarks
@@ -610,6 +637,7 @@ class ProfileStorage(
             prefs[Keys.selectedProfileSourceUrl] = sourceUrl
             prefs[Keys.lastBenchmarkSummary] = summary
             prefs[Keys.runtimeConfigJson] = runtimeConfigJson
+            prefs[Keys.managementProxyPort] = managementProxyPort.takeIf { it in 1..65535 } ?: 0
         }
         DiagnosticsLogger.append(
             context,
@@ -711,6 +739,7 @@ class ProfileStorage(
             prefs[Keys.selectedProfileSourceUrl] = sourceUrlOverride ?: state.selectedProfileSourceUrl
             prefs[Keys.lastBenchmarkSummary] = state.lastBenchmarkSummary
             prefs[Keys.runtimeConfigJson] = state.runtimeConfigJson
+            prefs[Keys.managementProxyPort] = state.managementProxyPort.takeIf { it in 1..65535 } ?: 0
         }
         if (restoreRuntimeArtifacts) {
             runCatching {
@@ -753,6 +782,7 @@ class ProfileStorage(
                 recordProfileTrafficTotals(prefs)
             }
             if (!running) {
+                prefs[Keys.managementProxyPort] = 0
                 val selectedStored = LocationConfigs.selectedStoredReference(
                     selectedProfileJson = prefs[Keys.selectedProfileJson].orEmpty(),
                     selectedProfileRawLink = prefs[Keys.selectedProfileRawLink].orEmpty(),
@@ -972,6 +1002,16 @@ class ProfileStorage(
                 },
                 legacyEnabled = preferences[Keys.useCustomDns] ?: false,
             ),
+            homeSshRouteSettings = HomeSshRouteSettings(
+                enabled = preferences[Keys.homeSshEnabled] ?: false,
+                host = preferences[Keys.homeSshHost].orEmpty(),
+                port = preferences[Keys.homeSshPort] ?: HomeSshRouteSettings.DEFAULT_SSH_PORT,
+                user = preferences[Keys.homeSshUser].orEmpty(),
+                hostKeys = decodeList(preferences[Keys.homeSshHostKeys]),
+                relayPort = preferences[Keys.homeSshRelayPort]
+                    ?: HomeSshRouteSettings.DEFAULT_HOME_RELAY_PORT,
+                credentialVersion = preferences[Keys.homeSshCredentialVersion] ?: 0L,
+            ),
             routingRules = RoutingRules(
                 ignoreRules = preferences[Keys.ignoreRules] ?: false,
                 blockQuicUdp443 = preferences[Keys.blockQuicUdp443] ?: false,
@@ -997,6 +1037,7 @@ class ProfileStorage(
             runtimeConfigJson = preferences[Keys.runtimeConfigJson].orEmpty(),
             statusMessage = preferences[Keys.statusMessage] ?: "Idle",
             isVpnRunning = preferences[Keys.isVpnRunning] ?: false,
+            managementProxyPort = preferences[Keys.managementProxyPort] ?: 0,
             sessionStatsEnabled = preferences[Keys.sessionStatsEnabled] ?: false,
             liveTrafficStatsEnabled = preferences[Keys.liveTrafficStatsEnabled] ?: false,
             profileTotalsEnabled = preferences[Keys.profileTotalsEnabled] ?: false,

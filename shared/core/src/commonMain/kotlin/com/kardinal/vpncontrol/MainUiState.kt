@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.InstalledApp
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -63,6 +64,13 @@ data class MainUiState(
     val dnsSettings: DnsSettings = DnsSettings(),
     val dnsModeDraft: DnsMode = DnsMode.AUTOMATIC,
     val customDnsEndpointDraft: String = "",
+    val homeSshRouteSettings: HomeSshRouteSettings = HomeSshRouteSettings(),
+    val homeSshEnabledDraft: Boolean = false,
+    val homeSshHostDraft: String = "",
+    val homeSshPortDraft: String = HomeSshRouteSettings.DEFAULT_SSH_PORT.toString(),
+    val homeSshUserDraft: String = "",
+    val homeSshHostKeysDraft: String = "",
+    val homeSshRelayPortDraft: String = HomeSshRouteSettings.DEFAULT_HOME_RELAY_PORT.toString(),
     val routingRules: RoutingRules = RoutingRules(),
     val routingIgnoreRulesDraft: Boolean = false,
     val routingBlockQuicUdp443Draft: Boolean = false,
@@ -101,6 +109,9 @@ data class MainUiState(
     val latencyHistory: List<LatencyHistoryEntry> = emptyList(),
     val connectionLog: List<ConnectionLogEntry> = emptyList(),
     val showDnsDialog: Boolean = false,
+    val showHomeSshRouteDialog: Boolean = false,
+    val showHomeSshRestartDialog: Boolean = false,
+    val homeSshRestartPending: Boolean = false,
     val showUiSettingsDialog: Boolean = false,
     val showAppModeDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
@@ -200,6 +211,37 @@ object MainUiStateProjector {
                 current.customDnsEndpointDraft
             } else {
                 persisted.dnsSettings.endpoint
+            },
+            homeSshRouteSettings = persisted.homeSshRouteSettings,
+            homeSshEnabledDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshEnabledDraft
+            } else {
+                persisted.homeSshRouteSettings.enabled
+            },
+            homeSshHostDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshHostDraft
+            } else {
+                persisted.homeSshRouteSettings.host
+            },
+            homeSshPortDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshPortDraft
+            } else {
+                persisted.homeSshRouteSettings.port.toString()
+            },
+            homeSshUserDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshUserDraft
+            } else {
+                persisted.homeSshRouteSettings.user
+            },
+            homeSshHostKeysDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshHostKeysDraft
+            } else {
+                persisted.homeSshRouteSettings.hostKeys.joinToString("\n")
+            },
+            homeSshRelayPortDraft = if (current.showHomeSshRouteDialog) {
+                current.homeSshRelayPortDraft
+            } else {
+                persisted.homeSshRouteSettings.relayPort.toString()
             },
             routingRules = persisted.routingRules.copy(ruleSets = emptyList()),
             routingIgnoreRulesDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {

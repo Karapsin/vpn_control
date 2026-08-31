@@ -40,19 +40,21 @@ object SingBoxRouteDnsBuilder {
         dnsSettings: DnsSettings,
         routingRules: RoutingRules,
         leadingRouteRules: List<JsonObject> = emptyList(),
+        directOutboundTag: String = "direct",
     ): SingBoxRouteDnsConfig {
         val directCidrs = directCidrs()
         val routeRules = buildRouteRules(
             routingRules = routingRules,
             directCidrs = directCidrs,
             leadingRouteRules = leadingRouteRules,
+            directOutboundTag = directOutboundTag,
         )
         val route = buildJsonObject {
             put("auto_detect_interface", true)
             put("default_domain_resolver", SECURE_DNS_SERVER_TAG)
             put("final", "proxy")
             put("rules", routeRules)
-            val definitions = buildRuleSetDefinitions(routingRules.ruleSets)
+            val definitions = buildRuleSetDefinitions(routingRules.ruleSets, directOutboundTag)
             if (!routingRules.ignoreRules && definitions.isNotEmpty()) {
                 put("rule_set", JsonArray(definitions))
             }
@@ -120,11 +122,14 @@ object SingBoxRouteDnsBuilder {
         }
     }
 
-    fun directCidrRouteRule(directCidrs: List<String>): JsonObject {
+    fun directCidrRouteRule(
+        directCidrs: List<String>,
+        outboundTag: String = "direct",
+    ): JsonObject {
         return buildJsonObject {
             put("ip_cidr", directCidrs.asJsonArray())
             put("action", "route")
-            put("outbound", "direct")
+            put("outbound", outboundTag)
         }
     }
 
@@ -132,21 +137,22 @@ object SingBoxRouteDnsBuilder {
         routingRules: RoutingRules,
         directCidrs: List<String>,
         leadingRouteRules: List<JsonObject>,
+        directOutboundTag: String,
     ): JsonArray {
         return buildJsonArray {
             leadingRouteRules.forEach(::add)
-            add(directCidrRouteRule(directCidrs))
+            add(directCidrRouteRule(directCidrs, directOutboundTag))
             if (!routingRules.ignoreRules && routingRules.allDirectDomainSuffixes.isNotEmpty()) {
                 add(
                     buildJsonObject {
                         put("domain_suffix", routingRules.allDirectDomainSuffixes.asJsonArray())
                         put("action", "route")
-                        put("outbound", "direct")
+                        put("outbound", directOutboundTag)
                     },
                 )
             }
             if (!routingRules.ignoreRules) {
-                buildRuleSetRouteRules(routingRules.ruleSets).forEach(::add)
+                buildRuleSetRouteRules(routingRules.ruleSets, directOutboundTag).forEach(::add)
             }
         }
     }
@@ -231,7 +237,10 @@ object SingBoxRouteDnsBuilder {
         }
     }
 
-    private fun buildRuleSetDefinitions(ruleSets: List<RoutingRuleSet>): List<JsonObject> {
+    private fun buildRuleSetDefinitions(
+        ruleSets: List<RoutingRuleSet>,
+        directOutboundTag: String,
+    ): List<JsonObject> {
         return ruleSets.map { ruleSet ->
             val tag = ruleSetTag(ruleSet)
             when (ruleSet.sourceType) {
@@ -245,14 +254,17 @@ object SingBoxRouteDnsBuilder {
                     put("tag", tag)
                     put("format", ruleSet.format.label())
                     put("url", ruleSet.source)
-                    put("download_detour", "direct")
+                    put("download_detour", directOutboundTag)
                     put("update_interval", "${ruleSet.updateIntervalHours.coerceAtLeast(1)}h")
                 }
             }
         }
     }
 
-    private fun buildRuleSetRouteRules(ruleSets: List<RoutingRuleSet>): List<JsonObject> {
+    private fun buildRuleSetRouteRules(
+        ruleSets: List<RoutingRuleSet>,
+        directOutboundTag: String,
+    ): List<JsonObject> {
         return ruleSets.map { ruleSet ->
             buildJsonObject {
                 put("rule_set", buildJsonArray { add(JsonPrimitive(ruleSetTag(ruleSet))) })
@@ -260,7 +272,7 @@ object SingBoxRouteDnsBuilder {
                 put(
                     "outbound",
                     when (ruleSet.action) {
-                        RoutingRuleSetAction.DIRECT -> "direct"
+                        RoutingRuleSetAction.DIRECT -> directOutboundTag
                         RoutingRuleSetAction.PROXY -> "proxy"
                         RoutingRuleSetAction.BLOCK -> "block"
                     },

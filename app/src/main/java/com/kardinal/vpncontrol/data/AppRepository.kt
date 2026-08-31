@@ -6,6 +6,7 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.LatencyHistoryEntry
+import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import com.kardinal.vpncontrol.model.LocationStatusMessages
 import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -81,6 +82,10 @@ class AppRepository(
 
     suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
         storage.updateValidationSettings(settings)
+    }
+
+    suspend fun updateHomeSshRouteSettings(settings: HomeSshRouteSettings) {
+        storage.updateHomeSshRouteSettings(settings)
     }
 
     suspend fun updateSessionStatsEnabled(enabled: Boolean) {
@@ -272,6 +277,7 @@ class AppRepository(
             ),
             runtimeConfigJson = selection.runtimeConfigJson,
             sourceUrl = resolvedSourceUrl,
+            managementProxyPort = selection.managementProxyPort ?: 0,
         )
     }
 

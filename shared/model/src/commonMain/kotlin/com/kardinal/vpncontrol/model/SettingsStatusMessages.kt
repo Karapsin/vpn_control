@@ -36,6 +36,26 @@ object SettingsStatusMessages {
     fun customDnsEndpointInvalid(): String =
         StatusMessageCodec.encode(StatusMessageKey.CUSTOM_DNS_ENDPOINT_INVALID)
 
+    fun homeSshPrivateKeyImported(): String =
+        StatusMessageCodec.encode(StatusMessageKey.HOME_SSH_PRIVATE_KEY_IMPORTED)
+
+    fun homeSshPrivateKeyImportFailed(detail: String = ""): String =
+        StatusMessageCodec.encode(StatusMessageKey.HOME_SSH_PRIVATE_KEY_IMPORT_FAILED, detail)
+
+    fun homeSshSettingsInvalid(detail: String = ""): String =
+        StatusMessageCodec.encode(StatusMessageKey.HOME_SSH_SETTINGS_INVALID, detail)
+
+    fun homeSshRouteSaved(restartRequired: Boolean): String = StatusMessageCodec.encode(
+        if (restartRequired) {
+            StatusMessageKey.HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED
+        } else {
+            StatusMessageKey.HOME_SSH_ROUTE_SAVED
+        },
+    )
+
+    fun homeSshRouteRestarting(): String =
+        StatusMessageCodec.encode(StatusMessageKey.HOME_SSH_ROUTE_RESTARTING)
+
     fun uiSettingVisibilityChanged(
         item: UiSettingsStatusItem,
         enabled: Boolean,

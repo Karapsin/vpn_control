@@ -17,6 +17,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Android runtime failure or VPN config issue | `runtime-troubleshooting.md`, `platform-matrix.md`, `sing-box-contract.md` | Exported Android diagnostics, `app/src/main/java/com/kardinal/vpncontrol/data/`, `app/src/androidTest/` config tests | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin`; add instrumentation when config shape changes |
 | Protocol, parser, subscription import | `sing-box-contract.md`, `architecture.md`, `smoke-android.md` | parsers and outbound/config builders in `shared/core/`, Android/desktop parity tests | `./gradlew :shared:core:desktopTest`; add platform config tests when shape changes |
 | Android VPN, routing, app behavior | `platform-matrix.md`, `state-ownership.md`, `sing-box-contract.md` | `app/`, shared core state and config helpers | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Home SSH relay routing | `home-ssh-route.md`, `state-ownership.md`, `sing-box-contract.md` | shared config builders, platform credential stores, subscription clients, `scripts/install_home_relay.sh` | Shared core tests plus Android and desktop tests |
 | Shared state/action boundary | `state-ownership.md`, `architecture.md`, `test-matrix.md` | `shared/core/`, `MainController`, Android ViewModel, desktop services | Shared tests plus one affected platform compile/test |
 | Packaging, release, native runtime | `developer-release-checklist.md`, `native-runtime-artifacts.md`, `platform-matrix.md` | `scripts/`, `.github/workflows/`, runtime artifact paths | `./scripts/check_release_hygiene.sh` plus package-specific checks |
 | CI or workflow-only changes | `developer-release-checklist.md`, `test-matrix.md` | `.github/workflows/`, scripts called by workflows, artifact names in `../README.md` | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check`; run package checks only when workflow behavior needs it |
@@ -36,6 +37,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `desktop-lifecycle.md` | Tray, single-instance, autostart, reconnect, refresh, and direct-probe invariants. |
 | `sing-box-contract.md` | Supported protocols, config-generation boundaries, routing rules, and benchmark expectations. |
 | `native-runtime-artifacts.md` | Which native binaries are tracked, generated, or ignored. |
+| `home-ssh-route.md` | Home relay installation, pinned SSH setup, routing behavior, and failure policy. |
 | `localization.md` | Language catalog architecture, editing rules, validation, and test-update guidance. |
 | `localization-untranslated-audit.md` | Historical untranslated-string audit and known terminology exceptions. |
 | `developer-release-checklist.md` | Local developer release prerequisites, checks, outputs, and failure modes. |
