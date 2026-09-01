@@ -636,7 +636,7 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
         return _error("git_workflow", str(exc))
     required_names = {item["name"] for item in required}
     started = time.monotonic()
-    command_results: list[dict[str, Any]] = []
+    poll_count = 0
     latest: dict[str, dict[str, Any]] = {}
     while True:
         listed = _run(
@@ -653,13 +653,13 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
             ],
             timeout=120,
         )
-        command_results.append(listed)
+        poll_count += 1
         if not listed["ok"]:
             return _error(
                 "git_workflow",
                 "Could not query GitHub Actions.",
                 blockers=[_command_blocker("github", listed)],
-                command_results=command_results,
+                command_results=[listed],
             )
         try:
             runs = json.loads(str(listed["stdout"]) or "[]")
@@ -693,13 +693,12 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
             for name, run in failures.items():
                 run_id = str(run.get("databaseId"))
                 log = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180)
-                command_results.append(log)
                 logs.append({"workflow": name, "run_id": run_id, "excerpt": _bounded(log.get("stdout") or log.get("stderr"), 8000)})
             return _error(
                 "git_workflow",
                 "One or more required workflows failed for the exact pushed SHA.",
                 blockers=[{"phase": "ci", "failures": failures, "failed_log_excerpts": logs}],
-                command_results=command_results,
+                command_results=[listed],
             )
         complete = len(latest) == len(required_names) and all(
             run.get("status") == "completed" and run.get("conclusion") == "success"
@@ -710,8 +709,8 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
                 "ok": True,
                 "tool": "git_workflow",
                 "summary": "Push and all required exact-SHA workflows completed successfully.",
-                "result": {"sha": sha, "workflows": latest},
-                "command_results": command_results,
+                "result": {"sha": sha, "workflows": latest, "poll_count": poll_count},
+                "command_results": [listed],
             }
         elapsed = time.monotonic() - started
         if missing and elapsed >= DISCOVERY_TIMEOUT_SECONDS:
@@ -719,14 +718,14 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
                 "git_workflow",
                 "Required workflows did not appear for the exact SHA within the discovery window.",
                 blockers=[{"phase": "ci_discovery", "sha": sha, "missing": missing}],
-                command_results=command_results,
+                command_results=[listed],
             )
         if elapsed >= WATCH_TIMEOUT_SECONDS:
             return _error(
                 "git_workflow",
                 "Required workflows did not finish within the watch window.",
                 blockers=[{"phase": "ci_timeout", "sha": sha, "missing": missing, "runs": latest}],
-                command_results=command_results,
+                command_results=[listed],
             )
         time.sleep(POLL_SECONDS)
 

@@ -224,6 +224,8 @@ class WorkflowWatchTest(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(3, result["result"]["workflows"]["Fast Checks"]["databaseId"])
+        self.assertEqual(1, result["result"]["poll_count"])
+        self.assertEqual(1, len(result["command_results"]))
         called_command = run.call_args.args[0]
         self.assertEqual(sha, called_command[called_command.index("--commit") + 1])
 
