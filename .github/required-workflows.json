@@ -1,0 +1,24 @@
+{
+  "required_push": [
+    {
+      "name": "Fast Checks",
+      "workflow": "fast-checks.yml"
+    },
+    {
+      "name": "Android Release APK",
+      "workflow": "android-release.yml"
+    },
+    {
+      "name": "Linux Desktop Package",
+      "workflow": "linux-desktop.yml"
+    },
+    {
+      "name": "Windows Desktop Package",
+      "workflow": "windows-desktop.yml"
+    },
+    {
+      "name": "macOS Desktop Package",
+      "workflow": "macos-desktop.yml"
+    }
+  ]
+}

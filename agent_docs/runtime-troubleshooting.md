@@ -1,6 +1,6 @@
 # Runtime Troubleshooting
 
-This document owns general runtime safety and read-only diagnostics before changing runtime code or stopping a running process. Desktop-specific file meanings and platform details live in `docs/desktop-runtime-troubleshooting.md`.
+This document owns general runtime safety and read-only diagnostics before changing runtime code or stopping a running process. Desktop-specific file meanings and platform details live in `agent_docs/desktop-runtime-troubleshooting.md`.
 
 ## Safety Rule
 
@@ -163,7 +163,7 @@ If most sites work but YouTube does not, compare IPv4 (`A`) and IPv6 (`AAAA`) an
 
 ## Desktop-Specific Guide
 
-For file purposes and platform-specific notes, see `docs/desktop-runtime-troubleshooting.md`.
+For file purposes and platform-specific notes, see `agent_docs/desktop-runtime-troubleshooting.md`.
 
 ## Android Diagnostics
 

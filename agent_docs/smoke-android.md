@@ -1,6 +1,6 @@
 # Android Smoke Testing
 
-This document owns Android device/emulator smoke testing. Desktop smoke testing lives in `docs/desktop-smoke-testing.md`.
+This document owns Android device/emulator smoke testing. Desktop smoke testing lives in `agent_docs/desktop-smoke-testing.md`.
 
 Use one known-good endpoint for each supported non-VLESS protocol:
 
@@ -139,14 +139,14 @@ For every protocol above, watch for:
 - background refresh drops cached locations for that protocol
 - source labeling becomes wrong when `All` is active
 
-## Home SSH Route
+## SSH Routing
 
-Use a reachable home SSH host and the loopback relay from `docs/home-ssh-route.md`:
+Use a reachable home SSH host and the loopback relay from `docs/ssh-routing.md`:
 
 1. Import a dedicated private key, paste the verified host key, enable the route, and connect to a known-good VPN location.
 2. Confirm the resulting public address belongs to the selected VPN, not the home ISP, proving both relay legs are active.
 3. Refresh a subscription while connected and confirm it succeeds through the active session.
-4. Disconnect without disabling Home SSH Route, refresh again, and confirm it succeeds through the home relay.
+4. Disconnect without disabling SSH Routing, refresh again, and confirm it succeeds through the home relay.
 5. Stop the home relay and confirm refresh fails without a direct-network fallback.
 6. Change one SSH setting while connected. Confirm the current connection stays up until `Restart now` is accepted and the pending indicator clears afterward.
 7. Run Find Best with the route and VPN active; confirm candidate results remain comparable to a run without the active VPN.

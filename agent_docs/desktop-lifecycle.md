@@ -27,7 +27,7 @@ On Linux, the canonical user autostart entry is the XDG `vpn-control.desktop` fi
 
 ## Manual Smoke Points
 
-Automated tests do not fully cover desktop environment behavior. Run `docs/desktop-smoke-testing.md` when changing:
+Automated tests do not fully cover desktop environment behavior. Run `agent_docs/desktop-smoke-testing.md` when changing:
 
 - tray menu behavior
 - actual window-manager integration

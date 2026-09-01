@@ -1,6 +1,6 @@
 # Desktop Smoke Testing
 
-Use this checklist for Linux and Windows desktop verification. Android device/emulator protocol testing lives in `docs/smoke-android.md`.
+Use this checklist for Linux and Windows desktop verification. Android device/emulator protocol testing lives in `agent_docs/smoke-android.md`.
 
 ## Preconditions
 
@@ -104,11 +104,11 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - With VPN on, reboot and confirm the app starts in tray after the tray icon appears and reconnects to the remembered location.
    - With VPN off, reboot and confirm the app starts without connecting.
 
-10. Home SSH Route
+10. SSH Routing
 
-   - Prepare the loopback-only relay from `docs/home-ssh-route.md`, import a dedicated unencrypted key, and paste the verified host key.
+   - Prepare the loopback-only relay from `docs/ssh-routing.md`, import a dedicated unencrypted key, and paste the verified host key.
    - Enable the route and connect. Confirm the public address belongs to the selected VPN rather than the home ISP.
-   - Refresh a subscription while connected; then disconnect and refresh again with Home SSH Route still enabled. Both should succeed through their specified routes.
+   - Refresh a subscription while connected; then disconnect and refresh again with SSH Routing still enabled. Both should succeed through their specified routes.
    - Stop the home relay and confirm inactive-session refresh fails without direct fallback.
    - Change one SSH setting while connected. Confirm no automatic interruption occurs, the pending marker appears, and only `Restart now` reapplies it.
    - Repeat Find Best while connected and confirm the dedicated probe result is not biased by the active VPN, including when the active location is a custom config.
@@ -124,4 +124,4 @@ Capture these files locally when a desktop smoke test fails:
 ~/.vpn-control-desktop/runtime/runtime-sing-box-proxy_only.json
 ```
 
-Share only redacted snippets. Do not paste full workspace, log, or generated config dumps into reports; they can contain endpoints, subscription URLs, UUIDs, credentials, or tokens. Use the redacted helpers in `docs/runtime-troubleshooting.md` first.
+Share only redacted snippets. Do not paste full workspace, log, or generated config dumps into reports; they can contain endpoints, subscription URLs, UUIDs, credentials, or tokens. Use the redacted helpers in `agent_docs/runtime-troubleshooting.md` first.

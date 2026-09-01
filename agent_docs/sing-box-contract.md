@@ -13,9 +13,9 @@ The app models these proxy protocols:
 - `SOCKS`
 - `CUSTOM`
 
-Non-custom profiles are generated from structured model fields. Custom profiles remain full runtime JSON and are not passed through structured profile generation. VPN Control may apply narrowly scoped runtime transformations for the localhost management proxy, isolated desktop probes, and the optional Home SSH Route. Home-route transformation is fail-closed: unknown outbound/DNS types, unsupported top-level network features, invalid detour graphs, and reserved-tag collisions reject the config.
+Non-custom profiles are generated from structured model fields. Custom profiles remain full runtime JSON and are not passed through structured profile generation. VPN Control may apply narrowly scoped runtime transformations for the localhost management proxy, isolated desktop probes, and the optional SSH Routing. Home-route transformation is fail-closed: unknown outbound/DNS types, unsupported top-level network features, invalid detour graphs, and reserved-tag collisions reject the config.
 
-## Home SSH Route
+## SSH Routing
 
 When enabled, generated runtime configs form this outbound chain:
 
@@ -192,9 +192,9 @@ Use this checklist for protocol work:
 
 7. Smoke docs
 
-   - Update `docs/smoke-android.md` and `docs/desktop-smoke-testing.md` with fixture requirements and manual checks.
+   - Update `agent_docs/smoke-android.md` and `agent_docs/desktop-smoke-testing.md` with fixture requirements and manual checks.
 
 8. Validation
 
-   - Run the path-based checks in `docs/test-matrix.md`.
+   - Run the path-based checks in `agent_docs/test-matrix.md`.
    - Run manual smoke only when live endpoints or local fixtures are available.

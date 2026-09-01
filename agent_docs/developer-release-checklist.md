@@ -44,7 +44,7 @@ macOS:
 
 - DMG packaging must run on macOS.
 - Unsigned DMG builds work without Apple secrets.
-- Signing and notarization require the secrets described in `docs/macos-release.md`.
+- Signing and notarization require the secrets described in `agent_docs/macos-release.md`.
 - Full desktop VPN mode is not implemented yet; package smoke should use proxy-only assumptions.
 
 ## One-Command Release Check

@@ -2,6 +2,8 @@
 
 Install files are available from the latest GitHub Release. In an installed app, open the settings menu and choose `Update` to download and install the compatible package.
 
+[User documentation](docs/README.md) includes optional features such as [SSH Routing](docs/ssh-routing.md).
+
 Artifacts can include `SHA256SUMS.txt` checksum files where the packaging workflow produces them.
 
 | Platform | GitHub Location | File To Use |

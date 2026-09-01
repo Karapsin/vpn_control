@@ -35,29 +35,29 @@ Desktop construction is intentionally separate from desktop behavior. `DesktopAp
 
 ## Cross-Cutting Contracts
 
-- Platform capability differences are in `docs/platform-matrix.md`.
-- `sing-box` config and routing expectations are in `docs/sing-box-contract.md`.
-- Runtime safety and logs are in `docs/runtime-troubleshooting.md`.
-- Desktop lifecycle invariants are in `docs/desktop-lifecycle.md`.
-- Localization architecture is in `docs/localization.md`.
-- State ownership boundaries are in `docs/state-ownership.md`.
-- Native runtime artifact policy is in `docs/native-runtime-artifacts.md`.
+- Platform capability differences are in `agent_docs/platform-matrix.md`.
+- `sing-box` config and routing expectations are in `agent_docs/sing-box-contract.md`.
+- Runtime safety and logs are in `agent_docs/runtime-troubleshooting.md`.
+- Desktop lifecycle invariants are in `agent_docs/desktop-lifecycle.md`.
+- Localization architecture is in `agent_docs/localization.md`.
+- State ownership boundaries are in `agent_docs/state-ownership.md`.
+- Native runtime artifact policy is in `agent_docs/native-runtime-artifacts.md`.
 
 ## When Changing X, Touch Y Too
 
 | Change | Also inspect/update |
 | --- | --- |
-| Subscription payload or direct-link parsing | `ProxyParser`, `SubscriptionPayloadParser`, `ProxyLinkParser`, `ProxyLinkEncoder`, `JsonSubscriptionParser`, `ClashSubscriptionParser`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `docs/sing-box-contract.md`, Android and desktop smoke docs. |
+| Subscription payload or direct-link parsing | `ProxyParser`, `SubscriptionPayloadParser`, `ProxyLinkParser`, `ProxyLinkEncoder`, `JsonSubscriptionParser`, `ClashSubscriptionParser`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `agent_docs/sing-box-contract.md`, Android and desktop smoke docs. |
 | `ProxyProtocol` or `ProxyProfile` fields | shared model, parser encoder/decoder, `SingBoxOutboundBuilder`, Android and desktop config factories, diagnostics/export paths. |
 | sing-box outbound/TLS/transport shape | `SingBoxOutboundBuilder`, `SingBoxOutboundBuilderTest`, Android instrumented config tests, desktop config tests. |
 | sing-box DNS, route rules, domain bypass, or rule-set shape | `SingBoxRouteDnsBuilder`, `SingBoxRouteDnsBuilderTest`, Android parity/instrumented config tests, desktop config/parity tests. |
 | Android VPN command lifecycle or app assignment routing | `AndroidConnectionActionsService`, `AndroidConnectionLifecycleService`, `AndroidRoutingActionsService`, Android storage/runtime classes, `SingBoxConfigFactory`, Android instrumentation tests, Android smoke docs. |
-| Desktop runtime, tray, autostart, or reconnect behavior | `DesktopAppService`, `DesktopStateStore`, runtime managers, desktop tests, `docs/desktop-lifecycle.md`, `docs/desktop-runtime-troubleshooting.md`. |
-| Desktop service construction or test graph wiring | `DesktopAppServiceFactory`, desktop service tests, `docs/state-ownership.md`. |
-| Desktop workspace restore, sync, or persisted-state mapping | `DesktopWorkspaceStateMapper`, `DesktopStateStore`, desktop mapper tests, `docs/state-ownership.md`. |
+| Desktop runtime, tray, autostart, or reconnect behavior | `DesktopAppService`, `DesktopStateStore`, runtime managers, desktop tests, `agent_docs/desktop-lifecycle.md`, `agent_docs/desktop-runtime-troubleshooting.md`. |
+| Desktop service construction or test graph wiring | `DesktopAppServiceFactory`, desktop service tests, `agent_docs/state-ownership.md`. |
+| Desktop workspace restore, sync, or persisted-state mapping | `DesktopWorkspaceStateMapper`, `DesktopStateStore`, desktop mapper tests, `agent_docs/state-ownership.md`. |
 | Shared UI state/action behavior | `MainController`, `MainUiStateProjector`, shared core tests, Android `MainViewModel`, desktop service integration. |
 | Subscription source activation, add/delete, rename, or source labels | `SubscriptionSourceLogic`, `AndroidProfileActionsService`, desktop subscription management service, shared core tests, platform service tests. |
 | Subscription refresh state/result behavior | `AutoRefreshLogic`, `SubscriptionRefreshResultLogic`, Android manual/background refresh paths, `DesktopSubscriptionRefreshService`, shared core tests. |
 | Selected location matching, remapping, stored-key normalization, or per-location benchmark updates | `SelectionMappingLogic`, `AndroidLocationActionsService`, desktop location/subscription/benchmark services, shared core tests, platform service tests. |
-| User-visible status or log text | Model status domain facades such as `ConnectionStatusMessages`, `SubscriptionStatusMessages`, `BenchmarkStatusMessages`, `LocationStatusMessages`, `RoutingStatusMessages`, `DiagnosticsStatusMessages`, `RuntimeStatusMessages`, `SettingsStatusMessages`; codec facade `StatusMessages`; `StatusMessageTypes.kt`, `StatusMessageCodec.kt`, `StatusMessageKeySelectors.kt`; UI renderer `StatusMessageRenderer.kt`; `i18n-status/*.json`; status renderer/coverage tests; `scripts/status_catalog_tool.py`; `docs/localization.md`. |
-| Native runtime binaries or packaging scripts | `docs/native-runtime-artifacts.md`, release checklist, platform packaging scripts, checksum/update notes. |
+| User-visible status or log text | Model status domain facades such as `ConnectionStatusMessages`, `SubscriptionStatusMessages`, `BenchmarkStatusMessages`, `LocationStatusMessages`, `RoutingStatusMessages`, `DiagnosticsStatusMessages`, `RuntimeStatusMessages`, `SettingsStatusMessages`; codec facade `StatusMessages`; `StatusMessageTypes.kt`, `StatusMessageCodec.kt`, `StatusMessageKeySelectors.kt`; UI renderer `StatusMessageRenderer.kt`; `i18n-status/*.json`; status renderer/coverage tests; `scripts/status_catalog_tool.py`; `agent_docs/localization.md`. |
+| Native runtime binaries or packaging scripts | `agent_docs/native-runtime-artifacts.md`, release checklist, platform packaging scripts, checksum/update notes. |

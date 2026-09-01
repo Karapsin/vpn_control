@@ -86,7 +86,7 @@ Desktop currently bypasses some `MainController` actions while its service owns 
 
 New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 
-## Home SSH Route Ownership
+## SSH Routing Ownership
 
 - Shared model/core owns the persisted non-secret settings, validation, subscription route truth table, sing-box SSH/home-egress builders, and fail-closed custom-config transformation.
 - Android owns private-key storage in the app sandbox, temporary bootstrap runtime processes for inactive-session subscription downloads, and management-proxy persistence for the running VPN service.
@@ -100,4 +100,4 @@ New cross-platform behavior should still be implemented in shared core first whe
 - Put Android permission checks, VPN service calls, WorkManager scheduling, and installed-app loading in Android.
 - Put desktop process control, filesystem paths, tray behavior, autostart, and privilege checks in desktop.
 - If the same decision is needed on Android and desktop, extract it to shared core before patching both platforms.
-- If a platform must diverge, document the divergence in `docs/platform-matrix.md` or `docs/desktop-lifecycle.md`.
+- If a platform must diverge, document the divergence in `agent_docs/platform-matrix.md` or `agent_docs/desktop-lifecycle.md`.

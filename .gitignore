@@ -4,7 +4,12 @@
 .sandbox-tmp/
 .runtime/
 .vms/
-.codex
+.agent_venv/
+.rag_index/
+.codex/*
+!.codex/config.toml
+__pycache__/
+*.py[cod]
 build/
 **/build/
 local.properties

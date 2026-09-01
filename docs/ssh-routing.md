@@ -1,4 +1,4 @@
-# Home SSH Route
+# SSH Routing
 
 VPN Control can connect to a selected VPN location through an SSH server on your home network:
 
@@ -24,11 +24,11 @@ The SSH transport itself, including any DNS lookup needed to resolve its hostnam
 
 ## Configure A Device
 
-Open **Additional settings → Home SSH Route** and enter:
+Open **Additional settings → SSH Routing** and enter:
 
-- SSH host, port, and user (for example, `ssh.karapsin.com`, `228`, and `kardinal`).
+- SSH host, port, and user (for example, `example.com`, `228`, and `kardinal`).
 - The relay port printed by the installer (default `10808`).
-- A pinned public host key. Obtain it through a trusted path. For example, run `ssh-keyscan -p 228 ssh.karapsin.com` from a network where you can verify the result, then compare its fingerprint with `ssh-keygen -lf` on the home host.
+- A pinned public host key. Obtain it through a trusted path. For example, run `ssh-keyscan -p 228 example.com` from a network where you can verify the result, then compare its fingerprint with `ssh-keygen -lf` on the home host.
 - A dedicated, unencrypted SSH private key imported through the file picker. The app stores it in private application storage with owner-only permissions/ACLs and never writes it into the workspace/settings JSON.
 
 Prefer a dedicated SSH account and key. Restrict the key in `authorized_keys` as appropriate for the host, while retaining the TCP forwarding needed by the relay.
@@ -38,7 +38,7 @@ If settings are changed while connected, VPN Control saves them without interrup
 ## Subscription And Find Best Behavior
 
 - With an active VPN/proxy session, subscription downloads use that session's localhost management proxy.
-- Without an active session, downloads use the home relay when Home SSH Route is enabled; otherwise they connect directly.
+- Without an active session, downloads use the home relay when SSH Routing is enabled; otherwise they connect directly.
 - A failed active session may fall back to the home route only when that route is enabled. A failed home route never silently falls back to the public network.
 - Desktop Find Best candidate traffic runs only in the dedicated probe process, so an already-active VPN does not bias the result. Custom full sing-box configs remain manual-only in Find Best.
 

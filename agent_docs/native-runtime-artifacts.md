@@ -54,5 +54,5 @@ The generated Arch update bundle contains the Compose app image and prepared Lin
 2. Download from the upstream release source used by existing scripts.
 3. Verify checksums before replacing tracked Android or test fixture binaries.
 4. Update package scripts if the version or archive layout changed.
-5. Run platform config/runtime tests from `docs/test-matrix.md`.
+5. Run platform config/runtime tests from `agent_docs/test-matrix.md`.
 6. Do not mix runtime binary refreshes with unrelated UI, localization, or docs patches.
