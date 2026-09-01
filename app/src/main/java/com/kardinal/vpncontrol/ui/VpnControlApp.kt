@@ -540,7 +540,7 @@ fun VpnControlApp(
                         onValueChange = onHomeSshHostChange,
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(appStrings.get(UiText.HOME_SSH_HOST)) },
-                        placeholder = { Text("ssh.karapsin.com") },
+                        placeholder = { Text("example.com") },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )

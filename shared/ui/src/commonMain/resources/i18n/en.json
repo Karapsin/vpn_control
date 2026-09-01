@@ -259,7 +259,7 @@
   "DNS_MODE_DOT": "Custom DNS over TLS (DoT)",
   "DNS_SECURE_ENDPOINT": "Secure DNS endpoint",
   "DNS_LEGACY_MIGRATION_NOTICE": "Your previous DNS IP was preserved but is no longer used. Add your provider's DoH or DoT endpoint.",
-  "SETTINGS_HOME_SSH_ROUTE": "Home SSH Route",
+  "SETTINGS_HOME_SSH_ROUTE": "SSH Routing",
   "HOME_SSH_DESCRIPTION": "Optionally reach the selected VPN through a pinned SSH connection to your home relay. Subscription downloads use the active session, or this relay when no session is active.",
   "HOME_SSH_ENABLED": "Route connections through home SSH",
   "HOME_SSH_HOST": "SSH host",
