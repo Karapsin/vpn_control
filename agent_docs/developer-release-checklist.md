@@ -1,19 +1,17 @@
 # Developer Release Checklist
 
-This document owns developer release packaging. User-facing install instructions stay in `../README.md` and should point to published GitHub Releases, not ignored local `dist/` paths.
-
-Packaging is not publishing. Building candidates, finishing a task, or pushing `dev` never authorizes a release. Only an explicit user release command permits the `main` merge, tag, GitHub Release, or stable publisher dispatch below.
+Authoritative release and artifact invariants are `RELEASE-001` through `RELEASE-007`, `ARTIFACT-001` through `ARTIFACT-004`, and `VISUAL-001` through `VISUAL-008` in `contracts.md`. This document owns developer packaging and explicit-release procedures. User-facing install instructions stay in `../README.md`.
 
 ## Branch And Release Routine
 
-Normal work is committed and pushed to `dev`. The five package/fast workflows in `.github/required-workflows.json` must pass for the exact pushed development SHA. `VPN Integration` is advisory on ordinary development and its exhaustive `all` profile is a release gate.
+Normal work follows the development exact-SHA procedure in `AGENTS.md`. `VPN Integration` remains advisory on ordinary development.
 
 For an explicitly requested release:
 
 1. Ensure the intended `dev` SHA passed all required push workflows.
 2. If `## Unreleased` still contains notes, run `version_bump(change_type="release", force_release=true)` without a summary, rerun pre-push checks, and push/verify the resulting `dev` SHA.
-3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA and dispatches `VPN Integration` with `profile=all` for that SHA.
-4. Run `release_workflow(action="status")` after exhaustive integration and all exact-SHA package workflows complete. It creates the readiness receipt used by publishing.
+3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA and dispatches exhaustive VPN integration plus Visual Regression for that SHA.
+4. Run `release_workflow(action="status")` after exhaustive integration, Visual Regression, and all exact-SHA package workflows complete. It creates the readiness receipt used by publishing.
 5. Run `release_workflow(action="publish")`. This dispatches `.github/workflows/release-publish.yml`; the workflow independently rechecks exact SHAs, metadata, packages, and exhaustive integration before creating the GitHub Release.
 
 Do not invoke the publisher workflow directly unless repairing the release tool itself under explicit user direction. Never replace an existing tag or release.
@@ -68,6 +66,12 @@ macOS:
 - Unsigned DMG builds work without Apple secrets.
 - Signing and notarization require the secrets described in `agent_docs/macos-release.md`.
 - Full desktop VPN mode is not implemented yet; package smoke should use proxy-only assumptions.
+
+Visual fleet:
+
+- Git LFS is installed and all canonical baselines are hydrated.
+- The four self-hosted GUI runners and their capture drivers pass `visual_fleet.py preflight`.
+- See `visual-regression.md` for labels, fixed displays, platform permissions, and first-baseline bootstrap.
 
 ## One-Command Release Check
 

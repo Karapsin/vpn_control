@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Kept exact-SHA CI watcher output compact.
 - Added manual location diagnostics, persistent headless serving, and release-gated cross-platform VPN integration.
 - Normalized user-facing terminology guard paths across platforms.
+- Centralized product contracts and added the fixed navy UI with an automated cross-platform visual release gate.
 
 ## 0.1.7.3 - 2026-08-30
 

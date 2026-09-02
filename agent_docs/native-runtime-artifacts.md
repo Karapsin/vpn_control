@@ -1,6 +1,6 @@
 # Native Runtime Artifacts
 
-This repo intentionally tracks some Android runtime inputs and test fixtures, but desktop release/runtime binaries are prepared by scripts and must not be committed.
+Authoritative native and generated artifact policy is `ARTIFACT-001` through `ARTIFACT-003` in `contracts.md`. This document inventories the exact current paths and runtime refresh procedure.
 
 ## Tracked Android Runtime Inputs
 
@@ -21,7 +21,7 @@ This repo intentionally tracks some Android runtime inputs and test fixtures, bu
 
 ## Generated Or Downloaded Artifacts
 
-Do not commit these paths:
+`ARTIFACT-002` applies to these generated/downloaded paths:
 
 - `desktopApp/src/main/resources/bin/`
 - `desktopApp/build/`

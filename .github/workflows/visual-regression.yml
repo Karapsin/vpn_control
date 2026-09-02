@@ -1,0 +1,138 @@
+name: Visual Regression
+run-name: Visual Regression / ${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit whose packaged UI must be captured
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-regression-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  android:
+    name: Android visual gate
+    runs-on: [self-hosted, vpn-control-visual, android]
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - name: Capture deterministic Android scenes
+        run: python3 scripts/visual_fleet.py capture --platform android --output build/visual-actual/android
+      - name: Compare pixels and geometry
+        run: python3 scripts/visual_regression.py verify --platform android --actual-dir build/visual-actual/android
+      - name: Upload Android evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-android-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/android
+            build/visual-reports/android
+          if-no-files-found: warn
+
+  linux:
+    name: Linux visual gate
+    runs-on: [self-hosted, vpn-control-visual, linux]
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - name: Capture deterministic Linux scenes
+        run: python3 scripts/visual_fleet.py capture --platform linux --output build/visual-actual/linux
+      - name: Compare pixels and geometry
+        run: python3 scripts/visual_regression.py verify --platform linux --actual-dir build/visual-actual/linux
+      - name: Upload Linux evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-linux-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/linux
+            build/visual-reports/linux
+          if-no-files-found: warn
+
+  windows:
+    name: Windows VM visual gate
+    runs-on: [self-hosted, vpn-control-visual, windows-vm]
+    timeout-minutes: 75
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - name: Capture deterministic Windows VM scenes
+        run: python3 scripts/visual_fleet.py capture --platform windows --output build/visual-actual/windows
+      - name: Compare pixels and geometry
+        run: python3 scripts/visual_regression.py verify --platform windows --actual-dir build/visual-actual/windows
+      - name: Upload Windows evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-windows-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/windows
+            build/visual-reports/windows
+          if-no-files-found: warn
+
+  macos:
+    name: macOS visual gate
+    runs-on: [self-hosted, vpn-control-visual, macos]
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - name: Capture deterministic macOS scenes
+        run: python3 scripts/visual_fleet.py capture --platform macos --output build/visual-actual/macos
+      - name: Compare pixels and geometry
+        run: python3 scripts/visual_regression.py verify --platform macos --actual-dir build/visual-actual/macos
+      - name: Upload macOS evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-macos-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/macos
+            build/visual-reports/macos
+          if-no-files-found: warn

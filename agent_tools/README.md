@@ -22,7 +22,7 @@ For implementation, testing, release, or commit work:
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
 4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
 5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. It queries only runs attached to that exact SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
-6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, gates on exhaustive VPN integration, and dispatches the manual publisher.
+6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, gates on exhaustive VPN integration plus exact-SHA Visual Regression, and dispatches the manual publisher.
 
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
@@ -70,7 +70,7 @@ python3 agent_tools/docs_assistant.py search "desktop lifecycle"
 python3 agent_tools/docs_assistant.py ask "what must happen after push?"
 ```
 
-The index is a navigation aid. `AGENTS.md` remains the hard-rule layer, and focused subsystem docs remain the source of detailed requirements.
+The index is a navigation aid. `AGENTS.md` remains the agent hard-rule layer, `agent_docs/contracts.md` owns product invariants, and focused subsystem docs own procedures and implementation maps.
 
 ## Tests
 

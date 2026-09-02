@@ -48,6 +48,13 @@
       ],
       "classified_non_push_workflows": [
         {
+          "name": "Visual Regression",
+          "path": ".github/workflows/visual-regression.yml",
+          "classification": "release_only",
+          "events": ["workflow_dispatch"],
+          "reason": "Every supported platform must pass exact-SHA screenshot and geometry comparisons before publishing."
+        },
+        {
           "name": "Publish Stable Release",
           "path": ".github/workflows/release-publish.yml",
           "classification": "release_only",

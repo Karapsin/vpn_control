@@ -35,19 +35,13 @@ Desktop construction is intentionally separate from desktop behavior. `DesktopAp
 
 ## Cross-Cutting Contracts
 
-- Platform capability differences are in `agent_docs/platform-matrix.md`.
-- `sing-box` config and routing expectations are in `agent_docs/sing-box-contract.md`.
-- Runtime safety and logs are in `agent_docs/runtime-troubleshooting.md`.
-- Desktop lifecycle invariants are in `agent_docs/desktop-lifecycle.md`.
-- Localization architecture is in `agent_docs/localization.md`.
-- State ownership boundaries are in `agent_docs/state-ownership.md`.
-- Native runtime artifact policy is in `agent_docs/native-runtime-artifacts.md`.
+All product invariants live in `agent_docs/contracts.md`. The platform, sing-box, runtime, desktop lifecycle, localization, state-ownership, and native-artifact documents are procedural owner guides.
 
 ## When Changing X, Touch Y Too
 
 | Change | Also inspect/update |
 | --- | --- |
-| Subscription payload or direct-link parsing | `ProxyParser`, `SubscriptionPayloadParser`, `ProxyLinkParser`, `ProxyLinkEncoder`, `JsonSubscriptionParser`, `ClashSubscriptionParser`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `agent_docs/sing-box-contract.md`, Android and desktop smoke docs. |
+| Subscription payload or direct-link parsing | `ProxyParser`, `SubscriptionPayloadParser`, `ProxyLinkParser`, `ProxyLinkEncoder`, `JsonSubscriptionParser`, `ClashSubscriptionParser`, `ProxyParserEngine`, `VlessParser` compatibility shim, parser tests, import/export behavior, `agent_docs/contracts.md`, `agent_docs/sing-box-development.md`, Android and desktop smoke docs. |
 | `ProxyProtocol` or `ProxyProfile` fields | shared model, parser encoder/decoder, `SingBoxOutboundBuilder`, Android and desktop config factories, diagnostics/export paths. |
 | sing-box outbound/TLS/transport shape | `SingBoxOutboundBuilder`, `SingBoxOutboundBuilderTest`, Android instrumented config tests, desktop config tests. |
 | sing-box DNS, route rules, domain bypass, or rule-set shape | `SingBoxRouteDnsBuilder`, `SingBoxRouteDnsBuilderTest`, Android parity/instrumented config tests, desktop config/parity tests. |

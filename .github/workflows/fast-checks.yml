@@ -28,7 +28,16 @@ on:
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
       - "scripts/check_docs_hygiene.sh"
+      - "scripts/check_contract_docs.py"
       - "scripts/check_user_facing_terminology.py"
+      - "scripts/check_ui_theme.py"
+      - "scripts/visual_regression.py"
+      - "scripts/test_visual_regression.py"
+      - "scripts/test_visual_fleet.py"
+      - "scripts/visual_fleet.py"
+      - "scripts/setup_visual_runner.sh"
+      - "scripts/setup_visual_runner.ps1"
+      - "visual-tests/**"
       - "scripts/check_release_metadata.py"
       - "scripts/release_notes.py"
       - "scripts/version_metadata.py"
@@ -83,6 +92,13 @@ jobs:
 
       - name: Test agent tools
         run: python -m unittest discover -s agent_tools/tests
+
+      - name: Check fixed UI theme and visual comparator
+        run: |
+          python scripts/check_ui_theme.py
+          python scripts/test_visual_regression.py
+          python scripts/test_visual_fleet.py
+          bash -n scripts/setup_visual_runner.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

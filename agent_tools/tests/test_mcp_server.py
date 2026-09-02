@@ -102,6 +102,9 @@ class McpSurfaceTest(unittest.TestCase):
             self.assertEqual("push", entry["event"])
             self.assertEqual(["success"], entry["allowed_conclusions"])
         self.assertEqual({"VPN Integration"}, mcp_server._advisory_workflow_names())
+        manifest = json.loads(mcp_server.REQUIRED_WORKFLOWS_PATH.read_text(encoding="utf-8"))
+        release_only = manifest["branches"]["dev"]["classified_non_push_workflows"]
+        self.assertIn("Visual Regression", {entry["name"] for entry in release_only})
 
     @mock.patch.object(mcp_server.docs_assistant, "build_docs_index")
     @mock.patch.object(mcp_server, "_ahead_behind", return_value=(0, 1, None))
@@ -209,6 +212,33 @@ class VersionPolicyTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("workflow_run:", workflow)
         self.assertNotRegex(workflow, r"(?m)^\s+push:")
+        self.assertIn("visual-regression.yml", workflow)
+
+    def test_release_merge_dispatches_vpn_and_visual_gates_for_exact_sha(self) -> None:
+        sha = "a" * 40
+        command_results = [
+            command_result(),
+            command_result(stdout=sha),
+            command_result(stdout=sha),
+            command_result(),
+            command_result(),
+            command_result(),
+            command_result(),
+            command_result(),
+            command_result(),
+        ]
+        with (
+            mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev", "dirty": False}),
+            mock.patch.object(mcp_server, "_run", side_effect=command_results) as run,
+            mock.patch.object(mcp_server, "_git_stdout", return_value=sha),
+        ):
+            result = mcp_server._merge_dev_for_release()
+
+        self.assertTrue(result["ok"])
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertTrue(any("vpn-integration.yml" in command for command in commands))
+        self.assertTrue(any("visual-regression.yml" in command for command in commands))
+        self.assertTrue(all(f"target_sha={sha}" in command for command in commands[-2:]))
 
     def test_tenth_unreleased_bullet_rolls_version_metadata_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -261,6 +291,79 @@ class VersionPolicyTest(unittest.TestCase):
             self.assertEqual(["- New behavior."], mcp_server._unreleased_bullets(changelog.read_text()))
 
 class WorkflowWatchTest(unittest.TestCase):
+    def test_release_readiness_requires_exact_sha_visual_regression(self) -> None:
+        sha = "a" * 40
+        required = [
+            {
+                "name": "Fast Checks",
+                "workflow": "fast-checks.yml",
+                "event": "push",
+                "allowed_conclusions": ["success"],
+            },
+        ]
+        base_runs = [
+            {
+                "databaseId": 1,
+                "workflowName": "Fast Checks",
+                "displayTitle": "Fast Checks",
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+                "headSha": sha,
+            },
+            {
+                "databaseId": 2,
+                "workflowName": "VPN Integration",
+                "displayTitle": f"VPN Integration / all / {sha}",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "headSha": sha,
+            },
+        ]
+        visual = {
+            "databaseId": 3,
+            "workflowName": "Visual Regression",
+            "displayTitle": f"Visual Regression / {sha}",
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "success",
+            "headSha": sha,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            changelog = root / "docs/CHANGELOG.md"
+            changelog.parent.mkdir()
+            (root / "gradle.properties").write_text("vpnControlVersion=1.0.0.1\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.0.0.1`\n", encoding="utf-8")
+            changelog.write_text("# Changelog\n\n## 1.0.0.1 - 2026-09-02\n\n- Ready.\n", encoding="utf-8")
+
+            def run_with(runs: list[dict[str, object]]) -> dict[str, object]:
+                with (
+                    mock.patch.object(mcp_server, "REPO_ROOT", root),
+                    mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
+                    mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "main", "dirty": False}),
+                    mock.patch.object(mcp_server, "_required_workflows", return_value=required),
+                    mock.patch.object(
+                        mcp_server,
+                        "_run",
+                        side_effect=[command_result(), command_result(stdout=json.dumps(runs))],
+                    ),
+                    mock.patch.object(
+                        mcp_server,
+                        "_git_stdout",
+                        side_effect=lambda command: "" if command[:2] == ["tag", "--list"] else sha,
+                    ),
+                ):
+                    return mcp_server._release_readiness()
+
+            missing = run_with(base_runs)
+            complete = run_with([*base_runs, visual])
+
+        self.assertTrue(any(blocker["phase"] == "visual" for blocker in missing["blockers"]))
+        self.assertFalse(complete["blockers"])
+        self.assertEqual(3, complete["runs"]["Visual Regression"]["databaseId"])
+
     def test_watcher_uses_only_exact_sha_and_latest_run(self) -> None:
         sha = "a" * 40
         required = [

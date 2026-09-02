@@ -61,6 +61,12 @@ jobs:
             echo "Missing exhaustive exact-SHA VPN Integration success." >&2
             exit 1
           }
+          visual_id=$(gh api "repos/$REPOSITORY/actions/workflows/visual-regression.yml/runs?event=workflow_dispatch&status=completed&per_page=100" \
+            --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\" and (.display_title | contains(\"Visual Regression / $TARGET_SHA\")))) | sort_by(.id) | last | .id")
+          [[ -n "$visual_id" && "$visual_id" != "null" ]] || {
+            echo "Missing exact-SHA Visual Regression success." >&2
+            exit 1
+          }
 
       - name: Checkout exact release source
         uses: actions/checkout@v4

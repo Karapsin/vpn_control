@@ -2,6 +2,8 @@
 
 VPN Control keeps typed UI labels and most status/log translations in JSON catalogs, then generates Kotlin lookup tables during the Gradle build.
 
+Authoritative localization invariants are `L10N-001` through `L10N-005` in `contracts.md`. This document describes the catalog workflow and owner files.
+
 ## Add A Language
 
 To add a new language:
@@ -23,18 +25,7 @@ The build generates Kotlin sources from:
 
 ## Catalog Editing Rules
 
-- Keep user-facing translations in JSON catalogs, not in Kotlin source.
-- Do not add `when (AppLanguage...)` branches with translated UI or status text in Kotlin.
-- `AppStrings.kt` should stay the UI-facing entry point. `StatusMessageRenderer.kt` owns structured status lookup, placeholder substitution, dynamic status parsing, and benchmark status rendering. It must not own rendered English sentence templates for typed status messages.
-- Prefer typed status domain facades for stable runtime/status events. If a raw English status string must remain for legacy compatibility, add it to status catalogs and cover it in `AppStringsCoverageTest`.
-- Do not concatenate encoded status messages into longer raw sentences. If a message needs several clauses, add one complete structured status key or keep the whole legacy sentence on the legacy translation path until it can be migrated safely.
-- Shared settings and location mutation feedback should use domain-facade helpers, not raw English strings from shared core.
-- Desktop settings, app-mode, autostart, connection lifecycle, reconnect, shutdown, and restore messages should use domain-facade helpers instead of ad hoc English strings.
-- UI labels belong in `shared/ui/src/commonMain/resources/i18n/<language-code>.json`.
-- Status, log, and freeform runtime message translations belong in `shared/ui/src/commonMain/resources/i18n-status/<language-code>.json`.
-- Preserve placeholders exactly. If English has `{count}`, every translation must keep `{count}`.
-- Preserve technical commands, file paths, URLs, capability names, and protocol identifiers. Keep strings such as `/dev/net/tun`, `sudo modprobe tun`, `CAP_NET_ADMIN`, `netsh.exe`, `sing-box`, `VLESS`, `VMess`, `SOCKS`, and `Trojan` recognizable.
-- Keep language choices sorted alphabetically by visible display name in the UI, with `System` pinned first.
+Apply `L10N-001` through `L10N-005`. `AppStrings.kt` is the UI lookup entry point; `StatusMessageRenderer.kt` performs structured lookup, placeholder substitution, dynamic parsing, and benchmark rendering; model domain facades own stable status creation. Add or update `AppStringsCoverageTest` whenever a raw legacy pattern remains or a new catalog path is introduced.
 
 ## Status Catalog Rules
 
@@ -45,9 +36,7 @@ Status catalogs support three main translation paths:
 - `legacyExact`: complete legacy/freeform messages that should be translated exactly.
 - `legacyReplacements`: stable prefixes or fragments used to translate older messages.
 
-Prefer `structured` when code can emit a domain-facade helper. Prefer `dynamic` when Kotlin must parse a stable legacy source pattern with placeholders. Use `legacyExact` for complete messages that already exist in persisted logs. Use `legacyReplacements` only for stable fragments or prefixes that can safely appear inside longer messages.
-
-Do not translate the `source` value in status entries. Translate only `target`.
+Choose the catalog section according to `L10N-003` and `L10N-005`: new stable events use `structured`; stable parameterized legacy parsing uses `dynamic`; persisted complete messages use `legacyExact`; replacement lists are the compatibility fallback.
 
 Structured templates are keyed by `StatusMessageKey` names and optional variants, for example `STARTING_CONNECTION.VPN`, `PROFILE_SOURCE_SET.SUBSCRIPTION`, or `UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE`. Every language must contain the same structured keys as English.
 
@@ -61,7 +50,7 @@ Structured templates may use these placeholders:
 - `{modeLabel:0}` inserts the localized VPN/proxy-only mode label for argument 0.
 - `{connectionLabel:0}` inserts the localized VPN/proxy connection noun for argument 0.
 
-Preserve placeholders exactly. If a translation needs different word order, move the placeholders, but do not rename or delete them.
+Translations may reorder placeholders but validation enforces the placeholder parity contract.
 
 When a new typed status needs real translation work across many languages, split the work by language. Each agent or reviewer should own exactly one `shared/ui/src/commonMain/resources/i18n-status/<language-code>.json` file and preserve placeholders byte-for-byte.
 

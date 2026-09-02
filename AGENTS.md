@@ -28,6 +28,7 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 | `agent_docs/` | Maintainer and coding-agent subsystem documentation. |
 | `agent_tools/` | Repository-local MCP lifecycle tools and docs RAG. |
 | `scripts/` | Packaging, runtime preparation, VM, and smoke-test scripts. |
+| `visual-tests/` | Cross-platform visual scene inventory and Git LFS baselines. |
 | `.github/workflows/` | Android, Linux, Windows, and macOS package workflows. |
 
 ## Mandatory Agent Startup
@@ -49,6 +50,7 @@ The only startup-sync exception is a clearly read-only request where current rem
 - Do not kill a currently running VPN/runtime unless the user explicitly approves it. Stopping VPN can interrupt the active connection to the coding session.
 - If runtime testing needs VPN interruption, first identify the current selected/running location and explain the risk.
 - Do not restore old default subscriptions, default rules, or demo data.
+- Treat `agent_docs/contracts.md` as the single authoritative product-invariant source.
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
 - After changes are done and validated, push completed commits to `origin/dev`, then complete the post-push CI verification loop before reporting success.
@@ -93,8 +95,8 @@ The canonical expected-workflow list is `.github/required-workflows.json`; keep 
 `VPN Integration` is advisory on ordinary `dev` pushes. The explicitly dispatched `all` profile is mandatory for a release. A release command follows this sequence and no other request authorizes it:
 
 1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and validate/push `dev`.
-2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA and dispatch exhaustive integration.
-3. Run `release_workflow(action="status")` until exact-SHA package workflows and the exhaustive integration are successful.
+2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA and dispatch exhaustive VPN integration plus Visual Regression.
+3. Run `release_workflow(action="status")` until exact-SHA package workflows, exhaustive integration, and the four-platform visual gate are successful.
 4. Run `release_workflow(action="publish")` to dispatch the manual stable publisher.
 
 ## First-Read Docs
@@ -104,11 +106,12 @@ Use `agent_docs/README.md` as the task router. It maps common tasks to the two o
 Focused docs are the subsystem detail layer:
 
 - Low-context workflow and dirty worktree policy: `agent_docs/development.md`.
+- Product, UI, platform, protocol, localization, artifact, and release invariants: `agent_docs/contracts.md`.
 - Path-based validation and validation tiers: `agent_docs/test-matrix.md`.
 - State/action ownership: `agent_docs/state-ownership.md`.
 - Runtime safety: `agent_docs/runtime-troubleshooting.md`.
 - Desktop lifecycle invariants: `agent_docs/desktop-lifecycle.md`.
-- Protocol and `sing-box` config contract: `agent_docs/sing-box-contract.md`.
+- Protocol and `sing-box` implementation procedure: `agent_docs/sing-box-development.md`.
 - Localization architecture and status catalogs: `agent_docs/localization.md`.
 - Release packaging and artifact policy: `agent_docs/developer-release-checklist.md`, `agent_docs/native-runtime-artifacts.md`.
 
@@ -225,21 +228,9 @@ Versions use four components `a.b.c.d`, each in `0..19`. Normal automatic rolls 
 
 Detailed catalog structure, typed status rules, dynamic/legacy status handling, and test-update guidance live in `agent_docs/localization.md`.
 
-## Behavior Requirements To Preserve
+## Product Contracts
 
-- No default subscriptions should be added automatically.
-- No default routing rules should be added automatically.
-- Desktop default mode should remain VPN mode unless intentionally changed.
-- Desktop app should be single-instance aware.
-- Closing the desktop window should hide to tray instead of killing the app.
-- When app autostarts after boot, it should start in tray.
-- If VPN was on before shutdown/reboot, desktop should reconnect using the remembered location.
-- If VPN was off before shutdown/reboot, desktop should start without connecting.
-- Scheduled subscription refresh should not leave VPN stopped. A short controlled restart is acceptable only when required by config changes.
-- Desktop best-location checks should use direct probes so results are not biased by whether VPN is currently on.
-- Android best-location and refresh behavior should remain consistent with shared core logic.
-
-See `agent_docs/architecture.md`, `agent_docs/state-ownership.md`, `agent_docs/desktop-lifecycle.md`, `agent_docs/platform-matrix.md`, and `agent_docs/sing-box-contract.md` before changing cross-platform runtime behavior.
+All behavior requirements, including defaults, cross-platform parity, desktop lifecycle, networking, UI appearance, localization, artifact policy, and release gates, live in `agent_docs/contracts.md`. Read the applicable contract IDs plus the procedural owner docs before changing product behavior.
 
 ## User-Facing Install Docs
 

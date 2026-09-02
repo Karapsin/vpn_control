@@ -1,6 +1,6 @@
 # State Ownership
 
-This document defines where state mutations should live. Use it before adding new UI actions or runtime behavior.
+Authoritative ownership boundaries are `STATE-001` through `STATE-005` in `contracts.md`. This document maps those boundaries to current owner files and patch procedures.
 
 ## Shared Core Owns Pure Cross-Platform State
 
@@ -88,11 +88,7 @@ New cross-platform behavior should still be implemented in shared core first whe
 
 ## SSH Routing Ownership
 
-- Shared model/core owns the persisted non-secret settings, validation, subscription route truth table, sing-box SSH/home-egress builders, and fail-closed custom-config transformation.
-- Android owns private-key storage in the app sandbox, temporary bootstrap runtime processes for inactive-session subscription downloads, and management-proxy persistence for the running VPN service.
-- Desktop owns private-key file permissions/ACLs, temporary bootstrap processes, management-proxy lifecycle, and the dedicated direct-probe executable.
-- The private key is never serialized into `PersistedState`, DataStore, `workspace.json`, generated documentation, or exported diagnostics.
-- Saving runtime-affecting settings never stops a live connection automatically. Platform settings services set the pending state, and the explicit restart action owns reconnection.
+Apply `STATE-001` through `STATE-005`, `PRODUCT-006`, and `CONFIG-003` through `CONFIG-005`. Current implementation owners are shared SSH settings/config builders, Android sandbox credential/bootstrap services, and desktop credential/bootstrap/management-proxy/direct-probe services.
 
 ## Patch Rules
 

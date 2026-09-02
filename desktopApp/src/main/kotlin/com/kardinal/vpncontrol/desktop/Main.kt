@@ -47,7 +47,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -62,7 +61,6 @@ import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -90,6 +88,8 @@ import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen
 import com.kardinal.vpncontrol.shared.ui.SavedLocationRow
 import com.kardinal.vpncontrol.shared.ui.StatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
+import com.kardinal.vpncontrol.shared.ui.VpnControlColors
+import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
@@ -300,14 +300,7 @@ private fun DesktopApplication(
                 window.requestFocus()
             }
         }
-        MaterialTheme(
-            colorScheme = darkColorScheme(
-                background = Color(0xFF08111F),
-                surface = Color(0xFF141F2D),
-                primary = Color(0xFF4B7BE5),
-                secondary = Color(0xFF9ED6FF),
-            ),
-        ) {
+        VpnControlTheme {
             Surface(color = Color.Transparent) {
                 DesktopVpnControlApp(
                     window = window,
@@ -478,9 +471,7 @@ private fun DesktopVpnControlApp(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0xFF08111F), Color(0xFF12304B), Color(0xFF3D6B59)),
-                ),
+                VpnControlColors.AppBackground,
             ),
     ) {
         HomeTabScaffold(

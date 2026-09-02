@@ -17,6 +17,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import com.kardinal.vpncontrol.ui.VpnControlApp
 
 class MainActivity : ComponentActivity() {
@@ -159,7 +160,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state = viewModel.uiState.collectAsStateWithLifecycle()
-            VpnControlApp(
+            VpnControlTheme {
+                VpnControlApp(
                 state = state.value,
                 onNavigateBack = viewModel::navigateBack,
                 onProfileChange = viewModel::onProfileDraftChanged,
@@ -324,7 +326,8 @@ class MainActivity : ComponentActivity() {
                 },
                 onCancelBusyAction = viewModel::cancelActiveOperation,
                 onExportDiagnostics = viewModel::exportDiagnostics,
-            )
+                )
+            }
         }
 
         handleIncomingIntent(intent)

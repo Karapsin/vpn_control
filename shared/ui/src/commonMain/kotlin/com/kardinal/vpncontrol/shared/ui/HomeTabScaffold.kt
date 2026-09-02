@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import com.kardinal.vpncontrol.AppScreen
 
 @Composable
@@ -56,6 +57,7 @@ fun HomeTabScaffold(
                     divider = {},
                 ) {
                     Tab(
+                        modifier = Modifier.testTag("tab-main"),
                         selected = currentScreen == AppScreen.MAIN,
                         onClick = onOpenMainTab,
                         icon = {
@@ -63,6 +65,7 @@ fun HomeTabScaffold(
                         },
                     )
                     Tab(
+                        modifier = Modifier.testTag("tab-profile"),
                         selected = currentScreen == AppScreen.PROFILE,
                         onClick = onOpenProfileTab,
                         icon = {
@@ -70,6 +73,7 @@ fun HomeTabScaffold(
                         },
                     )
                     Tab(
+                        modifier = Modifier.testTag("tab-locations"),
                         selected = currentScreen == AppScreen.LOCATIONS,
                         onClick = onOpenLocationsTab,
                         icon = {
@@ -77,6 +81,7 @@ fun HomeTabScaffold(
                         },
                     )
                     Tab(
+                        modifier = Modifier.testTag("tab-stats"),
                         selected = currentScreen == AppScreen.STATS,
                         onClick = onOpenStatsTab,
                         icon = {
@@ -84,6 +89,7 @@ fun HomeTabScaffold(
                         },
                     )
                     Tab(
+                        modifier = Modifier.testTag("tab-rules"),
                         selected = currentScreen == AppScreen.ROUTING_RULES,
                         onClick = onOpenRoutingRules,
                         icon = {

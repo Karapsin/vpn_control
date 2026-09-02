@@ -62,6 +62,7 @@ SERVER_INSTRUCTIONS = (
     "run_checks(level='prepush'), then git_workflow for push and exact-SHA CI verification on dev. "
     "Publishing is allowed only after an explicit user release command through release_workflow. "
     "The server is fixed to the VPN Control repository root. "
+    "Product invariants are centralized in agent_docs/contracts.md. "
     "Public documentation is in README.md and docs/; coding-agent documentation is in "
     "AGENTS.md, agent_docs/, and agent_tools/README.md."
 )
@@ -82,8 +83,9 @@ AREA_DOCS: dict[str, list[str]] = {
         "agent_docs/test-matrix.md",
     ],
     "runtime": [
+        "agent_docs/contracts.md",
         "agent_docs/runtime-troubleshooting.md",
-        "agent_docs/sing-box-contract.md",
+        "agent_docs/sing-box-development.md",
     ],
     "release": [
         "agent_docs/developer-release-checklist.md",
@@ -121,6 +123,9 @@ PREPUSH_COMMANDS = [
     ["./scripts/check_release_hygiene.sh"],
     ["./scripts/check_docs_hygiene.sh"],
     [AGENT_TEST_PYTHON, "-m", "unittest", "discover", "-s", "agent_tools/tests"],
+    [sys.executable, "scripts/check_ui_theme.py"],
+    [sys.executable, "scripts/test_visual_regression.py"],
+    [sys.executable, "scripts/test_visual_fleet.py"],
     ["./scripts/check_localization.py"],
     ["./scripts/status_catalog_tool.py", "check"],
     [
@@ -646,7 +651,7 @@ def git_workflow(
 
 
 def _route(task: str, area: str) -> list[str]:
-    files = ["AGENTS.md", "agent_docs/README.md", "agent_docs/development.md"]
+    files = ["AGENTS.md", "agent_docs/README.md", "agent_docs/development.md", "agent_docs/contracts.md"]
     files.extend(AREA_DOCS.get(area, []))
     lowered = task.lower()
     if any(word in lowered for word in ("test", "check", "validate", "ci")):
@@ -841,23 +846,35 @@ def _merge_dev_for_release() -> dict[str, Any]:
                 blockers=[_command_blocker("release_merge", result)], command_results=commands,
             )
     sha = _git_stdout(["rev-parse", "HEAD"])
-    integration = _run(
-        [
-            "gh", "workflow", "run", "vpn-integration.yml", "--ref", RELEASE_BRANCH,
-            "-f", "profile=all", "-f", f"target_sha={sha}",
-        ],
-        timeout=180,
-    )
-    commands.append(integration)
-    if not integration["ok"]:
+    release_dispatches = [
+        (
+            "release_integration",
+            [
+                "gh", "workflow", "run", "vpn-integration.yml", "--ref", RELEASE_BRANCH,
+                "-f", "profile=all", "-f", f"target_sha={sha}",
+            ],
+        ),
+        (
+            "visual_regression",
+            [
+                "gh", "workflow", "run", "visual-regression.yml", "--ref", RELEASE_BRANCH,
+                "-f", f"target_sha={sha}",
+            ],
+        ),
+    ]
+    for phase, command in release_dispatches:
+        dispatched = _run(command, timeout=180)
+        commands.append(dispatched)
+        if dispatched["ok"]:
+            continue
         return _error(
-            "release_workflow", "main was updated, but release integration could not be dispatched.",
-            blockers=[_command_blocker("release_integration", integration)], command_results=commands,
+            "release_workflow", "main was updated, but a release gate could not be dispatched.",
+            blockers=[_command_blocker(phase, dispatched)], command_results=commands,
         )
     return {
         "ok": True,
         "tool": "release_workflow",
-        "summary": "Fast-forwarded dev to main and dispatched exhaustive release integration.",
+        "summary": "Fast-forwarded dev to main and dispatched exhaustive VPN and visual release gates.",
         "result": {"sha": sha},
         "command_results": commands,
     }
@@ -924,6 +941,7 @@ def _release_readiness() -> dict[str, Any]:
         blockers.append({"phase": "manifest", "message": str(exc)})
     latest: dict[str, dict[str, Any]] = {}
     integration: dict[str, Any] | None = None
+    visual_regression: dict[str, Any] | None = None
     for run in runs:
         if not isinstance(run, dict) or run.get("headSha") != sha:
             continue
@@ -938,6 +956,17 @@ def _release_readiness() -> dict[str, Any]:
                 )
             ):
                 integration = run
+            continue
+        if name == "Visual Regression":
+            if (
+                run.get("event") == "workflow_dispatch"
+                and f"Visual Regression / {sha}" in str(run.get("displayTitle", ""))
+                and (
+                    visual_regression is None
+                    or int(run.get("databaseId") or 0) > int(visual_regression.get("databaseId") or 0)
+                )
+            ):
+                visual_regression = run
             continue
         requirement = required_workflows.get(name)
         if requirement is None or run.get("event") != requirement["event"]:
@@ -962,11 +991,23 @@ def _release_readiness() -> dict[str, Any]:
         or integration.get("conclusion") != "success"
     ):
         blockers.append({"phase": "integration", "message": "exhaustive dispatched VPN Integration must succeed"})
+    if (
+        not visual_regression
+        or visual_regression.get("event") != "workflow_dispatch"
+        or f"Visual Regression / {sha}" not in str(visual_regression.get("displayTitle", ""))
+        or visual_regression.get("status") != "completed"
+        or visual_regression.get("conclusion") != "success"
+    ):
+        blockers.append({"phase": "visual", "message": "exact-SHA Visual Regression must succeed on every platform"})
     return {
         "sha": sha,
         "version": version,
         "tag": tag,
-        "runs": {**latest, **({"VPN Integration": integration} if integration else {})},
+        "runs": {
+            **latest,
+            **({"VPN Integration": integration} if integration else {}),
+            **({"Visual Regression": visual_regression} if visual_regression else {}),
+        },
         "blockers": blockers,
         "command_results": command_results,
     }

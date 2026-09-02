@@ -86,7 +86,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
@@ -134,6 +133,7 @@ import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen as SharedRoutingRule
 import com.kardinal.vpncontrol.shared.ui.SavedLocationRow as SharedSavedLocationRow
 import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
+import com.kardinal.vpncontrol.shared.ui.VpnControlColors
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel as sharedActiveProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel as sharedCurrentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
@@ -252,9 +252,7 @@ fun VpnControlApp(
     onCancelBusyAction: () -> Unit,
     onExportDiagnostics: () -> Unit,
 ) {
-    val background = Brush.verticalGradient(
-        colors = listOf(Color(0xFF08111F), Color(0xFF12304B), Color(0xFF3D6B59)),
-    )
+    val background = VpnControlColors.AppBackground
     val showBlockingProgress = state.isRefreshing || state.isStartingVpn
     val systemLanguageCode = Locale.getDefault().language
     val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)

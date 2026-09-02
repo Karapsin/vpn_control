@@ -10,6 +10,10 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 ./scripts/check_release_hygiene.sh
 ./scripts/check_docs_hygiene.sh
 python3 -m unittest discover -s agent_tools/tests
+python3 scripts/check_ui_theme.py
+python3 scripts/test_visual_regression.py
+python3 scripts/test_visual_fleet.py
+python3 scripts/check_contract_docs.py
 ./scripts/check_localization.py
 ./scripts/status_catalog_tool.py check
 ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin
@@ -23,7 +27,7 @@ Use the smallest tier that gives meaningful coverage for the touched boundary.
 | --- | --- | --- |
 | Minimum local | Documentation-only changes, one-file pure logic changes, or early iteration before a larger check | `git diff --check` plus the mapped check set from Quick Mapping |
 | Expanded boundary | A patch crosses shared/platform, status/localization, runtime/config, or packaging boundaries | Run every mapped command for the touched rows and adjacent owner tests named in Common Combined Checks |
-| Full fast guardrails | Before pushing broad behavior, localization, runtime, agent lifecycle, or release workflow changes | `git diff --check`, `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `python3 -m unittest discover -s agent_tools/tests`, `./scripts/check_localization.py`, `./scripts/status_catalog_tool.py check`, and the Gradle command from CI Shortcut |
+| Full fast guardrails | Before pushing broad behavior, localization, runtime, agent lifecycle, or release workflow changes | `git diff --check`, release/docs hygiene, agent tool tests, theme/visual comparator checks, localization/status checks, and the Gradle command from CI Shortcut |
 | Manual or risky | Real VPN interruption, emulator/device VPN permission, tray/window-manager behavior, Windows UAC, VM packaging, reboot/autostart | Run only when the touched area requires it; get approval before interrupting VPN and report the closest automated coverage |
 
 If a mapped check cannot run because the environment lacks an Android SDK, emulator, VM, network access, or platform host, run the closest non-risky local check and report the missing prerequisite explicitly.
@@ -39,6 +43,8 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Shared settings/location mutation status helpers | `./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest` |
 | `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
+| Shared/platform UI theme | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, `./gradlew :shared:ui:desktopTest`, and affected platform compile/test |
+| Visual manifest, comparator, capture, or baselines | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, agent tool tests, docs/release hygiene; run matching fleet capture/verify when enrolled |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
 | Android profile/import action orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android connection command/lifecycle orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
@@ -69,9 +75,9 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
 | Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
 | `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
-| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, and `git diff --check` |
+| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
 
-The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only an explicit exhaustive dispatch for the exact release SHA. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners.
+The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN and Visual Regression dispatches for the exact release SHA. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture likewise runs only on dedicated GUI fleet hosts with synthetic fixtures.
 
 When an integration job fails because of application behavior, add the smallest deterministic regression to the fast suite before changing the implementation. Infrastructure-only failures should gain a fixture, script, or workflow-contract test when reproducible.
 

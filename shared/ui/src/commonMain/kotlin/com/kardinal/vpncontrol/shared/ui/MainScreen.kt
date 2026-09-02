@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,7 +80,9 @@ fun MainScreen(
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    headerActions()
+                    Row(modifier = Modifier.testTag("main-settings")) {
+                        headerActions()
+                    }
                 }
                 Text(
                     text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
@@ -90,12 +93,16 @@ fun MainScreen(
                     color = Color(0xFFD3E3EE),
                 )
                 if (showSubscriptionMismatchWarning) {
-                    SubscriptionMismatchWarningCard(activeProfileLabel = activeProfileLabel)
+                    SubscriptionMismatchWarningCard(
+                        activeProfileLabel = activeProfileLabel,
+                        modifier = Modifier.testTag("subscription-mismatch"),
+                    )
                 }
                 StatusCard(
                     state = state,
                     activeProfileLabel = activeProfileLabel,
                     extraDetails = statusDetails,
+                    modifier = Modifier.testTag("status"),
                 )
                 MainActionButton(
                     icon = powerIcon,
@@ -116,6 +123,12 @@ fun MainScreen(
                     onClick = onToggleVpn,
                     enabled = !state.isBusy,
                     colors = if (state.isVpnRunning) activeVpnButtonColors() else darkButtonColors(),
+                    visualId = when {
+                        state.appMode == AppMode.PROXY_ONLY && state.isVpnRunning -> "stop-proxy"
+                        state.appMode == AppMode.PROXY_ONLY -> "start-proxy"
+                        state.isVpnRunning -> "disconnect"
+                        else -> "connect"
+                    },
                 )
                 MainActionButton(
                     icon = findBestIcon,
@@ -130,11 +143,12 @@ fun MainScreen(
                     onClick = onRefresh,
                     enabled = !state.isBusy,
                     outlined = true,
+                    visualId = "find-best",
                 )
                 OutlinedButton(
                     onClick = onExportDiagnostics,
                     enabled = !state.isBusy,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("export-diagnostics"),
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = ButtonDefaults.outlinedButtonColors(

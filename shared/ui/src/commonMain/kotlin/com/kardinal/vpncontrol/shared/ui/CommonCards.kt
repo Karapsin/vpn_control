@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,6 +152,7 @@ fun MainActionButton(
     enabled: Boolean = true,
     outlined: Boolean = false,
     colors: ButtonColors? = null,
+    visualId: String? = null,
 ) {
     val strings = LocalAppStrings.current
     val content: @Composable () -> Unit = {
@@ -177,7 +179,9 @@ fun MainActionButton(
         OutlinedButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .then(if (visualId == null) Modifier else Modifier.testTag(visualId)),
             contentPadding = PaddingValues(18.dp),
             shape = RoundedCornerShape(22.dp),
             border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
@@ -192,7 +196,9 @@ fun MainActionButton(
         Button(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .then(if (visualId == null) Modifier else Modifier.testTag(visualId)),
             contentPadding = PaddingValues(18.dp),
             shape = RoundedCornerShape(22.dp),
             colors = colors ?: ButtonDefaults.buttonColors(),

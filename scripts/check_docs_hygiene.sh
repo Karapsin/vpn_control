@@ -32,6 +32,7 @@ check_index() {
 
 check_index "docs" "docs/README.md" "Public documentation"
 check_index "agent_docs" "agent_docs/README.md" "Agent documentation"
+python3 scripts/check_contract_docs.py
 python3 scripts/check_user_facing_terminology.py
 
 python3 - <<'PY'

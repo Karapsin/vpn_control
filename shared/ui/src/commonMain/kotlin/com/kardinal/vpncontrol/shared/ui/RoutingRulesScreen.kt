@@ -402,7 +402,7 @@ private fun ProxyOnlyRulesNoteCard() {
     val strings = LocalAppStrings.current
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0x332A3E12)),
+        colors = CardDefaults.cardColors(containerColor = Color(0x33421F0A)),
         border = BorderStroke(1.dp, Color(0xFFFFC857)),
     ) {
         Column(

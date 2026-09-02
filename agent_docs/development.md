@@ -115,12 +115,13 @@ See `agent_docs/runtime-troubleshooting.md` for the safe diagnostic path.
 ## Where To Look Next
 
 - Platform behavior and limitations: `agent_docs/platform-matrix.md`.
+- Authoritative product invariants: `agent_docs/contracts.md`.
 - State/action ownership: `agent_docs/state-ownership.md`.
 - Test selection: `agent_docs/test-matrix.md`.
 - Runtime logs and safe checks: `agent_docs/runtime-troubleshooting.md`.
 - Architecture and data flow: `agent_docs/architecture.md`.
 - Desktop lifecycle invariants: `agent_docs/desktop-lifecycle.md`.
-- sing-box config contract: `agent_docs/sing-box-contract.md`.
+- sing-box implementation procedure: `agent_docs/sing-box-development.md`.
 - Native runtime artifact policy: `agent_docs/native-runtime-artifacts.md`.
 - Large dirty-state handoff template: `agent_docs/work-in-progress.md`.
 - Localization architecture: `agent_docs/localization.md`.
