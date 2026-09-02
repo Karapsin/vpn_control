@@ -48,11 +48,11 @@
       ],
       "classified_non_push_workflows": [
         {
-          "name": "Visual Regression",
+          "name": "Visual Capture",
           "path": ".github/workflows/visual-regression.yml",
           "classification": "release_only",
           "events": ["workflow_dispatch"],
-          "reason": "Every supported platform must pass exact-SHA screenshot and geometry comparisons before publishing."
+          "reason": "Agent-dispatched hosted fallback capture for platforms or repeatable scenes not available locally."
         },
         {
           "name": "Publish Stable Release",
@@ -60,6 +60,13 @@
           "classification": "release_only",
           "events": ["workflow_dispatch"],
           "reason": "Publishing requires an explicit user release command and exact-SHA release receipt."
+        }
+      ],
+      "release_statuses": [
+        {
+          "context": "vpn-control/agent-visual",
+          "classification": "release_only",
+          "reason": "Every automated visual result and every agent scene verdict must match the exact-SHA local receipt."
         }
       ]
     }

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "status_context": "vpn-control/agent-visual",
+  "runtime_root": ".runtime/visual-vms",
+  "platforms": {
+    "android": {
+      "canonical_environment": "android-api35-pixel6",
+      "required_capabilities": ["app", "native"],
+      "local": {
+        "kind": "android-emulator",
+        "avd_name": "vpn-control-visual-api35",
+        "emulator_port": 5580,
+        "system_image": "system-images;android-35;google_apis;x86_64",
+        "system_image_arm64": "system-images;android-35;google_apis;arm64-v8a",
+        "device": "pixel_6"
+      },
+      "hosted": {
+        "runner": "ubuntu-24.04",
+        "capabilities": ["app", "native"]
+      }
+    },
+    "linux": {
+      "canonical_environment": "linux-ubuntu24-x11",
+      "required_capabilities": ["app", "native"],
+      "local": {
+        "kind": "native-or-tart",
+        "vm_name": "vpn-control-visual-linux",
+        "image": "ghcr.io/cirruslabs/ubuntu:latest"
+      },
+      "hosted": {
+        "runner": "ubuntu-24.04",
+        "capabilities": ["app", "native"]
+      }
+    },
+    "windows": {
+      "canonical_environment": "windows11-client-1280x800",
+      "required_capabilities": ["app", "native", "secure_desktop"],
+      "local": {
+        "kind": "native-or-client-vm",
+        "libvirt_name": "vpn-control-win11",
+        "qemu_disk": ".runtime/visual-vms/windows/vpn-control-win11.qcow2",
+        "qemu_ready_marker": ".runtime/visual-vms/windows/READY"
+      },
+      "hosted": {
+        "runner": "windows-2025",
+        "capabilities": ["app", "native"]
+      }
+    },
+    "macos": {
+      "canonical_environment": "macos15-1280x800",
+      "required_capabilities": ["app", "native", "secure_desktop"],
+      "local": {
+        "kind": "native-or-tart",
+        "vm_name": "vpn-control-visual-macos",
+        "image": "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+      },
+      "hosted": {
+        "runner": "macos-15",
+        "capabilities": ["app", "native"]
+      }
+    }
+  },
+  "secure_scenes": [
+    "windows-uac",
+    "macos-gatekeeper",
+    "macos-install-confirmation"
+  ]
+}

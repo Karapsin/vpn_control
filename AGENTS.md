@@ -95,9 +95,10 @@ The canonical expected-workflow list is `.github/required-workflows.json`; keep 
 `VPN Integration` is advisory on ordinary `dev` pushes. The explicitly dispatched `all` profile is mandatory for a release. A release command follows this sequence and no other request authorizes it:
 
 1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and validate/push `dev`.
-2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA and dispatch exhaustive VPN integration plus Visual Regression.
-3. Run `release_workflow(action="status")` until exact-SHA package workflows, exhaustive integration, and the four-platform visual gate are successful.
-4. Run `release_workflow(action="publish")` to dispatch the manual stable publisher.
+2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA, dispatch exhaustive VPN integration, and start the exact-SHA agent visual review.
+3. Use `visual_platform` plus `visual_workflow`/`visual_review` to capture, automatically validate, open, and record every four-platform scene. No persistent self-hosted visual runner is used.
+4. Run `release_workflow(action="status")` until exact-SHA package workflows, exhaustive integration, and the matching agent visual receipt/status are successful.
+5. Run `release_workflow(action="publish")` to dispatch the manual stable publisher.
 
 ## First-Read Docs
 

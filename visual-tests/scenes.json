@@ -1,5 +1,15 @@
 {
   "schema_version": 1,
+  "capture_contract": {
+    "default_geometry_capability": "app",
+    "default_native_capability": "native",
+    "secure_scene_ids": [
+      "windows-uac",
+      "macos-gatekeeper",
+      "macos-install-confirmation"
+    ],
+    "review_batch_size": 6
+  },
   "thresholds": {
     "max_channel_delta": 8,
     "max_changed_ratio": 0.0002,

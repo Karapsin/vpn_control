@@ -1,11 +1,24 @@
-name: Visual Regression
-run-name: Visual Regression / ${{ inputs.target_sha }}
+name: Visual Capture
+run-name: Visual Capture / ${{ inputs.platform }} / ${{ inputs.target_sha }}
 
 on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Exact commit whose packaged UI must be captured
+        description: Exact commit whose UI must be captured
+        required: true
+        type: string
+      platform:
+        description: Hosted fallback platform
+        required: true
+        type: choice
+        options:
+          - android
+          - linux
+          - windows
+          - macos
+      scenes:
+        description: Comma-separated capability-compatible scenes selected by visual_platform
         required: true
         type: string
 
@@ -13,73 +26,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: visual-regression-${{ inputs.target_sha }}
+  group: visual-capture-${{ inputs.platform }}-${{ inputs.target_sha }}
   cancel-in-progress: false
+
+env:
+  VPN_CONTROL_VISUAL_PROVIDER: hosted
+  VPN_CONTROL_VISUAL_TARGET_SHA: ${{ inputs.target_sha }}
 
 jobs:
   android:
-    name: Android visual gate
-    runs-on: [self-hosted, vpn-control-visual, android]
-    timeout-minutes: 60
-    steps:
-      - name: Validate exact SHA
-        shell: bash
-        env:
-          TARGET_SHA: ${{ inputs.target_sha }}
-        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
-      - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.target_sha }}
-          fetch-depth: 0
-          lfs: true
-      - name: Capture deterministic Android scenes
-        run: python3 scripts/visual_fleet.py capture --platform android --output build/visual-actual/android
-      - name: Compare pixels and geometry
-        run: python3 scripts/visual_regression.py verify --platform android --actual-dir build/visual-actual/android
-      - name: Upload Android evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-regression-android-${{ inputs.target_sha }}
-          path: |
-            build/visual-actual/android
-            build/visual-reports/android
-          if-no-files-found: warn
-
-  linux:
-    name: Linux visual gate
-    runs-on: [self-hosted, vpn-control-visual, linux]
-    timeout-minutes: 60
-    steps:
-      - name: Validate exact SHA
-        shell: bash
-        env:
-          TARGET_SHA: ${{ inputs.target_sha }}
-        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
-      - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.target_sha }}
-          fetch-depth: 0
-          lfs: true
-      - name: Capture deterministic Linux scenes
-        run: python3 scripts/visual_fleet.py capture --platform linux --output build/visual-actual/linux
-      - name: Compare pixels and geometry
-        run: python3 scripts/visual_regression.py verify --platform linux --actual-dir build/visual-actual/linux
-      - name: Upload Linux evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-regression-linux-${{ inputs.target_sha }}
-          path: |
-            build/visual-actual/linux
-            build/visual-reports/linux
-          if-no-files-found: warn
-
-  windows:
-    name: Windows VM visual gate
-    runs-on: [self-hosted, vpn-control-visual, windows-vm]
+    if: inputs.platform == 'android'
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
       - name: Validate exact SHA
@@ -93,23 +50,32 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           lfs: true
-      - name: Capture deterministic Windows VM scenes
-        run: python3 scripts/visual_fleet.py capture --platform windows --output build/visual-actual/windows
-      - name: Compare pixels and geometry
-        run: python3 scripts/visual_regression.py verify --platform windows --actual-dir build/visual-actual/windows
-      - name: Upload Windows evidence
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Capture Android scenes in API 35 emulator
+        env:
+          VISUAL_SCENES: ${{ inputs.scenes }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: scripts/capture_visual_android.sh build/visual-actual/android "$VISUAL_SCENES"
+      - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-regression-windows-${{ inputs.target_sha }}
+          name: visual-capture-android-${{ inputs.target_sha }}
           path: |
-            build/visual-actual/windows
-            build/visual-reports/windows
+            build/visual-actual/android
           if-no-files-found: warn
 
-  macos:
-    name: macOS visual gate
-    runs-on: [self-hosted, vpn-control-visual, macos]
+  linux:
+    if: inputs.platform == 'linux'
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Validate exact SHA
@@ -123,16 +89,88 @@ jobs:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           lfs: true
-      - name: Capture deterministic macOS scenes
-        run: python3 scripts/visual_fleet.py capture --platform macos --output build/visual-actual/macos
-      - name: Compare pixels and geometry
-        run: python3 scripts/visual_regression.py verify --platform macos --actual-dir build/visual-actual/macos
-      - name: Upload macOS evidence
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install isolated X11 capture environment
+        run: sudo apt-get update && sudo apt-get install -y openbox xvfb xdotool imagemagick
+      - name: Capture Linux scenes
+        env:
+          VISUAL_SCENES: ${{ inputs.scenes }}
+        run: xvfb-run --server-args='-screen 0 1280x800x24' scripts/capture_visual_desktop.sh linux build/visual-actual/linux "$VISUAL_SCENES"
+      - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-regression-macos-${{ inputs.target_sha }}
+          name: visual-capture-linux-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/linux
+          if-no-files-found: warn
+
+  windows:
+    if: inputs.platform == 'windows'
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: pwsh
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: if ($env:TARGET_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid target SHA' }
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Capture repeatable Windows scenes
+        shell: pwsh
+        env:
+          VISUAL_SCENES: ${{ inputs.scenes }}
+        run: ./scripts/capture_visual_desktop.ps1 -Platform windows -Output build/visual-actual/windows -Scenes $env:VISUAL_SCENES
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-windows-${{ inputs.target_sha }}
+          path: |
+            build/visual-actual/windows
+          if-no-files-found: warn
+
+  macos:
+    if: inputs.platform == 'macos'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Capture repeatable macOS scenes
+        env:
+          VISUAL_SCENES: ${{ inputs.scenes }}
+        run: scripts/capture_visual_desktop.sh macos build/visual-actual/macos "$VISUAL_SCENES"
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-macos-${{ inputs.target_sha }}
           path: |
             build/visual-actual/macos
-            build/visual-reports/macos
           if-no-files-found: warn

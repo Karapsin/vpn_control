@@ -7,10 +7,15 @@ on:
         description: Exact validated main SHA to publish
         required: true
         type: string
+      visual_receipt_sha256:
+        description: Digest of the exact-SHA agent visual review receipt
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: write
+  statuses: read
 
 concurrency:
   group: publish-stable-release
@@ -23,6 +28,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_SHA: ${{ inputs.target_sha }}
+      VISUAL_RECEIPT_SHA256: ${{ inputs.visual_receipt_sha256 }}
       REPOSITORY: ${{ github.repository }}
 
     steps:
@@ -31,6 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VISUAL_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           main_sha=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)
           dev_sha=$(gh api "repos/$REPOSITORY/git/ref/heads/dev" --jq .object.sha)
           [[ "$TARGET_SHA" == "$main_sha" && "$TARGET_SHA" == "$dev_sha" ]] || {
@@ -61,10 +68,12 @@ jobs:
             echo "Missing exhaustive exact-SHA VPN Integration success." >&2
             exit 1
           }
-          visual_id=$(gh api "repos/$REPOSITORY/actions/workflows/visual-regression.yml/runs?event=workflow_dispatch&status=completed&per_page=100" \
-            --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\" and (.display_title | contains(\"Visual Regression / $TARGET_SHA\")))) | sort_by(.id) | last | .id")
-          [[ -n "$visual_id" && "$visual_id" != "null" ]] || {
-            echo "Missing exact-SHA Visual Regression success." >&2
+          visual_status=$(gh api "repos/$REPOSITORY/commits/$TARGET_SHA/statuses" \
+            --jq 'map(select(.context == "vpn-control/agent-visual")) | sort_by(.id) | last | [.state, .description] | @tsv')
+          IFS=$'\t' read -r visual_state visual_description <<< "$visual_status"
+          receipt_prefix=${VISUAL_RECEIPT_SHA256:0:16}
+          [[ "$visual_state" == "success" && "$visual_description" == *"$receipt_prefix"* ]] || {
+            echo "Missing exact-SHA agent visual review status for receipt $receipt_prefix." >&2
             exit 1
           }
 

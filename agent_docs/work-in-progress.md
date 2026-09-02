@@ -4,7 +4,7 @@ Use this file only when a large task intentionally leaves multiple buckets chang
 
 ## Current Work
 
-No active multi-bucket work is documented here.
+No active multi-bucket work is recorded.
 
 ## Template
 

@@ -36,13 +36,16 @@ python3 scripts/test_vpn_integration_fixture.py
 python3 scripts/test_user_facing_terminology.py
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py
-python3 scripts/test_visual_fleet.py
-python3 -m py_compile scripts/visual_fleet.py scripts/visual_regression.py
+python3 scripts/test_visual_platform.py
+python3 scripts/test_visual_review.py
+python3 -m py_compile scripts/visual_platform.py scripts/visual_regression.py scripts/visual_review.py
 python3 scripts/check_release_metadata.py
 python3 scripts/release_notes.py --version "$(python3 scripts/version_metadata.py --field version)" >/dev/null
 bash -n scripts/install_arch_desktop_update.sh
 bash -n scripts/package_arch_desktop_update.sh
 bash -n scripts/test_arch_desktop_update.sh
-bash -n scripts/setup_visual_runner.sh
+bash -n scripts/bootstrap_windows_visual_vm.sh
+bash -n scripts/start_windows_visual_vm.sh
+bash -n scripts/mark_windows_visual_vm_ready.sh
 
 echo "[vpn-control] release hygiene passed"

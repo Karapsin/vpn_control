@@ -1,6 +1,6 @@
 # Developer Release Checklist
 
-Authoritative release and artifact invariants are `RELEASE-001` through `RELEASE-007`, `ARTIFACT-001` through `ARTIFACT-004`, and `VISUAL-001` through `VISUAL-008` in `contracts.md`. This document owns developer packaging and explicit-release procedures. User-facing install instructions stay in `../README.md`.
+Authoritative release and artifact invariants are `RELEASE-001` through `RELEASE-007`, `ARTIFACT-001` through `ARTIFACT-004`, and `VISUAL-001` through `VISUAL-009` in `contracts.md`. This document owns developer packaging and explicit-release procedures. User-facing install instructions stay in `../README.md`.
 
 ## Branch And Release Routine
 
@@ -10,9 +10,10 @@ For an explicitly requested release:
 
 1. Ensure the intended `dev` SHA passed all required push workflows.
 2. If `## Unreleased` still contains notes, run `version_bump(change_type="release", force_release=true)` without a summary, rerun pre-push checks, and push/verify the resulting `dev` SHA.
-3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA and dispatches exhaustive VPN integration plus Visual Regression for that SHA.
-4. Run `release_workflow(action="status")` after exhaustive integration, Visual Regression, and all exact-SHA package workflows complete. It creates the readiness receipt used by publishing.
-5. Run `release_workflow(action="publish")`. This dispatches `.github/workflows/release-publish.yml`; the workflow independently rechecks exact SHAs, metadata, packages, and exhaustive integration before creating the GitHub Release.
+3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA, dispatches exhaustive VPN integration, and starts a pending full agent visual review for that SHA.
+4. Use `visual_platform` to bootstrap/start missing local environments or dispatch eligible hosted fallback; ingest automated reports, open every returned screenshot/contact sheet, and record every scene with `visual_review`.
+5. Complete the review to write its local receipt and successful exact-SHA commit status, then run `release_workflow(action="status")` after exhaustive integration and all package workflows complete.
+6. Run `release_workflow(action="publish")`. This dispatches `.github/workflows/release-publish.yml`; the workflow independently rechecks exact SHAs, metadata, packages, exhaustive integration, and the visual receipt digest before creating the GitHub Release.
 
 Do not invoke the publisher workflow directly unless repairing the release tool itself under explicit user direction. Never replace an existing tag or release.
 
@@ -67,11 +68,12 @@ macOS:
 - Signing and notarization require the secrets described in `agent_docs/macos-release.md`.
 - Full desktop VPN mode is not implemented yet; package smoke should use proxy-only assumptions.
 
-Visual fleet:
+Agent visual validation:
 
 - Git LFS is installed and all canonical baselines are hydrated.
-- The four self-hosted GUI runners and their capture drivers pass `visual_fleet.py preflight`.
-- See `visual-regression.md` for labels, fixed displays, platform permissions, and first-baseline bootstrap.
+- `visual_platform.py plan` identifies a release-capable local or hosted route for every scene.
+- Local Android/Linux/Windows/macOS environments can be bootstrapped and started by the agent; Windows UAC and macOS secure surfaces remain mandatory local capabilities.
+- See `visual-regression.md` for provider selection, VM ownership, capture, agent inspection, and first-baseline bootstrap.
 
 ## One-Command Release Check
 

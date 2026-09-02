@@ -22,7 +22,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Shared state/action boundary | `state-ownership.md`, `architecture.md`, `test-matrix.md` | `shared/core/`, `MainController`, Android ViewModel, desktop services | Shared tests plus one affected platform compile/test |
 | Packaging, release, native runtime | `developer-release-checklist.md`, `native-runtime-artifacts.md`, `platform-matrix.md` | `scripts/`, `.github/workflows/`, runtime artifact paths | `./scripts/check_release_hygiene.sh` plus package-specific checks |
 | CI or workflow-only changes | `developer-release-checklist.md`, `test-matrix.md` | `.github/workflows/`, scripts called by workflows, artifact names in `../README.md` | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check`; run package checks only when workflow behavior needs it |
-| Visual regression, baselines, or GUI fleet | `contracts.md`, `visual-regression.md`, `developer-release-checklist.md` | `visual-tests/`, visual scripts, `.github/workflows/visual-regression.yml`, release tool | theme, visual comparator/fleet, agent tool, release hygiene, and docs hygiene checks |
+| Visual regression, agent review, or VM capture | `contracts.md`, `visual-regression.md`, `developer-release-checklist.md` | `visual-tests/`, visual platform/review scripts, hosted fallback workflow, release tool | theme, comparator, platform/review, agent tool, release hygiene, and docs hygiene checks |
 | User-facing install docs | `../README.md`, `developer-release-checklist.md` | Root `../README.md`, GitHub Release asset names | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, `git diff --check` |
 
 Use the smallest row that covers the change. If a patch crosses rows, run the union of their mapped check sets or state exactly what was skipped.
@@ -46,7 +46,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `desktop-smoke-testing.md` | Linux/Windows desktop manual smoke checklist. |
 | `smoke-android.md` | Android instrumentation commands and manual protocol smoke checklist. |
 | `macos-release.md` | macOS signing and notarization setup. |
-| `visual-regression.md` | Visual scene, baseline, fleet, capture, and release-gate operations. |
+| `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
 | `work-in-progress.md` | Optional template for intentional multi-bucket dirty work. |
 
 User-facing install and configuration instructions stay in `../README.md` and `../docs/`.

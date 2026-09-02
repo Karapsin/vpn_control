@@ -52,6 +52,8 @@ class McpSurfaceTest(unittest.TestCase):
             mcp_server.run_checks,
             mcp_server.version_bump,
             mcp_server.release_workflow,
+            mcp_server.visual_workflow,
+            mcp_server.visual_review,
             mcp_server.git_workflow,
         )
         for tool in tools:
@@ -104,7 +106,11 @@ class McpSurfaceTest(unittest.TestCase):
         self.assertEqual({"VPN Integration"}, mcp_server._advisory_workflow_names())
         manifest = json.loads(mcp_server.REQUIRED_WORKFLOWS_PATH.read_text(encoding="utf-8"))
         release_only = manifest["branches"]["dev"]["classified_non_push_workflows"]
-        self.assertIn("Visual Regression", {entry["name"] for entry in release_only})
+        self.assertIn("Visual Capture", {entry["name"] for entry in release_only})
+        self.assertEqual(
+            {"vpn-control/agent-visual"},
+            {entry["context"] for entry in manifest["branches"]["dev"]["release_statuses"]},
+        )
 
     @mock.patch.object(mcp_server.docs_assistant, "build_docs_index")
     @mock.patch.object(mcp_server, "_ahead_behind", return_value=(0, 1, None))
@@ -129,7 +135,7 @@ class McpSurfaceTest(unittest.TestCase):
 
 @unittest.skipIf(ClientSession is None, "mcp dependency is not installed in this Python")
 class McpProtocolTest(unittest.IsolatedAsyncioTestCase):
-    async def test_stdio_server_lists_the_eight_repository_tools(self) -> None:
+    async def test_stdio_server_lists_repository_tools(self) -> None:
         parameters = StdioServerParameters(
             command=sys.executable,
             args=[str(Path(mcp_server.__file__).resolve()), "serve"],
@@ -149,6 +155,8 @@ class McpProtocolTest(unittest.IsolatedAsyncioTestCase):
                 "run_checks",
                 "version_bump",
                 "release_workflow",
+                "visual_workflow",
+                "visual_review",
                 "git_workflow",
             },
             {tool.name for tool in result.tools},
@@ -212,9 +220,10 @@ class VersionPolicyTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("workflow_run:", workflow)
         self.assertNotRegex(workflow, r"(?m)^\s+push:")
-        self.assertIn("visual-regression.yml", workflow)
+        self.assertIn("vpn-control/agent-visual", workflow)
+        self.assertIn("visual_receipt_sha256", workflow)
 
-    def test_release_merge_dispatches_vpn_and_visual_gates_for_exact_sha(self) -> None:
+    def test_release_merge_dispatches_vpn_and_starts_agent_visual_review(self) -> None:
         sha = "a" * 40
         command_results = [
             command_result(),
@@ -225,20 +234,26 @@ class VersionPolicyTest(unittest.TestCase):
             command_result(),
             command_result(),
             command_result(),
-            command_result(),
         ]
         with (
             mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev", "dirty": False}),
             mock.patch.object(mcp_server, "_run", side_effect=command_results) as run,
             mock.patch.object(mcp_server, "_git_stdout", return_value=sha),
+            mock.patch.object(
+                mcp_server,
+                "_visual_command",
+                return_value={"ok": True, "result": {"target_sha": sha}, "command_results": []},
+            ) as visual,
         ):
             result = mcp_server._merge_dev_for_release()
 
         self.assertTrue(result["ok"])
         commands = [call.args[0] for call in run.call_args_list]
         self.assertTrue(any("vpn-integration.yml" in command for command in commands))
-        self.assertTrue(any("visual-regression.yml" in command for command in commands))
-        self.assertTrue(all(f"target_sha={sha}" in command for command in commands[-2:]))
+        self.assertFalse(any("visual-regression.yml" in command for command in commands))
+        self.assertIn(f"target_sha={sha}", commands[-1])
+        visual.assert_called_once()
+        self.assertIn("--release", visual.call_args.args[0])
 
     def test_tenth_unreleased_bullet_rolls_version_metadata_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -291,7 +306,223 @@ class VersionPolicyTest(unittest.TestCase):
             self.assertEqual(["- New behavior."], mcp_server._unreleased_bullets(changelog.read_text()))
 
 class WorkflowWatchTest(unittest.TestCase):
-    def test_release_readiness_requires_exact_sha_visual_regression(self) -> None:
+    def test_visual_attestation_binds_receipt_manifest_and_commit_status(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            visual_root = root / ".rag_index/visual-review-receipts"
+            visual_root.mkdir(parents=True)
+            test_root = root / "visual-tests"
+            test_root.mkdir()
+            manifest = test_root / "scenes.json"
+            environments = test_root / "environments.json"
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "scenes": [{"id": "main", "platforms": ["android"]}]}),
+                encoding="utf-8",
+            )
+            environments.write_text("{}\n", encoding="utf-8")
+            payload = {
+                "schema_version": 1,
+                "target_sha": sha,
+                "release": True,
+                "platforms": ["android", "linux", "windows", "macos"],
+                "manifest_sha256": mcp_server._file_digest(manifest),
+                "environments_sha256": mcp_server._file_digest(environments),
+                "scenes": {
+                    "android/main": {"automation": "pass", "review": "pass"},
+                },
+            }
+            digest = mcp_server._json_digest(payload)
+            (visual_root / f"{sha}.json").write_text(
+                json.dumps({**payload, "receipt_sha256": digest}), encoding="utf-8",
+            )
+            statuses = [
+                {
+                    "context": "vpn-control/agent-visual",
+                    "state": "success",
+                    "description": f"Agent reviewed 1/1 scenes; receipt {digest[:16]}",
+                },
+            ]
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "VISUAL_RECEIPT_ROOT", visual_root),
+                mock.patch.object(
+                    mcp_server,
+                    "_run",
+                    side_effect=[
+                        command_result(stdout="owner/repo"),
+                        command_result(stdout=json.dumps(statuses)),
+                    ],
+                ),
+            ):
+                result = mcp_server._visual_attestation(sha)
+
+        self.assertFalse(result["blockers"])
+        self.assertEqual(digest, result["receipt_sha256"])
+
+    def test_visual_attestation_rejects_status_for_other_receipt(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            visual_root = root / ".rag_index/visual-review-receipts"
+            visual_root.mkdir(parents=True)
+            test_root = root / "visual-tests"
+            test_root.mkdir()
+            manifest = test_root / "scenes.json"
+            environments = test_root / "environments.json"
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "scenes": [{"id": "main", "platforms": ["android"]}]}),
+                encoding="utf-8",
+            )
+            environments.write_text("{}\n", encoding="utf-8")
+            payload = {
+                "target_sha": sha,
+                "release": True,
+                "platforms": ["android", "linux", "windows", "macos"],
+                "manifest_sha256": mcp_server._file_digest(manifest),
+                "environments_sha256": mcp_server._file_digest(environments),
+                "scenes": {"android/main": {"automation": "pass", "review": "pass"}},
+            }
+            digest = mcp_server._json_digest(payload)
+            (visual_root / f"{sha}.json").write_text(
+                json.dumps({**payload, "receipt_sha256": digest}), encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "VISUAL_RECEIPT_ROOT", visual_root),
+                mock.patch.object(
+                    mcp_server,
+                    "_run",
+                    side_effect=[
+                        command_result(stdout="owner/repo"),
+                        command_result(
+                            stdout=json.dumps(
+                                [{
+                                    "context": "vpn-control/agent-visual",
+                                    "state": "success",
+                                    "description": "receipt bbbbbbbbbbbbbbbb",
+                                }],
+                            ),
+                        ),
+                    ],
+                ),
+            ):
+                result = mcp_server._visual_attestation(sha)
+
+        self.assertTrue(any(blocker["phase"] == "visual_status" for blocker in result["blockers"]))
+
+    def test_visual_attestation_uses_latest_status_for_context(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            visual_root = root / ".rag_index/visual-review-receipts"
+            visual_root.mkdir(parents=True)
+            test_root = root / "visual-tests"
+            test_root.mkdir()
+            manifest = test_root / "scenes.json"
+            environments = test_root / "environments.json"
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "scenes": [{"id": "main", "platforms": ["android"]}]}),
+                encoding="utf-8",
+            )
+            environments.write_text("{}\n", encoding="utf-8")
+            payload = {
+                "target_sha": sha,
+                "release": True,
+                "platforms": ["android", "linux", "windows", "macos"],
+                "manifest_sha256": mcp_server._file_digest(manifest),
+                "environments_sha256": mcp_server._file_digest(environments),
+                "scenes": {"android/main": {"automation": "pass", "review": "pass"}},
+            }
+            digest = mcp_server._json_digest(payload)
+            (visual_root / f"{sha}.json").write_text(
+                json.dumps({**payload, "receipt_sha256": digest}), encoding="utf-8",
+            )
+            statuses = [
+                {
+                    "id": 10,
+                    "context": "vpn-control/agent-visual",
+                    "state": "success",
+                    "description": f"receipt {digest[:16]}",
+                },
+                {
+                    "id": 11,
+                    "context": "vpn-control/agent-visual",
+                    "state": "failure",
+                    "description": "review restarted",
+                },
+            ]
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "VISUAL_RECEIPT_ROOT", visual_root),
+                mock.patch.object(
+                    mcp_server,
+                    "_run",
+                    side_effect=[
+                        command_result(stdout="owner/repo"),
+                        command_result(stdout=json.dumps(statuses)),
+                    ],
+                ),
+            ):
+                result = mcp_server._visual_attestation(sha)
+
+        self.assertTrue(any(blocker["phase"] == "visual_status" for blocker in result["blockers"]))
+
+    def test_visual_attestation_rejects_changed_local_evidence(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            visual_root = root / ".rag_index/visual-review-receipts"
+            visual_root.mkdir(parents=True)
+            test_root = root / "visual-tests"
+            test_root.mkdir()
+            manifest = test_root / "scenes.json"
+            environments = test_root / "environments.json"
+            actual = root / "actual.png"
+            manifest.write_text(
+                json.dumps({"schema_version": 1, "scenes": [{"id": "main", "platforms": ["android"]}]}),
+                encoding="utf-8",
+            )
+            environments.write_text("{}\n", encoding="utf-8")
+            actual.write_bytes(b"reviewed")
+            payload = {
+                "target_sha": sha,
+                "release": True,
+                "platforms": ["android", "linux", "windows", "macos"],
+                "manifest_sha256": mcp_server._file_digest(manifest),
+                "environments_sha256": mcp_server._file_digest(environments),
+                "reports": {},
+                "scenes": {
+                    "android/main": {
+                        "automation": "pass",
+                        "review": "pass",
+                        "actual": str(actual),
+                        "actual_sha256": mcp_server._file_digest(actual),
+                    },
+                },
+            }
+            digest = mcp_server._json_digest(payload)
+            (visual_root / f"{sha}.json").write_text(
+                json.dumps({**payload, "receipt_sha256": digest}), encoding="utf-8",
+            )
+            actual.write_bytes(b"mutated")
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "VISUAL_RECEIPT_ROOT", visual_root),
+                mock.patch.object(
+                    mcp_server,
+                    "_run",
+                    side_effect=[
+                        command_result(stdout="owner/repo"),
+                        command_result(stdout="[]"),
+                    ],
+                ),
+            ):
+                result = mcp_server._visual_attestation(sha)
+
+        self.assertTrue(any("evidence changed" in blocker["message"] for blocker in result["blockers"]))
+
+    def test_release_readiness_requires_exact_sha_agent_visual_attestation(self) -> None:
         sha = "a" * 40
         required = [
             {
@@ -321,14 +552,10 @@ class WorkflowWatchTest(unittest.TestCase):
                 "headSha": sha,
             },
         ]
-        visual = {
-            "databaseId": 3,
-            "workflowName": "Visual Regression",
-            "displayTitle": f"Visual Regression / {sha}",
-            "event": "workflow_dispatch",
-            "status": "completed",
-            "conclusion": "success",
-            "headSha": sha,
+        visual_status = {
+            "context": "vpn-control/agent-visual",
+            "state": "success",
+            "description": "Agent reviewed 4/4 scenes; receipt deadbeefdeadbeef",
         }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -338,7 +565,7 @@ class WorkflowWatchTest(unittest.TestCase):
             (root / "README.md").write_text("**Version:** `1.0.0.1`\n", encoding="utf-8")
             changelog.write_text("# Changelog\n\n## 1.0.0.1 - 2026-09-02\n\n- Ready.\n", encoding="utf-8")
 
-            def run_with(runs: list[dict[str, object]]) -> dict[str, object]:
+            def run_with(attestation: dict[str, object]) -> dict[str, object]:
                 with (
                     mock.patch.object(mcp_server, "REPO_ROOT", root),
                     mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
@@ -347,8 +574,9 @@ class WorkflowWatchTest(unittest.TestCase):
                     mock.patch.object(
                         mcp_server,
                         "_run",
-                        side_effect=[command_result(), command_result(stdout=json.dumps(runs))],
+                        side_effect=[command_result(), command_result(stdout=json.dumps(base_runs))],
                     ),
+                    mock.patch.object(mcp_server, "_visual_attestation", return_value=attestation),
                     mock.patch.object(
                         mcp_server,
                         "_git_stdout",
@@ -357,12 +585,27 @@ class WorkflowWatchTest(unittest.TestCase):
                 ):
                     return mcp_server._release_readiness()
 
-            missing = run_with(base_runs)
-            complete = run_with([*base_runs, visual])
+            missing = run_with(
+                {
+                    "receipt_sha256": "",
+                    "status": None,
+                    "blockers": [{"phase": "visual", "message": "missing receipt"}],
+                    "command_results": [],
+                },
+            )
+            complete = run_with(
+                {
+                    "receipt_sha256": "deadbeef" * 8,
+                    "status": visual_status,
+                    "blockers": [],
+                    "command_results": [],
+                },
+            )
 
         self.assertTrue(any(blocker["phase"] == "visual" for blocker in missing["blockers"]))
         self.assertFalse(complete["blockers"])
-        self.assertEqual(3, complete["runs"]["Visual Regression"]["databaseId"])
+        self.assertEqual(visual_status, complete["runs"]["Agent Visual Review"])
+        self.assertEqual("deadbeef" * 8, complete["visual_receipt_sha256"])
 
     def test_watcher_uses_only_exact_sha_and_latest_run(self) -> None:
         sha = "a" * 40

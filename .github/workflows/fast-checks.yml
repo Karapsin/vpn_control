@@ -33,10 +33,16 @@ on:
       - "scripts/check_ui_theme.py"
       - "scripts/visual_regression.py"
       - "scripts/test_visual_regression.py"
-      - "scripts/test_visual_fleet.py"
-      - "scripts/visual_fleet.py"
-      - "scripts/setup_visual_runner.sh"
-      - "scripts/setup_visual_runner.ps1"
+      - "scripts/test_visual_platform.py"
+      - "scripts/test_visual_review.py"
+      - "scripts/visual_platform.py"
+      - "scripts/visual_review.py"
+      - "scripts/bootstrap_windows_visual_vm.sh"
+      - "scripts/start_windows_visual_vm.sh"
+      - "scripts/mark_windows_visual_vm_ready.sh"
+      - "scripts/capture_visual_android.sh"
+      - "scripts/capture_visual_desktop.sh"
+      - "scripts/capture_visual_desktop.ps1"
       - "visual-tests/**"
       - "scripts/check_release_metadata.py"
       - "scripts/release_notes.py"
@@ -97,8 +103,13 @@ jobs:
         run: |
           python scripts/check_ui_theme.py
           python scripts/test_visual_regression.py
-          python scripts/test_visual_fleet.py
-          bash -n scripts/setup_visual_runner.sh
+          python scripts/test_visual_platform.py
+          python scripts/test_visual_review.py
+          bash -n scripts/bootstrap_windows_visual_vm.sh
+          bash -n scripts/start_windows_visual_vm.sh
+          bash -n scripts/mark_windows_visual_vm_ready.sh
+          bash -n scripts/capture_visual_android.sh
+          bash -n scripts/capture_visual_desktop.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

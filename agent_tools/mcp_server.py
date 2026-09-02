@@ -41,6 +41,7 @@ AGENT_TEST_PYTHON = next(
 )
 RECEIPT_PATH = INDEX_DIR / "prepush_receipt.json"
 RELEASE_RECEIPT_PATH = INDEX_DIR / "release_receipt.json"
+VISUAL_RECEIPT_ROOT = INDEX_DIR / "visual-review-receipts"
 WATCH_STATE_PATH = INDEX_DIR / "github_watch.json"
 REQUIRED_WORKFLOWS_PATH = REPO_ROOT / ".github" / "required-workflows.json"
 MAX_OUTPUT_CHARS = 5000
@@ -125,7 +126,8 @@ PREPUSH_COMMANDS = [
     [AGENT_TEST_PYTHON, "-m", "unittest", "discover", "-s", "agent_tools/tests"],
     [sys.executable, "scripts/check_ui_theme.py"],
     [sys.executable, "scripts/test_visual_regression.py"],
-    [sys.executable, "scripts/test_visual_fleet.py"],
+    [sys.executable, "scripts/test_visual_platform.py"],
+    [sys.executable, "scripts/test_visual_review.py"],
     ["./scripts/check_localization.py"],
     ["./scripts/status_catalog_tool.py", "check"],
     [
@@ -522,6 +524,7 @@ def release_workflow(action: str = "status") -> dict[str, Any]:
             "fingerprint": _snapshot_fingerprint(),
             "sha": readiness["sha"],
             "version": readiness["version"],
+            "visual_receipt_sha256": readiness["visual_receipt_sha256"],
             "created_at_epoch": int(time.time()),
         }
         _write_json(RELEASE_RECEIPT_PATH, receipt)
@@ -548,6 +551,7 @@ def release_workflow(action: str = "status") -> dict[str, Any]:
         [
             "gh", "workflow", "run", "release-publish.yml", "--ref", RELEASE_BRANCH,
             "-f", f"target_sha={current_sha}",
+            "-f", f"visual_receipt_sha256={receipt.get('visual_receipt_sha256', '')}",
         ],
         timeout=180,
     )
@@ -562,9 +566,85 @@ def release_workflow(action: str = "status") -> dict[str, Any]:
         "ok": True,
         "tool": "release_workflow",
         "summary": "Manual release publisher dispatched.",
-        "result": {"sha": current_sha, "version": receipt.get("version")},
+        "result": {
+            "sha": current_sha,
+            "version": receipt.get("version"),
+            "visual_receipt_sha256": receipt.get("visual_receipt_sha256"),
+        },
         "command_results": [dispatched],
     }
+
+
+def _visual_command(arguments: list[str]) -> dict[str, Any]:
+    completed = _run([sys.executable, "scripts/visual_review.py", *arguments], timeout=30 * 60)
+    if not completed["ok"]:
+        message = str(completed.get("stdout") or completed.get("stderr") or "visual review command failed")
+        try:
+            parsed = json.loads(message)
+            message = str(parsed.get("error", message)) if isinstance(parsed, dict) else message
+        except json.JSONDecodeError:
+            pass
+        return _error("visual_workflow", message, command_results=[completed])
+    try:
+        payload = json.loads(str(completed.get("stdout") or "{}"))
+    except json.JSONDecodeError as exc:
+        return _error("visual_workflow", f"Invalid visual review output: {exc}", command_results=[completed])
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return _error("visual_workflow", str(payload.get("error", "visual review failed")), command_results=[completed])
+    return {
+        "ok": True,
+        "tool": "visual_workflow",
+        "summary": "Visual review state updated.",
+        "result": payload.get("result", {}),
+        "command_results": [completed],
+    }
+
+
+def visual_workflow(
+    action: str,
+    target_sha: str | None = None,
+    platforms: list[str] | None = None,
+    release: bool = False,
+    post_status: bool = False,
+) -> dict[str, Any]:
+    """Start, inspect, or complete an exact-SHA agent visual review."""
+    if action not in {"start", "status", "complete"}:
+        return _error("visual_workflow", "action must be 'start', 'status', or 'complete'")
+    sha = target_sha or _git_stdout(["rev-parse", "HEAD"])
+    if not SHA_RE.fullmatch(sha):
+        return _error("visual_workflow", "target_sha must be a full lowercase commit SHA")
+    arguments = [action, "--target-sha", sha]
+    if action == "start":
+        for platform_name in platforms or ["android", "linux", "windows", "macos"]:
+            arguments.extend(["--platform", platform_name])
+        if release:
+            arguments.append("--release")
+        if post_status:
+            arguments.append("--post-status")
+    elif action == "complete" and post_status:
+        arguments.append("--post-status")
+    return _visual_command(arguments)
+
+
+def visual_review(
+    target_sha: str,
+    platform: str,
+    scene_id: str,
+    verdict: str,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Record the agent's verdict after it has opened a captured visual scene."""
+    arguments = [
+        "record", "--target-sha", target_sha, "--platform", platform,
+        "--scene-id", scene_id, "--verdict", verdict,
+    ]
+    if notes:
+        arguments.extend(["--notes", notes])
+    result = _visual_command(arguments)
+    if result.get("ok"):
+        result["tool"] = "visual_review"
+        result["summary"] = f"Recorded agent visual verdict for {platform}/{scene_id}."
+    return result
 
 
 def git_workflow(
@@ -854,13 +934,6 @@ def _merge_dev_for_release() -> dict[str, Any]:
                 "-f", "profile=all", "-f", f"target_sha={sha}",
             ],
         ),
-        (
-            "visual_regression",
-            [
-                "gh", "workflow", "run", "visual-regression.yml", "--ref", RELEASE_BRANCH,
-                "-f", f"target_sha={sha}",
-            ],
-        ),
     ]
     for phase, command in release_dispatches:
         dispatched = _run(command, timeout=180)
@@ -871,11 +944,162 @@ def _merge_dev_for_release() -> dict[str, Any]:
             "release_workflow", "main was updated, but a release gate could not be dispatched.",
             blockers=[_command_blocker(phase, dispatched)], command_results=commands,
         )
+    visual_started = _visual_command(
+        [
+            "start", "--target-sha", sha,
+            "--platform", "android", "--platform", "linux", "--platform", "windows",
+            "--platform", "macos", "--release", "--post-status",
+        ],
+    )
+    if not visual_started.get("ok"):
+        return _error(
+            "release_workflow",
+            "main was updated and exhaustive VPN integration was dispatched, but agent visual review could not start.",
+            blockers=[{"phase": "visual", "message": visual_started.get("summary", "visual start failed")}],
+            command_results=commands + visual_started.get("command_results", []),
+        )
     return {
         "ok": True,
         "tool": "release_workflow",
-        "summary": "Fast-forwarded dev to main and dispatched exhaustive VPN and visual release gates.",
-        "result": {"sha": sha},
+        "summary": "Fast-forwarded dev to main, dispatched exhaustive VPN integration, and started agent visual review.",
+        "result": {"sha": sha, "visual_review": visual_started.get("result", {})},
+        "command_results": commands + visual_started.get("command_results", []),
+    }
+
+
+def _json_digest(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _visual_attestation(sha: str) -> dict[str, Any]:
+    blockers: list[dict[str, Any]] = []
+    commands: list[dict[str, Any]] = []
+    receipt_path = VISUAL_RECEIPT_ROOT / f"{sha}.json"
+    receipt = _read_json(receipt_path)
+    digest = ""
+    if not receipt:
+        blockers.append({"phase": "visual", "message": "agent visual review receipt is missing for the exact SHA"})
+    else:
+        digest = str(receipt.get("receipt_sha256", ""))
+        payload = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+        if receipt.get("target_sha") != sha:
+            blockers.append({"phase": "visual", "message": "agent visual review receipt SHA does not match"})
+        if receipt.get("release") is not True or set(receipt.get("platforms", [])) != {
+            "android", "linux", "windows", "macos",
+        }:
+            blockers.append({"phase": "visual", "message": "agent visual review receipt is not a full release review"})
+        if not digest or digest != _json_digest(payload):
+            blockers.append({"phase": "visual", "message": "agent visual review receipt digest is invalid"})
+        manifest = REPO_ROOT / "visual-tests" / "scenes.json"
+        environments = REPO_ROOT / "visual-tests" / "environments.json"
+        if not manifest.is_file() or receipt.get("manifest_sha256") != _file_digest(manifest):
+            blockers.append({"phase": "visual", "message": "visual scene manifest changed after agent review"})
+        if not environments.is_file() or receipt.get("environments_sha256") != _file_digest(environments):
+            blockers.append({"phase": "visual", "message": "visual environment contract changed after agent review"})
+        scenes = receipt.get("scenes")
+        if not isinstance(scenes, dict) or not scenes:
+            blockers.append({"phase": "visual", "message": "agent visual review receipt has no scenes"})
+        elif any(
+            not isinstance(scene, dict)
+            or scene.get("automation") != "pass"
+            or scene.get("review") != "pass"
+            for scene in scenes.values()
+        ):
+            blockers.append({"phase": "visual", "message": "agent visual receipt contains an unpassed scene"})
+        else:
+            manifest_value = _read_json(manifest)
+            expected_scenes = {
+                f"{platform}/{scene.get('id')}"
+                for scene in manifest_value.get("scenes", [])
+                if isinstance(scene, dict) and isinstance(scene.get("platforms"), list)
+                for platform in scene["platforms"]
+                if platform in {"android", "linux", "windows", "macos"}
+            }
+            if set(scenes) != expected_scenes:
+                blockers.append({"phase": "visual", "message": "agent visual receipt scene inventory is incomplete"})
+            evidence_files: list[tuple[str, str, str]] = []
+            for key, scene in scenes.items():
+                for path_key, hash_key in (
+                    ("actual", "actual_sha256"),
+                    ("contact_sheet", "contact_sha256"),
+                    ("geometry", "geometry_sha256"),
+                ):
+                    raw_path = str(scene.get(path_key, ""))
+                    expected = str(scene.get(hash_key, ""))
+                    if raw_path:
+                        evidence_files.append((f"{key} {path_key}", raw_path, expected))
+            for platform, report in receipt.get("reports", {}).items():
+                if isinstance(report, dict):
+                    evidence_files.append(
+                        (f"{platform} report", str(report.get("path", "")), str(report.get("sha256", ""))),
+                    )
+            for platform, captures in receipt.get("captures", {}).items():
+                if isinstance(captures, list):
+                    for capture in captures:
+                        if isinstance(capture, dict):
+                            evidence_files.append(
+                                (
+                                    f"{platform} capture provenance",
+                                    str(capture.get("path", "")),
+                                    str(capture.get("sha256", "")),
+                                ),
+                            )
+            for label, raw_path, expected in evidence_files:
+                path = Path(raw_path)
+                if not path.is_file() or not expected or _file_digest(path) != expected:
+                    blockers.append({"phase": "visual", "message": f"visual evidence changed or is missing: {label}"})
+
+    repository_result = _run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], timeout=120,
+    )
+    commands.append(repository_result)
+    status: dict[str, Any] | None = None
+    if not repository_result["ok"] or not str(repository_result.get("stdout", "")).strip():
+        blockers.append(_command_blocker("visual_status", repository_result))
+    else:
+        repository = str(repository_result["stdout"]).strip()
+        status_result = _run(
+            ["gh", "api", f"repos/{repository}/commits/{sha}/statuses", "--paginate"], timeout=120,
+        )
+        commands.append(status_result)
+        if not status_result["ok"]:
+            blockers.append(_command_blocker("visual_status", status_result))
+        else:
+            try:
+                statuses = json.loads(str(status_result.get("stdout") or "[]"))
+            except json.JSONDecodeError as exc:
+                statuses = []
+                blockers.append({"phase": "visual_status", "message": str(exc)})
+            if isinstance(statuses, list):
+                matches = [
+                    value for value in statuses
+                    if isinstance(value, dict) and value.get("context") == "vpn-control/agent-visual"
+                ]
+                status = max(matches, key=lambda value: int(value.get("id") or 0), default=None)
+            if (
+                not status
+                or status.get("state") != "success"
+                or not digest
+                or digest[:16] not in str(status.get("description", ""))
+            ):
+                blockers.append({
+                    "phase": "visual_status",
+                    "message": "latest exact-SHA vpn-control/agent-visual status must match the local receipt",
+                })
+    return {
+        "receipt": receipt,
+        "receipt_sha256": digest,
+        "status": status,
+        "blockers": blockers,
         "command_results": commands,
     }
 
@@ -941,7 +1165,6 @@ def _release_readiness() -> dict[str, Any]:
         blockers.append({"phase": "manifest", "message": str(exc)})
     latest: dict[str, dict[str, Any]] = {}
     integration: dict[str, Any] | None = None
-    visual_regression: dict[str, Any] | None = None
     for run in runs:
         if not isinstance(run, dict) or run.get("headSha") != sha:
             continue
@@ -956,17 +1179,6 @@ def _release_readiness() -> dict[str, Any]:
                 )
             ):
                 integration = run
-            continue
-        if name == "Visual Regression":
-            if (
-                run.get("event") == "workflow_dispatch"
-                and f"Visual Regression / {sha}" in str(run.get("displayTitle", ""))
-                and (
-                    visual_regression is None
-                    or int(run.get("databaseId") or 0) > int(visual_regression.get("databaseId") or 0)
-                )
-            ):
-                visual_regression = run
             continue
         requirement = required_workflows.get(name)
         if requirement is None or run.get("event") != requirement["event"]:
@@ -991,22 +1203,18 @@ def _release_readiness() -> dict[str, Any]:
         or integration.get("conclusion") != "success"
     ):
         blockers.append({"phase": "integration", "message": "exhaustive dispatched VPN Integration must succeed"})
-    if (
-        not visual_regression
-        or visual_regression.get("event") != "workflow_dispatch"
-        or f"Visual Regression / {sha}" not in str(visual_regression.get("displayTitle", ""))
-        or visual_regression.get("status") != "completed"
-        or visual_regression.get("conclusion") != "success"
-    ):
-        blockers.append({"phase": "visual", "message": "exact-SHA Visual Regression must succeed on every platform"})
+    visual_attestation = _visual_attestation(sha)
+    blockers.extend(visual_attestation["blockers"])
+    command_results.extend(visual_attestation["command_results"])
     return {
         "sha": sha,
         "version": version,
         "tag": tag,
+        "visual_receipt_sha256": visual_attestation["receipt_sha256"],
         "runs": {
             **latest,
             **({"VPN Integration": integration} if integration else {}),
-            **({"Visual Regression": visual_regression} if visual_regression else {}),
+            **({"Agent Visual Review": visual_attestation["status"]} if visual_attestation["status"] else {}),
         },
         "blockers": blockers,
         "command_results": command_results,
@@ -1432,6 +1640,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     bump.add_argument("--force-release", action="store_true")
     release = subparsers.add_parser("release-workflow")
     release.add_argument("action", choices=("status", "merge-dev", "publish"), default="status")
+    visual_flow = subparsers.add_parser("visual-workflow")
+    visual_flow.add_argument("action", choices=("start", "status", "complete"))
+    visual_flow.add_argument("--target-sha")
+    visual_flow.add_argument("--platform", action="append", dest="platforms")
+    visual_flow.add_argument("--release", action="store_true")
+    visual_flow.add_argument("--post-status", action="store_true")
+    visual_verdict = subparsers.add_parser("visual-review")
+    visual_verdict.add_argument("target_sha")
+    visual_verdict.add_argument("platform")
+    visual_verdict.add_argument("scene_id")
+    visual_verdict.add_argument("verdict")
+    visual_verdict.add_argument("--notes")
     git_parser = subparsers.add_parser("git-workflow")
     git_parser.add_argument("action", choices=("commit", "push", "checks"))
     git_parser.add_argument("--message")
@@ -1459,6 +1679,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _json_print(version_bump(args.summary, args.change_type, args.dry_run, args.force_release))
     if args.command == "release-workflow":
         return _json_print(release_workflow(args.action))
+    if args.command == "visual-workflow":
+        return _json_print(
+            visual_workflow(
+                args.action, args.target_sha, args.platforms, args.release, args.post_status,
+            ),
+        )
+    if args.command == "visual-review":
+        return _json_print(
+            visual_review(args.target_sha, args.platform, args.scene_id, args.verdict, args.notes),
+        )
     return _json_print(git_workflow(args.action, args.message, args.paths, args.sha))
 
 
@@ -1472,6 +1702,8 @@ if FastMCP is not None:  # pragma: no branch - depends on the optional launcher 
     MCP_SERVER.tool()(run_checks)
     MCP_SERVER.tool()(version_bump)
     MCP_SERVER.tool()(release_workflow)
+    MCP_SERVER.tool()(visual_workflow)
+    MCP_SERVER.tool()(visual_review)
     MCP_SERVER.tool()(git_workflow)
 
 

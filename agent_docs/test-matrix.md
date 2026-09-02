@@ -12,7 +12,8 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 python3 -m unittest discover -s agent_tools/tests
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py
-python3 scripts/test_visual_fleet.py
+python3 scripts/test_visual_platform.py
+python3 scripts/test_visual_review.py
 python3 scripts/check_contract_docs.py
 ./scripts/check_localization.py
 ./scripts/status_catalog_tool.py check
@@ -44,7 +45,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
 | `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
 | Shared/platform UI theme | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, `./gradlew :shared:ui:desktopTest`, and affected platform compile/test |
-| Visual manifest, comparator, capture, or baselines | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, agent tool tests, docs/release hygiene; run matching fleet capture/verify when enrolled |
+| Visual manifest, comparator, capture, review, VM bootstrap, or baselines | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, `python3 scripts/test_visual_platform.py`, `python3 scripts/test_visual_review.py`, agent tool tests, docs/release hygiene; run matching agent capture/verify when the platform is in scope |
 | Android UI-only code | `./gradlew :app:compileDebugKotlin` |
 | Android profile/import action orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android connection command/lifecycle orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
@@ -77,7 +78,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
 | Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
 
-The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN and Visual Regression dispatches for the exact release SHA. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture likewise runs only on dedicated GUI fleet hosts with synthetic fixtures.
+The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN success plus a complete exact-SHA agent visual receipt and matching commit status. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture uses only isolated agent-owned environments or eligible GitHub-hosted ephemeral fallbacks with synthetic fixtures.
 
 When an integration job fails because of application behavior, add the smallest deterministic regression to the fast suite before changing the implementation. Infrastructure-only failures should gain a fixture, script, or workflow-contract test when reproducible.
 

@@ -1,113 +1,142 @@
-# Visual Regression Operations
+# Agent Visual Validation
 
-Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VISUAL-008` in `contracts.md`. This guide covers manifest maintenance, capture-driver output, fleet enrollment, baseline bootstrap, and failure diagnosis.
+Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VISUAL-009` in `contracts.md`. This guide covers environment selection, capture, automated verification, agent inspection, receipts, and diagnosis.
 
 ## Components
 
 | Path | Purpose |
 | --- | --- |
-| `visual-tests/scenes.json` | Required scene and stable-element inventory plus comparison thresholds. |
+| `visual-tests/scenes.json` | Required scene, stable-element, capability, and review-batch inventory. |
+| `visual-tests/environments.json` | Pinned local and hosted providers plus capability boundaries. |
 | `visual-tests/baselines/<platform>/` | Canonical Git LFS PNG objects. |
-| `scripts/visual_fleet.py` | Dedicated-runner preflight, fingerprint, driver invocation, and completeness check. |
-| `scripts/visual_regression.py` | Stdlib PNG decoder/comparator, geometry validator, diffs, reports, and contact sheets. |
-| `scripts/check_ui_theme.py` | Fixed palette/root-theme regression guard. |
-| `.github/workflows/visual-regression.yml` | Exact-SHA release-only four-platform gate. |
+| `scripts/visual_platform.py` | Local probe/bootstrap/start/stop, provider plan, hosted dispatch, capture, and report ingestion. |
+| `scripts/visual_regression.py` | Pixel comparator, geometry validator, diffs, reports, and contact sheets. |
+| `scripts/visual_review.py` | Exact-SHA review queue, scene verdicts, evidence receipt, and GitHub status. |
+| `.github/workflows/visual-regression.yml` | Agent-dispatched hosted fallback capture on ephemeral GitHub runners. |
 
-`build/visual-actual/` and `build/visual-reports/` are generated and ignored. A release run always uploads whatever evidence exists, including failed partial captures.
+Generated VM state stays in `.runtime/visual-vms/`. Screenshots and reports stay under `build/`. Review sessions and receipts stay under `.rag_index/`. None are committed; only intentional Git LFS baselines are tracked.
 
-## Scene Maintenance
+## Scope
 
-`scenes.json` is exhaustive by contract. A scene contains:
+A targeted development review may name one or more affected platforms. A release review always includes every scene on Android, Linux, Windows, and macOS. App-owned scenes require PNG and geometry JSON; OS-owned scenes require a full-screen PNG. The agent opens every image, normally in six-scene batches, and records a verdict for every individual scene.
 
-- a stable `id` used for its PNG and geometry filenames;
-- every supported platform that renders it;
-- `required_elements`, matching stable semantics/accessibility IDs emitted by the capture driver;
-- `geometry_required=false` only for OS-owned full-screen surfaces whose native accessibility geometry is not portable.
+Synthetic fixtures freeze time, traffic, progress, data, locale, animations, window position, display scaling, and font selection. Capture must never use the operator's real workspace, credentials, subscriptions, or active VPN/runtime. Every local or hosted subset writes `capture-<provider>.json`, binding its environment fingerprint, scene files, manifest, and checked-out target SHA; comparison refuses a missing, stale, modified, or incomplete provenance set.
 
-Update the manifest whenever a tab, submenu, dialog, state, control, native picker/consent/elevation/installer surface, or supported platform changes. App-owned screenshots emit both `<scene>.png` and `<scene>.geometry.json`; OS-owned scenes emit the PNG. The driver freezes time, traffic counters, progress, data, locale, animations, and window placement.
+## Provider Selection
 
-Canonical scenes use English. Stress scenes cover long German labels and Arabic RTL without multiplying every scene by every catalog; all catalogs remain covered by localization checks.
-
-## Capture Driver Interface
-
-Each enrolled runner configures `VPN_CONTROL_VISUAL_CAPTURE_COMMAND` to an executable command. `visual_fleet.py` invokes it without a shell and appends:
-
-```text
---platform <android|linux|windows|macos>
---manifest <absolute scenes.json>
---output <absolute output directory>
-```
-
-The driver must use a clean synthetic fixture/workspace and must never connect, disconnect, inspect, or mutate the operator's real VPN Control workspace. It captures every manifest scene for that platform and returns nonzero on any navigation, screenshot, semantics, or native-surface failure. Output completeness is checked before comparison.
-
-Android app UI uses Compose `captureToImage`; system bars, VPN consent, document pickers, camera/QR, share chooser, package installer, and VPN notification use UiAutomator full-screen capture. Desktop app UI uses the real Compose window at fixed geometry; native file dialogs, tray/menu-bar states, Linux backends, Windows UAC/MSI, macOS DMG/Gatekeeper, and update confirmation use platform desktop automation. Stop after the native chooser/installer surface; unrelated third-party target content is outside scope.
-
-## Fleet Enrollment
-
-Register one persistent interactive runner for each label set:
-
-```text
-self-hosted,vpn-control-visual,android
-self-hosted,vpn-control-visual,linux
-self-hosted,vpn-control-visual,windows-vm
-self-hosted,vpn-control-visual,macos
-```
-
-Common requirements:
-
-- a dedicated account and fixed display configuration;
-- JDK 17, Python 3, Git LFS, repository build prerequisites, and the enrolled capture driver;
-- `VPN_CONTROL_VISUAL_FLEET=1` and `VPN_CONTROL_VISUAL_CAPTURE_COMMAND` in the runner service environment;
-- animations, screen saver, notifications, auto-updates, night shift/color adaptation, and font substitution disabled;
-- no personal workspace, subscription, credential, or active VPN on the runner.
-
-Run `scripts/setup_visual_runner.sh <android|linux|windows-vm|macos>` on the runner host. Run `scripts/setup_visual_runner.ps1` inside the Windows guest for guest-side prerequisites. Registration tokens and service installation are operator steps and are not stored in this repository.
-
-Platform setup:
-
-- Android: Pixel 6 API 35 x86_64 emulator, portrait canonical state, disabled animations, deterministic system image, plus landscape/font-scale stress passes.
-- Linux: 1280x800 at 100%, fixed desktop theme/fonts, a usable tray host, and separate native/AWT backend captures.
-- Windows: the Linux host drives the existing `vpn-control-win11` libvirt guest through QEMU guest agent; set `VPN_CONTROL_VISUAL_WINDOWS_VM=1`; keep guest resolution/theme/DPI fixed and capture the secure-desktop UAC flow through the enrolled guest automation.
-- macOS: 1280x800 at 100%, fixed appearance/fonts, and Screen Recording plus Accessibility permission granted to the runner and automation driver.
-
-Preflight without requiring an existing baseline during first enrollment:
+Inspect the local-first plan:
 
 ```bash
-python3 scripts/visual_fleet.py preflight --platform android --allow-missing-baselines
-python3 scripts/visual_fleet.py preflight --platform linux --allow-missing-baselines
-python3 scripts/visual_fleet.py preflight --platform windows --allow-missing-baselines
-python3 scripts/visual_fleet.py preflight --platform macos --allow-missing-baselines
+python3 scripts/visual_platform.py plan --platform android
+python3 scripts/visual_platform.py plan --platform linux
+python3 scripts/visual_platform.py plan --platform windows
+python3 scripts/visual_platform.py plan --platform macos
 ```
 
-The generated `machine.json` fingerprint is evidence, not a secret or an approval token.
+The planner routes each scene by required capability:
 
-## First Baseline And Intentional Updates
+- `app`: deterministic Compose application UI;
+- `native`: repeatable platform-owned dialog, window, tray/menu, notification, or installer UI;
+- `secure_desktop`: Windows UAC and macOS Gatekeeper/install confirmation.
 
-Install Git LFS before recording. On each matching platform runner:
+Local capture is preferred. If the local provider is absent, bootstrap and start it:
 
 ```bash
-python3 scripts/visual_fleet.py capture \
+python3 scripts/visual_platform.py bootstrap --platform <platform>
+python3 scripts/visual_platform.py start --platform <platform>
+```
+
+Android uses an isolated Pixel 6/API 35 AVD. Linux and macOS use an isolated native session or pinned Tart VM. Windows uses an isolated Windows 11 client session, the existing `vpn-control-win11` libvirt guest, or the QEMU disk managed by `bootstrap_windows_visual_vm.sh`. A QEMU disk alone is never treated as ready: after the agent has completed Windows setup and verified the fixed display/capture prerequisites, it records that check with `scripts/mark_windows_visual_vm_ready.sh --agent-confirmed`. Windows media and license acceptance remain vendor-controlled; set `VPN_CONTROL_WINDOWS_ISO` to an official local ISO when first creating that guest.
+
+The agent may dispatch hosted fallback for non-blocked scenes:
+
+```bash
+python3 scripts/visual_platform.py dispatch-hosted \
   --platform <platform> \
-  --allow-missing-baselines \
-  --output build/visual-actual/<platform>
+  --target-sha <full-sha>
+
+python3 scripts/visual_platform.py download-hosted \
+  --platform <platform> \
+  --target-sha <full-sha> \
+  --output build/visual-hosted/<platform>
+```
+
+`dispatch-hosted` passes only the scenes that the provider plan routed to the hosted capability. Download those files into the platform's combined `build/visual-actual/<platform>/` directory alongside any local secure-desktop captures, then run comparison and ingestion once over the complete platform set. Hosted jobs never compare or attest by themselves.
+
+Hosted jobs use pinned Ubuntu 24.04, Windows 2025, and macOS 15 images. Windows hosted runners cannot satisfy `secure_desktop`, so `windows-uac` remains blocked until a local Windows client VM is available. A provider plan with any `blocked` scene is not release-capable.
+
+After capture, stop only an environment recorded as started by the agent:
+
+```bash
+python3 scripts/visual_platform.py stop --platform <platform>
+```
+
+The stop command refuses to touch pre-existing environments and does not stop VPN Control or `sing-box`.
+
+## Exact-SHA Review
+
+Start a targeted review through `visual_workflow` or the CLI:
+
+```bash
+python3 scripts/visual_review.py start \
+  --target-sha <full-sha> \
+  --platform android
+```
+
+For a release, use all platforms and post the pending status:
+
+```bash
+python3 scripts/visual_review.py start \
+  --target-sha <full-sha> \
+  --platform android --platform linux --platform windows --platform macos \
+  --release --post-status
+```
+
+Verify and ingest each captured platform:
+
+```bash
+python3 scripts/visual_platform.py verify \
+  --platform <platform> \
+  --target-sha <full-sha> \
+  --actual-dir build/visual-actual/<platform>
+```
+
+Call `visual_workflow(action="status")` to get the next contact-sheet batch. Open every returned image and record every scene through `visual_review`, using exactly one of:
+
+- `pass`;
+- `product_defect` with the visible defect;
+- `expected_change` with the intended change;
+- `infrastructure_failure` with the failed provider or capture condition.
+
+Non-pass verdicts require notes. Completion succeeds only when every automated result and every agent verdict is `pass`:
+
+```bash
+python3 scripts/visual_review.py complete \
+  --target-sha <full-sha> \
+  --post-status
+```
+
+The receipt hashes screenshots, geometry, reports, environment and manifest definitions, and all verdicts. The posted `vpn-control/agent-visual` status includes the receipt digest prefix. A partial review never posts release success.
+
+## Failure Handling
+
+- `product_defect`: add the fastest deterministic regression, fix the product on `dev`, and repeat normal validation.
+- `expected_change`: inspect the complete platform set, update only intentional Git LFS baselines on `dev`, and rerun for the new SHA.
+- `infrastructure_failure`: retry the owned environment, bootstrap it, or use a capability-compatible hosted fallback.
+- Automated false positive: correct the comparator, geometry contract, frozen fixture, or baseline on `dev`; it is not waivable for the current SHA.
+
+If a release candidate fails after `main` was fast-forwarded, return to `dev`, make and validate the correction, push it, and repeat the explicit release sequence. Do not patch `main` directly.
+
+Read `build/visual-reports/<platform>/report.json` first. Each compared scene includes a full-resolution diff and baseline/actual/diff contact sheet. Geometry errors identify clipped, missing, overlapping, undersized, unlabeled, or low-contrast elements.
+
+## Baselines
+
+Install Git LFS before recording. Baselines may be changed only during development after a complete agent-reviewed platform capture:
+
+```bash
 python3 scripts/visual_regression.py record \
   --platform <platform> \
   --actual-dir build/visual-actual/<platform>
 ```
 
-Commit the complete four-platform LFS pointer set on `dev`, then run the normal pre-push and exact-SHA CI loop. Partial platform baselines are not release-ready. Baseline recording is an explicit development operation; the release workflow has no record mode and no approval override.
-
-## Local Verification And Failure Diagnosis
-
-```bash
-python3 scripts/check_ui_theme.py
-python3 scripts/test_visual_regression.py
-python3 scripts/test_visual_fleet.py
-python3 scripts/visual_regression.py verify \
-  --platform <platform> \
-  --actual-dir build/visual-actual/<platform>
-```
-
-Read `build/visual-reports/<platform>/report.json` first. Each failed scene includes its diff and a baseline/actual/diff contact sheet. Geometry errors name the clipped, missing, overlapping, undersized, unlabeled, or low-contrast stable element. Do not relax thresholds, mask dynamic regions, or rerecord baselines to hide a product defect; freeze the nondeterminism or fix the UI and add the smallest deterministic regression.
-
-No person is required to inspect or approve screenshots for release. Contact sheets are diagnostic artifacts available when someone chooses to investigate a failure.
+Commit all intended LFS pointers, run the full pre-push tier, push `dev`, and restart visual review for the new exact SHA. Release mode has no record or waiver operation.

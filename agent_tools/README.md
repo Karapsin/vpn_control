@@ -22,7 +22,7 @@ For implementation, testing, release, or commit work:
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
 4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
 5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. It queries only runs attached to that exact SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
-6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, gates on exhaustive VPN integration plus exact-SHA Visual Regression, and dispatches the manual publisher.
+6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, starts agent-owned visual review, gates on exhaustive VPN integration plus the exact-SHA visual receipt/status, and dispatches the manual publisher.
 
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
@@ -38,6 +38,8 @@ For implementation, testing, release, or commit work:
 | `version_bump(summary=None, change_type="code", dry_run=False, force_release=False)` | Add the required changelog note and atomically roll four-part version metadata at 10 notes or explicit forced release. |
 | `git_workflow(action, message=None, paths=None, sha=None)` | Commit explicit safe paths, push `dev`, and/or watch exact-SHA CI. |
 | `release_workflow(action="status")` | Explicit-release-only `merge-dev`, readiness, and publisher dispatch gate. |
+| `visual_workflow(action, target_sha=None, platforms=None, release=False, post_status=False)` | Start, inspect, or complete an exact-SHA agent visual review. |
+| `visual_review(target_sha, platform, scene_id, verdict, notes=None)` | Record the agent's verdict after opening a captured scene. |
 
 The MCP server has no root parameter: all operations are fixed to this checkout. Commit paths reject absolute paths, traversal, pathspec magic, globs, generated output, agent state, runtime state, and native runtime binaries. A commit path list must cover every current change, preventing accidental partial staging of unknown work.
 
@@ -54,6 +56,8 @@ The same operations are available without MCP through `agent_tools/mcp_tool.sh`:
 ./agent_tools/mcp_tool.sh run-checks --level prepush
 ./agent_tools/mcp_tool.sh git-workflow checks --sha <full-commit-sha>
 ./agent_tools/mcp_tool.sh release-workflow status
+./agent_tools/mcp_tool.sh visual-workflow status --target-sha <full-commit-sha>
+./agent_tools/mcp_tool.sh visual-review <sha> <platform> <scene-id> pass
 ```
 
 Use the CLI fallback only when the MCP transport is unavailable. It returns the same structured JSON and a nonzero status for blockers or failed checks.
