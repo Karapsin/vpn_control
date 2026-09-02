@@ -36,7 +36,8 @@ def violations(repository: Path) -> list[str]:
     for path in scanned_files(repository):
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if FORBIDDEN in line.casefold():
-                findings.append(f"{path.relative_to(repository)}:{line_number}")
+                relative = path.relative_to(repository).as_posix()
+                findings.append(f"{relative}:{line_number}")
     return findings
 
 
