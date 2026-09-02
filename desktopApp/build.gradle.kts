@@ -1,6 +1,5 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import java.util.concurrent.TimeUnit
 
 val hostOs = OperatingSystem.current()
 val desktopPackageTargets = when {
@@ -9,34 +8,29 @@ val desktopPackageTargets = when {
     hostOs.isMacOsX -> arrayOf(TargetFormat.Dmg)
     else -> emptyArray()
 }
-fun gitCommitCountOrFallback(): Int {
-    return runCatching {
-        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
-            .redirectErrorStream(true)
-            .start()
-        val finished = process.waitFor(5, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            return@runCatching 1
-        }
-        if (process.exitValue() != 0) {
-            return@runCatching 1
-        }
-        process.inputStream.bufferedReader().use { it.readText() }
-            .trim()
-            .toIntOrNull()
-            ?.coerceAtLeast(1)
-            ?: 1
-    }.getOrDefault(1)
+fun parseCanonicalVersion(value: String): List<Int> {
+    val parts = value.trim().split('.').map { it.toIntOrNull() }
+    require(parts.size == 4 && parts.all { it != null && it in 0..19 }) {
+        "vpnControlVersion must have four numeric components between 0 and 19"
+    }
+    return parts.map { requireNotNull(it) }
 }
 
-val gitCommitCount = providers.provider { gitCommitCountOrFallback() }
+val canonicalVersion = providers.gradleProperty("vpnControlVersion")
+val canonicalVersionParts = canonicalVersion.map(::parseCanonicalVersion)
+val canonicalBuildNumber = canonicalVersionParts.map { parts ->
+    parts.fold(0) { value, component -> value * 20 + component }
+        .also { require(it > 0) { "vpnControlVersion must produce a positive build number" } }
+}
+val runtimeDisplayVersion = providers.gradleProperty("vpnControlVersionName")
+    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
+    .orElse(canonicalVersion)
 val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
     .orElse(providers.environmentVariable("VPN_CONTROL_DESKTOP_VERSION"))
-    .orElse(gitCommitCount.map { count -> "0.1.$count" })
+    .orElse(canonicalVersionParts.map { (major, minor, patch, build) -> "$major.$minor.${patch * 20 + build}" })
 val macosPackageVersion = providers.gradleProperty("vpnControlMacosDesktopVersion")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_DESKTOP_VERSION"))
-    .orElse(gitCommitCount.map { count -> "1.0.$count" })
+    .orElse(canonicalVersionParts.map { (major, minor, patch, build) -> "1.${major * 20 + minor}.${patch * 20 + build}" })
 val macosSigningIdentity = providers.gradleProperty("vpnControlMacosSigningIdentity")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_SIGNING_IDENTITY"))
 val macosSigningKeychain = providers.gradleProperty("vpnControlMacosSigningKeychain")
@@ -47,20 +41,19 @@ val macosNotarizationPassword = providers.gradleProperty("vpnControlMacosNotariz
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD"))
 val macosNotarizationTeamId = providers.gradleProperty("vpnControlMacosNotarizationTeamId")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID"))
-val desktopRuntimeDisplayVersion = if (hostOs.isMacOsX) macosPackageVersion else desktopPackageVersion
 val generatedVersionResources = layout.buildDirectory.dir("generated/resources/version/main")
 
 val generateDesktopVersionResource by tasks.registering {
     val outputDir = generatedVersionResources
-    inputs.property("buildNumber", gitCommitCount)
-    inputs.property("displayVersion", desktopRuntimeDisplayVersion)
+    inputs.property("buildNumber", canonicalBuildNumber)
+    inputs.property("displayVersion", runtimeDisplayVersion)
     outputs.dir(outputDir)
     doLast {
         val target = outputDir.get().file("vpn-control-version.properties").asFile
         target.parentFile.mkdirs()
         target.writeText(
-            "buildNumber=${gitCommitCount.get()}\n" +
-                "displayVersion=${desktopRuntimeDisplayVersion.get()}\n",
+            "buildNumber=${canonicalBuildNumber.get()}\n" +
+                "displayVersion=${runtimeDisplayVersion.get()}\n",
         )
     }
 }

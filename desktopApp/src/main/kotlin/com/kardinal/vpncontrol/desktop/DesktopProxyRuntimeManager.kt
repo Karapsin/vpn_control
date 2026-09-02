@@ -92,7 +92,7 @@ class DesktopProxyRuntimeManager(
                 HomeSshRouteRuntimeOptions(
                     settings = settings,
                     privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
-                        ?: error("Home SSH private key is missing"),
+                        ?: error("SSH Routing private key is missing"),
                 ).validated()
             }
             val interfaceName = if (appMode == AppMode.VPN) {

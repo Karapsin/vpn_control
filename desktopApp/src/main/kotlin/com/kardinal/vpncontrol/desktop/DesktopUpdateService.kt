@@ -30,6 +30,8 @@ internal class DesktopUpdateService(
     private val osName: String = System.getProperty("os.name"),
     private val osArchitecture: String = System.getProperty("os.arch"),
     private val currentCommand: String? = ProcessHandle.current().info().command().orElse(null),
+    private val manifestUrl: String = AppUpdateLogic.LATEST_MANIFEST_URL,
+    private val trustUrl: (String) -> Boolean = AppUpdateLogic::isTrustedGithubUrl,
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
@@ -44,7 +46,7 @@ internal class DesktopUpdateService(
             )
         }
         try {
-            val manifest = AppUpdateLogic.parseManifest(fetchText(AppUpdateLogic.LATEST_MANIFEST_URL))
+            val manifest = AppUpdateLogic.parseManifest(fetchText(manifestUrl), trustUrl)
             if (!AppUpdateLogic.isUpdateAvailable(buildInfo.buildNumber, manifest)) {
                 updateAppState {
                     it.copy(
@@ -335,7 +337,7 @@ internal class DesktopUpdateService(
         val code = connection.responseCode
         if (code !in 200..299) {
             connection.disconnect()
-            error("GitHub update request failed: HTTP $code")
+            error("Update request failed: HTTP $code")
         }
         return connection
     }

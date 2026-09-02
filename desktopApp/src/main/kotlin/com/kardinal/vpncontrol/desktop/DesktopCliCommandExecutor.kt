@@ -9,9 +9,18 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
     return when (command) {
         DesktopCliCommand.On -> cliTurnOn()
         DesktopCliCommand.Off -> cliTurnOff()
+        DesktopCliCommand.Status -> cliStatus()
         DesktopCliCommand.FindBest -> cliFindBest()
         is DesktopCliCommand.Select -> cliSelect(command.target)
     }
+}
+
+private fun DesktopAppService.cliStatus(): DesktopCliResponse {
+    val mode = state.appMode.cliLabel()
+    val stateLabel = if (state.isVpnRunning) "on" else "off"
+    val selected = selectedDesktopLocation()?.name?.takeIf(String::isNotBlank)
+    val suffix = selected?.let { "; selected: $it" }.orEmpty()
+    return DesktopCliResponse.success("$mode is $stateLabel$suffix")
 }
 
 private suspend fun DesktopAppService.cliTurnOn(): DesktopCliResponse {

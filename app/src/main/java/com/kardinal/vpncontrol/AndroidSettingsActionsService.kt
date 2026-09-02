@@ -52,7 +52,7 @@ internal class AndroidSettingsActionsService(
     fun importHomeSshPrivateKey(content: String) {
         launch {
             runCatching {
-                (credentialStore ?: error("Home SSH credential storage is unavailable"))
+                (credentialStore ?: error("SSH Routing credential storage is unavailable"))
                     .importPrivateKey(content)
             }
                 .onSuccess {

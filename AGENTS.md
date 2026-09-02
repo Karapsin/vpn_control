@@ -41,7 +41,7 @@ The project MCP configured in `.codex/config.toml` is the normal entry point for
 
 The only startup-sync exception is a clearly read-only request where current remote state is irrelevant. State explicitly that sync was skipped and findings may be stale. This exception does not authorize edits, tests that create meaningful repository state, commits, pushes, or releases.
 
-`prepare_start` must preserve dirty work. It may automatically switch to `main` or fast-forward from `origin/main` only when the worktree is clean. A dirty synchronized `main`, or a dirty `main` that is only locally ahead, may proceed with a warning. Fetch failures, divergence, a dirty non-main branch, and a dirty behind-main branch are blockers.
+`prepare_start` must preserve dirty work. Normal development happens on `dev`; it may automatically switch to `dev` or fast-forward from `origin/dev` only when the worktree is clean. Fetch failures, divergence, a dirty branch other than `dev`, and a dirty behind-`dev` worktree are blockers. `main` is release-only.
 
 ## Important Rules
 
@@ -51,7 +51,10 @@ The only startup-sync exception is a clearly read-only request where current rem
 - Do not restore old default subscriptions, default rules, or demo data.
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
-- After changes are done and validated, push completed commits to `origin main`, then complete the post-push CI verification loop before reporting success.
+- After changes are done and validated, push completed commits to `origin/dev`, then complete the post-push CI verification loop before reporting success.
+- Never merge to `main`, publish, tag, or dispatch the stable publisher unless the user explicitly commands a release. Do not infer a release command from requests to finish, ship, implement, or push development work.
+- After every non-documentation change, use `version_bump` to add one concise `Unreleased` changelog bullet. It rolls the changelog and four-part base-20 version only at 10 bullets, or when an explicitly requested release uses `force_release`.
+- When VPN Integration finds a product failure, add the fastest deterministic unit or contract regression that reproduces it before fixing the integration path.
 - If large work intentionally spans multiple dirty buckets, document the intent in `agent_docs/work-in-progress.md`.
 - Start low-context repository navigation from `agent_docs/README.md`.
 - Use `agent_docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.
@@ -62,16 +65,17 @@ The only startup-sync exception is a clearly read-only request where current rem
 Before reporting a state-changing task complete:
 
 1. Call `workflow_status` and verify the changed paths remain in the requested scope.
-2. Run focused checks while iterating, then `run_checks(level="prepush")` after the final content change. Do not reuse its receipt after repository contents change.
-3. Keep commits coherent and stage only explicit reviewed paths. The managed `git_workflow` rejects generated/runtime paths and uncovered dirty changes.
-4. Push completed commits to `origin main` and use `git_workflow` to watch the exact pushed SHA until every workflow in `.github/required-workflows.json` succeeds.
-5. If a required workflow fails, inspect its bounded failed log, fix the cause, rerun the pre-push tier, commit and push again, then restart verification for the new exact SHA.
+2. For non-documentation changes, call `version_bump` after the final content edit. Treat its changelog/version metadata edit as part of the task.
+3. Run focused checks while iterating, then `run_checks(level="prepush")` after the final content change. Do not reuse its receipt after repository contents change.
+4. Keep commits coherent and stage only explicit reviewed paths. The managed `git_workflow` rejects generated/runtime paths and uncovered dirty changes.
+5. Push completed commits to `origin/dev` and use `git_workflow` to watch the exact pushed SHA until every required development workflow in `.github/required-workflows.json` succeeds.
+6. If a required workflow fails, inspect its bounded failed log, add or update a fast regression when it exposed a product defect, fix the cause, rerun the pre-push tier, commit and push again, then restart verification for the new exact SHA.
 
 Do not report success while any expected workflow for the pushed SHA is missing, pending, cancelled, or failed. See `agent_tools/README.md` for tool inputs, safety boundaries, CLI fallback, and RAG behavior.
 
 ## Post-Push CI Verification
 
-After every push to `origin main`:
+After every push to `origin/dev`:
 
 1. Capture the exact pushed commit with `git rev-parse HEAD`.
 2. Query GitHub Actions runs for that exact `headSha`; do not rely on branch-latest status alone.
@@ -85,6 +89,13 @@ After every push to `origin main`:
 5. Do not report the push as complete while any expected workflow for the pushed SHA is pending, missing, or failed.
 
 The canonical expected-workflow list is `.github/required-workflows.json`; keep that manifest aligned with the names of the push workflows above.
+
+`VPN Integration` is advisory on ordinary `dev` pushes. The explicitly dispatched `all` profile is mandatory for a release. A release command follows this sequence and no other request authorizes it:
+
+1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and validate/push `dev`.
+2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA and dispatch exhaustive integration.
+3. Run `release_workflow(action="status")` until exact-SHA package workflows and the exhaustive integration are successful.
+4. Run `release_workflow(action="publish")` to dispatch the manual stable publisher.
 
 ## First-Read Docs
 
@@ -201,6 +212,8 @@ Use `agent_docs/test-matrix.md` for path-based test selection and validation tie
 Documentation-only changes should run `git diff --check` and `./scripts/check_docs_hygiene.sh`.
 
 Agent tool or MCP changes should also run `python3 -m unittest discover -s agent_tools/tests`. Broad changes must use the complete pre-push tier in `agent_docs/test-matrix.md`.
+
+Versions use four components `a.b.c.d`, each in `0..19`. Normal automatic rolls increment `d`, carrying at 20 (`1.3.6.19` becomes `1.3.7.0`). `gradle.properties` is canonical; README, packages, Android version code, desktop metadata, and changelog must derive from or agree with it.
 
 ## Localization Rules
 

@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - master
+      - dev
   pull_request:
     paths:
       - ".github/workflows/windows-desktop.yml"
@@ -19,6 +18,11 @@ on:
       - "gradlew.bat"
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/version_metadata.py"
+      - "scripts/check_release_metadata.py"
+      - "scripts/test_vpn_integration_fixture.py"
+      - "scripts/run_desktop_vpn_integration.py"
+      - "scripts/integration/**"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
       - "scripts/test_windows_installed_desktop.ps1"

@@ -81,7 +81,10 @@ object AppUpdateLogic {
     private val json = Json { ignoreUnknownKeys = true }
     private val sha256Regex = Regex("[0-9a-f]{64}")
 
-    fun parseManifest(raw: String): UpdateManifest {
+    fun parseManifest(
+        raw: String,
+        trustUrl: (String) -> Boolean = ::isTrustedGithubUrl,
+    ): UpdateManifest {
         val root = json.parseToJsonElement(raw).jsonObject
         val schemaVersion = root.requiredInt("schemaVersion")
         require(schemaVersion == SUPPORTED_SCHEMA_VERSION) {
@@ -91,8 +94,10 @@ object AppUpdateLogic {
         require(buildNumber > 0) { "Update build number must be positive" }
         val releaseTag = root.requiredString("releaseTag")
         val releaseNotesUrl = root.requiredString("releaseNotesUrl")
-        require(isTrustedGithubUrl(releaseNotesUrl)) { "Untrusted update release-notes URL" }
-        val assets = root["assets"]?.jsonArray?.map { element -> parseAsset(element.jsonObject) }.orEmpty()
+        require(trustUrl(releaseNotesUrl)) { "Untrusted update release-notes URL" }
+        val assets = root["assets"]?.jsonArray?.map { element ->
+            parseAsset(element.jsonObject, trustUrl)
+        }.orEmpty()
         require(assets.isNotEmpty()) { "Update manifest contains no assets" }
         return UpdateManifest(
             schemaVersion = schemaVersion,
@@ -128,14 +133,14 @@ object AppUpdateLogic {
         else -> raw.trim().lowercase()
     }
 
-    private fun parseAsset(root: JsonObject): UpdateAsset {
+    private fun parseAsset(root: JsonObject, trustUrl: (String) -> Boolean): UpdateAsset {
         val platformWireName = root.requiredString("platform")
         val packageTypeWireName = root.requiredString("packageType")
         val sha256 = root.requiredString("sha256").lowercase()
         val downloadUrl = root.requiredString("downloadUrl")
         val sizeBytes = root.requiredLong("sizeBytes")
         require(sha256Regex.matches(sha256)) { "Invalid update asset SHA-256" }
-        require(isTrustedGithubUrl(downloadUrl)) { "Untrusted update download URL" }
+        require(trustUrl(downloadUrl)) { "Untrusted update download URL" }
         require(sizeBytes > 0L) { "Update asset size must be positive" }
         return UpdateAsset(
             platform = requireNotNull(UpdatePlatform.entries.firstOrNull { it.wireName == platformWireName }) {
@@ -157,7 +162,7 @@ object AppUpdateLogic {
         )
     }
 
-    private fun isTrustedGithubUrl(raw: String): Boolean {
+    fun isTrustedGithubUrl(raw: String): Boolean {
         return raw.startsWith("https://github.com/Karapsin/vpn_control/", ignoreCase = true)
     }
 

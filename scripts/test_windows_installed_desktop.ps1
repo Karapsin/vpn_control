@@ -73,6 +73,37 @@ function Find-InstalledLauncher {
     return $null
 }
 
+function Invoke-InstalledSmoke {
+    param(
+        [Parameter(Mandatory = $true)][string]$Launcher,
+        [Parameter(Mandatory = $true)][string]$StateDirectory,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    New-Item -ItemType Directory -Force -Path $StateDirectory | Out-Null
+    Write-Host "[vpn-control] running $Label smoke test: $Launcher"
+    $Process = Start-Process `
+        -FilePath $Launcher `
+        -ArgumentList @("--smoke-test", "--smoke-test-state-dir", $StateDirectory) `
+        -PassThru `
+        -WindowStyle Hidden
+    try {
+        $Completed = $Process.WaitForExit(60000)
+        if (-not $Completed) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Label smoke test timed out"
+        }
+        $Process.Refresh()
+        if ($Process.ExitCode -ne 0) {
+            throw "$Label smoke test failed with exit code $($Process.ExitCode)"
+        }
+    } finally {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    }
+    Assert-FileExists "$Label smoke test did not write workspace.json" (Join-Path $StateDirectory "workspace.json")
+    Assert-FileExists "$Label smoke test did not extract bundled sing-box" (Join-Path $StateDirectory "runtime\tools\sing-box.exe")
+}
+
 $MsiPackage = Get-ChildItem -Path $ResolvedPackageRoot -Recurse -File -Include *.msi |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
@@ -88,6 +119,7 @@ New-Item -ItemType Directory -Force -Path $ValidationRoot | Out-Null
 $InstallLog = Join-Path $ValidationRoot "msi-install.log"
 $UninstallLog = Join-Path $ValidationRoot "msi-uninstall.log"
 $SmokeStateDir = Join-Path $ValidationRoot "smoke-state"
+$RelaunchStateDir = Join-Path $ValidationRoot "relaunch-state"
 $InstalledAt = Get-Date
 $Launcher = $null
 
@@ -111,41 +143,13 @@ try {
     }
     Assert-FileExists "Installed vpn-control.exe launcher is missing" $Launcher
 
-    New-Item -ItemType Directory -Force -Path $SmokeStateDir | Out-Null
-    Write-Host "[vpn-control] running installed app smoke test: $Launcher"
-    $SmokeProcess = Start-Process `
-        -FilePath $Launcher `
-        -ArgumentList @("--smoke-test", "--smoke-test-state-dir", $SmokeStateDir) `
-        -PassThru `
-        -WindowStyle Hidden
-    try {
-        $Completed = $SmokeProcess.WaitForExit(60000)
-        if (-not $Completed) {
-            Stop-Process -Id $SmokeProcess.Id -Force -ErrorAction SilentlyContinue
-            throw "Installed app smoke test timed out"
-        }
-        $SmokeProcess.Refresh()
-        if ($SmokeProcess.ExitCode -ne 0) {
-            throw "Installed app smoke test failed with exit code $($SmokeProcess.ExitCode)"
-        }
-    } finally {
-        Stop-Process -Id $SmokeProcess.Id -Force -ErrorAction SilentlyContinue
-    }
-
-    $SmokeWorkspace = Join-Path $SmokeStateDir "workspace.json"
-    if (-not (Test-Path $SmokeWorkspace)) {
-        throw "Installed app smoke test did not write workspace.json"
-    }
-
-    $SmokeTools = Join-Path $SmokeStateDir "runtime\tools"
-    if (-not (Test-Path $SmokeTools)) {
-        throw "Installed app smoke test did not extract bundled sing-box tools"
-    }
+    Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $SmokeStateDir -Label "installed app"
+    Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $RelaunchStateDir -Label "installed app relaunch"
 
     Write-Host "[vpn-control] verified installed Windows package regression checks:"
     Write-Host " - msi:      $($MsiPackage.FullName)"
     Write-Host " - launcher: $Launcher"
-    Write-Host " - smoke:    installed app launcher"
+    Write-Host " - smoke:    installed app launcher and clean relaunch"
 } finally {
     Write-Host "[vpn-control] uninstalling MSI after installed-app regression"
     $UninstallProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList @(

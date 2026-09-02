@@ -22,8 +22,8 @@ fi
 
 app_image="$repo_root/desktopApp/build/compose/binaries/main/app/vpn-control"
 runtime="$repo_root/desktopApp/src/main/resources/bin/linux-amd64/sing-box"
-build_number="${VPN_CONTROL_VERSION_CODE:-$(git rev-list --count HEAD)}"
-display_version="${VPN_CONTROL_DESKTOP_VERSION:-0.1.$build_number}"
+build_number="${VPN_CONTROL_VERSION_CODE:-$(python3 scripts/version_metadata.py --field build-number)}"
+display_version="${VPN_CONTROL_VERSION_NAME:-$(python3 scripts/version_metadata.py --field version)}"
 dist_dir="$repo_root/dist/arch"
 staging_root="$repo_root/desktopApp/build/compose/arch-update/vpn-control-arch-update"
 archive="$dist_dir/vpn-control-arch-x86_64-$display_version.tar.gz"

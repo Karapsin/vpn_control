@@ -103,8 +103,9 @@ result_zip="$upload_dir/windows-package-result.zip"
 bridge_log="$runtime_dir/vm-file-bridge.log"
 host_output_dir="$repo_root/$output_dir"
 host_base_url="http://$host_ip:$port"
-git_commit_count="$(git rev-list --count HEAD 2>/dev/null || printf '1')"
-build_version="0.1.$git_commit_count"
+build_version="$(python3 scripts/version_metadata.py --field version)"
+build_version_code="$(python3 scripts/version_metadata.py --field build-number)"
+desktop_package_version="$(python3 scripts/version_metadata.py --field desktop-package-version)"
 
 mkdir -p "$runtime_dir" "$upload_dir" "$host_output_dir"
 rm -f "$repo_zip" "$result_zip" "$bridge_log"
@@ -254,7 +255,7 @@ if ! kill -0 "$bridge_pid" 2>/dev/null; then
 fi
 
 bootstrap_ps="$runtime_dir/bootstrap.ps1"
-python3 - "$bootstrap_ps" "$host_base_url" "$guest_work_root" "$skip_tests" "$skip_package_regression_tests" "$skip_installed_package_regression_tests" "$build_version" "$git_commit_count" <<'PY'
+python3 - "$bootstrap_ps" "$host_base_url" "$guest_work_root" "$skip_tests" "$skip_package_regression_tests" "$skip_installed_package_regression_tests" "$build_version" "$build_version_code" "$desktop_package_version" <<'PY'
 import pathlib
 import sys
 
@@ -266,6 +267,7 @@ skip_package_regression_tests = "$true" if sys.argv[5] == "true" else "$false"
 skip_installed_package_regression_tests = "$true" if sys.argv[6] == "true" else "$false"
 build_version = sys.argv[7]
 build_version_code = sys.argv[8]
+desktop_package_version = sys.argv[9]
 
 script = f'''
 $ErrorActionPreference = "Stop"
@@ -275,7 +277,7 @@ $HostBaseUrl = "{host_base_url}"
 $WorkRoot = "{work_root}"
 $RepoRoot = Join-Path $WorkRoot "repo"
 $RepoZip = Join-Path $WorkRoot "repo.zip"
-$env:VPN_CONTROL_DESKTOP_VERSION = "{build_version}"
+$env:VPN_CONTROL_DESKTOP_VERSION = "{desktop_package_version}"
 $env:VPN_CONTROL_VERSION_NAME = "{build_version}"
 $env:VPN_CONTROL_VERSION_CODE = "{build_version_code}"
 if (Test-Path $WorkRoot) {{

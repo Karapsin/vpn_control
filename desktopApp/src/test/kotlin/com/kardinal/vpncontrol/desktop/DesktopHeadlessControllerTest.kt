@@ -12,6 +12,19 @@ import kotlin.test.assertTrue
 
 class DesktopHeadlessControllerTest {
     @Test
+    fun publicServeCommandSelectsLongLivedServiceMode() {
+        assertEquals(
+            HeadlessControllerMode.SERVICE,
+            DesktopHeadlessController.modeForArgs(arrayOf("serve")),
+        )
+        assertEquals(
+            HeadlessControllerMode.TRANSIENT,
+            DesktopHeadlessController.modeForArgs(arrayOf("--headless-controller")),
+        )
+        assertEquals(null, DesktopHeadlessController.modeForArgs(arrayOf("serve", "extra")))
+    }
+
+    @Test
     fun nonLinuxHeadlessStartIsRejected() {
         val response = DesktopHeadlessController.startForCliCommand(
             command = DesktopCliCommand.On,

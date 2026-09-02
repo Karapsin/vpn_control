@@ -31,6 +31,18 @@ def command_result(*, stdout: str = "", stderr: str = "", ok: bool = True) -> di
 
 
 class McpSurfaceTest(unittest.TestCase):
+    def test_unbounded_internal_command_output_is_not_truncated(self) -> None:
+        expected = "x" * (mcp_server.MAX_OUTPUT_CHARS + 100)
+
+        bounded = mcp_server._run([sys.executable, "-c", f"print('{expected}')"])
+        unbounded = mcp_server._run(
+            [sys.executable, "-c", f"print('{expected}')"],
+            output_limit=None,
+        )
+
+        self.assertTrue(str(bounded["stdout"]).endswith("...[truncated]"))
+        self.assertEqual(expected, unbounded["stdout"])
+
     def test_public_tools_do_not_accept_repository_root(self) -> None:
         tools = (
             mcp_server.prepare_start,
@@ -38,6 +50,8 @@ class McpSurfaceTest(unittest.TestCase):
             mcp_server.change_impact,
             mcp_server.workflow_status,
             mcp_server.run_checks,
+            mcp_server.version_bump,
+            mcp_server.release_workflow,
             mcp_server.git_workflow,
         )
         for tool in tools:
@@ -85,6 +99,9 @@ class McpSurfaceTest(unittest.TestCase):
                 if line.startswith("name:")
             )
             self.assertEqual(entry["name"], first_name)
+            self.assertEqual("push", entry["event"])
+            self.assertEqual(["success"], entry["allowed_conclusions"])
+        self.assertEqual({"VPN Integration"}, mcp_server._advisory_workflow_names())
 
     @mock.patch.object(mcp_server.docs_assistant, "build_docs_index")
     @mock.patch.object(mcp_server, "_ahead_behind", return_value=(0, 1, None))
@@ -97,7 +114,7 @@ class McpSurfaceTest(unittest.TestCase):
         _ahead: mock.Mock,
         build: mock.Mock,
     ) -> None:
-        state.return_value = {"branch": "main", "dirty": True}
+        state.return_value = {"branch": "dev", "dirty": True}
         run.return_value = command_result()
 
         result = mcp_server.prepare_start("change UI")
@@ -109,7 +126,7 @@ class McpSurfaceTest(unittest.TestCase):
 
 @unittest.skipIf(ClientSession is None, "mcp dependency is not installed in this Python")
 class McpProtocolTest(unittest.IsolatedAsyncioTestCase):
-    async def test_stdio_server_lists_the_six_repository_tools(self) -> None:
+    async def test_stdio_server_lists_the_eight_repository_tools(self) -> None:
         parameters = StdioServerParameters(
             command=sys.executable,
             args=[str(Path(mcp_server.__file__).resolve()), "serve"],
@@ -127,6 +144,8 @@ class McpProtocolTest(unittest.IsolatedAsyncioTestCase):
                 "change_impact",
                 "workflow_status",
                 "run_checks",
+                "version_bump",
+                "release_workflow",
                 "git_workflow",
             },
             {tool.name for tool in result.tools},
@@ -174,17 +193,95 @@ class FingerprintTest(unittest.TestCase):
         self.assertEqual(before, mcp_server._snapshot_fingerprint())
 
 
+class VersionPolicyTest(unittest.TestCase):
+    def test_four_part_version_carries_with_base_twenty_components(self) -> None:
+        self.assertEqual("1.3.7.0", mcp_server._increment_version("1.3.6.19"))
+        self.assertEqual("1.4.0.0", mcp_server._increment_version("1.3.19.19"))
+        self.assertEqual("2.0.0.0", mcp_server._increment_version("1.19.19.19"))
+
+    def test_invalid_versions_are_rejected(self) -> None:
+        for value in ("1.2.3", "1.2.3.x", "1.2.3.20"):
+            with self.assertRaises(ValueError, msg=value):
+                mcp_server._increment_version(value)
+
+    def test_manual_release_is_never_an_automatic_workflow_event(self) -> None:
+        workflow = (mcp_server.REPO_ROOT / ".github/workflows/release-publish.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("workflow_run:", workflow)
+        self.assertNotRegex(workflow, r"(?m)^\s+push:")
+
+    def test_tenth_unreleased_bullet_rolls_version_metadata_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            changelog = root / "docs/CHANGELOG.md"
+            changelog.parent.mkdir()
+            (root / "gradle.properties").write_text("vpnControlVersion=1.3.6.19\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.3.6.19`\n", encoding="utf-8")
+            changelog.write_text(
+                "# Changelog\n\n## Unreleased\n\n"
+                + "\n".join(f"- Existing change {index}." for index in range(1, 10))
+                + "\n\n## 1.3.6.19 - 2026-01-01\n\n- Previous.\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
+            ):
+                result = mcp_server.version_bump("Tenth change")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("bump", result["result"]["decision"])
+            self.assertIn("vpnControlVersion=1.3.7.0", (root / "gradle.properties").read_text())
+            self.assertIn("**Version:** `1.3.7.0`", (root / "README.md").read_text())
+            updated = changelog.read_text(encoding="utf-8")
+            self.assertIn("## 1.3.7.0 -", updated)
+            self.assertIn("- Tenth change.", updated)
+            self.assertEqual([], mcp_server._unreleased_bullets(updated))
+
+    def test_below_threshold_only_adds_unreleased_note(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            changelog = root / "docs/CHANGELOG.md"
+            changelog.parent.mkdir()
+            (root / "gradle.properties").write_text("vpnControlVersion=1.2.3.4\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.2.3.4`\n", encoding="utf-8")
+            changelog.write_text(
+                "# Changelog\n\n## Unreleased\n\n## 1.2.3.4 - 2026-01-01\n\n- Previous.\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
+            ):
+                result = mcp_server.version_bump("New behavior")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("unreleased", result["result"]["decision"])
+            self.assertEqual("vpnControlVersion=1.2.3.4\n", (root / "gradle.properties").read_text())
+            self.assertEqual(["- New behavior."], mcp_server._unreleased_bullets(changelog.read_text()))
+
 class WorkflowWatchTest(unittest.TestCase):
     def test_watcher_uses_only_exact_sha_and_latest_run(self) -> None:
         sha = "a" * 40
         required = [
-            {"name": "Fast Checks", "workflow": "fast-checks.yml"},
-            {"name": "Android Release APK", "workflow": "android-release.yml"},
+            {
+                "name": "Fast Checks",
+                "workflow": "fast-checks.yml",
+                "event": "push",
+                "allowed_conclusions": ["success"],
+            },
+            {
+                "name": "Android Release APK",
+                "workflow": "android-release.yml",
+                "event": "push",
+                "allowed_conclusions": ["success"],
+            },
         ]
         payload = [
             {
                 "databaseId": 1,
                 "workflowName": "Fast Checks",
+                "event": "push",
                 "status": "completed",
                 "conclusion": "failure",
                 "url": "https://example.invalid/old",
@@ -193,6 +290,7 @@ class WorkflowWatchTest(unittest.TestCase):
             {
                 "databaseId": 3,
                 "workflowName": "Fast Checks",
+                "event": "push",
                 "status": "completed",
                 "conclusion": "success",
                 "url": "https://example.invalid/new",
@@ -201,6 +299,7 @@ class WorkflowWatchTest(unittest.TestCase):
             {
                 "databaseId": 4,
                 "workflowName": "Android Release APK",
+                "event": "push",
                 "status": "completed",
                 "conclusion": "success",
                 "url": "https://example.invalid/android",
@@ -209,6 +308,7 @@ class WorkflowWatchTest(unittest.TestCase):
             {
                 "databaseId": 9,
                 "workflowName": "Fast Checks",
+                "event": "push",
                 "status": "completed",
                 "conclusion": "success",
                 "url": "https://example.invalid/wrong-sha",

@@ -601,7 +601,7 @@ class ProfileStorage(
         }
         DiagnosticsLogger.append(
             context,
-            "Home SSH route updated: enabled=${settings.enabled} host_present=${settings.host.isNotBlank()} " +
+            "SSH route updated: enabled=${settings.enabled} host_present=${settings.host.isNotBlank()} " +
                 "host_key_count=${settings.hostKeys.size} credential_version=${settings.credentialVersion}",
         )
     }

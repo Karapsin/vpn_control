@@ -64,11 +64,11 @@ class DesktopSubscriptionDownloadClient(
                     ?: throw IOException("Active VPN management proxy is unavailable"),
             )
             SubscriptionDownloadRoute.HOME_RELAY -> {
-                val settings = state?.homeSshRouteSettings ?: error("Home SSH routing is not configured")
+                val settings = state?.homeSshRouteSettings ?: error("SSH Routing is not configured")
                 val keyPath = credentialStore?.privateKeyPathOrNull()
-                    ?: error("Home SSH private key is missing")
-                val baseDir = bootstrapBaseDir ?: error("Home SSH bootstrap runtime is unavailable")
-                val resolver = singBoxResolver ?: error("Home SSH bootstrap runtime is unavailable")
+                    ?: error("SSH Routing private key is missing")
+                val baseDir = bootstrapBaseDir ?: error("SSH Routing bootstrap runtime is unavailable")
+                val resolver = singBoxResolver ?: error("SSH Routing bootstrap runtime is unavailable")
                 DesktopHomeSshBootstrapProxy(baseDir, resolver).useProxy(
                     HomeSshRouteRuntimeOptions(settings, keyPath),
                 ) { port -> execute(url, subscriptionHwid, proxyPort = port) }
@@ -149,7 +149,7 @@ private class DesktopHomeSshBootstrapProxy(
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile())
                 .start()
-            require(waitForPort(process, port)) { "Home SSH relay did not become ready" }
+            require(waitForPort(process, port)) { "SSH relay did not become ready" }
             return block(port)
         } finally {
             process?.destroy()

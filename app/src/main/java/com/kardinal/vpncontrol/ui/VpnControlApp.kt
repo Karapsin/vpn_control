@@ -1811,7 +1811,7 @@ private fun LocationsScreen(
                 benchmarkDetail = stripBenchmarkLocationPrefix(
                     state.locationBenchmarkDetails[rawLink].orEmpty(),
                 ),
-                isValid = parsed != null,
+                autoSelectable = parsed != null,
                 isSelected = rawLink == selectedLocation,
             )
         }

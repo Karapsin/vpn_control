@@ -62,10 +62,10 @@ class SubscriptionDownloadClient(
                     ?: throw IOException("Active VPN management proxy is unavailable"),
             )
             SubscriptionDownloadRoute.HOME_RELAY -> {
-                val appContext = context ?: error("Home SSH routing is unavailable")
-                val settings = state?.homeSshRouteSettings ?: error("Home SSH routing is not configured")
+                val appContext = context ?: error("SSH Routing is unavailable")
+                val settings = state?.homeSshRouteSettings ?: error("SSH Routing is not configured")
                 val keyPath = AndroidHomeSshCredentialStore(appContext).privateKeyPathOrNull()
-                    ?: error("Home SSH private key is missing")
+                    ?: error("SSH Routing private key is missing")
                 AndroidHomeSshBootstrapProxy(appContext).useProxy(
                     HomeSshRouteRuntimeOptions(settings, keyPath),
                 ) { port ->
@@ -131,7 +131,7 @@ private class AndroidHomeSshBootstrapProxy(
                 .redirectOutput(java.io.File("/dev/null"))
                 .redirectError(java.io.File("/dev/null"))
                 .start()
-            require(waitForPort(port)) { "Home SSH relay did not become ready" }
+            require(waitForPort(port)) { "SSH relay did not become ready" }
             block(port)
         } finally {
             process?.destroy()

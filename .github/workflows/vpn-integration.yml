@@ -1,0 +1,275 @@
+name: VPN Integration
+run-name: VPN Integration / ${{ inputs.profile || (github.event_name == 'schedule' && 'all' || 'core') }} / ${{ inputs.target_sha || github.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Core contracts or exhaustive platform VPN coverage
+        required: true
+        default: core
+        type: choice
+        options:
+          - core
+          - all
+      target_sha:
+        description: Exact commit to test; required by the release routine
+        required: false
+        type: string
+  push:
+    branches:
+      - dev
+  schedule:
+    - cron: "23 3 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vpn-integration-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+jobs:
+  contracts:
+    name: Integration Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate requested exact SHA
+        if: github.event_name == 'workflow_dispatch' && inputs.target_sha != ''
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run fixture and integration contract regressions
+        run: |
+          python3 scripts/test_vpn_integration_fixture.py
+          ./gradlew :shared:core:desktopTest :desktopApp:test :app:testDebugUnitTest
+
+  build-linux:
+    name: Build Linux Integration Image
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'all')
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install package tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm cpio
+
+      - name: Build and validate Linux packages and update bundle
+        run: ./scripts/package_linux_desktop.sh
+
+      - name: Upload portable integration bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-linux-integration-bundle
+          path: dist/arch/*.tar.gz
+          if-no-files-found: error
+
+  linux-full-vpn:
+    name: Full VPN (${{ matrix.name }})
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'all')
+    needs: build-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Arch Linux
+            image: archlinux:base
+            family: arch
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+            family: debian
+          - name: Linux Mint 22.1
+            image: linuxmintd/mint22.1-amd64:latest
+            family: debian
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+
+      - name: Download portable integration bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: vpn-control-linux-integration-bundle
+          path: integration-artifacts
+
+      - name: Ensure the host TUN device is available
+        run: |
+          if [[ ! -c /dev/net/tun ]]; then
+            sudo mkdir -p /dev/net
+            sudo mknod /dev/net/tun c 10 200
+          fi
+          sudo chmod 666 /dev/net/tun
+
+      - name: Exercise install, relaunch, and full TUN traffic
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          FAMILY: ${{ matrix.family }}
+        run: |
+          docker run --rm --privileged --device /dev/net/tun \
+            --env FAMILY \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace \
+            "$IMAGE" bash -lc '
+              set -euo pipefail
+              if [[ "$FAMILY" == arch ]]; then
+                pacman -Sy --noconfirm python libcap tar gzip
+              else
+                apt-get update
+                DEBIAN_FRONTEND=noninteractive apt-get install -y python3 libcap2-bin tar gzip
+              fi
+              archive=$(find integration-artifacts -type f -name "*.tar.gz" | head -n 1)
+              test -n "$archive"
+              staging=$(mktemp -d)
+              tar -xzf "$archive" -C "$staging"
+              bundle="$staging/vpn-control-arch-update"
+              "$bundle/install.sh" "$bundle"
+              export VPN_CONTROL_SING_BOX=/opt/vpn-control/bin/sing-box
+              first_state=$(mktemp -d)
+              /opt/vpn-control/bin/vpn-control --smoke-test --smoke-test-state-dir "$first_state"
+              python3 scripts/run_desktop_vpn_integration.py --launcher /opt/vpn-control/bin/vpn-control
+              second_state=$(mktemp -d)
+              /opt/vpn-control/bin/vpn-control --smoke-test --smoke-test-state-dir "$second_state"
+              test -s "$second_state/workspace.json"
+            '
+
+  windows-full-vpn:
+    name: Full VPN (Windows)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'all')
+    needs: contracts
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Add WiX Toolset to PATH
+        shell: pwsh
+        run: |
+          $WixRoot = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $WixRoot) { throw "WiX Toolset installation directory was not found" }
+          (Join-Path $WixRoot.FullName "bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Exercise package install and relaunch
+        shell: pwsh
+        run: .\scripts\package_windows_desktop.ps1
+
+      - name: Exercise full Windows TUN traffic
+        shell: pwsh
+        run: |
+          $Launcher = Resolve-Path "desktopApp\build\compose\binaries\main\app\vpn-control\vpn-control.exe"
+          python scripts\run_desktop_vpn_integration.py --launcher $Launcher
+          if ($LASTEXITCODE -ne 0) { throw "Full Windows VPN integration failed" }
+
+  android-full-vpn:
+    name: Full VPN (Android Emulator)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'all')
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Exercise full Android VPN traffic
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            ready_file="$RUNNER_TEMP/android-socks-ready"
+            python3 scripts/integration/socks_http_fixture.py \
+              --port 18081 \
+              --token vpn-control-full-vpn-ok \
+              --ready-file "$ready_file" &
+            fixture_pid=$!
+            trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+            for attempt in $(seq 1 100); do
+              [[ -s "$ready_file" ]] && break
+              sleep 0.1
+            done
+            [[ -s "$ready_file" ]]
+            ./gradlew :app:installDebug :app:installDebugAndroidTest
+            adb shell appops set com.kardinal.vpncontrol ACTIVATE_VPN allow
+            adb shell pm grant com.kardinal.vpncontrol android.permission.POST_NOTIFICATIONS || true
+            ./gradlew :app:connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.vpncontrol.fullVpn=1 \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.data.FullVpnLifecycleInstrumentedTest

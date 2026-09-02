@@ -12,7 +12,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 python3 -m unittest discover -s agent_tools/tests
 ./scripts/check_localization.py
 ./scripts/status_catalog_tool.py check
-./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin
+./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin
 ```
 
 ## Validation Tiers
@@ -50,6 +50,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Android background subscription refresh status mapping | `./gradlew :shared:core:desktopTest :shared:ui:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android settings or diagnostics orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
+| Disposable full-VPN integration harness | `python3 scripts/test_vpn_integration_fixture.py`, `./gradlew :desktopApp:test :app:compileDebugAndroidTestKotlin`, then dispatch `VPN Integration` with `profile=all` only on hosted disposable runners |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
 | Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
 | Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
@@ -69,6 +70,10 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
 | `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
 | Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, and `git diff --check` |
+
+The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only an explicit exhaustive dispatch for the exact release SHA. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners.
+
+When an integration job fails because of application behavior, add the smallest deterministic regression to the fast suite before changing the implementation. Infrastructure-only failures should gain a fixture, script, or workflow-contract test when reproducible.
 
 ## Common Combined Checks
 
@@ -213,8 +218,8 @@ Do not run checks that stop the currently active VPN unless the user approves th
 
 Manual checks are still needed for:
 
-- Real Android VPN permission and traffic behavior.
-- Real desktop VPN mode on Linux and Windows.
+- Real Android VPN permission and traffic behavior outside the hosted emulator.
+- Real desktop VPN mode on the supported end-user Linux and Windows environments.
 - Windows UAC/elevation behavior.
 - Tray integration on the target window manager.
 - Autostart after real reboot.

@@ -107,9 +107,9 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 10. SSH Routing
 
    - Prepare the loopback-only relay from `docs/ssh-routing.md`, import a dedicated unencrypted key, and paste the verified host key.
-   - Enable the route and connect. Confirm the public address belongs to the selected VPN rather than the home ISP.
+   - Enable the route and connect. Confirm the public address belongs to the selected VPN rather than the local network ISP.
    - Refresh a subscription while connected; then disconnect and refresh again with SSH Routing still enabled. Both should succeed through their specified routes.
-   - Stop the home relay and confirm inactive-session refresh fails without direct fallback.
+   - Stop the SSH relay and confirm inactive-session refresh fails without direct fallback.
    - Change one SSH setting while connected. Confirm no automatic interruption occurs, the pending marker appears, and only `Restart now` reapplies it.
    - Repeat Find Best while connected and confirm the dedicated probe result is not biased by the active VPN, including when the active location is a custom config.
 

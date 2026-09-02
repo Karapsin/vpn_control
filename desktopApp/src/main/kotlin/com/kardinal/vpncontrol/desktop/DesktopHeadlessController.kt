@@ -5,8 +5,14 @@ import java.nio.file.Path
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.runBlocking
 
+internal enum class HeadlessControllerMode {
+    TRANSIENT,
+    SERVICE,
+}
+
 internal object DesktopHeadlessController {
     const val ARG = "--headless-controller"
+    const val SERVE_COMMAND = "serve"
 
     private const val STARTUP_IDLE_TIMEOUT_MILLIS = 30_000L
     private const val START_RESPONSE_TIMEOUT_MILLIS = 10_000L
@@ -16,8 +22,17 @@ internal object DesktopHeadlessController {
         args: Array<String>,
         printLine: (String) -> Unit = ::println,
     ): Int? {
-        if (args.toList() != listOf(ARG)) return null
-        return runController(printLine = printLine)
+        return when (modeForArgs(args)) {
+            HeadlessControllerMode.TRANSIENT -> runController(printLine = printLine, persistent = false)
+            HeadlessControllerMode.SERVICE -> runController(printLine = printLine, persistent = true)
+            null -> null
+        }
+    }
+
+    fun modeForArgs(args: Array<String>): HeadlessControllerMode? = when (args.toList()) {
+        listOf(ARG) -> HeadlessControllerMode.TRANSIENT
+        listOf(SERVE_COMMAND) -> HeadlessControllerMode.SERVICE
+        else -> null
     }
 
     fun startForCliCommand(
@@ -69,6 +84,7 @@ internal object DesktopHeadlessController {
     private fun runController(
         osName: String = System.getProperty("os.name"),
         printLine: (String) -> Unit,
+        persistent: Boolean,
         acquireLock: () -> AutoCloseable? = { DesktopSingleInstanceLock.acquire() },
         serviceFactory: () -> DesktopAppService = { DesktopAppServiceFactory.default() },
         startServer: (
@@ -93,12 +109,12 @@ internal object DesktopHeadlessController {
         }
         lock.use {
             val service = serviceFactory()
-            val lifecycle = HeadlessLifecycle(clockMillis)
+            val lifecycle = HeadlessLifecycle(clockMillis, persistent)
             val server = startServer(
                 { DesktopActivationShowResult.HEADLESS },
                 { command ->
                     val response = runBlocking { service.executeCliCommand(command) }
-                    lifecycle.markCommandHandled(keepAlive = service.state.isVpnRunning)
+                    lifecycle.markCommandHandled(keepAlive = persistent || service.state.isVpnRunning)
                     response
                 },
             )
@@ -107,6 +123,10 @@ internal object DesktopHeadlessController {
                 return DesktopCliResponse.UNAVAILABLE_EXIT_CODE
             }
             server.use {
+                if (persistent) {
+                    runBlocking { service.resumePreviousConnectionIfNeeded() }
+                    printLine("VPN Control headless service is ready.")
+                }
                 lifecycle.awaitExit()
             }
         }
@@ -132,6 +152,7 @@ internal object DesktopHeadlessController {
 
     private class HeadlessLifecycle(
         private val clockMillis: () -> Long,
+        private val persistent: Boolean,
     ) {
         private val monitor = java.util.concurrent.locks.ReentrantLock()
         private val changed = monitor.newCondition()
@@ -150,6 +171,10 @@ internal object DesktopHeadlessController {
             val startupDeadline = clockMillis() + STARTUP_IDLE_TIMEOUT_MILLIS
             monitor.withLock {
                 while (true) {
+                    if (persistent) {
+                        changed.awaitNanos(1_000_000_000L)
+                        continue
+                    }
                     if (commandHandled && !keepAlive) return
                     if (!commandHandled) {
                         val remainingMillis = startupDeadline - clockMillis()

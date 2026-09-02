@@ -306,12 +306,12 @@
     "VERIFYING_BLOCKED_RESOURCE": "Verifying blocked resource through {0}...",
     "SECURE_DNS_AUTOMATIC_SAVED": "Автоматический защищённый DNS сохранён",
     "CUSTOM_DNS_ENDPOINT_INVALID": "Введите корректный адрес DoH или DoT",
-    "HOME_SSH_PRIVATE_KEY_IMPORTED": "Home SSH private key imported",
-    "HOME_SSH_PRIVATE_KEY_IMPORT_FAILED": "Could not import the Home SSH private key: {0}",
-    "HOME_SSH_SETTINGS_INVALID": "Home SSH settings are invalid: {0}",
-    "HOME_SSH_ROUTE_SAVED": "Home SSH route saved",
-    "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "Home SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the Home SSH route..."
+    "HOME_SSH_PRIVATE_KEY_IMPORTED": "SSH Routing private key imported",
+    "HOME_SSH_PRIVATE_KEY_IMPORT_FAILED": "Could not import the SSH Routing private key: {0}",
+    "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
+    "HOME_SSH_ROUTE_SAVED": "SSH route saved",
+    "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
   },
   "freeformReplacements": [
     {

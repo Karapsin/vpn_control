@@ -54,6 +54,27 @@ class SingBoxOutboundBuilderTest {
     }
 
     @Test
+    fun vlessRealityVisionPreservesAnExplicitlyEmptyShortId() {
+        val outbound = SingBoxOutboundBuilder.buildOutbound(
+            profile = profile(
+                protocol = ProxyProtocol.VLESS,
+                uuid = "00000000-0000-0000-0000-000000000005",
+                network = "tcp",
+                flow = "xtls-rprx-vision",
+                security = "reality",
+                sni = "edge.example.com",
+                fingerprint = "chrome",
+                publicKey = "public-key",
+                shortId = "",
+            ),
+        )
+
+        assertEquals("", outbound.objectValue("tls").objectValue("reality").string("short_id"))
+        assertEquals("xtls-rprx-vision", outbound.string("flow"))
+        assertFalse("transport" in outbound)
+    }
+
+    @Test
     fun trojanGrpcEnablesTlsAndTransport() {
         val outbound = SingBoxOutboundBuilder.buildOutbound(
             profile = profile(

@@ -56,7 +56,7 @@ def assemble(args: argparse.Namespace) -> None:
         (one(incoming / "vpn-control-linux-packages", ".deb"), f"vpn-control-linux-x86_64-v{version}.deb", "linux", "x86_64", "deb", version),
         (one(incoming / "vpn-control-linux-packages", ".rpm"), f"vpn-control-linux-x86_64-v{version}.rpm", "linux", "x86_64", "rpm", version),
         (one(incoming / "vpn-control-linux-packages", ".tar.gz"), f"vpn-control-arch-x86_64-v{version}.tar.gz", "linux", "x86_64", "arch-bundle", version),
-        (one(incoming / "vpn-control-macos-package", ".dmg"), f"vpn-control-macos-{mac_arch}-v{version}.dmg", "macos", mac_arch, "dmg", f"1.0.{args.build_number}"),
+        (one(incoming / "vpn-control-macos-package", ".dmg"), f"vpn-control-macos-{mac_arch}-v{version}.dmg", "macos", mac_arch, "dmg", version),
     ]
     assets = []
     for source, name, platform, architecture, package_type, display_version in specs:

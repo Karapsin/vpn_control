@@ -1,40 +1,29 @@
-import java.util.concurrent.TimeUnit
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-fun gitCommitCountOrFallback(): Int {
-    return runCatching {
-        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
-            .redirectErrorStream(true)
-            .start()
-        val finished = process.waitFor(5, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            return@runCatching 1
-        }
-        if (process.exitValue() != 0) {
-            return@runCatching 1
-        }
-        process.inputStream.bufferedReader().use { it.readText() }
-            .trim()
-            .toIntOrNull()
-            ?.coerceAtLeast(1)
-            ?: 1
-    }.getOrDefault(1)
+fun parseCanonicalVersion(value: String): List<Int> {
+    val parts = value.trim().split('.').map { it.toIntOrNull() }
+    require(parts.size == 4 && parts.all { it != null && it in 0..19 }) {
+        "vpnControlVersion must have four numeric components between 0 and 19"
+    }
+    return parts.map { requireNotNull(it) }
 }
 
-val gitCommitCount = providers.provider { gitCommitCountOrFallback() }
+val canonicalVersion = providers.gradleProperty("vpnControlVersion")
+val canonicalVersionCode = canonicalVersion.map { version ->
+    parseCanonicalVersion(version).fold(0) { value, component -> value * 20 + component }
+        .also { require(it > 0) { "vpnControlVersion must produce a positive build number" } }
+}
 val generatedVersionCode = providers.gradleProperty("vpnControlVersionCode")
     .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_CODE"))
     .map { it.toIntOrNull()?.coerceAtLeast(1) ?: 1 }
-    .orElse(gitCommitCount)
+    .orElse(canonicalVersionCode)
 val generatedVersionName = providers.gradleProperty("vpnControlVersionName")
     .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
-    .orElse(generatedVersionCode.map { code -> "0.1.$code" })
+    .orElse(canonicalVersion)
 val releaseKeystorePath = providers.environmentVariable("VPN_CONTROL_ANDROID_KEYSTORE_PATH").orNull
 val releaseStorePassword = providers.environmentVariable("VPN_CONTROL_ANDROID_STORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("VPN_CONTROL_ANDROID_KEY_ALIAS").orNull

@@ -2,6 +2,28 @@
 
 This document owns developer release packaging. User-facing install instructions stay in `../README.md` and should point to published GitHub Releases, not ignored local `dist/` paths.
 
+Packaging is not publishing. Building candidates, finishing a task, or pushing `dev` never authorizes a release. Only an explicit user release command permits the `main` merge, tag, GitHub Release, or stable publisher dispatch below.
+
+## Branch And Release Routine
+
+Normal work is committed and pushed to `dev`. The five package/fast workflows in `.github/required-workflows.json` must pass for the exact pushed development SHA. `VPN Integration` is advisory on ordinary development and its exhaustive `all` profile is a release gate.
+
+For an explicitly requested release:
+
+1. Ensure the intended `dev` SHA passed all required push workflows.
+2. If `## Unreleased` still contains notes, run `version_bump(change_type="release", force_release=true)` without a summary, rerun pre-push checks, and push/verify the resulting `dev` SHA.
+3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA and dispatches `VPN Integration` with `profile=all` for that SHA.
+4. Run `release_workflow(action="status")` after exhaustive integration and all exact-SHA package workflows complete. It creates the readiness receipt used by publishing.
+5. Run `release_workflow(action="publish")`. This dispatches `.github/workflows/release-publish.yml`; the workflow independently rechecks exact SHAs, metadata, packages, and exhaustive integration before creating the GitHub Release.
+
+Do not invoke the publisher workflow directly unless repairing the release tool itself under explicit user direction. Never replace an existing tag or release.
+
+## Version Metadata
+
+The canonical version is `vpnControlVersion` in `gradle.properties`. It has four base-20 components (`0..19`). `scripts/version_metadata.py` projects that value into Android version code and platform package versions. README and the latest versioned changelog heading must agree with it at release time.
+
+Ordinary non-documentation work uses `version_bump` to append one concise `Unreleased` bullet. The version rolls automatically only when the 10th unreleased bullet is added. A forced early roll is reserved for an explicit release.
+
 ## Prerequisites
 
 All platforms:
@@ -152,6 +174,8 @@ Run targeted package scripts when only one platform changed:
 ```
 
 Each platform package script has skip flags for tests or extracted package smoke checks. Linux, macOS, Windows-host, and Windows-VM package scripts all run release hygiene before building. Use skip flags only when the omitted check is unrelated to the change and record that decision in the handoff.
+
+The exhaustive hosted integration profile adds disposable full-TUN traffic checks on Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint. Linux matrices also install the portable update bundle and relaunch it. These checks must never be run on a host carrying the coding session's active VPN; the app-side probe requires `VPN_CONTROL_ALLOW_DISPOSABLE_INTEGRATION=1` and is intended only for disposable runners.
 
 ## Common Failure Modes
 

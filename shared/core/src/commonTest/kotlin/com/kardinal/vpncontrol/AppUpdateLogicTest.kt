@@ -55,6 +55,18 @@ class AppUpdateLogicTest {
         }
     }
 
+    @Test
+    fun integrationTrustPolicyCanUseAnIsolatedFixtureWithoutWeakeningDefaultTrust() {
+        val fixture = manifestJson()
+            .replace("https://github.com/Karapsin/vpn_control/", "http://127.0.0.1:18080/")
+        val manifest = AppUpdateLogic.parseManifest(fixture) { url ->
+            url.startsWith("http://127.0.0.1:18080/")
+        }
+
+        assertEquals(138, manifest.buildNumber)
+        assertFailsWith<IllegalArgumentException> { AppUpdateLogic.parseManifest(fixture) }
+    }
+
     private fun manifestJson(): String =
         """
         {

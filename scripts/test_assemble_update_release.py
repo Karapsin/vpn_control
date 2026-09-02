@@ -31,22 +31,22 @@ def main() -> None:
                 str(repository / "scripts/assemble_update_release.py"),
                 "--incoming", str(incoming),
                 "--output", str(output),
-                "--build-number", "42",
-                "--version", "0.1.42",
-                "--tag", "v0.1.42",
+                "--build-number", "544",
+                "--version", "0.1.7.4",
+                "--tag", "v0.1.7.4",
                 "--mac-architecture", "aarch64",
             ],
             check=True,
         )
         manifest = json.loads((output / "update-manifest.json").read_text(encoding="utf-8"))
-        assert manifest["buildNumber"] == 42
+        assert manifest["buildNumber"] == 544
         assert len(manifest["assets"]) == 6
         assert {asset["packageType"] for asset in manifest["assets"]} == {
             "apk", "msi", "deb", "rpm", "arch-bundle", "dmg"
         }
         mac = next(asset for asset in manifest["assets"] if asset["platform"] == "macos")
         assert mac["architecture"] == "arm64"
-        assert mac["displayVersion"] == "1.0.42"
+        assert mac["displayVersion"] == "0.1.7.4"
         assert len((output / "SHA256SUMS.txt").read_text().splitlines()) == 8
     print("[vpn-control] update release assembly test passed")
 

@@ -1,24 +1,60 @@
 {
-  "required_push": [
-    {
-      "name": "Fast Checks",
-      "workflow": "fast-checks.yml"
-    },
-    {
-      "name": "Android Release APK",
-      "workflow": "android-release.yml"
-    },
-    {
-      "name": "Linux Desktop Package",
-      "workflow": "linux-desktop.yml"
-    },
-    {
-      "name": "Windows Desktop Package",
-      "workflow": "windows-desktop.yml"
-    },
-    {
-      "name": "macOS Desktop Package",
-      "workflow": "macos-desktop.yml"
+  "schema_version": 2,
+  "branches": {
+    "dev": {
+      "workflows": [
+        {
+          "name": "Fast Checks",
+          "path": ".github/workflows/fast-checks.yml",
+          "classification": "required_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        },
+        {
+          "name": "Android Release APK",
+          "path": ".github/workflows/android-release.yml",
+          "classification": "required_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        },
+        {
+          "name": "Linux Desktop Package",
+          "path": ".github/workflows/linux-desktop.yml",
+          "classification": "required_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        },
+        {
+          "name": "Windows Desktop Package",
+          "path": ".github/workflows/windows-desktop.yml",
+          "classification": "required_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        },
+        {
+          "name": "macOS Desktop Package",
+          "path": ".github/workflows/macos-desktop.yml",
+          "classification": "required_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        },
+        {
+          "name": "VPN Integration",
+          "path": ".github/workflows/vpn-integration.yml",
+          "classification": "advisory_push",
+          "event": "push",
+          "allowed_conclusions": ["success"]
+        }
+      ],
+      "classified_non_push_workflows": [
+        {
+          "name": "Publish Stable Release",
+          "path": ".github/workflows/release-publish.yml",
+          "classification": "release_only",
+          "events": ["workflow_dispatch"],
+          "reason": "Publishing requires an explicit user release command and exact-SHA release receipt."
+        }
+      ]
     }
-  ]
+  }
 }

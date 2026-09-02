@@ -10,6 +10,8 @@ Desktop state and runtime files live under:
 
 Do not kill the running app or `sing-box` runtime during investigation unless the user approves it. Stopping VPN can interrupt the active connection.
 
+On a Linux machine supervised without a GUI, the long-lived command is `vpn-control serve`. A service unit that invokes the internal `--headless-controller` argument will exit after its transient idle window when VPN is off and can enter a supervisor restart loop. Migrate that unit to `serve`; use `vpn-control status` for a read-only health check. Public setup guidance is in `docs/linux-headless-service.md`.
+
 ## Important Files
 
 | Path | Purpose |

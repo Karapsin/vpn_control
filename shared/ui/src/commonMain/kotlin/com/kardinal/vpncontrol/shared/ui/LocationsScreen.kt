@@ -50,7 +50,7 @@ data class SavedLocationRow(
     val server: String,
     val details: String,
     val benchmarkDetail: String,
-    val isValid: Boolean,
+    val autoSelectable: Boolean,
     val isSelected: Boolean,
 )
 
@@ -59,6 +59,12 @@ internal data class SavedLocationVisualState(
     val isInUse: Boolean,
     val togglesConnection: Boolean,
 )
+
+@Suppress("UNUSED_PARAMETER")
+internal fun savedLocationManualActionEnabled(
+    appEnabled: Boolean,
+    autoSelectable: Boolean,
+): Boolean = appEnabled
 
 internal fun savedLocationVisualState(
     location: SavedLocationRow,
@@ -240,7 +246,7 @@ private fun LocationRowCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = when {
-                !location.isValid -> Color(0x33A44A4A)
+                !location.autoSelectable -> Color(0x33A44A4A)
                 visualState.isSelected -> Color(0x334B7BE5)
                 else -> Color(0x1F203041)
             },
@@ -270,7 +276,7 @@ private fun LocationRowCard(
                 )
                 Text(
                     text = location.details,
-                    color = if (location.isValid) Color(0xFF9ED6FF) else Color(0xFFFFC4C4),
+                    color = if (location.autoSelectable) Color(0xFF9ED6FF) else Color(0xFFFFC4C4),
                     fontSize = 12.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -299,7 +305,7 @@ private fun LocationRowCard(
             ) {
                 OutlinedButton(
                     onClick = onPrimaryAction,
-                    enabled = enabled && location.isValid,
+                    enabled = savedLocationManualActionEnabled(enabled, location.autoSelectable),
                     modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp),
                     shape = RoundedCornerShape(14.dp),
@@ -321,7 +327,7 @@ private fun LocationRowCard(
                 }
                 OutlinedButton(
                     onClick = onRefresh,
-                    enabled = enabled && location.isValid,
+                    enabled = savedLocationManualActionEnabled(enabled, location.autoSelectable),
                     modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp),
                     shape = RoundedCornerShape(14.dp),

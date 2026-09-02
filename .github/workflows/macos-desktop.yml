@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - master
+      - dev
   pull_request:
     paths:
       - ".github/workflows/macos-desktop.yml"
@@ -19,6 +18,8 @@ on:
       - "scripts/prepare_sing_box_macos_runtime.sh"
       - "scripts/setup_macos_signing.sh"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/version_metadata.py"
+      - "scripts/check_release_metadata.py"
       - "scripts/package_macos_desktop.sh"
       - "scripts/test_macos_desktop_package.sh"
 

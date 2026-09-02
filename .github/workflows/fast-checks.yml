@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - master
+      - dev
   pull_request:
     paths:
       - ".github/workflows/fast-checks.yml"
@@ -29,6 +28,14 @@ on:
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
       - "scripts/check_docs_hygiene.sh"
+      - "scripts/check_user_facing_terminology.py"
+      - "scripts/check_release_metadata.py"
+      - "scripts/release_notes.py"
+      - "scripts/version_metadata.py"
+      - "scripts/test_version_metadata.py"
+      - "scripts/test_vpn_integration_fixture.py"
+      - "scripts/test_user_facing_terminology.py"
+      - "scripts/integration/**"
       - "scripts/arch_install.sh"
       - "scripts/test_arch_install_hygiene.sh"
 
@@ -93,4 +100,4 @@ jobs:
         run: ./scripts/status_catalog_tool.py check
 
       - name: Run fast unit tests
-        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin
+        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin

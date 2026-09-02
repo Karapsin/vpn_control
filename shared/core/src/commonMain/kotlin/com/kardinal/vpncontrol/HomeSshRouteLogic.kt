@@ -40,7 +40,7 @@ object HomeSshRouteLogic {
             user = state.homeSshUserDraft,
             hostKeys = state.homeSshHostKeysDraft.lineSequence().toList(),
             relayPort = state.homeSshRelayPortDraft.trim().toIntOrNull()
-                ?: error("Home relay port must be a number"),
+                ?: error("SSH relay port must be a number"),
             credentialVersion = state.homeSshRouteSettings.credentialVersion,
         )
     }
@@ -78,7 +78,7 @@ object HomeSshRouteLogic {
         require(normalized.port in 1..65535) { "SSH port must be between 1 and 65535" }
         require(normalized.user.isNotBlank()) { "SSH user is required" }
         require(!normalized.user.any(Char::isWhitespace)) { "SSH user must not contain whitespace" }
-        require(normalized.relayPort in 1..65535) { "Home relay port must be between 1 and 65535" }
+        require(normalized.relayPort in 1..65535) { "SSH relay port must be between 1 and 65535" }
         require(credentialAvailable) { "An SSH private key must be imported" }
         normalized
     }

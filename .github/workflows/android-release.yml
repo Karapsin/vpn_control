@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - master
+      - dev
   pull_request:
     paths:
       - ".github/workflows/android-release.yml"
@@ -17,6 +16,8 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/version_metadata.py"
+      - "scripts/check_release_metadata.py"
 
 jobs:
   build-release-apk:

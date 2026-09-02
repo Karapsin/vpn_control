@@ -240,6 +240,8 @@ class DesktopStateStore(
                             put("server", JsonPrimitive(location.server))
                             put("details", JsonPrimitive(location.details))
                             put("benchmark_detail", JsonPrimitive(location.benchmarkDetail))
+                            put("auto_selectable", JsonPrimitive(location.isValid))
+                            // Retained for one-way downgrade compatibility with pre-split builds.
                             put("is_valid", JsonPrimitive(location.isValid))
                             put("is_selected", JsonPrimitive(location.isSelected))
                         },
@@ -255,7 +257,8 @@ class DesktopStateStore(
         val locations = root["locations"]?.jsonArray.orEmpty().mapNotNull { element ->
             val item = element as? JsonObject ?: return@mapNotNull null
             val benchmarkDetail = item.string("benchmark_detail")
-            val storedIsValid = item.boolean("is_valid", default = true)
+            val storedAutoSelectable = item["auto_selectable"]?.jsonPrimitive?.booleanOrNull
+                ?: item.boolean("is_valid", default = true)
             DesktopLocationRecord(
                 index = item.int("index"),
                 sourceUrl = item.string("source_url"),
@@ -264,7 +267,7 @@ class DesktopStateStore(
                 server = item.string("server"),
                 details = item.string("details"),
                 benchmarkDetail = benchmarkDetail,
-                isValid = benchmarkDetailIndicatesSelectable(benchmarkDetail, storedIsValid),
+                isValid = benchmarkDetailIndicatesSelectable(benchmarkDetail, storedAutoSelectable),
                 isSelected = item.boolean("is_selected", default = false),
             )
         }

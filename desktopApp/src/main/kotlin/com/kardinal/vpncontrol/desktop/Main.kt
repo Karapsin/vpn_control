@@ -107,6 +107,7 @@ fun main(args: Array<String>) {
     DesktopHeadlessController.handleArgs(args)?.let { exitProcess(it) }
     DesktopCli.handleArgs(args)?.let { exitProcess(it) }
     DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
+    DesktopVpnIntegrationTest.handleArgs(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
         println("VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
         return
@@ -1934,7 +1935,7 @@ private fun DesktopLocationRecord.toSharedRow(): SavedLocationRow {
         server = server,
         details = details,
         benchmarkDetail = benchmarkDetail,
-        isValid = isValid,
+        autoSelectable = isValid,
         isSelected = isSelected,
     )
 }

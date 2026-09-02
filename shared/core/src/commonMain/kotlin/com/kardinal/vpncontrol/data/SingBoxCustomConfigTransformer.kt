@@ -166,7 +166,7 @@ object SingBoxCustomConfigTransformer {
             }
             type in logicalOutboundTypes -> outbound
             else -> error(
-                "Custom config outbound type '$type' cannot be proven to use the home SSH route",
+                "Custom config outbound type '$type' cannot be proven to use the SSH route",
             )
         }
     }
@@ -259,7 +259,7 @@ object SingBoxCustomConfigTransformer {
     private fun routeDnsServerThroughHome(server: JsonObject): JsonObject {
         val type = server.string("type").lowercase()
         require(type.isNotBlank()) {
-            "Legacy or untyped custom DNS servers cannot be proven to use the home SSH route"
+            "Legacy or untyped custom DNS servers cannot be proven to use the SSH route"
         }
         return when (type) {
             in localDnsServerTypes -> server
@@ -267,7 +267,7 @@ object SingBoxCustomConfigTransformer {
                 server.forEach { (key, value) -> put(key, value) }
                 if (server["detour"] == null) put("detour", HomeSshRouteConfigBuilder.HOME_EGRESS_TAG)
             }
-            else -> error("Custom DNS server type '$type' cannot be proven to use the home SSH route")
+            else -> error("Custom DNS server type '$type' cannot be proven to use the SSH route")
         }
     }
 
@@ -285,7 +285,7 @@ object SingBoxCustomConfigTransformer {
                             put("download_detour", HomeSshRouteConfigBuilder.HOME_EGRESS_TAG)
                         },
                     )
-                    else -> error("Custom rule-set type cannot be proven to use the home SSH route")
+                    else -> error("Custom rule-set type cannot be proven to use the SSH route")
                 }
             }
         }
@@ -350,7 +350,7 @@ object SingBoxCustomConfigTransformer {
                 is JsonObject -> value.isEmpty()
                 else -> false
             }
-            require(empty) { "Custom config '$key' cannot be proven to use the home SSH route" }
+            require(empty) { "Custom config '$key' cannot be proven to use the SSH route" }
         }
     }
 

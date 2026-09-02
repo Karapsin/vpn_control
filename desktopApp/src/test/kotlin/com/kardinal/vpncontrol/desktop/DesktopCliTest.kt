@@ -101,4 +101,18 @@ class DesktopCliTest {
         assertEquals(DesktopCliCommand.FindBest, startedCommand)
         assertEquals(listOf("Best location selected: Berlin"), lines)
     }
+
+    @Test
+    fun statusDoesNotStartAControllerWhenServiceIsUnavailable() {
+        val lines = mutableListOf<String>()
+        val exitCode = DesktopCli.handleArgs(
+            args = arrayOf("status"),
+            printLine = lines::add,
+            requestCommand = { DesktopCliResponse.notRunning() },
+            startHeadlessController = { error("status must not start a controller") },
+        )
+
+        assertEquals(DesktopCliResponse.UNAVAILABLE_EXIT_CODE, exitCode)
+        assertEquals(listOf(DesktopCliResponse.NOT_RUNNING_MESSAGE), lines)
+    }
 }

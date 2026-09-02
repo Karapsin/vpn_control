@@ -19,7 +19,7 @@ All packaged platforms expose an in-app `Update` action backed by the latest Git
 - Default subscriptions and default routing rules must not be reintroduced.
 - Empty app assignment rules with `ignoreRules = false` should route all apps through VPN.
 - Automatic DNS and custom DoH/DoT behavior, validation, and legacy raw-DNS migration should stay aligned across Android and desktop.
-- SSH Routing settings, fail-closed behavior, and VPN-aware subscription downloads should stay aligned. The home relay installer supports Linux `amd64` and `arm64`; the client feature uses the bundled runtime on every packaged platform.
+- SSH Routing settings, fail-closed behavior, and VPN-aware subscription downloads should stay aligned. The SSH relay installer supports Linux `amd64` and `arm64`; the client feature uses the bundled runtime on every packaged platform.
 
 ## Platform-Specific Behavior
 

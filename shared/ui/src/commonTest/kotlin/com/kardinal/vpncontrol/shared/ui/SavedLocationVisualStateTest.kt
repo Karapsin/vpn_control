@@ -7,6 +7,12 @@ import kotlin.test.assertTrue
 
 class SavedLocationVisualStateTest {
     @Test
+    fun diagnosticsNeverDisableManualLocationActions() {
+        assertTrue(savedLocationManualActionEnabled(appEnabled = true, autoSelectable = false))
+        assertFalse(savedLocationManualActionEnabled(appEnabled = false, autoSelectable = true))
+    }
+
+    @Test
     fun runningMatchingSelectionShowsInUseAndTogglesConnection() {
         val location = row(rawLink = "stored-selected")
         val visualState = savedLocationVisualState(
@@ -79,7 +85,7 @@ class SavedLocationVisualStateTest {
             server = "127.0.0.1",
             details = "SOCKS",
             benchmarkDetail = "",
-            isValid = true,
+            autoSelectable = true,
             isSelected = isSelected,
         )
     }

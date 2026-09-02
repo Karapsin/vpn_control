@@ -13,6 +13,7 @@ internal object DesktopCliProtocol {
         return when (command) {
             DesktopCliCommand.On -> "$COMMAND_PREFIX\ton"
             DesktopCliCommand.Off -> "$COMMAND_PREFIX\toff"
+            DesktopCliCommand.Status -> "$COMMAND_PREFIX\tstatus"
             DesktopCliCommand.FindBest -> "$COMMAND_PREFIX\tfind-best"
             is DesktopCliCommand.Select -> "$COMMAND_PREFIX\tselect\t${encodeText(command.target)}"
         }
@@ -27,6 +28,7 @@ internal object DesktopCliProtocol {
             when (parts.getOrNull(1)) {
                 "on" -> DesktopCliCommand.On
                 "off" -> DesktopCliCommand.Off
+                "status" -> DesktopCliCommand.Status
                 "find-best" -> DesktopCliCommand.FindBest
                 "select" -> {
                     val target = parts.getOrNull(2)?.let(::decodeText).orEmpty()

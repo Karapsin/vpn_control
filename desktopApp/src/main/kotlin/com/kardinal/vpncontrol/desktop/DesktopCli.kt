@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 internal sealed interface DesktopCliCommand {
     data object On : DesktopCliCommand
     data object Off : DesktopCliCommand
+    data object Status : DesktopCliCommand
     data object FindBest : DesktopCliCommand
     data class Select(val target: String) : DesktopCliCommand
 }
@@ -35,6 +36,7 @@ internal object DesktopCli {
         Usage:
           vpn-control on
           vpn-control off
+          vpn-control status
           vpn-control find-best
           vpn-control select <location-name|visible-index>
     """.trimIndent()
@@ -48,7 +50,9 @@ internal object DesktopCli {
         return when (val parsed = parse(args.toList()) ?: return null) {
             is DesktopCliParseResult.Valid -> {
                 val firstResponse = requestCommand(parsed.command)
-                val response = if (firstResponse.isDesktopAppNotRunning) {
+                val response = if (
+                    firstResponse.isDesktopAppNotRunning && parsed.command != DesktopCliCommand.Status
+                ) {
                     startHeadlessController(parsed.command)
                 } else {
                     firstResponse
@@ -70,6 +74,7 @@ internal object DesktopCli {
         return when (command) {
             "on" -> noExtraArgs(args, DesktopCliCommand.On)
             "off" -> noExtraArgs(args, DesktopCliCommand.Off)
+            "status" -> noExtraArgs(args, DesktopCliCommand.Status)
             "find-best" -> noExtraArgs(args, DesktopCliCommand.FindBest)
             "select" -> {
                 val target = args.drop(1).joinToString(" ").trim()

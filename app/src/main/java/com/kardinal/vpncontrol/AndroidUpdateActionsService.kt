@@ -27,6 +27,8 @@ internal class AndroidUpdateActionsService(
     private val client: OkHttpClient = defaultClient(),
     private val currentBuildNumber: Int = BuildConfig.VERSION_CODE,
     private val currentVersion: String = BuildConfig.VERSION_NAME,
+    private val manifestUrl: String = AppUpdateLogic.LATEST_MANIFEST_URL,
+    private val trustUrl: (String) -> Boolean = AppUpdateLogic::isTrustedGithubUrl,
 ) {
     private var activeJob: Job? = null
     private var preparedFile: File? = null
@@ -46,7 +48,7 @@ internal class AndroidUpdateActionsService(
         lateinit var job: Job
         job = launch {
             try {
-                val manifest = AppUpdateLogic.parseManifest(fetchText(AppUpdateLogic.LATEST_MANIFEST_URL))
+                val manifest = AppUpdateLogic.parseManifest(fetchText(manifestUrl), trustUrl)
                 if (!AppUpdateLogic.isUpdateAvailable(currentBuildNumber, manifest)) {
                     updateAppState {
                         it.copy(
@@ -152,7 +154,7 @@ internal class AndroidUpdateActionsService(
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("GitHub update check failed: HTTP ${response.code}")
             response.body?.string()?.takeIf(String::isNotBlank)
-                ?: throw IOException("GitHub returned an empty update manifest")
+                ?: throw IOException("The update source returned an empty manifest")
         }
     }
 

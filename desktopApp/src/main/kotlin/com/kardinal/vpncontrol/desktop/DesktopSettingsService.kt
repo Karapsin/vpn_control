@@ -58,7 +58,7 @@ internal class DesktopSettingsService(
 
     fun importHomeSshPrivateKey(content: String) {
         runCatching {
-            (homeSshCredentialStore ?: error("Home SSH credential storage is unavailable"))
+            (homeSshCredentialStore ?: error("SSH Routing credential storage is unavailable"))
                 .importPrivateKey(content)
         }
             .onSuccess {

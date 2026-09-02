@@ -10,6 +10,29 @@ import kotlinx.coroutines.test.runTest
 
 class DesktopCliCommandExecutorTest {
     @Test
+    fun statusReportsReachableHeadlessServiceWithoutChangingReconnectIntent() = runTest {
+        val tempDir = Files.createTempDirectory("vpn-control-cli-status")
+        try {
+            val service = DesktopAppServiceFactory.createForTesting(
+                store = DesktopStateStore(tempDir),
+                initialWorkspace = DesktopWorkspace(
+                    persistedState = PersistedState(),
+                    locations = emptyList(),
+                    resumeConnectionOnLaunch = false,
+                ),
+            )
+
+            val response = service.executeCliCommand(DesktopCliCommand.Status)
+
+            assertTrue(response.success)
+            assertEquals("VPN is off", response.message)
+            assertFalse(service.shouldResumeConnectionOnLaunch())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun offCommandDisablesPendingReconnectBeforeRuntimeResumes() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-cli-off-pending-resume")
         try {
