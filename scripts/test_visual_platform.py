@@ -172,7 +172,10 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.dict(os.environ, {"ANDROID_HOME": "/sdk"}, clear=True),
             mock.patch.object(Path, "is_file", return_value=True),
         ):
-            self.assertEqual("/sdk/platform-tools/adb", visual_platform._android_tool("adb"))
+            self.assertEqual(
+                str(Path("/sdk") / "platform-tools" / "adb"),
+                visual_platform._android_tool("adb"),
+            )
 
     def test_stop_never_touches_environment_that_predated_agent(self) -> None:
         with (
