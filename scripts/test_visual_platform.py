@@ -400,6 +400,10 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn(":desktopApp:createDistributable", windows)
         self.assertIn("set -eu", android)
         self.assertNotIn("set -euo pipefail", android)
+        self.assertIn(
+            'socks_http_fixture.py --port 18081 --token vpn-control-full-vpn-ok --ready-file "$ready_file" &',
+            android,
+        )
 
     def test_local_driver_requires_complete_requested_scene_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
