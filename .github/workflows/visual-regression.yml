@@ -246,7 +246,7 @@ jobs:
               if width >= 1280 and height >= 800:
                   eligible.append((width * height, width, height, value))
           print(min(eligible)[3] if eligible else "")
-          ')
+          ')"
           [[ -n "$mode" ]] || { screenresolution list; exit 1; }
           screenresolution set "$mode"
           screenresolution get
