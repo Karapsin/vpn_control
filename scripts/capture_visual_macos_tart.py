@@ -17,8 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 VM_NAME = os.environ.get("VPN_CONTROL_VISUAL_MACOS_VM", "vpn-control-visual-macos")
 VM_USER = os.environ.get("VPN_CONTROL_VISUAL_MACOS_USER", "admin")
 VM_PASSWORD = os.environ.get("VPN_CONTROL_VISUAL_MACOS_PASSWORD", "admin")
+VM_JAVA_HOME = os.environ.get("VPN_CONTROL_VISUAL_MACOS_JAVA_HOME", "/opt/homebrew/opt/openjdk@17")
 CANONICAL_SIZE = (1280, 800)
 SECURE_SCENES = ("macos-gatekeeper", "macos-install-confirmation")
+FILE_DIALOG_SCENES = ("macos-open-dialog", "macos-save-dialog")
 
 
 class CaptureError(RuntimeError):
@@ -69,6 +71,14 @@ def vnc_command(ip_address: str, *commands: str) -> list[str]:
 def capture_frame(ip_address: str, output: Path) -> None:
     # Connecting to macOS screen sharing displays a short platform banner. Keep the same
     # headless VNC session alive until that OS-owned transient has disappeared.
+    run_checked(vnc_command(ip_address, "pause", "20", "capture", str(output)), timeout=45)
+    size = png_size(output)
+    if size != CANONICAL_SIZE:
+        raise CaptureError(f"macOS framebuffer is {size[0]}x{size[1]}; expected 1280x800")
+
+
+def capture_ready_frame(ip_address: str, output: Path) -> None:
+    """Capture a dialog already announced by the isolated guest test."""
     run_checked(vnc_command(ip_address, "pause", "20", "capture", str(output)), timeout=45)
     size = png_size(output)
     if size != CANONICAL_SIZE:
@@ -154,8 +164,33 @@ def restore_guest_clock() -> None:
     guest_shell("sudo systemsetup -setusingnetworktime on >/dev/null 2>&1 || true", timeout=30)
 
 
+def capture_file_dialogs(ip_address: str, scene_ids: list[str], output: Path) -> None:
+    guest_output = Path("/Volumes/My Shared Files/vpn-control") / output.relative_to(ROOT)
+    command = (
+        'cd "/Volumes/My Shared Files/vpn-control" && '
+        "mkdir -p " + repr(str(guest_output)) + " && "
+        "nohup env JAVA_HOME=" + repr(VM_JAVA_HOME) + " VPN_CONTROL_VISUAL_ISOLATED=1 VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER=1 "
+        "GRADLE_OPTS='-Dorg.gradle.projectcachedir=/tmp/vpn-control-macos-visual-project-cache' "
+        "./scripts/capture_visual_desktop.sh macos " + repr(str(guest_output)) + " " +
+        repr(",".join(scene_ids)) + " >/tmp/vpn-control-macos-dialog-vnc.log 2>&1 &"
+    )
+    guest_shell(command, timeout=30)
+    deadline = time.monotonic() + 90
+    for scene_id in scene_ids:
+        ready = output / f"{scene_id}.png.ready"
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.5)
+        if not ready.exists():
+            raise CaptureError(f"timed out waiting for isolated macOS dialog: {scene_id}")
+        try:
+            capture_ready_frame(ip_address, output / f"{scene_id}.png")
+            (output / f"{scene_id}.png.captured").write_text("captured", encoding="utf-8")
+        finally:
+            ready.unlink(missing_ok=True)
+
+
 def capture_requested(scene_ids: list[str], output: Path) -> None:
-    unknown = sorted(set(scene_ids) - set(SECURE_SCENES))
+    unknown = sorted(set(scene_ids) - set(SECURE_SCENES) - set(FILE_DIALOG_SCENES))
     if unknown:
         raise CaptureError("the Tart secure-surface driver cannot capture: " + ", ".join(unknown))
     ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
@@ -166,11 +201,14 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     guest_shell(f"pkill -u {VM_USER} -x osascript >/dev/null 2>&1 || true", timeout=30)
     dismiss(ip_address)
     time.sleep(2)
+    file_dialog_scenes = [scene for scene in scene_ids if scene in FILE_DIALOG_SCENES]
+    if file_dialog_scenes:
+        capture_file_dialogs(ip_address, file_dialog_scenes, output)
     if "macos-gatekeeper" in scene_ids:
         build_package()
         prepare_gatekeeper_scene()
     try:
-        for scene_id in scene_ids:
+        for scene_id in (scene for scene in scene_ids if scene in SECURE_SCENES):
             process: subprocess.Popen[str] | None = None
             try:
                 freeze_guest_clock()

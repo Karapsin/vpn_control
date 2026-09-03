@@ -61,7 +61,9 @@ class DesktopNativeVisualCaptureTest {
         Files.createDirectories(output)
 
         val captureBounds = canonicalCaptureBounds()
-        prepareScreenCapturePermission(platform)
+        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") != "1") {
+            prepareScreenCapturePermission(platform)
+        }
         scenes.forEach { sceneId ->
             captureScene(platform, sceneId, output.resolve("$sceneId.png"), captureBounds)
         }
@@ -162,7 +164,18 @@ class DesktopNativeVisualCaptureTest {
         thread.start()
         val dialog = waitForWindow<FileDialog>()
         activateWindow(dialog)
-        captureScreen(output, bounds)
+        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") == "1") {
+            // Robot needs macOS Screen Recording consent, which a guest cannot safely grant to
+            // itself. The agent's loopback VNC client captures this isolated framebuffer instead.
+            val ready = output.resolveSibling("${output.fileName}.ready")
+            val captured = output.resolveSibling("${output.fileName}.captured")
+            Files.writeString(ready, "ready")
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
+            while (!Files.exists(captured) && System.nanoTime() < deadline) Thread.sleep(100)
+            check(Files.exists(captured)) { "External macOS framebuffer capture did not acknowledge $output" }
+        } else {
+            captureScreen(output, bounds)
+        }
         onEventThread {
             dialog.isVisible = false
             dialog.dispose()

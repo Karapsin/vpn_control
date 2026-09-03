@@ -326,6 +326,13 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertNotIn("open vnc://", script)
         self.assertNotIn("Screen Sharing", script)
 
+    def test_macos_framebuffer_driver_acknowledges_file_dialog_capture(self) -> None:
+        script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
+        self.assertIn('FILE_DIALOG_SCENES = ("macos-open-dialog", "macos-save-dialog")', script)
+        self.assertIn("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER=1", script)
+        self.assertIn('f"{scene_id}.png.captured"', script)
+        self.assertIn('"pause", "20", "capture"', script)
+
     def test_windows_qemu_start_exposes_scoped_control_sockets(self) -> None:
         script = (visual_platform.ROOT / "scripts/start_windows_visual_vm.sh").read_text(
             encoding="utf-8",
