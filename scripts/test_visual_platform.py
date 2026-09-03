@@ -74,6 +74,13 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('"vpn-control-visual-files"', source)
         self.assertIn("if (save) FileDialog.SAVE else FileDialog.LOAD", source)
 
+    def test_android_camera_capture_allows_for_cold_camera_startup(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"android-camera-qr" -> 30_000L', source)
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)

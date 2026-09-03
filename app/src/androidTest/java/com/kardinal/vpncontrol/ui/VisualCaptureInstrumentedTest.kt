@@ -276,7 +276,12 @@ class VisualCaptureInstrumentedTest {
             "android-vpn-notification" -> "NotificationShade"
             else -> error("Unknown Android native scene: $sceneId")
         }
-        val deadline = SystemClock.elapsedRealtime() + 10_000L
+        val timeout = when (sceneId) {
+            // A cold emulator camera can need more than ten seconds to initialize.
+            "android-camera-qr" -> 30_000L
+            else -> 10_000L
+        }
+        val deadline = SystemClock.elapsedRealtime() + timeout
         var firstMatchAt = 0L
         while (SystemClock.elapsedRealtime() < deadline) {
             val surface = device.executeShellCommand("dumpsys window")
