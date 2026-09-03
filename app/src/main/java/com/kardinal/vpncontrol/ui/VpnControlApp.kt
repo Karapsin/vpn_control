@@ -77,6 +77,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -146,6 +147,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.util.EnumMap
 import java.util.Locale
+
+internal val LocalVisualExportTimestamp = compositionLocalOf<String?> { null }
 
 @Composable
 fun VpnControlApp(
@@ -1728,8 +1731,11 @@ private fun generateQrBitmap(payload: String): Bitmap? {
     }.getOrNull()
 }
 
-private fun buildLocationsExportDocument(state: MainUiState): LocationsExportDocument {
-    return LocationConfigs.export(state.currentLocations)
+private fun buildLocationsExportDocument(
+    state: MainUiState,
+    exportedAt: String?,
+): LocationsExportDocument {
+    return LocationConfigs.export(state.currentLocations, exportedAt)
 }
 
 private fun buildEditedRoutingRules(state: MainUiState): RoutingRules {
@@ -1843,6 +1849,7 @@ private fun LocationsScreen(
 ) {
     val strings = LocalAppStrings.current
     val clipboard = LocalClipboardManager.current
+    val visualExportTimestamp = LocalVisualExportTimestamp.current
     var exportQrContent by remember { mutableStateOf<ExportQrContent?>(null) }
     var exportQrError by remember { mutableStateOf<String?>(null) }
     val selectedLocation = LocationConfigs.selectedStoredReference(
@@ -1929,7 +1936,7 @@ private fun LocationsScreen(
                     )
                     ExportMenuButton(
                         onQrClick = {
-                            val document = buildLocationsExportDocument(state)
+                            val document = buildLocationsExportDocument(state, visualExportTimestamp)
                             val bytes = document.content.toByteArray(Charsets.UTF_8).size
                             if (bytes > MAX_QR_EXPORT_BYTES) {
                                 exportQrError = strings.format(
@@ -1942,7 +1949,7 @@ private fun LocationsScreen(
                             }
                         },
                         onClipboardClick = {
-                            val document = buildLocationsExportDocument(state)
+                            val document = buildLocationsExportDocument(state, visualExportTimestamp)
                             clipboard.setText(AnnotatedString(document.content))
                         },
                         onFileClick = onExportLocations,
@@ -1954,7 +1961,7 @@ private fun LocationsScreen(
             } else {
                 ExportMenuButton(
                     onQrClick = {
-                        val document = buildLocationsExportDocument(state)
+                        val document = buildLocationsExportDocument(state, visualExportTimestamp)
                         val bytes = document.content.toByteArray(Charsets.UTF_8).size
                         if (bytes > MAX_QR_EXPORT_BYTES) {
                             exportQrError = strings.format(
@@ -1967,7 +1974,7 @@ private fun LocationsScreen(
                         }
                     },
                     onClipboardClick = {
-                        val document = buildLocationsExportDocument(state)
+                        val document = buildLocationsExportDocument(state, visualExportTimestamp)
                         clipboard.setText(AnnotatedString(document.content))
                     },
                     onFileClick = onExportLocations,
@@ -2612,6 +2619,7 @@ private fun RoutingRulesScreen(
 ) {
     val strings = LocalAppStrings.current
     val clipboard = LocalClipboardManager.current
+    val visualExportTimestamp = LocalVisualExportTimestamp.current
     var exportQrContent by remember { mutableStateOf<ExportQrContent?>(null) }
     var exportQrError by remember { mutableStateOf<String?>(null) }
     exportQrContent?.let { qr ->
@@ -2660,7 +2668,10 @@ private fun RoutingRulesScreen(
                 )
                 ExportMenuButton(
                     onQrClick = {
-                        val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
+                        val document = RoutingRulesTransfer.export(
+                            buildEditedRoutingRules(state),
+                            visualExportTimestamp,
+                        )
                         val bytes = document.content.toByteArray(Charsets.UTF_8).size
                         if (bytes > MAX_QR_EXPORT_BYTES) {
                             exportQrError = strings.format(
@@ -2673,7 +2684,10 @@ private fun RoutingRulesScreen(
                         }
                     },
                     onClipboardClick = {
-                        val document = RoutingRulesTransfer.export(buildEditedRoutingRules(state))
+                        val document = RoutingRulesTransfer.export(
+                            buildEditedRoutingRules(state),
+                            visualExportTimestamp,
+                        )
                         clipboard.setText(AnnotatedString(document.content))
                     },
                     onFileClick = onExport,

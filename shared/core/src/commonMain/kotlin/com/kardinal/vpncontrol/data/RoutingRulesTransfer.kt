@@ -20,8 +20,11 @@ object RoutingRulesTransfer {
     private const val FORMAT_TYPE = "vpn_control_routing_rules"
     private const val FORMAT_VERSION = 7
 
-    fun export(rules: RoutingRules): RoutingRulesExportDocument {
-        val timestamp = Clock.System.now().toString()
+    fun export(
+        rules: RoutingRules,
+        exportedAt: String? = null,
+    ): RoutingRulesExportDocument {
+        val timestamp = exportedAt ?: Clock.System.now().toString()
         val content = PrettyJson.encodeToString(
             JsonObject.serializer(),
             buildJsonObject {

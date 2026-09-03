@@ -95,9 +95,14 @@ class VisualCaptureInstrumentedTest {
                 if (requestedFontScale != configuredFontScale) {
                     instrumentation.shell("settings put system font_scale $requestedFontScale")
                     compose.activityRule.scenario.recreate()
+                    // Activity recreation is asynchronous on the emulator. Do not inject the
+                    // fixture into the outgoing activity or capture its first-run default state.
+                    SystemClock.sleep(1_000L)
+                    device.waitForIdle(1_000L)
                     compose.waitForIdle()
                     configuredFontScale = requestedFontScale
                 }
+                freezeSystemUi(instrumentation)
                 compose.activityRule.scenario.onActivity { activity ->
                     activity.replaceStateForVisualCapture(androidVisualState(sceneId))
                 }
@@ -322,6 +327,18 @@ class VisualCaptureInstrumentedTest {
         check(darkBluePixels >= 1_000) {
             "QR scanner chrome was not visible above the camera preview"
         }
+    }
+
+    private fun freezeSystemUi(instrumentation: android.app.Instrumentation) {
+        instrumentation.shell("settings put global sysui_demo_allowed 1")
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command enter")
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200")
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false")
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command notifications -e visible false")
+        // The emulator's live radio state otherwise leaks into the status bar and makes
+        // identical app scenes differ by a few hundred pixels between captures.
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide")
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide -e location hide -e alarm hide -e sync hide -e tty hide -e eri hide -e mute hide -e speakerphone hide -e managed_profile hide -e cast hide -e hotspot hide -e sensors_off hide -e data_saver hide -e vpn hide -e microphone hide -e camera hide -e rotate hide -e headset hide")
     }
 
     private fun writeGeometry(file: File, image: Bitmap, scene: JSONObject) {

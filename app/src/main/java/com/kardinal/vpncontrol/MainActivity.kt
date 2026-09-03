@@ -27,7 +27,10 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import com.kardinal.vpncontrol.shared.ui.LocalStatsClock
 import com.kardinal.vpncontrol.shared.ui.StatsClock
+import com.kardinal.vpncontrol.ui.LocalVisualExportTimestamp
 import com.kardinal.vpncontrol.ui.VpnControlApp
+
+private const val VISUAL_EXPORT_TIMESTAMP = "2023-11-14T22:13:20Z"
 
 class MainActivity : ComponentActivity() {
     private enum class QrImportMode {
@@ -183,6 +186,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         StatsClock(nowMillis = { 1_700_003_600_000L }, liveUpdates = false)
                     },
+                    LocalVisualExportTimestamp provides if (visualStateOverride == null) null else VISUAL_EXPORT_TIMESTAMP,
                 ) {
                 VpnControlApp(
                 state = renderedState,

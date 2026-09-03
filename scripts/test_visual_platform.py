@@ -119,6 +119,29 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('command clock -e hhmm 1200', native_loop)
         self.assertIn('command notifications -e visible false', native_loop)
 
+    def test_android_visual_qr_exports_freeze_the_payload_timestamp(self) -> None:
+        activity = (
+            visual_platform.ROOT / "app/src/main/java/com/kardinal/vpncontrol/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        ui = (
+            visual_platform.ROOT / "app/src/main/java/com/kardinal/vpncontrol/ui/VpnControlApp.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('VISUAL_EXPORT_TIMESTAMP = "2023-11-14T22:13:20Z"', activity)
+        self.assertIn("LocalVisualExportTimestamp provides", activity)
+        self.assertIn("LocationConfigs.export(state.currentLocations, exportedAt)", ui)
+        self.assertIn("RoutingRulesTransfer.export(", ui)
+
+    def test_android_visual_fixture_waits_for_recreation_and_refreezes_system_ui(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("SystemClock.sleep(1_000L)", source)
+        self.assertIn("freezeSystemUi(instrumentation)", source)
+        self.assertIn('command clock -e hhmm 1200', source)
+        self.assertIn('command network -e airplane hide -e wifi show', source)
+        self.assertIn('command status -e volume hide', source)
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)

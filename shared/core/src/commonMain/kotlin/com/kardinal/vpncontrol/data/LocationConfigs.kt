@@ -79,8 +79,11 @@ object LocationConfigs {
         }
     }
 
-    fun export(storedLocations: List<String>): LocationsExportDocument {
-        val timestamp = Clock.System.now().toString()
+    fun export(
+        storedLocations: List<String>,
+        exportedAt: String? = null,
+    ): LocationsExportDocument {
+        val timestamp = exportedAt ?: Clock.System.now().toString()
         val payload = buildJsonArray {
             storedLocations.forEach { raw ->
                 add(profileToJson(decodeStoredLocation(raw)))
