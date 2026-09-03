@@ -417,7 +417,9 @@ class DesktopNativeVisualCaptureTest {
             robot.createScreenCapture(Rectangle(screen.x, screen.y, screen.width, screen.height))
             Thread.sleep(1_200)
             val allowX = screen.x + screen.width / 2
-            val allowY = screen.y + (screen.height * 0.554).toInt()
+            // The consent sheet's Allow button is just above the vertically centered
+            // secondary action. At 1280x800 it is y=413; 0.554 selects the latter.
+            val allowY = screen.y + (screen.height * 0.516).toInt()
             robot.mouseMove(allowX, allowY)
             robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
             robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)

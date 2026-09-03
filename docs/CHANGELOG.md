@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Prevent macOS visual capture onboarding overlays.
+- Accept macOS visual screen-recording consent deterministically.
 
 ## 2.0.0 - 2026-09-03
 

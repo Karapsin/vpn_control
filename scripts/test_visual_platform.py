@@ -359,6 +359,14 @@ class VisualPlatformTest(unittest.TestCase):
             macos,
         )
 
+    def test_macos_native_capture_targets_screen_recording_allow_action(self) -> None:
+        fixture = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("screen.height * 0.516", fixture)
+        self.assertNotIn("screen.height * 0.554", fixture)
+
     def test_android_capture_requires_an_agent_owned_emulator(self) -> None:
         with mock.patch.object(
             visual_platform,
