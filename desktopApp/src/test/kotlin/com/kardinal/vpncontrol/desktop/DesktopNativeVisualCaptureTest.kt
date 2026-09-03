@@ -139,13 +139,20 @@ class DesktopNativeVisualCaptureTest {
         output: Path,
         bounds: Rectangle,
     ) {
+        val fixtureDirectory = Path.of(System.getProperty("java.io.tmpdir"), "vpn-control-visual-files")
+        fixtureDirectory.toFile().deleteRecursively()
+        Files.createDirectories(fixtureDirectory)
         val completed = CountDownLatch(1)
         val thread = Thread({
             try {
-                if (save) {
-                    DesktopTextTransfer.chooseSaveFile(window, "Export VPN Control diagnostics", "vpn-control-diagnostics.txt")
-                } else {
-                    DesktopTextTransfer.chooseOpenFile(window, "Import VPN Control configuration")
+                FileDialog(
+                    window,
+                    if (save) "Export VPN Control diagnostics" else "Import VPN Control configuration",
+                    if (save) FileDialog.SAVE else FileDialog.LOAD,
+                ).apply {
+                    directory = fixtureDirectory.toString()
+                    if (save) file = "vpn-control-diagnostics.txt"
+                    isVisible = true
                 }
             } finally {
                 completed.countDown()
@@ -161,6 +168,7 @@ class DesktopNativeVisualCaptureTest {
             dialog.dispose()
         }
         completed.await(10, TimeUnit.SECONDS)
+        fixtureDirectory.toFile().deleteRecursively()
     }
 
     private fun captureTray(sceneId: String, output: Path, bounds: Rectangle) {

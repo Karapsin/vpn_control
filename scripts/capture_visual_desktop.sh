@@ -29,11 +29,15 @@ if [[ -n "$app_scenes" ]]; then
 fi
 
 background_pids=()
+restore_macos_clock=false
 cleanup() {
   local pid
   for pid in "${background_pids[@]:-}"; do
     kill "$pid" >/dev/null 2>&1 || true
   done
+  if [[ "$restore_macos_clock" == true ]]; then
+    sudo systemsetup -setusingnetworktime on >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -67,6 +71,11 @@ if [[ -n "$native_scenes" ]]; then
   fi
   if [[ -n "$visual_package" ]]; then
     visual_package="$(cd "$(dirname "$visual_package")" && pwd)/$(basename "$visual_package")"
+  fi
+  if [[ "$platform_name" == "macos" ]]; then
+    sudo systemsetup -setusingnetworktime off >/dev/null
+    sudo date 0903120026.00 >/dev/null
+    restore_macos_clock=true
   fi
   VPN_CONTROL_VISUAL_PLATFORM="$platform_name" \
   VPN_CONTROL_VISUAL_MANIFEST="$manifest" \

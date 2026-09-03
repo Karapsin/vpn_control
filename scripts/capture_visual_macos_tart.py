@@ -143,6 +143,17 @@ def dismiss(ip_address: str) -> None:
     run_checked(vnc_command(ip_address, "key", "esc"), timeout=30)
 
 
+def freeze_guest_clock() -> None:
+    guest_shell(
+        "sudo systemsetup -setusingnetworktime off >/dev/null && sudo date 0903120026.00 >/dev/null",
+        timeout=30,
+    )
+
+
+def restore_guest_clock() -> None:
+    guest_shell("sudo systemsetup -setusingnetworktime on >/dev/null 2>&1 || true", timeout=30)
+
+
 def capture_requested(scene_ids: list[str], output: Path) -> None:
     unknown = sorted(set(scene_ids) - set(SECURE_SCENES))
     if unknown:
@@ -158,23 +169,27 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     if "macos-gatekeeper" in scene_ids:
         build_package()
         prepare_gatekeeper_scene()
-    for scene_id in scene_ids:
-        process: subprocess.Popen[str] | None = None
-        try:
-            if scene_id == "macos-gatekeeper":
-                process = open_gatekeeper_scene(uid)
-            else:
-                process = open_install_confirmation(uid)
-            time.sleep(4)
-            capture_frame(ip_address, output / f"{scene_id}.png")
-        finally:
-            dismiss(ip_address)
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
+    try:
+        for scene_id in scene_ids:
+            process: subprocess.Popen[str] | None = None
+            try:
+                freeze_guest_clock()
+                if scene_id == "macos-gatekeeper":
+                    process = open_gatekeeper_scene(uid)
+                else:
+                    process = open_install_confirmation(uid)
+                time.sleep(4)
+                capture_frame(ip_address, output / f"{scene_id}.png")
+            finally:
+                dismiss(ip_address)
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+    finally:
+        restore_guest_clock()
 
 
 def parse_args() -> argparse.Namespace:

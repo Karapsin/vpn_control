@@ -65,8 +65,14 @@ if ($NativeScenes) {
     $env:VPN_CONTROL_VISUAL_NATIVE_SCENES = $NativeScenes
     $env:VPN_CONTROL_VISUAL_PACKAGE = $VisualPackage
     Hide-HostConsoleWindows
-    & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
-    if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
+    $OriginalDate = Get-Date
+    try {
+        Set-Date -Date "2026-09-03T12:00:00" | Out-Null
+        & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
+        if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
+    } finally {
+        Set-Date -Date $OriginalDate | Out-Null
+    }
 }
 
 $Driver = if ($IsWindows) { "cmd.exe /c exit 0" } else { "/usr/bin/true" }

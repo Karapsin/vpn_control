@@ -66,6 +66,14 @@ class VisualPlatformTest(unittest.TestCase):
                 "main-disconnected,not-a-scene",
             )
 
+    def test_native_file_dialogs_use_an_empty_synthetic_directory(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"vpn-control-visual-files"', source)
+        self.assertIn("if (save) FileDialog.SAVE else FileDialog.LOAD", source)
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)
@@ -246,6 +254,7 @@ class VisualPlatformTest(unittest.TestCase):
         script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
         self.assertIn('"--nocursor"', script)
         self.assertIn('"pause", "20", "capture"', script)
+        self.assertIn("sudo date 0903120026.00", script)
         self.assertNotIn("open vnc://", script)
         self.assertNotIn("Screen Sharing", script)
 
@@ -261,6 +270,16 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('-display none', script)
         self.assertIn('-vnc 127.0.0.1:5', script)
         self.assertNotIn('-display cocoa', script)
+
+    def test_hosted_native_capture_freezes_platform_clocks(self) -> None:
+        macos = (visual_platform.ROOT / "scripts/capture_visual_desktop.sh").read_text(
+            encoding="utf-8",
+        )
+        windows = (visual_platform.ROOT / "scripts/capture_visual_desktop.ps1").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("sudo date 0903120026.00", macos)
+        self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
 
     def test_exhaustive_vpn_workflow_guards_platform_prerequisites(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/vpn-integration.yml").read_text(
