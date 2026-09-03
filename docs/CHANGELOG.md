@@ -3,12 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## 2.0.1 - 2026-09-03
-
-- Keep Android exhaustive VPN fixture arguments intact.
-
 ## 2.0.0 - 2026-09-03
 
+- Keep exhaustive Android and Windows VPN probes routable.
+- Keep Android exhaustive VPN fixture arguments intact.
 - Added fail-closed SSH Routing through an SSH relay.
 - Added repository agent lifecycle tooling and documentation search.
 - Renamed SSH Routing settings to SSH Routing.

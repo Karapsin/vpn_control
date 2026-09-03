@@ -79,6 +79,7 @@ internal object DesktopVpnIntegrationTest {
             runtimeConfigStore = store,
             baseDir = request.stateDir.resolve("runtime"),
             singBoxResolver = DesktopSingBoxResolver(request.stateDir.resolve("runtime/tools")),
+            directProbeRouting = integrationRuntimeDirectRouting(),
         )
         var runtimeStarted = false
         try {
@@ -128,6 +129,14 @@ internal object DesktopVpnIntegrationTest {
         headerType = "",
         rawLink = "socks://127.0.0.1:$port#DisposableIntegrationFixture",
     )
+
+    /**
+     * The disposable TUN test's runtime must reach its local SOCKS fixture over
+     * the pre-TUN route. Windows strict routing otherwise sends that runtime's
+     * own upstream socket back through the TUN and deadlocks the probe.
+     */
+    internal fun integrationRuntimeDirectRouting(): DesktopDirectProbeRouting =
+        DesktopDirectProbeRouting(processNames = listOf("sing-box", "sing-box.exe"))
 
     private fun Array<String>.valueFor(name: String): String? {
         forEachIndexed { index, argument ->

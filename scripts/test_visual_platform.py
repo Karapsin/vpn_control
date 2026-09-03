@@ -404,6 +404,9 @@ class VisualPlatformTest(unittest.TestCase):
             'socks_http_fixture.py --port 18081 --token vpn-control-full-vpn-ok --ready-file "$ready_file" &',
             android,
         )
+        self.assertIn("script: >-", android)
+        self.assertNotIn("script: |\n            set -eu", android)
+        self.assertIn("trap 'kill \"$fixture_pid\" 2>/dev/null || true' EXIT; for attempt", android)
 
     def test_local_driver_requires_complete_requested_scene_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

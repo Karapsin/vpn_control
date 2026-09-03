@@ -4,6 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class DesktopVpnIntegrationTestTest {
     private val validArgs = arrayOf(
@@ -66,4 +70,47 @@ class DesktopVpnIntegrationTestTest {
 
         assertEquals(2, exit)
     }
+
+    @Test
+    fun disposableTunProbeRoutesItsRuntimeDirectToAvoidWindowsStrictRouteLoop() {
+        val routing = DesktopVpnIntegrationTest.integrationRuntimeDirectRouting()
+        assertEquals(listOf("sing-box", "sing-box.exe"), routing.processNames)
+
+        val config = DesktopProxyConfigFactory.buildVpnConfig(
+            profile = testSocksProfile(),
+            dns = com.kardinal.vpncontrol.model.DnsSettings(),
+            routingRules = com.kardinal.vpncontrol.model.RoutingRules(ignoreRules = true),
+            directProbeRouting = routing,
+        )
+        val rules = Json.parseToJsonElement(config).jsonObject
+            .getValue("route").jsonObject
+            .getValue("rules").jsonArray
+        val directRuntimeRule = rules.first { rule ->
+            rule.jsonObject["process_name"] != null
+        }.jsonObject
+        assertEquals("direct", directRuntimeRule.getValue("outbound").jsonPrimitive.content)
+        assertEquals(
+            listOf("sing-box", "sing-box.exe"),
+            directRuntimeRule.getValue("process_name").jsonArray.map { it.jsonPrimitive.content },
+        )
+    }
+
+    private fun testSocksProfile() = com.kardinal.vpncontrol.model.ProxyProfile(
+        protocol = com.kardinal.vpncontrol.model.ProxyProtocol.SOCKS,
+        remarks = "integration",
+        server = "127.0.0.1",
+        serverPort = 1080,
+        network = "tcp",
+        flow = "",
+        security = "",
+        sni = "",
+        fingerprint = "",
+        publicKey = "",
+        shortId = "",
+        path = "",
+        hostHeader = "",
+        serviceName = "",
+        headerType = "",
+        rawLink = "socks://127.0.0.1:1080",
+    )
 }
