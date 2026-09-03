@@ -97,7 +97,7 @@ jobs:
           "$sdk_root/emulator/emulator" -list-avds | grep -qx 'vpn-control-visual-hosted'
           mkdir -p build/visual-actual/android
           "$sdk_root/emulator/emulator" -avd vpn-control-visual-hosted -port 5554 -no-window -no-audio \
-            -no-boot-anim -no-snapshot -gpu swiftshader_indirect \
+            -no-boot-anim -no-snapshot -no-snapshot-save -memory 2048 -accel off -gpu swiftshader_indirect \
             > build/visual-actual/android/emulator.log 2>&1 &
           emulator_pid=$!
           cleanup() {
@@ -107,6 +107,11 @@ jobs:
           trap cleanup EXIT
           adb start-server
           for _ in $(seq 1 600); do
+            if ! kill -0 "$emulator_pid" >/dev/null 2>&1; then
+              echo "Emulator process exited before becoming available"
+              cat build/visual-actual/android/emulator.log
+              exit 1
+            fi
             if adb -s "$ANDROID_SERIAL" get-state 2>/dev/null | grep -q '^device$'; then
               break
             fi

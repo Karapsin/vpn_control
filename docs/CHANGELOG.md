@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Harden Android emulator startup in visual regression capture workflow.
+
 ## 2.0.0 - 2026-09-03
 
 - Added fail-closed SSH Routing through an SSH relay.
