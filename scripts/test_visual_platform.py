@@ -79,14 +79,14 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT
             / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn('"android-camera-qr" -> 30_000L', source)
+        self.assertIn('"android-camera-qr", "android-package-installer" -> 30_000L', source)
 
     def test_android_package_installer_allows_for_cold_startup(self) -> None:
         source = (
             visual_platform.ROOT
             / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn('"android-package-installer" -> 30_000L', source)
+        self.assertIn('"android-camera-qr", "android-package-installer" -> 30_000L', source)
 
     def test_android_native_surface_stays_open_for_host_framebuffer_capture(self) -> None:
         source = (
