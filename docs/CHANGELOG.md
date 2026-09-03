@@ -3,10 +3,6 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
-
-- Harden Android emulator startup in visual regression capture workflow.
-
 ## 2.0.0 - 2026-09-03
 
 - Added fail-closed SSH Routing through an SSH relay.
@@ -25,6 +21,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Made Windows update-installer captures retain the visible setup wizard for review.
 - Routed hosted Android visual capture through the arm64 macOS emulator when Linux KVM is unavailable.
 - Cleared first-run macOS screen-recording consent before native screenshot capture.
+- Hardened Android emulator startup in the visual regression capture workflow.
 
 ## 0.1.7.3 - 2026-08-30
 
