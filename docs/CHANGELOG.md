@@ -18,6 +18,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Hardened hosted visual capture bootstrap for Android, Linux, Windows, and macOS.
 - Made macOS package smoke tests enforce the canonical cross-platform product version.
 - Prevented hosted Windows runner consoles from obscuring native visual evidence.
+- Made Windows update-installer captures retain the visible setup wizard for review.
+- Routed hosted Android visual capture through the arm64 macOS emulator when Linux KVM is unavailable.
+- Cleared first-run macOS screen-recording consent before native screenshot capture.
 
 ## 0.1.7.3 - 2026-08-30
 

@@ -61,6 +61,7 @@ class DesktopNativeVisualCaptureTest {
         Files.createDirectories(output)
 
         val captureBounds = canonicalCaptureBounds()
+        prepareScreenCapturePermission(platform)
         scenes.forEach { sceneId ->
             captureScene(platform, sceneId, output.resolve("$sceneId.png"), captureBounds)
         }
@@ -267,7 +268,7 @@ class DesktopNativeVisualCaptureTest {
         val command = when (sceneId) {
             "windows-msi" -> listOf("msiexec.exe", "/i", requireVisualPackage(".msi").toString())
             "windows-update-installer" -> listOf(
-                "msiexec.exe", "/i", requireVisualPackage(".msi").toString(), "/passive", "/norestart",
+                "msiexec.exe", "/i", requireVisualPackage(".msi").toString(), "/norestart",
             )
             "windows-uac" -> listOf(
                 "powershell.exe", "-NoProfile", "-Command",
@@ -392,6 +393,28 @@ class DesktopNativeVisualCaptureTest {
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
         ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
+    }
+
+    /**
+     * The first Robot capture on a fresh macOS runner can raise the system
+     * Screen Recording consent sheet. Resolve it before any evidence image is
+     * taken so the permission UI cannot contaminate a native scene. The click
+     * is scoped to the isolated capture desktop and is harmless when consent
+     * was already granted.
+     */
+    private fun prepareScreenCapturePermission(platform: String) {
+        if (platform != "macos" || !System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) return
+        val screen = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
+        runCatching {
+            robot.createScreenCapture(Rectangle(screen.x, screen.y, screen.width, screen.height))
+            Thread.sleep(1_200)
+            val allowX = screen.x + screen.width / 2
+            val allowY = screen.y + (screen.height * 0.554).toInt()
+            robot.mouseMove(allowX, allowY)
+            robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+            robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+            Thread.sleep(1_200)
+        }
     }
 
     private fun activateWindow(window: Window) {

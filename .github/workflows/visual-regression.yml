@@ -39,7 +39,9 @@ env:
 jobs:
   android:
     if: inputs.platform == 'android' || github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    # GitHub's Ubuntu runners do not expose /dev/kvm. Use the arm64 macOS
+    # runner's Hypervisor-backed emulator instead of a non-booting x86_64 AVD.
+    runs-on: macos-15
     timeout-minutes: 75
     steps:
       - name: Validate exact SHA
@@ -73,7 +75,7 @@ jobs:
           ANDROID_SERIAL: emulator-5554
         run: |
           set -euo pipefail
-          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
           export PATH="$sdk_root/emulator:$sdk_root/platform-tools:$sdk_root/cmdline-tools/latest/bin:$PATH"
           # Keep avdmanager and the emulator on the same explicit config path.
           # Hosted runners can expose a different Android config directory to
@@ -84,13 +86,13 @@ jobs:
           mkdir -p "$ANDROID_AVD_HOME"
           set +e
           yes | sdkmanager "platform-tools" "emulator" "platforms;android-35" \
-            "system-images;android-35;google_apis;x86_64"
+            "system-images;android-35;google_apis;arm64-v8a"
           sdk_status="${PIPESTATUS[1]}"
           set -e
           [[ "$sdk_status" == "0" ]]
           yes | sdkmanager --licenses >/dev/null || true
           echo "no" | avdmanager create avd --force --name vpn-control-visual-hosted \
-            --package "system-images;android-35;google_apis;x86_64" --device pixel_6
+            --package "system-images;android-35;google_apis;arm64-v8a" --device pixel_6
           avdmanager list avd
           "$sdk_root/emulator/emulator" -list-avds | grep -qx 'vpn-control-visual-hosted'
           mkdir -p build/visual-actual/android
