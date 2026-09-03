@@ -93,7 +93,7 @@ def build_package() -> None:
     )
 
 
-def open_gatekeeper_scene(uid: str) -> None:
+def prepare_gatekeeper_scene() -> None:
     guest_shell(
         "set -e; "
         "rm -rf /tmp/vpncontrol-gatekeeper /tmp/vpncontrol-gatekeeper-mount; "
@@ -105,9 +105,20 @@ def open_gatekeeper_scene(uid: str) -> None:
         'ditto "$app" /tmp/vpncontrol-gatekeeper/vpn-control.app; '
         "hdiutil detach /tmp/vpncontrol-gatekeeper-mount -quiet; "
         "xattr -r -w com.apple.quarantine '0081;68b84740;VPN Control;' "
-        "/tmp/vpncontrol-gatekeeper/vpn-control.app; "
-        f"sudo launchctl asuser {uid} sudo -u {VM_USER} open "
         "/tmp/vpncontrol-gatekeeper/vpn-control.app",
+    )
+
+
+def open_gatekeeper_scene(uid: str) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [
+            "tart", "exec", VM_NAME, "sudo", "launchctl", "asuser", uid,
+            "sudo", "-u", VM_USER, "open", "/tmp/vpncontrol-gatekeeper/vpn-control.app",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
 
@@ -141,11 +152,12 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     if "macos-gatekeeper" in scene_ids:
         build_package()
+        prepare_gatekeeper_scene()
     for scene_id in scene_ids:
         process: subprocess.Popen[str] | None = None
         try:
             if scene_id == "macos-gatekeeper":
-                open_gatekeeper_scene(uid)
+                process = open_gatekeeper_scene(uid)
             else:
                 process = open_install_confirmation(uid)
             time.sleep(4)
