@@ -73,6 +73,10 @@ fi
 if [[ -n "$native_scenes" ]]; then
   IFS=',' read -r -a native_scene_ids <<< "$native_scenes"
   for native_scene in "${native_scene_ids[@]}"; do
+    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command enter >/dev/null
+    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200 >/dev/null
+    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false >/dev/null
+    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
     if [[ "$native_scene" == "android-system-bars" ]]; then
       run_gradle_capture "$native_scene"
       pull_device_capture
@@ -81,7 +85,7 @@ if [[ -n "$native_scenes" ]]; then
     case "$native_scene" in
       android-vpn-consent) focus_pattern='com.android.vpndialogs' ;;
       android-open-document|android-create-document) focus_pattern='documentsui' ;;
-      android-camera-qr) focus_pattern='CaptureActivity' ;;
+      android-camera-qr) focus_pattern='QrCaptureActivity' ;;
       android-share-chooser) focus_pattern='ChooserActivity' ;;
       android-package-installer) focus_pattern='PackageInstallerActivity' ;;
       android-vpn-notification) focus_pattern='NotificationShade' ;;

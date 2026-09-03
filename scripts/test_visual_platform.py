@@ -96,6 +96,29 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)", source)
         self.assertIn("NATIVE_HOST_CAPTURE_HOLD_MILLIS = 2_000L", source)
 
+    def test_android_qr_capture_requires_visible_scanner_chrome(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        layout = (
+            visual_platform.ROOT / "app/src/main/res/layout/zxing_capture.xml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('assertCameraScannerChrome(File(output, "$sceneId.png"))', source)
+        self.assertIn("QR scanner chrome was not visible", source)
+        self.assertIn('android:text="Scan QR code"', layout)
+        self.assertIn("@drawable/qr_scanner_frame", layout)
+        self.assertIn("QrCaptureActivity", source)
+        self.assertIn("EXTRA_VISUAL_CAPTURE", source)
+
+    def test_android_native_captures_reapply_the_frozen_system_fixture(self) -> None:
+        source = (
+            visual_platform.ROOT / "scripts/capture_visual_android.sh"
+        ).read_text(encoding="utf-8")
+        native_loop = source.split('for native_scene in "${native_scene_ids[@]}"; do', 1)[1]
+        self.assertIn('command clock -e hhmm 1200', native_loop)
+        self.assertIn('command notifications -e visible false', native_loop)
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)

@@ -22,6 +22,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Routed hosted Android visual capture through the arm64 macOS emulator when Linux KVM is unavailable.
 - Cleared first-run macOS screen-recording consent before native screenshot capture.
 - Hardened Android emulator startup in the visual regression capture workflow.
+- Finalized deterministic QR scanner chrome and four-platform visual baselines.
 
 ## 0.1.7.3 - 2026-08-30
 

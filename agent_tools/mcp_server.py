@@ -451,8 +451,8 @@ def version_bump(
         if target_version is not None:
             _parse_migration_source_version(current_version)
             _parse_version(target_version)
-            if _version_build_id(target_version) <= _version_build_id(current_version):
-                raise ValueError("target_version must be newer than the current version")
+            if _version_build_id(target_version) < _version_build_id(current_version):
+                raise ValueError("target_version must not be older than the current version")
         else:
             _parse_version(current_version)
         readme_version = _parse_required(README_VERSION_RE, readme_text, "README version")
@@ -491,12 +491,19 @@ def version_bump(
             assert next_version is not None
             updated_gradle = VERSION_RE.sub(f"vpnControlVersion={next_version}", gradle_text, count=1)
             updated_readme = README_VERSION_RE.sub(f"**Version:** `{next_version}`", readme_text, count=1)
-            release_section = (
-                f"## {next_version} - {date.today().isoformat()}\n\n"
-                + "\n".join(planned_bullets)
-                + "\n"
-            )
-            updated_changelog = _release_unreleased(changelog_text, release_section)
+            if next_version == current_version:
+                updated_changelog = _append_to_current_release(
+                    changelog_text,
+                    current_version,
+                    planned_bullets,
+                )
+            else:
+                release_section = (
+                    f"## {next_version} - {date.today().isoformat()}\n\n"
+                    + "\n".join(planned_bullets)
+                    + "\n"
+                )
+                updated_changelog = _release_unreleased(changelog_text, release_section)
             _atomic_write(REPO_ROOT / "gradle.properties", updated_gradle)
             _atomic_write(REPO_ROOT / "README.md", updated_readme)
             _atomic_write(CHANGELOG_PATH, updated_changelog)
@@ -506,7 +513,11 @@ def version_bump(
         "ok": True,
         "tool": "version_bump",
         "summary": (
-            f"Bumped VPN Control to {next_version}."
+            (
+                f"Rolled release notes into VPN Control {next_version}."
+                if next_version == current_version
+                else f"Bumped VPN Control to {next_version}."
+            )
             if should_bump
             else f"Added Unreleased changelog entry ({len(planned_bullets)}/{UNRELEASED_CHANGELOG_THRESHOLD})."
         ),
@@ -1346,6 +1357,26 @@ def _release_unreleased(text: str, release_section: str) -> str:
     if first_heading is None:
         return remaining.rstrip() + "\n\n" + insertion
     return remaining[:first_heading.start()] + insertion + remaining[first_heading.start():]
+
+
+def _append_to_current_release(text: str, version: str, bullets: list[str]) -> str:
+    """Roll Unreleased notes into an unpublished, already-versioned release section."""
+    bounds = _unreleased_bounds(text)
+    if bounds is None:
+        raise ValueError("Changelog is missing Unreleased")
+    start, _, end = bounds
+    remaining = text[:start] + text[end:].lstrip("\n")
+    heading = re.compile(rf"^##\s+{re.escape(version)}\s+-[^\n]*$", flags=re.MULTILINE)
+    match = heading.search(remaining)
+    if match is None:
+        raise ValueError(f"Changelog is missing the current {version} release section")
+    body_start = match.end()
+    next_heading = re.search(r"^##\s+", remaining[body_start:], flags=re.MULTILINE)
+    body_end = body_start + next_heading.start() if next_heading else len(remaining)
+    current_body = remaining[body_start:body_end].strip()
+    appended = "\n".join([part for part in (current_body, *bullets) if part])
+    updated_section = f"{remaining[match.start():body_start]}\n\n{appended}\n\n"
+    return remaining[:match.start()] + updated_section + remaining[body_end:].lstrip("\n")
 
 
 def _atomic_write(path: Path, text: str) -> None:

@@ -409,6 +409,7 @@ class MainActivity : ComponentActivity() {
         qrScanLauncher.launch(
             ScanOptions().apply {
                 setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setCaptureActivity(QrCaptureActivity::class.java)
                 setPrompt("Scan a QR code")
                 setBeepEnabled(false)
                 setOrientationLocked(false)

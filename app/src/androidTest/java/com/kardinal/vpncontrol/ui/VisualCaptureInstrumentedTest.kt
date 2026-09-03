@@ -26,12 +26,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
-import com.journeyapps.barcodescanner.CaptureActivity
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.AppUpdatePhase
 import com.kardinal.vpncontrol.AppUpdateState
 import com.kardinal.vpncontrol.MainActivity
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.QrCaptureActivity
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.AppMode
@@ -120,6 +120,9 @@ class VisualCaptureInstrumentedTest {
                     waitForNativeSurface(sceneId, device)
                     device.waitForIdle(3_000L)
                     check(device.takeScreenshot(File(output, "$sceneId.png")))
+                    if (sceneId == "android-camera-qr") {
+                        assertCameraScannerChrome(File(output, "$sceneId.png"))
+                    }
                     instrumentation.shell("cp ${output.path}/$sceneId.png $remoteOutput/$sceneId.png")
                     SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)
                     if (sceneId == "android-vpn-consent") {
@@ -215,7 +218,9 @@ class VisualCaptureInstrumentedTest {
                     type = "application/json"
                     putExtra(Intent.EXTRA_TITLE, "vpn-control-locations.json")
                 }
-                "android-camera-qr" -> Intent(activity, CaptureActivity::class.java)
+                "android-camera-qr" -> Intent(activity, QrCaptureActivity::class.java).apply {
+                    putExtra(QrCaptureActivity.EXTRA_VISUAL_CAPTURE, true)
+                }
                 "android-share-chooser" -> Intent.createChooser(
                     Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -273,7 +278,7 @@ class VisualCaptureInstrumentedTest {
             "android-system-bars" -> return
             "android-vpn-consent" -> "com.android.vpndialogs"
             "android-open-document", "android-create-document" -> "documentsui"
-            "android-camera-qr" -> "CaptureActivity"
+            "android-camera-qr" -> "QrCaptureActivity"
             "android-share-chooser" -> "ChooserActivity"
             "android-package-installer" -> "PackageInstallerActivity"
             "android-vpn-notification" -> "NotificationShade"
@@ -300,6 +305,23 @@ class VisualCaptureInstrumentedTest {
             SystemClock.sleep(100L)
         }
         error("$sceneId did not display expected native surface $expected")
+    }
+
+    private fun assertCameraScannerChrome(screenshot: File) {
+        val image = requireNotNull(BitmapFactory.decodeFile(screenshot.path))
+        var darkBluePixels = 0
+        for (y in 0 until image.height step 8) {
+            for (x in 0 until image.width step 8) {
+                val color = image.getPixel(x, y)
+                val red = android.graphics.Color.red(color)
+                val green = android.graphics.Color.green(color)
+                val blue = android.graphics.Color.blue(color)
+                if (blue > red + 20 && blue > green + 5) darkBluePixels += 1
+            }
+        }
+        check(darkBluePixels >= 1_000) {
+            "QR scanner chrome was not visible above the camera preview"
+        }
     }
 
     private fun writeGeometry(file: File, image: Bitmap, scene: JSONObject) {

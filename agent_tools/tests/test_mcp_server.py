@@ -335,6 +335,38 @@ class VersionPolicyTest(unittest.TestCase):
             self.assertIn("## 2.0.0 -", updated)
             self.assertIn("- Unified versioning and visual release validation.", updated)
 
+    def test_forced_release_can_roll_into_unpublished_current_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            changelog = root / "docs/CHANGELOG.md"
+            changelog.parent.mkdir()
+            (root / "gradle.properties").write_text("vpnControlVersion=2.0.0\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `2.0.0`\n", encoding="utf-8")
+            changelog.write_text(
+                "# Changelog\n\n## Unreleased\n\n- Final visual repair.\n\n"
+                "## 2.0.0 - 2026-09-03\n\n- Initial release work.\n\n"
+                "## 1.19.19 - 2026-09-02\n\n- Previous.\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
+            ):
+                result = mcp_server.version_bump(
+                    None,
+                    "release",
+                    force_release=True,
+                    target_version="2.0.0",
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("2.0.0", result["result"]["planned_version"])
+            self.assertEqual("vpnControlVersion=2.0.0\n", (root / "gradle.properties").read_text())
+            updated = changelog.read_text(encoding="utf-8")
+            self.assertNotIn("## Unreleased", updated)
+            self.assertEqual(1, updated.count("## 2.0.0 -"))
+            self.assertIn("- Initial release work.\n- Final visual repair.", updated)
+
 class WorkflowWatchTest(unittest.TestCase):
     def test_visual_attestation_binds_receipt_manifest_and_commit_status(self) -> None:
         sha = "a" * 40

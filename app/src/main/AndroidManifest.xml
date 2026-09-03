@@ -38,6 +38,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".QrCaptureActivity"
+            android:exported="false"
+            android:theme="@style/zxing_CaptureTheme" />
+
         <service
             android:name=".vpn.AndroidVpnService"
             android:exported="false"
