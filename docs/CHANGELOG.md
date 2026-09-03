@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.0.1 - 2026-09-03
 
 - Keep Android exhaustive VPN fixture arguments intact.
 
