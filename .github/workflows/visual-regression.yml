@@ -75,8 +75,12 @@ jobs:
           set -euo pipefail
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           export PATH="$sdk_root/emulator:$sdk_root/platform-tools:$sdk_root/cmdline-tools/latest/bin:$PATH"
+          set +e
           yes | sdkmanager "platform-tools" "emulator" "platforms;android-35" \
             "system-images;android-35;google_apis;x86_64"
+          sdk_status="${PIPESTATUS[1]}"
+          set -e
+          [[ "$sdk_status" == "0" ]]
           yes | sdkmanager --licenses >/dev/null || true
           echo "no" | avdmanager create avd --force --name vpn-control-visual-hosted \
             --package "system-images;android-35;google_apis;x86_64" --device pixel_6
@@ -233,7 +237,18 @@ jobs:
         shell: bash
         run: |
           brew install --quiet screenresolution
-          screenresolution set 1440x900x32@60
+          mode="$(screenresolution list | grep -oE '[0-9]+x[0-9]+x[0-9]+@[0-9]+' | python3 -c '
+          import re, sys
+          modes = set(value.strip() for value in sys.stdin if value.strip())
+          eligible = []
+          for value in modes:
+              width, height = (int(part) for part in value.split("x", 2)[:2])
+              if width >= 1280 and height >= 800:
+                  eligible.append((width * height, width, height, value))
+          print(min(eligible)[3] if eligible else "")
+          ')
+          [[ -n "$mode" ]] || { screenresolution list; exit 1; }
+          screenresolution set "$mode"
           screenresolution get
       - name: Resolve hosted-capable scenes
         shell: bash
