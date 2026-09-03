@@ -81,6 +81,13 @@ class VisualPlatformTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('"android-camera-qr" -> 30_000L', source)
 
+    def test_android_package_installer_allows_for_cold_startup(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"android-package-installer" -> 30_000L', source)
+
     def test_android_native_surface_stays_open_for_host_framebuffer_capture(self) -> None:
         source = (
             visual_platform.ROOT
@@ -296,12 +303,20 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("sudo date 0903120026.00", macos)
         self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
 
-    def test_hosted_android_capture_uses_software_acceleration(self) -> None:
+    def test_android_capture_requires_an_agent_owned_emulator(self) -> None:
+        with mock.patch.object(
+            visual_platform,
+            "local_probe",
+            return_value={"ready": False, "backend": "", "capabilities": [], "detail": "missing"},
+        ):
+            plan = visual_platform.capture_plan("android")
+        self.assertFalse(plan["routes"]["hosted"])
+        self.assertTrue(plan["routes"]["blocked"])
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
             encoding="utf-8",
         )
-        self.assertIn("-accel tcg", workflow)
-        self.assertNotIn("-accel off", workflow)
+        android = workflow.split("  android:", 1)[1].split("  linux:", 1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.platform == 'android'", android)
 
     def test_exhaustive_vpn_workflow_guards_platform_prerequisites(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/vpn-integration.yml").read_text(

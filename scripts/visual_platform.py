@@ -253,6 +253,11 @@ def capture_plan(platform: str) -> dict[str, Any]:
     config = environments["platforms"][platform]
     local = local_probe(platform)
     hosted_capabilities = set(config["hosted"]["capabilities"])
+    # Hosted Apple Silicon workers do not expose the Hypervisor framework
+    # required by an Android API 35 emulator. Android visual evidence is
+    # therefore always captured by an agent-started isolated emulator.
+    if platform == "android":
+        hosted_capabilities.clear()
     local_capabilities = set(local["capabilities"])
     routes: dict[str, list[str]] = {"local": [], "hosted": [], "blocked": []}
     for scene in scenes_for(platform):

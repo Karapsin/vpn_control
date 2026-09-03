@@ -281,7 +281,7 @@ class VisualCaptureInstrumentedTest {
         }
         val timeout = when (sceneId) {
             // A cold emulator camera can need more than ten seconds to initialize.
-            "android-camera-qr" -> 30_000L
+            "android-camera-qr", "android-package-installer" -> 30_000L
             else -> 10_000L
         }
         val deadline = SystemClock.elapsedRealtime() + timeout

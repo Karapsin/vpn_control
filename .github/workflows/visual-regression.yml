@@ -38,7 +38,9 @@ env:
 
 jobs:
   android:
-    if: inputs.platform == 'android' || github.event_name == 'push'
+    # Android evidence is captured by the agent-owned isolated emulator.
+    # macOS hosted workers do not provide nested HVF for API 35 emulation.
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'android'
     # GitHub's Ubuntu runners do not expose /dev/kvm. Use the arm64 macOS
     # runner's Hypervisor-backed emulator instead of a non-booting x86_64 AVD.
     runs-on: macos-15

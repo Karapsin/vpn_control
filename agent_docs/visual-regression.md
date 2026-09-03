@@ -35,7 +35,9 @@ python3 scripts/visual_platform.py plan --platform windows
 python3 scripts/visual_platform.py plan --platform macos
 ```
 
-The planner routes each scene by required capability:
+The planner routes each scene by required capability. Android is local-only:
+the agent bootstraps and starts its isolated API 35 emulator because hosted
+macOS workers do not expose the nested Hypervisor framework required for it.
 
 - `app`: deterministic Compose application UI;
 - `native`: repeatable platform-owned dialog, window, tray/menu, notification, or installer UI;
