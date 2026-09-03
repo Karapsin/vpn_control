@@ -3,12 +3,6 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
-
-- Prevent macOS visual capture onboarding overlays.
-- Accept macOS visual screen-recording consent deterministically.
-- Capture macOS native dialogs through isolated framebuffer evidence.
-
 ## 2.0.0 - 2026-09-03
 
 - Added fail-closed SSH Routing through an SSH relay.
@@ -30,6 +24,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Hardened Android emulator startup in the visual regression capture workflow.
 - Finalized deterministic QR scanner chrome and four-platform visual baselines.
 - Stabilize deterministic Android visual fixtures and QR export evidence.
+- Prevent macOS visual capture onboarding overlays.
+- Accept macOS visual screen-recording consent deterministically.
+- Capture macOS native dialogs through isolated framebuffer evidence.
 
 ## 0.1.7.3 - 2026-08-30
 
