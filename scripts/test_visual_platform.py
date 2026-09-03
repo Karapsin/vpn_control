@@ -81,6 +81,14 @@ class VisualPlatformTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('"android-camera-qr" -> 30_000L', source)
 
+    def test_android_native_surface_stays_open_for_host_framebuffer_capture(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)", source)
+        self.assertIn("NATIVE_HOST_CAPTURE_HOLD_MILLIS = 2_000L", source)
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)

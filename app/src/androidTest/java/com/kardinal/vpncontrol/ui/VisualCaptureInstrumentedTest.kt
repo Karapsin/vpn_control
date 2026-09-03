@@ -51,6 +51,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
+private const val NATIVE_HOST_CAPTURE_HOLD_MILLIS = 2_000L
+
 @RunWith(AndroidJUnit4::class)
 class VisualCaptureInstrumentedTest {
     @get:Rule
@@ -119,6 +121,7 @@ class VisualCaptureInstrumentedTest {
                     device.waitForIdle(3_000L)
                     check(device.takeScreenshot(File(output, "$sceneId.png")))
                     instrumentation.shell("cp ${output.path}/$sceneId.png $remoteOutput/$sceneId.png")
+                    SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)
                     if (sceneId == "android-vpn-consent") {
                         val cancel = requireNotNull(device.findObject(By.text("Cancel"))) {
                             "VPN consent did not expose its Cancel action"
