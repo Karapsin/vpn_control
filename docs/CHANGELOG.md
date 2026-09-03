@@ -16,6 +16,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Made agent visual environment tests portable across native path formats.
 - Unified cross-platform versioning, fixed navy UI, and agent-owned visual release validation.
 - Hardened hosted visual capture bootstrap for Android, Linux, Windows, and macOS.
+- Made macOS package smoke tests enforce the canonical cross-platform product version.
+- Prevented hosted Windows runner consoles from obscuring native visual evidence.
 
 ## 0.1.7.3 - 2026-08-30
 

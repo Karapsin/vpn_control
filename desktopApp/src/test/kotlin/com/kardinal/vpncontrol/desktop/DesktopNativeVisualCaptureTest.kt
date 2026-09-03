@@ -108,6 +108,7 @@ class DesktopNativeVisualCaptureTest {
         }
         try {
             waitForVisibleWindow(window)
+            activateWindow(window)
             block(window)
         } finally {
             onEventThread {
@@ -152,6 +153,7 @@ class DesktopNativeVisualCaptureTest {
         thread.isDaemon = true
         thread.start()
         val dialog = waitForWindow<FileDialog>()
+        activateWindow(dialog)
         captureScreen(output, bounds)
         onEventThread {
             dialog.isVisible = false
@@ -336,6 +338,7 @@ class DesktopNativeVisualCaptureTest {
         val process = runCommand(command, wait = false)
         try {
             Thread.sleep(2_500)
+            activateNativeProcess(process)
             captureScreen(output, bounds)
         } finally {
             robot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE)
@@ -389,6 +392,32 @@ class DesktopNativeVisualCaptureTest {
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
         ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
+    }
+
+    private fun activateWindow(window: Window) {
+        onEventThread {
+            window.toFront()
+            window.requestFocus()
+        }
+        Thread.sleep(300)
+    }
+
+    /**
+     * Installer and privilege prompts are native windows rather than AWT
+     * windows. On Windows, ask the shell to foreground the process we just
+     * launched so a resident runner console cannot cover the surface.
+     */
+    private fun activateNativeProcess(process: Process?) {
+        if (process == null || !System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) return
+        runCatching {
+            ProcessBuilder(
+                "powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                "\$p = Get-Process -Id ${process.pid()} -ErrorAction SilentlyContinue; " +
+                    "if (\$p -and \$p.MainWindowHandle -ne 0) { \$sig = '[System.Runtime.InteropServices.DllImport(\"user32.dll\")]public static extern bool SetForegroundWindow(System.IntPtr h);'; " +
+                    "Add-Type -MemberDefinition \$sig -Name Foreground -Namespace VpnControlVisual -ErrorAction SilentlyContinue; " +
+                    "[VpnControlVisual.Foreground]::SetForegroundWindow(\$p.MainWindowHandle) | Out-Null }",
+            ).start().waitFor(10, TimeUnit.SECONDS)
+        }
     }
 
     private fun canonicalCaptureBounds(): Rectangle {

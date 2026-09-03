@@ -10,6 +10,29 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $OutputPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Output))
 New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
+
+function Hide-HostConsoleWindows {
+    # GitHub's hosted Windows desktop keeps the runner's console in the
+    # foreground. Native screenshots must contain the app/OS surface under
+    # test, never the runner's own logs.
+    if ($env:OS -ne "Windows_NT") { return }
+    if (-not ("VpnControlVisualNativeWindow" -as [type])) {
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class VpnControlVisualNativeWindow {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr handle, int command);
+}
+"@
+    }
+    $consoleProcesses = @("WindowsTerminal", "OpenConsole", "conhost", "cmd", "powershell", "pwsh")
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 -and $consoleProcesses -contains $_.ProcessName } |
+        ForEach-Object { [VpnControlVisualNativeWindow]::ShowWindow($_.MainWindowHandle, 6) | Out-Null }
+}
+
+Hide-HostConsoleWindows
 $Manifest = Join-Path $RepoRoot "visual-tests\scenes.json"
 $Selector = Join-Path $RepoRoot "scripts\select_visual_scenes.py"
 $AppScenes = (& python $Selector --manifest $Manifest --platform $Platform --kind app --requested $Scenes).Trim()
@@ -41,6 +64,7 @@ if ($NativeScenes) {
     }
     $env:VPN_CONTROL_VISUAL_NATIVE_SCENES = $NativeScenes
     $env:VPN_CONTROL_VISUAL_PACKAGE = $VisualPackage
+    Hide-HostConsoleWindows
     & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
     if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
 }

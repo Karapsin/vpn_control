@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+expected_version="$(python3 "$repo_root/scripts/version_metadata.py" --field version)"
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "macOS package regression tests must run on macOS" >&2
   exit 1
@@ -65,8 +68,8 @@ for dmg in "${dmg_files[@]}"; do
     echo "App metadata is incomplete in $info_plist" >&2
     exit 1
   fi
-  if [[ "$version" != 1.* ]]; then
-    echo "macOS package version must start with 1.x, got $version" >&2
+  if [[ "$version" != "$expected_version" ]]; then
+    echo "macOS package version must match canonical $expected_version, got $version" >&2
     exit 1
   fi
   if [[ ! -x "$app_path/Contents/MacOS/$executable_name" ]]; then
