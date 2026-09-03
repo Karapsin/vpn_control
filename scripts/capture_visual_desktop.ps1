@@ -45,7 +45,7 @@ if ($NativeScenes) {
     if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
 }
 
-$Driver = if ($IsWindows) { "C:\Windows\System32\cmd.exe /c exit 0" } else { "/usr/bin/true" }
+$Driver = if ($IsWindows) { "cmd.exe /c exit 0" } else { "/usr/bin/true" }
 $Validation = @(
     (Join-Path $RepoRoot "scripts\visual_platform.py"),
     "capture-local", "--platform", $Platform, "--driver", $Driver, "--output", $OutputPath

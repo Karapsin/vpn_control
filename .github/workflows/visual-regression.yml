@@ -68,13 +68,48 @@ jobs:
           fi
           echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
       - name: Capture Android scenes in API 35 emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: scripts/capture_visual_android.sh build/visual-actual/android "$VISUAL_SCENES"
+        shell: bash
+        env:
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export PATH="$sdk_root/emulator:$sdk_root/platform-tools:$sdk_root/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager "platform-tools" "emulator" "platforms;android-35" \
+            "system-images;android-35;google_apis;x86_64"
+          yes | sdkmanager --licenses >/dev/null || true
+          echo "no" | avdmanager create avd --force --name vpn-control-visual-hosted \
+            --package "system-images;android-35;google_apis;x86_64" --device pixel_6
+          mkdir -p build/visual-actual/android
+          emulator -avd vpn-control-visual-hosted -port 5554 -no-window -no-audio \
+            -no-boot-anim -no-snapshot -gpu swiftshader_indirect \
+            > build/visual-actual/android/emulator.log 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            "$sdk_root/platform-tools/adb" -s "$ANDROID_SERIAL" emu kill >/dev/null 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          adb start-server
+          for _ in $(seq 1 600); do
+            if adb -s "$ANDROID_SERIAL" get-state 2>/dev/null | grep -q '^device$'; then
+              break
+            fi
+            sleep 1
+          done
+          adb -s "$ANDROID_SERIAL" get-state | grep -q '^device$'
+          for _ in $(seq 1 600); do
+            if [[ "$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'
+          adb -s "$ANDROID_SERIAL" shell settings put global window_animation_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put global transition_animation_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put global animator_duration_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put system font_scale 1.0
+          scripts/capture_visual_android.sh build/visual-actual/android "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -105,7 +140,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install isolated X11 capture environment
-        run: sudo apt-get update && sudo apt-get install -y cpio dbus-x11 fakeroot gdebi-core gdebi haskell-gtk-sni-tray-utils imagemagick libayatana-appindicator3-1 openbox policykit-1-gnome rpm stalonetray xvfb xdotool
+        run: sudo apt-get update && sudo apt-get install -y cpio dbus-x11 fakeroot gdebi-core gdebi haskell-gtk-sni-tray-utils imagemagick libayatana-appindicator3-1 openbox policykit-1-gnome rpm stalonetray xvfb xdotool x11-utils
       - name: Resolve hosted-capable scenes
         shell: bash
         env:
@@ -194,6 +229,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set canonical macOS capture resolution
+        shell: bash
+        run: |
+          brew install --quiet screenresolution
+          screenresolution set 1440x900x32@60
+          screenresolution get
       - name: Resolve hosted-capable scenes
         shell: bash
         env:
