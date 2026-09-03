@@ -21,16 +21,27 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import kotlinx.coroutines.delay
+
+data class StatsClock(
+    val nowMillis: () -> Long,
+    val liveUpdates: Boolean,
+)
+
+val LocalStatsClock = compositionLocalOf {
+    StatsClock(nowMillis = ::currentTimeMillis, liveUpdates = true)
+}
 
 @Composable
 fun StatsScreen(
@@ -71,20 +82,23 @@ fun StatsScreen(
 @Composable
 private fun SessionCard(state: MainUiState) {
     val strings = LocalAppStrings.current
+    val clock = LocalStatsClock.current
     val now by produceState(
-        initialValue = currentTimeMillis(),
+        initialValue = clock.nowMillis(),
         key1 = state.isVpnRunning,
         key2 = state.sessionStartedAtEpochMillis,
+        key3 = clock,
     ) {
-        value = currentTimeMillis()
-        if (state.isVpnRunning) {
+        value = clock.nowMillis()
+        if (state.isVpnRunning && clock.liveUpdates) {
             while (true) {
                 delay(30_000L)
-                value = currentTimeMillis()
+                value = clock.nowMillis()
             }
         }
     }
     Card(
+        modifier = Modifier.testTag("session-stats"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
     ) {
@@ -101,6 +115,7 @@ private fun SessionCard(state: MainUiState) {
                 } else {
                     strings.get(UiText.STOPPED)
                 },
+                modifier = Modifier.testTag(if (state.isVpnRunning) "session-duration" else "session-stopped"),
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -128,6 +143,7 @@ private fun SessionCard(state: MainUiState) {
 private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
     val strings = LocalAppStrings.current
     Card(
+        modifier = Modifier.testTag("connection-log"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
     ) {
@@ -153,7 +169,10 @@ private fun ConnectionLogCard(connectionLog: List<ConnectionLogEntry>) {
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(connectionLog.asReversed(), key = { it.id }) { entry ->
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(
+                                modifier = Modifier.testTag("connection-log-row-${entry.id}"),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
                                 Text(strings.statusMessage(entry.message), color = Color.White, fontSize = 13.sp)
                                 Text(
                                     text = strings.statusTime(entry.createdAtEpochMillis),

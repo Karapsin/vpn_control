@@ -25,6 +25,7 @@ class DesktopAppService internal constructor(
     private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
     initialWorkspace: DesktopWorkspace,
 ) {
+    private var visualRuntimeStatusDetails: List<String>? = null
     private var resumeConnectionOnLaunch = initialWorkspace.resumeConnectionOnLaunch ||
         initialWorkspace.persistedState.isVpnRunning
     private var launchResumeAttempted = false
@@ -246,7 +247,7 @@ class DesktopAppService internal constructor(
     }
 
     fun runtimeStatusDetails(): List<String> {
-        return runtimeStatusService.details()
+        return visualRuntimeStatusDetails ?: runtimeStatusService.details()
     }
 
     fun visibleDesktopLocations(): List<DesktopLocationRecord> {
@@ -607,6 +608,17 @@ class DesktopAppService internal constructor(
         refreshSubscriptionsFirst: Boolean = true,
     ): Result<Unit> {
         return findBestService.findBestLocation(refreshSubscriptionsFirst)
+    }
+
+    /** Replaces only in-memory presentation data for isolated Compose visual tests. */
+    internal fun replaceStateForVisualCapture(
+        nextState: MainUiState,
+        nextLocations: List<DesktopLocationRecord>,
+        runtimeStatusDetails: List<String> = emptyList(),
+    ) {
+        desktopLocations = nextLocations
+        state = nextState
+        visualRuntimeStatusDetails = runtimeStatusDetails
     }
 
     private fun commitState(

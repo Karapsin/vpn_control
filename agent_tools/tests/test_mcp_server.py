@@ -205,13 +205,13 @@ class FingerprintTest(unittest.TestCase):
 
 
 class VersionPolicyTest(unittest.TestCase):
-    def test_four_part_version_carries_with_base_twenty_components(self) -> None:
-        self.assertEqual("1.3.7.0", mcp_server._increment_version("1.3.6.19"))
-        self.assertEqual("1.4.0.0", mcp_server._increment_version("1.3.19.19"))
-        self.assertEqual("2.0.0.0", mcp_server._increment_version("1.19.19.19"))
+    def test_three_part_version_carries_with_base_twenty_components(self) -> None:
+        self.assertEqual("2.3.0", mcp_server._increment_version("2.2.19"))
+        self.assertEqual("3.0.0", mcp_server._increment_version("2.19.19"))
+        self.assertEqual("19.0.0", mcp_server._increment_version("18.19.19"))
 
     def test_invalid_versions_are_rejected(self) -> None:
-        for value in ("1.2.3", "1.2.3.x", "1.2.3.20"):
+        for value in ("1.2", "1.2.x", "1.2.20", "1.2.3.4", "0.2.0"):
             with self.assertRaises(ValueError, msg=value):
                 mcp_server._increment_version(value)
 
@@ -260,12 +260,12 @@ class VersionPolicyTest(unittest.TestCase):
             root = Path(temporary)
             changelog = root / "docs/CHANGELOG.md"
             changelog.parent.mkdir()
-            (root / "gradle.properties").write_text("vpnControlVersion=1.3.6.19\n", encoding="utf-8")
-            (root / "README.md").write_text("**Version:** `1.3.6.19`\n", encoding="utf-8")
+            (root / "gradle.properties").write_text("vpnControlVersion=1.3.19\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.3.19`\n", encoding="utf-8")
             changelog.write_text(
                 "# Changelog\n\n## Unreleased\n\n"
                 + "\n".join(f"- Existing change {index}." for index in range(1, 10))
-                + "\n\n## 1.3.6.19 - 2026-01-01\n\n- Previous.\n",
+                + "\n\n## 1.3.19 - 2026-01-01\n\n- Previous.\n",
                 encoding="utf-8",
             )
             with (
@@ -276,10 +276,10 @@ class VersionPolicyTest(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertEqual("bump", result["result"]["decision"])
-            self.assertIn("vpnControlVersion=1.3.7.0", (root / "gradle.properties").read_text())
-            self.assertIn("**Version:** `1.3.7.0`", (root / "README.md").read_text())
+            self.assertIn("vpnControlVersion=1.4.0", (root / "gradle.properties").read_text())
+            self.assertIn("**Version:** `1.4.0`", (root / "README.md").read_text())
             updated = changelog.read_text(encoding="utf-8")
-            self.assertIn("## 1.3.7.0 -", updated)
+            self.assertIn("## 1.4.0 -", updated)
             self.assertIn("- Tenth change.", updated)
             self.assertEqual([], mcp_server._unreleased_bullets(updated))
 
@@ -288,10 +288,10 @@ class VersionPolicyTest(unittest.TestCase):
             root = Path(temporary)
             changelog = root / "docs/CHANGELOG.md"
             changelog.parent.mkdir()
-            (root / "gradle.properties").write_text("vpnControlVersion=1.2.3.4\n", encoding="utf-8")
-            (root / "README.md").write_text("**Version:** `1.2.3.4`\n", encoding="utf-8")
+            (root / "gradle.properties").write_text("vpnControlVersion=1.2.3\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.2.3`\n", encoding="utf-8")
             changelog.write_text(
-                "# Changelog\n\n## Unreleased\n\n## 1.2.3.4 - 2026-01-01\n\n- Previous.\n",
+                "# Changelog\n\n## Unreleased\n\n## 1.2.3 - 2026-01-01\n\n- Previous.\n",
                 encoding="utf-8",
             )
             with (
@@ -302,8 +302,38 @@ class VersionPolicyTest(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertEqual("unreleased", result["result"]["decision"])
-            self.assertEqual("vpnControlVersion=1.2.3.4\n", (root / "gradle.properties").read_text())
+            self.assertEqual("vpnControlVersion=1.2.3\n", (root / "gradle.properties").read_text())
             self.assertEqual(["- New behavior."], mcp_server._unreleased_bullets(changelog.read_text()))
+
+    def test_explicit_release_target_migrates_legacy_version_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            changelog = root / "docs/CHANGELOG.md"
+            changelog.parent.mkdir()
+            (root / "gradle.properties").write_text("vpnControlVersion=0.1.7.3\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `0.1.7.3`\n", encoding="utf-8")
+            changelog.write_text(
+                "# Changelog\n\n## Unreleased\n\n- Existing work.\n\n"
+                "## 0.1.7.3 - 2026-01-01\n\n- Previous.\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(mcp_server, "REPO_ROOT", root),
+                mock.patch.object(mcp_server, "CHANGELOG_PATH", changelog),
+            ):
+                result = mcp_server.version_bump(
+                    "Unified versioning and visual release validation.",
+                    "release",
+                    force_release=True,
+                    target_version="2.0.0",
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual("2.0.0", result["result"]["planned_version"])
+            self.assertEqual("vpnControlVersion=2.0.0\n", (root / "gradle.properties").read_text())
+            updated = changelog.read_text(encoding="utf-8")
+            self.assertIn("## 2.0.0 -", updated)
+            self.assertIn("- Unified versioning and visual release validation.", updated)
 
 class WorkflowWatchTest(unittest.TestCase):
     def test_visual_attestation_binds_receipt_manifest_and_commit_status(self) -> None:
@@ -561,9 +591,9 @@ class WorkflowWatchTest(unittest.TestCase):
             root = Path(temporary)
             changelog = root / "docs/CHANGELOG.md"
             changelog.parent.mkdir()
-            (root / "gradle.properties").write_text("vpnControlVersion=1.0.0.1\n", encoding="utf-8")
-            (root / "README.md").write_text("**Version:** `1.0.0.1`\n", encoding="utf-8")
-            changelog.write_text("# Changelog\n\n## 1.0.0.1 - 2026-09-02\n\n- Ready.\n", encoding="utf-8")
+            (root / "gradle.properties").write_text("vpnControlVersion=1.0.1\n", encoding="utf-8")
+            (root / "README.md").write_text("**Version:** `1.0.1`\n", encoding="utf-8")
+            changelog.write_text("# Changelog\n\n## 1.0.1 - 2026-09-02\n\n- Ready.\n", encoding="utf-8")
 
             def run_with(attestation: dict[str, object]) -> dict[str, object]:
                 with (

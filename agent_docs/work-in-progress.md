@@ -2,10 +2,6 @@
 
 Use this file only when a large task intentionally leaves multiple buckets changed at once. If the worktree is clean or changes are small, leave this file as a template.
 
-## Current Work
-
-No active multi-bucket work is recorded.
-
 ## Template
 
 When needed, replace the current-work line with:

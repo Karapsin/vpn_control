@@ -64,6 +64,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,6 +93,7 @@ import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.VpnControlColors
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel
+import com.kardinal.vpncontrol.shared.ui.appLayoutDirection
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
@@ -303,7 +306,7 @@ private fun DesktopApplication(
         VpnControlTheme {
             Surface(color = Color.Transparent) {
                 DesktopVpnControlApp(
-                    window = window,
+                    windowProvider = { window },
                     service = service,
                     onCheckAndDownloadUpdate = ::checkAndDownloadUpdate,
                     onDismissOrCancelUpdate = ::dismissOrCancelUpdate,
@@ -390,8 +393,8 @@ internal fun isDesktopDisplayAvailable(
 }
 
 @Composable
-private fun DesktopVpnControlApp(
-    window: ComposeWindow,
+internal fun DesktopVpnControlApp(
+    windowProvider: () -> ComposeWindow,
     service: DesktopAppService,
     onCheckAndDownloadUpdate: () -> Unit,
     onDismissOrCancelUpdate: () -> Unit,
@@ -405,7 +408,10 @@ private fun DesktopVpnControlApp(
     val activeProfile = activeProfileLabel(state, service::sourceLabelFor, appStrings)
     val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor, appStrings)
 
-    CompositionLocalProvider(LocalAppStrings provides appStrings) {
+    CompositionLocalProvider(
+        LocalAppStrings provides appStrings,
+        LocalLayoutDirection provides appLayoutDirection(appStrings.language),
+    ) {
     AppUpdateDialog(
         state = state.appUpdate,
         onDismiss = onDismissOrCancelUpdate,
@@ -433,7 +439,7 @@ private fun DesktopVpnControlApp(
         onHomeSshRelayPortChange = service::setHomeSshRelayPortDraft,
         onImportHomeSshPrivateKey = {
             DesktopTextTransfer.openTextFile(
-                window,
+                windowProvider(),
                 appStrings.get(UiText.IMPORT_PRIVATE_KEY),
             ).onSuccess { content -> content?.let(service::importHomeSshPrivateKey) }
                 .onFailure { error -> service.postStatus(error.message ?: "SSH private key import failed") }
@@ -504,7 +510,7 @@ private fun DesktopVpnControlApp(
                     onExportDiagnostics = {
                         if (state.isBusy) return@MainScreen
                         val selection = DesktopTextTransfer.chooseSaveFile(
-                            window = window,
+                            window = windowProvider(),
                             title = appStrings.get(UiText.EXPORT_DIAGNOSTICS),
                             suggestedFileName = DesktopDiagnosticsExporter.suggestedFileName(),
                         )
@@ -591,9 +597,10 @@ private fun DesktopVpnControlApp(
                     },
                     controls = {
                         DesktopActionRow(
+                            visualScope = "locations",
                             onImportFile = {
                                 val selection = DesktopTextTransfer.chooseOpenFile(
-                                    window = window,
+                                    window = windowProvider(),
                                     title = appStrings.get(UiText.IMPORT),
                                 )
                                 coroutineScope.launch { service.importLocationsFromFile(selection) }
@@ -601,7 +608,7 @@ private fun DesktopVpnControlApp(
                             onImportClipboard = { coroutineScope.launch { service.importLocationsFromClipboard() } },
                             onExportFile = {
                                 service.exportLocationsToFile(
-                                    window = window,
+                                    window = windowProvider(),
                                     title = appStrings.get(UiText.LOCATIONS_EXPORT_TITLE),
                                 )
                             },
@@ -621,16 +628,17 @@ private fun DesktopVpnControlApp(
                     showAppAssignments = false,
                     controls = {
                         DesktopActionRow(
+                            visualScope = "routing",
                             onImportFile = {
                                 service.importRoutingRulesFromFile(
-                                    window = window,
+                                    window = windowProvider(),
                                     title = appStrings.get(UiText.IMPORT),
                                 )
                             },
                             onImportClipboard = service::importRoutingRulesFromClipboard,
                             onExportFile = {
                                 service.exportRoutingRulesToFile(
-                                    window = window,
+                                    window = windowProvider(),
                                     title = appStrings.get(UiText.RULES_EXPORT_TITLE),
                                 )
                             },
@@ -681,13 +689,19 @@ private fun DesktopProfileContent(
         AlertDialog(
             onDismissRequest = onCloseSubscriptionRenameDialog,
             confirmButton = {
-                TextButton(onClick = onSaveSubscriptionRename) {
-                    Text(strings.get(UiText.SAVE))
+                TextButton(
+                    onClick = onSaveSubscriptionRename,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"),
+                ) {
+                    Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onCloseSubscriptionRenameDialog) {
-                    Text(strings.get(UiText.CANCEL))
+                TextButton(
+                    onClick = onCloseSubscriptionRenameDialog,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel"),
+                ) {
+                    Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
             title = {
@@ -698,14 +712,14 @@ private fun DesktopProfileContent(
                     OutlinedTextField(
                         value = state.profileHistoryRenameUrlDraft,
                         onValueChange = onSubscriptionRenameUrlDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("profile-rename-url"),
                         label = { Text(strings.get(UiText.SUBSCRIPTION_URL)) },
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = state.profileHistoryRenameDraft,
                         onValueChange = onSubscriptionRenameDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("profile-rename-name"),
                         label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
                         placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
                         singleLine = true,
@@ -720,6 +734,7 @@ private fun DesktopProfileContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Card(
+            modifier = Modifier.testTag("profile-source-mode"),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
         ) {
@@ -744,6 +759,13 @@ private fun DesktopProfileContent(
                             } else {
                                 strings.get(UiText.SAVED_LOCATIONS)
                             },
+                            modifier = Modifier.testTag(
+                                if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
+                                    "profile-source-selection"
+                                } else {
+                                    "profile-current-locations"
+                                },
+                            ),
                             color = Color.White,
                         )
                         Text(
@@ -797,6 +819,7 @@ private fun DesktopProfileContent(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag("profile-all-subscriptions")
                             .clickable { onActivateSelection(ALL_SUBSCRIPTIONS_ID) },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(
@@ -866,6 +889,7 @@ private fun DesktopProfileContent(
                                 IconButton(
                                     onClick = onRefreshAllSubscriptions,
                                     enabled = !state.isBusy,
+                                    modifier = Modifier.size(48.dp).testTag("profile-refresh-all"),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
@@ -877,7 +901,7 @@ private fun DesktopProfileContent(
                         }
                     }
                 }
-                state.subscriptions.forEach { subscription ->
+                state.subscriptions.forEachIndexed { visualIndex, subscription ->
                     val isSelected = state.activeSubscriptionId == subscription.id
                     val refreshStatus = subscription.lastRefreshStatus
                         .takeIf { it.isNotBlank() }
@@ -886,6 +910,7 @@ private fun DesktopProfileContent(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag(if (visualIndex == 0) "profile-current-source" else "profile-source-$visualIndex")
                             .clickable { onActivateSelection(subscription.id) },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(
@@ -928,6 +953,9 @@ private fun DesktopProfileContent(
                                 IconButton(
                                     onClick = { onRefreshSubscription(subscription.id) },
                                     enabled = !state.isBusy,
+                                    modifier = Modifier.size(48.dp).testTag(
+                                        if (visualIndex == 0) "profile-refresh" else "profile-refresh-$visualIndex",
+                                    ),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
@@ -935,14 +963,24 @@ private fun DesktopProfileContent(
                                         tint = if (!state.isBusy) Color.White else Color(0xFF9FB8C8),
                                     )
                                 }
-                                IconButton(onClick = { onShowSubscriptionRenameDialog(subscription.id) }) {
+                                IconButton(
+                                    onClick = { onShowSubscriptionRenameDialog(subscription.id) },
+                                    modifier = Modifier.size(48.dp).testTag(
+                                        if (visualIndex == 0) "profile-rename" else "profile-rename-$visualIndex",
+                                    ),
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Edit,
                                         contentDescription = strings.get(UiText.RENAME_SUBSCRIPTION),
                                         tint = Color.White,
                                     )
                                 }
-                                IconButton(onClick = { onDeleteSubscription(subscription.id) }) {
+                                IconButton(
+                                    onClick = { onDeleteSubscription(subscription.id) },
+                                    modifier = Modifier.size(48.dp).testTag(
+                                        if (visualIndex == 0) "profile-delete" else "profile-delete-$visualIndex",
+                                    ),
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
                                         contentDescription = strings.get(UiText.DELETE_SUBSCRIPTION),
@@ -986,7 +1024,10 @@ private fun DesktopProfileContent(
                                         tint = Color.White,
                                     )
                                 }
-                                IconButton(onClick = onToggleAddSubscriptionEditor) {
+                                IconButton(
+                                    onClick = onToggleAddSubscriptionEditor,
+                                    modifier = Modifier.size(48.dp).testTag("profile-cancel"),
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
                                         contentDescription = strings.get(UiText.CLOSE_SUBSCRIPTION_EDITOR),
@@ -998,7 +1039,7 @@ private fun DesktopProfileContent(
                         OutlinedTextField(
                             value = state.profileDraft,
                             onValueChange = onProfileDraftChange,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("profile-url"),
                             label = { Text(strings.get(UiText.SUBSCRIPTION_URL)) },
                             placeholder = { Text("https://example.com/subscription.txt") },
                             singleLine = true,
@@ -1006,7 +1047,7 @@ private fun DesktopProfileContent(
                         OutlinedTextField(
                             value = state.profileTitleDraft,
                             onValueChange = onProfileTitleDraftChange,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("profile-title"),
                             label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
                             placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
                             singleLine = true,
@@ -1016,7 +1057,10 @@ private fun DesktopProfileContent(
                             color = Color(0xFFD3E3EE),
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        Button(onClick = onSaveSubscriptionDraft) {
+                        Button(
+                            onClick = onSaveSubscriptionDraft,
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("profile-save"),
+                        ) {
                             Text(strings.get(UiText.SAVE_SUBSCRIPTION))
                         }
                     }
@@ -1054,6 +1098,7 @@ private fun DesktopAdditionalSettingsMenu(
     Box {
         OutlinedButton(
             onClick = { expanded = true },
+            modifier = Modifier.heightIn(min = 48.dp).testTag("main-settings"),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
         ) {
             Icon(
@@ -1067,6 +1112,7 @@ private fun DesktopAdditionalSettingsMenu(
             onDismissRequest = { expanded = false },
         ) {
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-ssh"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_HOME_SSH_ROUTE))
@@ -1085,6 +1131,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-language"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LANGUAGE))
@@ -1101,6 +1148,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-start-login"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_START_ON_LOGIN))
@@ -1124,6 +1172,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-mode"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE))
@@ -1153,6 +1202,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-rules"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.IGNORE_RULES))
@@ -1176,6 +1226,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-refresh"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH))
@@ -1192,6 +1243,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-validation"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
@@ -1208,6 +1260,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-dns"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
@@ -1224,6 +1277,7 @@ private fun DesktopAdditionalSettingsMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-update"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_UPDATE))
@@ -1308,6 +1362,11 @@ private fun DesktopSettingsDialogs(
                             label = strings.get(mode.uiText()),
                             selected = state.dnsModeDraft == mode,
                             onClick = { onDnsModeDraftChange(mode) },
+                            visualId = when (mode) {
+                                DnsMode.AUTOMATIC -> "dns-automatic"
+                                DnsMode.CUSTOM_DOH -> "dns-doh"
+                                DnsMode.CUSTOM_DOT -> "dns-dot"
+                            },
                         )
                     }
                     if (state.dnsSettings.legacyRawAddress.isNotBlank()) {
@@ -1320,7 +1379,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.customDnsEndpointDraft,
                         onValueChange = onCustomDnsDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("dns-endpoint"),
                         label = { Text(strings.get(UiText.DNS_SECURE_ENDPOINT)) },
                         placeholder = {
                             Text(
@@ -1337,12 +1396,12 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveDns) {
+                TextButton(onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleDnsDialog) {
+                TextButton(onClick = onToggleDnsDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1362,7 +1421,7 @@ private fun DesktopSettingsDialogs(
                 ) {
                     Text(strings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-enabled"),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -1372,7 +1431,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.homeSshHostDraft,
                         onValueChange = onHomeSshHostChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-host"),
                         label = { Text(strings.get(UiText.HOME_SSH_HOST)) },
                         placeholder = { Text("example.com") },
                         singleLine = true,
@@ -1380,7 +1439,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.homeSshPortDraft,
                         onValueChange = onHomeSshPortChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-port"),
                         label = { Text(strings.get(UiText.HOME_SSH_PORT)) },
                         placeholder = { Text("228") },
                         singleLine = true,
@@ -1388,7 +1447,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.homeSshUserDraft,
                         onValueChange = onHomeSshUserChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-user"),
                         label = { Text(strings.get(UiText.HOME_SSH_USER)) },
                         placeholder = { Text("kardinal") },
                         singleLine = true,
@@ -1396,7 +1455,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.homeSshHostKeysDraft,
                         onValueChange = onHomeSshHostKeysChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-host-keys"),
                         label = { Text(strings.get(UiText.HOME_SSH_HOST_KEYS)) },
                         supportingText = { Text(strings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
                         minLines = 2,
@@ -1404,12 +1463,16 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.homeSshRelayPortDraft,
                         onValueChange = onHomeSshRelayPortChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-relay-port"),
                         label = { Text(strings.get(UiText.HOME_SSH_RELAY_PORT)) },
                         placeholder = { Text("10808") },
                         singleLine = true,
                     )
-                    OutlinedButton(onClick = onImportHomeSshPrivateKey, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = onImportHomeSshPrivateKey,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ssh-key"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9ED6FF)),
+                    ) {
                         Text(strings.get(UiText.IMPORT_PRIVATE_KEY))
                     }
                     Text(
@@ -1425,12 +1488,12 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveHomeSshRoute) {
+                TextButton(onClick = onSaveHomeSshRoute, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleHomeSshRouteDialog) {
+                TextButton(onClick = onToggleHomeSshRouteDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1441,15 +1504,21 @@ private fun DesktopSettingsDialogs(
         AlertDialog(
             onDismissRequest = onDismissHomeSshRestart,
             title = { Text(strings.get(UiText.HOME_SSH_RESTART_TITLE), color = Color.White) },
-            text = { Text(strings.get(UiText.HOME_SSH_RESTART_DESCRIPTION), color = Color(0xFFD3E3EE)) },
+            text = {
+                Text(
+                    strings.get(UiText.HOME_SSH_RESTART_DESCRIPTION),
+                    color = Color(0xFFD3E3EE),
+                    modifier = Modifier.testTag("ssh-restart-description"),
+                )
+            },
             containerColor = Color(0xFF141F2D),
             confirmButton = {
-                TextButton(onClick = onRestartForHomeSsh) {
+                TextButton(onClick = onRestartForHomeSsh, modifier = Modifier.heightIn(min = 48.dp).testTag("restart-now")) {
                     Text(strings.get(UiText.RESTART_NOW), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onDismissHomeSshRestart) {
+                TextButton(onClick = onDismissHomeSshRestart, modifier = Modifier.heightIn(min = 48.dp).testTag("restart-later")) {
                     Text(strings.get(UiText.RESTART_LATER), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1470,6 +1539,7 @@ private fun DesktopSettingsDialogs(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Card(
+                        modifier = Modifier.testTag("mode-switch"),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
                     ) {
@@ -1527,7 +1597,7 @@ private fun DesktopSettingsDialogs(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = onToggleAppModeDialog) {
+                TextButton(onClick = onToggleAppModeDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close")) {
                     Text(strings.get(UiText.CLOSE), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1572,9 +1642,15 @@ private fun DesktopSettingsDialogs(
                             },
                             selected = state.subscriptionRefreshPolicyDraft == policy,
                             onClick = { onSubscriptionRefreshPolicyDraftChange(policy) },
+                            visualId = when (policy) {
+                                SubscriptionRefreshPolicy.OFF -> "refresh-off"
+                                SubscriptionRefreshPolicy.EVERY_HOUR -> "refresh-hourly"
+                                SubscriptionRefreshPolicy.CUSTOM -> "refresh-custom"
+                            },
                         )
                     }
                     Card(
+                        modifier = Modifier.testTag("refresh-find-best"),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
                     ) {
@@ -1615,7 +1691,7 @@ private fun DesktopSettingsDialogs(
                             OutlinedTextField(
                                 value = state.subscriptionRefreshCustomHoursDraft,
                                 onValueChange = onSubscriptionRefreshCustomHoursDraftChange,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().testTag("refresh-hours"),
                                 label = { Text(strings.get(UiText.CUSTOM_INTERVAL_HOURS)) },
                                 placeholder = { Text("0.5") },
                                 singleLine = true,
@@ -1630,12 +1706,15 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveSubscriptionRefreshPolicy) {
+                TextButton(
+                    onClick = onSaveSubscriptionRefreshPolicy,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"),
+                ) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleRefreshPolicyDialog) {
+                TextButton(onClick = onToggleRefreshPolicyDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1669,7 +1748,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.validationTestUrlDraft,
                         onValueChange = onValidationTestUrlDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-url"),
                         label = { Text(strings.get(UiText.TEST_SITE)) },
                         placeholder = { Text(strings.get(UiText.TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
@@ -1677,7 +1756,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.validationBatchSizeDraft,
                         onValueChange = onValidationBatchSizeDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-batch"),
                         label = { Text(strings.get(UiText.BATCH_SIZE)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -1685,7 +1764,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.validationSubscriptionRefreshConcurrencyDraft,
                         onValueChange = onValidationSubscriptionRefreshConcurrencyDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-concurrency"),
                         label = { Text(strings.get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -1693,7 +1772,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.validationRetryCountDraft,
                         onValueChange = onValidationRetryCountDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-retries"),
                         label = { Text(strings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
                         singleLine = true,
@@ -1701,7 +1780,7 @@ private fun DesktopSettingsDialogs(
                     OutlinedTextField(
                         value = state.validationActiveVerificationWindowSizeDraft,
                         onValueChange = onValidationActiveVerificationWindowSizeDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-window"),
                         label = { Text(strings.get(UiText.ACTIVE_VERIFICATION_WINDOW)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -1717,12 +1796,15 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveValidationSettings) {
+                TextButton(onClick = onSaveValidationSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleValidationSettingsDialog) {
+                TextButton(
+                    onClick = onToggleValidationSettingsDialog,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel"),
+                ) {
                     Text(strings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -1735,9 +1817,10 @@ private fun DesktopSecureDnsModeOption(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    visualId: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().testTag(visualId).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = onClick)
@@ -1757,10 +1840,12 @@ private fun DesktopSettingsOption(
     description: String,
     selected: Boolean,
     onClick: () -> Unit,
+    visualId: String,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag(visualId)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -1798,6 +1883,7 @@ private fun DesktopAddSubscriptionLauncherCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("profile-add-subscription")
             .clickable(onClick = onClick)
             .drawBehind {
                 drawRoundRect(
@@ -1849,6 +1935,7 @@ private fun DesktopAddSubscriptionLauncherCard(
 
 @Composable
 private fun DesktopActionRow(
+    visualScope: String,
     onImportFile: () -> Unit,
     onImportClipboard: () -> Unit,
     onExportFile: () -> Unit,
@@ -1864,6 +1951,7 @@ private fun DesktopActionRow(
         Box {
             OutlinedButton(
                 onClick = { showImportMenu = true },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("$visualScope-import-menu"),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
             ) {
                 Text(strings.get(UiText.IMPORT))
@@ -1873,6 +1961,7 @@ private fun DesktopActionRow(
                 onDismissRequest = { showImportMenu = false },
             ) {
                 DropdownMenuItem(
+                    modifier = Modifier.testTag("import-file"),
                     text = { Text(strings.get(UiText.FILE)) },
                     onClick = {
                         showImportMenu = false
@@ -1880,6 +1969,7 @@ private fun DesktopActionRow(
                     },
                 )
                 DropdownMenuItem(
+                    modifier = Modifier.testTag("import-clipboard"),
                     text = { Text(strings.get(UiText.CLIPBOARD)) },
                     onClick = {
                         showImportMenu = false
@@ -1891,6 +1981,7 @@ private fun DesktopActionRow(
         Box {
             OutlinedButton(
                 onClick = { showExportMenu = true },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("$visualScope-export-menu"),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
             ) {
                 Text(strings.get(UiText.EXPORT))
@@ -1900,6 +1991,7 @@ private fun DesktopActionRow(
                 onDismissRequest = { showExportMenu = false },
             ) {
                 DropdownMenuItem(
+                    modifier = Modifier.testTag("export-file"),
                     text = { Text(strings.get(UiText.FILE)) },
                     onClick = {
                         showExportMenu = false
@@ -1907,6 +1999,7 @@ private fun DesktopActionRow(
                     },
                 )
                 DropdownMenuItem(
+                    modifier = Modifier.testTag("export-clipboard"),
                     text = { Text(strings.get(UiText.CLIPBOARD)) },
                     onClick = {
                         showExportMenu = false

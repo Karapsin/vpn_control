@@ -360,6 +360,16 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         identifier = vm_name
         running = _run(["tart", "list"], timeout=30)
         if vm_name not in "\n".join(line for line in running.stdout.splitlines() if "running" in line.lower()):
+            display = str(config.get("display", "")).strip()
+            if display and not dry_run:
+                configured = _run(
+                    ["tart", "set", vm_name, "--display", display, "--no-display-refit"],
+                    timeout=30,
+                )
+                if configured.returncode != 0:
+                    raise VisualPlatformError(
+                        configured.stderr.strip() or f"could not configure {vm_name} at {display}"
+                    )
             command = ["tart", "run", "--no-graphics", vm_name]
             started_by_agent = True
     elif backend == "libvirt-windows":

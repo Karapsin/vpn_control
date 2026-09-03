@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,7 +162,7 @@ fun LocationsScreen(
                     Button(
                         onClick = onClick,
                         enabled = !state.isBusy,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("location-add"),
                         shape = RoundedCornerShape(18.dp),
                     ) {
                         Text(strings.get(UiText.ADD_LOCATION))
@@ -242,7 +243,13 @@ private fun LocationRowCard(
         strings.get(UiText.PROXY)
     }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag(
+            when {
+                !location.autoSelectable -> "location-row-invalid"
+                onEdit == null -> "location-row-read-only"
+                else -> "location-row-${location.index}"
+            },
+        ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = when {
@@ -276,6 +283,7 @@ private fun LocationRowCard(
                 )
                 Text(
                     text = location.details,
+                    modifier = if (location.autoSelectable) Modifier else Modifier.testTag("location-error"),
                     color = if (location.autoSelectable) Color(0xFF9ED6FF) else Color(0xFFFFC4C4),
                     fontSize = 12.sp,
                     maxLines = 2,
@@ -284,6 +292,7 @@ private fun LocationRowCard(
                 if (location.benchmarkDetail.isNotBlank()) {
                     Text(
                         text = location.benchmarkDetail,
+                        modifier = Modifier.testTag("location-benchmark-detail"),
                         color = Color(0xFFD3E3EE),
                         fontSize = 11.sp,
                         maxLines = 3,
@@ -293,6 +302,7 @@ private fun LocationRowCard(
                 if (visualState.isInUse || visualState.isSelected) {
                     Text(
                         text = if (visualState.isInUse) strings.get(UiText.IN_USE) else strings.get(UiText.SELECTED),
+                        modifier = Modifier.testTag("location-connected-state"),
                         color = Color(0xFFFFE0A3),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -306,7 +316,13 @@ private fun LocationRowCard(
                 OutlinedButton(
                     onClick = onPrimaryAction,
                     enabled = savedLocationManualActionEnabled(enabled, location.autoSelectable),
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).testTag(
+                        when {
+                            visualState.togglesConnection -> "location-toggle"
+                            onEdit == null -> "location-select-read-only"
+                            else -> "location-select-${location.index}"
+                        },
+                    ),
                     contentPadding = PaddingValues(0.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -328,7 +344,9 @@ private fun LocationRowCard(
                 OutlinedButton(
                     onClick = onRefresh,
                     enabled = savedLocationManualActionEnabled(enabled, location.autoSelectable),
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).testTag(
+                        if (onEdit == null) "location-check-read-only" else "location-check-${location.index}",
+                    ),
                     contentPadding = PaddingValues(0.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -344,7 +362,7 @@ private fun LocationRowCard(
                     OutlinedButton(
                         onClick = onEdit,
                         enabled = enabled,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(48.dp).testTag("location-edit-${location.index}"),
                         contentPadding = PaddingValues(0.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
@@ -361,7 +379,7 @@ private fun LocationRowCard(
                     OutlinedButton(
                         onClick = onDelete,
                         enabled = enabled,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(48.dp).testTag("location-delete-${location.index}"),
                         contentPadding = PaddingValues(0.dp),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.outlinedButtonColors(

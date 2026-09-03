@@ -210,11 +210,15 @@ def validate_geometry(path: Path, required_elements: list[str]) -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         return [f"invalid geometry report {path}: {exc}"]
     viewport = root.get("viewport")
+    density = root.get("density", 1.0)
     elements = root.get("elements")
     if not isinstance(viewport, list) or len(viewport) != 2 or not all(isinstance(value, (int, float)) for value in viewport):
         return [f"{path}: viewport must be [width, height]"]
     if not isinstance(elements, list):
         return [f"{path}: elements must be a list"]
+    if not isinstance(density, (int, float)) or not math.isfinite(density) or density <= 0:
+        return [f"{path}: density must be a positive number"]
+    minimum_target = 48 * density
     errors: list[str] = []
     by_id: dict[str, dict[str, object]] = {}
     for element in elements:
@@ -237,8 +241,13 @@ def validate_geometry(path: Path, required_elements: list[str]) -> list[str]:
         if element.get("interactive") is True:
             if not str(element.get("label", "")).strip():
                 errors.append(f"{path}: interactive element {identifier} has no accessible label")
-            if element.get("allow_small") is not True and (right - left < 48 or bottom - top < 48):
-                errors.append(f"{path}: interactive element {identifier} is smaller than 48x48: {bounds}")
+            if element.get("allow_small") is not True and (
+                right - left < minimum_target or bottom - top < minimum_target
+            ):
+                errors.append(
+                    f"{path}: interactive element {identifier} is smaller than 48x48 dp at "
+                    f"density {density}: {bounds}",
+                )
         if element.get("text") is True:
             contrast = element.get("contrast_ratio")
             minimum_contrast = 3.0 if element.get("large_text") is True else 4.5

@@ -421,14 +421,17 @@ def version_bump(
     change_type: str = "implementation",
     dry_run: bool = False,
     force_release: bool = False,
+    target_version: str | None = None,
 ) -> dict[str, Any]:
-    """Apply the repository's changelog and four-part version policy."""
+    """Apply the repository's unified three-part version policy."""
     normalized_type = change_type.strip().lower().replace("-", "_")
     release_change = normalized_type in {"release", "release_artifact", "publish"}
     docs_only = normalized_type in {"docs", "documentation", "docs_only"}
     if force_release and not release_change:
         return _error("version_bump", "force_release requires a release-oriented change_type")
-    if force_release and summary is not None:
+    if target_version is not None and not (force_release and release_change):
+        return _error("version_bump", "target_version requires an explicitly forced release")
+    if force_release and summary is not None and target_version is None:
         return _error("version_bump", "Omit summary when force_release is enabled")
     if not force_release and not docs_only and not (summary or "").strip():
         return _error("version_bump", "A concise changelog summary is required")
@@ -445,7 +448,13 @@ def version_bump(
         readme_text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         changelog_text = CHANGELOG_PATH.read_text(encoding="utf-8")
         current_version = _parse_required(VERSION_RE, gradle_text, "Gradle version")
-        _parse_version(current_version)
+        if target_version is not None:
+            _parse_migration_source_version(current_version)
+            _parse_version(target_version)
+            if _version_build_id(target_version) <= _version_build_id(current_version):
+                raise ValueError("target_version must be newer than the current version")
+        else:
+            _parse_version(current_version)
         readme_version = _parse_required(README_VERSION_RE, readme_text, "README version")
         if readme_version != current_version:
             raise ValueError("README and Gradle versions do not match")
@@ -453,12 +462,12 @@ def version_bump(
     except (OSError, ValueError) as exc:
         return _error("version_bump", f"Could not read version metadata: {exc}")
 
-    if force_release and not unreleased:
+    if force_release and not unreleased and not (summary or "").strip():
         return _error("version_bump", "Forced release requires non-empty Unreleased notes")
-    bullet = "" if force_release else _format_changelog_bullet(summary or "")
-    planned_bullets = unreleased if force_release else [*unreleased, bullet]
+    bullet = _format_changelog_bullet(summary or "") if (summary or "").strip() else ""
+    planned_bullets = [*unreleased, *([bullet] if bullet else [])]
     should_bump = force_release or len(planned_bullets) >= UNRELEASED_CHANGELOG_THRESHOLD
-    next_version = _increment_version(current_version) if should_bump else None
+    next_version = target_version or (_increment_version(current_version) if should_bump else None)
     result = {
         "decision": "bump" if should_bump else "unreleased",
         "current_version": current_version,
@@ -1129,7 +1138,7 @@ def _release_readiness() -> dict[str, Any]:
         _parse_version(version)
         if _parse_required(README_VERSION_RE, readme_text, "README version") != version:
             blockers.append({"phase": "metadata", "message": "README and Gradle versions differ"})
-        first_release = re.search(r"^##\s+([0-9]+(?:\.[0-9]+){3})\s+-", changelog_text, flags=re.MULTILINE)
+        first_release = re.search(r"^##\s+([0-9]+(?:\.[0-9]+){2})\s+-", changelog_text, flags=re.MULTILINE)
         if first_release is None or first_release.group(1) != version:
             blockers.append({"phase": "metadata", "message": "latest changelog release does not match version"})
         if _unreleased_bullets(changelog_text):
@@ -1249,20 +1258,40 @@ def _parse_required(pattern: re.Pattern[str], text: str, label: str) -> str:
 
 def _parse_version(version: str) -> list[int]:
     parts = version.split(".")
-    if len(parts) != 4 or any(not part.isdigit() for part in parts):
-        raise ValueError("Version must have four numeric parts")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        raise ValueError("Version must have three numeric parts")
+    values = [int(part) for part in parts]
+    if values[0] < 1 or any(value < 0 or value > 19 for value in values):
+        raise ValueError("Version major must be 1..19 and other components must be 0..19")
+    return values
+
+
+def _parse_migration_source_version(version: str) -> list[int]:
+    parts = version.split(".")
+    if len(parts) not in {3, 4} or any(not part.isdigit() for part in parts):
+        raise ValueError("Migration source version must have three or four numeric parts")
     values = [int(part) for part in parts]
     if any(value < 0 or value > 19 for value in values):
         raise ValueError("Version components must be between 0 and 19")
     return values
 
 
+def _version_build_id(version: str) -> int:
+    values = _parse_migration_source_version(version)
+    if len(values) == 3:
+        values.append(0)
+    result = 0
+    for value in values:
+        result = result * 20 + value
+    return result
+
+
 def _increment_version(version: str) -> str:
     values = _parse_version(version)
-    for index in range(3, -1, -1):
+    for index in range(2, -1, -1):
         if values[index] < 19:
             values[index] += 1
-            for reset_index in range(index + 1, 4):
+            for reset_index in range(index + 1, 3):
                 values[reset_index] = 0
             return ".".join(str(value) for value in values)
     raise ValueError("Version cannot be incremented without exceeding component limits")
@@ -1638,6 +1667,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     bump.add_argument("--change-type", default="implementation")
     bump.add_argument("--dry-run", action="store_true")
     bump.add_argument("--force-release", action="store_true")
+    bump.add_argument("--target-version")
     release = subparsers.add_parser("release-workflow")
     release.add_argument("action", choices=("status", "merge-dev", "publish"), default="status")
     visual_flow = subparsers.add_parser("visual-workflow")
@@ -1676,7 +1706,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run-checks":
         return _json_print(run_checks(args.area, args.level, args.dry_run))
     if args.command == "version-bump":
-        return _json_print(version_bump(args.summary, args.change_type, args.dry_run, args.force_release))
+        return _json_print(
+            version_bump(
+                args.summary,
+                args.change_type,
+                args.dry_run,
+                args.force_release,
+                args.target_version,
+            ),
+        )
     if args.command == "release-workflow":
         return _json_print(release_workflow(args.action))
     if args.command == "visual-workflow":

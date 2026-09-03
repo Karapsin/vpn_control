@@ -1,6 +1,10 @@
 package com.kardinal.vpncontrol.desktop
 
 import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -9,6 +13,39 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class DesktopTrayBackendTest {
+    @Test
+    fun backendInstallationNeverBlocksTheAwtEventThread() {
+        val installed = CountDownLatch(1)
+        val invokedOnEventThread = AtomicBoolean(true)
+        val backend = object : DesktopTrayBackend {
+            override fun install(
+                appTitle: () -> String,
+                menuState: () -> TrayMenuState,
+                onAvailable: () -> Unit,
+                onUnavailable: () -> Unit,
+            ): DesktopTrayHandle? {
+                invokedOnEventThread.set(SwingUtilities.isEventDispatchThread())
+                return FakeDesktopTrayHandle()
+            }
+        }
+        val asyncInstaller = AsyncDesktopTrayBackendInstaller(
+            DesktopTrayBackendInstaller(listOf(backend)),
+        )
+
+        SwingUtilities.invokeAndWait {
+            asyncInstaller.install(
+                appTitle = { "VPN Control" },
+                menuState = { sampleTrayMenuState() },
+                onAvailable = {},
+                onUnavailable = {},
+                onComplete = { installed.countDown() },
+            )
+        }
+
+        assertTrue(installed.await(5, TimeUnit.SECONDS))
+        assertFalse(invokedOnEventThread.get())
+    }
+
     @Test
     fun linuxSelectsNativeBackendBeforeAwtFallback() {
         val backends = selectDesktopTrayBackendKinds(

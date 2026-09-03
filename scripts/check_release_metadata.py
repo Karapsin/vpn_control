@@ -17,7 +17,7 @@ SPEC.loader.exec_module(version_metadata)
 
 README_VERSION = re.compile(r"\*\*Version:\*\*\s+`([^`]+)`")
 UNRELEASED = re.compile(r"^##\s+Unreleased\s*$", re.IGNORECASE | re.MULTILINE)
-RELEASE_HEADING = re.compile(r"^##\s+([0-9]+(?:\.[0-9]+){3})\s+-", re.MULTILINE)
+RELEASE_HEADING = re.compile(r"^##\s+([0-9]+(?:\.[0-9]+){2})\s+-", re.MULTILINE)
 
 
 def unreleased_bullets(text: str) -> list[str]:
@@ -38,7 +38,7 @@ def validate(repository: Path, require_release_ready: bool) -> None:
         raise SystemExit("README version does not match gradle.properties")
     release_match = RELEASE_HEADING.search(changelog)
     if release_match is None:
-        raise SystemExit("Changelog has no four-part release section")
+        raise SystemExit("Changelog has no three-part release section")
     if require_release_ready:
         bullets = unreleased_bullets(changelog)
         if bullets:

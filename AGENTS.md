@@ -55,7 +55,7 @@ The only startup-sync exception is a clearly read-only request where current rem
 - Prefer small, targeted fixes with regression tests for behavior changes.
 - After changes are done and validated, push completed commits to `origin/dev`, then complete the post-push CI verification loop before reporting success.
 - Never merge to `main`, publish, tag, or dispatch the stable publisher unless the user explicitly commands a release. Do not infer a release command from requests to finish, ship, implement, or push development work.
-- After every non-documentation change, use `version_bump` to add one concise `Unreleased` changelog bullet. It rolls the changelog and four-part base-20 version only at 10 bullets, or when an explicitly requested release uses `force_release`.
+- After every non-documentation change, use `version_bump` to add one concise `Unreleased` changelog bullet. It rolls the changelog and three-part base-20 product version only at 10 bullets, or when an explicitly requested release uses `force_release`.
 - When VPN Integration finds a product failure, add the fastest deterministic unit or contract regression that reproduces it before fixing the integration path.
 - If large work intentionally spans multiple dirty buckets, document the intent in `agent_docs/work-in-progress.md`.
 - Start low-context repository navigation from `agent_docs/README.md`.
@@ -217,7 +217,7 @@ Documentation-only changes should run `git diff --check` and `./scripts/check_do
 
 Agent tool or MCP changes should also run `python3 -m unittest discover -s agent_tools/tests`. Broad changes must use the complete pre-push tier in `agent_docs/test-matrix.md`.
 
-Versions use four components `a.b.c.d`, each in `0..19`. Normal automatic rolls increment `d`, carrying at 20 (`1.3.6.19` becomes `1.3.7.0`). `gradle.properties` is canonical; README, packages, Android version code, desktop metadata, and changelog must derive from or agree with it.
+Versions use three components `a.b.c`; `a` is in `1..19` and `b`/`c` are in `0..19`. Normal automatic rolls increment `c`, carrying at 20 (`2.0.19` becomes `2.1.0`, and `2.19.19` becomes `3.0.0`). `gradle.properties` is canonical and the exact same product version is used on every platform. Android version code and update build number are non-displayed monotonic IDs derived from the product version.
 
 ## Localization Rules
 

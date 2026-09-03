@@ -46,13 +46,14 @@
         "capabilities": ["app", "native"]
       }
     },
-    "macos": {
+  "macos": {
       "canonical_environment": "macos15-1280x800",
       "required_capabilities": ["app", "native", "secure_desktop"],
-      "local": {
-        "kind": "native-or-tart",
-        "vm_name": "vpn-control-visual-macos",
-        "image": "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+    "local": {
+      "kind": "native-or-tart",
+      "vm_name": "vpn-control-visual-macos",
+      "image": "ghcr.io/cirruslabs/macos-sequoia-base:latest",
+      "display": "1280x800"
       },
       "hosted": {
         "runner": "macos-15",

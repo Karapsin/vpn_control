@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +62,7 @@ fun LanguageSettingsDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("language-search"),
                     label = { Text(strings.get(UiText.SETTINGS_LANGUAGE)) },
                     leadingIcon = {
                         Icon(
@@ -81,6 +82,13 @@ fun LanguageSettingsDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .testTag(
+                                    when (language) {
+                                        AppLanguage.SYSTEM -> "language-system"
+                                        AppLanguage.ENGLISH -> "language-en"
+                                        else -> "language-${language.code}"
+                                    },
+                                )
                                 .clickable { onSelectLanguage(language) }
                                 .padding(vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -111,7 +119,7 @@ fun LanguageSettingsDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close")) {
                 Text(strings.get(UiText.CLOSE), color = Color(0xFFD3E3EE))
             }
         },

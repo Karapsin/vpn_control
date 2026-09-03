@@ -6,8 +6,8 @@ plugins {
 
 fun parseCanonicalVersion(value: String): List<Int> {
     val parts = value.trim().split('.').map { it.toIntOrNull() }
-    require(parts.size == 4 && parts.all { it != null && it in 0..19 }) {
-        "vpnControlVersion must have four numeric components between 0 and 19"
+    require(parts.size == 3 && parts.all { it != null && it in 0..19 } && requireNotNull(parts[0]) > 0) {
+        "vpnControlVersion must have three components; major is 1..19 and others are 0..19"
     }
     return parts.map { requireNotNull(it) }
 }
@@ -15,15 +15,11 @@ fun parseCanonicalVersion(value: String): List<Int> {
 val canonicalVersion = providers.gradleProperty("vpnControlVersion")
 val canonicalVersionCode = canonicalVersion.map { version ->
     parseCanonicalVersion(version).fold(0) { value, component -> value * 20 + component }
+        .times(20)
         .also { require(it > 0) { "vpnControlVersion must produce a positive build number" } }
 }
-val generatedVersionCode = providers.gradleProperty("vpnControlVersionCode")
-    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_CODE"))
-    .map { it.toIntOrNull()?.coerceAtLeast(1) ?: 1 }
-    .orElse(canonicalVersionCode)
-val generatedVersionName = providers.gradleProperty("vpnControlVersionName")
-    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
-    .orElse(canonicalVersion)
+val generatedVersionCode = canonicalVersionCode
+val generatedVersionName = canonicalVersion
 val releaseKeystorePath = providers.environmentVariable("VPN_CONTROL_ANDROID_KEYSTORE_PATH").orNull
 val releaseStorePassword = providers.environmentVariable("VPN_CONTROL_ANDROID_STORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("VPN_CONTROL_ANDROID_KEY_ALIAS").orNull
@@ -111,6 +107,8 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("visual-tests"))
 }
 
 dependencies {
@@ -149,5 +147,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

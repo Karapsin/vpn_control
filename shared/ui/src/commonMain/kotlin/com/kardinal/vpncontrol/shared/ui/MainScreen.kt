@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -80,9 +81,7 @@ fun MainScreen(
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    Row(modifier = Modifier.testTag("main-settings")) {
-                        headerActions()
-                    }
+                    Row { headerActions() }
                 }
                 Text(
                     text = if (activeMode == ProfileSourceMode.SUBSCRIPTION) {
@@ -129,6 +128,11 @@ fun MainScreen(
                         state.isVpnRunning -> "disconnect"
                         else -> "connect"
                     },
+                    sublabelVisualId = if (!state.hasVpnPermission && state.appMode == AppMode.VPN) {
+                        "vpn-permission-required"
+                    } else {
+                        null
+                    },
                 )
                 MainActionButton(
                     icon = findBestIcon,
@@ -148,7 +152,7 @@ fun MainScreen(
                 OutlinedButton(
                     onClick = onExportDiagnostics,
                     enabled = !state.isBusy,
-                    modifier = Modifier.fillMaxWidth().testTag("export-diagnostics"),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("export-diagnostics"),
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                     colors = ButtonDefaults.outlinedButtonColors(

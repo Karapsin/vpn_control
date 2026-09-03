@@ -35,7 +35,7 @@ For implementation, testing, release, or commit work:
 | `change_impact(task, area=None, paths=None)` | Combine task routing, changed paths, RAG references, safety constraints, and checks. |
 | `workflow_status(task=None, area=None, instructions_read=False)` | Show worktree state, required reading, RAG freshness, and check receipt state. |
 | `run_checks(area="auto", level="focused", dry_run=False)` | Run focused checks or the repository's complete pre-push tier. |
-| `version_bump(summary=None, change_type="code", dry_run=False, force_release=False)` | Add the required changelog note and atomically roll four-part version metadata at 10 notes or explicit forced release. |
+| `version_bump(summary=None, change_type="code", dry_run=False, force_release=False, target_version=None)` | Add the required changelog note and atomically roll unified three-part version metadata at 10 notes or an explicit forced/targeted release. |
 | `git_workflow(action, message=None, paths=None, sha=None)` | Commit explicit safe paths, push `dev`, and/or watch exact-SHA CI. |
 | `release_workflow(action="status")` | Explicit-release-only `merge-dev`, readiness, and publisher dispatch gate. |
 | `visual_workflow(action, target_sha=None, platforms=None, release=False, post_status=False)` | Start, inspect, or complete an exact-SHA agent visual review. |

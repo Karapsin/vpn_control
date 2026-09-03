@@ -1,7 +1,10 @@
 name: Visual Capture
-run-name: Visual Capture / ${{ inputs.platform }} / ${{ inputs.target_sha }}
+run-name: Visual Capture / ${{ inputs.platform || 'preflight-all' }} / ${{ inputs.target_sha || github.sha }}
 
 on:
+  push:
+    branches:
+      - "visual-preflight/**"
   workflow_dispatch:
     inputs:
       target_sha:
@@ -31,32 +34,40 @@ concurrency:
 
 env:
   VPN_CONTROL_VISUAL_PROVIDER: hosted
-  VPN_CONTROL_VISUAL_TARGET_SHA: ${{ inputs.target_sha }}
+  VPN_CONTROL_VISUAL_TARGET_SHA: ${{ inputs.target_sha || github.sha }}
 
 jobs:
   android:
-    if: inputs.platform == 'android'
+    if: inputs.platform == 'android' || github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
       - name: Validate exact SHA
         shell: bash
         env:
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Capture Android scenes in API 35 emulator
+      - name: Resolve hosted-capable scenes
+        shell: bash
         env:
-          VISUAL_SCENES: ${{ inputs.scenes }}
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("android")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture Android scenes in API 35 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -68,25 +79,25 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-capture-android-${{ inputs.target_sha }}
+          name: visual-capture-android-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
             build/visual-actual/android
           if-no-files-found: warn
 
   linux:
-    if: inputs.platform == 'linux'
+    if: inputs.platform == 'linux' || github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Validate exact SHA
         shell: bash
         env:
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
       - uses: actions/setup-java@v4
@@ -94,83 +105,112 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install isolated X11 capture environment
-        run: sudo apt-get update && sudo apt-get install -y openbox xvfb xdotool imagemagick
-      - name: Capture Linux scenes
+        run: sudo apt-get update && sudo apt-get install -y cpio dbus-x11 fakeroot gdebi-core gdebi haskell-gtk-sni-tray-utils imagemagick libayatana-appindicator3-1 openbox policykit-1-gnome rpm stalonetray xvfb xdotool
+      - name: Resolve hosted-capable scenes
+        shell: bash
         env:
-          VISUAL_SCENES: ${{ inputs.scenes }}
-        run: xvfb-run --server-args='-screen 0 1280x800x24' scripts/capture_visual_desktop.sh linux build/visual-actual/linux "$VISUAL_SCENES"
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("linux")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture Linux scenes
+        run: dbus-run-session -- xvfb-run --server-args='-screen 0 1280x800x24' scripts/capture_visual_desktop.sh linux build/visual-actual/linux "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-capture-linux-${{ inputs.target_sha }}
+          name: visual-capture-linux-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
             build/visual-actual/linux
           if-no-files-found: warn
 
   windows:
-    if: inputs.platform == 'windows'
+    if: inputs.platform == 'windows' || github.event_name == 'push'
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
       - name: Validate exact SHA
         shell: pwsh
         env:
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: if ($env:TARGET_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid target SHA' }
       - name: Checkout exact source and LFS baselines
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Capture repeatable Windows scenes
+      - name: Set canonical visual resolution
+        shell: pwsh
+        run: |
+          Set-DisplayResolution -Width 1280 -Height 800 -Force
+          Start-Sleep -Seconds 2
+      - name: Resolve hosted-capable scenes
         shell: pwsh
         env:
-          VISUAL_SCENES: ${{ inputs.scenes }}
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          $scenes = $env:INPUT_SCENES
+          if (-not $scenes) {
+            $scenes = python -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("windows")["routes"]["hosted"]))'
+          }
+          "VISUAL_SCENES=$scenes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Capture repeatable Windows scenes
+        shell: pwsh
         run: ./scripts/capture_visual_desktop.ps1 -Platform windows -Output build/visual-actual/windows -Scenes $env:VISUAL_SCENES
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-capture-windows-${{ inputs.target_sha }}
+          name: visual-capture-windows-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
             build/visual-actual/windows
           if-no-files-found: warn
 
   macos:
-    if: inputs.platform == 'macos'
+    if: inputs.platform == 'macos' || github.event_name == 'push'
     runs-on: macos-15
     timeout-minutes: 60
     steps:
       - name: Validate exact SHA
         shell: bash
         env:
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Capture repeatable macOS scenes
+      - name: Resolve hosted-capable scenes
+        shell: bash
         env:
-          VISUAL_SCENES: ${{ inputs.scenes }}
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("macos")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture repeatable macOS scenes
         run: scripts/capture_visual_desktop.sh macos build/visual-actual/macos "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-capture-macos-${{ inputs.target_sha }}
+          name: visual-capture-macos-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
             build/visual-actual/macos
           if-no-files-found: warn

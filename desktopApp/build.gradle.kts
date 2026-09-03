@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
@@ -10,8 +12,8 @@ val desktopPackageTargets = when {
 }
 fun parseCanonicalVersion(value: String): List<Int> {
     val parts = value.trim().split('.').map { it.toIntOrNull() }
-    require(parts.size == 4 && parts.all { it != null && it in 0..19 }) {
-        "vpnControlVersion must have four numeric components between 0 and 19"
+    require(parts.size == 3 && parts.all { it != null && it in 0..19 } && requireNotNull(parts[0]) > 0) {
+        "vpnControlVersion must have three components; major is 1..19 and others are 0..19"
     }
     return parts.map { requireNotNull(it) }
 }
@@ -20,17 +22,10 @@ val canonicalVersion = providers.gradleProperty("vpnControlVersion")
 val canonicalVersionParts = canonicalVersion.map(::parseCanonicalVersion)
 val canonicalBuildNumber = canonicalVersionParts.map { parts ->
     parts.fold(0) { value, component -> value * 20 + component }
+        .times(20)
         .also { require(it > 0) { "vpnControlVersion must produce a positive build number" } }
 }
-val runtimeDisplayVersion = providers.gradleProperty("vpnControlVersionName")
-    .orElse(providers.environmentVariable("VPN_CONTROL_VERSION_NAME"))
-    .orElse(canonicalVersion)
-val desktopPackageVersion = providers.gradleProperty("vpnControlDesktopVersion")
-    .orElse(providers.environmentVariable("VPN_CONTROL_DESKTOP_VERSION"))
-    .orElse(canonicalVersionParts.map { (major, minor, patch, build) -> "$major.$minor.${patch * 20 + build}" })
-val macosPackageVersion = providers.gradleProperty("vpnControlMacosDesktopVersion")
-    .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_DESKTOP_VERSION"))
-    .orElse(canonicalVersionParts.map { (major, minor, patch, build) -> "1.${major * 20 + minor}.${patch * 20 + build}" })
+val runtimeDisplayVersion = canonicalVersion
 val macosSigningIdentity = providers.gradleProperty("vpnControlMacosSigningIdentity")
     .orElse(providers.environmentVariable("VPN_CONTROL_MACOS_SIGNING_IDENTITY"))
 val macosSigningKeychain = providers.gradleProperty("vpnControlMacosSigningKeychain")
@@ -83,6 +78,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 sourceSets {
@@ -96,6 +92,30 @@ tasks.named("processResources") {
     dependsOn(generateDesktopVersionResource)
 }
 
+val visualCapture by tasks.registering(Test::class) {
+    description = "Captures deterministic desktop visual-regression scenes."
+    group = "verification"
+    dependsOn(tasks.named("testClasses"))
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    outputs.upToDateWhen { false }
+    filter {
+        includeTestsMatching("com.kardinal.vpncontrol.desktop.VisualCaptureTest")
+    }
+}
+
+val nativeVisualCapture by tasks.registering(Test::class) {
+    description = "Captures real desktop OS visual-regression scenes in an isolated session."
+    group = "verification"
+    dependsOn(tasks.named("testClasses"))
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    outputs.upToDateWhen { false }
+    filter {
+        includeTestsMatching("com.kardinal.vpncontrol.desktop.DesktopNativeVisualCaptureTest")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.kardinal.vpncontrol.desktop.MainKt"
@@ -103,7 +123,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*desktopPackageTargets)
             packageName = "vpn-control"
-            packageVersion = desktopPackageVersion.get()
+            packageVersion = canonicalVersion.get()
             vendor = "Kardinal"
             description = "Desktop VPN Control client"
 
@@ -126,7 +146,7 @@ compose.desktop {
             }
 
             macOS {
-                val version = macosPackageVersion.get()
+                val version = canonicalVersion.get()
                 packageVersion = version
                 packageBuildVersion = version
                 dmgPackageVersion = version

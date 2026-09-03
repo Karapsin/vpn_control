@@ -16,12 +16,29 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.StatusMessageKey
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
+import androidx.compose.ui.unit.LayoutDirection
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AppStringsCoverageTest {
     private val nonEnglishLanguages = AppLanguage.entries
         .filter { it != AppLanguage.SYSTEM && it != AppLanguage.ENGLISH }
+
+    @Test
+    fun rtlCatalogsDriveRtlLayout() {
+        listOf(
+            AppLanguage.ARABIC,
+            AppLanguage.PERSIAN,
+            AppLanguage.HEBREW,
+            AppLanguage.URDU,
+            AppLanguage.KURDISH,
+            AppLanguage.PASHTO,
+        ).forEach { language ->
+            assertEquals(LayoutDirection.Rtl, appLayoutDirection(language), language.name)
+        }
+        assertEquals(LayoutDirection.Ltr, appLayoutDirection(AppLanguage.ENGLISH))
+    }
 
     @Test
     fun everySupportedLanguageHasEveryUiTextKey() {

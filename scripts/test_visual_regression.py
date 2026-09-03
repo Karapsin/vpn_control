@@ -21,6 +21,29 @@ SPEC.loader.exec_module(visual_regression)
 
 
 class VisualRegressionTest(unittest.TestCase):
+    def test_geometry_target_size_uses_capture_density(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            geometry = Path(temporary) / "scene.geometry.json"
+            geometry.write_text(
+                json.dumps(
+                    {
+                        "viewport": [400, 400],
+                        "density": 2.0,
+                        "elements": [
+                            {
+                                "id": "action",
+                                "interactive": True,
+                                "label": "Action",
+                                "bounds": [0, 0, 90, 96],
+                            },
+                        ],
+                    },
+                ),
+                encoding="utf-8",
+            )
+            errors = visual_regression.validate_geometry(geometry, ["action"])
+        self.assertTrue(any("48x48 dp" in error for error in errors), errors)
+
     def test_repository_manifest_covers_every_supported_platform_and_os_surface(self) -> None:
         root = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
         scenes = root["scenes"]

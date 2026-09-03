@@ -43,6 +43,8 @@ on:
       - "scripts/capture_visual_android.sh"
       - "scripts/capture_visual_desktop.sh"
       - "scripts/capture_visual_desktop.ps1"
+      - "scripts/capture_visual_windows_qemu.py"
+      - "scripts/select_visual_scenes.py"
       - "visual-tests/**"
       - "scripts/check_release_metadata.py"
       - "scripts/release_notes.py"
@@ -105,6 +107,7 @@ jobs:
           python scripts/test_visual_regression.py
           python scripts/test_visual_platform.py
           python scripts/test_visual_review.py
+          python scripts/select_visual_scenes.py --manifest visual-tests/scenes.json --platform linux --kind app >/dev/null
           bash -n scripts/bootstrap_windows_visual_vm.sh
           bash -n scripts/start_windows_visual_vm.sh
           bash -n scripts/mark_windows_visual_vm_ready.sh

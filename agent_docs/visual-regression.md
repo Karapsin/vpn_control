@@ -10,6 +10,7 @@ Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VI
 | `visual-tests/environments.json` | Pinned local and hosted providers plus capability boundaries. |
 | `visual-tests/baselines/<platform>/` | Canonical Git LFS PNG objects. |
 | `scripts/visual_platform.py` | Local probe/bootstrap/start/stop, provider plan, hosted dispatch, capture, and report ingestion. |
+| `scripts/capture_visual_windows_qemu.py` | QMP-controlled capture of the real UAC secure desktop in the managed Windows client VM. |
 | `scripts/visual_regression.py` | Pixel comparator, geometry validator, diffs, reports, and contact sheets. |
 | `scripts/visual_review.py` | Exact-SHA review queue, scene verdicts, evidence receipt, and GitHub status. |
 | `.github/workflows/visual-regression.yml` | Agent-dispatched hosted fallback capture on ephemeral GitHub runners. |
@@ -46,7 +47,17 @@ python3 scripts/visual_platform.py bootstrap --platform <platform>
 python3 scripts/visual_platform.py start --platform <platform>
 ```
 
-Android uses an isolated Pixel 6/API 35 AVD. Linux and macOS use an isolated native session or pinned Tart VM. Windows uses an isolated Windows 11 client session, the existing `vpn-control-win11` libvirt guest, or the QEMU disk managed by `bootstrap_windows_visual_vm.sh`. A QEMU disk alone is never treated as ready: after the agent has completed Windows setup and verified the fixed display/capture prerequisites, it records that check with `scripts/mark_windows_visual_vm_ready.sh --agent-confirmed`. Windows media and license acceptance remain vendor-controlled; set `VPN_CONTROL_WINDOWS_ISO` to an official local ISO when first creating that guest.
+Android uses an isolated Pixel 6/API 35 AVD. Linux and macOS use an isolated native session or pinned Tart VM. Windows uses an isolated Windows 11 client session, the existing `vpn-control-win11` libvirt guest, or the QEMU disk managed by `bootstrap_windows_visual_vm.sh`. A QEMU disk alone is never treated as ready: after the agent has completed Windows setup and verified the fixed display/capture prerequisites, it records that check with `scripts/mark_windows_visual_vm_ready.sh --agent-confirmed`. Windows media and license acceptance remain vendor-controlled; set `VPN_CONTROL_WINDOWS_ISO` to an official local ISO and `VPN_CONTROL_WINDOWS_DRIVER_ISO` to the UTM Windows guest-tools ISO when first creating an ARM64 guest. The agent must verify the Windows image against Microsoft's published digest before use.
+
+After the managed Windows guest is ready, capture its secure-desktop scene from the host without exposing or reusing the operator desktop:
+
+```bash
+python3 scripts/visual_platform.py capture-local \
+  --platform windows \
+  --driver "python3 scripts/capture_visual_windows_qemu.py" \
+  --output build/visual-actual/windows \
+  --scene windows-uac
+```
 
 The agent may dispatch hosted fallback for non-blocked scenes:
 
@@ -62,6 +73,8 @@ python3 scripts/visual_platform.py download-hosted \
 ```
 
 `dispatch-hosted` passes only the scenes that the provider plan routed to the hosted capability. Download those files into the platform's combined `build/visual-actual/<platform>/` directory alongside any local secure-desktop captures, then run comparison and ingestion once over the complete platform set. Hosted jobs never compare or attest by themselves.
+
+When a new baseline set is needed before the capture workflow has reached `main`, push an exact candidate commit only to a temporary `visual-preflight/**` branch. That branch trigger captures every hosted-capable scene on all four platforms and still excludes secure-desktop scenes. The agent reviews and records the downloaded evidence on `dev`, then removes the temporary branch; it is not a release or publishing path.
 
 Hosted jobs use pinned Ubuntu 24.04, Windows 2025, and macOS 15 images. Windows hosted runners cannot satisfy `secure_desktop`, so `windows-uac` remains blocked until a local Windows client VM is available. A provider plan with any `blocked` scene is not release-capable.
 

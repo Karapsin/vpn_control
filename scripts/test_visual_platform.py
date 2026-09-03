@@ -18,8 +18,44 @@ visual_platform = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = visual_platform
 SPEC.loader.exec_module(visual_platform)
 
+SELECTOR_PATH = Path(__file__).with_name("select_visual_scenes.py")
+SELECTOR_SPEC = importlib.util.spec_from_file_location("select_visual_scenes", SELECTOR_PATH)
+assert SELECTOR_SPEC is not None and SELECTOR_SPEC.loader is not None
+select_visual_scenes = importlib.util.module_from_spec(SELECTOR_SPEC)
+sys.modules[SELECTOR_SPEC.name] = select_visual_scenes
+SELECTOR_SPEC.loader.exec_module(select_visual_scenes)
+
+WINDOWS_QEMU_CAPTURE_PATH = Path(__file__).with_name("capture_visual_windows_qemu.py")
+WINDOWS_QEMU_CAPTURE_SPEC = importlib.util.spec_from_file_location(
+    "capture_visual_windows_qemu",
+    WINDOWS_QEMU_CAPTURE_PATH,
+)
+assert WINDOWS_QEMU_CAPTURE_SPEC is not None and WINDOWS_QEMU_CAPTURE_SPEC.loader is not None
+capture_visual_windows_qemu = importlib.util.module_from_spec(WINDOWS_QEMU_CAPTURE_SPEC)
+sys.modules[WINDOWS_QEMU_CAPTURE_SPEC.name] = capture_visual_windows_qemu
+WINDOWS_QEMU_CAPTURE_SPEC.loader.exec_module(capture_visual_windows_qemu)
+
 
 class VisualPlatformTest(unittest.TestCase):
+    def test_desktop_scene_selection_keeps_app_and_native_capture_disjoint(self) -> None:
+        manifest = visual_platform.ROOT / "visual-tests/scenes.json"
+        for platform in ("linux", "windows", "macos"):
+            app = select_visual_scenes.select_scene_ids(manifest, platform, "app")
+            native = select_visual_scenes.select_scene_ids(manifest, platform, "native")
+            expected = {str(scene["id"]) for scene in visual_platform.scenes_for(platform)}
+            self.assertFalse(set(app) & set(native), platform)
+            self.assertEqual(expected, set(app) | set(native), platform)
+            self.assertGreaterEqual(len(native), 8, platform)
+
+    def test_desktop_scene_selection_rejects_unknown_requested_scene(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown linux visual scenes"):
+            select_visual_scenes.select_scene_ids(
+                visual_platform.ROOT / "visual-tests/scenes.json",
+                "linux",
+                "app",
+                "main-disconnected,not-a-scene",
+            )
+
     def test_manifest_routes_a_large_scene_set_to_each_platform(self) -> None:
         for platform in visual_platform.PLATFORMS:
             self.assertGreaterEqual(len(visual_platform.scenes_for(platform)), 50, platform)
@@ -105,6 +141,23 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("-avd vpn-control-visual-api35", result["command"])
         self.assertIn("-port 5580", result["command"])
 
+    def test_macos_start_dry_run_does_not_change_vm_configuration(self) -> None:
+        probe = {
+            "ready": True,
+            "backend": "tart-macos",
+            "capabilities": ["app", "native", "secure_desktop"],
+            "detail": "",
+        }
+        stopped = mock.Mock(returncode=0, stdout="vpn-control-visual-macos stopped\n", stderr="")
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_run", return_value=stopped) as run,
+        ):
+            result = visual_platform.start_platform("macos", dry_run=True)
+        run.assert_called_once_with(["tart", "list"], timeout=30)
+        self.assertTrue(result["started_by_agent"])
+        self.assertEqual("tart run --no-graphics vpn-control-visual-macos", result["command"])
+
     def test_windows_qemu_disk_is_not_ready_without_agent_marker(self) -> None:
         real_is_file = Path.is_file
 
@@ -124,6 +177,40 @@ class VisualPlatformTest(unittest.TestCase):
             probe = visual_platform.local_probe("windows")
         self.assertFalse(probe["ready"])
         self.assertIn("has not passed", probe["detail"])
+
+    def test_windows_qemu_secure_driver_uses_safe_run_dialog_key_sequence(self) -> None:
+        qmp = mock.Mock()
+        capture_visual_windows_qemu._type_command(
+            qmp,
+            "fs0:\\efi\\boot\\bootaa64.efi powershell -verb runas",
+        )
+        pressed = [call.args[0] for call in qmp.send_key.call_args_list]
+        self.assertEqual("f", pressed[0])
+        self.assertIn("spc", pressed)
+        self.assertIn("minus", pressed)
+        self.assertIn("shift-semicolon", pressed)
+        self.assertIn("backslash", pressed)
+        self.assertIn("dot", pressed)
+        self.assertNotIn("meta_l-r", pressed)
+
+    def test_windows_qemu_secure_driver_converts_framebuffer_without_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ppm = root / "frame.ppm"
+            png = root / "frame.png"
+            ppm.write_bytes(b"P6\n2 1\n255\n" + bytes((0, 1, 2, 253, 254, 255)))
+            self.assertEqual((2, 1), capture_visual_windows_qemu.convert_ppm_to_png(ppm, png))
+            self.assertTrue(png.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_windows_qemu_start_exposes_scoped_control_sockets(self) -> None:
+        script = (visual_platform.ROOT / "scripts/start_windows_visual_vm.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('unix:$runtime_dir/qmp.sock', script)
+        self.assertIn('path=$guest_agent_socket', script)
+        self.assertIn('hostfwd=tcp:127.0.0.1:2299-:22', script)
+        self.assertIn('"${1:-}" == "--provision-drivers"', script)
+        self.assertIn('file=$driver_iso,media=cdrom,readonly=on', script)
 
     def test_local_driver_requires_complete_requested_scene_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

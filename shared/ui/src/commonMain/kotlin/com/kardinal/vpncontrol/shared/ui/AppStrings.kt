@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.shared.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.LayoutDirection
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.StatusMessages
@@ -412,6 +413,11 @@ fun rememberAppStrings(
 ): AppStrings {
     val effective = languageOverride.effective(systemLanguageCode)
     return remember(effective) { AppStrings(effective) }
+}
+
+fun appLayoutDirection(language: AppLanguage): LayoutDirection = when (language.code) {
+    "ar", "fa", "he", "ur", "ku", "ps" -> LayoutDirection.Rtl
+    else -> LayoutDirection.Ltr
 }
 
 internal fun missingUiTextLocalizationKeys(): Map<AppLanguage, List<UiText>> = missingGeneratedUiTextLocalizationKeys()

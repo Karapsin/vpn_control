@@ -27,6 +27,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -36,6 +37,7 @@ import javax.swing.JSeparator
 import javax.swing.JWindow
 import javax.swing.SwingUtilities
 import javax.swing.Timer
+import kotlin.concurrent.thread
 import kotlin.math.roundToInt
 import java.awt.SystemTray as AwtSystemTray
 
@@ -94,20 +96,31 @@ internal fun DesktopTrayIcon(
     }
 
     DisposableEffect(Unit) {
-        val trayHandle = createDesktopTrayBackendInstaller().install(
+        val disposed = AtomicBoolean(false)
+        AsyncDesktopTrayBackendInstaller(createDesktopTrayBackendInstaller()).install(
             appTitle = { currentAppTitle.value },
             menuState = { currentMenuState.value },
-            onAvailable = { SwingUtilities.invokeLater(onTrayAvailable) },
-            onUnavailable = { SwingUtilities.invokeLater(onTrayUnavailable) },
-        )
-        trayHandleHolder.handle = trayHandle
-        trayHandleHolder.update(currentAppTitle.value, currentMenuState.value)
-        if (trayHandle == null) {
-            SwingUtilities.invokeLater(onTrayUnavailable)
+            onAvailable = {
+                SwingUtilities.invokeLater {
+                    if (!disposed.get()) onTrayAvailable()
+                }
+            },
+            onUnavailable = {
+                SwingUtilities.invokeLater {
+                    if (!disposed.get()) onTrayUnavailable()
+                }
+            },
+        ) { trayHandle ->
+            val accepted = trayHandleHolder.install(trayHandle)
+            if (accepted && trayHandle == null) {
+                SwingUtilities.invokeLater {
+                    if (!disposed.get()) onTrayUnavailable()
+                }
+            }
         }
         onDispose {
-            trayHandle?.dispose()
-            trayHandleHolder.handle = null
+            disposed.set(true)
+            trayHandleHolder.dispose()
         }
     }
 }
@@ -215,6 +228,37 @@ internal class DesktopTrayBackendInstaller(
     }
 }
 
+internal class AsyncDesktopTrayBackendInstaller(
+    private val installer: DesktopTrayBackendInstaller,
+    private val launchWorker: ((() -> Unit) -> Unit) = { task ->
+        thread(
+            start = true,
+            isDaemon = true,
+            name = "vpn-control-tray-install",
+            block = task,
+        )
+    },
+) {
+    fun install(
+        appTitle: () -> String,
+        menuState: () -> TrayMenuState,
+        onAvailable: () -> Unit,
+        onUnavailable: () -> Unit,
+        onComplete: (DesktopTrayHandle?) -> Unit,
+    ) {
+        launchWorker {
+            onComplete(
+                installer.install(
+                    appTitle = appTitle,
+                    menuState = menuState,
+                    onAvailable = onAvailable,
+                    onUnavailable = onUnavailable,
+                ),
+            )
+        }
+    }
+}
+
 private fun createDesktopTrayBackendInstaller(): DesktopTrayBackendInstaller {
     val backends = selectDesktopTrayBackendKinds(
         linuxPreference = detectLinuxTrayBackendPreference(),
@@ -319,10 +363,39 @@ private fun currentUserProcessCommands(): Sequence<String> {
 }
 
 private class DesktopTrayHandleHolder {
-    var handle: DesktopTrayHandle? = null
+    private var handle: DesktopTrayHandle? = null
+    private var latestAppTitle: String? = null
+    private var latestMenuState: TrayMenuState? = null
+    private var disposed = false
 
+    @Synchronized
     fun update(appTitle: String, menuState: TrayMenuState) {
+        latestAppTitle = appTitle
+        latestMenuState = menuState
         handle?.update(appTitle, menuState)
+    }
+
+    @Synchronized
+    fun install(candidate: DesktopTrayHandle?): Boolean {
+        if (disposed) {
+            candidate?.dispose()
+            return false
+        }
+        handle = candidate
+        val appTitle = latestAppTitle
+        val menuState = latestMenuState
+        if (candidate != null && appTitle != null && menuState != null) {
+            candidate.update(appTitle, menuState)
+        }
+        return true
+    }
+
+    @Synchronized
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        handle?.dispose()
+        handle = null
     }
 }
 

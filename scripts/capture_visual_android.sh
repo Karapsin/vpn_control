@@ -4,16 +4,121 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${1:-$repo_root/build/visual-actual/android}"
 scene_csv="${2:-}"
-device_dir="/sdcard/Android/data/com.kardinal.vpncontrol/files/visual-capture"
+device_dir="/data/local/tmp/vpn-control-visual"
+sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+if [[ -z "$sdk_root" && -f "$repo_root/local.properties" ]]; then
+  sdk_root="$(sed -n 's/^sdk\.dir=//p' "$repo_root/local.properties" | head -n 1)"
+fi
+adb_bin="$(command -v adb || true)"
+if [[ -z "$adb_bin" && -n "$sdk_root" && -x "$sdk_root/platform-tools/adb" ]]; then
+  adb_bin="$sdk_root/platform-tools/adb"
+fi
+[[ -n "$adb_bin" ]] || { echo "Android adb was not found." >&2; exit 1; }
 
 cd "$repo_root"
 mkdir -p "$output_dir"
-adb shell rm -rf "$device_dir"
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.VisualCaptureInstrumentedTest \
-  -Pandroid.testInstrumentationRunnerArguments.visualManifest="$repo_root/visual-tests/scenes.json" \
-  -Pandroid.testInstrumentationRunnerArguments.visualScenes="$scene_csv"
-adb pull "$device_dir/." "$output_dir/"
+while IFS= read -r scene; do
+  rm -f "$output_dir/$scene.png" "$output_dir/$scene.geometry.json"
+done < <(python3 - "$repo_root/visual-tests/scenes.json" "$scene_csv" <<'PY'
+import json
+import sys
+
+selected = {value for value in sys.argv[2].split(",") if value}
+for scene in json.load(open(sys.argv[1], encoding="utf-8"))["scenes"]:
+    if "android" in scene["platforms"] and (not selected or scene["id"] in selected):
+        print(scene["id"])
+PY
+)
+if [[ "${VPN_CONTROL_VISUAL_PROVIDER:-local}" != "hosted" ]]; then
+  avd_name="$($adb_bin emu avd name 2>/dev/null | sed '/^OK$/d' | head -n 1 | tr -d '\r')"
+  [[ "$avd_name" == "vpn-control-visual-api35" ]] || {
+    echo "Local Android visual capture refuses non-isolated device: ${avd_name:-unknown}." >&2
+    exit 1
+  }
+fi
+"$adb_bin" shell rm -rf "$device_dir"
+"$adb_bin" uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
+"$adb_bin" uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
+app_scenes="$(python3 scripts/select_visual_scenes.py \
+  --manifest visual-tests/scenes.json --platform android --kind app --requested "$scene_csv")"
+native_scenes="$(python3 scripts/select_visual_scenes.py \
+  --manifest visual-tests/scenes.json --platform android --kind native --requested "$scene_csv")"
+
+run_gradle_capture() {
+  local selected_scenes="$1"
+  ./gradlew :app:connectedDebugAndroidTest \
+    -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.VisualCaptureInstrumentedTest \
+    -Pandroid.testInstrumentationRunnerArguments.visualManifest="$repo_root/visual-tests/scenes.json" \
+    -Pandroid.testInstrumentationRunnerArguments.visualScenes="$selected_scenes"
+}
+
+pull_device_capture() {
+  "$adb_bin" pull "$device_dir/." "$output_dir/"
+}
+
+if [[ -n "$app_scenes" ]]; then
+  run_gradle_capture "$app_scenes"
+  pull_device_capture
+fi
+
+if [[ -n "$native_scenes" ]]; then
+  IFS=',' read -r -a native_scene_ids <<< "$native_scenes"
+  for native_scene in "${native_scene_ids[@]}"; do
+    if [[ "$native_scene" == "android-system-bars" ]]; then
+      run_gradle_capture "$native_scene"
+      pull_device_capture
+      continue
+    fi
+    case "$native_scene" in
+      android-vpn-consent) focus_pattern='com.android.vpndialogs' ;;
+      android-open-document|android-create-document) focus_pattern='documentsui' ;;
+      android-camera-qr) focus_pattern='CaptureActivity' ;;
+      android-share-chooser) focus_pattern='ChooserActivity' ;;
+      android-package-installer) focus_pattern='PackageInstallerActivity' ;;
+      android-vpn-notification) focus_pattern='NotificationShade' ;;
+      *) echo "Unknown Android native scene: $native_scene" >&2; exit 1 ;;
+    esac
+    screenshot_marker="$output_dir/.$native_scene-screenshot-marker"
+    touch "$screenshot_marker"
+    run_gradle_capture "$native_scene" &
+    gradle_pid=$!
+    native_window_ready=false
+    for _ in $(seq 1 1800); do
+      current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
+      if grep -q "$focus_pattern" <<< "$current_focus"; then
+        sleep 0.35
+        settled_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
+        if grep -q "$focus_pattern" <<< "$settled_focus"; then
+          "$adb_bin" emu screenrecord screenshot >/dev/null
+          native_window_ready=true
+          break
+        fi
+      fi
+      if ! kill -0 "$gradle_pid" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    set +e
+    wait "$gradle_pid"
+    gradle_exit=$?
+    set -e
+    (( gradle_exit == 0 )) || exit "$gradle_exit"
+    [[ "$native_window_ready" == true ]] || {
+      echo "$native_scene did not display its expected native surface." >&2
+      exit 1
+    }
+    host_screenshot="$(find "$repo_root" -maxdepth 1 -type f -name 'Screenshot_*.png' \
+      -newer "$screenshot_marker" -print | sort | tail -n 1)"
+    [[ -n "$host_screenshot" ]] || {
+      echo "The emulator framebuffer did not capture $native_scene." >&2
+      exit 1
+    }
+    pull_device_capture
+    mv "$host_screenshot" "$output_dir/$native_scene.png"
+    rm -f "$screenshot_marker"
+  done
+fi
 
 python3 - "$repo_root/visual-tests/scenes.json" "$output_dir" "$scene_csv" <<'PY'
 import json

@@ -92,6 +92,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -134,6 +135,7 @@ import com.kardinal.vpncontrol.shared.ui.SavedLocationRow as SharedSavedLocation
 import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.VpnControlColors
+import com.kardinal.vpncontrol.shared.ui.appLayoutDirection
 import com.kardinal.vpncontrol.shared.ui.activeProfileLabel as sharedActiveProfileLabel
 import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel as sharedCurrentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
@@ -257,7 +259,10 @@ fun VpnControlApp(
     val systemLanguageCode = Locale.getDefault().language
     val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)
 
-    CompositionLocalProvider(LocalAppStrings provides appStrings) {
+    CompositionLocalProvider(
+        LocalAppStrings provides appStrings,
+        LocalLayoutDirection provides appLayoutDirection(appStrings.language),
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -405,7 +410,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.profileHistoryRenameUrlDraft,
                         onValueChange = onProfileHistoryRenameUrlChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("profile-rename-url"),
                         label = { Text(appStrings.get(UiText.SUBSCRIPTION_URL)) },
                         singleLine = true,
                         colors = routingTextFieldColors(),
@@ -413,7 +418,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.profileHistoryRenameDraft,
                         onValueChange = onProfileHistoryRenameDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("profile-rename-name"),
                         label = { Text(appStrings.get(UiText.NAME)) },
                         placeholder = { Text(appStrings.get(UiText.MY_SUBSCRIPTION)) },
                         singleLine = true,
@@ -427,12 +432,12 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveProfileHistoryRename) {
+                TextButton(onClick = onSaveProfileHistoryRename, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onCloseProfileHistoryRenameDialog) {
+                TextButton(onClick = onCloseProfileHistoryRenameDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -448,11 +453,12 @@ fun VpnControlApp(
             text = {
                 Text(
                     text = appStrings.statusMessage(state.locationMutationBlockedMessage),
+                    modifier = Modifier.testTag("location-mutation-message"),
                     color = Color(0xFFD3E3EE),
                 )
             },
             confirmButton = {
-                TextButton(onClick = onCloseLocationMutationBlockedDialog) {
+                TextButton(onClick = onCloseLocationMutationBlockedDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close")) {
                     Text(appStrings.get(UiText.OK), color = Color(0xFF9ED6FF))
                 }
             },
@@ -472,6 +478,11 @@ fun VpnControlApp(
                             label = appStrings.get(mode.uiText()),
                             selected = state.dnsModeDraft == mode,
                             onClick = { onDnsModeChange(mode) },
+                            visualId = when (mode) {
+                                DnsMode.AUTOMATIC -> "dns-automatic"
+                                DnsMode.CUSTOM_DOH -> "dns-doh"
+                                DnsMode.CUSTOM_DOT -> "dns-dot"
+                            },
                         )
                     }
                     if (state.dnsSettings.legacyRawAddress.isNotBlank()) {
@@ -484,7 +495,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.customDnsEndpointDraft,
                         onValueChange = onDnsChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("dns-endpoint"),
                         label = { Text(appStrings.get(UiText.DNS_SECURE_ENDPOINT)) },
                         placeholder = {
                             Text(
@@ -501,12 +512,12 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveDns) {
+                TextButton(onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleDnsDialog) {
+                TextButton(onClick = onToggleDnsDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -521,12 +532,12 @@ fun VpnControlApp(
             textContentColor = Color.White,
             text = {
                 Column(
-                    modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(appStrings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-enabled"),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -536,7 +547,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.homeSshHostDraft,
                         onValueChange = onHomeSshHostChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-host"),
                         label = { Text(appStrings.get(UiText.HOME_SSH_HOST)) },
                         placeholder = { Text("example.com") },
                         singleLine = true,
@@ -545,7 +556,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.homeSshPortDraft,
                         onValueChange = onHomeSshPortChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-port"),
                         label = { Text(appStrings.get(UiText.HOME_SSH_PORT)) },
                         placeholder = { Text("228") },
                         singleLine = true,
@@ -554,7 +565,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.homeSshUserDraft,
                         onValueChange = onHomeSshUserChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-user"),
                         label = { Text(appStrings.get(UiText.HOME_SSH_USER)) },
                         placeholder = { Text("kardinal") },
                         singleLine = true,
@@ -563,7 +574,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.homeSshHostKeysDraft,
                         onValueChange = onHomeSshHostKeysChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-host-keys"),
                         label = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS)) },
                         supportingText = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
                         minLines = 2,
@@ -572,13 +583,17 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.homeSshRelayPortDraft,
                         onValueChange = onHomeSshRelayPortChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("ssh-relay-port"),
                         label = { Text(appStrings.get(UiText.HOME_SSH_RELAY_PORT)) },
                         placeholder = { Text("10808") },
                         singleLine = true,
                         colors = routingTextFieldColors(),
                     )
-                    OutlinedButton(onClick = onImportHomeSshPrivateKey, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = onImportHomeSshPrivateKey,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ssh-key"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9ED6FF)),
+                    ) {
                         Text(appStrings.get(UiText.IMPORT_PRIVATE_KEY))
                     }
                     Text(
@@ -594,12 +609,12 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveHomeSshRoute) {
+                TextButton(onClick = onSaveHomeSshRoute, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleHomeSshRouteDialog) {
+                TextButton(onClick = onToggleHomeSshRouteDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -610,15 +625,21 @@ fun VpnControlApp(
         AlertDialog(
             onDismissRequest = onDismissHomeSshRestart,
             title = { Text(appStrings.get(UiText.HOME_SSH_RESTART_TITLE), color = Color.White) },
-            text = { Text(appStrings.get(UiText.HOME_SSH_RESTART_DESCRIPTION), color = Color(0xFFD3E3EE)) },
+            text = {
+                Text(
+                    appStrings.get(UiText.HOME_SSH_RESTART_DESCRIPTION),
+                    color = Color(0xFFD3E3EE),
+                    modifier = Modifier.testTag("ssh-restart-description"),
+                )
+            },
             containerColor = Color(0xFF141F2D),
             confirmButton = {
-                TextButton(onClick = onRestartForHomeSsh) {
+                TextButton(onClick = onRestartForHomeSsh, modifier = Modifier.heightIn(min = 48.dp).testTag("restart-now")) {
                     Text(appStrings.get(UiText.RESTART_NOW), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onDismissHomeSshRestart) {
+                TextButton(onClick = onDismissHomeSshRestart, modifier = Modifier.heightIn(min = 48.dp).testTag("restart-later")) {
                     Text(appStrings.get(UiText.RESTART_LATER), color = Color(0xFFD3E3EE))
                 }
             },
@@ -639,6 +660,7 @@ fun VpnControlApp(
                         fontSize = 13.sp,
                     )
                     Card(
+                        modifier = Modifier.testTag("mode-switch"),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
                     ) {
@@ -696,7 +718,7 @@ fun VpnControlApp(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = onToggleAppModeDialog) {
+                TextButton(onClick = onToggleAppModeDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close")) {
                     Text(appStrings.get(UiText.CLOSE), color = Color(0xFFD3E3EE))
                 }
             },
@@ -713,7 +735,7 @@ fun VpnControlApp(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp)
+                        .heightIn(max = 520.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -740,9 +762,15 @@ fun VpnControlApp(
                             },
                             selected = state.subscriptionRefreshPolicyDraft == policy,
                             onClick = { onSubscriptionRefreshPolicyChange(policy) },
+                            visualId = when (policy) {
+                                SubscriptionRefreshPolicy.OFF -> "refresh-off"
+                                SubscriptionRefreshPolicy.EVERY_HOUR -> "refresh-hourly"
+                                SubscriptionRefreshPolicy.CUSTOM -> "refresh-custom"
+                            },
                         )
                     }
                     Card(
+                        modifier = Modifier.testTag("refresh-find-best"),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
                     ) {
@@ -788,7 +816,7 @@ fun VpnControlApp(
                             OutlinedTextField(
                                 value = state.subscriptionRefreshCustomHoursDraft,
                                 onValueChange = onSubscriptionRefreshCustomHoursChange,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().testTag("refresh-hours"),
                                 label = { Text(appStrings.get(UiText.CUSTOM_INTERVAL_HOURS)) },
                                 placeholder = { Text("0.5") },
                                 singleLine = true,
@@ -804,12 +832,15 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveSubscriptionRefreshPolicy) {
+                TextButton(
+                    onClick = onSaveSubscriptionRefreshPolicy,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"),
+                ) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleRefreshPolicyDialog) {
+                TextButton(onClick = onToggleRefreshPolicyDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -826,7 +857,7 @@ fun VpnControlApp(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp)
+                        .heightIn(max = 520.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -842,7 +873,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.validationTestUrlDraft,
                         onValueChange = onValidationTestUrlChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-url"),
                         label = { Text(appStrings.get(UiText.TEST_SITE)) },
                         placeholder = { Text(appStrings.get(UiText.TEST_SITE_PLACEHOLDER)) },
                         singleLine = true,
@@ -851,7 +882,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.validationBatchSizeDraft,
                         onValueChange = onValidationBatchSizeChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-batch"),
                         label = { Text(appStrings.get(UiText.BATCH_SIZE)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -860,7 +891,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.validationSubscriptionRefreshConcurrencyDraft,
                         onValueChange = onValidationSubscriptionRefreshConcurrencyChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-concurrency"),
                         label = { Text(appStrings.get(UiText.SUBSCRIPTION_REFRESH_CONCURRENCY)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -869,7 +900,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.validationRetryCountDraft,
                         onValueChange = onValidationRetryCountChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-retries"),
                         label = { Text(appStrings.get(UiText.RETRY_COUNT)) },
                         placeholder = { Text("1") },
                         singleLine = true,
@@ -878,7 +909,7 @@ fun VpnControlApp(
                     OutlinedTextField(
                         value = state.validationActiveVerificationWindowSizeDraft,
                         onValueChange = onValidationActiveVerificationWindowSizeChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("validation-window"),
                         label = { Text(appStrings.get(UiText.ACTIVE_VERIFICATION_WINDOW)) },
                         placeholder = { Text("3") },
                         singleLine = true,
@@ -895,12 +926,15 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveValidationSettings) {
+                TextButton(onClick = onSaveValidationSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onToggleValidationSettingsDialog) {
+                TextButton(
+                    onClick = onToggleValidationSettingsDialog,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel"),
+                ) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -930,11 +964,12 @@ fun VpnControlApp(
                         onFileClick = onImportLocationFromFile,
                         enabled = !state.isBusy,
                         modifier = Modifier.fillMaxWidth(),
+                        visualId = "location-dialog-import",
                     )
                     OutlinedTextField(
                         value = state.locationDraft,
                         onValueChange = onLocationDraftChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("location-draft"),
                         minLines = 5,
                         label = { Text(appStrings.get(UiText.LOCATION_CONFIG_LABEL)) },
                         colors = routingTextFieldColors(),
@@ -947,12 +982,12 @@ fun VpnControlApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveLocation) {
+                TextButton(onClick = onSaveLocation, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
             dismissButton = {
-                TextButton(onClick = onCloseLocationDialog) {
+                TextButton(onClick = onCloseLocationDialog, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
                     Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
@@ -993,7 +1028,10 @@ private fun RefreshProgressDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    CircularProgressIndicator(color = Color.White)
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.testTag("blocking-progress"),
+                    )
                     Text(
                         text = progressText.ifBlank { strings.get(UiText.REFRESHING) },
                         color = Color(0xFFD3E3EE),
@@ -1001,6 +1039,7 @@ private fun RefreshProgressDialog(
                     )
                     OutlinedButton(
                         onClick = onCancel,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("cancel-operation"),
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
                         colors = ButtonDefaults.outlinedButtonColors(
@@ -1222,7 +1261,10 @@ private fun MainAdvancedMenu(
     }
 
     Box {
-        IconButton(onClick = { advancedMenuExpanded = true }) {
+        IconButton(
+            onClick = { advancedMenuExpanded = true },
+            modifier = Modifier.size(48.dp).testTag("main-settings"),
+        ) {
             Icon(
                 imageVector = Icons.Filled.Settings,
                 contentDescription = strings.get(UiText.ADDITIONAL_SETTINGS),
@@ -1235,6 +1277,7 @@ private fun MainAdvancedMenu(
             containerColor = menuContainerColor,
         ) {
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-ssh"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_HOME_SSH_ROUTE), color = menuTitleColor)
@@ -1253,6 +1296,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-language"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LANGUAGE), color = menuTitleColor)
@@ -1269,6 +1313,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-mode"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE), color = menuTitleColor)
@@ -1302,6 +1347,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-rules"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.IGNORE_RULES), color = menuTitleColor)
@@ -1325,6 +1371,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-refresh"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH), color = menuTitleColor)
@@ -1341,6 +1388,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-validation"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_LOCATION_TEST), color = menuTitleColor)
@@ -1357,6 +1405,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-dns"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_CUSTOM_DNS), color = menuTitleColor)
@@ -1373,6 +1422,7 @@ private fun MainAdvancedMenu(
                 },
             )
             DropdownMenuItem(
+                modifier = Modifier.testTag("settings-update"),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_UPDATE), color = menuTitleColor)
@@ -1398,10 +1448,12 @@ private fun SourceModeOption(
     description: String,
     selected: Boolean,
     onClick: () -> Unit,
+    visualId: String,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag(visualId)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -1429,9 +1481,10 @@ private fun SecureDnsModeOption(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    visualId: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().testTag(visualId).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = onClick)
@@ -1453,6 +1506,7 @@ private fun ImportMenuButton(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     label: String? = null,
+    visualId: String? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
@@ -1460,7 +1514,10 @@ private fun ImportMenuButton(
         OutlinedButton(
             onClick = { expanded = true },
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .then(if (visualId == null) Modifier else Modifier.testTag(visualId)),
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
             colors = darkOutlinedButtonColors(),
@@ -1472,7 +1529,7 @@ private fun ImportMenuButton(
             onDismissRequest = { expanded = false },
         ) {
             DropdownMenuItem(
-                modifier = Modifier.testTag("import-menu-qr"),
+                modifier = Modifier.testTag("import-qr"),
                 text = { Text(strings.get(UiText.QR)) },
                 leadingIcon = {
                     Icon(
@@ -1486,7 +1543,7 @@ private fun ImportMenuButton(
                 },
             )
             DropdownMenuItem(
-                modifier = Modifier.testTag("import-menu-clipboard"),
+                modifier = Modifier.testTag("import-clipboard"),
                 text = { Text(strings.get(UiText.CLIPBOARD)) },
                 leadingIcon = {
                     Icon(
@@ -1500,7 +1557,7 @@ private fun ImportMenuButton(
                 },
             )
             DropdownMenuItem(
-                modifier = Modifier.testTag("import-menu-file"),
+                modifier = Modifier.testTag("import-file"),
                 text = { Text(strings.get(UiText.FILE)) },
                 leadingIcon = {
                     Icon(
@@ -1532,6 +1589,7 @@ private fun ExportMenuButton(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     label: String? = null,
+    visualId: String? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
@@ -1539,7 +1597,10 @@ private fun ExportMenuButton(
         OutlinedButton(
             onClick = { expanded = true },
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .then(if (visualId == null) Modifier else Modifier.testTag(visualId)),
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
             colors = darkOutlinedButtonColors(),
@@ -1551,7 +1612,7 @@ private fun ExportMenuButton(
             onDismissRequest = { expanded = false },
         ) {
             DropdownMenuItem(
-                modifier = Modifier.testTag("export-menu-qr"),
+                modifier = Modifier.testTag("export-qr"),
                 text = { Text(strings.get(UiText.QR)) },
                 leadingIcon = {
                     Icon(
@@ -1565,7 +1626,7 @@ private fun ExportMenuButton(
                 },
             )
             DropdownMenuItem(
-                modifier = Modifier.testTag("export-menu-clipboard"),
+                modifier = Modifier.testTag("export-clipboard"),
                 text = { Text(strings.get(UiText.CLIPBOARD)) },
                 leadingIcon = {
                     Icon(
@@ -1579,7 +1640,7 @@ private fun ExportMenuButton(
                 },
             )
             DropdownMenuItem(
-                modifier = Modifier.testTag("export-menu-file"),
+                modifier = Modifier.testTag("export-file"),
                 text = { Text(strings.get(UiText.FILE)) },
                 leadingIcon = {
                     Icon(
@@ -1632,7 +1693,7 @@ private fun ExportQrDialog(
                     Image(
                         bitmap = it.asImageBitmap(),
                         contentDescription = title,
-                        modifier = Modifier.size(280.dp),
+                        modifier = Modifier.size(280.dp).testTag("qr-code"),
                     )
                 } ?: Text(
                     text = strings.get(UiText.QR_GENERATION_FAILED),
@@ -1643,8 +1704,8 @@ private fun ExportQrDialog(
                     color = Color(0xFFD3E3EE),
                     fontSize = 12.sp,
                 )
-                TextButton(onClick = onDismiss) {
-                    Text(strings.get(UiText.CLOSE))
+                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close")) {
+                    Text(strings.get(UiText.CLOSE), color = Color(0xFF9ED6FF))
                 }
             }
         }
@@ -1828,12 +1889,15 @@ private fun LocationsScreen(
         AlertDialog(
             onDismissRequest = { exportQrError = null },
             confirmButton = {
-                TextButton(onClick = { exportQrError = null }) {
-                    Text(strings.get(UiText.CLOSE))
+                TextButton(
+                    onClick = { exportQrError = null },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close"),
+                ) {
+                    Text(strings.get(UiText.CLOSE), color = Color(0xFF9ED6FF))
                 }
             },
             title = { Text(strings.get(UiText.QR_EXPORT_TOO_LARGE)) },
-            text = { Text(message) },
+            text = { Text(message, modifier = Modifier.testTag("location-error")) },
         )
     }
 
@@ -1861,6 +1925,7 @@ private fun LocationsScreen(
                         onFileClick = onImportLocations,
                         enabled = !state.isBusy,
                         modifier = Modifier.weight(1f),
+                        visualId = "locations-import-menu",
                     )
                     ExportMenuButton(
                         onQrClick = {
@@ -1883,6 +1948,7 @@ private fun LocationsScreen(
                         onFileClick = onExportLocations,
                         enabled = !state.isBusy,
                         modifier = Modifier.weight(1f),
+                        visualId = "locations-export",
                     )
                 }
             } else {
@@ -1907,6 +1973,7 @@ private fun LocationsScreen(
                     onFileClick = onExportLocations,
                     enabled = !state.isBusy,
                     modifier = Modifier.fillMaxWidth(),
+                    visualId = "locations-export",
                 )
             }
         },
@@ -1951,6 +2018,7 @@ private fun ProfileSourceCard(
     }
 
     Card(
+        modifier = Modifier.testTag("profile-source-mode"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
     ) {
@@ -1987,6 +2055,9 @@ private fun ProfileSourceCard(
                     ) {
                         Text(
                             text = if (useSubscription) strings.get(UiText.SUBSCRIPTION) else strings.get(UiText.SAVED_LOCATIONS),
+                            modifier = Modifier.testTag(
+                                if (useSubscription) "profile-source-selection" else "profile-current-locations",
+                            ),
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
@@ -2049,8 +2120,9 @@ private fun ProfileSourceCard(
                                     onClick = onClearProfileSource,
                                     enabled = !state.isBusy && (state.profileUrl.isNotBlank() || state.profileDraft.isNotBlank()),
                                     modifier = Modifier
+                                        .testTag("profile-clear")
                                         .background(Color(0x223C7AE6), RoundedCornerShape(12.dp))
-                                        .size(44.dp),
+                                        .size(48.dp),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.DeleteSweep,
@@ -2063,7 +2135,8 @@ private fun ProfileSourceCard(
                                     enabled = !state.isBusy,
                                     modifier = Modifier
                                         .background(Color(0x223C7AE6), RoundedCornerShape(12.dp))
-                                        .size(44.dp),
+                                        .size(48.dp)
+                                        .testTag("profile-cancel"),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
@@ -2079,11 +2152,12 @@ private fun ProfileSourceCard(
                             onFileClick = onImportSubscriptionFromFile,
                             enabled = !state.isBusy,
                             modifier = Modifier.fillMaxWidth(),
+                            visualId = "profile-import-menu",
                         )
                         OutlinedTextField(
                             value = state.profileDraft,
                             onValueChange = onProfileChange,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("profile-url"),
                             minLines = 3,
                             placeholder = { Text(strings.get(UiText.SUBSCRIPTION_URL_PLACEHOLDER)) },
                             colors = routingTextFieldColors(),
@@ -2091,7 +2165,7 @@ private fun ProfileSourceCard(
                         OutlinedTextField(
                             value = state.profileTitleDraft,
                             onValueChange = onProfileTitleChange,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("profile-title"),
                             label = { Text(strings.get(UiText.SUBSCRIPTION_NAME)) },
                             placeholder = { Text(strings.get(UiText.OPTIONAL_CUSTOM_NAME)) },
                             singleLine = true,
@@ -2108,7 +2182,7 @@ private fun ProfileSourceCard(
                         Button(
                             onClick = onSaveProfile,
                             enabled = !state.isBusy,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("profile-save"),
                             shape = RoundedCornerShape(18.dp),
                             colors = darkButtonColors(),
                         ) {
@@ -2136,6 +2210,7 @@ private fun AddSubscriptionLauncherCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("profile-add-subscription")
             .clickable(onClick = onClick)
             .drawBehind {
                 drawRoundRect(
@@ -2215,7 +2290,7 @@ private fun ProfileHistorySection(
                 refreshEnabled = refreshEnabled,
             )
         }
-        subscriptions.forEach { subscription ->
+        subscriptions.forEachIndexed { visualIndex, subscription ->
             val source = subscription.url
             val preview = RemoteSourceResolver.preview(source)
             ProfileHistoryEntryCard(
@@ -2229,6 +2304,7 @@ private fun ProfileHistorySection(
                 onRename = { onRenameEntry(source) },
                 onDelete = { onDeleteEntry(source) },
                 refreshEnabled = refreshEnabled,
+                visualIndex = visualIndex,
             )
         }
     }
@@ -2244,7 +2320,7 @@ private fun AllSubscriptionsEntryCard(
 ) {
     val strings = LocalAppStrings.current
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("profile-all-subscriptions"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) Color(0x334B7BE5) else Color(0x24141F2D),
@@ -2310,6 +2386,7 @@ private fun AllSubscriptionsEntryCard(
                 IconButton(
                     onClick = onRefresh,
                     enabled = refreshEnabled,
+                    modifier = Modifier.size(48.dp).testTag("profile-refresh-all"),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
@@ -2334,12 +2411,13 @@ private fun ProfileHistoryEntryCard(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     refreshEnabled: Boolean,
+    visualIndex: Int,
 ) {
     val strings = LocalAppStrings.current
     val displayTitle = customName.ifBlank { preview?.title ?: strings.get(UiText.SAVED_SOURCE) }
     val defaultTitle = preview?.title.orEmpty()
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag(if (visualIndex == 0) "profile-current-source" else "profile-source-$visualIndex"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) Color(0x334B7BE5) else Color(0x24141F2D),
@@ -2426,6 +2504,7 @@ private fun ProfileHistoryEntryCard(
                 IconButton(
                     onClick = onRefresh,
                     enabled = refreshEnabled,
+                    modifier = Modifier.size(48.dp).testTag(if (visualIndex == 0) "profile-refresh" else "profile-refresh-$visualIndex"),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
@@ -2433,14 +2512,20 @@ private fun ProfileHistoryEntryCard(
                         tint = if (refreshEnabled) Color.White else Color(0xFF9FB8C8),
                     )
                 }
-                IconButton(onClick = onRename) {
+                IconButton(
+                    onClick = onRename,
+                    modifier = Modifier.size(48.dp).testTag(if (visualIndex == 0) "profile-rename" else "profile-rename-$visualIndex"),
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
                         contentDescription = strings.get(UiText.RENAME_SUBSCRIPTION),
                         tint = Color.White,
                     )
                 }
-                IconButton(onClick = onDelete) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(48.dp).testTag(if (visualIndex == 0) "profile-delete" else "profile-delete-$visualIndex"),
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
                         contentDescription = strings.get(UiText.DELETE_SUBSCRIPTION),
@@ -2456,6 +2541,7 @@ private fun ProfileHistoryEntryCard(
 private fun RemoteSourcePreviewCard(preview: RemoteSourcePreview) {
     val strings = LocalAppStrings.current
     Card(
+        modifier = Modifier.testTag("profile-preview"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (preview.supported) Color(0x24141F2D) else Color(0x33A06A20),
@@ -2487,6 +2573,7 @@ private fun RemoteSourcePreviewCard(preview: RemoteSourcePreview) {
             preview.warning?.takeIf { it.isNotBlank() }?.let { warning ->
                 Text(
                     text = strings.statusMessage(warning),
+                    modifier = Modifier.testTag("profile-warning"),
                     color = Color(0xFFFFE0A3),
                     fontSize = 12.sp,
                 )
@@ -2538,12 +2625,15 @@ private fun RoutingRulesScreen(
         AlertDialog(
             onDismissRequest = { exportQrError = null },
             confirmButton = {
-                TextButton(onClick = { exportQrError = null }) {
-                    Text(strings.get(UiText.CLOSE))
+                TextButton(
+                    onClick = { exportQrError = null },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-close"),
+                ) {
+                    Text(strings.get(UiText.CLOSE), color = Color(0xFF9ED6FF))
                 }
             },
             title = { Text(strings.get(UiText.QR_EXPORT_TOO_LARGE)) },
-            text = { Text(message) },
+            text = { Text(message, modifier = Modifier.testTag("routing-error")) },
         )
     }
 
@@ -2566,6 +2656,7 @@ private fun RoutingRulesScreen(
                     onFileClick = onImport,
                     enabled = !state.isBusy,
                     modifier = Modifier.weight(1f),
+                    visualId = "routing-import-menu",
                 )
                 ExportMenuButton(
                     onQrClick = {
@@ -2588,6 +2679,7 @@ private fun RoutingRulesScreen(
                     onFileClick = onExport,
                     enabled = !state.isBusy,
                     modifier = Modifier.weight(1f),
+                    visualId = "routing-export-menu",
                 )
             }
         },

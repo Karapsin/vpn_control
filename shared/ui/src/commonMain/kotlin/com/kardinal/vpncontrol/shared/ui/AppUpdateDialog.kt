@@ -3,14 +3,17 @@ package com.kardinal.vpncontrol.shared.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.kardinal.vpncontrol.AppUpdatePhase
 import com.kardinal.vpncontrol.AppUpdateState
@@ -39,7 +42,10 @@ fun AppUpdateDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(updatePhaseText(state, strings))
+                Text(
+                    updatePhaseText(state, strings),
+                    modifier = Modifier.testTag(if (busy) "update-progress" else "update-message"),
+                )
                 if (state.phase == AppUpdatePhase.DOWNLOADING) {
                     state.progress?.let { progress ->
                         LinearProgressIndicator(
@@ -56,7 +62,11 @@ fun AppUpdateDialog(
                     Text(state.message)
                 }
                 if (state.releaseNotesUrl.isNotBlank()) {
-                    OutlinedButton(onClick = onOpenReleaseNotes) {
+                    OutlinedButton(
+                        onClick = onOpenReleaseNotes,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("update-release-notes"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = VpnControlColors.Accent),
+                    ) {
                         Text(strings.get(UiText.UPDATE_RELEASE_NOTES))
                     }
                 }
@@ -64,12 +74,20 @@ fun AppUpdateDialog(
         },
         confirmButton = {
             when (state.phase) {
-                AppUpdatePhase.READY -> Button(onClick = onInstall) {
+                AppUpdatePhase.READY -> Button(
+                    onClick = onInstall,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("update-install"),
+                    colors = darkButtonColors(),
+                ) {
                     Text(strings.get(UiText.UPDATE_INSTALL))
                 }
                 AppUpdatePhase.FAILED,
                 AppUpdatePhase.UNSUPPORTED,
-                -> Button(onClick = onRetry) {
+                -> Button(
+                    onClick = onRetry,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("update-retry"),
+                    colors = darkButtonColors(),
+                ) {
                     Text(strings.get(UiText.UPDATE_RETRY))
                 }
                 else -> Unit
@@ -79,7 +97,14 @@ fun AppUpdateDialog(
             OutlinedButton(
                 onClick = onDismiss,
                 enabled = state.phase != AppUpdatePhase.INSTALLING,
-                modifier = Modifier.padding(end = 4.dp),
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .heightIn(min = 48.dp)
+                    .testTag(if (busy) "update-cancel" else "update-close"),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = VpnControlColors.Accent,
+                    disabledContentColor = VpnControlColors.TextMuted,
+                ),
             ) {
                 Text(strings.get(if (busy) UiText.CANCEL else UiText.CLOSE))
             }

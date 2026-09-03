@@ -39,7 +39,7 @@ fun HomeTabScaffold(
     val strings = LocalAppStrings.current
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = Color(0xFF141F2D),
+        containerColor = Color.Transparent,
         contentColor = Color.White,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
@@ -105,13 +105,7 @@ fun HomeTabScaffold(
                 .fillMaxWidth()
                 .fillMaxSize()
                 .padding(padding)
-                .background(
-                    if (currentScreen == AppScreen.ROUTING_RULES) {
-                        Color(0xFF141F2D)
-                    } else {
-                        Color.Transparent
-                    },
-                ),
+                .background(Color.Transparent),
             content = content,
         )
     }

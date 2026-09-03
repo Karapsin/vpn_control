@@ -37,7 +37,7 @@ object VpnControlColors {
 
 private val VpnControlColorScheme = darkColorScheme(
     primary = VpnControlColors.Primary,
-    onPrimary = VpnControlColors.TextPrimary,
+    onPrimary = VpnControlColors.Navy950,
     primaryContainer = VpnControlColors.Navy700,
     onPrimaryContainer = VpnControlColors.TextPrimary,
     secondary = VpnControlColors.Accent,

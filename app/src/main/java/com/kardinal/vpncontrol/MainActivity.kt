@@ -9,15 +9,24 @@ import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
+import com.kardinal.vpncontrol.shared.ui.LocalStatsClock
+import com.kardinal.vpncontrol.shared.ui.StatsClock
 import com.kardinal.vpncontrol.ui.VpnControlApp
 
 class MainActivity : ComponentActivity() {
@@ -30,6 +39,8 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
         MainViewModel.factory(applicationContext)
     }
+    private var visualStateOverride by mutableStateOf<MainUiState?>(null)
+    private var visualStateRevision by mutableIntStateOf(0)
     private var pendingRoutingRulesExport: String? = null
     private var pendingLocationsExport: String? = null
     private var pendingVpnPermissionAction: (() -> Unit)? = null
@@ -156,13 +167,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
 
         setContent {
             val state = viewModel.uiState.collectAsStateWithLifecycle()
+            val renderedState = visualStateOverride ?: state.value
             VpnControlTheme {
+                key(visualStateRevision) {
+                CompositionLocalProvider(
+                    LocalStatsClock provides if (visualStateOverride == null) {
+                        LocalStatsClock.current
+                    } else {
+                        StatsClock(nowMillis = { 1_700_003_600_000L }, liveUpdates = false)
+                    },
+                ) {
                 VpnControlApp(
-                state = state.value,
+                state = renderedState,
                 onNavigateBack = viewModel::navigateBack,
                 onProfileChange = viewModel::onProfileDraftChanged,
                 onProfileTitleChange = viewModel::onProfileTitleDraftChanged,
@@ -327,10 +350,29 @@ class MainActivity : ComponentActivity() {
                 onCancelBusyAction = viewModel::cancelActiveOperation,
                 onExportDiagnostics = viewModel::exportDiagnostics,
                 )
+                }
+                }
             }
         }
 
         handleIncomingIntent(intent)
+    }
+
+    /** Installs deterministic in-memory presentation state for debug visual capture only. */
+    internal fun replaceStateForVisualCapture(state: MainUiState) {
+        check(BuildConfig.DEBUG) { "Visual state injection is available only in debug builds" }
+        visualStateOverride = state
+        visualStateRevision += 1
+    }
+
+    /** Exercises the production VPN-permission launcher in an isolated debug visual test. */
+    internal fun launchVpnConsentForVisualCapture() {
+        check(BuildConfig.DEBUG) { "Visual VPN consent is available only in debug builds" }
+        vpnPermissionLauncher.launch(
+            requireNotNull(VpnService.prepare(this)) {
+                "The isolated emulator unexpectedly retained VPN consent"
+            },
+        )
     }
 
     override fun onNewIntent(intent: Intent) {

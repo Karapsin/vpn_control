@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read and validate VPN Control's canonical four-part version."""
+"""Read and validate VPN Control's canonical product version."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ VERSION_PATTERN = re.compile(r"^vpnControlVersion=([^\s]+)$", re.MULTILINE)
 MAX_COMPONENT = 19
 
 
-def parse_version(value: str) -> tuple[int, int, int, int]:
+def parse_version(value: str) -> tuple[int, int, int]:
     parts = value.strip().split(".")
-    if len(parts) != 4 or any(not part.isdigit() for part in parts):
-        raise ValueError("Version must have four numeric parts")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        raise ValueError("Version must have three numeric parts")
     numbers = tuple(int(part) for part in parts)
-    if any(number < 0 or number > MAX_COMPONENT for number in numbers):
-        raise ValueError("Version components must be between 0 and 19")
+    if numbers[0] < 1 or any(number < 0 or number > MAX_COMPONENT for number in numbers):
+        raise ValueError("Version major must be 1..19 and other components must be 0..19")
     return numbers  # type: ignore[return-value]
 
 
@@ -32,23 +32,21 @@ def read_version(repository: Path) -> str:
     return value
 
 
-def build_number(parts: tuple[int, int, int, int]) -> int:
+def build_number(parts: tuple[int, int, int]) -> int:
     value = 0
     for part in parts:
         value = value * 20 + part
+    # Preserve monotonic ordering over legacy four-part builds by reserving the
+    # retired fourth base-20 component as zero. This is an internal build ID,
+    # never a platform-specific product version.
+    value *= 20
     if value <= 0:
         raise ValueError("Version build number must be positive")
     return value
 
 
-def desktop_package_version(parts: tuple[int, int, int, int]) -> str:
-    major, minor, patch, build = parts
-    return f"{major}.{minor}.{patch * 20 + build}"
-
-
-def macos_package_version(parts: tuple[int, int, int, int]) -> str:
-    major, minor, patch, build = parts
-    return f"1.{major * 20 + minor}.{patch * 20 + build}"
+def product_version(parts: tuple[int, int, int]) -> str:
+    return ".".join(str(part) for part in parts)
 
 
 def metadata(repository: Path) -> dict[str, str]:
@@ -57,8 +55,10 @@ def metadata(repository: Path) -> dict[str, str]:
     return {
         "version": version,
         "build-number": str(build_number(parts)),
-        "desktop-package-version": desktop_package_version(parts),
-        "macos-package-version": macos_package_version(parts),
+        # Compatibility field names remain available to packaging scripts, but
+        # their values are the one canonical product version on every platform.
+        "desktop-package-version": product_version(parts),
+        "macos-package-version": product_version(parts),
         "tag": f"v{version}",
     }
 

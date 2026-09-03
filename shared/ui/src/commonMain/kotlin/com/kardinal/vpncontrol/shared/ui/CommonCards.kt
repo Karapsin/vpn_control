@@ -153,6 +153,7 @@ fun MainActionButton(
     outlined: Boolean = false,
     colors: ButtonColors? = null,
     visualId: String? = null,
+    sublabelVisualId: String? = null,
 ) {
     val strings = LocalAppStrings.current
     val content: @Composable () -> Unit = {
@@ -171,7 +172,10 @@ fun MainActionButton(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(label, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text(strings.statusMessage(sublabel))
+                Text(
+                    strings.statusMessage(sublabel),
+                    modifier = if (sublabelVisualId == null) Modifier else Modifier.testTag(sublabelVisualId),
+                )
             }
         }
     }

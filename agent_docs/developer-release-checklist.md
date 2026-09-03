@@ -19,7 +19,7 @@ Do not invoke the publisher workflow directly unless repairing the release tool 
 
 ## Version Metadata
 
-The canonical version is `vpnControlVersion` in `gradle.properties`. It has four base-20 components (`0..19`). `scripts/version_metadata.py` projects that value into Android version code and platform package versions. README and the latest versioned changelog heading must agree with it at release time.
+The canonical version is `vpnControlVersion` in `gradle.properties`. It has three base-20 components: a major in `1..19` and two remaining components in `0..19`. It is the exact product version used by every platform package and UI. `scripts/version_metadata.py` derives only the non-displayed Android/update build ID by appending an internal zero component. README and the latest versioned changelog heading must agree with the canonical version at release time.
 
 Ordinary non-documentation work uses `version_bump` to append one concise `Unreleased` bullet. The version rolls automatically only when the 10th unreleased bullet is added. A forced early roll is reserved for an explicit release.
 

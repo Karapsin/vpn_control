@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -27,7 +28,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,6 +57,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -111,6 +115,7 @@ fun RoutingRulesScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag("routing-list")
                 .padding(padding)
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -129,6 +134,7 @@ fun RoutingRulesScreen(
                     } else {
                         strings.get(UiText.ROUTING_DESCRIPTION_PROXY)
                     },
+                    modifier = if (showAppAssignments) Modifier else Modifier.testTag("desktop-routing-note"),
                 )
             }
             item {
@@ -156,6 +162,7 @@ fun RoutingRulesScreen(
             if (showAppAssignments) {
                 item {
                     Card(
+                        modifier = Modifier.testTag("proxy-app-list"),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
                     ) {
@@ -189,7 +196,7 @@ fun RoutingRulesScreen(
                             OutlinedTextField(
                                 value = state.routingAppSearch,
                                 onValueChange = onAppSearchChange,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().testTag("app-search"),
                                 label = { Text(strings.get(UiText.SEARCH_APPS_OR_PACKAGES)) },
                                 singleLine = true,
                                 colors = routingTextFieldColors(),
@@ -232,7 +239,7 @@ fun RoutingRulesScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(320.dp),
+                                    .height(220.dp),
                             ) {
                                 when {
                                     state.installedAppsLoading -> {
@@ -268,11 +275,12 @@ fun RoutingRulesScreen(
                                             contentPadding = PaddingValues(vertical = 8.dp),
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                         ) {
-                                            items(filteredApps, key = { it.packageName }) { app ->
+                                            itemsIndexed(filteredApps, key = { _, app -> app.packageName }) { index, app ->
                                                 AppAssignmentRow(
                                                     app = app,
                                                     isProxy = app.packageName in state.routingProxyPackagesDraft,
                                                     onToggleProxy = { onToggleProxyApp(app.packageName) },
+                                                    visualIndex = index,
                                                 )
                                             }
                                         }
@@ -294,6 +302,7 @@ private fun QuicCompatibilityCard(
 ) {
     val strings = LocalAppStrings.current
     Card(
+        modifier = Modifier.testTag("rules-block-quic"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
     ) {
@@ -351,6 +360,7 @@ private fun CompactSummaryCard(
 ) {
     val strings = LocalAppStrings.current
     Card(
+        modifier = Modifier.testTag("direct-domains"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x291D2934)),
     ) {
@@ -513,8 +523,8 @@ private fun DirectDomainChip(
     Row(
         modifier = Modifier
             .background(Color(0x333983FF), RoundedCornerShape(14.dp))
-            .height(32.dp)
-            .padding(start = 10.dp, end = 2.dp),
+            .height(48.dp)
+            .padding(start = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -528,7 +538,7 @@ private fun DirectDomainChip(
         )
         TextButton(
             onClick = onRemove,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(48.dp),
             contentPadding = PaddingValues(0.dp),
         ) {
             Text("x", color = Color(0xFFD3E3EE), fontSize = 13.sp)
@@ -543,8 +553,8 @@ private fun DirectDomainAddChip(
     Box(
         modifier = Modifier
             .background(Color(0x1F9ED6FF), RoundedCornerShape(14.dp))
-            .height(32.dp)
-            .defaultMinSize(minWidth = 44.dp)
+            .height(48.dp)
+            .defaultMinSize(minWidth = 48.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -590,8 +600,8 @@ private fun DirectDomainInputChip(
             Row(
                 modifier = Modifier
                     .background(Color(0x333983FF), RoundedCornerShape(14.dp))
-                    .height(32.dp)
-                    .padding(start = 10.dp, end = 2.dp),
+                    .height(48.dp)
+                    .padding(start = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -608,7 +618,7 @@ private fun DirectDomainInputChip(
                 }
                 TextButton(
                     onClick = onCancel,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp),
                 ) {
                     Text("x", color = Color(0xFFD3E3EE), fontSize = 13.sp)
@@ -635,10 +645,11 @@ private fun AppAssignmentRow(
     app: InstalledApp,
     isProxy: Boolean,
     onToggleProxy: () -> Unit,
+    visualIndex: Int,
 ) {
     val strings = LocalAppStrings.current
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("app-result-$visualIndex"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = when {
@@ -686,6 +697,12 @@ private fun AppAssignmentRow(
                 Switch(
                     checked = isProxy,
                     onCheckedChange = { onToggleProxy() },
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("app-proxy-$visualIndex")
+                        .semantics {
+                            contentDescription = "${app.label}: ${if (isProxy) strings.get(UiText.VPN_ON) else strings.get(UiText.VPN_OFF)}"
+                        },
                 )
                 if (app.isSystemApp) {
                     Text(

@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.0.0 - 2026-09-03
 
 - Added fail-closed SSH Routing through an SSH relay.
 - Added repository agent lifecycle tooling and documentation search.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Centralized product contracts and added the fixed navy UI with an automated cross-platform visual release gate.
 - Make visual validation agent-owned with isolated local or ephemeral hosted environments and exact-SHA review receipts.
 - Made agent visual environment tests portable across native path formats.
+- Unified cross-platform versioning, fixed navy UI, and agent-owned visual release validation.
 
 ## 0.1.7.3 - 2026-08-30
 
