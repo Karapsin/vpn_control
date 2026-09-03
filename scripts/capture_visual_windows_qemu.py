@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import binascii
 import json
+import os
+import shutil
 import socket
 import struct
+import subprocess
 import time
 import zlib
 from pathlib import Path
@@ -18,6 +21,7 @@ RUNTIME_DIR = ROOT / ".runtime/visual-vms/windows"
 QMP_SOCKET = RUNTIME_DIR / "qmp.sock"
 READY_MARKER = RUNTIME_DIR / "READY"
 CANONICAL_SIZE = (1280, 800)
+VNC_ENDPOINT = "127.0.0.1::5905"
 
 
 class CaptureError(RuntimeError):
@@ -135,31 +139,63 @@ def convert_ppm_to_png(ppm: Path, png: Path) -> tuple[int, int]:
     return width, height
 
 
+def _vnc_client() -> str:
+    configured = os.environ.get("VPN_CONTROL_VNCDO", "").strip()
+    candidates = [configured, shutil.which("vncdo") or "", str(ROOT / ".agent_venv/bin/vncdo")]
+    client = next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), "")
+    if not client:
+        raise CaptureError(
+            "headless Windows secure-desktop capture requires vncdotool from "
+            "agent_tools/requirements-mcp.txt"
+        )
+    return client
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()[:24]
+    if len(data) != 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise CaptureError("VNC capture did not produce a PNG framebuffer")
+    return struct.unpack(">II", data[16:24])
+
+
+def capture_vnc_frame(output: Path) -> tuple[int, int]:
+    completed = subprocess.run(
+        [_vnc_client(), "-s", VNC_ENDPOINT, "--nocursor", "capture", str(output)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise CaptureError(completed.stderr.strip() or "headless Windows VNC capture failed")
+    size = png_size(output)
+    if size != CANONICAL_SIZE:
+        raise CaptureError(f"Windows framebuffer is {size[0]}x{size[1]}; expected 1280x800")
+    return size
+
+
 def capture_uac(output: Path) -> None:
     if not READY_MARKER.is_file():
         raise CaptureError("managed Windows VM has not passed agent provisioning checks")
     if not QMP_SOCKET.exists():
         raise CaptureError("managed Windows VM is not running or its QMP socket is missing")
     output.mkdir(parents=True, exist_ok=True)
-    ppm = output / "windows-uac.ppm"
     png = output / "windows-uac.png"
     qmp = QmpClient(QMP_SOCKET)
     try:
         qmp.send_key("meta_l-r")
-        time.sleep(1)
+        time.sleep(2)
+        qmp.send_key("ctrl-a")
+        qmp.send_key("backspace")
         _type_command(qmp, "powershell start powershell -verb runas")
         qmp.send_key("ret")
         time.sleep(3)
-        qmp.execute("screendump", {"filename": str(ppm)})
-        actual_size = convert_ppm_to_png(ppm, png)
-        if actual_size != CANONICAL_SIZE:
-            raise CaptureError(
-                f"Windows framebuffer is {actual_size[0]}x{actual_size[1]}; expected 1280x800"
-            )
+        capture_vnc_frame(png)
     finally:
         qmp.send_key("esc")
         qmp.close()
-        ppm.unlink(missing_ok=True)
 
 
 def probe_vm(output: Path | None = None, *, require_canonical: bool = True) -> tuple[int, int]:

@@ -53,7 +53,8 @@ args=(
   -device "virtio-net-pci,netdev=network"
   -netdev "user,id=network,hostfwd=tcp:127.0.0.1:2299-:22"
   -rtc "base=localtime"
-  -display cocoa
+  -display none
+  -vnc 127.0.0.1:5
   -qmp "unix:$runtime_dir/qmp.sock,server=on,wait=off"
   -name vpn-control-win11
 )

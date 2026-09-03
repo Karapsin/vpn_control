@@ -35,6 +35,16 @@ capture_visual_windows_qemu = importlib.util.module_from_spec(WINDOWS_QEMU_CAPTU
 sys.modules[WINDOWS_QEMU_CAPTURE_SPEC.name] = capture_visual_windows_qemu
 WINDOWS_QEMU_CAPTURE_SPEC.loader.exec_module(capture_visual_windows_qemu)
 
+MACOS_TART_CAPTURE_PATH = Path(__file__).with_name("capture_visual_macos_tart.py")
+MACOS_TART_CAPTURE_SPEC = importlib.util.spec_from_file_location(
+    "capture_visual_macos_tart",
+    MACOS_TART_CAPTURE_PATH,
+)
+assert MACOS_TART_CAPTURE_SPEC is not None and MACOS_TART_CAPTURE_SPEC.loader is not None
+capture_visual_macos_tart = importlib.util.module_from_spec(MACOS_TART_CAPTURE_SPEC)
+sys.modules[MACOS_TART_CAPTURE_SPEC.name] = capture_visual_macos_tart
+MACOS_TART_CAPTURE_SPEC.loader.exec_module(capture_visual_macos_tart)
+
 
 class VisualPlatformTest(unittest.TestCase):
     def test_desktop_scene_selection_keeps_app_and_native_capture_disjoint(self) -> None:
@@ -141,6 +151,20 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("-avd vpn-control-visual-api35", result["command"])
         self.assertIn("-port 5580", result["command"])
 
+    def test_started_vm_processes_are_detached_from_cli_session(self) -> None:
+        source = (visual_platform.ROOT / "scripts/visual_platform.py").read_text(encoding="utf-8")
+        self.assertIn("start_new_session=True", source)
+
+    def test_android_capture_freezes_clock_and_uses_synchronous_framebuffer(self) -> None:
+        script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("settings put global sysui_demo_allowed 1", script)
+        self.assertIn("command clock -e hhmm 1200", script)
+        self.assertIn("command notifications -e visible false", script)
+        self.assertIn("exec-out screencap -p", script)
+        self.assertNotIn("emu screenrecord screenshot", script)
+
     def test_macos_start_dry_run_does_not_change_vm_configuration(self) -> None:
         probe = {
             "ready": True,
@@ -156,7 +180,10 @@ class VisualPlatformTest(unittest.TestCase):
             result = visual_platform.start_platform("macos", dry_run=True)
         run.assert_called_once_with(["tart", "list"], timeout=30)
         self.assertTrue(result["started_by_agent"])
-        self.assertEqual("tart run --no-graphics vpn-control-visual-macos", result["command"])
+        self.assertIn("tart run --no-graphics", result["command"])
+        self.assertIn("--dir", result["command"])
+        self.assertIn("vpn-control-visual-macos", result["command"])
+        self.assertNotIn("--vnc", result["command"])
 
     def test_windows_qemu_disk_is_not_ready_without_agent_marker(self) -> None:
         real_is_file = Path.is_file
@@ -202,6 +229,25 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertEqual((2, 1), capture_visual_windows_qemu.convert_ppm_to_png(ppm, png))
             self.assertTrue(png.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_secure_desktop_drivers_validate_vnc_frame_dimensions(self) -> None:
+        header = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + (1280).to_bytes(4, "big")
+            + (800).to_bytes(4, "big")
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            png = Path(temporary) / "frame.png"
+            png.write_bytes(header)
+            self.assertEqual((1280, 800), capture_visual_windows_qemu.png_size(png))
+            self.assertEqual((1280, 800), capture_visual_macos_tart.png_size(png))
+
+    def test_macos_secure_driver_never_launches_a_host_vnc_application(self) -> None:
+        script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
+        self.assertIn('"--nocursor"', script)
+        self.assertNotIn("open vnc://", script)
+        self.assertNotIn("Screen Sharing", script)
+
     def test_windows_qemu_start_exposes_scoped_control_sockets(self) -> None:
         script = (visual_platform.ROOT / "scripts/start_windows_visual_vm.sh").read_text(
             encoding="utf-8",
@@ -211,6 +257,21 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('hostfwd=tcp:127.0.0.1:2299-:22', script)
         self.assertIn('"${1:-}" == "--provision-drivers"', script)
         self.assertIn('file=$driver_iso,media=cdrom,readonly=on', script)
+        self.assertIn('-display none', script)
+        self.assertIn('-vnc 127.0.0.1:5', script)
+        self.assertNotIn('-display cocoa', script)
+
+    def test_exhaustive_vpn_workflow_guards_platform_prerequisites(self) -> None:
+        workflow = (visual_platform.ROOT / ".github/workflows/vpn-integration.yml").read_text(
+            encoding="utf-8",
+        )
+        linux = workflow.split("  linux-full-vpn:", 1)[1].split("  windows-full-vpn:", 1)[0]
+        windows = workflow.split("  windows-full-vpn:", 1)[1].split("  android-full-vpn:", 1)[0]
+        android = workflow.split("  android-full-vpn:", 1)[1]
+        self.assertIn("iproute2", linux)
+        self.assertIn(":desktopApp:createDistributable", windows)
+        self.assertIn("set -eu", android)
+        self.assertNotIn("set -euo pipefail", android)
 
     def test_local_driver_requires_complete_requested_scene_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

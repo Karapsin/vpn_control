@@ -17,6 +17,10 @@ fi
 
 cd "$repo_root"
 mkdir -p "$output_dir"
+restore_system_ui() {
+  "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+}
+trap restore_system_ui EXIT
 while IFS= read -r scene; do
   rm -f "$output_dir/$scene.png" "$output_dir/$scene.geometry.json"
 done < <(python3 - "$repo_root/visual-tests/scenes.json" "$scene_csv" <<'PY'
@@ -36,6 +40,11 @@ if [[ "${VPN_CONTROL_VISUAL_PROVIDER:-local}" != "hosted" ]]; then
     exit 1
   }
 fi
+"$adb_bin" shell settings put global sysui_demo_allowed 1
+"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command enter >/dev/null
+"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200 >/dev/null
+"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false >/dev/null
+"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
 "$adb_bin" shell rm -rf "$device_dir"
 "$adb_bin" uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
 "$adb_bin" uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
@@ -78,18 +87,18 @@ if [[ -n "$native_scenes" ]]; then
       android-vpn-notification) focus_pattern='NotificationShade' ;;
       *) echo "Unknown Android native scene: $native_scene" >&2; exit 1 ;;
     esac
-    screenshot_marker="$output_dir/.$native_scene-screenshot-marker"
-    touch "$screenshot_marker"
+    framebuffer_capture="$output_dir/.$native_scene-framebuffer.png"
+    rm -f "$framebuffer_capture"
     run_gradle_capture "$native_scene" &
     gradle_pid=$!
     native_window_ready=false
     for _ in $(seq 1 1800); do
       current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
       if grep -q "$focus_pattern" <<< "$current_focus"; then
-        sleep 0.35
+        sleep 1
         settled_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
         if grep -q "$focus_pattern" <<< "$settled_focus"; then
-          "$adb_bin" emu screenrecord screenshot >/dev/null
+          "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
           native_window_ready=true
           break
         fi
@@ -108,15 +117,12 @@ if [[ -n "$native_scenes" ]]; then
       echo "$native_scene did not display its expected native surface." >&2
       exit 1
     }
-    host_screenshot="$(find "$repo_root" -maxdepth 1 -type f -name 'Screenshot_*.png' \
-      -newer "$screenshot_marker" -print | sort | tail -n 1)"
-    [[ -n "$host_screenshot" ]] || {
+    [[ -s "$framebuffer_capture" ]] || {
       echo "The emulator framebuffer did not capture $native_scene." >&2
       exit 1
     }
     pull_device_capture
-    mv "$host_screenshot" "$output_dir/$native_scene.png"
-    rm -f "$screenshot_marker"
+    mv "$framebuffer_capture" "$output_dir/$native_scene.png"
   done
 fi
 

@@ -370,7 +370,9 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
                     raise VisualPlatformError(
                         configured.stderr.strip() or f"could not configure {vm_name} at {display}"
                     )
-            command = ["tart", "run", "--no-graphics", vm_name]
+            command = [
+                "tart", "run", "--no-graphics", "--dir", f"vpn-control:{ROOT}", vm_name,
+            ]
             started_by_agent = True
     elif backend == "libvirt-windows":
         vm_name = str(config["libvirt_name"])
@@ -396,8 +398,15 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             log_dir = RUNTIME_ROOT / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log = (log_dir / f"{platform}.log").open("ab")
-            process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(
+                command,
+                cwd=ROOT,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
             process_id = process.pid
+            log.close()
         else:
             completed = _run(command, timeout=120)
             if completed.returncode != 0:

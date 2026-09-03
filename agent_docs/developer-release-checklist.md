@@ -71,6 +71,7 @@ macOS:
 Agent visual validation:
 
 - Git LFS is installed and all canonical baselines are hydrated.
+- `agent_tools/requirements-mcp.txt` is installed so the headless secure-surface drivers can use `vncdotool` without opening a host VNC application.
 - `visual_platform.py plan` identifies a release-capable local or hosted route for every scene.
 - Local Android/Linux/Windows/macOS environments can be bootstrapped and started by the agent; Windows UAC and macOS secure surfaces remain mandatory local capabilities.
 - See `visual-regression.md` for provider selection, VM ownership, capture, agent inspection, and first-baseline bootstrap.

@@ -113,6 +113,7 @@ jobs:
           bash -n scripts/mark_windows_visual_vm_ready.sh
           bash -n scripts/capture_visual_android.sh
           bash -n scripts/capture_visual_desktop.sh
+          python -m py_compile scripts/capture_visual_macos_tart.py scripts/capture_visual_windows_qemu.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

@@ -10,7 +10,8 @@ Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VI
 | `visual-tests/environments.json` | Pinned local and hosted providers plus capability boundaries. |
 | `visual-tests/baselines/<platform>/` | Canonical Git LFS PNG objects. |
 | `scripts/visual_platform.py` | Local probe/bootstrap/start/stop, provider plan, hosted dispatch, capture, and report ingestion. |
-| `scripts/capture_visual_windows_qemu.py` | QMP-controlled capture of the real UAC secure desktop in the managed Windows client VM. |
+| `scripts/capture_visual_windows_qemu.py` | QMP-controlled UAC launch plus headless VNC capture in the managed Windows client VM. |
+| `scripts/capture_visual_macos_tart.py` | Headless VNC capture of Gatekeeper and authorization surfaces in the managed macOS Tart VM. |
 | `scripts/visual_regression.py` | Pixel comparator, geometry validator, diffs, reports, and contact sheets. |
 | `scripts/visual_review.py` | Exact-SHA review queue, scene verdicts, evidence receipt, and GitHub status. |
 | `.github/workflows/visual-regression.yml` | Agent-dispatched hosted fallback capture on ephemeral GitHub runners. |
@@ -58,6 +59,19 @@ python3 scripts/visual_platform.py capture-local \
   --output build/visual-actual/windows \
   --scene windows-uac
 ```
+
+The Windows VM exposes a loopback-only headless VNC framebuffer; the capture driver uses it for UAC instead of opening a host window. The macOS Tart VM keeps its built-in UI closed and uses the guest's VNC service through `vncdotool` from `agent_tools/requirements-mcp.txt`:
+
+```bash
+python3 scripts/visual_platform.py capture-local \
+  --platform macos \
+  --driver "python3 scripts/capture_visual_macos_tart.py" \
+  --output build/visual-actual/macos \
+  --scene macos-gatekeeper \
+  --scene macos-install-confirmation
+```
+
+Neither secure-surface driver activates Screen Sharing, a VM display window, or another host workspace.
 
 The agent may dispatch hosted fallback for non-blocked scenes:
 
