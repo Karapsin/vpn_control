@@ -72,26 +72,25 @@ class DesktopVpnIntegrationTestTest {
     }
 
     @Test
-    fun disposableTunProbeRoutesItsRuntimeDirectToAvoidWindowsStrictRouteLoop() {
-        val routing = DesktopVpnIntegrationTest.integrationRuntimeDirectRouting()
-        assertEquals(listOf("sing-box", "sing-box.exe"), routing.processNames)
-
+    fun disposableTunProbeExcludesItsLocalSocksFixtureFromTheTunRoute() {
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = testSocksProfile(),
             dns = com.kardinal.vpncontrol.model.DnsSettings(),
             routingRules = com.kardinal.vpncontrol.model.RoutingRules(ignoreRules = true),
-            directProbeRouting = routing,
         )
-        val rules = Json.parseToJsonElement(config).jsonObject
-            .getValue("route").jsonObject
-            .getValue("rules").jsonArray
-        val directRuntimeRule = rules.first { rule ->
-            rule.jsonObject["process_name"] != null
-        }.jsonObject
-        assertEquals("direct", directRuntimeRule.getValue("outbound").jsonPrimitive.content)
+        val tunInbound = Json.parseToJsonElement(config).jsonObject
+            .getValue("inbounds").jsonArray
+            .first().jsonObject
         assertEquals(
-            listOf("sing-box", "sing-box.exe"),
-            directRuntimeRule.getValue("process_name").jsonArray.map { it.jsonPrimitive.content },
+            listOf(
+                "127.0.0.0/8",
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16",
+                "169.254.0.0/16",
+                "1.1.1.1/32",
+            ),
+            tunInbound.getValue("route_exclude_address").jsonArray.map { it.jsonPrimitive.content },
         )
     }
 

@@ -5,11 +5,30 @@ from __future__ import annotations
 import socket
 import threading
 import unittest
+from pathlib import Path
 
 from integration.socks_http_fixture import FixtureServer
 
 
+REPOSITORY = Path(__file__).resolve().parents[1]
+
+
 class SocksHttpFixtureTest(unittest.TestCase):
+    def test_android_probe_uses_vpn_covered_shell_and_self_contained_fixture(self) -> None:
+        release_manifest = (REPOSITORY / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        lifecycle_test = (
+            REPOSITORY
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/data/FullVpnLifecycleInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        workflow = (REPOSITORY / ".github/workflows/vpn-integration.yml").read_text(encoding="utf-8")
+
+        self.assertIn("AndroidSocksHttpFixture", lifecycle_test)
+        self.assertIn('executeShellCommand("id -u")', lifecycle_test)
+        self.assertIn("toybox nc", lifecycle_test)
+        self.assertIn("awaitDestination", lifecycle_test)
+        self.assertNotIn("android-socks-ready", workflow)
+        self.assertNotIn("usesCleartextTraffic", release_manifest)
+
     def test_fixture_completes_socks_handshake_and_returns_token(self) -> None:
         server = FixtureServer("127.0.0.1", 0, "fixture-token")
         thread = threading.Thread(target=server.serve_forever, daemon=True)

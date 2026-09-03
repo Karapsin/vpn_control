@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.1 - 2026-09-04
+
+- Harden exhaustive VPN probes and keep direct desktop routes outside the TUN.
+
 ## 2.0.0 - 2026-09-03
 
 - Keep exhaustive Android and Windows VPN probes routable.

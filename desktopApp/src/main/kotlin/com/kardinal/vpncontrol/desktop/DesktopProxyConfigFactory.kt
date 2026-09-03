@@ -152,6 +152,11 @@ object DesktopProxyConfigFactory {
                             put("address", listOf("172.19.250.1/30").asJsonArray())
                             put("mtu", 1400)
                             put("auto_route", true)
+                            // Keep the destinations that the shared route builder marks direct
+                            // out of the TUN routing table as well.  Otherwise the Windows system
+                            // stack can reinject a loopback SOCKS endpoint into the TUN and turn
+                            // the outbound's SOCKS handshake into a raw direct connection.
+                            put("route_exclude_address", routeDns.directCidrs.asJsonArray())
                             put("strict_route", true)
                             put("stack", "system")
                         },

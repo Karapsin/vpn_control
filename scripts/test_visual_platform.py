@@ -400,13 +400,11 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn(":desktopApp:createDistributable", windows)
         self.assertIn("set -eu", android)
         self.assertNotIn("set -euo pipefail", android)
-        self.assertIn(
-            'socks_http_fixture.py --port 18081 --token vpn-control-full-vpn-ok --ready-file "$ready_file" &',
-            android,
-        )
+        self.assertNotIn("socks_http_fixture.py", android)
+        self.assertIn("FullVpnLifecycleInstrumentedTest", android)
         self.assertIn("script: >-", android)
         self.assertNotIn("script: |\n            set -eu", android)
-        self.assertIn("trap 'kill \"$fixture_pid\" 2>/dev/null || true' EXIT; for attempt", android)
+        self.assertNotIn("fixture_pid", android)
 
     def test_local_driver_requires_complete_requested_scene_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
