@@ -296,6 +296,13 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("sudo date 0903120026.00", macos)
         self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
 
+    def test_hosted_android_capture_uses_software_acceleration(self) -> None:
+        workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("-accel tcg", workflow)
+        self.assertNotIn("-accel off", workflow)
+
     def test_exhaustive_vpn_workflow_guards_platform_prerequisites(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/vpn-integration.yml").read_text(
             encoding="utf-8",
