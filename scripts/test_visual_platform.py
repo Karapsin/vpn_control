@@ -349,6 +349,16 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("sudo date 0903120026.00", macos)
         self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
 
+    def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
+        workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
+            encoding="utf-8",
+        )
+        macos = workflow.split("  macos:", 1)[1]
+        self.assertIn(
+            "defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false",
+            macos,
+        )
+
     def test_android_capture_requires_an_agent_owned_emulator(self) -> None:
         with mock.patch.object(
             visual_platform,

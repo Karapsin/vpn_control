@@ -268,6 +268,9 @@ jobs:
           [[ -n "$mode" ]] || { screenresolution list; exit 1; }
           screenresolution set "$mode"
           screenresolution get
+          # A fresh macOS account otherwise displays its first-run desktop-help bubble over
+          # Finder-backed FileDialog scenes. The visual fixture must capture the dialog itself.
+          defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
       - name: Resolve hosted-capable scenes
         shell: bash
         env:
