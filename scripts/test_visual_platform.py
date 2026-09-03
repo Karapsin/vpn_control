@@ -245,6 +245,7 @@ class VisualPlatformTest(unittest.TestCase):
     def test_macos_secure_driver_never_launches_a_host_vnc_application(self) -> None:
         script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
         self.assertIn('"--nocursor"', script)
+        self.assertIn('"pause", "20", "capture"', script)
         self.assertNotIn("open vnc://", script)
         self.assertNotIn("Screen Sharing", script)
 

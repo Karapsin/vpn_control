@@ -67,7 +67,9 @@ def vnc_command(ip_address: str, *commands: str) -> list[str]:
 
 
 def capture_frame(ip_address: str, output: Path) -> None:
-    run_checked(vnc_command(ip_address, "capture", str(output)), timeout=30)
+    # Connecting to macOS screen sharing displays a short platform banner. Keep the same
+    # headless VNC session alive until that OS-owned transient has disappeared.
+    run_checked(vnc_command(ip_address, "pause", "20", "capture", str(output)), timeout=45)
     size = png_size(output)
     if size != CANONICAL_SIZE:
         raise CaptureError(f"macOS framebuffer is {size[0]}x{size[1]}; expected 1280x800")
@@ -150,6 +152,9 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
         raise CaptureError("the managed macOS VM has no reachable IP address")
     uid = guest_uid()
     output.mkdir(parents=True, exist_ok=True)
+    guest_shell(f"pkill -u {VM_USER} -x osascript >/dev/null 2>&1 || true", timeout=30)
+    dismiss(ip_address)
+    time.sleep(2)
     if "macos-gatekeeper" in scene_ids:
         build_package()
         prepare_gatekeeper_scene()
