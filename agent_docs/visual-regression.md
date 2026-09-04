@@ -80,6 +80,10 @@ On macOS, the Python VNC client connects only to a loopback relay; Apple-signed 
 guest-network connection. This keeps capture independent of Local Network privacy grants that can be
 invalidated when Homebrew Python is upgraded. The driver waits for the guest VNC route after every
 managed reboot and refreshes Tart's reported IP before retrying a failed VNC action.
+The install-confirmation scene leaves guest wall time current because moving time backward can suppress
+Authorization Services sheets; its time-dependent menu-bar and Dock pixels are already excluded from
+automated comparison. If a Screen Sharing edge tab appears, the driver dismisses it and captures in the
+same VNC session so it neither recreates the tab nor clicks outside the secure sheet.
 The macOS driver builds from a cached guest-local checkout pinned to the requested SHA, so Gradle never
 writes into the host's shared worktree while another platform is capturing. Before every secure scene it
 verifies the Tart helper's Screen Recording and Finder Automation grants, clears stale authorization,

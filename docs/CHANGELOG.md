@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.16 - 2026-09-04
+
+- Keep macOS authorization-sheet capture on real time and dismiss VNC edge tabs without closing secure UI.
+
 ## 2.0.15 - 2026-09-04
 
 - Harden macOS secure visual capture against guest-route delays and Python Local Network privacy resets.

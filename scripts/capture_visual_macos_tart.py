@@ -567,6 +567,22 @@ def dismiss_notification_banner(ip_address: str) -> None:
     )
 
 
+def capture_after_notification_banner_dismiss(ip_address: str, output: Path) -> None:
+    """Dismiss an edge banner and capture before closing the same VNC session."""
+    run_vnc_checked(
+        ip_address,
+        "pause", "20", "move", "1080", "70", "mousedown", "1",
+        "move", "1130", "70", "move", "1180", "70", "move", "1230", "70",
+        "move", "1275", "70", "mouseup", "1", "pause", "2", "capture", str(output),
+        timeout=90,
+    )
+    size = png_size(output)
+    if size != CANONICAL_SIZE:
+        raise CaptureError(f"macOS framebuffer is {size[0]}x{size[1]}; expected 1280x800")
+    if visible_pixel_ratio(output) < 0.01:
+        raise CaptureError("macOS VNC banner cleanup produced a blank framebuffer")
+
+
 def resolve_pending_permission_dialog(ip_address: str) -> None:
     """Dismiss permission requests that were queued before TCC repair completed."""
     # A stale Screen Recording request keeps returning until its Deny button is acknowledged even
@@ -627,10 +643,21 @@ def capture_secure_frame(ip_address: str, screenshot: Path, scene_id: str) -> No
         if background_change <= 0.0002 and edge_overlay <= 0.01:
             return
         if edge_overlay > 0.01:
-            # Clicking stable wallpaper closes a partially open Notification Center and leaves the
-            # Gatekeeper window in the same inactive-button state as the canonical fixture.
-            run_vnc_checked(ip_address, "move", "50", "600", "click", "1", timeout=30)
-            time.sleep(2)
+            if scene_id == "macos-install-confirmation":
+                # Clicking outside a secure authorization sheet dismisses it. Swipe the edge tab
+                # and capture before ending that same VNC session, which avoids creating another
+                # Screen Sharing banner on a replacement connection.
+                capture_after_notification_banner_dismiss(ip_address, screenshot)
+                if (
+                    background_changed_ratio(screenshot) <= 0.0002
+                    and right_edge_overlay_ratio(screenshot) <= 0.01
+                ):
+                    return
+            else:
+                # Clicking stable wallpaper closes a partially open Notification Center and leaves
+                # the Gatekeeper window in the same inactive-button state as the canonical fixture.
+                run_vnc_checked(ip_address, "move", "50", "600", "click", "1", timeout=30)
+                time.sleep(2)
         else:
             dismiss_notification_banner(ip_address)
     raise CaptureError(f"macOS capture contains a transient overlay for {scene_id}")
@@ -736,10 +763,14 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
                     background = await_clean_guest_ui(ip_address, output)
                     if scene_id == "macos-gatekeeper":
                         prepare_gatekeeper_scene(package)
-                    freeze_guest_clock()
-                    if scene_id == "macos-gatekeeper":
+                        freeze_guest_clock()
                         process = open_gatekeeper_scene(uid)
                     else:
+                        # Keep Authorization Services on current wall time. Moving its clock
+                        # backward before or during the request can suppress the password sheet
+                        # even after a verified reboot. The ignored menu-bar region already removes
+                        # the only time-dependent pixels from automated comparison.
+                        restore_guest_clock()
                         process = open_install_confirmation(uid)
                     time.sleep(4)
                     screenshot = output / f"{scene_id}.png"
