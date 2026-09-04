@@ -85,8 +85,9 @@ Before secure capture, it performs a managed-guest reboot and verifies the boot 
 clears macOS's short-lived administrator authorization cache so consecutive captures still show the sheet.
 It captures Gatekeeper before install confirmation so the
 Dock state is reproducible, verifies that each secure dialog actually appeared, waits for the guest-local
-dialog process to exit, and rejects or clears and retries blank VNC framebuffers and transient overlays
-instead of stamping unusable evidence.
+dialog process to exit, and retries a missing secure surface from another verified clean boot. It rejects
+or clears and retries blank VNC framebuffers and transient overlays
+instead of stamping unusable evidence, including narrow upper-right Screen Sharing or sidebar tabs.
 Hosted macOS capture resolves both the initial Java Screen Recording consent and macOS 15's deferred
 private-window capture consent after the empty Finder dialog is visible, before writing native evidence.
 

@@ -105,6 +105,7 @@ object DesktopProxyConfigFactory {
         dns: DnsSettings,
         routingRules: RoutingRules,
         interfaceName: String = DEFAULT_VPN_INTERFACE_NAME,
+        osName: String = System.getProperty("os.name"),
         directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
         activeVerificationPort: Int? = null,
         homeRoute: HomeSshRouteRuntimeOptions? = null,
@@ -158,7 +159,10 @@ object DesktopProxyConfigFactory {
                             // the outbound's SOCKS handshake into a raw direct connection.
                             put("route_exclude_address", routeDns.directCidrs.asJsonArray())
                             put("strict_route", true)
-                            put("stack", "system")
+                            // sing-box's system TUN stack can accept Windows connections without
+                            // returning response traffic. gVisor is the reliable Windows data path;
+                            // retain the native system stack elsewhere.
+                            put("stack", if (osName.isWindows()) "gvisor" else "system")
                         },
                     )
                     if (activeVerificationPort != null) {
@@ -244,4 +248,6 @@ object DesktopProxyConfigFactory {
     private fun List<String>.asJsonArray(): JsonArray = buildJsonArray {
         forEach { add(JsonPrimitive(it)) }
     }
+
+    private fun String.isWindows(): Boolean = lowercase().contains("windows")
 }

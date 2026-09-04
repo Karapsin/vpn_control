@@ -373,7 +373,7 @@ class VisualPlatformTest(unittest.TestCase):
                 )
 
             sidebar_pixels = bytearray(baseline.pixels)
-            for y in range(130, 300):
+            for y in range(40, 100):
                 for x in range(1260, 1280):
                     offset = (y * baseline.width + x) * 4
                     sidebar_pixels[offset : offset + 4] = bytes((220, 220, 220, 255))
@@ -446,6 +446,8 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("cannot alter macOS keyboard/pointer modality", script)
         self.assertIn("macOS guest still contains a window, notification, or permission surface", script)
         self.assertIn("macOS secure surface did not appear", script)
+        self.assertIn("macOS secure scene failed after three launch attempts", script)
+        self.assertIn("for launch_attempt in range(3)", script)
         self.assertIn("def reboot_guest", script)
         self.assertIn('"sudo", "/sbin/shutdown", "-r", "now"', script)
         self.assertIn("kern.boottime", script)

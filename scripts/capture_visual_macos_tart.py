@@ -201,7 +201,8 @@ def right_edge_overlay_ratio(path: Path) -> float:
         raise CaptureError("macOS edge validation requires the canonical 1280x800 viewport")
     bright = 0
     compared = 0
-    for y in range(130, 700):
+    # Start below the menu bar so the small upper-right Screen Sharing/sidebar tab is included.
+    for y in range(35, 700):
         for x in range(1260, 1280):
             offset = (y * CANONICAL_SIZE[0] + x) * 4
             if min(image.pixels[offset : offset + 3]) > 100:
@@ -599,32 +600,51 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
         time.sleep(3)
     try:
         for scene_id in secure_scenes:
-            process: subprocess.Popen[str] | None = None
-            background: Path | None = None
-            try:
-                background = await_clean_guest_ui(ip_address, output)
-                if scene_id == "macos-gatekeeper":
-                    prepare_gatekeeper_scene(package)
-                freeze_guest_clock()
-                if scene_id == "macos-gatekeeper":
-                    process = open_gatekeeper_scene(uid)
-                else:
-                    process = open_install_confirmation(uid)
-                time.sleep(4)
-                screenshot = output / f"{scene_id}.png"
-                capture_secure_frame(ip_address, screenshot, scene_id)
-                if foreground_changed_ratio(screenshot, background, scene_id) < 0.2:
-                    raise CaptureError(f"macOS secure surface did not appear for {scene_id}")
-            finally:
-                if background is not None:
-                    background.unlink(missing_ok=True)
-                dismiss(ip_address)
-                if process is not None and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
+            scene_error: CaptureError | None = None
+            for launch_attempt in range(3):
+                process: subprocess.Popen[str] | None = None
+                background: Path | None = None
+                try:
+                    background = await_clean_guest_ui(ip_address, output)
+                    if scene_id == "macos-gatekeeper":
+                        prepare_gatekeeper_scene(package)
+                    freeze_guest_clock()
+                    if scene_id == "macos-gatekeeper":
+                        process = open_gatekeeper_scene(uid)
+                    else:
+                        process = open_install_confirmation(uid)
+                    time.sleep(4)
+                    screenshot = output / f"{scene_id}.png"
+                    capture_secure_frame(ip_address, screenshot, scene_id)
+                    if foreground_changed_ratio(screenshot, background, scene_id) < 0.2:
+                        raise CaptureError(f"macOS secure surface did not appear for {scene_id}")
+                    scene_error = None
+                except CaptureError as error:
+                    scene_error = error
+                finally:
+                    if background is not None:
+                        background.unlink(missing_ok=True)
+                    dismiss(ip_address)
+                    if process is not None and process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                if scene_error is None:
+                    break
+                if launch_attempt == 2:
+                    raise CaptureError(
+                        f"macOS secure scene failed after three launch attempts: {scene_id}: {scene_error}"
+                    ) from scene_error
+                restore_guest_clock()
+                reboot_guest()
+                ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
+                uid = guest_uid()
+                ensure_guest_capture_permissions(uid)
+                reset_guest_ui(ip_address)
+                guest_shell("killall Dock >/dev/null 2>&1 || true", timeout=30)
+                time.sleep(3)
     finally:
         restore_guest_clock()
         reset_guest_ui(ip_address)

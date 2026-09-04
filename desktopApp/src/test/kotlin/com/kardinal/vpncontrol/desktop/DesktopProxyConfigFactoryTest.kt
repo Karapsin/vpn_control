@@ -67,6 +67,20 @@ class DesktopProxyConfigFactoryTest {
     }
 
     @Test
+    fun buildVpnConfigUsesGvisorTunStackOnWindows() {
+        val config = DesktopProxyConfigFactory.buildVpnConfig(
+            profile = testProfile(),
+            dns = DnsSettings(),
+            routingRules = RoutingRules(ignoreRules = true),
+            osName = "Windows Server 2025",
+        )
+
+        val inbound = Json.parseToJsonElement(config).jsonObject
+            .getValue("inbounds").jsonArray.single().jsonObject
+        assertEquals("gvisor", inbound.getValue("stack").jsonPrimitive.content)
+    }
+
+    @Test
     fun buildVpnConfigChainsProxyAndBypassesThroughHomeSsh() {
         val config = DesktopProxyConfigFactory.buildVpnConfig(
             profile = testProfile(),

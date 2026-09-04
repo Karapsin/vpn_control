@@ -3,6 +3,14 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.8 - 2026-09-04
+
+- Use the reliable gVisor TUN stack on Windows.
+
+## 2.0.7 - 2026-09-04
+
+- Retry missing macOS secure surfaces and reject upper-edge capture overlays.
+
 ## 2.0.6 - 2026-09-04
 
 - Reset cached macOS authorization state before repeatable secure captures.
