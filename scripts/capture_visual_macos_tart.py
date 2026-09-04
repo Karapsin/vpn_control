@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import shlex
 import shutil
+import socket
 import struct
 import subprocess
 import time
 import zlib
+from collections.abc import Iterator
 from pathlib import Path
 
 from visual_regression import read_png
@@ -212,11 +215,124 @@ def right_edge_overlay_ratio(path: Path) -> float:
     return bright / compared
 
 
-def vnc_command(ip_address: str, *commands: str) -> list[str]:
+def vnc_command(server: str, *commands: str) -> list[str]:
     return [
-        vnc_client(), "-s", f"{ip_address}::5900", "-u", VM_USER, "-p", VM_PASSWORD,
+        vnc_client(), "-s", server, "-u", VM_USER, "-p", VM_PASSWORD,
         "--nocursor", *commands,
     ]
+
+
+def guest_ip() -> str:
+    """Resolve the guest address instead of trusting a pre-reboot DHCP lease."""
+    ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
+    if not ip_address:
+        raise CaptureError("the managed macOS VM has no reachable IP address")
+    return ip_address
+
+
+def wait_for_guest_vnc(*, timeout_seconds: int = 90) -> str:
+    """Wait for the rebooted guest route and Screen Sharing listener to become reachable."""
+    deadline = time.monotonic() + timeout_seconds
+    failures: list[str] = []
+    while time.monotonic() < deadline:
+        try:
+            ip_address = guest_ip()
+            # Apple-signed nc is not coupled to the local-network privacy grant of whichever
+            # Homebrew Python happens to host the capture tooling.
+            run_checked(["/usr/bin/nc", "-z", "-G", "3", ip_address, "5900"], timeout=5)
+            return ip_address
+        except CaptureError as error:
+            failures.append(str(error))
+        time.sleep(2)
+    raise CaptureError(
+        "macOS guest VNC did not become reachable after reboot: " + "; ".join(failures[-3:])
+    )
+
+
+@contextmanager
+def local_vnc_relay(ip_address: str) -> Iterator[str]:
+    """Relay loopback VNC through Apple-signed nc to avoid interpreter privacy coupling."""
+    listener_probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        listener_probe.bind(("127.0.0.1", 0))
+        port = str(listener_probe.getsockname()[1])
+    finally:
+        listener_probe.close()
+    client_read, client_write = os.pipe()
+    guest_read, guest_write = os.pipe()
+    listener: subprocess.Popen[bytes] | None = None
+    remote: subprocess.Popen[bytes] | None = None
+    parent_fds = [client_read, client_write, guest_read, guest_write]
+    try:
+        listener = subprocess.Popen(
+            ["/usr/bin/nc", "-l", "127.0.0.1", port],
+            cwd=ROOT,
+            stdin=guest_read,
+            stdout=client_write,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
+        remote = subprocess.Popen(
+            ["/usr/bin/nc", ip_address, "5900"],
+            cwd=ROOT,
+            stdin=client_read,
+            stdout=guest_write,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
+        for file_descriptor in parent_fds:
+            os.close(file_descriptor)
+        parent_fds.clear()
+        time.sleep(0.2)
+        if listener.poll() is not None or remote.poll() is not None:
+            errors = " ".join(
+                process.stderr.read().decode(errors="replace").strip()
+                for process in (listener, remote)
+                if process.poll() is not None and process.stderr is not None
+            ).strip()
+            raise CaptureError(errors or "macOS VNC relay exited before accepting a connection")
+        yield f"127.0.0.1::{port}"
+    finally:
+        for file_descriptor in parent_fds:
+            os.close(file_descriptor)
+        for process in (listener, remote):
+            if process is None or process.poll() is not None:
+                continue
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+
+
+def run_vnc_checked(
+    ip_address: str,
+    *commands: str,
+    timeout: int = 120,
+    attempts: int = 3,
+) -> subprocess.CompletedProcess[str]:
+    """Retry a VNC action after refreshing Tart's guest address.
+
+    A verified guest reboot can briefly invalidate either the route or the DHCP address returned
+    immediately after boot. Keep the caller's preferred address for the fast path, then resolve it
+    again before every retry so a transient transport failure cannot strand release capture.
+    """
+    candidate = ip_address
+    failures: list[str] = []
+    for attempt in range(attempts):
+        try:
+            with local_vnc_relay(candidate) as server:
+                return run_checked(vnc_command(server, *commands), timeout=timeout)
+        except CaptureError as error:
+            failures.append(str(error))
+        if attempt + 1 < attempts:
+            time.sleep(2)
+            try:
+                candidate = guest_ip()
+            except CaptureError as error:
+                failures.append(f"guest IP refresh failed: {error}")
+    raise CaptureError("macOS VNC command failed after retries: " + "; ".join(failures[-3:]))
 
 
 def capture_frame(ip_address: str, output: Path) -> None:
@@ -228,8 +344,8 @@ def capture_frame(ip_address: str, output: Path) -> None:
         # VM. Forty seconds was the first duration that stayed clean under repeated release load.
         pause = "40"
         try:
-            run_checked(
-                vnc_command(ip_address, "pause", pause, "capture", str(output)),
+            run_vnc_checked(
+                ip_address, "pause", pause, "capture", str(output),
                 timeout=120,
             )
             size = png_size(output)
@@ -435,20 +551,18 @@ def open_install_confirmation(uid: str) -> subprocess.Popen[str]:
 
 
 def dismiss(ip_address: str) -> None:
-    run_checked(vnc_command(ip_address, "key", "esc"), timeout=30)
+    run_vnc_checked(ip_address, "key", "esc", timeout=30)
 
 
 def dismiss_notification_banner(ip_address: str) -> None:
     # Wait until macOS's own Screen Sharing banner no longer covers the queued Java banner, then
     # provide enough intermediate pointer events for Notification Center to treat the motion as a
     # swipe rather than a single jump. Restarting Notification Center would replay the queued banner.
-    run_checked(
-        vnc_command(
-            ip_address,
-            "pause", "20", "move", "1080", "70", "mousedown", "1",
-            "move", "1130", "70", "move", "1180", "70", "move", "1230", "70",
-            "move", "1275", "70", "mouseup", "1",
-        ),
+    run_vnc_checked(
+        ip_address,
+        "pause", "20", "move", "1080", "70", "mousedown", "1",
+        "move", "1130", "70", "move", "1180", "70", "move", "1230", "70",
+        "move", "1275", "70", "mouseup", "1",
         timeout=60,
     )
 
@@ -460,9 +574,9 @@ def resolve_pending_permission_dialog(ip_address: str) -> None:
     # needs its already-verified Allow action. This recovery runs only after the clean-background
     # detector finds contamination; the fixed-coordinate clicks land on wallpaper if the sheet has
     # already disappeared.
-    run_checked(vnc_command(ip_address, "move", "824", "304", "click", "1"), timeout=30)
+    run_vnc_checked(ip_address, "move", "824", "304", "click", "1", timeout=30)
     time.sleep(2)
-    run_checked(vnc_command(ip_address, "move", "699", "341", "click", "1"), timeout=30)
+    run_vnc_checked(ip_address, "move", "699", "341", "click", "1", timeout=30)
     time.sleep(2)
     # Remove any notification education banner that accompanied the permission request.
     dismiss_notification_banner(ip_address)
@@ -496,7 +610,7 @@ def await_clean_guest_ui(ip_address: str, output: Path) -> Path:
         if background_change <= 0.0002 and edge_overlay <= 0.01:
             return probe
         if edge_overlay > 0.01:
-            run_checked(vnc_command(ip_address, "move", "50", "600", "click", "1"), timeout=30)
+            run_vnc_checked(ip_address, "move", "50", "600", "click", "1", timeout=30)
             time.sleep(2)
         else:
             resolve_pending_permission_dialog(ip_address)
@@ -515,7 +629,7 @@ def capture_secure_frame(ip_address: str, screenshot: Path, scene_id: str) -> No
         if edge_overlay > 0.01:
             # Clicking stable wallpaper closes a partially open Notification Center and leaves the
             # Gatekeeper window in the same inactive-button state as the canonical fixture.
-            run_checked(vnc_command(ip_address, "move", "50", "600", "click", "1"), timeout=30)
+            run_vnc_checked(ip_address, "move", "50", "600", "click", "1", timeout=30)
             time.sleep(2)
         else:
             dismiss_notification_banner(ip_address)
@@ -589,9 +703,7 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     unknown = sorted(set(scene_ids) - set(SECURE_SCENES) - external_scenes)
     if unknown:
         raise CaptureError("the Tart secure-surface driver cannot capture: " + ", ".join(unknown))
-    ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
-    if not ip_address:
-        raise CaptureError("the managed macOS VM has no reachable IP address")
+    ip_address = wait_for_guest_vnc()
     uid = guest_uid()
     ensure_guest_capture_permissions(uid)
     checkout = prepare_guest_checkout()
@@ -606,7 +718,7 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
         # Authorization Services caches both successful and cancelled administrator prompts.
         # A verified reboot gives every repeated secure capture the same clean authorization state.
         reboot_guest()
-        ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
+        ip_address = wait_for_guest_vnc()
         uid = guest_uid()
         ensure_guest_capture_permissions(uid)
         # Reload the Dock only once. This drops orphaned minimized windows while preserving the
@@ -640,7 +752,13 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
                 finally:
                     if background is not None:
                         background.unlink(missing_ok=True)
-                    dismiss(ip_address)
+                    try:
+                        dismiss(ip_address)
+                    except CaptureError as error:
+                        # The dialog process is still terminated below. Preserve a prior capture
+                        # failure, or turn cleanup loss into a normal retriable scene failure.
+                        if scene_error is None:
+                            scene_error = CaptureError(f"macOS secure-scene cleanup failed: {error}")
                     if process is not None and process.poll() is None:
                         process.terminate()
                         try:
@@ -655,7 +773,7 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
                     ) from scene_error
                 restore_guest_clock()
                 reboot_guest()
-                ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
+                ip_address = wait_for_guest_vnc()
                 uid = guest_uid()
                 ensure_guest_capture_permissions(uid)
                 reset_guest_ui(ip_address)

@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.15 - 2026-09-04
+
+- Harden macOS secure visual capture against guest-route delays and Python Local Network privacy resets.
+
 ## 2.0.14 - 2026-09-04
 
 - Run release metadata validation through Python so the stable publisher works with non-executable script checkouts.

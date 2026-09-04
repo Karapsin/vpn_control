@@ -76,6 +76,10 @@ python3 scripts/visual_platform.py capture-local \
 ```
 
 Neither secure-surface driver activates Screen Sharing, a VM display window, or another host workspace.
+On macOS, the Python VNC client connects only to a loopback relay; Apple-signed `/usr/bin/nc` owns the
+guest-network connection. This keeps capture independent of Local Network privacy grants that can be
+invalidated when Homebrew Python is upgraded. The driver waits for the guest VNC route after every
+managed reboot and refreshes Tart's reported IP before retrying a failed VNC action.
 The macOS driver builds from a cached guest-local checkout pinned to the requested SHA, so Gradle never
 writes into the host's shared worktree while another platform is capturing. Before every secure scene it
 verifies the Tart helper's Screen Recording and Finder Automation grants, clears stale authorization,

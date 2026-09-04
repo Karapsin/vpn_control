@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -455,6 +457,71 @@ class VisualPlatformTest(unittest.TestCase):
 
             self.assertEqual(0.0, capture_visual_macos_tart.visible_pixel_ratio(black_png))
             self.assertEqual(1.0, capture_visual_macos_tart.visible_pixel_ratio(visible_png))
+
+    def test_macos_secure_driver_refreshes_guest_ip_after_vnc_route_failure(self) -> None:
+        completed = subprocess.CompletedProcess(["vncdo"], 0, stdout="", stderr="")
+        commands: list[list[str]] = []
+        relay_addresses: list[str] = []
+
+        @contextlib.contextmanager
+        def relay(ip_address: str):
+            relay_addresses.append(ip_address)
+            yield f"{ip_address}-relay"
+
+        def run(command: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+            del timeout
+            commands.append(command)
+            if command[0] == "vncdo" and "stale-ip-relay" in command:
+                raise capture_visual_macos_tart.CaptureError("No route to host")
+            if command[:2] == ["tart", "ip"]:
+                return subprocess.CompletedProcess(command, 0, stdout="fresh-ip\n", stderr="")
+            return completed
+
+        with (
+            mock.patch.object(capture_visual_macos_tart, "run_checked", side_effect=run),
+            mock.patch.object(
+                capture_visual_macos_tart,
+                "vnc_command",
+                side_effect=lambda server, *args: ["vncdo", server, *args],
+            ),
+            mock.patch.object(capture_visual_macos_tart, "local_vnc_relay", side_effect=relay),
+            mock.patch.object(capture_visual_macos_tart.time, "sleep"),
+        ):
+            self.assertIs(
+                completed,
+                capture_visual_macos_tart.run_vnc_checked(
+                    "stale-ip", "key", "esc", timeout=30
+                ),
+            )
+
+        self.assertEqual("stale-ip-relay", commands[0][1])
+        self.assertEqual(["tart", "ip", capture_visual_macos_tart.VM_NAME], commands[1])
+        self.assertEqual("fresh-ip-relay", commands[2][1])
+        self.assertEqual(["stale-ip", "fresh-ip"], relay_addresses)
+
+    def test_macos_secure_driver_waits_for_vnc_route_after_reboot(self) -> None:
+        probes = [
+            capture_visual_macos_tart.CaptureError("No route to host"),
+            subprocess.CompletedProcess(["nc"], 0, stdout="", stderr=""),
+        ]
+        with (
+            mock.patch.object(
+                capture_visual_macos_tart,
+                "guest_ip",
+                side_effect=["stale-ip", "fresh-ip"],
+            ),
+            mock.patch.object(capture_visual_macos_tart, "run_checked", side_effect=probes) as run,
+            mock.patch.object(capture_visual_macos_tart.time, "sleep"),
+        ):
+            self.assertEqual("fresh-ip", capture_visual_macos_tart.wait_for_guest_vnc())
+
+        self.assertEqual(
+            [
+                mock.call(["/usr/bin/nc", "-z", "-G", "3", "stale-ip", "5900"], timeout=5),
+                mock.call(["/usr/bin/nc", "-z", "-G", "3", "fresh-ip", "5900"], timeout=5),
+            ],
+            run.call_args_list,
+        )
 
     def test_macos_secure_driver_rejects_contaminated_guest_background(self) -> None:
         baseline_path = (
