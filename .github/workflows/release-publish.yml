@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./scripts/check_release_metadata.py --require-release-ready
+          python3 scripts/check_release_metadata.py --require-release-ready
           version=$(python3 scripts/version_metadata.py --field version)
           build_number=$(python3 scripts/version_metadata.py --field build-number)
           tag=$(python3 scripts/version_metadata.py --field tag)

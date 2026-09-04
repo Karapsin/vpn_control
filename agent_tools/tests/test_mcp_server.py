@@ -222,6 +222,8 @@ class VersionPolicyTest(unittest.TestCase):
         self.assertNotRegex(workflow, r"(?m)^\s+push:")
         self.assertIn("vpn-control/agent-visual", workflow)
         self.assertIn("visual_receipt_sha256", workflow)
+        self.assertIn("python3 scripts/check_release_metadata.py --require-release-ready", workflow)
+        self.assertNotIn("./scripts/check_release_metadata.py --require-release-ready", workflow)
 
     def test_release_merge_dispatches_vpn_and_starts_agent_visual_review(self) -> None:
         sha = "a" * 40

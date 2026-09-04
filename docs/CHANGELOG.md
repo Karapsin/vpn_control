@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.14 - 2026-09-04
+
+- Run release metadata validation through Python so the stable publisher works with non-executable script checkouts.
+
 ## 2.0.13 - 2026-09-04
 
 - Ignore nondeterministic macOS guest chrome in secure-dialog visual comparisons.
