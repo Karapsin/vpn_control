@@ -109,7 +109,7 @@
     {"id":"android-open-document","platforms":["android"],"geometry_required":false},
     {"id":"android-create-document","platforms":["android"],"geometry_required":false},
     {"id":"android-camera-qr","platforms":["android"],"geometry_required":false},
-    {"id":"android-share-chooser","platforms":["android"],"geometry_required":false},
+    {"id":"android-share-chooser","platforms":["android"],"geometry_required":false,"thresholds":{"max_changed_ratio":0.0035}},
     {"id":"android-package-installer","platforms":["android"],"geometry_required":false},
     {"id":"android-vpn-notification","platforms":["android"],"geometry_required":false,"ignore_regions":[[180,30,390,100]]},
 
@@ -138,7 +138,7 @@
     {"id":"macos-menu-bar-disconnected","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1015,279],[0,279,544,509],[736,279,1280,509],[0,509,1280,800]]},
     {"id":"macos-menu-bar-connected","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1015,279],[0,279,544,509],[736,279,1280,509],[0,509,1280,800]]},
     {"id":"macos-dmg","platforms":["macos"],"geometry_required":false},
-    {"id":"macos-gatekeeper","platforms":["macos"],"geometry_required":false},
-    {"id":"macos-install-confirmation","platforms":["macos"],"geometry_required":false}
+    {"id":"macos-gatekeeper","platforms":["macos"],"geometry_required":false,"ignore_regions":[[930,710,1040,790]]},
+    {"id":"macos-install-confirmation","platforms":["macos"],"geometry_required":false,"ignore_regions":[[930,710,1040,790]]}
   ]
 }

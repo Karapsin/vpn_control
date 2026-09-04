@@ -347,10 +347,23 @@ def verify(args: argparse.Namespace) -> int:
     failed = False
     for scene in scenes:
         scene_id = str(scene["id"])
+        scene_thresholds = scene.get("thresholds", {})
+        scene_max_delta = int(scene_thresholds.get("max_channel_delta", max_delta))
+        scene_max_ratio = float(scene_thresholds.get("max_changed_ratio", max_ratio))
+        scene_max_mean = float(scene_thresholds.get("max_mean_channel_error", max_mean))
         baseline_path = args.baseline_dir / args.platform / f"{scene_id}.png"
         actual_path = args.actual_dir / f"{scene_id}.png"
         geometry_path = args.actual_dir / f"{scene_id}.geometry.json"
-        result: dict[str, object] = {"id": scene_id, "baseline": str(baseline_path), "actual": str(actual_path)}
+        result: dict[str, object] = {
+            "id": scene_id,
+            "baseline": str(baseline_path),
+            "actual": str(actual_path),
+            "thresholds": {
+                "max_channel_delta": scene_max_delta,
+                "max_changed_ratio": scene_max_ratio,
+                "max_mean_channel_error": scene_max_mean,
+            },
+        }
         errors: list[str] = []
         try:
             if not baseline_path.is_file():
@@ -383,16 +396,16 @@ def verify(args: argparse.Namespace) -> int:
                 metrics, diff = _compare(
                     baseline,
                     actual,
-                    max_delta,
+                    scene_max_delta,
                     scene.get("ignore_regions"),
                 )
-                if metrics["changed_ratio"] > max_ratio:
+                if metrics["changed_ratio"] > scene_max_ratio:
                     errors.append(
-                        f"changed ratio {metrics['changed_ratio']:.6f} exceeds {max_ratio:.6f}",
+                        f"changed ratio {metrics['changed_ratio']:.6f} exceeds {scene_max_ratio:.6f}",
                     )
-                if metrics["mean_channel_error"] > max_mean:
+                if metrics["mean_channel_error"] > scene_max_mean:
                     errors.append(
-                        f"mean channel error {metrics['mean_channel_error']:.6f} exceeds {max_mean:.6f}",
+                        f"mean channel error {metrics['mean_channel_error']:.6f} exceeds {scene_max_mean:.6f}",
                     )
             result["ignore_regions"] = scene.get("ignore_regions", [])
             result["metrics"] = metrics

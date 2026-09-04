@@ -138,7 +138,7 @@ class VisualPlatformTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("waitForHostFramebufferCapture(sceneId, remoteOutput, instrumentation)", source)
         self.assertIn("NATIVE_HOST_CAPTURE_TIMEOUT_MILLIS = 60_000L", source)
-        self.assertIn("NATIVE_SURFACE_SETTLE_MILLIS = 2_000L", source)
+        self.assertIn("NATIVE_SURFACE_SETTLE_MILLIS = 5_000L", source)
         self.assertIn("SystemClock.sleep(NATIVE_SURFACE_SETTLE_MILLIS)", source)
         self.assertIn('touch $remoteOutput/$sceneId.ready', source)
         self.assertIn('File(remoteOutput, "$sceneId.captured")', source)
@@ -176,6 +176,8 @@ class VisualPlatformTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         fixture = source.split("private fun freezeSystemUi", 1)[1]
         self.assertLess(fixture.index("command exit"), fixture.index("command enter"))
+        self.assertGreaterEqual(fixture.count("command network -e airplane hide -e wifi show"), 2)
+        self.assertIn("SystemClock.sleep(250L)", fixture)
 
     def test_android_settings_version_comes_from_visual_state(self) -> None:
         app_source = (

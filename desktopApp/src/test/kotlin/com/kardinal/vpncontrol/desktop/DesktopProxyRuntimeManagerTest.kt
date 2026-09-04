@@ -11,6 +11,22 @@ import kotlin.test.assertTrue
 
 class DesktopProxyRuntimeManagerTest {
     @Test
+    fun windowsRouteDnsToolingAllowsForColdPowerShellStartup() {
+        val observedTimeouts = mutableListOf<Long>()
+
+        val check = windowsRouteDnsToolingCheck { _, timeoutSeconds ->
+            observedTimeouts += timeoutSeconds
+            DesktopCommandResult(
+                exitCode = if (timeoutSeconds >= 15L) 0 else -1,
+                output = "",
+            )
+        }
+
+        assertEquals(DesktopPreflightStatus.PASS, check.status)
+        assertEquals(listOf(15L, 15L), observedTimeouts)
+    }
+
+    @Test
     fun windowsVpnCapabilityRequiresAdministratorPrivileges() {
         val tempDir = Files.createTempDirectory("vpn-control-windows-vpn-not-admin")
         try {

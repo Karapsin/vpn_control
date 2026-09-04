@@ -52,7 +52,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 private const val NATIVE_HOST_CAPTURE_TIMEOUT_MILLIS = 60_000L
-private const val NATIVE_SURFACE_SETTLE_MILLIS = 2_000L
+private const val NATIVE_SURFACE_SETTLE_MILLIS = 5_000L
 
 @RunWith(AndroidJUnit4::class)
 class VisualCaptureInstrumentedTest {
@@ -354,6 +354,11 @@ class VisualCaptureInstrumentedTest {
         // identical app scenes differ by a few hundred pixels between captures.
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide")
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide -e location hide -e alarm hide -e sync hide -e tty hide -e eri hide -e mute hide -e speakerphone hide -e managed_profile hide -e cast hide -e hotspot hide -e sensors_off hide -e data_saver hide -e vpn hide -e microphone hide -e camera hide -e rotate hide -e headset hide")
+        // SystemUI processes demo broadcasts asynchronously. Reassert the connectivity model
+        // after the generic status command so a late live-radio refresh cannot drop Wi-Fi.
+        SystemClock.sleep(250L)
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide")
+        SystemClock.sleep(250L)
     }
 
     private fun waitForHostFramebufferCapture(

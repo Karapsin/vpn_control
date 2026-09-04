@@ -33,6 +33,45 @@ data class DesktopRuntimeSession(
     val processId: Long,
 )
 
+internal const val WINDOWS_ROUTE_DNS_TOOLING_TIMEOUT_SECONDS = 15L
+
+internal data class DesktopCommandResult(
+    val exitCode: Int,
+    val output: String,
+)
+
+internal fun windowsRouteDnsToolingCheck(
+    commandRunner: (List<String>, Long) -> DesktopCommandResult,
+): DesktopPreflightCheck {
+    val netsh = commandRunner(
+        listOf("cmd.exe", "/c", "where netsh.exe"),
+        WINDOWS_ROUTE_DNS_TOOLING_TIMEOUT_SECONDS,
+    )
+    val dns = commandRunner(
+        listOf(
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-Command Get-DnsClientServerAddress -ErrorAction Stop | Out-Null; 'ok'",
+        ),
+        WINDOWS_ROUTE_DNS_TOOLING_TIMEOUT_SECONDS,
+    )
+    return if (netsh.exitCode == 0 && dns.exitCode == 0) {
+        DesktopPreflightCheck(
+            name = "route/DNS tooling",
+            status = DesktopPreflightStatus.PASS,
+            detail = "Windows netsh and DNS client cmdlets are available",
+        )
+    } else {
+        DesktopPreflightCheck(
+            name = "route/DNS tooling",
+            status = DesktopPreflightStatus.FAIL,
+            detail = "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
+        )
+    }
+}
+
 class DesktopProxyRuntimeManager(
     private val runtimeConfigStore: RuntimeConfigStore,
     private val baseDir: Path = Paths.get(
@@ -400,15 +439,10 @@ class DesktopProxyRuntimeManager(
         }.getOrDefault(false)
     }
 
-    private data class CommandResult(
-        val exitCode: Int,
-        val output: String,
-    )
-
     private fun runCommand(
         command: List<String>,
         timeoutSeconds: Long,
-    ): CommandResult {
+    ): DesktopCommandResult {
         return runCatching {
             val process = ProcessBuilder(command)
                 .directory(baseDir.toFile())
@@ -418,7 +452,7 @@ class DesktopProxyRuntimeManager(
             if (!finished) {
                 process.destroyForcibly()
                 process.waitFor(1, TimeUnit.SECONDS)
-                return@runCatching CommandResult(
+                return@runCatching DesktopCommandResult(
                     exitCode = -1,
                     output = "${command.joinToString(" ")} timed out after ${timeoutSeconds}s",
                 )
@@ -426,9 +460,9 @@ class DesktopProxyRuntimeManager(
             val output = process.inputStream.bufferedReader().use { it.readText() }
                 .trim()
                 .take(2_000)
-            CommandResult(process.exitValue(), output)
+            DesktopCommandResult(process.exitValue(), output)
         }.getOrElse { error ->
-            CommandResult(-1, error.message ?: "${command.joinToString(" ")} failed")
+            DesktopCommandResult(-1, error.message ?: "${command.joinToString(" ")} failed")
         }
     }
 
@@ -611,32 +645,7 @@ class DesktopProxyRuntimeManager(
                     )
                 }
             }
-            DesktopRuntimeOs.WINDOWS -> {
-                val netsh = runCommand(listOf("cmd.exe", "/c", "where netsh.exe"), timeoutSeconds = 3)
-                val dns = runCommand(
-                    listOf(
-                        "powershell.exe",
-                        "-NoProfile",
-                        "-NonInteractive",
-                        "-Command",
-                        "Get-Command Get-DnsClientServerAddress -ErrorAction Stop | Out-Null; 'ok'",
-                    ),
-                    timeoutSeconds = 3,
-                )
-                if (netsh.exitCode == 0 && dns.exitCode == 0) {
-                    DesktopPreflightCheck(
-                        name = "route/DNS tooling",
-                        status = DesktopPreflightStatus.PASS,
-                        detail = "Windows netsh and DNS client cmdlets are available",
-                    )
-                } else {
-                    DesktopPreflightCheck(
-                        name = "route/DNS tooling",
-                        status = DesktopPreflightStatus.FAIL,
-                        detail = "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-                    )
-                }
-            }
+            DesktopRuntimeOs.WINDOWS -> windowsRouteDnsToolingCheck(::runCommand)
             DesktopRuntimeOs.MACOS ->
                 DesktopPreflightCheck(
                     name = "route/DNS tooling",

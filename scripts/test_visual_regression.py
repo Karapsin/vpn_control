@@ -180,6 +180,21 @@ class VisualRegressionTest(unittest.TestCase):
         )
         self.assertEqual(1, self.verify())
 
+    def test_scene_threshold_can_allow_bounded_native_surface_rasterization(self) -> None:
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["scenes"][0]["thresholds"] = {"max_changed_ratio": 0.002}
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        pixels = bytearray(self.image.pixels)
+        pixels[:40] = bytes((255, 255, 255, 255)) * 10
+        visual_regression.write_png(
+            self.actual / "main.png",
+            visual_regression.PngImage(100, 100, bytes(pixels)),
+        )
+
+        self.assertEqual(0, self.verify())
+        report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
+        self.assertEqual(0.002, report["scenes"][0]["thresholds"]["max_changed_ratio"])
+
     def test_invalid_scene_ignore_region_fails_closed(self) -> None:
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
         manifest["scenes"][0]["ignore_regions"] = [[0, 0, 101, 10]]
