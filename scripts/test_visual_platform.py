@@ -454,6 +454,7 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("deadline = time.monotonic() + 180", script)
         self.assertNotIn("; status=$?", script)
         self.assertIn("git clone --no-local --no-checkout", script)
+        self.assertIn("org.gradle.project.compose.desktop.packaging.checkJdkVendor=false", script)
         self.assertNotIn("open vnc://", script)
 
     def test_macos_framebuffer_driver_acknowledges_file_dialog_capture(self) -> None:
@@ -502,6 +503,8 @@ class VisualPlatformTest(unittest.TestCase):
             / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
         ).read_text(encoding="utf-8")
         self.assertIn("screen.height * 0.554", fixture)
+        self.assertIn("preparePrivateWindowCapturePermission(bounds)", fixture)
+        self.assertIn("Thread.sleep(5_000)", fixture)
         self.assertNotIn("screen.height * 0.516", fixture)
 
     def test_android_capture_requires_an_agent_owned_emulator(self) -> None:

@@ -79,11 +79,14 @@ writes into the host's shared worktree while another platform is capturing. Befo
 verifies the Tart helper's Screen Recording and Finder Automation grants, clears stale authorization,
 notification, Finder, application, and Dock residue, resolves permission requests queued before TCC
 repair, and compares the unobscured framebuffer perimeter with the canonical guest before proceeding.
+Its isolated package build opts into Compose's documented Homebrew-JDK override so a managed JDK update
+cannot strand the secure capture before the Gatekeeper scene is launched.
 It captures Gatekeeper before install confirmation so the
 Dock state is reproducible, verifies that each secure dialog actually appeared, waits for the guest-local
 dialog process to exit, and rejects or clears and retries blank VNC framebuffers and transient overlays
 instead of stamping unusable evidence.
-Hosted macOS capture resolves the Java Screen Recording consent sheet before writing native evidence.
+Hosted macOS capture resolves both the initial Java Screen Recording consent and macOS 15's deferred
+private-window capture consent after the empty Finder dialog is visible, before writing native evidence.
 
 The agent may dispatch hosted fallback for non-blocked scenes:
 

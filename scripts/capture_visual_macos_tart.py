@@ -346,6 +346,7 @@ def build_package(checkout: str) -> str:
     result = guest_shell(
         f"cd {shlex.quote(checkout)} && "
         f"export JAVA_HOME={shlex.quote(VM_JAVA_HOME)} && "
+        "export GRADLE_OPTS='-Dorg.gradle.project.compose.desktop.packaging.checkJdkVendor=false' && "
         "./scripts/package_macos_desktop.sh --skip-tests --skip-package-regression-tests >/tmp/vpn-control-macos-package.log && "
         "find dist/macos -maxdepth 1 -type f -name '*.dmg' | sort | tail -n 1",
         timeout=30 * 60,

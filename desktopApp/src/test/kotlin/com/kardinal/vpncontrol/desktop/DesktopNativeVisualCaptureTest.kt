@@ -29,6 +29,7 @@ import org.junit.Test
  * operator's ordinary desktop because a full-screen capture could expose private data.
  */
 class DesktopNativeVisualCaptureTest {
+    private var macosPrivateWindowPermissionPrepared = false
     private val robot by lazy {
         Robot().apply {
             autoDelay = 120
@@ -174,6 +175,7 @@ class DesktopNativeVisualCaptureTest {
             while (!Files.exists(captured) && System.nanoTime() < deadline) Thread.sleep(100)
             check(Files.exists(captured)) { "External macOS framebuffer capture did not acknowledge $output" }
         } else {
+            preparePrivateWindowCapturePermission(bounds)
             captureScreen(output, bounds)
         }
         onEventThread {
@@ -414,6 +416,27 @@ class DesktopNativeVisualCaptureTest {
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
         ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
+    }
+
+    /**
+     * macOS 15 can defer its private-window capture consent until a Finder
+     * FileDialog is actually visible. Trigger it against the empty fixture,
+     * wait for the OS animation, and accept it before preserving evidence.
+     */
+    private fun preparePrivateWindowCapturePermission(bounds: Rectangle) {
+        if (
+            macosPrivateWindowPermissionPrepared ||
+            !System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+        ) return
+        robot.createScreenCapture(bounds)
+        Thread.sleep(5_000)
+        val allowX = bounds.x + bounds.width / 2
+        val allowY = bounds.y + (bounds.height * 0.554).toInt()
+        robot.mouseMove(allowX, allowY)
+        robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+        robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+        Thread.sleep(2_000)
+        macosPrivateWindowPermissionPrepared = true
     }
 
     /**
