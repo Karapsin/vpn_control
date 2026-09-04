@@ -348,12 +348,21 @@ def prepare_guest_checkout() -> str:
         raise CaptureError("macOS visual capture requires a full lowercase target SHA")
     checkout = f"/Users/{VM_USER}/.vpn-control-visual/checkouts/{target_sha}"
     source = "/Volumes/My Shared Files/vpn-control"
+    checkout_root = str(Path(checkout).parent)
+    quoted_checkout_root = shlex.quote(checkout_root)
     quoted_checkout = shlex.quote(checkout)
     quoted_source = shlex.quote(source)
     quoted_sha = shlex.quote(target_sha)
     guest_shell(
         "set -e; "
-        f"mkdir -p {shlex.quote(str(Path(checkout).parent))}; "
+        f"root={quoted_checkout_root}; keep={quoted_sha}; mkdir -p \"$root\"; "
+        'for candidate in "$root"/*; do '
+        '[[ -d "$candidate" ]] || continue; name="${candidate##*/}"; '
+        'if [[ "$name" =~ ^[0-9a-f]{40}$ && "$name" != "$keep" ]]; then '
+        'rm -rf -- "$candidate"; fi; done; '
+        'available_kb=$(df -Pk "$root" | awk \'NR == 2 { print $4 }\'); '
+        'if (( available_kb < 2097152 )); then '
+        'echo "macOS visual VM has less than 2 GiB free after pruning stale checkouts" >&2; exit 1; fi; '
         f"if [[ ! -d {quoted_checkout}/.git ]]; then "
         f"git clone --no-local --no-checkout {quoted_source} {quoted_checkout}; fi; "
         f"git -C {quoted_checkout} checkout --detach --force {quoted_sha}; "

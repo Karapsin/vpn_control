@@ -578,6 +578,9 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("deadline = time.monotonic() + 180", script)
         self.assertNotIn("; status=$?", script)
         self.assertIn("git clone --no-local --no-checkout", script)
+        self.assertIn('[[ "$name" =~ ^[0-9a-f]{40}$', script)
+        self.assertIn('rm -rf -- "$candidate"', script)
+        self.assertIn("less than 2 GiB free after pruning stale checkouts", script)
         self.assertIn("org.gradle.project.compose.desktop.packaging.checkJdkVendor=false", script)
         self.assertNotIn("open vnc://", script)
 
