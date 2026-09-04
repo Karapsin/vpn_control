@@ -336,11 +336,11 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertEqual(1.0, capture_visual_macos_tart.visible_pixel_ratio(visible_png))
 
     def test_macos_secure_driver_rejects_contaminated_guest_background(self) -> None:
-        baseline_path = (
-            visual_platform.ROOT
-            / "visual-tests/baselines/macos/macos-install-confirmation.png"
+        baseline = visual_regression.PngImage(
+            1280,
+            800,
+            bytes((64, 96, 128, 255)) * 1280 * 800,
         )
-        baseline = visual_regression.read_png(baseline_path)
         with tempfile.TemporaryDirectory() as temporary:
             clean = Path(temporary) / "clean.png"
             contaminated = Path(temporary) / "contaminated.png"
@@ -355,11 +355,18 @@ class VisualPlatformTest(unittest.TestCase):
                 visual_regression.PngImage(baseline.width, baseline.height, bytes(pixels)),
             )
 
-            self.assertEqual(0.0, capture_visual_macos_tart.background_changed_ratio(clean))
-            self.assertGreater(
-                capture_visual_macos_tart.background_changed_ratio(contaminated),
-                0.0002,
-            )
+            with mock.patch.object(
+                capture_visual_macos_tart,
+                "read_png",
+                side_effect=lambda path: baseline
+                if "visual-tests/baselines/macos" in str(path)
+                else visual_regression.read_png(path),
+            ):
+                self.assertEqual(0.0, capture_visual_macos_tart.background_changed_ratio(clean))
+                self.assertGreater(
+                    capture_visual_macos_tart.background_changed_ratio(contaminated),
+                    0.0002,
+                )
 
             sidebar_pixels = bytearray(baseline.pixels)
             for y in range(130, 300):
@@ -376,11 +383,11 @@ class VisualPlatformTest(unittest.TestCase):
             )
 
     def test_macos_secure_driver_requires_the_expected_dialog_to_appear(self) -> None:
-        baseline_path = (
-            visual_platform.ROOT
-            / "visual-tests/baselines/macos/macos-install-confirmation.png"
+        baseline = visual_regression.PngImage(
+            1280,
+            800,
+            bytes((64, 96, 128, 255)) * 1280 * 800,
         )
-        baseline = visual_regression.read_png(baseline_path)
         with tempfile.TemporaryDirectory() as temporary:
             background = Path(temporary) / "background.png"
             dialog = Path(temporary) / "dialog.png"
