@@ -1430,7 +1430,10 @@ private fun MainAdvancedMenu(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_UPDATE), color = menuTitleColor)
                         Text(
-                            strings.format(UiText.SETTINGS_CURRENT_VERSION, BuildConfig.VERSION_NAME),
+                            strings.format(
+                                UiText.SETTINGS_CURRENT_VERSION,
+                                state.appUpdate.currentVersion.ifBlank { BuildConfig.VERSION_NAME },
+                            ),
                             color = menuSubtitleColor,
                             fontSize = 12.sp,
                         )

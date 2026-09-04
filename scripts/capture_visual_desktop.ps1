@@ -44,6 +44,15 @@ public static class VpnControlVisualClock {
         IntPtr window, uint message, UIntPtr wParam, IntPtr lParam,
         uint flags, uint timeout, out UIntPtr result);
 }
+"@
+    }
+    $result = [UIntPtr]::Zero
+    # WM_TIMECHANGE tells Explorer and native dialogs to redraw their frozen fixture time.
+    [VpnControlVisualClock]::SendMessageTimeout(
+        [IntPtr]0xffff, 0x001e, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$result
+    ) | Out-Null
+    Start-Sleep -Seconds 2
+}
 
 function Dismiss-HostedVisualResidue {
     if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
@@ -52,15 +61,6 @@ function Dismiss-HostedVisualResidue {
     Get-Process -ErrorAction SilentlyContinue |
         Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" } |
         ForEach-Object { $_.CloseMainWindow() | Out-Null }
-    Start-Sleep -Seconds 2
-}
-"@
-    }
-    $result = [UIntPtr]::Zero
-    # WM_TIMECHANGE tells Explorer and native dialogs to redraw their frozen fixture time.
-    [VpnControlVisualClock]::SendMessageTimeout(
-        [IntPtr]0xffff, 0x001e, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$result
-    ) | Out-Null
     Start-Sleep -Seconds 2
 }
 

@@ -41,12 +41,7 @@ if [[ "${VPN_CONTROL_VISUAL_PROVIDER:-local}" != "hosted" ]]; then
   }
 fi
 "$adb_bin" shell settings put global sysui_demo_allowed 1
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command enter >/dev/null
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200 >/dev/null
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false >/dev/null
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide >/dev/null
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide -e location hide -e alarm hide -e sync hide -e tty hide -e eri hide -e mute hide -e speakerphone hide -e managed_profile hide -e cast hide -e hotspot hide -e sensors_off hide -e data_saver hide -e vpn hide -e microphone hide -e camera hide -e rotate hide -e headset hide >/dev/null
+"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
 "$adb_bin" shell rm -rf "$device_dir"
 "$adb_bin" uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
 "$adb_bin" uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
@@ -75,12 +70,9 @@ fi
 if [[ -n "$native_scenes" ]]; then
   IFS=',' read -r -a native_scene_ids <<< "$native_scenes"
   for native_scene in "${native_scene_ids[@]}"; do
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command enter >/dev/null
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200 >/dev/null
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false >/dev/null
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide >/dev/null
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide -e location hide -e alarm hide -e sync hide -e tty hide -e eri hide -e mute hide -e speakerphone hide -e managed_profile hide -e cast hide -e hotspot hide -e sensors_off hide -e data_saver hide -e vpn hide -e microphone hide -e camera hide -e rotate hide -e headset hide >/dev/null
+    # The instrumentation fixture owns the complete demo-mode state. Leave any prior
+    # invocation first so SystemUI cannot accumulate duplicate Wi-Fi/status icons.
+    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
     if [[ "$native_scene" == "android-system-bars" ]]; then
       run_gradle_capture "$native_scene"
       pull_device_capture
@@ -100,13 +92,13 @@ if [[ -n "$native_scenes" ]]; then
     run_gradle_capture "$native_scene" &
     gradle_pid=$!
     native_window_ready=false
-    for _ in $(seq 1 1800); do
+    for _ in $(seq 1 600); do
+      capture_ready="$($adb_bin shell "test -f '$device_dir/$native_scene.ready' && echo ready || true" 2>/dev/null | tr -d '\r')"
       current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
-      if grep -q "$focus_pattern" <<< "$current_focus"; then
-        sleep 1
-        settled_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
-        if grep -q "$focus_pattern" <<< "$settled_focus"; then
-          "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
+      if [[ "$capture_ready" == "ready" ]] && grep -q "$focus_pattern" <<< "$current_focus"; then
+        "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
+        if [[ -s "$framebuffer_capture" ]]; then
+          "$adb_bin" shell touch "$device_dir/$native_scene.captured"
           native_window_ready=true
           break
         fi

@@ -148,8 +148,11 @@ class DesktopNativeVisualCaptureTest {
         output: Path,
         bounds: Rectangle,
     ) {
-        val fixtureDirectory = Path.of(System.getProperty("java.io.tmpdir"), "vpn-control-visual-files")
-        fixtureDirectory.toFile().deleteRecursively()
+        // macOS column view exposes the selected directory's parent. Use a dedicated clean
+        // parent instead of the shared temp directory so runner/Gradle files never enter evidence.
+        val fixtureRoot = Path.of(System.getProperty("user.home"), ".vpn-control-visual-fixture")
+        val fixtureDirectory = fixtureRoot.resolve("vpn-control-visual-files")
+        fixtureRoot.toFile().deleteRecursively()
         Files.createDirectories(fixtureDirectory)
         val completed = CountDownLatch(1)
         val thread = Thread({
@@ -183,7 +186,7 @@ class DesktopNativeVisualCaptureTest {
             // AppKit closes its native sheet asynchronously after AWT has disposed the peer.
             // Let that animation finish before the next independent scene is opened.
             Thread.sleep(2_000)
-            fixtureDirectory.toFile().deleteRecursively()
+            fixtureRoot.toFile().deleteRecursively()
         }
     }
 

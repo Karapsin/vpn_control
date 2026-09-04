@@ -86,6 +86,8 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("if (save) FileDialog.SAVE else FileDialog.LOAD", source)
         self.assertIn('check(completed.await(10, TimeUnit.SECONDS))', source)
         self.assertIn('check(!dialog.isShowing)', source)
+        self.assertIn('System.getProperty("user.home"), ".vpn-control-visual-fixture"', source)
+        self.assertNotIn('System.getProperty("java.io.tmpdir"), "vpn-control-visual-files"', source)
 
     def test_awt_tray_capture_fails_closed_until_the_menu_is_visible(self) -> None:
         source = (
@@ -132,8 +134,12 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT
             / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn("SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)", source)
-        self.assertIn("NATIVE_HOST_CAPTURE_HOLD_MILLIS = 10_000L", source)
+        self.assertIn("waitForHostFramebufferCapture(sceneId, remoteOutput, instrumentation)", source)
+        self.assertIn("NATIVE_HOST_CAPTURE_TIMEOUT_MILLIS = 60_000L", source)
+        self.assertIn("NATIVE_SURFACE_SETTLE_MILLIS = 2_000L", source)
+        self.assertIn("SystemClock.sleep(NATIVE_SURFACE_SETTLE_MILLIS)", source)
+        self.assertIn('touch $remoteOutput/$sceneId.ready', source)
+        self.assertIn('File(remoteOutput, "$sceneId.captured")', source)
         self.assertIn('onNodeWithTag("main-scroll"', source)
 
     def test_android_qr_capture_requires_visible_scanner_chrome(self) -> None:
@@ -156,8 +162,33 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT / "scripts/capture_visual_android.sh"
         ).read_text(encoding="utf-8")
         native_loop = source.split('for native_scene in "${native_scene_ids[@]}"; do', 1)[1]
-        self.assertIn('command clock -e hhmm 1200', native_loop)
-        self.assertIn('command notifications -e visible false', native_loop)
+        self.assertIn('command exit', native_loop)
+        self.assertNotIn('command enter', native_loop)
+        self.assertIn('$device_dir/$native_scene.ready', native_loop)
+        self.assertIn('$device_dir/$native_scene.captured', native_loop)
+
+    def test_android_visual_fixture_resets_demo_mode_before_each_scene(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        fixture = source.split("private fun freezeSystemUi", 1)[1]
+        self.assertLess(fixture.index("command exit"), fixture.index("command enter"))
+
+    def test_android_settings_version_comes_from_visual_state(self) -> None:
+        app_source = (
+            visual_platform.ROOT / "app/src/main/java/com/kardinal/vpncontrol/ui/VpnControlApp.kt"
+        ).read_text(encoding="utf-8")
+        fixture_source = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "state.appUpdate.currentVersion.ifBlank { BuildConfig.VERSION_NAME }",
+            app_source,
+        )
+        base_fixture = fixture_source.split("var state = MainUiState(", 1)[1].split(")\n    state = when", 1)[0]
+        self.assertIn('currentVersion = "2.0.0"', base_fixture)
 
     def test_android_visual_qr_exports_freeze_the_payload_timestamp(self) -> None:
         activity = (
@@ -275,9 +306,13 @@ class VisualPlatformTest(unittest.TestCase):
         script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
             encoding="utf-8",
         )
+        fixture = (
+            visual_platform.ROOT
+            / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("settings put global sysui_demo_allowed 1", script)
-        self.assertIn("command clock -e hhmm 1200", script)
-        self.assertIn("command notifications -e visible false", script)
+        self.assertIn("command clock -e hhmm 1200", fixture)
+        self.assertIn("command notifications -e visible false", fixture)
         self.assertIn("exec-out screencap -p", script)
         self.assertNotIn("emu screenrecord screenshot", script)
 
@@ -344,6 +379,37 @@ class VisualPlatformTest(unittest.TestCase):
             ppm.write_bytes(b"P6\n2 1\n255\n" + bytes((0, 1, 2, 253, 254, 255)))
             self.assertEqual((2, 1), capture_visual_windows_qemu.convert_ppm_to_png(ppm, png))
             self.assertTrue(png.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_windows_qemu_secure_driver_rejects_inactive_and_unchanged_frames(self) -> None:
+        inactive = bytes(100 * 3)
+        active = bytes((80, 120, 160)) * 100
+        changed = active[: 50 * 3] + bytes((200, 200, 200)) * 50
+        self.assertEqual(0.0, capture_visual_windows_qemu.visible_pixel_ratio(inactive))
+        self.assertEqual(1.0, capture_visual_windows_qemu.visible_pixel_ratio(active))
+        self.assertEqual(0.5, capture_visual_windows_qemu.changed_pixel_ratio(active, changed))
+        with self.assertRaisesRegex(capture_visual_windows_qemu.CaptureError, "same non-empty"):
+            capture_visual_windows_qemu.changed_pixel_ratio(active, b"")
+
+    def test_windows_qemu_readiness_waits_through_boot_resolution(self) -> None:
+        active = bytes((80, 120, 160)) * 100
+        with (
+            mock.patch.object(
+                capture_visual_windows_qemu,
+                "capture_qmp_pixels",
+                side_effect=[
+                    capture_visual_windows_qemu.CaptureError(
+                        "Windows framebuffer is 1024x768; expected 1280x800",
+                    ),
+                    active,
+                    active,
+                ],
+            ),
+            mock.patch.object(capture_visual_windows_qemu.time, "sleep"),
+        ):
+            self.assertEqual(
+                active,
+                capture_visual_windows_qemu.wait_for_active_display(mock.Mock(), timeout_seconds=10),
+            )
 
     def test_secure_desktop_drivers_validate_vnc_frame_dimensions(self) -> None:
         header = (
@@ -576,6 +642,10 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("WM_TIMECHANGE", windows)
         self.assertIn("Notify-SystemClockChanged", windows)
         self.assertIn("Dismiss-HostedVisualResidue", windows)
+        add_type_start = windows.index('Add-Type @"', windows.index("function Notify-SystemClockChanged"))
+        add_type_end = windows.index('"@', add_type_start)
+        residue_start = windows.index("function Dismiss-HostedVisualResidue")
+        self.assertGreater(residue_start, add_type_end)
 
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(

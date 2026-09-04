@@ -22,6 +22,8 @@ QMP_SOCKET = RUNTIME_DIR / "qmp.sock"
 READY_MARKER = RUNTIME_DIR / "READY"
 CANONICAL_SIZE = (1280, 800)
 VNC_ENDPOINT = "127.0.0.1::5905"
+MIN_ACTIVE_PIXEL_RATIO = 0.20
+MIN_SURFACE_CHANGE_RATIO = 0.01
 
 
 class CaptureError(RuntimeError):
@@ -110,7 +112,7 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", checksum)
 
 
-def convert_ppm_to_png(ppm: Path, png: Path) -> tuple[int, int]:
+def read_ppm(ppm: Path) -> tuple[int, int, bytes]:
     data = ppm.read_bytes()
     magic, position = _ppm_token(data, 0)
     width_raw, position = _ppm_token(data, position)
@@ -124,6 +126,31 @@ def convert_ppm_to_png(ppm: Path, png: Path) -> tuple[int, int]:
     pixels = data[position + 1 :]
     if len(pixels) != width * height * 3:
         raise CaptureError("PPM framebuffer data has an unexpected length")
+    return width, height, pixels
+
+
+def visible_pixel_ratio(pixels: bytes) -> float:
+    if not pixels:
+        return 0.0
+    visible = sum(
+        1 for offset in range(0, len(pixels), 3)
+        if max(pixels[offset : offset + 3]) > 24
+    )
+    return visible / (len(pixels) // 3)
+
+
+def changed_pixel_ratio(left: bytes, right: bytes) -> float:
+    if len(left) != len(right) or not left:
+        raise CaptureError("framebuffers must have the same non-empty pixel dimensions")
+    changed = sum(
+        1 for offset in range(0, len(left), 3)
+        if max(abs(left[offset + channel] - right[offset + channel]) for channel in range(3)) > 12
+    )
+    return changed / (len(left) // 3)
+
+
+def convert_ppm_to_png(ppm: Path, png: Path) -> tuple[int, int]:
+    width, height, pixels = read_ppm(ppm)
     scanlines = b"".join(
         b"\x00" + pixels[row * width * 3 : (row + 1) * width * 3]
         for row in range(height)
@@ -137,6 +164,41 @@ def convert_ppm_to_png(ppm: Path, png: Path) -> tuple[int, int]:
     )
     png.write_bytes(encoded)
     return width, height
+
+
+def capture_qmp_pixels(qmp: QmpClient, name: str) -> bytes:
+    ppm = RUNTIME_DIR / f"{name}.ppm"
+    try:
+        qmp.execute("screendump", {"filename": str(ppm)})
+        width, height, pixels = read_ppm(ppm)
+        if (width, height) != CANONICAL_SIZE:
+            raise CaptureError(f"Windows framebuffer is {width}x{height}; expected 1280x800")
+        return pixels
+    finally:
+        ppm.unlink(missing_ok=True)
+
+
+def wait_for_active_display(qmp: QmpClient, timeout_seconds: float = 180.0) -> bytes:
+    deadline = time.monotonic() + timeout_seconds
+    stable_frames = 0
+    last_pixels = b""
+    while time.monotonic() < deadline:
+        try:
+            last_pixels = capture_qmp_pixels(qmp, "windows-display-readiness")
+        except CaptureError as error:
+            if "Windows framebuffer is" not in str(error):
+                raise
+            stable_frames = 0
+            time.sleep(2)
+            continue
+        if visible_pixel_ratio(last_pixels) >= MIN_ACTIVE_PIXEL_RATIO:
+            stable_frames += 1
+            if stable_frames >= 2:
+                return last_pixels
+        else:
+            stable_frames = 0
+        time.sleep(2)
+    raise CaptureError("Windows desktop framebuffer did not become active within 180 seconds")
 
 
 def _vnc_client() -> str:
@@ -185,13 +247,30 @@ def capture_uac(output: Path) -> None:
     png = output / "windows-uac.png"
     qmp = QmpClient(QMP_SOCKET)
     try:
-        qmp.send_key("meta_l-r")
-        time.sleep(2)
+        before = wait_for_active_display(qmp)
+        run_dialog = b""
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            qmp.send_key("meta_l-r")
+            time.sleep(2)
+            run_dialog = capture_qmp_pixels(qmp, "windows-run-dialog")
+            if changed_pixel_ratio(before, run_dialog) >= MIN_SURFACE_CHANGE_RATIO:
+                break
+            qmp.send_key("esc")
+            time.sleep(2)
+            before = capture_qmp_pixels(qmp, "windows-desktop-retry")
+        else:
+            raise CaptureError("Windows desktop did not open the Run dialog within 120 seconds")
         qmp.send_key("ctrl-a")
         qmp.send_key("backspace")
         _type_command(qmp, "powershell start powershell -verb runas")
         qmp.send_key("ret")
         time.sleep(3)
+        uac = capture_qmp_pixels(qmp, "windows-uac-readiness")
+        if visible_pixel_ratio(uac) < MIN_ACTIVE_PIXEL_RATIO:
+            raise CaptureError("Windows UAC framebuffer is inactive")
+        if changed_pixel_ratio(run_dialog, uac) < MIN_SURFACE_CHANGE_RATIO:
+            raise CaptureError("Windows UAC surface did not replace the Run dialog")
         capture_vnc_frame(png)
     finally:
         qmp.send_key("esc")

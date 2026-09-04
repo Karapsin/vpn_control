@@ -51,7 +51,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-private const val NATIVE_HOST_CAPTURE_HOLD_MILLIS = 10_000L
+private const val NATIVE_HOST_CAPTURE_TIMEOUT_MILLIS = 60_000L
+private const val NATIVE_SURFACE_SETTLE_MILLIS = 2_000L
 
 @RunWith(AndroidJUnit4::class)
 class VisualCaptureInstrumentedTest {
@@ -124,12 +125,15 @@ class VisualCaptureInstrumentedTest {
                     openNativeScene(sceneId, instrumentation, device)
                     waitForNativeSurface(sceneId, device)
                     device.waitForIdle(3_000L)
+                    SystemClock.sleep(NATIVE_SURFACE_SETTLE_MILLIS)
                     check(device.takeScreenshot(File(output, "$sceneId.png")))
                     if (sceneId == "android-camera-qr") {
                         assertCameraScannerChrome(File(output, "$sceneId.png"))
                     }
                     instrumentation.shell("cp ${output.path}/$sceneId.png $remoteOutput/$sceneId.png")
-                    SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)
+                    if (sceneId != "android-system-bars") {
+                        waitForHostFramebufferCapture(sceneId, remoteOutput, instrumentation)
+                    }
                     if (sceneId == "android-vpn-consent") {
                         val cancel = requireNotNull(device.findObject(By.text("Cancel"))) {
                             "VPN consent did not expose its Cancel action"
@@ -339,6 +343,9 @@ class VisualCaptureInstrumentedTest {
 
     private fun freezeSystemUi(instrumentation: android.app.Instrumentation) {
         instrumentation.shell("settings put global sysui_demo_allowed 1")
+        // Re-entering demo mode without leaving it can append duplicate status icons across
+        // separate fixture invocations. Reset first so every scene starts from one clean model.
+        instrumentation.shell("am broadcast -a com.android.systemui.demo -e command exit")
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command enter")
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200")
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false")
@@ -347,6 +354,21 @@ class VisualCaptureInstrumentedTest {
         // identical app scenes differ by a few hundred pixels between captures.
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command network -e airplane hide -e wifi show -e level 4 -e fully true -e mobile hide -e sims 1 -e nosim hide")
         instrumentation.shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide -e location hide -e alarm hide -e sync hide -e tty hide -e eri hide -e mute hide -e speakerphone hide -e managed_profile hide -e cast hide -e hotspot hide -e sensors_off hide -e data_saver hide -e vpn hide -e microphone hide -e camera hide -e rotate hide -e headset hide")
+    }
+
+    private fun waitForHostFramebufferCapture(
+        sceneId: String,
+        remoteOutput: String,
+        instrumentation: android.app.Instrumentation,
+    ) {
+        instrumentation.shell("touch $remoteOutput/$sceneId.ready")
+        val captured = File(remoteOutput, "$sceneId.captured")
+        val deadline = SystemClock.elapsedRealtime() + NATIVE_HOST_CAPTURE_TIMEOUT_MILLIS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (captured.isFile) return
+            SystemClock.sleep(100L)
+        }
+        error("Host framebuffer capture did not acknowledge $sceneId")
     }
 
     private fun writeGeometry(file: File, image: Bitmap, scene: JSONObject) {
@@ -431,11 +453,10 @@ class VisualCaptureInstrumentedTest {
     }
 }
 
-private fun android.app.Instrumentation.shell(command: String) {
+private fun android.app.Instrumentation.shell(command: String): String =
     uiAutomation.executeShellCommand(command).use { descriptor ->
-        FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        FileInputStream(descriptor.fileDescriptor).use { it.readBytes().decodeToString() }
     }
-}
 
 private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map(::getJSONObject)
 private fun JSONArray.strings(): List<String> = (0 until length()).map(::getString)
@@ -501,6 +522,10 @@ private fun androidVisualState(sceneId: String): MainUiState {
             ),
         ),
         hasVpnPermission = sceneId != "main-permission-required",
+        appUpdate = AppUpdateState(
+            currentVersion = "2.0.0",
+            availableVersion = "2.0.0",
+        ),
         statusMessage = "Ready for visual inspection",
         sessionStartedAtEpochMillis = 1_700_000_000_000L,
         sessionStoppedAtEpochMillis = 1_699_999_000_000L,
