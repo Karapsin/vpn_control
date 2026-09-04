@@ -1430,7 +1430,11 @@ private class TrayPopupController {
 
     private fun scheduleAutoHide() {
         hideTimer?.stop()
-        hideTimer = Timer(6_000) { dismiss() }.apply {
+        val timeoutMillis = System.getProperty("vpn.control.trayPopupAutoHideMillis")
+            ?.toIntOrNull()
+            ?.coerceIn(1_000, 120_000)
+            ?: 6_000
+        hideTimer = Timer(timeoutMillis) { dismiss() }.apply {
             isRepeats = false
             start()
         }

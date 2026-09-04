@@ -45,6 +45,10 @@ def _canonical_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _json_hash(path: Path) -> str:
+    return _canonical_hash(_read_json(path))
+
+
 def _file_hash(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -191,8 +195,8 @@ def start_review(
         "target_sha": target_sha,
         "release": release,
         "platforms": normalized,
-        "manifest_sha256": _file_hash(MANIFEST_PATH),
-        "environments_sha256": _file_hash(ENVIRONMENTS_PATH),
+        "manifest_sha256": _json_hash(MANIFEST_PATH),
+        "environments_sha256": _json_hash(ENVIRONMENTS_PATH),
         "created_at_epoch": int(time.time()),
         "updated_at_epoch": int(time.time()),
         "scenes": inventory,
@@ -377,7 +381,7 @@ def _verify_session_evidence(session: dict[str, Any]) -> list[str]:
         (ENVIRONMENTS_PATH, str(session.get("environments_sha256", "")), "environment contract"),
     )
     for path, expected, label in expected_top_level:
-        if not path.is_file() or not expected or _file_hash(path) != expected:
+        if not path.is_file() or not expected or _json_hash(path) != expected:
             errors.append(f"{label} changed after review start")
     for key, scene in session.get("scenes", {}).items():
         if not isinstance(scene, dict):

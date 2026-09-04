@@ -1000,6 +1000,10 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _json_file_digest(path: Path) -> str:
+    return _json_digest(_read_json(path))
+
+
 def _visual_attestation(sha: str) -> dict[str, Any]:
     blockers: list[dict[str, Any]] = []
     commands: list[dict[str, Any]] = []
@@ -1021,9 +1025,9 @@ def _visual_attestation(sha: str) -> dict[str, Any]:
             blockers.append({"phase": "visual", "message": "agent visual review receipt digest is invalid"})
         manifest = REPO_ROOT / "visual-tests" / "scenes.json"
         environments = REPO_ROOT / "visual-tests" / "environments.json"
-        if not manifest.is_file() or receipt.get("manifest_sha256") != _file_digest(manifest):
+        if not manifest.is_file() or receipt.get("manifest_sha256") != _json_file_digest(manifest):
             blockers.append({"phase": "visual", "message": "visual scene manifest changed after agent review"})
-        if not environments.is_file() or receipt.get("environments_sha256") != _file_digest(environments):
+        if not environments.is_file() or receipt.get("environments_sha256") != _json_file_digest(environments):
             blockers.append({"phase": "visual", "message": "visual environment contract changed after agent review"})
         scenes = receipt.get("scenes")
         if not isinstance(scenes, dict) or not scenes:

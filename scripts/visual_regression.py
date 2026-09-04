@@ -149,7 +149,37 @@ def write_png(path: Path, image: PngImage) -> None:
     path.write_bytes(payload)
 
 
-def _compare(baseline: PngImage, actual: PngImage, max_delta: int) -> tuple[dict[str, float | int], PngImage]:
+def _ignored_pixels(width: int, height: int, regions: object) -> bytearray:
+    if regions is None:
+        return bytearray(width * height)
+    if not isinstance(regions, list):
+        raise ValueError("ignore_regions must be a list of [left, top, right, bottom] rectangles")
+    ignored = bytearray(width * height)
+    for region in regions:
+        if (
+            not isinstance(region, list)
+            or len(region) != 4
+            or any(not isinstance(value, int) or isinstance(value, bool) for value in region)
+        ):
+            raise ValueError("ignore_regions must contain integer [left, top, right, bottom] rectangles")
+        left, top, right, bottom = region
+        if left < 0 or top < 0 or right > width or bottom > height or right <= left or bottom <= top:
+            raise ValueError(
+                f"ignore region is clipped or outside the {width}x{height} image: {region}",
+            )
+        row = bytes((1,)) * (right - left)
+        for y in range(top, bottom):
+            start = y * width + left
+            ignored[start : start + len(row)] = row
+    return ignored
+
+
+def _compare(
+    baseline: PngImage,
+    actual: PngImage,
+    max_delta: int,
+    ignore_regions: object = None,
+) -> tuple[dict[str, float | int], PngImage]:
     if (baseline.width, baseline.height) != (actual.width, actual.height):
         raise ValueError(
             f"dimension mismatch: baseline={baseline.width}x{baseline.height}, "
@@ -159,8 +189,17 @@ def _compare(baseline: PngImage, actual: PngImage, max_delta: int) -> tuple[dict
     absolute_error = 0
     diff = bytearray(len(actual.pixels))
     pixel_count = actual.width * actual.height
+    ignored = _ignored_pixels(actual.width, actual.height, ignore_regions)
+    ignored_count = sum(ignored)
+    compared_count = pixel_count - ignored_count
+    if compared_count <= 0:
+        raise ValueError("ignore_regions cannot exclude the entire image")
     for pixel in range(pixel_count):
         offset = pixel * 4
+        if ignored[pixel]:
+            gray = sum(actual.pixels[offset : offset + 3]) // 9
+            diff[offset : offset + 4] = bytes((gray, gray, gray, 255))
+            continue
         deltas = [abs(actual.pixels[offset + channel] - baseline.pixels[offset + channel]) for channel in range(3)]
         absolute_error += sum(deltas)
         changed = max(deltas) > max_delta
@@ -174,9 +213,11 @@ def _compare(baseline: PngImage, actual: PngImage, max_delta: int) -> tuple[dict
     metrics: dict[str, float | int] = {
         "width": actual.width,
         "height": actual.height,
+        "compared_pixels": compared_count,
+        "ignored_pixels": ignored_count,
         "changed_pixels": changed_pixels,
-        "changed_ratio": changed_pixels / pixel_count,
-        "mean_channel_error": absolute_error / (pixel_count * 3),
+        "changed_ratio": changed_pixels / compared_count,
+        "mean_channel_error": absolute_error / (compared_count * 3),
     }
     return metrics, PngImage(actual.width, actual.height, bytes(diff))
 
@@ -339,11 +380,21 @@ def verify(args: argparse.Namespace) -> int:
                     f"actual={actual.width}x{actual.height}",
                 )
             else:
-                metrics, diff = _compare(baseline, actual, max_delta)
+                metrics, diff = _compare(
+                    baseline,
+                    actual,
+                    max_delta,
+                    scene.get("ignore_regions"),
+                )
                 if metrics["changed_ratio"] > max_ratio:
-                    errors.append(f"changed ratio {metrics['changed_ratio']:.6f} exceeds {max_ratio:.6f}")
+                    errors.append(
+                        f"changed ratio {metrics['changed_ratio']:.6f} exceeds {max_ratio:.6f}",
+                    )
                 if metrics["mean_channel_error"] > max_mean:
-                    errors.append(f"mean channel error {metrics['mean_channel_error']:.6f} exceeds {max_mean:.6f}")
+                    errors.append(
+                        f"mean channel error {metrics['mean_channel_error']:.6f} exceeds {max_mean:.6f}",
+                    )
+            result["ignore_regions"] = scene.get("ignore_regions", [])
             result["metrics"] = metrics
             write_png(diff_path, diff)
             write_png(contact_path, _contact_sheet((baseline, actual, diff)))

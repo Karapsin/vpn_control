@@ -44,6 +44,15 @@ def _file_hash(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_hash(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _json_hash(path: Path) -> str:
+    return _canonical_hash(_read_json(path))
+
+
 def _head_sha() -> str:
     completed = _run(["git", "rev-parse", "HEAD"], timeout=30)
     value = completed.stdout.strip()
@@ -621,7 +630,7 @@ def stamp_capture(
         "platform": platform,
         "provider": provider,
         "target_sha": target_sha,
-        "manifest_sha256": _file_hash(MANIFEST_PATH),
+        "manifest_sha256": _json_hash(MANIFEST_PATH),
         "environment": environment,
         "environment_sha256": hashlib.sha256(
             json.dumps(environment, sort_keys=True, separators=(",", ":")).encode("utf-8"),
@@ -678,7 +687,7 @@ def verify_capture_provenance(platform: str, target_sha: str, actual_dir: Path) 
             metadata.get("schema_version") != 1
             or metadata.get("platform") != platform
             or metadata.get("target_sha") != target_sha
-            or metadata.get("manifest_sha256") != _file_hash(MANIFEST_PATH)
+            or metadata.get("manifest_sha256") != _json_hash(MANIFEST_PATH)
         ):
             raise VisualPlatformError(f"capture provenance does not match target: {metadata_path}")
         environment = metadata.get("environment")

@@ -32,6 +32,28 @@ public static class VpnControlVisualNativeWindow {
         ForEach-Object { [VpnControlVisualNativeWindow]::ShowWindow($_.MainWindowHandle, 6) | Out-Null }
 }
 
+function Notify-SystemClockChanged {
+    if ($env:OS -ne "Windows_NT") { return }
+    if (-not ("VpnControlVisualClock" -as [type])) {
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class VpnControlVisualClock {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr window, uint message, UIntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out UIntPtr result);
+}
+"@
+    }
+    $result = [UIntPtr]::Zero
+    # WM_TIMECHANGE tells Explorer and native dialogs to redraw their frozen fixture time.
+    [VpnControlVisualClock]::SendMessageTimeout(
+        [IntPtr]0xffff, 0x001e, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$result
+    ) | Out-Null
+    Start-Sleep -Seconds 2
+}
+
 Hide-HostConsoleWindows
 $Manifest = Join-Path $RepoRoot "visual-tests\scenes.json"
 $Selector = Join-Path $RepoRoot "scripts\select_visual_scenes.py"
@@ -68,10 +90,12 @@ if ($NativeScenes) {
     $OriginalDate = Get-Date
     try {
         Set-Date -Date "2026-09-03T12:00:00" | Out-Null
+        Notify-SystemClockChanged
         & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
         if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
     } finally {
         Set-Date -Date $OriginalDate | Out-Null
+        Notify-SystemClockChanged
     }
 }
 

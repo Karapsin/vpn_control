@@ -164,26 +164,18 @@ class DesktopNativeVisualCaptureTest {
         thread.isDaemon = true
         thread.start()
         val dialog = waitForWindow<FileDialog>()
-        activateWindow(dialog)
-        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") == "1") {
-            // Robot needs macOS Screen Recording consent, which a guest cannot safely grant to
-            // itself. The agent's loopback VNC client captures this isolated framebuffer instead.
-            val ready = output.resolveSibling("${output.fileName}.ready")
-            val captured = output.resolveSibling("${output.fileName}.captured")
-            Files.writeString(ready, "ready")
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-            while (!Files.exists(captured) && System.nanoTime() < deadline) Thread.sleep(100)
-            check(Files.exists(captured)) { "External macOS framebuffer capture did not acknowledge $output" }
-        } else {
-            preparePrivateWindowCapturePermission(bounds)
-            captureScreen(output, bounds)
+        try {
+            activateWindow(dialog)
+            captureVisibleSurface(output, bounds)
+        } finally {
+            onEventThread {
+                dialog.isVisible = false
+                dialog.dispose()
+            }
+            check(completed.await(10, TimeUnit.SECONDS)) { "Native file dialog did not close after capture" }
+            check(!dialog.isShowing) { "Native file dialog remained visible after capture" }
+            fixtureDirectory.toFile().deleteRecursively()
         }
-        onEventThread {
-            dialog.isVisible = false
-            dialog.dispose()
-        }
-        completed.await(10, TimeUnit.SECONDS)
-        fixtureDirectory.toFile().deleteRecursively()
     }
 
     private fun captureTray(sceneId: String, output: Path, bounds: Rectangle) {
@@ -194,8 +186,12 @@ class DesktopNativeVisualCaptureTest {
             else -> null
         }
         val prior = System.getProperty("vpn.control.linux.trayBackend")
+        val priorAutoHide = System.getProperty("vpn.control.trayPopupAutoHideMillis")
         val priorDorkboxTrayType = DorkboxSystemTray.FORCE_TRAY_TYPE
         if (backend != null) System.setProperty("vpn.control.linux.trayBackend", backend)
+        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") == "1") {
+            System.setProperty("vpn.control.trayPopupAutoHideMillis", "120000")
+        }
         if (backend == "native") {
             DorkboxSystemTray.FORCE_TRAY_TYPE = DorkboxSystemTray.TrayType.Gtk
         }
@@ -230,33 +226,59 @@ class DesktopNativeVisualCaptureTest {
                 isVisible = true
             }
         }
+        var awtPopup: Window? = null
         try {
             check(available.await(30, TimeUnit.SECONDS)) { "The production tray backend did not become available" }
             if (backend == "native") openNativeTrayMenuWhenAvailable()
-            else openAwtTrayMenuWhenAvailable()
+            else awtPopup = openAwtTrayMenuWhenAvailable(bounds)
             Thread.sleep(1_000)
-            captureScreen(output, bounds)
+            captureVisibleSurface(output, bounds)
         } finally {
+            awtPopup?.let { popup ->
+                onEventThread {
+                    popup.isVisible = false
+                    popup.dispose()
+                }
+            }
             onEventThread {
                 window.isVisible = false
                 window.dispose()
             }
             if (prior == null) System.clearProperty("vpn.control.linux.trayBackend")
             else System.setProperty("vpn.control.linux.trayBackend", prior)
+            if (priorAutoHide == null) System.clearProperty("vpn.control.trayPopupAutoHideMillis")
+            else System.setProperty("vpn.control.trayPopupAutoHideMillis", priorAutoHide)
             DorkboxSystemTray.FORCE_TRAY_TYPE = priorDorkboxTrayType
         }
     }
 
-    private fun openAwtTrayMenuWhenAvailable() {
-        if (!SystemTray.isSupported()) return
-        val icon = SystemTray.getSystemTray().trayIcons.firstOrNull() ?: return
+    private fun openAwtTrayMenuWhenAvailable(bounds: Rectangle): Window {
+        check(SystemTray.isSupported()) { "AWT system tray is unavailable for native visual capture" }
+        val icon = SystemTray.getSystemTray().trayIcons.firstOrNull()
+        checkNotNull(icon) { "AWT tray icon was not installed for native visual capture" }
+        val listeners = icon.actionListeners.toList()
+        check(listeners.isNotEmpty()) { "AWT tray icon has no menu action listener" }
+        // This canonical anchor keeps the popup aligned with its stable comparison region.
+        robot.mouseMove(bounds.x + bounds.width / 2, bounds.y + 530)
         EventQueue.invokeAndWait {
-            icon.actionListeners.forEach { listener ->
+            listeners.forEach { listener ->
                 listener.actionPerformed(
                     java.awt.event.ActionEvent(icon, java.awt.event.ActionEvent.ACTION_PERFORMED, "visual-open"),
                 )
             }
         }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        var popup: Window? = null
+        while (System.nanoTime() < deadline) {
+            popup = Window.getWindows().firstOrNull {
+                it.name == "vpn-control-tray-menu" && it.isShowing
+            }
+            if (popup != null) break
+            Thread.sleep(100)
+        }
+        val visiblePopup = checkNotNull(popup) { "VPN Control tray menu did not become visible for capture" }
+        activateWindow(visiblePopup)
+        return visiblePopup
     }
 
     /**
@@ -416,6 +438,22 @@ class DesktopNativeVisualCaptureTest {
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
         ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
+    }
+
+    private fun captureVisibleSurface(output: Path, bounds: Rectangle) {
+        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") == "1") {
+            // Robot needs macOS Screen Recording consent, which a guest cannot safely grant to
+            // itself. The agent's loopback VNC client captures this isolated framebuffer instead.
+            val ready = output.resolveSibling("${output.fileName}.ready")
+            val captured = output.resolveSibling("${output.fileName}.captured")
+            Files.writeString(ready, "ready")
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
+            while (!Files.exists(captured) && System.nanoTime() < deadline) Thread.sleep(100)
+            check(Files.exists(captured)) { "External macOS framebuffer capture did not acknowledge $output" }
+            return
+        }
+        preparePrivateWindowCapturePermission(bounds)
+        captureScreen(output, bounds)
     }
 
     /**

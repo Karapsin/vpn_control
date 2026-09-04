@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.9 - 2026-09-04
+
+- Make visual release capture deterministic across hosted and managed VM environments.
+
 ## 2.0.8 - 2026-09-04
 
 - Use the reliable gVisor TUN stack on Windows.

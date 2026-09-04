@@ -91,7 +91,7 @@ class VisualReviewTest(unittest.TestCase):
             "platform": platform,
             "provider": "local",
             "target_sha": sha,
-            "manifest_sha256": visual_review._file_hash(self.manifest),
+            "manifest_sha256": visual_review._json_hash(self.manifest),
             "environment": capture_environment,
             "environment_sha256": visual_review._canonical_hash(capture_environment),
             "scenes": {
@@ -121,6 +121,14 @@ class VisualReviewTest(unittest.TestCase):
             encoding="utf-8",
         )
         visual_review.ingest_report(sha, platform, report, actual_dir)
+
+    def test_json_provenance_hash_ignores_line_endings_and_formatting(self) -> None:
+        compact = self.root / "compact.json"
+        pretty = self.root / "pretty.json"
+        compact.write_bytes(b'{"b":2,"a":1}\r\n')
+        pretty.write_text('{\n  "a": 1,\n  "b": 2\n}\n', encoding="utf-8")
+        self.assertNotEqual(visual_review._file_hash(compact), visual_review._file_hash(pretty))
+        self.assertEqual(visual_review._json_hash(compact), visual_review._json_hash(pretty))
 
     def test_release_review_requires_all_supported_platforms(self) -> None:
         with self.assertRaises(visual_review.VisualReviewError):

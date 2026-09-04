@@ -22,7 +22,9 @@ Generated VM state stays in `.runtime/visual-vms/`. Screenshots and reports stay
 
 A targeted development review may name one or more affected platforms. A release review always includes every scene on Android, Linux, Windows, and macOS. App-owned scenes require PNG and geometry JSON; OS-owned scenes require a full-screen PNG. The agent opens every image, normally in six-scene batches, and records a verdict for every individual scene.
 
-Synthetic fixtures freeze time, traffic, progress, data, locale, animations, window position, display scaling, and font selection. Capture must never use the operator's real workspace, credentials, subscriptions, or active VPN/runtime. Every local or hosted subset writes `capture-<provider>.json`, binding its environment fingerprint, scene files, manifest, and checked-out target SHA; comparison refuses a missing, stale, modified, or incomplete provenance set.
+Synthetic fixtures freeze time, traffic, progress, data, locale, animations, window position, display scaling, and font selection. Capture must never use the operator's real workspace, credentials, subscriptions, or active VPN/runtime. Every local or hosted subset writes `capture-<provider>.json`, binding its environment fingerprint, scene files, manifest, and checked-out target SHA; comparison refuses a missing, stale, modified, or incomplete provenance set. JSON provenance hashes use canonical parsed content so Windows CRLF checkout rules cannot invalidate otherwise identical evidence.
+
+An OS-owned scene may declare pixel-coordinate `ignore_regions` only for an unavoidable platform surface outside the subject under review, such as the Windows taskbar clock or Android notification date. The comparator validates every rectangle, excludes it from both ratios, and still fails if exclusions cover the whole image. The subject itself must remain compared and must also pass agent review.
 
 ## Provider Selection
 
@@ -90,6 +92,9 @@ or clears and retries blank VNC framebuffers and transient overlays
 instead of stamping unusable evidence, including narrow upper-right Screen Sharing or sidebar tabs.
 Hosted macOS capture resolves both the initial Java Screen Recording consent and macOS 15's deferred
 private-window capture consent after the empty Finder dialog is visible, before writing native evidence.
+File dialogs and menu-bar popups use the same external framebuffer handshake in the managed Tart VM.
+The tray fixture pins the popup anchor and extends its visual-only auto-hide timeout, then refuses to
+capture unless the named popup window is visible; dialog teardown is likewise verified before the next scene.
 
 The agent may dispatch hosted fallback for non-blocked scenes:
 

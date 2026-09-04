@@ -388,8 +388,8 @@ class WorkflowWatchTest(unittest.TestCase):
                 "target_sha": sha,
                 "release": True,
                 "platforms": ["android", "linux", "windows", "macos"],
-                "manifest_sha256": mcp_server._file_digest(manifest),
-                "environments_sha256": mcp_server._file_digest(environments),
+                "manifest_sha256": mcp_server._json_file_digest(manifest),
+                "environments_sha256": mcp_server._json_file_digest(environments),
                 "scenes": {
                     "android/main": {"automation": "pass", "review": "pass"},
                 },
@@ -441,8 +441,8 @@ class WorkflowWatchTest(unittest.TestCase):
                 "target_sha": sha,
                 "release": True,
                 "platforms": ["android", "linux", "windows", "macos"],
-                "manifest_sha256": mcp_server._file_digest(manifest),
-                "environments_sha256": mcp_server._file_digest(environments),
+                "manifest_sha256": mcp_server._json_file_digest(manifest),
+                "environments_sha256": mcp_server._json_file_digest(environments),
                 "scenes": {"android/main": {"automation": "pass", "review": "pass"}},
             }
             digest = mcp_server._json_digest(payload)
@@ -492,8 +492,8 @@ class WorkflowWatchTest(unittest.TestCase):
                 "target_sha": sha,
                 "release": True,
                 "platforms": ["android", "linux", "windows", "macos"],
-                "manifest_sha256": mcp_server._file_digest(manifest),
-                "environments_sha256": mcp_server._file_digest(environments),
+                "manifest_sha256": mcp_server._json_file_digest(manifest),
+                "environments_sha256": mcp_server._json_file_digest(environments),
                 "scenes": {"android/main": {"automation": "pass", "review": "pass"}},
             }
             digest = mcp_server._json_digest(payload)
@@ -551,8 +551,8 @@ class WorkflowWatchTest(unittest.TestCase):
                 "target_sha": sha,
                 "release": True,
                 "platforms": ["android", "linux", "windows", "macos"],
-                "manifest_sha256": mcp_server._file_digest(manifest),
-                "environments_sha256": mcp_server._file_digest(environments),
+                "manifest_sha256": mcp_server._json_file_digest(manifest),
+                "environments_sha256": mcp_server._json_file_digest(environments),
                 "reports": {},
                 "scenes": {
                     "android/main": {

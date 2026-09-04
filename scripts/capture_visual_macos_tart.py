@@ -25,6 +25,7 @@ VM_JAVA_HOME = os.environ.get("VPN_CONTROL_VISUAL_MACOS_JAVA_HOME", "/opt/homebr
 CANONICAL_SIZE = (1280, 800)
 SECURE_SCENES = ("macos-gatekeeper", "macos-install-confirmation")
 FILE_DIALOG_SCENES = ("macos-open-dialog", "macos-save-dialog")
+MENU_BAR_SCENES = ("macos-menu-bar-disconnected", "macos-menu-bar-connected")
 
 
 class CaptureError(RuntimeError):
@@ -523,7 +524,12 @@ def restore_guest_clock() -> None:
     guest_shell("sudo systemsetup -setusingnetworktime on >/dev/null 2>&1 || true", timeout=30)
 
 
-def capture_file_dialogs(ip_address: str, checkout: str, scene_ids: list[str], output: Path) -> None:
+def capture_external_framebuffer_scenes(
+    ip_address: str,
+    checkout: str,
+    scene_ids: list[str],
+    output: Path,
+) -> None:
     guest_output = Path("/Volumes/My Shared Files/vpn-control") / output.relative_to(ROOT)
     exit_marker = output / ".macos-dialog-exit"
     exit_marker.unlink(missing_ok=True)
@@ -550,7 +556,7 @@ def capture_file_dialogs(ip_address: str, checkout: str, scene_ids: list[str], o
         while not ready.exists() and time.monotonic() < deadline:
             time.sleep(0.5)
         if not ready.exists():
-            raise CaptureError(f"timed out waiting for isolated macOS dialog: {scene_id}")
+            raise CaptureError(f"timed out waiting for isolated macOS surface: {scene_id}")
         try:
             dismiss_notification_banner(ip_address)
             capture_ready_frame(ip_address, output / f"{scene_id}.png")
@@ -561,16 +567,17 @@ def capture_file_dialogs(ip_address: str, checkout: str, scene_ids: list[str], o
     while not exit_marker.exists() and time.monotonic() < completion_deadline:
         time.sleep(0.5)
     if not exit_marker.exists():
-        raise CaptureError("timed out waiting for isolated macOS dialog capture to exit")
+        raise CaptureError("timed out waiting for isolated macOS surface capture to exit")
     status = exit_marker.read_text(encoding="utf-8").strip()
     exit_marker.unlink(missing_ok=True)
     if status != "0":
         log_tail = guest_shell("tail -n 40 /tmp/vpn-control-macos-dialog-vnc.log", timeout=30).stdout.strip()
-        raise CaptureError(f"isolated macOS dialog capture failed with exit {status}: {log_tail}")
+        raise CaptureError(f"isolated macOS surface capture failed with exit {status}: {log_tail}")
 
 
 def capture_requested(scene_ids: list[str], output: Path) -> None:
-    unknown = sorted(set(scene_ids) - set(SECURE_SCENES) - set(FILE_DIALOG_SCENES))
+    external_scenes = set(FILE_DIALOG_SCENES) | set(MENU_BAR_SCENES)
+    unknown = sorted(set(scene_ids) - set(SECURE_SCENES) - external_scenes)
     if unknown:
         raise CaptureError("the Tart secure-surface driver cannot capture: " + ", ".join(unknown))
     ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
@@ -581,9 +588,9 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     checkout = prepare_guest_checkout()
     output.mkdir(parents=True, exist_ok=True)
     reset_guest_ui(ip_address)
-    file_dialog_scenes = [scene for scene in scene_ids if scene in FILE_DIALOG_SCENES]
-    if file_dialog_scenes:
-        capture_file_dialogs(ip_address, checkout, file_dialog_scenes, output)
+    framebuffer_scenes = [scene for scene in scene_ids if scene in external_scenes]
+    if framebuffer_scenes:
+        capture_external_framebuffer_scenes(ip_address, checkout, framebuffer_scenes, output)
     package = build_package(checkout) if "macos-gatekeeper" in scene_ids else ""
     secure_scenes = [scene for scene in SECURE_SCENES if scene in scene_ids]
     if secure_scenes:

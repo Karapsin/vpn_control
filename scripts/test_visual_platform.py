@@ -49,6 +49,15 @@ MACOS_TART_CAPTURE_SPEC.loader.exec_module(capture_visual_macos_tart)
 
 
 class VisualPlatformTest(unittest.TestCase):
+    def test_json_provenance_hash_is_independent_of_checkout_line_endings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            crlf = Path(temporary) / "crlf.json"
+            lf = Path(temporary) / "lf.json"
+            crlf.write_bytes(b'{\r\n  "b": 2,\r\n  "a": 1\r\n}\r\n')
+            lf.write_text('{"a":1,"b":2}\n', encoding="utf-8")
+            self.assertNotEqual(visual_platform._file_hash(crlf), visual_platform._file_hash(lf))
+            self.assertEqual(visual_platform._json_hash(crlf), visual_platform._json_hash(lf))
+
     def test_desktop_scene_selection_keeps_app_and_native_capture_disjoint(self) -> None:
         manifest = visual_platform.ROOT / "visual-tests/scenes.json"
         for platform in ("linux", "windows", "macos"):
@@ -75,6 +84,32 @@ class VisualPlatformTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('"vpn-control-visual-files"', source)
         self.assertIn("if (save) FileDialog.SAVE else FileDialog.LOAD", source)
+        self.assertIn('check(completed.await(10, TimeUnit.SECONDS))', source)
+        self.assertIn('check(!dialog.isShowing)', source)
+
+    def test_awt_tray_capture_fails_closed_until_the_menu_is_visible(self) -> None:
+        source = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
+        ).read_text(encoding="utf-8")
+        tray_source = (
+            visual_platform.ROOT
+            / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTray.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('robot.mouseMove(bounds.x + bounds.width / 2, bounds.y + 530)', source)
+        self.assertIn('it.name == "vpn-control-tray-menu" && it.isShowing', source)
+        self.assertIn('checkNotNull(popup) { "VPN Control tray menu did not become visible for capture" }', source)
+        self.assertIn('captureVisibleSurface(output, bounds)', source)
+        self.assertIn('System.setProperty("vpn.control.trayPopupAutoHideMillis", "120000")', source)
+        self.assertIn('System.getProperty("vpn.control.trayPopupAutoHideMillis")', tray_source)
+        self.assertIn('.coerceIn(1_000, 120_000)', tray_source)
+
+    def test_tart_driver_captures_menu_bar_surfaces_from_the_external_framebuffer(self) -> None:
+        source = (visual_platform.ROOT / "scripts/capture_visual_macos_tart.py").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('MENU_BAR_SCENES = ("macos-menu-bar-disconnected", "macos-menu-bar-connected")', source)
+        self.assertIn("capture_external_framebuffer_scenes", source)
 
     def test_android_camera_capture_allows_for_cold_camera_startup(self) -> None:
         source = (
@@ -491,6 +526,8 @@ class VisualPlatformTest(unittest.TestCase):
         )
         self.assertIn("sudo date 0903120026.00", macos)
         self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
+        self.assertIn("WM_TIMECHANGE", windows)
+        self.assertIn("Notify-SystemClockChanged", windows)
 
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
