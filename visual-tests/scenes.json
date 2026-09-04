@@ -138,7 +138,7 @@
     {"id":"macos-menu-bar-disconnected","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1015,279],[0,279,544,509],[736,279,1280,509],[0,509,1280,800]]},
     {"id":"macos-menu-bar-connected","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1015,279],[0,279,544,509],[736,279,1280,509],[0,509,1280,800]]},
     {"id":"macos-dmg","platforms":["macos"],"geometry_required":false},
-    {"id":"macos-gatekeeper","platforms":["macos"],"geometry_required":false,"ignore_regions":[[930,710,1040,790]]},
-    {"id":"macos-install-confirmation","platforms":["macos"],"geometry_required":false,"ignore_regions":[[930,710,1040,790]]}
+    {"id":"macos-gatekeeper","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1280,30],[0,700,1280,800]]},
+    {"id":"macos-install-confirmation","platforms":["macos"],"geometry_required":false,"ignore_regions":[[0,0,1280,30],[0,700,1280,800]]}
   ]
 }

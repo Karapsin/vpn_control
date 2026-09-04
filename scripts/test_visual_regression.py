@@ -74,6 +74,13 @@ class VisualRegressionTest(unittest.TestCase):
         attributes = (visual_regression.ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("visual-tests/baselines/**/*.png filter=lfs", attributes)
 
+    def test_repository_secure_macos_scenes_ignore_only_nondeterministic_guest_chrome(self) -> None:
+        root = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+        scenes = {scene["id"]: scene for scene in root["scenes"]}
+        guest_chrome = [[0, 0, 1280, 30], [0, 700, 1280, 800]]
+        for scene_id in ("macos-gatekeeper", "macos-install-confirmation"):
+            self.assertEqual(guest_chrome, scenes[scene_id]["ignore_regions"])
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)

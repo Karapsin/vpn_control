@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.13 - 2026-09-04
+
+- Ignore nondeterministic macOS guest chrome in secure-dialog visual comparisons.
+
 ## 2.0.12 - 2026-09-04
 
 - Make Windows VPN preflight and cross-platform visual capture deterministic under cold or variable platform UI state.
