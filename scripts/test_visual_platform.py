@@ -336,6 +336,10 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertEqual(1.0, capture_visual_macos_tart.visible_pixel_ratio(visible_png))
 
     def test_macos_secure_driver_rejects_contaminated_guest_background(self) -> None:
+        baseline_path = (
+            capture_visual_macos_tart.ROOT
+            / "visual-tests/baselines/macos/macos-install-confirmation.png"
+        )
         baseline = visual_regression.PngImage(
             1280,
             800,
@@ -359,7 +363,7 @@ class VisualPlatformTest(unittest.TestCase):
                 capture_visual_macos_tart,
                 "read_png",
                 side_effect=lambda path: baseline
-                if "visual-tests/baselines/macos" in str(path)
+                if path == baseline_path
                 else visual_regression.read_png(path),
             ):
                 self.assertEqual(0.0, capture_visual_macos_tart.background_changed_ratio(clean))
