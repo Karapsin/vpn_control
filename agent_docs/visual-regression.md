@@ -81,6 +81,8 @@ notification, Finder, application, and Dock residue, resolves permission request
 repair, and compares the unobscured framebuffer perimeter with the canonical guest before proceeding.
 Its isolated package build opts into Compose's documented Homebrew-JDK override so a managed JDK update
 cannot strand the secure capture before the Gatekeeper scene is launched.
+Before secure capture, it performs a managed-guest reboot and verifies the boot timestamp changed. This
+clears macOS's short-lived administrator authorization cache so consecutive captures still show the sheet.
 It captures Gatekeeper before install confirmation so the
 Dock state is reproducible, verifies that each secure dialog actually appeared, waits for the guest-local
 dialog process to exit, and rejects or clears and retries blank VNC framebuffers and transient overlays

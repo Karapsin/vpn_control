@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.6 - 2026-09-04
+
+- Reset cached macOS authorization state before repeatable secure captures.
+
 ## 2.0.5 - 2026-09-04
 
 - Stabilize managed macOS packaging and deferred private-window capture consent.

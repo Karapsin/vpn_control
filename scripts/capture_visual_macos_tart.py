@@ -257,6 +257,29 @@ def guest_shell(script: str, *, timeout: int = 15 * 60) -> subprocess.CompletedP
     return run_checked(["tart", "exec", VM_NAME, "/bin/zsh", "-lc", script], timeout=timeout)
 
 
+def reboot_guest() -> None:
+    """Reboot the isolated guest and prove that a new boot completed."""
+    before = guest_shell("/usr/sbin/sysctl -n kern.boottime", timeout=30).stdout.strip()
+    try:
+        run_checked(["tart", "exec", VM_NAME, "sudo", "/sbin/shutdown", "-r", "now"], timeout=30)
+    except CaptureError:
+        # tart exec can lose its transport while the requested reboot is already in progress.
+        pass
+    time.sleep(5)
+    deadline = time.monotonic() + 180
+    failures: list[str] = []
+    while time.monotonic() < deadline:
+        try:
+            after = guest_shell("/usr/sbin/sysctl -n kern.boottime", timeout=30).stdout.strip()
+            if after and after != before:
+                return
+            failures.append("guest boot timestamp did not change")
+        except CaptureError as error:
+            failures.append(str(error))
+        time.sleep(2)
+    raise CaptureError("macOS guest did not complete its verified reboot: " + "; ".join(failures[-3:]))
+
+
 def ensure_guest_capture_permissions(uid: str) -> None:
     """Repair and verify the two Tart permissions required by headless capture."""
     result = guest_shell(
@@ -563,6 +586,12 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
     package = build_package(checkout) if "macos-gatekeeper" in scene_ids else ""
     secure_scenes = [scene for scene in SECURE_SCENES if scene in scene_ids]
     if secure_scenes:
+        # Authorization Services caches both successful and cancelled administrator prompts.
+        # A verified reboot gives every repeated secure capture the same clean authorization state.
+        reboot_guest()
+        ip_address = run_checked(["tart", "ip", VM_NAME], timeout=30).stdout.strip()
+        uid = guest_uid()
+        ensure_guest_capture_permissions(uid)
         # Reload the Dock only once. This drops orphaned minimized windows while preserving the
         # single Gatekeeper launch icon expected by the following install-confirmation scene.
         reset_guest_ui(ip_address)
