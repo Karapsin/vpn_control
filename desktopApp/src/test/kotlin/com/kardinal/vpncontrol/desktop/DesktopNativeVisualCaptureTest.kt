@@ -82,10 +82,10 @@ class DesktopNativeVisualCaptureTest {
                 captureScreen(output, bounds)
             }
             sceneId.endsWith("open-dialog") -> withApplicationWindow(sceneId) { window ->
-                captureFileDialog(window, save = false, output = output, bounds = bounds)
+                captureFileDialog(platform, window, save = false, output = output, bounds = bounds)
             }
             sceneId.endsWith("save-dialog") -> withApplicationWindow(sceneId) { window ->
-                captureFileDialog(window, save = true, output = output, bounds = bounds)
+                captureFileDialog(platform, window, save = true, output = output, bounds = bounds)
             }
             "tray" in sceneId || "menu-bar" in sceneId -> captureTray(sceneId, output, bounds)
             platform == "linux" -> captureLinuxSurface(sceneId, output, bounds)
@@ -143,6 +143,7 @@ class DesktopNativeVisualCaptureTest {
     }
 
     private fun captureFileDialog(
+        platform: String,
         window: ComposeWindow,
         save: Boolean,
         output: Path,
@@ -151,8 +152,16 @@ class DesktopNativeVisualCaptureTest {
         // macOS column view exposes the selected directory's parent. Use a dedicated clean
         // two-level container instead of the shared temp directory so every visible ancestor is
         // deterministic and runner/Gradle files never enter evidence.
-        val fixtureRoot = Path.of(System.getProperty("user.home"), ".vpn-control-visual-fixture")
-        val fixtureDirectory = fixtureRoot.resolve("container").resolve("vpn-control-visual-files")
+        val fixtureRoot = if (platform == "macos") {
+            Path.of(System.getProperty("user.home"), ".vpn-control-visual-fixture")
+        } else {
+            Path.of(System.getProperty("java.io.tmpdir"), "vpn-control-visual-files")
+        }
+        val fixtureDirectory = if (platform == "macos") {
+            fixtureRoot.resolve("container").resolve("vpn-control-visual-files")
+        } else {
+            fixtureRoot
+        }
         fixtureRoot.toFile().deleteRecursively()
         Files.createDirectories(fixtureDirectory)
         val completed = CountDownLatch(1)
