@@ -87,6 +87,7 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('check(completed.await(10, TimeUnit.SECONDS))', source)
         self.assertIn('check(!dialog.isShowing)', source)
         self.assertIn('System.getProperty("user.home"), ".vpn-control-visual-fixture"', source)
+        self.assertIn('fixtureRoot.resolve("container").resolve("vpn-control-visual-files")', source)
         self.assertNotIn('System.getProperty("java.io.tmpdir"), "vpn-control-visual-files"', source)
 
     def test_awt_tray_capture_fails_closed_until_the_menu_is_visible(self) -> None:

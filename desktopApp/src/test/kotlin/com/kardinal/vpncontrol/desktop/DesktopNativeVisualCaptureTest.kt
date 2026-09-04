@@ -149,9 +149,10 @@ class DesktopNativeVisualCaptureTest {
         bounds: Rectangle,
     ) {
         // macOS column view exposes the selected directory's parent. Use a dedicated clean
-        // parent instead of the shared temp directory so runner/Gradle files never enter evidence.
+        // two-level container instead of the shared temp directory so every visible ancestor is
+        // deterministic and runner/Gradle files never enter evidence.
         val fixtureRoot = Path.of(System.getProperty("user.home"), ".vpn-control-visual-fixture")
-        val fixtureDirectory = fixtureRoot.resolve("vpn-control-visual-files")
+        val fixtureDirectory = fixtureRoot.resolve("container").resolve("vpn-control-visual-files")
         fixtureRoot.toFile().deleteRecursively()
         Files.createDirectories(fixtureDirectory)
         val completed = CountDownLatch(1)
