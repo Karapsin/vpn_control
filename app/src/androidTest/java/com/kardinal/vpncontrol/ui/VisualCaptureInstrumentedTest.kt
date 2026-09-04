@@ -327,6 +327,7 @@ class VisualCaptureInstrumentedTest {
     private fun assertCameraScannerChrome(screenshot: File) {
         val image = requireNotNull(BitmapFactory.decodeFile(screenshot.path))
         var darkBluePixels = 0
+        var nearWhiteTopBandPixels = 0
         for (y in 0 until image.height step 8) {
             for (x in 0 until image.width step 8) {
                 val color = image.getPixel(x, y)
@@ -336,8 +337,23 @@ class VisualCaptureInstrumentedTest {
                 if (blue > red + 20 && blue > green + 5) darkBluePixels += 1
             }
         }
+        for (y in 0 until minOf(image.height, 80)) {
+            for (x in 0 until image.width) {
+                val color = image.getPixel(x, y)
+                if (
+                    android.graphics.Color.red(color) >= 240 &&
+                    android.graphics.Color.green(color) >= 240 &&
+                    android.graphics.Color.blue(color) >= 240
+                ) {
+                    nearWhiteTopBandPixels += 1
+                }
+            }
+        }
         check(darkBluePixels >= 1_000) {
             "QR scanner chrome was not visible above the camera preview"
+        }
+        check(nearWhiteTopBandPixels < 100) {
+            "QR scanner visual capture leaked status-bar chrome into its fullscreen viewport"
         }
     }
 

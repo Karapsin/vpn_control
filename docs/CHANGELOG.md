@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.17 - 2026-09-04
+
+- Stabilize Android QR scanner fullscreen visual capture.
+
 ## 2.0.16 - 2026-09-04
 
 - Keep macOS authorization-sheet capture on real time and dismiss VNC edge tabs without closing secure UI.

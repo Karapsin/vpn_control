@@ -151,11 +151,18 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT
             / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
         ).read_text(encoding="utf-8")
+        activity = (
+            visual_platform.ROOT / "app/src/main/java/com/kardinal/vpncontrol/QrCaptureActivity.kt"
+        ).read_text(encoding="utf-8")
         layout = (
             visual_platform.ROOT / "app/src/main/res/layout/zxing_capture.xml"
         ).read_text(encoding="utf-8")
         self.assertIn('assertCameraScannerChrome(File(output, "$sceneId.png"))', source)
         self.assertIn("QR scanner chrome was not visible", source)
+        self.assertIn("QR scanner visual capture leaked status-bar chrome", source)
+        self.assertIn("override fun onWindowFocusChanged", activity)
+        self.assertIn("WindowManager.LayoutParams.FLAG_FULLSCREEN", activity)
+        self.assertIn("View.SYSTEM_UI_FLAG_FULLSCREEN", activity)
         self.assertIn('android:text="Scan QR code"', layout)
         self.assertIn("@drawable/qr_scanner_frame", layout)
         self.assertIn("QrCaptureActivity", source)
