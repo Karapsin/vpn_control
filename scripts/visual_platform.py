@@ -11,6 +11,7 @@ import os
 import platform as host_platform
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -94,6 +95,64 @@ def _read_state(platform: str) -> dict[str, Any]:
 
 def _which_any(*names: str) -> str | None:
     return next((value for name in names if (value := shutil.which(name))), None)
+
+
+def _qmp_execute(path: Path, command: str, *, timeout: float = 15.0) -> object:
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(timeout)
+            connection.connect(str(path))
+            stream = connection.makefile("rwb", buffering=0)
+
+            def receive() -> dict[str, object]:
+                while True:
+                    line = stream.readline()
+                    if not line:
+                        raise VisualPlatformError("QMP connection closed unexpectedly")
+                    message = json.loads(line)
+                    if "event" not in message:
+                        return message
+
+            greeting = receive()
+            if "QMP" not in greeting:
+                raise VisualPlatformError("QEMU did not return a QMP greeting")
+            for name in ("qmp_capabilities", command):
+                stream.write(json.dumps({"execute": name}).encode("utf-8") + b"\n")
+                response = receive()
+                if "error" in response:
+                    raise VisualPlatformError(f"QMP {name} failed: {response['error']}")
+            return response.get("return")
+    except (OSError, json.JSONDecodeError) as error:
+        raise VisualPlatformError(f"could not communicate with QEMU through {path}: {error}") from error
+
+
+def _qmp_ready(path: Path) -> bool:
+    try:
+        _qmp_execute(path, "query-status", timeout=2.0)
+        return True
+    except VisualPlatformError:
+        return False
+
+
+def _disk_user_pids(path: Path) -> list[int]:
+    if not shutil.which("lsof") or not path.is_file():
+        return []
+    completed = _run(["lsof", "-t", "--", str(path)], timeout=30)
+    if completed.returncode not in (0, 1):
+        raise VisualPlatformError(completed.stderr.strip() or f"could not inspect managed VM disk: {path}")
+    return sorted({int(value) for value in completed.stdout.split() if value.isdigit()})
+
+
+def _pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def _android_tool(name: str) -> str | None:
@@ -354,6 +413,8 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     command: list[str] | None = None
     started_by_agent = False
     identifier = backend
+    process_id = 0
+    process: subprocess.Popen[bytes] | None = None
     if backend == "android-emulator":
         adb = _android_tool("adb") or "adb"
         avd_name = str(config["avd_name"])
@@ -396,9 +457,24 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             command = ["virsh", "start", vm_name]
             started_by_agent = True
     elif backend == "qemu-windows":
-        command = [str(ROOT / "scripts" / "start_windows_visual_vm.sh")]
-        started_by_agent = True
+        disk = ROOT / str(config["qemu_disk"])
         identifier = str(config["qemu_disk"])
+        users = _disk_user_pids(disk)
+        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        if users:
+            if not _qmp_ready(qmp):
+                raise VisualPlatformError(
+                    f"managed Windows disk is already in use by PID(s) {users}, but its QMP socket is unavailable"
+                )
+            process_id = users[0]
+            prior_state = _read_state(platform)
+            started_by_agent = (
+                prior_state.get("started_by_agent") is True and
+                int(prior_state.get("pid", 0)) in users
+            )
+        else:
+            command = [str(ROOT / "scripts" / "start_windows_visual_vm.sh")]
+            started_by_agent = True
     if dry_run:
         return {
             "platform": platform,
@@ -406,7 +482,6 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             "started_by_agent": started_by_agent,
             "command": shlex.join(command) if command else "",
         }
-    process_id = 0
     if command:
         if backend in {"android-emulator", "qemu-windows"} or backend.startswith("tart-"):
             log_dir = RUNTIME_ROOT / "logs"
@@ -425,6 +500,18 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             completed = _run(command, timeout=120)
             if completed.returncode != 0:
                 raise VisualPlatformError(completed.stderr.strip() or f"could not start {backend}")
+    if backend == "qemu-windows":
+        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not _qmp_ready(qmp):
+            if process is not None and process.poll() is not None:
+                raise VisualPlatformError(f"managed Windows VM exited during startup; see {log_dir / f'{platform}.log'}")
+            time.sleep(0.5)
+        if not _qmp_ready(qmp):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=15)
+            raise VisualPlatformError("managed Windows VM did not expose a ready QMP socket within 60 seconds")
     if backend == "android-emulator":
         adb = _android_tool("adb") or "adb"
         deadline = time.monotonic() + 5 * 60
@@ -478,9 +565,7 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         command = ["virsh", "shutdown", identifier]
     elif backend == "qemu-windows":
         qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
-        if qmp.exists() and shutil.which("socat"):
-            command = ["socat", "-", f"UNIX-CONNECT:{qmp}"]
-        else:
+        if not qmp.exists():
             raise VisualPlatformError("QEMU VM can be stopped only through its QMP socket; refusing a broad process kill")
     if dry_run:
         return {
@@ -488,14 +573,19 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             "stopped": False,
             "command": shlex.join(command) if command else "",
         }
-    if command:
+    if backend == "qemu-windows":
+        _qmp_execute(qmp, "system_powerdown")
+        pid = int(state.get("pid", 0))
+        deadline = time.monotonic() + 60
+        while _pid_running(pid) and time.monotonic() < deadline:
+            time.sleep(0.5)
+        if _pid_running(pid):
+            raise VisualPlatformError("managed Windows VM did not stop after QMP system_powerdown")
+    elif command:
         completed = _run(
             command,
             timeout=120,
-            input_text=(
-                '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n'
-                if backend == "qemu-windows" else None
-            ),
+            input_text=None,
         )
         if completed.returncode != 0:
             raise VisualPlatformError(completed.stderr.strip() or f"could not stop {backend}")

@@ -44,6 +44,16 @@ public static class VpnControlVisualClock {
         IntPtr window, uint message, UIntPtr wParam, IntPtr lParam,
         uint flags, uint timeout, out UIntPtr result);
 }
+
+function Dismiss-HostedVisualResidue {
+    if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
+    # A recycled hosted image can surface Windows' paging-file warning before the
+    # fixture starts. It is unrelated to VPN Control and must not cover evidence.
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" } |
+        ForEach-Object { $_.CloseMainWindow() | Out-Null }
+    Start-Sleep -Seconds 2
+}
 "@
     }
     $result = [UIntPtr]::Zero
@@ -87,6 +97,7 @@ if ($NativeScenes) {
     $env:VPN_CONTROL_VISUAL_NATIVE_SCENES = $NativeScenes
     $env:VPN_CONTROL_VISUAL_PACKAGE = $VisualPackage
     Hide-HostConsoleWindows
+    Dismiss-HostedVisualResidue
     $OriginalDate = Get-Date
     try {
         Set-Date -Date "2026-09-03T12:00:00" | Out-Null

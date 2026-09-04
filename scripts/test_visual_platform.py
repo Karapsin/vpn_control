@@ -96,7 +96,9 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT
             / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTray.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn('robot.mouseMove(bounds.x + bounds.width / 2, bounds.y + 530)', source)
+        self.assertIn('sceneId.startsWith("linux-") -> bounds.width / 2 to 400', source)
+        self.assertIn('sceneId.startsWith("windows-") -> bounds.width / 2 to 400', source)
+        self.assertIn('sceneId.startsWith("macos-") -> bounds.width / 2 to 530', source)
         self.assertIn('it.name == "vpn-control-tray-menu" && it.isShowing', source)
         self.assertIn('checkNotNull(popup) { "VPN Control tray menu did not become visible for capture" }', source)
         self.assertIn('captureVisibleSurface(output, bounds)', source)
@@ -131,7 +133,8 @@ class VisualPlatformTest(unittest.TestCase):
             / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt"
         ).read_text(encoding="utf-8")
         self.assertIn("SystemClock.sleep(NATIVE_HOST_CAPTURE_HOLD_MILLIS)", source)
-        self.assertIn("NATIVE_HOST_CAPTURE_HOLD_MILLIS = 2_000L", source)
+        self.assertIn("NATIVE_HOST_CAPTURE_HOLD_MILLIS = 10_000L", source)
+        self.assertIn('onNodeWithTag("main-scroll"', source)
 
     def test_android_qr_capture_requires_visible_scanner_chrome(self) -> None:
         source = (
@@ -516,6 +519,50 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('-display none', script)
         self.assertIn('-vnc 127.0.0.1:5', script)
         self.assertNotIn('-display cocoa', script)
+        self.assertIn('lsof -t -- "$disk_path"', script)
+
+    def test_qemu_start_reuses_a_ready_managed_vm_without_launching_another(self) -> None:
+        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_disk_user_pids", return_value=[1234]),
+            mock.patch.object(visual_platform, "_qmp_ready", return_value=True),
+            mock.patch.object(visual_platform, "_read_state", return_value={}),
+            mock.patch.object(visual_platform.subprocess, "Popen") as popen,
+            mock.patch.object(visual_platform, "_write_state"),
+        ):
+            result = visual_platform.start_platform("windows")
+        popen.assert_not_called()
+        self.assertFalse(result["started_by_agent"])
+        self.assertEqual(1234, result["pid"])
+
+    def test_qemu_start_refuses_an_in_use_disk_without_qmp(self) -> None:
+        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_disk_user_pids", return_value=[1234]),
+            mock.patch.object(visual_platform, "_qmp_ready", return_value=False),
+            mock.patch.object(visual_platform.subprocess, "Popen") as popen,
+        ):
+            with self.assertRaisesRegex(visual_platform.VisualPlatformError, "already in use"):
+                visual_platform.start_platform("windows")
+        popen.assert_not_called()
+
+    def test_qemu_stop_uses_python_qmp_without_socat(self) -> None:
+        state = {
+            "platform": "windows", "backend": "qemu-windows", "identifier": "disk",
+            "started_by_agent": True, "pid": 1234,
+        }
+        with (
+            mock.patch.object(visual_platform, "_read_state", return_value=state),
+            mock.patch.object(Path, "exists", return_value=True),
+            mock.patch.object(visual_platform, "_qmp_execute") as execute,
+            mock.patch.object(visual_platform, "_pid_running", return_value=False),
+            mock.patch.object(Path, "unlink"),
+        ):
+            result = visual_platform.stop_platform("windows")
+        execute.assert_called_once_with(visual_platform.RUNTIME_ROOT / "windows" / "qmp.sock", "system_powerdown")
+        self.assertTrue(result["stopped"])
 
     def test_hosted_native_capture_freezes_platform_clocks(self) -> None:
         macos = (visual_platform.ROOT / "scripts/capture_visual_desktop.sh").read_text(
@@ -528,6 +575,7 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
         self.assertIn("WM_TIMECHANGE", windows)
         self.assertIn("Notify-SystemClockChanged", windows)
+        self.assertIn("Dismiss-HostedVisualResidue", windows)
 
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(

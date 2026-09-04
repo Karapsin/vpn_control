@@ -15,6 +15,14 @@ elif [[ "${1:-}" == "--provision-drivers" ]]; then
   driver_iso="${2:-}"
 fi
 [[ -f "$disk_path" ]] || { echo "Run scripts/bootstrap_windows_visual_vm.sh first." >&2; exit 1; }
+if command -v lsof >/dev/null 2>&1; then
+  disk_users="$(lsof -t -- "$disk_path" 2>/dev/null | sort -u || true)"
+  [[ -z "$disk_users" ]] || {
+    echo "Managed Windows visual disk is already in use by PID(s): ${disk_users//$'\n'/, }." >&2
+    echo "Use scripts/visual_platform.py stop --platform windows before starting another VM." >&2
+    exit 1
+  }
+fi
 
 machine_options="q35,accel=hvf"
 cpu="max"

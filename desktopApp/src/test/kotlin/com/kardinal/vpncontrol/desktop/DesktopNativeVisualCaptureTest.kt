@@ -57,7 +57,13 @@ class DesktopNativeVisualCaptureTest {
             .map(String::trim)
             .filter(String::isNotEmpty)
             .toSet()
-        val scenes = nativeScenes(manifest, platform, requested)
+        val scenes = nativeScenes(manifest, platform, requested).sortedBy { sceneId ->
+            when {
+                "tray" in sceneId || "menu-bar" in sceneId -> 0
+                sceneId.endsWith("open-dialog") || sceneId.endsWith("save-dialog") -> 2
+                else -> 1
+            }
+        }
         require(scenes.isNotEmpty()) { "No native $platform scenes were requested" }
         Files.createDirectories(output)
 
@@ -174,6 +180,9 @@ class DesktopNativeVisualCaptureTest {
             }
             check(completed.await(10, TimeUnit.SECONDS)) { "Native file dialog did not close after capture" }
             check(!dialog.isShowing) { "Native file dialog remained visible after capture" }
+            // AppKit closes its native sheet asynchronously after AWT has disposed the peer.
+            // Let that animation finish before the next independent scene is opened.
+            Thread.sleep(2_000)
             fixtureDirectory.toFile().deleteRecursively()
         }
     }
@@ -189,9 +198,7 @@ class DesktopNativeVisualCaptureTest {
         val priorAutoHide = System.getProperty("vpn.control.trayPopupAutoHideMillis")
         val priorDorkboxTrayType = DorkboxSystemTray.FORCE_TRAY_TYPE
         if (backend != null) System.setProperty("vpn.control.linux.trayBackend", backend)
-        if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") == "1") {
-            System.setProperty("vpn.control.trayPopupAutoHideMillis", "120000")
-        }
+        System.setProperty("vpn.control.trayPopupAutoHideMillis", "120000")
         if (backend == "native") {
             DorkboxSystemTray.FORCE_TRAY_TYPE = DorkboxSystemTray.TrayType.Gtk
         }
@@ -229,10 +236,13 @@ class DesktopNativeVisualCaptureTest {
         var awtPopup: Window? = null
         try {
             check(available.await(30, TimeUnit.SECONDS)) { "The production tray backend did not become available" }
+            preparePrivateWindowCapturePermission(bounds)
             if (backend == "native") openNativeTrayMenuWhenAvailable()
-            else awtPopup = openAwtTrayMenuWhenAvailable(bounds)
-            Thread.sleep(1_000)
+            else awtPopup = openAwtTrayMenuWhenAvailable(sceneId, bounds)
+            Thread.sleep(300)
+            check(awtPopup == null || awtPopup.isShowing) { "VPN Control tray menu closed before capture" }
             captureVisibleSurface(output, bounds)
+            check(awtPopup == null || awtPopup.isShowing) { "VPN Control tray menu closed during capture" }
         } finally {
             awtPopup?.let { popup ->
                 onEventThread {
@@ -252,14 +262,21 @@ class DesktopNativeVisualCaptureTest {
         }
     }
 
-    private fun openAwtTrayMenuWhenAvailable(bounds: Rectangle): Window {
+    private fun openAwtTrayMenuWhenAvailable(sceneId: String, bounds: Rectangle): Window {
         check(SystemTray.isSupported()) { "AWT system tray is unavailable for native visual capture" }
         val icon = SystemTray.getSystemTray().trayIcons.firstOrNull()
         checkNotNull(icon) { "AWT tray icon was not installed for native visual capture" }
         val listeners = icon.actionListeners.toList()
         check(listeners.isNotEmpty()) { "AWT tray icon has no menu action listener" }
-        // This canonical anchor keeps the popup aligned with its stable comparison region.
-        robot.mouseMove(bounds.x + bounds.width / 2, bounds.y + 530)
+        // Each desktop positions an undecorated popup relative to the pointer with different
+        // insets. These fixture anchors preserve the established comparison regions.
+        val (anchorX, anchorY) = when {
+            sceneId.startsWith("linux-") -> bounds.width / 2 to 400
+            sceneId.startsWith("windows-") -> bounds.width / 2 to 400
+            sceneId.startsWith("macos-") -> bounds.width / 2 to 530
+            else -> error("Unsupported tray visual scene: $sceneId")
+        }
+        robot.mouseMove(bounds.x + anchorX, bounds.y + anchorY)
         EventQueue.invokeAndWait {
             listeners.forEach { listener ->
                 listener.actionPerformed(

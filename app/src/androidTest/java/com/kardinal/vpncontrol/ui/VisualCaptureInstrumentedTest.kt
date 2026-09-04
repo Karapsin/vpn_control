@@ -51,7 +51,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-private const val NATIVE_HOST_CAPTURE_HOLD_MILLIS = 2_000L
+private const val NATIVE_HOST_CAPTURE_HOLD_MILLIS = 10_000L
 
 @RunWith(AndroidJUnit4::class)
 class VisualCaptureInstrumentedTest {
@@ -154,6 +154,14 @@ class VisualCaptureInstrumentedTest {
     }
 
     private fun openAppScene(sceneId: String) {
+        if (sceneId == "stress-android-landscape") {
+            compose.onNodeWithTag("main-scroll", useUnmergedTree = true).performSemanticsAction(
+                SemanticsActions.ScrollBy,
+            ) { scrollBy ->
+                scrollBy(0f, -100_000f)
+            }
+            compose.waitForIdle()
+        }
         val scrollTarget = when (sceneId) {
             "profile-add-editor", "profile-preview-warning" -> "profile-save"
             "settings-language-english" -> "language-en"
