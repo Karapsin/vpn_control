@@ -1282,7 +1282,12 @@ private fun DesktopAdditionalSettingsMenu(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(strings.get(UiText.SETTINGS_UPDATE))
                         Text(
-                            strings.format(UiText.SETTINGS_CURRENT_VERSION, DesktopBuildInfo.current().displayVersion),
+                            strings.format(
+                                UiText.SETTINGS_CURRENT_VERSION,
+                                state.appUpdate.currentVersion.ifBlank {
+                                    DesktopBuildInfo.current().displayVersion
+                                },
+                            ),
                             color = Color(0xFF4A6070),
                             fontSize = 12.sp,
                         )

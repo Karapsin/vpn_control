@@ -191,6 +191,19 @@ class VisualPlatformTest(unittest.TestCase):
         base_fixture = fixture_source.split("var state = MainUiState(", 1)[1].split(")\n    state = when", 1)[0]
         self.assertIn('currentVersion = "2.0.0"', base_fixture)
 
+    def test_desktop_settings_version_comes_from_visual_state(self) -> None:
+        app_source = (
+            visual_platform.ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/Main.kt"
+        ).read_text(encoding="utf-8")
+        fixture_source = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/VisualCaptureTest.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("state.appUpdate.currentVersion.ifBlank", app_source)
+        self.assertIn("DesktopBuildInfo.current().displayVersion", app_source)
+        base_fixture = fixture_source.split("var state = MainUiState(", 1)[1].split(")\n\n    state = when", 1)[0]
+        self.assertIn('currentVersion = "2.0.0"', base_fixture)
+
     def test_android_visual_qr_exports_freeze_the_payload_timestamp(self) -> None:
         activity = (
             visual_platform.ROOT / "app/src/main/java/com/kardinal/vpncontrol/MainActivity.kt"

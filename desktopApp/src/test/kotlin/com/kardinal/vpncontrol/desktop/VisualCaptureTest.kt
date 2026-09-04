@@ -433,6 +433,10 @@ internal fun visualState(sceneId: String): MainUiState {
             ),
         ),
         hasVpnPermission = true,
+        appUpdate = AppUpdateState(
+            currentVersion = "2.0.0",
+            availableVersion = "2.0.0",
+        ),
         statusMessage = "Ready for visual inspection",
         sessionStartedAtEpochMillis = 1_700_000_000_000L,
         sessionStoppedAtEpochMillis = 1_699_999_000_000L,
