@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## 2.0.11 - 2026-09-04
+
+- Harden visual capture synchronization, native surface cleanup, and VM readiness checks.
+
 ## 2.0.10 - 2026-09-04
 
 - Stabilize native visual surfaces and prevent duplicate managed Windows VM starts.
