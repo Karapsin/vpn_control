@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -92,6 +93,40 @@ class DesktopVpnIntegrationTestTest {
             ),
             tunInbound.getValue("route_exclude_address").jsonArray.map { it.jsonPrimitive.content },
         )
+    }
+
+    @Test
+    fun fullVpnProbeRetriesWhileWindowsFinishesInstallingItsTunRoute() {
+        var attempts = 0
+        val delays = mutableListOf<Long>()
+
+        DesktopVpnIntegrationTest.retryVpnProbe(
+            attempts = 4,
+            delayMillis = 25,
+            sleep = delays::add,
+        ) {
+            attempts += 1
+            if (attempts < 3) error("Connect timed out")
+        }
+
+        assertEquals(3, attempts)
+        assertEquals(listOf(25L, 25L), delays)
+    }
+
+    @Test
+    fun fullVpnProbeReportsTheLastFailureAfterBoundedRetries() {
+        val failure = assertFailsWith<IllegalStateException> {
+            DesktopVpnIntegrationTest.retryVpnProbe(
+                attempts = 2,
+                delayMillis = 0,
+                sleep = {},
+            ) {
+                error("route not ready")
+            }
+        }
+
+        assertTrue(failure.message.orEmpty().contains("after 2 attempts"))
+        assertTrue(failure.message.orEmpty().contains("route not ready"))
     }
 
     private fun testSocksProfile() = com.kardinal.vpncontrol.model.ProxyProfile(

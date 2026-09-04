@@ -92,16 +92,31 @@ internal object DesktopVpnIntegrationTest {
                 ).getOrThrow()
             }
             runtimeStarted = true
-            val connection = URI(request.targetUrl).toURL().openConnection() as HttpURLConnection
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 10_000
-            connection.instanceFollowRedirects = false
-            val status = connection.responseCode
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            check(status == 200) { "fixture returned HTTP $status" }
-            check(body == request.expectedBody) {
-                "traffic did not return the expected fixture token"
+            retryVpnProbe {
+                val connection = URI(request.targetUrl).toURL().openConnection() as HttpURLConnection
+                connection.connectTimeout = 5_000
+                connection.readTimeout = 5_000
+                connection.instanceFollowRedirects = false
+                try {
+                    val status = connection.responseCode
+                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    check(status == 200) { "fixture returned HTTP $status" }
+                    check(body == request.expectedBody) {
+                        "traffic did not return the expected fixture token"
+                    }
+                } finally {
+                    connection.disconnect()
+                }
             }
+        } catch (error: Throwable) {
+            val runtimeTail = manager.currentLogFile()
+                ?.takeIf { Files.isRegularFile(it) }
+                ?.let(::readDiagnosticTail)
+                .orEmpty()
+            val diagnostic = runtimeTail.takeIf(String::isNotBlank)
+                ?.let { "${error.message ?: error::class.simpleName}. sing-box log tail: $it" }
+                ?: (error.message ?: error::class.simpleName ?: "unknown failure")
+            throw IllegalStateException(diagnostic, error)
         } finally {
             if (runtimeStarted || manager.isRunning()) {
                 runBlocking { manager.stop().getOrThrow() }
@@ -109,6 +124,37 @@ internal object DesktopVpnIntegrationTest {
         }
         "full VPN integration test passed: TUN traffic reached the SOCKS fixture"
     }
+
+    internal fun retryVpnProbe(
+        attempts: Int = 6,
+        delayMillis: Long = 1_000,
+        sleep: (Long) -> Unit = Thread::sleep,
+        probe: () -> Unit,
+    ) {
+        require(attempts > 0) { "VPN probe attempts must be positive" }
+        var lastFailure: Throwable? = null
+        repeat(attempts) { index ->
+            try {
+                probe()
+                return
+            } catch (error: Throwable) {
+                lastFailure = error
+                if (index + 1 < attempts) sleep(delayMillis)
+            }
+        }
+        val detail = lastFailure?.message ?: lastFailure?.let { it::class.simpleName } ?: "unknown failure"
+        throw IllegalStateException(
+            "TUN traffic did not become ready after $attempts attempts: $detail",
+            lastFailure,
+        )
+    }
+
+    private fun readDiagnosticTail(path: Path): String = runCatching {
+        Files.readAllLines(path)
+            .takeLast(20)
+            .joinToString(" | ")
+            .takeLast(2_000)
+    }.getOrDefault("")
 
     private fun socksProfile(port: Int): ProxyProfile = ProxyProfile(
         protocol = ProxyProtocol.SOCKS,

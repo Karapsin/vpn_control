@@ -74,6 +74,16 @@ python3 scripts/visual_platform.py capture-local \
 ```
 
 Neither secure-surface driver activates Screen Sharing, a VM display window, or another host workspace.
+The macOS driver builds from a cached guest-local checkout pinned to the requested SHA, so Gradle never
+writes into the host's shared worktree while another platform is capturing. Before every secure scene it
+verifies the Tart helper's Screen Recording and Finder Automation grants, clears stale authorization,
+notification, Finder, application, and Dock residue, resolves permission requests queued before TCC
+repair, and compares the unobscured framebuffer perimeter with the canonical guest before proceeding.
+It captures Gatekeeper before install confirmation so the
+Dock state is reproducible, verifies that each secure dialog actually appeared, waits for the guest-local
+dialog process to exit, and rejects or clears and retries blank VNC framebuffers and transient overlays
+instead of stamping unusable evidence.
+Hosted macOS capture resolves the Java Screen Recording consent sheet before writing native evidence.
 
 The agent may dispatch hosted fallback for non-blocked scenes:
 

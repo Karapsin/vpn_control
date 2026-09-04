@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import visual_regression
+
 
 MODULE_PATH = Path(__file__).with_name("visual_platform.py")
 SPEC = importlib.util.spec_from_file_location("visual_platform", MODULE_PATH)
@@ -318,20 +320,137 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertEqual((1280, 800), capture_visual_windows_qemu.png_size(png))
             self.assertEqual((1280, 800), capture_visual_macos_tart.png_size(png))
 
+    def test_macos_secure_driver_rejects_blank_vnc_frames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            black_ppm = root / "black.ppm"
+            black_png = root / "black.png"
+            visible_ppm = root / "visible.ppm"
+            visible_png = root / "visible.png"
+            black_ppm.write_bytes(b"P6\n10 10\n255\n" + bytes(10 * 10 * 3))
+            visible_ppm.write_bytes(b"P6\n10 10\n255\n" + bytes((255, 255, 255)) * 100)
+            capture_visual_windows_qemu.convert_ppm_to_png(black_ppm, black_png)
+            capture_visual_windows_qemu.convert_ppm_to_png(visible_ppm, visible_png)
+
+            self.assertEqual(0.0, capture_visual_macos_tart.visible_pixel_ratio(black_png))
+            self.assertEqual(1.0, capture_visual_macos_tart.visible_pixel_ratio(visible_png))
+
+    def test_macos_secure_driver_rejects_contaminated_guest_background(self) -> None:
+        baseline_path = (
+            visual_platform.ROOT
+            / "visual-tests/baselines/macos/macos-install-confirmation.png"
+        )
+        baseline = visual_regression.read_png(baseline_path)
+        with tempfile.TemporaryDirectory() as temporary:
+            clean = Path(temporary) / "clean.png"
+            contaminated = Path(temporary) / "contaminated.png"
+            visual_regression.write_png(clean, baseline)
+            pixels = bytearray(baseline.pixels)
+            for y in range(35, 115):
+                for x in range(920, 1260):
+                    offset = (y * baseline.width + x) * 4
+                    pixels[offset : offset + 4] = bytes((255, 255, 255, 255))
+            visual_regression.write_png(
+                contaminated,
+                visual_regression.PngImage(baseline.width, baseline.height, bytes(pixels)),
+            )
+
+            self.assertEqual(0.0, capture_visual_macos_tart.background_changed_ratio(clean))
+            self.assertGreater(
+                capture_visual_macos_tart.background_changed_ratio(contaminated),
+                0.0002,
+            )
+
+            sidebar_pixels = bytearray(baseline.pixels)
+            for y in range(130, 300):
+                for x in range(1260, 1280):
+                    offset = (y * baseline.width + x) * 4
+                    sidebar_pixels[offset : offset + 4] = bytes((220, 220, 220, 255))
+            visual_regression.write_png(
+                contaminated,
+                visual_regression.PngImage(baseline.width, baseline.height, bytes(sidebar_pixels)),
+            )
+            self.assertGreater(
+                capture_visual_macos_tart.right_edge_overlay_ratio(contaminated),
+                0.01,
+            )
+
+    def test_macos_secure_driver_requires_the_expected_dialog_to_appear(self) -> None:
+        baseline_path = (
+            visual_platform.ROOT
+            / "visual-tests/baselines/macos/macos-install-confirmation.png"
+        )
+        baseline = visual_regression.read_png(baseline_path)
+        with tempfile.TemporaryDirectory() as temporary:
+            background = Path(temporary) / "background.png"
+            dialog = Path(temporary) / "dialog.png"
+            blank_pixels = bytearray(baseline.pixels)
+            for y in range(115, 445):
+                for x in range(500, 780):
+                    offset = (y * baseline.width + x) * 4
+                    blank_pixels[offset : offset + 4] = bytes((0, 0, 0, 255))
+            visual_regression.write_png(
+                background,
+                visual_regression.PngImage(baseline.width, baseline.height, bytes(blank_pixels)),
+            )
+            visual_regression.write_png(dialog, baseline)
+
+            self.assertEqual(
+                0.0,
+                capture_visual_macos_tart.foreground_changed_ratio(
+                    background,
+                    background,
+                    "macos-install-confirmation",
+                ),
+            )
+            self.assertGreater(
+                capture_visual_macos_tart.foreground_changed_ratio(
+                    dialog,
+                    background,
+                    "macos-install-confirmation",
+                ),
+                0.2,
+            )
+
     def test_macos_secure_driver_never_launches_a_host_vnc_application(self) -> None:
         script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
         self.assertIn('"--nocursor"', script)
-        self.assertIn('"pause", "20", "capture"', script)
+        self.assertIn('pause = "40"', script)
+        self.assertIn("Screen Sharing's own control banner", script)
         self.assertIn("sudo date 0903120026.00", script)
+        self.assertIn('SECURE_SCENES = ("macos-gatekeeper", "macos-install-confirmation")', script)
+        self.assertIn("macOS VNC capture failed three times", script)
+        self.assertIn("timeout=120", script)
+        self.assertIn("kTCCServiceScreenCapture", script)
+        self.assertIn("kTCCServiceAppleEvents", script)
+        self.assertIn("CoreServicesUIAgent.app/Contents/MacOS/CoreServicesUIAgent$", script)
+        self.assertIn('"824", "304", "click", "1"', script)
+        self.assertIn('"699", "341", "click", "1"', script)
+        self.assertIn('"pause", "20", "move", "1080", "70"', script)
+        self.assertIn("Restarting Notification Center would replay the queued banner", script)
+        self.assertIn("This recovery runs only after the clean-background", script)
+        self.assertIn("sudo killall Finder", script)
+        self.assertIn("killall Dock", script)
+        self.assertIn('tell application \\"Finder\\" to close every window', script)
+        self.assertIn("cannot alter macOS keyboard/pointer modality", script)
+        self.assertIn("macOS guest still contains a window, notification, or permission surface", script)
+        self.assertIn("macOS secure surface did not appear", script)
+        self.assertIn("right_edge_overlay_ratio", script)
+        self.assertIn("def capture_secure_frame", script)
+        self.assertIn("same inactive-button state as the canonical fixture", script)
+        self.assertIn(".macos-dialog-exit", script)
+        self.assertIn("capture_status=$?", script)
+        self.assertIn("deadline = time.monotonic() + 180", script)
+        self.assertNotIn("; status=$?", script)
+        self.assertIn("git clone --no-local --no-checkout", script)
         self.assertNotIn("open vnc://", script)
-        self.assertNotIn("Screen Sharing", script)
 
     def test_macos_framebuffer_driver_acknowledges_file_dialog_capture(self) -> None:
         script = MACOS_TART_CAPTURE_PATH.read_text(encoding="utf-8")
         self.assertIn('FILE_DIALOG_SCENES = ("macos-open-dialog", "macos-save-dialog")', script)
         self.assertIn("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER=1", script)
         self.assertIn('f"{scene_id}.png.captured"', script)
-        self.assertIn('"pause", "20", "capture"', script)
+        self.assertIn('pause = "40"', script)
 
     def test_windows_qemu_start_exposes_scoped_control_sockets(self) -> None:
         script = (visual_platform.ROOT / "scripts/start_windows_visual_vm.sh").read_text(
@@ -371,8 +490,8 @@ class VisualPlatformTest(unittest.TestCase):
             visual_platform.ROOT
             / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn("screen.height * 0.516", fixture)
-        self.assertNotIn("screen.height * 0.554", fixture)
+        self.assertIn("screen.height * 0.554", fixture)
+        self.assertNotIn("screen.height * 0.516", fixture)
 
     def test_android_capture_requires_an_agent_owned_emulator(self) -> None:
         with mock.patch.object(
