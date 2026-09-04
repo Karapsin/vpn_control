@@ -54,10 +54,13 @@ python3 scripts/visual_platform.py start --platform <platform>
 
 Android uses an isolated Pixel 6/API 35 AVD. Linux and macOS use an isolated native session or pinned Tart VM. Windows uses an isolated Windows 11 client session, the existing `vpn-control-win11` libvirt guest, or the QEMU disk managed by `bootstrap_windows_visual_vm.sh`. A QEMU disk alone is never treated as ready: after the agent has completed Windows setup and verified the fixed display/capture prerequisites, it records that check with `scripts/mark_windows_visual_vm_ready.sh --agent-confirmed`. Windows media and license acceptance remain vendor-controlled; set `VPN_CONTROL_WINDOWS_ISO` to an official local ISO and `VPN_CONTROL_WINDOWS_DRIVER_ISO` to the UTM Windows guest-tools ISO when first creating an ARM64 guest. The agent must verify the Windows image against Microsoft's published digest before use.
 
-The Android QR scanner visual fixture reasserts its fullscreen window contract whenever it
-regains focus. Its instrumentation guard rejects any status-bar pixels in the scanner's top
-band before the host framebuffer handshake proceeds. This prevents a preceding native scene's
-SystemUI transition from intermittently leaking status chrome into `android-camera-qr`.
+The Android QR scanner visual fixture converges on its fullscreen contract through modern window
+insets, legacy flags, and bounded reassertions after resume or focus. Its instrumentation guard
+rejects any status-bar pixels in the scanner's top band before the host framebuffer handshake
+proceeds. The host starts each QR attempt from a force-stopped app and exited demo mode, then gives
+only that fail-closed scene one clean retry. This prevents a preceding native scene's asynchronous
+SystemUI transition from either leaking status chrome into `android-camera-qr` or aborting the
+complete release capture.
 
 After the managed Windows guest is ready, capture its secure-desktop scene from the host without exposing or reusing the operator desktop:
 

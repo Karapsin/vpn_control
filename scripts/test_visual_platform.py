@@ -161,8 +161,12 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("QR scanner chrome was not visible", source)
         self.assertIn("QR scanner visual capture leaked status-bar chrome", source)
         self.assertIn("override fun onWindowFocusChanged", activity)
+        self.assertIn("override fun onResume", activity)
         self.assertIn("WindowManager.LayoutParams.FLAG_FULLSCREEN", activity)
         self.assertIn("View.SYSTEM_UI_FLAG_FULLSCREEN", activity)
+        self.assertIn("window.setDecorFitsSystemWindows(false)", activity)
+        self.assertIn("window.insetsController?.hide(WindowInsets.Type.statusBars())", activity)
+        self.assertIn("FULLSCREEN_REASSERT_DELAYS_MILLIS", activity)
         self.assertIn('android:text="Scan QR code"', layout)
         self.assertIn("@drawable/qr_scanner_frame", layout)
         self.assertIn("QrCaptureActivity", source)
@@ -175,6 +179,18 @@ class VisualPlatformTest(unittest.TestCase):
         native_loop = source.split('for native_scene in "${native_scene_ids[@]}"; do', 1)[1]
         self.assertIn('command exit', native_loop)
         self.assertNotIn('command enter', native_loop)
+        self.assertIn('$device_dir/$native_scene.ready', native_loop)
+        self.assertIn('$device_dir/$native_scene.captured', native_loop)
+
+    def test_android_qr_native_capture_retries_once_after_a_fail_closed_attempt(self) -> None:
+        source = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
+            encoding="utf-8",
+        )
+        native_loop = source.split('for native_scene in "${native_scene_ids[@]}"; do', 1)[1]
+        self.assertIn('[[ "$native_scene" == "android-camera-qr" ]] && max_capture_attempts=2', native_loop)
+        self.assertIn('Retrying $native_scene after its first fail-closed capture attempt.', native_loop)
+        self.assertIn('if [[ "$native_scene" == "android-camera-qr" ]]; then', native_loop)
+        self.assertIn('am force-stop com.kardinal.vpncontrol', native_loop)
         self.assertIn('$device_dir/$native_scene.ready', native_loop)
         self.assertIn('$device_dir/$native_scene.captured', native_loop)
 

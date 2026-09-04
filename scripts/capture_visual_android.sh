@@ -88,31 +88,59 @@ if [[ -n "$native_scenes" ]]; then
       *) echo "Unknown Android native scene: $native_scene" >&2; exit 1 ;;
     esac
     framebuffer_capture="$output_dir/.$native_scene-framebuffer.png"
-    rm -f "$framebuffer_capture"
-    run_gradle_capture "$native_scene" &
-    gradle_pid=$!
+    max_capture_attempts=1
+    [[ "$native_scene" == "android-camera-qr" ]] && max_capture_attempts=2
+    gradle_exit=1
     native_window_ready=false
-    for _ in $(seq 1 600); do
-      capture_ready="$($adb_bin shell "test -f '$device_dir/$native_scene.ready' && echo ready || true" 2>/dev/null | tr -d '\r')"
-      current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
-      if [[ "$capture_ready" == "ready" ]] && grep -q "$focus_pattern" <<< "$current_focus"; then
-        "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
-        if [[ -s "$framebuffer_capture" ]]; then
-          "$adb_bin" shell touch "$device_dir/$native_scene.captured"
-          native_window_ready=true
+    for capture_attempt in $(seq 1 "$max_capture_attempts"); do
+      rm -f "$framebuffer_capture"
+      "$adb_bin" shell rm -f \
+        "$device_dir/$native_scene.ready" \
+        "$device_dir/$native_scene.captured" \
+        "$device_dir/$native_scene.png" >/dev/null 2>&1 || true
+      if [[ "$native_scene" == "android-camera-qr" ]]; then
+        if (( capture_attempt > 1 )); then
+          echo "Retrying $native_scene after its first fail-closed capture attempt." >&2
+        fi
+        # DocumentsUI and other preceding native activities can leave an asynchronous
+        # SystemUI visibility transaction queued for the scanner. Start each QR attempt
+        # from a stopped app and exited demo mode; the activity then converges fullscreen.
+        "$adb_bin" shell am force-stop com.kardinal.vpncontrol >/dev/null 2>&1 || true
+        "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+        sleep 1
+      fi
+      run_gradle_capture "$native_scene" &
+      gradle_pid=$!
+      native_window_ready=false
+      for _ in $(seq 1 600); do
+        capture_ready="$($adb_bin shell "test -f '$device_dir/$native_scene.ready' && echo ready || true" 2>/dev/null | tr -d '\r')"
+        current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
+        if [[ "$capture_ready" == "ready" ]] && grep -q "$focus_pattern" <<< "$current_focus"; then
+          "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
+          if [[ -s "$framebuffer_capture" ]]; then
+            "$adb_bin" shell touch "$device_dir/$native_scene.captured"
+            native_window_ready=true
+            break
+          fi
+        fi
+        if ! kill -0 "$gradle_pid" >/dev/null 2>&1; then
           break
         fi
-      fi
-      if ! kill -0 "$gradle_pid" >/dev/null 2>&1; then
+        sleep 0.1
+      done
+      set +e
+      wait "$gradle_pid"
+      gradle_exit=$?
+      set -e
+      if (( gradle_exit == 0 )) && [[ "$native_window_ready" == true ]]; then
         break
       fi
-      sleep 0.1
+      if (( capture_attempt == max_capture_attempts )); then
+        (( gradle_exit == 0 )) || exit "$gradle_exit"
+        echo "$native_scene did not display its expected native surface." >&2
+        exit 1
+      fi
     done
-    set +e
-    wait "$gradle_pid"
-    gradle_exit=$?
-    set -e
-    (( gradle_exit == 0 )) || exit "$gradle_exit"
     [[ "$native_window_ready" == true ]] || {
       echo "$native_scene did not display its expected native surface." >&2
       exit 1
