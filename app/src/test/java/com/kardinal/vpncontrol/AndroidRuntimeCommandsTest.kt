@@ -9,6 +9,19 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AndroidRuntimeCommandsTest {
+    @Test fun pinnedStopAndRestoreRejectReplacementRuntimeAtServiceClaim() {
+        val commands = AndroidRuntimeCommands()
+        val observer = AndroidRuntimeObserver(initiallyStopped = true)
+        observer.started(Any(), com.kardinal.vpncontrol.model.AppMode.VPN, "A")
+        val original = observer.state.value
+        val stop = commands.register(AndroidRuntimeAction.STOP, expectedObservation = original)
+        observer.resetCompleted(true)
+        val stopped = observer.state.value
+        val restore = commands.register(AndroidRuntimeAction.START, "A", expectedObservation = stopped)
+        observer.started(Any(), com.kardinal.vpncontrol.model.AppMode.VPN, "replacement")
+        assertFalse(commands.claim(stop.id, AndroidRuntimeAction.STOP, observation = observer.state.value))
+        assertFalse(commands.claim(restore.id, AndroidRuntimeAction.START, "A", observer.state.value))
+    }
     @Test fun nativeValidationFailurePrecedesRuntimeReset() {
         val commands = AndroidRuntimeCommands()
         val ticket = commands.register(AndroidRuntimeAction.START, "invalid")

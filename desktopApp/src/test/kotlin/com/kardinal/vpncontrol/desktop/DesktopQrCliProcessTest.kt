@@ -14,14 +14,14 @@ class DesktopQrCliProcessTest {
         val workspace = directory.resolve("東京 workspace")
         val javaName = if (System.getProperty("os.name").lowercase().contains("windows")) "java.exe" else "java"
         val command = listOf(Path.of(System.getProperty("java.home"), "bin", javaName).toString(),
-            "-Djava.awt.headless=true", "-cp", requireNotNull(System.getProperty("vpnControl.test.mainClasspath")),
-            "com.kardinal.vpncontrol.desktop.MainKt", "--state-dir", workspace.toString())
+            "-Djava.awt.headless=true", "-cp", DesktopJvmCliTestBootstrap.classpath(requireNotNull(System.getProperty("vpnControl.test.mainClasspath"))),
+            DesktopJvmCliTestBootstrap::class.java.name)
         var sequence = 0
         val processes = mutableListOf<Process>()
         fun start(vararg args: String): Triple<Process, Path, Path> {
             val stdout = directory.resolve("stdout-${sequence}")
             val stderr = directory.resolve("stderr-${sequence++}")
-            val builder = ProcessBuilder(command + args)
+            val builder = ProcessBuilder(command + DesktopJvmCliTestBootstrap.encode(listOf("--state-dir", workspace.toString()) + args))
             builder.environment().remove("DISPLAY")
             builder.environment().remove("WAYLAND_DISPLAY")
             val process = builder.redirectOutput(stdout.toFile()).redirectError(stderr.toFile()).start()

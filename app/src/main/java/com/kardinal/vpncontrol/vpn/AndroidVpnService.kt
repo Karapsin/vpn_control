@@ -67,7 +67,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
                     when (intent?.action) {
                         ACTION_STOP -> {
                             check(commandId == null || owner.runtimeCommands.claim(commandId,
-                                com.kardinal.vpncontrol.AndroidRuntimeAction.STOP)) { "RUNTIME_COMMAND_STALE" }
+                                com.kardinal.vpncontrol.AndroidRuntimeAction.STOP, observation = owner.runtimeObserver.state.value)) { "RUNTIME_COMMAND_STALE" }
                             stopVpn(stoppedText(currentAppMode()), startId)
                             check(owner.runtimeObserver.state.value.knowledge ==
                                 com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) { "RUNTIME_OUTCOME_UNKNOWN" }
@@ -104,12 +104,12 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         var replacingRuntime = false
         return try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
-            val appMode = storage.snapshot().appMode
             val configFile = RuntimeFiles.runtimeConfigFile(this)
             val configContent = configFile.takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
                 ?: error("VPN config missing")
             val prepared = owner.runtimeCommands.prepareStart(commandId, configContent, preparedId, owner.preparedConnections,
-                Libbox::checkConfig)
+                owner.runtimeObserver.state.value, Libbox::checkConfig)
+            val appMode = prepared?.mode ?: storage.snapshot().appMode
             val inbounds = org.json.JSONObject(configContent).optJSONArray("inbounds")
             val needsTun = inbounds != null && (0 until inbounds.length()).any {
                 inbounds.optJSONObject(it)?.optString("type") == "tun"

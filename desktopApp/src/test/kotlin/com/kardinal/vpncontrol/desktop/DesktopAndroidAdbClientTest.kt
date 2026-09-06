@@ -12,14 +12,16 @@ class DesktopAndroidAdbClientTest {
         for ((arguments, operation) in listOf(
             listOf("locations", "add", "--input", input.toString()) to ControlOperationId.LOCATIONS_ADD,
             listOf("locations", "update", "2", "--input", input.toString()) to ControlOperationId.LOCATIONS_UPDATE,
-            listOf("select", "2") to ControlOperationId.LOCATIONS_SELECT)) {
+            listOf("select", "2") to ControlOperationId.LOCATIONS_SELECT,
+            listOf("locations", "delete", "2") to ControlOperationId.LOCATIONS_DELETE,
+            listOf("locations", "import", "--input", input.toString()) to ControlOperationId.LOCATIONS_IMPORT)) {
             val output = mutableListOf<String>()
             assertEquals(0, DesktopCli.handleArgs((listOf("--android", "--json") + arguments).toTypedArray(),
                 printLine = output::add, androidRequest = client::request))
             val sent = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
             assertEquals(operation, sent.command.operation); assertEquals("android-test-owner", sent.controllerId)
-            if (operation != ControlOperationId.LOCATIONS_ADD) assertEquals(ControlValue.Text("2"), sent.command.arguments["selector"])
-            if (operation != ControlOperationId.LOCATIONS_SELECT) assertEquals(ControlValue.Text("socks://127.0.0.1:1080#PRIVATE_LOCATION"), sent.command.arguments["input"])
+            if (operation !in setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_IMPORT)) assertEquals(ControlValue.Text("2"), sent.command.arguments["selector"])
+            if (operation !in setOf(ControlOperationId.LOCATIONS_SELECT, ControlOperationId.LOCATIONS_DELETE)) assertEquals(ControlValue.Text("socks://127.0.0.1:1080#PRIVATE_LOCATION"), sent.command.arguments["input"])
         }
         assertFalse(Files.readString(root.resolve("argv")).contains("PRIVATE_LOCATION"))
     }
@@ -106,6 +108,24 @@ class DesktopAndroidAdbClientTest {
         assertEquals(ControlCode.INTERACTION_REQUIRED, ControlProtocolCodec.decodeResult(client.request(on, null, 20).message).code)
         assertFalse(Files.readString(root.resolve("argv")).contains("\tam\t"))
     }
+
+    @Test fun interactiveInstallUsesProtectedTokenContinuationAndNoninteractiveDoesNotLaunch() {
+        fixture("interactive") { client, root ->
+            val request = ControlRequest("interactive-install", ControlCommand(ControlOperationId.UPDATES_INSTALL), interactive = true)
+            val result = ControlProtocolCodec.decodeResult(client.request(request, null, 20).message)
+            assertEquals(ControlCode.OK, result.code)
+            assertEquals(request.requestId, result.requestId)
+            val argv = Files.readString(root.resolve("argv"))
+            assertEquals(1, argv.lineSequence().count { it.contains("\tam\tstart\t") })
+            assertFalse(argv.contains(".apk") || argv.contains("\tgrant\t"))
+        }
+        fixture("interaction-required") { client, root ->
+            val request = ControlRequest("install", ControlCommand(ControlOperationId.UPDATES_INSTALL))
+            assertEquals(ControlCode.INTERACTION_REQUIRED, ControlProtocolCodec.decodeResult(client.request(request, null, 20).message).code)
+            assertFalse(Files.readString(root.resolve("argv")).contains("\tam\tstart\t"))
+            assertEquals("android-test-owner", ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request"))).controllerId)
+        }
+    }
     @Test fun offBindsMissingOwnerButPreservesExplicitStaleEpoch() = fixture { client, root ->
         val off = ControlRequest("off-request", ControlCommand(ControlOperationId.OFF))
         assertEquals(0, client.request(off, null, 20).exitCode)
@@ -120,7 +140,11 @@ class DesktopAndroidAdbClientTest {
             if (System.getProperty("os.name").lowercase().contains("windows")) "java.exe" else "java")
         val classes = Path.of(FakeAdbMain::class.java.protectionDomain.codeSource.location.toURI())
         val classpath = classes.toString() + java.io.File.pathSeparator + requireNotNull(System.getProperty("vpnControl.test.mainClasspath"))
-        val process = DesktopAdbProcess(listOf(javaExecutable.toString(), "-cp", classpath, FakeAdbMain::class.java.name, root.toString(), mode))
+        // Java17's Windows launcher converts Unicode argv through the active ANSI code page.
+        // Keep the fixture path Unicode on disk, but bootstrap it as ASCII; production data still
+        // travels through genuine stdin/UTF8 and the packaged launcher has its own manifest tests.
+        val rootArgument = "base64:" + java.util.Base64.getEncoder().encodeToString(root.toString().toByteArray(Charsets.UTF_8))
+        val process = DesktopAdbProcess(listOf(javaExecutable.toString(), "-cp", classpath, FakeAdbMain::class.java.name, rootArgument, mode))
         try { action(DesktopAndroidAdbClient(process::execute), root) }
         finally { root.toFile().deleteRecursively() }
     }
@@ -209,7 +233,7 @@ class DesktopAndroidAdbClientTest {
 /** Test-owned portable subprocess impersonating adb. Never invokes Android, a shell, or a device. */
 object FakeAdbMain {
     @JvmStatic fun main(args: Array<String>) {
-        val root = Path.of(args[0])
+        val root = decodeRoot(args[0])
         val mode = args[1]
         val command = args.drop(2)
         Files.writeString(root.resolve("argv"), command.joinToString("\t") + "\n",
@@ -264,4 +288,7 @@ object FakeAdbMain {
             else -> error("Unexpected test adb command")
         }
     }
+
+    internal fun decodeRoot(argument: String): Path = Path.of(if (argument.startsWith("base64:"))
+        java.util.Base64.getDecoder().decode(argument.removePrefix("base64:")).toString(Charsets.UTF_8) else argument)
 }

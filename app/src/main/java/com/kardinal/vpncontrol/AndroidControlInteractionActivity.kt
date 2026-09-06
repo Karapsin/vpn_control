@@ -15,6 +15,12 @@ class AndroidControlInteractionActivity : ComponentActivity() {
     private var token: String? = null
     private var session: String? = null
     private var permissionReturned = false
+    private var installDispatching = false
+    private val installPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        permissionReturned = true
+        // The settings screen does not report permission through its Activity result code.
+        continueWhenVisible()
+    }
     private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         permissionReturned = true
         if (result.resultCode != RESULT_OK || runCatching { VpnService.prepare(this) == null }.getOrDefault(false).not()) resolve(ControlCode.PERMISSION_DENIED)
@@ -60,8 +66,34 @@ class AndroidControlInteractionActivity : ComponentActivity() {
     private fun continueWhenVisible() {
         val id = token ?: return
         val attached = session ?: return
-        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) ||
-            !hasWindowFocus() || getSystemService(KeyguardManager::class.java).isDeviceLocked || !owner.foreground.ready()) return
+        val visibleUnlocked = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
+            hasWindowFocus() && !getSystemService(KeyguardManager::class.java).isDeviceLocked && owner.foreground.ready()
+        val action = owner.interactions.action(id, attached) ?: return
+        if (action == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL) {
+            when (androidInstallStage(visibleUnlocked, packageManager.canRequestPackageInstalls(), permissionReturned)) {
+                AndroidInstallStage.WAIT -> return
+                AndroidInstallStage.DENIED -> resolve(ControlCode.PERMISSION_DENIED)
+                AndroidInstallStage.REQUEST_PERMISSION -> if (owner.interactions.claimConsent(id, attached)) runCatching {
+                    installPermission.launch(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:$packageName")))
+                }.onFailure { resolve(ControlCode.PERMISSION_DENIED) }
+                AndroidInstallStage.DISPATCH -> if (!installDispatching) {
+                    installDispatching = true
+                    lifecycleScope.launch {
+                        try {
+                            owner.updateInstall.dispatch(id, attached) { intent ->
+                                check(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && hasWindowFocus() &&
+                                    !getSystemService(KeyguardManager::class.java).isDeviceLocked && owner.foreground.ready())
+                                check(packageManager.canRequestPackageInstalls())
+                                startActivity(intent)
+                            }
+                        } finally { installDispatching = false }
+                    }
+                }
+            }
+            return
+        }
+        if (!visibleUnlocked) return
         val required = try { VpnService.prepare(this) } catch (_: Exception) { resolve(ControlCode.PERMISSION_DENIED); return }
         // Proxy-only requests need foreground eligibility, not VPN permission.
         if (!owner.connectionControl.requiresVpnConsent(id) || required == null) resolve(ControlCode.OK)

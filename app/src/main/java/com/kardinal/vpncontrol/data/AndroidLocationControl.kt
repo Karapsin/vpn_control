@@ -9,16 +9,17 @@ import java.security.MessageDigest
 internal class AndroidLocationPlan(val locations: List<String>?, val selected: String?, val source: String, val id: String)
 
 internal object AndroidLocationControl {
-    val operations = setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE, ControlOperationId.LOCATIONS_SELECT)
+    val destructiveOperations = setOf(ControlOperationId.LOCATIONS_DELETE, ControlOperationId.LOCATIONS_IMPORT)
+    val operations = setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE, ControlOperationId.LOCATIONS_SELECT) + destructiveOperations
     fun arguments(operation: ControlOperationId, values: Map<String, ControlValue>): Map<String, ControlValue> {
         require(operation in operations && values.values.all { it is ControlValue.Text && it.value.isNotBlank() }) { "INVALID_ARGUMENT" }
         val targets = values.keys.intersect(setOf("selector", "id"))
         val keys = when (operation) {
-            ControlOperationId.LOCATIONS_ADD -> setOf("input")
+            ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_IMPORT -> setOf("input")
             ControlOperationId.LOCATIONS_UPDATE -> targets + "input"
             else -> targets
         }
-        require(values.keys == keys && (operation == ControlOperationId.LOCATIONS_ADD || targets.size == 1)) { "INVALID_ARGUMENT" }
+        require(values.keys == keys && (operation in setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_IMPORT) || targets.size == 1)) { "INVALID_ARGUMENT" }
         return values
     }
     fun source(state: PersistedState, raw: String): String = when {
@@ -36,7 +37,7 @@ internal object AndroidLocationControl {
         arguments(operation, values)
         fun text(key: String) = (values[key] as? ControlValue.Text)?.value
         val ui = MainUiStateProjector.mergePersistedState(MainUiState(), state)
-        val target = if (operation == ControlOperationId.LOCATIONS_ADD) null else if (text("id") != null) {
+        val target = if (operation in setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_IMPORT)) null else if (text("id") != null) {
             state.currentLocations.singleOrNull { identity(owner, state, it) == text("id") } ?: error("CONFLICT")
         } else when (val result = ControlLocationSelection.resolve(requireNotNull(text("selector")), androidLocationRows(ui, strings), { it.name })) {
             is ControlLocationResolution.Found -> result.location.rawLink
@@ -50,6 +51,17 @@ internal object AndroidLocationControl {
             return AndroidLocationPlan(null, if (same) null else raw, source, identity(owner, state, raw))
         }
         check(state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS) { "UNSUPPORTED" }
+        if (operation == ControlOperationId.LOCATIONS_DELETE) {
+            val deletion = LocationMutationLogic.planDeleteLocation(ui, state.currentLocations.indexOf(target)) as? DeleteLocationDecision.Plan
+                ?: error("NOT_FOUND")
+            return AndroidLocationPlan(deletion.nextLocations.map(LocationConfigs::normalizeStoredReference).distinct(), null, "",
+                identity(owner, state, requireNotNull(target)))
+        }
+        if (operation == ControlOperationId.LOCATIONS_IMPORT) {
+            val imported = LocationMutationLogic.planImportLocations(ui, requireNotNull(text("input"))) as? ImportLocationsDecision.Plan
+                ?: error("INVALID_ARGUMENT")
+            return AndroidLocationPlan(imported.importedLocations.map(LocationConfigs::normalizeStoredReference).distinct(), null, "", "")
+        }
         val decision = LocationMutationLogic.planSaveLocation(ui.copy(locationDraft = requireNotNull(text("input")),
             editingLocationIndex = target?.let(state.currentLocations::indexOf)))
         if (decision is SaveLocationDecision.Duplicate) {

@@ -23,7 +23,7 @@ internal class AndroidControlInteractions(
 
     @Synchronized fun create(operationId: String, action: ControlOperationId): String {
         prune()
-        require(action in setOf(ControlOperationId.ON, ControlOperationId.RESTART))
+        require(action in setOf(ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.UPDATES_INSTALL))
         check(entries.size < 32) { "BUSY" }
         return UUID.randomUUID().toString().also {
             entries[it] = Entry(operationId, action, clock() + retentionMillis)
@@ -53,10 +53,26 @@ internal class AndroidControlInteractions(
         return true
     }
 
+    @Synchronized fun action(token: String, session: String): ControlOperationId? {
+        prune()
+        return entries[token]?.takeIf { it.session == session && !it.completion.isCompleted }?.action
+    }
+
+    /** Cancellation and the actual synchronous OS handoff share this one-shot boundary. */
+    @Synchronized fun dispatchInstall(token: String, session: String, dispatch: () -> Unit): Boolean {
+        if (action(token, session) != ControlOperationId.UPDATES_INSTALL) return false
+        val entry = requireNotNull(entries[token])
+        val succeeded = runCatching(dispatch).isSuccess
+        entry.completion.complete(if (succeeded) ControlCode.OK else ControlCode.RUNTIME_FAILED)
+        changed()
+        return succeeded
+    }
+
     @Synchronized fun resolve(token: String, session: String, result: ControlCode) {
         prune()
         val entry = entries[token] ?: return
-        if (entry.session == session && result in setOf(ControlCode.OK, ControlCode.PERMISSION_DENIED)) {
+        if (entry.session == session && result in setOf(ControlCode.OK, ControlCode.PERMISSION_DENIED) &&
+            (entry.action != ControlOperationId.UPDATES_INSTALL || result != ControlCode.OK)) {
             entry.completion.complete(result)
             changed()
         }

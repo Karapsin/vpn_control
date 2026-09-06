@@ -282,9 +282,7 @@ class MainViewModel internal constructor(
         owner.dismissOrCancelUpdate()
     }
 
-    fun buildUpdateInstallIntent(): android.content.Intent? {
-        return updateActions.buildInstallIntent()
-    }
+    fun installUpdate(launch: (android.content.Intent) -> Unit) = owner.installUpdate(launch)
 
     fun openRoutingRules() {
         handleControllerEffects(controller.openRoutingRules())
@@ -553,6 +551,10 @@ class MainViewModel internal constructor(
     fun deleteLocation(index: Int) {
         locationActions.deleteLocation(index)
     }
+    fun deleteLocation(raw: String) { locationActions.deleteLocation(raw) }
+    fun deleteLocation(target: AndroidRenderedLocationTarget) { locationActions.deleteLocation(target) }
+    fun editLocation(target: AndroidRenderedLocationTarget) { locationActions.editLocation(target) }
+    fun selectLocation(target: AndroidRenderedLocationTarget) { locationActions.selectLocation(target) }
 
     fun benchmarkLocation(index: Int) {
         locationActions.benchmarkLocation(index)
@@ -585,6 +587,8 @@ class MainViewModel internal constructor(
     fun importLocations(raw: String) {
         locationActions.importLocations(raw)
     }
+    fun beginImportLocations(openPicker: () -> Unit) = locationActions.beginImportLocations(openPicker)
+    fun cancelImportLocations() = locationActions.cancelImportLocations()
 
     fun importRoutingRules(raw: String) {
         routingActions.importRoutingRules(raw)

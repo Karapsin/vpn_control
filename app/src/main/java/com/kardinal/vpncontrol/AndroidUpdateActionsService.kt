@@ -3,9 +3,7 @@ package com.kardinal.vpncontrol
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
@@ -41,25 +39,41 @@ internal class AndroidUpdateActionsService(
 
     fun showDialog() { updateAppState { it.copy(showDialog = true) } }
 
-    fun buildInstallIntent(): Intent? {
-        if (control.busy()) return null
-        val file = control.preparedFile?.takeIf(File::isFile) ?: return null
-        if (!context.packageManager.canRequestPackageInstalls()) {
-            updateAppState {
-                it.copy(message = "Allow VPN Control to install apps, then tap Install update again.")
+    fun showInstallResult(result: com.kardinal.vpncontrol.model.ControlResult) {
+        if (result.final && result.code != com.kardinal.vpncontrol.model.ControlCode.OK)
+            updateAppState { it.copy(showDialog = true, phase = AppUpdatePhase.FAILED, message = result.code.wireName) }
+    }
+
+    suspend fun pinInstallation(ticket: AndroidUpdateControl.Installation): AndroidUpdateInstallControl.Pinned = withContext(Dispatchers.IO) {
+        val asset = requireNotNull(ticket.checked.asset)
+        val directory = File(context.filesDir, "control-installs").apply { check(isDirectory || mkdirs()) }
+        // Handed-off files must outlive this owner and must not be evicted while the installer reads.
+        // Bound persistent retention without deleting another installer's input.
+        check(directory.listFiles()?.size?.let { it < 8 } == true) { "INSTALL_RETENTION_FULL" }
+        val target = File(directory, "${java.util.UUID.randomUUID()}.apk")
+        try {
+            require(ticket.file.isFile && ticket.file.length() == asset.sizeBytes)
+            ticket.file.copyTo(target, overwrite = false)
+            require(target.length() == asset.sizeBytes)
+            verifyApk(target, asset, ticket.checked.manifest.buildNumber)
+            check(target.setReadOnly())
+        } catch (error: Exception) { target.delete(); throw error }
+        object : AndroidUpdateInstallControl.Pinned {
+            override val version = asset.displayVersion
+            override suspend fun verify() = withContext(Dispatchers.IO) {
+                require(target.isFile && target.length() == asset.sizeBytes)
+                verifyApk(target, asset, ticket.checked.manifest.buildNumber)
             }
-            return Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"),
-            )
-        }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        updateAppState { it.copy(phase = AppUpdatePhase.INSTALLING, message = "") }
-        return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            data = uri
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-            putExtra(Intent.EXTRA_RETURN_RESULT, false)
+            override fun dispatch(launcher: (Intent) -> Unit) {
+                check(context.packageManager.canRequestPackageInstalls())
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+                launcher(Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                    data = uri
+                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    putExtra(Intent.EXTRA_RETURN_RESULT, false)
+                })
+            }
+            override fun release(handedOff: Boolean) { if (!handedOff) target.delete() }
         }
     }
 

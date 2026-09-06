@@ -31,8 +31,10 @@ internal class AndroidSettingsControl(
     private val subscription: (suspend (ControlOperationId, Map<String, ControlValue>, String, Long?) -> AndroidSettingsCommit)? = null,
     private val routing: (suspend (ControlOperationId, Map<String, ControlValue>, String, Long?) -> AndroidSettingsCommit)? = null,
     private val location: (suspend (ControlOperationId, Map<String, ControlValue>, String, Long?) -> AndroidSettingsCommit)? = null,
+    private val locationRemoval: AndroidLocationDestructiveControl? = null,
     private val updates: (() -> AndroidUpdateControl)? = null,
     private val updateInspection: (() -> Map<String, ControlValue>)? = null,
+    private val updateInstall: (() -> AndroidUpdateInstallControl)? = null,
 ) {
     private val ledger = ControlOperationLedger(controllerId)
     private val waiting = mutableMapOf<String, CompletableDeferred<ControlResult>>()
@@ -45,10 +47,12 @@ internal class AndroidSettingsControl(
         if (request.command.operation in inspectionOperations) return inspectOperation(request)
         val isConnection = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.RESTART)
         val isRuntime = isConnection || request.command.operation == ControlOperationId.OFF
-        val isUpdate = request.command.operation in AndroidUpdateControl.operations
+        val isInstall = request.command.operation == ControlOperationId.UPDATES_INSTALL
+        val isUpdate = isInstall || request.command.operation in AndroidUpdateControl.operations
         val updateControlPlane = request.command.operation in AndroidUpdateControl.controlPlane
-        val allowsAsync = isRuntime || isUpdate && !updateControlPlane || request.command.operation in setOf(ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE)
-        if (request.command.operation !in operations || request.asynchronous && !allowsAsync || request.interactive && !isConnection) {
+        val isLocationRemoval = request.command.operation in com.kardinal.vpncontrol.data.AndroidLocationControl.destructiveOperations
+        val allowsAsync = isRuntime || isLocationRemoval || isUpdate && !updateControlPlane || request.command.operation in setOf(ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE)
+        if (request.command.operation !in operations || request.asynchronous && !allowsAsync || request.interactive && !isConnection && !isInstall) {
             return rejected(request, ControlCode.INVALID_ARGUMENT)
         }
         val isOff = request.command.operation == ControlOperationId.OFF
@@ -58,7 +62,8 @@ internal class AndroidSettingsControl(
         val isRouting = request.command.operation in com.kardinal.vpncontrol.data.AndroidRoutingControl.operations
         val isLocation = request.command.operation in com.kardinal.vpncontrol.data.AndroidLocationControl.operations
         if (isUpdate && updates == null) return rejected(request, ControlCode.UNSUPPORTED)
-        if (isLocation && location == null) return rejected(request, ControlCode.UNSUPPORTED)
+        if (isInstall && updateInstall == null) return rejected(request, ControlCode.UNSUPPORTED)
+        if (isLocation && if (isLocationRemoval) locationRemoval == null else location == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isRouting && routing == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isSubscription && subscription == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isSource && setSource == null) return rejected(request, ControlCode.UNSUPPORTED)
@@ -95,6 +100,7 @@ internal class AndroidSettingsControl(
             val current = runCatching { snapshot() }.getOrNull()
             if (current == null) return rejected(request, ControlCode.UNAVAILABLE)
             if (isUpdate && request.ifRevision != null && request.ifRevision != current.revision) return rejected(request, ControlCode.CONFLICT)
+            if (isInstall && !request.interactive) return rejected(request, ControlCode.INTERACTION_REQUIRED)
             if (isConnection) connection?.preflight(request, current.value)?.let { return rejected(request, it) }
             else if (!isUpdate && if (isOff) off?.available() != true else pendingRestart(current.value) == null)
                 return rejected(request, ControlCode.UNAVAILABLE)
@@ -129,7 +135,9 @@ internal class AndroidSettingsControl(
                             if (ledger.get(operation.id, now())?.phase != ControlOperationPhase.CANCELLING)
                                 ledger.advance(operation.id, ControlOperationPhase.RUNNING, now())
                         }
-                        val completed = if (isUpdate) performUpdate(request, operation.id, updateGeneration)
+                        val completed = if (isInstall) performInstall(request, operation.id)
+                            else if (isLocationRemoval) requireNotNull(locationRemoval).execute(request, operation.id)
+                            else if (isUpdate) performUpdate(request, operation.id, updateGeneration)
                             else if (isOff) requireNotNull(off).execute(request, operation.id)
                             else if (isConnection) requireNotNull(connection).execute(request, operation.id) { awaiting ->
                                 synchronized(ledger) {
@@ -166,7 +174,7 @@ internal class AndroidSettingsControl(
             }
         }
         if (completion == null) return rejected(request, requireNotNull(rejection))
-        if ((request.asynchronous || isConnection && request.interactive) && !completion.isCompleted) {
+        if ((request.asynchronous || (isConnection || isInstall) && request.interactive) && !completion.isCompleted) {
             val operation = synchronized(ledger) { requireNotNull(ledger.forRequest(request.requestId, now())) }
             return accepted(request.requestId, operation)
         }
@@ -255,6 +263,7 @@ internal class AndroidSettingsControl(
                     // continuation must never cancel a newer transfer after target completion.
                     val updateCancellation = if (updateTarget) updates?.invoke()?.reserveCancellation() else null
                     if (code == ControlCode.OK) connection?.cancelConsentWait(target)
+                    if (code == ControlCode.OK) updateInstall?.invoke()?.cancel(target)
                     val job = scope.launch(start = CoroutineStart.LAZY) {
                         val completedCode = if (updateTarget) updateCancellation?.let {
                             requireNotNull(updates).invoke().finishCancellation(it).code
@@ -284,6 +293,24 @@ internal class AndroidSettingsControl(
             }
         }
         return completion?.await() ?: rejected(request, requireNotNull(rejection))
+    }
+
+    private suspend fun performInstall(request: ControlRequest, operationId: String): ControlResult {
+        val current = runCatching { snapshot() }.getOrNull() ?: return rejected(request, ControlCode.RUNTIME_FAILED).copy(operationId = operationId)
+        if (request.ifRevision != null && request.ifRevision != current.revision)
+            return rejected(request, ControlCode.CONFLICT).copy(operationId = operationId)
+        val outcome = requireNotNull(updateInstall).invoke().execute(operationId) { awaiting ->
+            synchronized(ledger) {
+                if (ledger.get(operationId, now())?.phase == ControlOperationPhase.CANCELLING) false
+                else {
+                    ledger.advance(operationId, if (awaiting) ControlOperationPhase.AWAITING_USER else ControlOperationPhase.RUNNING,
+                        now(), cancellable = awaiting)
+                    true
+                }
+            }
+        }
+        val result = rejected(request, outcome.code).copy(operationId = operationId, data = outcome.data)
+        return if (outcome.code == ControlCode.OK) result.copy(warnings = result.warnings + "INSTALLER_STARTED_NOT_INSTALLED") else result
     }
 
     private suspend fun performUpdate(request: ControlRequest, operationId: String, generation: Long?): ControlResult {
@@ -366,6 +393,6 @@ internal class AndroidSettingsControl(
             ControlOperationId.SSH_KEY_IMPORT, ControlOperationId.SOURCE_SET,
             ControlOperationId.OFF, ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_CANCEL) + inspectionOperations +
             com.kardinal.vpncontrol.data.AndroidSubscriptionControl.operations + com.kardinal.vpncontrol.data.AndroidRoutingControl.operations +
-            com.kardinal.vpncontrol.data.AndroidLocationControl.operations + AndroidUpdateControl.operations
+            com.kardinal.vpncontrol.data.AndroidLocationControl.operations + AndroidUpdateControl.operations + ControlOperationId.UPDATES_INSTALL
     }
 }

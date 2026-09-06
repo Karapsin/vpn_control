@@ -13,9 +13,12 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.test.*
 
-/** Real Win32 IO, no elevation. The test-only policy trusts ONLY this user's temporary fixture. */
+/** Real Win32 IO with the inherited token (standard or elevated CI); never requests elevation.
+ * The test-only policy trusts ONLY explicitly current-SID-owned temporary objects. Elevated
+ * execution is not evidence for standard-user access; both environments run these same assertions.
+ */
 class DesktopWindowsInstallJobNativeTest {
-    @Test fun standardUserUnicodeHandlesReplaceBoundedReadAndCancellation() = fixture { native, policy, temp ->
+    @Test fun currentUserUnicodeHandlesReplaceBoundedReadAndCancellation() = fixture { native, policy, temp ->
         assertTrue(native.programData().matches(Regex("^[A-Za-z]:\\\\.+"))) // actual SHGetKnownFolderPath marshaling
         val backend = DesktopWindowsInstallJobBackend(policy)
         assertFailsWith<IllegalArgumentException> { DesktopWindowsInstallJobBackend(native).openRoot(backend.defaultRoot(), false) }
@@ -48,7 +51,11 @@ class DesktopWindowsInstallJobNativeTest {
             } finally { cancel.close() }
             // The raw user-owned descriptor remains unacceptable to the production trust policy.
             val handle = native.open(jobPath.resolve("cancel").toString(), WindowsInstallNative.READ, false)
-            try { assertFailsWith<IllegalArgumentException> { WindowsInstallTrust.verify(native.inspect(handle), WindowsInstallTrust.Kind.CANCEL) } }
+            try {
+                val actual = native.inspect(handle)
+                assertEquals(policy.sid, actual.owner, "Fixture must be explicitly user-owned, including on elevated CI")
+                assertFailsWith<IllegalArgumentException> { WindowsInstallTrust.verify(actual, WindowsInstallTrust.Kind.CANCEL) }
+            }
             finally { native.close(handle) }
         } finally { job.close(); root.close() }
     }
@@ -75,7 +82,7 @@ class DesktopWindowsInstallJobNativeTest {
         val sid = try {
             val elevation = WinNT.TOKEN_ELEVATION()
             check(Advapi32.INSTANCE.GetTokenInformation(token.value, 20, elevation, elevation.size(), IntByReference()))
-            check(elevation.TokenIsElevated == 0) { "Run these tests as a standard, non-elevated user" }
+            check(elevation.TokenIsElevated in 0..1) { "Invalid token elevation information" }
             Advapi32Util.getTokenAccount(token.value).sidString
         } finally { Kernel32.INSTANCE.CloseHandle(token.value) }
         val temp = Files.createTempDirectory("vpn-control-native-東京 space-")

@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Reject export destinations with inherited macOS access grants or unenforced Windows permissions before writing private data.
 - Add readable Android CLI results with truthful unknown metadata, operation progress and escaped terminal controls.
 - Stage Android location edits without restarting active VPN and add tracked update check, download and cancellation commands.
+- Add guarded Android location removal and installer handoff, bounded transfer storage, and Windows controller and test portability fixes.
 
 ## 2.1.1 - 2026-09-06
 

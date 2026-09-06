@@ -28,6 +28,19 @@ internal class AndroidUpdateControl(
     private class Transfer(val result: CompletableDeferred<AndroidUpdateOutcome> = CompletableDeferred()) { val job = CompletableDeferred<Job>() }
     private var active: Transfer? = null
     private var cancelling = false
+    internal data class Installation(val file: File, val checked: AndroidUpdateCheck)
+    private var installation: Installation? = null
+    @Synchronized fun reserveInstallation(): Installation? {
+        if (busy()) return null
+        val file = preparedFile ?: return null
+        val selected = checked?.takeIf { it.asset != null } ?: return null
+        return Installation(file, selected).also { installation = it }
+    }
+    @Synchronized fun finishInstallation(ticket: Installation, handedOff: Boolean) {
+        if (installation !== ticket) return
+        if (handedOff) update { it.copy(phase = AppUpdatePhase.INSTALLING, message = "") }
+        installation = null
+    }
     internal class Cancellation internal constructor(internal val job: Deferred<Job>?, internal val dismiss: Boolean)
     private var cancellation: Cancellation? = null
     private var generation = 0L
@@ -36,7 +49,7 @@ internal class AndroidUpdateControl(
     @Volatile var preparedFile: File? = null
         private set
     fun checkedStatus(): AndroidUpdateCheck? = checked
-    @Synchronized fun busy(): Boolean = active != null || cancelling
+    @Synchronized fun busy(): Boolean = active != null || cancelling || installation != null
     @Synchronized fun generation(): Long = generation
     @Synchronized fun inspection(state: () -> AppUpdateState) = AndroidControlUpdateInspection.read(state(), checked)
     @Synchronized private fun update(transform: (AppUpdateState) -> AppUpdateState) = emit { transform(it).also { next -> published = next } }
@@ -98,7 +111,7 @@ internal class AndroidUpdateControl(
         val ready = CompletableDeferred<Unit>()
         val transfer = synchronized(this) {
             if (expectedGeneration != null && expectedGeneration != generation) return outcome(ControlCode.CANCELLED)
-            if (active != null || cancelling) return outcome(ControlCode.BUSY)
+            if (busy()) return outcome(ControlCode.BUSY)
             Transfer().also { active = it }
         }
         val job = try { launch {
@@ -135,7 +148,7 @@ internal class AndroidUpdateControl(
     /** Prevents a new transfer until the cancelled worker and cleanup actually finish. */
     suspend fun cancel(dismiss: Boolean = false): Result<Unit> = cancelOutcome(dismiss).asResult()
     @Synchronized fun reserveCancellation(dismiss: Boolean = false): Cancellation? {
-        if (cancelling) return null
+        if (cancelling || installation != null) return null
         cancelling = true
         generation++
         return Cancellation(active?.job, dismiss).also { cancellation = it }

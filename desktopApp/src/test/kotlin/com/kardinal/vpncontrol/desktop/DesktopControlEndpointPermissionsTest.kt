@@ -15,6 +15,21 @@ import kotlin.test.assertTrue
 
 class DesktopControlEndpointPermissionsTest {
     @Test
+    fun publishedDescriptorBelongsToInvokingUserEvenWhenDefaultFileOwnerDiffers() {
+        // Elevated Windows tokens commonly create ordinary temp files owned by Administrators.
+        // A controller credential must instead belong to the invoking account, from creation.
+        val directory = Files.createTempDirectory("vpn-control-endpoint-owner")
+        val file = directory.resolve("endpoint")
+        try {
+            val endpoint = DesktopControlEndpoint.create(12345)
+            endpoint.publish(file)
+            val invokingUser = file.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
+            assertEquals(invokingUser, Files.getOwner(file))
+            assertEquals(endpoint.token, DesktopControlEndpoint.read(file).token)
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
+    @Test
     fun aclMustGrantOwnerReadWithoutGrantingOtherPrincipalsAccess() {
         val owner = UserPrincipal { "owner" }
         val other = UserPrincipal { "other" }

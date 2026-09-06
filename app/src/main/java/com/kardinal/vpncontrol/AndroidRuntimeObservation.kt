@@ -23,6 +23,7 @@ internal data class AndroidRuntimeObservation(
     val activeMode: AppMode? = null,
     val startedAtEpochMillis: Long? = null,
     val stoppedAtEpochMillis: Long? = null,
+    internal val generation: String = UUID.randomUUID().toString(),
 ) {
     fun applyKnownState(state: MainUiState): MainUiState = when (knowledge) {
         AndroidRuntimeKnowledge.UNKNOWN -> state
@@ -59,6 +60,7 @@ internal class AndroidRuntimeObserver(
     private val salt = ByteArray(32).also(SecureRandom()::nextBytes)
     private var activeHandle: Any? = null
     private var activeConfiguration: ControlRuntimeConfiguration? = null
+    private var activeRuntimeJson: String? = null
     private var cleanupUncertain = false
     private val mutableState = MutableStateFlow(AndroidRuntimeObservation(
         if (initiallyStopped) AndroidRuntimeKnowledge.STOPPED else AndroidRuntimeKnowledge.UNKNOWN,
@@ -74,6 +76,7 @@ internal class AndroidRuntimeObserver(
         }
         activeHandle = handle
         activeConfiguration = prepared?.takeIf { it.mode == mode }
+        activeRuntimeJson = actualRuntimeConfig
         mutableState.value = AndroidRuntimeObservation(
             knowledge = AndroidRuntimeKnowledge.RUNNING, runtimeId = idGenerator(),
             configurationId = configurationId, activeMode = mode, startedAtEpochMillis = clockMillis(),
@@ -83,6 +86,7 @@ internal class AndroidRuntimeObserver(
     @Synchronized fun resetCompleted(cleanupSucceeded: Boolean) {
         activeHandle = null
         activeConfiguration = null
+        activeRuntimeJson = null
         // Existing native cleanup forgets handles after a close exception. Do not claim off
         // or a single known runtime afterward; only a new process can remove that uncertainty.
         cleanupUncertain = cleanupUncertain || !cleanupSucceeded
@@ -95,6 +99,13 @@ internal class AndroidRuntimeObserver(
     @Synchronized fun hasAuthoritativeConfiguration(): Boolean =
         mutableState.value.knowledge == AndroidRuntimeKnowledge.STOPPED ||
             mutableState.value.knowledge == AndroidRuntimeKnowledge.RUNNING && activeConfiguration != null
+
+    /** Private owner-only recovery material; never projected into status, logs or persistence. */
+    @Synchronized fun captureRuntime(): AndroidRuntimeRestorePoint? {
+        val observation = mutableState.value
+        if (observation.knowledge != AndroidRuntimeKnowledge.RUNNING) return null
+        return AndroidRuntimeRestorePoint(observation, activeRuntimeJson ?: return null, activeConfiguration ?: return null)
+    }
 
     @Synchronized fun pendingRestart(committed: PersistedState): Boolean? = when (mutableState.value.knowledge) {
         AndroidRuntimeKnowledge.UNKNOWN -> null
@@ -141,4 +152,9 @@ internal class AndroidRuntimeObserver(
             "runtimeObservation" to ControlValue.Text(observed.knowledge.name.lowercase()),
         ), pending, observed.knowledge != AndroidRuntimeKnowledge.UNKNOWN && pending != null)
     }
+}
+
+internal class AndroidRuntimeRestorePoint(val observation: AndroidRuntimeObservation,
+    val runtimeJson: String, val configuration: ControlRuntimeConfiguration) {
+    override fun toString(): String = "AndroidRuntimeRestorePoint(<redacted>)"
 }

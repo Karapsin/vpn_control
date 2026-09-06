@@ -62,6 +62,7 @@ internal class AndroidApplicationOwner(context: Context) {
         connection = connectionControl,
         updates = { updateActions.control },
         updateInspection = { updateActions.control.inspection { updateState.value } },
+        updateInstall = { updateInstall },
         importKey = { content, epoch, revision -> storage.commitControlSshKey(content, epoch, revision,
             runtimeKnown = runtimeObserver::hasAuthoritativeConfiguration) },
         subscription = storage::commitControlSubscription,
@@ -69,6 +70,14 @@ internal class AndroidApplicationOwner(context: Context) {
             orchestrator.selectionFromRawLink(state, raw, "Selected location manually").getOrElse { error("INVALID_ARGUMENT") }
                 .also { selected -> runCatching { io.nekohasekai.libbox.Libbox.checkConfig(selected.runtimeConfigJson) }.getOrElse { error("INVALID_ARGUMENT") } }
         } },
+        locationRemoval = AndroidLocationDestructiveControl(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id,
+            storage::configurationSnapshot, { runtimeObserver.state.value }, runtimeObserver::captureRuntime,
+            vpnManager::stopPinnedForControl,
+            { plan, epoch, revision, expected -> storage.commitControlLocationRemoval(plan, epoch, revision) { runtimeObserver.state.value == expected } },
+            { point, stopped -> vpnManager.restoreForControl(point, stopped) {
+                foreground.ready() && (point.configuration.mode != com.kardinal.vpncontrol.model.AppMode.VPN ||
+                    runCatching { android.net.VpnService.prepare(appContext) == null }.getOrDefault(false))
+            } }, runtimeObserver::pendingRestart),
         routing = { operation, arguments, epoch, revision -> storage.commitControlRouting(operation, arguments, epoch, revision,
             runtimeObserver::hasAuthoritativeConfiguration, installedAppsCatalog::load) },
         setSource = { arguments, epoch, revision -> storage.commitControlSource(arguments, epoch, revision) {
@@ -132,6 +141,38 @@ internal class AndroidApplicationOwner(context: Context) {
     }
 
     fun dismissOrCancelUpdate() { commands.launch { updateCommand(com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DISMISS) } }
+
+    val updateInstall by lazy { AndroidUpdateInstallControl(updateActions.control, interactions, updateActions::pinInstallation) }
+
+    fun installUpdate(launch: (android.content.Intent) -> Unit) {
+        commands.launch {
+            val committed = storage.configurationSnapshot()
+            val result = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL),
+                controllerId = committed.controllerId, ifRevision = committed.revision, interactive = true))
+            if (result.final) { updateActions.showInstallResult(result); return@launch }
+            val operation = result.operationId ?: return@launch
+            while (!result.final && interactions.tokenFor(operation) == null) {
+                val status = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                    com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS,
+                        mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(operation))), controllerId = committed.controllerId))
+                if (status.final) { updateActions.showInstallResult(status); return@launch }
+                kotlinx.coroutines.delay(25)
+            }
+            interactions.tokenFor(operation)?.let { token ->
+                runCatching { launch(android.content.Intent(appContext, AndroidControlInteractionActivity::class.java)
+                    .putExtra("token", token).putExtra("controllerId", committed.controllerId)) }
+                    .onFailure { updateInstall.cancel(operation) }
+            }
+            while (true) {
+                val status = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                    com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS,
+                        mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(operation))), controllerId = committed.controllerId))
+                if (status.final) { updateActions.showInstallResult(status); break }
+                kotlinx.coroutines.delay(100)
+            }
+        }
+    }
 
     private suspend fun updateCommand(operation: com.kardinal.vpncontrol.model.ControlOperationId): com.kardinal.vpncontrol.model.ControlResult {
         val committed = storage.configurationSnapshot()

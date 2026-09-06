@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) {
+            viewModel.cancelImportLocations()
             viewModel.postStatus("Locations import canceled")
             return@registerForActivityResult
         }
@@ -250,7 +251,7 @@ class MainActivity : ComponentActivity() {
                 onCheckAndDownloadUpdate = viewModel::checkAndDownloadUpdate,
                 onDismissOrCancelUpdate = viewModel::dismissOrCancelUpdate,
                 onInstallUpdate = {
-                    viewModel.buildUpdateInstallIntent()?.let(::startActivity)
+                    viewModel.installUpdate(::startActivity)
                 },
                 onOpenUpdateReleaseNotes = { url ->
                     startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
@@ -269,7 +270,9 @@ class MainActivity : ComponentActivity() {
                     exportLocationsLauncher.launch(document.fileName)
                 },
                 onImportLocations = {
-                    importLocationsLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    viewModel.beginImportLocations {
+                        importLocationsLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }
                 },
                 onScanLocationQr = { launchQrScanner(QrImportMode.LOCATION) },
                 onImportLocationFromClipboard = { importClipboardAs(ImportPreference.LOCATION) },

@@ -21,14 +21,14 @@ class DesktopCliProcessTest {
         val second = root.resolve("second space")
         val javaName = if (System.getProperty("os.name").lowercase().contains("windows")) "java.exe" else "java"
         val java = Path.of(System.getProperty("java.home"), "bin", javaName).toString()
-        val classpath = requireNotNull(System.getProperty("vpnControl.test.mainClasspath"))
+        val classpath = DesktopJvmCliTestBootstrap.classpath(requireNotNull(System.getProperty("vpnControl.test.mainClasspath")))
         var sequence = 0
         val processes = mutableListOf<Process>()
         fun start(vararg args: String): Pair<Process, Path> {
             val output = root.resolve("process-${sequence++}.log")
             val builder = ProcessBuilder(listOf(java, "-Djava.awt.headless=true", "-Dfile.encoding=windows-1251",
                 "-Dsun.stdout.encoding=windows-1251", "-cp", classpath,
-                "com.kardinal.vpncontrol.desktop.MainKt") + args)
+                DesktopJvmCliTestBootstrap::class.java.name) + DesktopJvmCliTestBootstrap.encode(args.toList()))
             builder.environment().remove("DISPLAY")
             builder.environment().remove("WAYLAND_DISPLAY")
             builder.redirectErrorStream(true).redirectOutput(output.toFile())

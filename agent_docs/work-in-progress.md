@@ -6,6 +6,97 @@ Use this file only when a large task intentionally leaves multiple buckets chang
 
 Fresh-agent checkpoint map (2026-09-06; read newest notes before older history):
 
+Development checkpoint `4d8a2e7a23ba0b805b235929574dc21a261b60cd` is committed
+and pushed to `origin/dev`. Fresh full prepush752 passed before the push. Fast Checks,
+Android Release APK, Linux Desktop Package and macOS Desktop Package succeeded for
+that SHA; Windows Desktop Package34027258751 failed59/467 tests. Advisory VPN
+Integration also succeeded. The development delivery gate is therefore NOT complete.
+The next intentionally parallel dirty buckets are Android runtime-safe DELETE/IMPORT
+(gui_location_reference), Android protected installer interaction (android_session),
+and shared bounded chunk-transfer protocol/state (native_cli_checks). Root owns
+integration, transfer adapters and CI follow-up. These are implementation assignments,
+not completed functionality. Agents coordinate shared owner/adapter edit regions;
+one local Gradle invocation at a time. No live VPN/installer permission tests are
+authorized by this checkpoint, and the full parity goal remains open.
+
+Next-batch evidence and findings (in progress, not pushed):
+
+- Source frozen after final Android2682:35 app tests (planner5/destructive7/GUI6/
+  runtimecommands8/observer4/legacy5) plus Android/instrumentation compilation passed.
+  Public ADB16 passed21286/50649. DELETE/IMPORT now use guarded asynchronous owner
+  admission, private actual-runtime capture, acknowledged pinned stop, commit and
+  runtime-only recovery. Deleting pending B preserves active A and its telemetry.
+  EDIT/SELECT/DELETE carry rendered raw+source scope/hash, rejecting reordered,
+  disappeared or source-drifted targets. Import captures revision before picker.
+  Actual runtime stop/recovery/consent denial and screenshots remain untested.
+  Benchmark still uses positional GUI targeting and is a remaining parity gap.
+- Final Android install21286 passed8 install regressions plus existing update/location
+  union and16 ADB tests. All Android source is frozen for consolidated validation.
+- Native Windows2137 passed50 tests65.369s under real elevation0;16772 passed50
+  tests75.592s under linked elevation1 with the same account SID. Includes endpoint
+  ownership, spool default-directory privacy, native installer IO/reparse policy,
+  ADB, autostart, public Main process/Unicode and QR tests. Frozen evidence host
+  /tmp/vpn-windows-ci-native.XOkCOr; guest
+  C:\\Users\\visualagent\\AppData\\Local\\Temp\\vpn-ci-XOkCOr.
+  Bundle SHA25647f0d09dd07098e1f4fe651a8509f425b544352795e48e36739d1dd6379aa73a.
+  Microsoft OpenJDK17.0.20.1+1 x64 on WindowsARM64 (x64 emulation), not hostedx64
+  package proof. Remaining previously failing Windows classes are running separately.
+  Host/defaultVPN and all application runtimes were untouched. No installer was run.
+- Root is applying one consolidated changelog note and fresh full prepush for this
+  batch, then will push and restart all five exact-SHA required workflows. This is
+  not full-goal completion; large transfer adapters, Android refresh/find-best/
+  benchmark/streams, complete install recovery and desktop elevation/install work,
+  native live-traffic and visual proof remain open.
+
+- Latest combined50864 passed24s: final shared transfer11 tests and focused desktop
+  ADB/bootstrap/native-platform-gated/spool/endpoint/transport/autostart union.
+  It includes the single-retained-file spool refinement. JVM process bootstrap
+  regression91745 passed3 tests afterward: test-only ASCII/base64 argv transport
+  reaches actual Main with original Unicode args; real stdout/PNG/owner assertions
+  remain. Production public-launcher Unicode behavior is still tested separately.
+- Android install/update union58984 passed; next21286 includes more permission
+  cases and current location work. A dispatched installer pin survives cancellation
+  of its waiting owner coroutine. Installer handoff is not installed confirmation.
+  IMPORTANT remaining gap: at most8 handed-off APKs are retained across owner
+  lifetimes, without automatic reader-completion cleanup or installation reconciliation.
+  Native permission/installer proof is not performed. Do not count this as full
+  Android update installation completion/recovery.
+- Native Windows agent is preparing a frozen class bundle for the already-running
+  dedicated VM, ordinary and inherited elevated token cases only; no UAC policy,
+  account, installer or VPN changes. No Windows result for these fixes exists yet.
+
+- Root added DesktopControlTransferSpool: native private empty-file creation inside
+  a verified private directory, then one retained no-follow FileChannel with bounded
+  append/read buffers and incremental SHA256. No document-size cap or per-chunk
+  in-memory index. Red42996 showed the missing implementation; initial green74817
+  passed4 tests. Final single-file refinement and Windows ACL assertions need the
+  next focused/native union. No public transport adapter is wired yet.
+- Shared ControlTransferStore/Codec/Models/Spool were added by native_cli_checks;
+  core53856 and combined99811 passed before the final chunk-response DTO addition.
+  Cover UTF8 chunk boundaries, retry identity/offsets, seal/hash, private bindings,
+  capacity, expiry and retained consumers. This is infrastructure, not completed
+  large GUI/CLI transfer parity.
+- Windows endpoint publish used ordinary temp-file owner (Administrators under
+  an elevated Windows token), then required invoking-user ownership. Root switched
+  creation to the existing private native writer with explicit token-user SID;
+  verifier remains strict. Added direct invoking-owner regression. Local56916 and
+  combined99811 passed endpoint/transport tests; native Windows proof is outstanding.
+- Windows AutostartManager fixture expected only Exec argument escaping, missing
+  the separate .desktop string layer. Root corrected the fixture helper and added
+  explicit backslash/percent expectations; combined99811 passed. Production encoder
+  already used both layers and was not relaxed.
+- Windows fake-ADB fixture transported a Unicode temp path through Java17 argv;
+  native_cli_checks changed only bootstrap path encoding to ASCII base64 and added
+  a legacy-codepage regression. Real request content remains stdin. Native installer
+  IO fixtures now exercise inherited standard or elevated tokens, explicitly assert
+  actual file owner SID, and retain production-policy rejection; they never request
+  elevation. Both changes await focused/native proof.
+- Android DELETE/IMPORT red83582 reproduced INVALID_ARGUMENT. Runtime capture,
+  pinned stop/recovery, guarded storage and dedicated executor are being integrated.
+  Android INSTALL protected interaction/pinned APK path is also being integrated.
+  Root requested regressions for cancellation after native stop/installer dispatch.
+  These Android actions are not yet validated end to end.
+
 | Bucket | Implemented checkpoint | Evidence still required / unfinished scope |
 | --- | --- | --- |
 | Shared control and desktop commands | Typed registry, authenticated sessions, guarded/retry-safe settings/subscription/location/source/routing/SSH operations, operation inspection, cursor streams, QR/export paths. | Large chunked imports/exports; final current-SHA native public CLI proof. |

@@ -70,7 +70,8 @@ internal class DesktopAndroidAdbClient(
                     ControlOperationId.SETTINGS_SET, ControlOperationId.SETTINGS_APPLY, ControlOperationId.SSH_KEY_IMPORT, ControlOperationId.SOURCE_SET, ControlOperationId.OFF,
                     ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE, ControlOperationId.SUBSCRIPTIONS_DELETE,
                     ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE, ControlOperationId.LOCATIONS_SELECT,
-                    ControlOperationId.UPDATES_CHECK, ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.UPDATES_CANCEL, ControlOperationId.UPDATES_DISMISS,
+                    ControlOperationId.LOCATIONS_DELETE, ControlOperationId.LOCATIONS_IMPORT,
+                    ControlOperationId.UPDATES_CHECK, ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.UPDATES_CANCEL, ControlOperationId.UPDATES_DISMISS, ControlOperationId.UPDATES_INSTALL,
                     ControlOperationId.ROUTING_SET, ControlOperationId.ROUTING_IMPORT, ControlOperationId.ROUTING_APPS_SET,
                     ControlOperationId.ROUTING_APPS_ADD, ControlOperationId.ROUTING_APPS_REMOVE, ControlOperationId.ROUTING_APPS_SELECT_ALL, ControlOperationId.ROUTING_APPS_CLEAR,
                     ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
@@ -98,7 +99,7 @@ internal class DesktopAndroidAdbClient(
                 request.controllerId != null && result.controllerId != request.controllerId && result.code != ControlCode.CONFLICT) {
                 fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             }
-            val runtimeCommand = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.OFF, ControlOperationId.RESTART)
+            val runtimeCommand = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.OFF, ControlOperationId.RESTART, ControlOperationId.UPDATES_INSTALL)
             if ((runtimeCommand || request.command.operation == ControlOperationId.OPERATIONS_WAIT) && !result.final && result.operationId != null) {
                 val operation = requireNotNull(result.operationId)
                 knownOperationId = operation

@@ -24,20 +24,15 @@ internal class DesktopControlEndpoint(val port: Int, val controllerId: String, v
     override fun toString(): String = "DesktopControlEndpoint(<redacted>)"
     fun publish(path: Path) {
         Files.createDirectories(path.parent)
-        val temp = Files.createTempFile(path.parent, ".control-endpoint-", ".tmp")
+        val temp = path.parent.resolve(".control-endpoint-${UUID.randomUUID()}.tmp")
         try {
-            if (Files.getFileStore(temp).supportsFileAttributeView("posix")) {
-                Files.setPosixFilePermissions(temp, PosixFilePermissions.fromString("rw-------"))
-            } else {
-                val acl = Files.getFileAttributeView(temp, AclFileAttributeView::class.java)
-                    ?: error("Private endpoint permissions unavailable")
-                acl.acl = listOf(AclEntry.newBuilder().setType(AclEntryType.ALLOW)
-                    .setPrincipal(Files.getOwner(temp)).setPermissions(AclEntryPermission.values().toSet()).build())
-            }
-            verifyPermissions(temp)
-            Files.writeString(temp, buildJsonObject {
+            // Native Windows CREATE_NEW sets the token user's owner SID explicitly;
+            // elevated tokens must not inherit Administrators as credential owner.
+            // All platforms verify private creation before writing the credential.
+            DesktopPrivateExportWriter.write(temp.toString(), buildJsonObject {
                 put("schemaVersion", 1); put("port", port); put("controllerId", controllerId); put("token", token)
-            }.toString())
+            }.toString().toByteArray(Charsets.UTF_8)).getOrThrow()
+            verifyPermissions(temp)
             Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally { Files.deleteIfExists(temp) }
     }

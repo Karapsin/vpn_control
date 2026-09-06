@@ -48,4 +48,18 @@ class AndroidLocationControlTest {
                 SubscriptionSource("two", "https://two.invalid", cachedLocations = listOf(b))))
         assertEquals("https://two.invalid", AndroidLocationControl.source(subscription, b))
     }
+
+    @Test fun deleteAndImportResolveStableRowsWithoutPreparingOrSelectingFallback() {
+        val pending = state.copy(selectedProfileJson = b, selectedProfileRawLink = LocationConfigs.decodeStoredLocation(b).rawLink)
+        val deleted = plan(ControlOperationId.LOCATIONS_DELETE, pending, "id" to AndroidLocationControl.identity("owner", pending, a))
+        assertEquals(listOf(b), deleted.locations)
+        assertNull(deleted.selected)
+        assertEquals(AndroidLocationControl.identity("owner", pending, a), deleted.id)
+        val imported = plan(ControlOperationId.LOCATIONS_IMPORT, pending, "input" to a)
+        assertEquals(listOf(a), imported.locations)
+        assertNull(imported.selected)
+        assertEquals("UNSUPPORTED", runCatching {
+            plan(ControlOperationId.LOCATIONS_IMPORT, pending.copy(profileSourceMode = ProfileSourceMode.SUBSCRIPTION), "input" to a)
+        }.exceptionOrNull()?.message)
+    }
 }

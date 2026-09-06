@@ -14,23 +14,25 @@ internal class AndroidRuntimeCommands(
 ) {
     internal class Ticket internal constructor(
         val id: String, val action: AndroidRuntimeAction, internal val digest: ByteArray?, internal val expiresAt: Long,
+        internal val expectedObservation: AndroidRuntimeObservation?,
     ) {
         internal val completion = CompletableDeferred<Result<Unit>>()
         internal var claimed = false
     }
     private val pending = mutableMapOf<String, Ticket>()
 
-    @Synchronized fun register(action: AndroidRuntimeAction, config: String? = null): Ticket {
+    @Synchronized fun register(action: AndroidRuntimeAction, config: String? = null, expectedObservation: AndroidRuntimeObservation? = null): Ticket {
         prune()
         check(pending.size < 128) { "RUNTIME_COMMAND_CAPACITY" }
-        return Ticket(UUID.randomUUID().toString(), action, config?.let(::digest), clockMillis() + retentionMillis)
+        return Ticket(UUID.randomUUID().toString(), action, config?.let(::digest), clockMillis() + retentionMillis, expectedObservation)
             .also { pending[it.id] = it }
     }
 
-    @Synchronized fun claim(id: String, action: AndroidRuntimeAction, config: String? = null): Boolean {
+    @Synchronized fun claim(id: String, action: AndroidRuntimeAction, config: String? = null, observation: AndroidRuntimeObservation? = null): Boolean {
         prune()
         val ticket = pending[id] ?: return false
         if (ticket.claimed || ticket.action != action) return false
+        if (ticket.expectedObservation != null && ticket.expectedObservation != observation) return false
         if (ticket.digest != null && (config == null || !MessageDigest.isEqual(ticket.digest, digest(config)))) return false
         ticket.claimed = true
         return true
@@ -51,9 +53,9 @@ internal class AndroidRuntimeCommands(
     }
 
     fun prepareStart(id: String?, config: String, preparedId: String?, preparations: AndroidPreparedConnections,
-        validate: (String) -> Unit = {})
+        observation: AndroidRuntimeObservation? = null, validate: (String) -> Unit = {})
         : com.kardinal.vpncontrol.control.ControlRuntimeConfiguration? {
-        check(id == null || claim(id, AndroidRuntimeAction.START, config)) { "RUNTIME_COMMAND_STALE" }
+        check(id == null || claim(id, AndroidRuntimeAction.START, config, observation)) { "RUNTIME_COMMAND_STALE" }
         val prepared = preparations.consume(preparedId, config)
         check(preparedId == null || prepared != null) { "RUNTIME_PREPARATION_STALE" }
         validate(config)

@@ -6,4 +6,5 @@
     <cache-path
         name="app_updates"
         path="updates/" />
+    <files-path name="control_install" path="control-installs/" />
 </paths>

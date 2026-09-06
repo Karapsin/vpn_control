@@ -220,10 +220,10 @@ fun VpnControlApp(
     onScanLocationQr: () -> Unit,
     onImportLocationFromClipboard: () -> Unit,
     onImportLocationFromFile: () -> Unit,
-    onEditLocation: (Int) -> Unit,
-    onDeleteLocation: (Int) -> Unit,
+    onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
+    onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onBenchmarkLocation: (Int) -> Unit,
-    onSelectLocation: (Int) -> Unit,
+    onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onCloseLocationDialog: () -> Unit,
     onLocationDraftChange: (String) -> Unit,
@@ -1104,10 +1104,10 @@ private fun HomeTabsScreen(
     onScanLocationQr: () -> Unit,
     onImportLocationFromClipboard: () -> Unit,
     onImportLocationFromFile: () -> Unit,
-    onEditLocation: (Int) -> Unit,
-    onDeleteLocation: (Int) -> Unit,
+    onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
+    onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onBenchmarkLocation: (Int) -> Unit,
-    onSelectLocation: (Int) -> Unit,
+    onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
     onBlockQuicUdp443Change: (Boolean) -> Unit,
@@ -1849,10 +1849,10 @@ private fun LocationsScreen(
     onScanLocationQr: () -> Unit,
     onImportLocationFromClipboard: () -> Unit,
     onImportLocationFromFile: () -> Unit,
-    onEditLocation: (Int) -> Unit,
-    onDeleteLocation: (Int) -> Unit,
+    onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
+    onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onBenchmarkLocation: (Int) -> Unit,
-    onSelectLocation: (Int) -> Unit,
+    onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
@@ -1897,9 +1897,12 @@ private fun LocationsScreen(
         onShowAddLocation = onShowAddLocation.takeIf { canMutateLocations },
         onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
         onBenchmarkLocation = onBenchmarkLocation,
-        onSelectLocation = onSelectLocation,
-        onEditLocation = onEditLocation,
-        onDeleteLocation = onDeleteLocation,
+        onSelectLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
+            onSelectLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
+        onEditLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
+            onEditLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
+        onDeleteLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
+            onDeleteLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
         controls = {
             if (locationVisualState?.restartRequired == true) {
                 Text(strings.get(UiText.HOME_SSH_PENDING), color = Color(0xFFFFC46B))

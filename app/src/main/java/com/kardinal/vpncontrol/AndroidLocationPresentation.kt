@@ -12,6 +12,18 @@ import java.util.Locale
 
 data class AndroidLocationVisualState(val activeLocationKey: String? = null, val restartRequired: Boolean? = null)
 
+class AndroidRenderedLocationTarget internal constructor(internal val raw: String, internal val scope: String, internal val sourceKey: String) {
+    override fun toString(): String = "AndroidRenderedLocationTarget(<redacted>)"
+}
+
+internal fun androidRenderedLocationTarget(state: MainUiState, raw: String): AndroidRenderedLocationTarget =
+    AndroidRenderedLocationTarget(raw, state.profileSourceMode.name + ":" + state.activeSubscriptionId,
+        androidLocationVisualKey(raw, when {
+            state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS -> ""
+            isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions) -> sourceUrlForStoredLocation(state.subscriptions, LocationConfigs.normalizeStoredReference(raw))
+            else -> state.profileUrl
+        }))
+
 internal fun androidLocationVisualKey(raw: String, source: String): String = java.security.MessageDigest.getInstance("SHA-256")
     .digest((source + "\u0000" + LocationConfigs.normalizeStoredReference(raw)).toByteArray(Charsets.UTF_8))
     .joinToString("") { "%02x".format(it) }

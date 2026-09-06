@@ -35,6 +35,9 @@ internal class AndroidLocationActionsService(
     private val launchMutation: (suspend () -> Unit) -> Unit = launchTrackedBusyOperation,
     private val guarded: AndroidGuiLocationActions? = null,
 ) {
+    fun editLocation(target: AndroidRenderedLocationTarget) { guarded?.openTarget(target) }
+    fun selectLocation(target: AndroidRenderedLocationTarget) { guarded?.select(target) }
+    fun deleteLocation(target: AndroidRenderedLocationTarget) { guarded?.delete(target) }
     fun showAddLocationDialog() {
         guarded?.let { it.open(); return }
         effectStatus(controller.showAddLocationDialog())
@@ -126,6 +129,7 @@ internal class AndroidLocationActionsService(
     }
 
     fun deleteLocation(index: Int) {
+        guarded?.let { actions -> stateProvider().currentLocations.getOrNull(index)?.let(actions::delete); return }
         when (val decision = LocationMutationLogic.planDeleteLocation(stateProvider(), index)) {
             is DeleteLocationDecision.MutationBlocked -> {
                 controller.showLocationMutationBlockedDialog(decision.message)
@@ -165,6 +169,12 @@ internal class AndroidLocationActionsService(
                 }
             }
         }
+    }
+
+    fun deleteLocation(raw: String) {
+        guarded?.let { it.delete(raw); return }
+        val index = stateProvider().currentLocations.indexOf(raw)
+        if (index >= 0) deleteLocation(index)
     }
 
     fun benchmarkLocation(index: Int) {
@@ -254,7 +264,11 @@ internal class AndroidLocationActionsService(
         return LocationConfigs.export(stateProvider().currentLocations)
     }
 
+    fun beginImportLocations(openPicker: () -> Unit) { guarded?.beginImport(openPicker) ?: openPicker() }
+    fun cancelImportLocations() { guarded?.cancelImport() }
+
     fun importLocations(raw: String) {
+        guarded?.let { it.import(raw); return }
         launchMutation mutation@{
             when (val decision = LocationMutationLogic.planImportLocations(stateProvider(), raw)) {
                 is ImportLocationsDecision.Blocked -> {

@@ -114,6 +114,7 @@ class ProfileStorage(
         expectedRevision: Long?,
         prepare: suspend (PersistedState, String) -> com.kardinal.vpncontrol.model.ProfileSelection,
     ): AndroidSettingsCommit {
+        check(operation !in AndroidLocationControl.destructiveOperations) { "UNSUPPORTED" }
         var id = ""
         val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
             check(runtimeRunning() != null) { "RUNTIME_STATE_UNKNOWN" }
@@ -142,6 +143,26 @@ class ProfileStorage(
             }
         }
         return AndroidSettingsCommit(committed, false, mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(id)))
+    }
+
+    internal suspend fun commitControlLocationRemoval(plan: AndroidLocationPlan, expectedControllerId: String,
+        expectedRevision: Long, runtimeUnchanged: () -> Boolean): AndroidSettingsCommit {
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            check(runtimeUnchanged()) { "RUNTIME_COMMAND_STALE" }
+            val previous = mapState(prefs)
+            check(previous.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS) { "UNSUPPORTED" }
+            val rows = requireNotNull(plan.locations)
+            prefs[Keys.savedLocations] = encodeList(rows)
+            prefs[Keys.currentLocations] = encodeList(rows)
+            prefs[Keys.locationBenchmarkDetails] = encodeStringMap(decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in rows })
+            val selected = LocationConfigs.normalizeStoredReference(LocationConfigs.selectedStoredReference(previous.selectedProfileJson, previous.selectedProfileRawLink))
+            if (previous.selectedProfileSourceUrl.isBlank() && selected.isNotBlank() && selected !in rows) {
+                clearStoredSelection(prefs, deleteArtifacts = false, preserveRuntimeTelemetry = true)
+                AndroidSelectionCacheInvalidation.invalidate(prefs)
+            }
+            check(runtimeUnchanged()) { "RUNTIME_COMMAND_STALE" }
+        }
+        return AndroidSettingsCommit(committed, false)
     }
 
     internal suspend fun commitControlSubscription(
@@ -1492,7 +1513,7 @@ class ProfileStorage(
         )
     }
 
-    private fun clearStoredSelection(prefs: MutablePreferences, deleteArtifacts: Boolean = true) {
+    private fun clearStoredSelection(prefs: MutablePreferences, deleteArtifacts: Boolean = true, preserveRuntimeTelemetry: Boolean = false) {
         prefs.remove(Keys.selectedProfileName)
         prefs.remove(Keys.selectedProfileServer)
         prefs.remove(Keys.selectedProfileRawLink)
@@ -1500,8 +1521,10 @@ class ProfileStorage(
         prefs.remove(Keys.selectedProfileSourceUrl)
         prefs.remove(Keys.lastBenchmarkSummary)
         prefs.remove(Keys.runtimeConfigJson)
-        prefs.remove(Keys.sessionStartRxBytes)
-        prefs.remove(Keys.sessionStartTxBytes)
+        if (!preserveRuntimeTelemetry) {
+            prefs.remove(Keys.sessionStartRxBytes)
+            prefs.remove(Keys.sessionStartTxBytes)
+        }
         if (deleteArtifacts) {
             runCatching { runtimeConfigFile().delete() }
             runCatching { lastProfileFile().delete() }

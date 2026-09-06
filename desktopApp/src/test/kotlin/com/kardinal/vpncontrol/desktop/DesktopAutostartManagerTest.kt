@@ -619,7 +619,17 @@ class DesktopAutostartManagerTest {
                 }
             }
         }
-        return "\"$escaped\""
+        // .desktop string escaping is decoded before the Exec argument escaping.
+        return "\"$escaped\"".replace("\\", "\\\\")
+            .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+            .replace("%", "%%")
+    }
+
+    @Test
+    fun desktopEntryFixtureKeepsBothBackslashEscapingLayers() {
+        assertEquals("\"C:" + "\\".repeat(4) + "Apps" + "\\".repeat(4) + "vpn-control\"",
+            desktopExecCommand("C:\\Apps\\vpn-control"))
+        assertEquals("\"/opt/100%%/vpn-control\"", desktopExecCommand("/opt/100%/vpn-control"))
     }
 
     private fun i3AutostartExecLine(value: String): String {
