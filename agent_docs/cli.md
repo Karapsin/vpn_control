@@ -643,6 +643,79 @@ owner replacement, revision changes during upload, retry after commit/cleanup,
 spool permissions/symlinks, disk failure, expiry with active consumers, interrupted
 export/no-overwrite and public desktop/fake/native ADB end-to-end cases.
 
+### Generic Responses And Internal Document Serialization
+
+The new `ControlTransferStore`/`ControlTransferCodec` and desktop private spool are
+primitives only; no public transfer capability is wired yet. Import/export-only
+integration would leave large workspaces unusable:
+
+- `DesktopPresentationSnapshot` returns all visible locations/subscriptions in
+  routine GUI polling. `ControlSnapshotCodec` includes retained operation results
+  (including independently frame-encoded nested results); their accumulation can
+  break initial GUI attachment even when each individual result was small.
+- Location list/show, routing/app catalogs, subscription lists, operation status/
+  wait/retries and long individual log messages can exceed bounded frames.
+- `ControlConfigurationInspection` parses routing documents with frame-capped
+  `decodeValues`; `AndroidSettingsControl` fingerprints patches with frame-capped
+  `encodeValues`. Desktop normalized results pass through frame-capped codecs in
+  `DesktopAppService`, `DesktopConfigurationResultData` and `DesktopOperationRunner`,
+  potentially after persistence already succeeded.
+- Client decoding/re-encoding in `desktopCliJsonResponse`, `DesktopCliStream`,
+  `DesktopRemoteControlSession` and Android output validation imposes the same cap
+  after a hypothetical successful chunk download.
+
+Separate document serialization from actual wire-frame validation, preserving
+schema, duplicate-key and depth checks. Keep the existing strict limit on every
+wire frame; do not merely raise it. Use an adapter-level inline-or-immutable-reference
+reply envelope underneath GUI/CLI/ADB, with explicit result/snapshot/presentation
+document kinds. Bind references to authenticated principal, owner epoch, original
+request and document kind; original Android Binder identity must survive delegation.
+Capture once and preserve exact revision/outcome throughout download. Serialization
+or spool failure after commit must not discard the committed result or permit a
+retry to repeat the mutation. Result-reference retention must match operation retry
+retention. Complete lists remain complete; pagination must not silently truncate.
+
+Add end-to-end tests for a large import followed by existing/fresh GUI attachment,
+one large custom configuration show/edit/export, large routing commit plus no-op
+retry and operation wait, accumulated retained-result snapshots, long log follow
+without duplicate cursors, and interrupted result download after commit. The
+default private spool has native Windows/macOS proof; adversarial temporary-parent
+ancestry/replacement still needs an explicit fail-closed/pinning audit before broad
+adapter use. Domain parsers still materialize Strings independently of spool IO.
+
+## Android Typed Refresh Implementation Gap
+
+`SUBSCRIPTIONS_REFRESH` still lacks SettingsControl admission/executor/progress/
+cancellation and ADB omitted-owner binding. GUI refresh in MainViewModel/
+`AndroidSubscriptionRefreshActionsService` and WorkManager refresh share the
+application lease, but not the typed ledger. Their outer lease cannot remain around
+a newly nested owner command. GUI currently discards busy admission failure.
+
+Before exposing the command, reproduce two active-A/pending-B failures:
+
+- `ProfileStorage.updateSubscriptionCache` clears a disappeared persisted selection
+  through `clearStoredSelection`, whose default deletes runtime artifacts and clears
+  telemetry. Pending B removal must not affect actual A.
+- `SubscriptionRefreshWorker` recovery uses persisted running/mode flags and
+  `rehydrateSelection(previousState)`, potentially restarting pending B instead of A.
+
+Use an application-owned executor capturing committed target IDs (`id|active|all`),
+epoch/revision and `runtimeObserver.captureRuntime()`. Separate cancellable fetch
+from non-cancellable atomic cache commit and actual-runtime recovery. Preserve
+telemetry/artifacts independently from pending selection. Return immutable counts,
+opaque per-subscription outcomes, exact final revision, pending state and explicit
+partial/all-failure/cancellation results; never source URLs or exception text.
+Route GUI and worker through the same ledger/lease, leaving scheduling outside it.
+
+`RepositoryWorkflowService` is not directly reusable unchanged: `runCatching`
+swallows cancellation, all-source failure loses structured outcomes, and successful
+sources commit individually. Add deterministic tests for either A/B disappearing,
+unknown runtime, partial/all failures, stale admission, fetch-vs-commit cancellation,
+late cancellation against a replacement job, deduplication, GUI recreation,
+worker/GUI/CLI mutual exclusion without nested deadlock, and scheduling/recovery
+failures preserving the actual committed outcome. No implementation of this slice
+is claimed by these design notes.
+
 ## Validation And Handoff
 
 Start with `ControlModelsTest` and `ControlProtocolCodecTest`; then add registry,

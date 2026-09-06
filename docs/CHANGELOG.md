@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.2 - 2026-09-06
 
 - Acknowledge CLI window actions, add Android consent-wait cancellation, and return normalized routing/import results.
 - Extend Android configuration and SSH import parity, fix GUI launch lifecycle, and add protected installer-job storage.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add readable Android CLI results with truthful unknown metadata, operation progress and escaped terminal controls.
 - Stage Android location edits without restarting active VPN and add tracked update check, download and cancellation commands.
 - Add guarded Android location removal and installer handoff, bounded transfer storage, and Windows controller and test portability fixes.
+- Build Windows installers from the UTF-8 GUI/CLI app image and validate installer inputs with clear missing-artifact diagnostics.
 
 ## 2.1.1 - 2026-09-06
 

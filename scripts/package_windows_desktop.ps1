@@ -63,6 +63,9 @@ function Invoke-CheckedNative {
 }
 
 Assert-ReleaseHygiene
+if (-not $SkipTests) {
+    & (Join-Path $PSScriptRoot "test_windows_package_helpers.ps1")
+}
 
 Write-Host "[vpn-control] checking Java runtime"
 $PreviousErrorActionPreference = $ErrorActionPreference
@@ -90,10 +93,12 @@ Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:compileKotlin"
 if (-not $SkipTests) {
     Write-Host "[vpn-control] running desktop tests"
     Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:test"
+    Write-Host "[vpn-control] checking Windows installer app-image dependencies"
+    Invoke-CheckedNative ".\gradlew.bat" "-I" "scripts/test_windows_packaging_graph.init.gradle" ":desktopApp:verifyWindowsPackageInputs"
 }
 
 Write-Host "[vpn-control] building Windows desktop packages"
-Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:packageDistributionForCurrentOS"
+Invoke-CheckedNative ".\gradlew.bat" "-I" "scripts/test_windows_packaging_graph.init.gradle" ":desktopApp:packageDistributionForCurrentOS"
 
 Write-Host "[vpn-control] packages written under: $OutputRoot"
 

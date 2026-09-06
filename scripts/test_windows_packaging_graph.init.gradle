@@ -1,0 +1,32 @@
+// Fast configuration regression: no jpackage execution, installation, or runtime startup.
+gradle.projectsEvaluated {
+    def desktop = gradle.rootProject.project(':desktopApp')
+    def app = desktop.tasks.getByName('createDistributable')
+    def installers = ['packageExe', 'packageMsi'].collect { name ->
+        def installer = desktop.tasks.getByName(name)
+        // Output providers may be read only after their producer has completed.
+        installer.doFirst {
+            def expected = new File(app.destinationDir.get().asFile, app.packageName.get()).canonicalFile
+            if (!installer.appImage.isPresent() || installer.appImage.get().asFile.canonicalFile != expected) {
+                throw new GradleException("${name} must consume the patched createDistributable app image")
+            }
+        }
+        installer
+    }
+    desktop.tasks.register('verifyWindowsPackageInputs') {
+        group = 'verification'
+        description = 'Verify EXE/MSI consume the same patched dual-launcher app image.'
+        doLast {
+            installers.each { installer ->
+                def dependsOnImage = installer.dependsOn.any { dependency ->
+                    dependency == app || dependency == 'createDistributable' ||
+                        dependency instanceof org.gradle.api.tasks.TaskProvider && dependency.name == app.name
+                }
+                if (!dependsOnImage) {
+                    throw new GradleException("${installer.name} must depend on createDistributable before packaging")
+                }
+            }
+            println '[vpn-control] Windows installer app-image dependency regressions passed'
+        }
+    }
+}

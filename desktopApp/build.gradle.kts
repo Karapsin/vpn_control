@@ -98,6 +98,15 @@ tasks.named("processResources") {
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {
+    if (hostOs.isWindows && targetFormat in setOf(TargetFormat.Exe, TargetFormat.Msi)) {
+        // Installer tasks otherwise build a fresh image, bypassing --add-launcher and
+        // the UTF-8 manifest post-processing attached to createDistributable below.
+        val preparedImage = tasks.named<AbstractJPackageTask>("createDistributable")
+        dependsOn(preparedImage)
+        appImage.set(preparedImage.flatMap { image ->
+            image.destinationDir.map { directory -> directory.dir(image.packageName.get()) }
+        })
+    }
     if (hostOs.isWindows && targetFormat == TargetFormat.AppImage) {
         val cliLauncher = project.file("src/main/packaging/windows-cli.properties")
         inputs.file(cliLauncher)

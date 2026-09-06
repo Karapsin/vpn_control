@@ -23,6 +23,7 @@ function Assert-FileExists {
         [Parameter(Mandatory = $true)]
         [string]$Message,
         [Parameter(Mandatory = $true)]
+        [AllowNull()]
         $File
     )
 

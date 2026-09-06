@@ -25,6 +25,8 @@ on:
       - "scripts/integration/**"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
+      - "scripts/test_windows_packaging_graph.init.gradle"
+      - "scripts/test_windows_package_helpers.ps1"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
       - "scripts/windows_launcher_utf8.py"

@@ -6,6 +6,38 @@ Use this file only when a large task intentionally leaves multiple buckets chang
 
 Fresh-agent checkpoint map (2026-09-06; read newest notes before older history):
 
+Latest delivered source checkpoint is `e7b4f8ab8ff9557c8d6c24b0235e6b6041a82af7`
+on `origin/dev` (full prepush801 passed, version2.1.1/9 Unreleased notes).
+Its Fast Checks/Android/Linux/macOS required workflows succeeded. Windows34028407135
+passed unit tests and built EXE/MSI, then failed package extraction validation with
+a null `Assert-FileExists` argument. Root owns a native helper regression/diagnostic
+fix; native_cli_checks owns packaging graph correction and extracted-payload proof.
+The suspected graph defect is AppImage-only CLI/UTF8 customization while Exe/Msi
+tasks construct independent images. No development checkpoint has all five required
+workflows green yet; do not report delivery complete. Full goal remains open.
+
+Windows packaging correction is now source-frozen: native helper27357 reproduced
+the null binding failure; AllowNull makes the intended missing-artifact diagnostic
+reachable and the AST-only helper suite passed natively. The final Gradle graph
+regression73719 failed against checkpoint source (missing createDistributable
+dependency) and passed with the fix. Exe/Msi now depend on and consume the same
+CLI/UTF8-patched app image. The init regression checks dependency without building
+an image and verifies the actual input path in installer doFirst; package scripts
+invoke both tests, and workflow path filters include them. Actual native package
+build/administrative extraction remains in progress. Root is applying the normal
+10th note/version roll and full prepush concurrently in the independent host checkout;
+no installation, elevation prompt or VPN action is involved.
+
+The preceding Windows source fixes have native50 standard-user and118 elevated-user
+tests passing, covering every prior failed unit-test class. Evidence is
+/tmp/vpn-windows-ci-native.XOkCOr/native-receipt.txt (root read the receipt). Those
+results do not cover the newly exposed MSI payload issue. No VPN/installer was run.
+Root asked asynchronously for permission to perform future real VPN/installer
+verification only in disposable agent-owned environments; no answer/approval has
+been received at this checkpoint. Host VPN, personal data and emulator5580 stay out
+of scope. New generic-response/internal-codec and Android typed-refresh audits are
+persisted in cli.md for the next implementation slices.
+
 Development checkpoint `4d8a2e7a23ba0b805b235929574dc21a261b60cd` is committed
 and pushed to `origin/dev`. Fresh full prepush752 passed before the push. Fast Checks,
 Android Release APK, Linux Desktop Package and macOS Desktop Package succeeded for
