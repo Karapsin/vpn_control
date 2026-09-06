@@ -19,6 +19,11 @@ class DiagnosticsExporter(
     private val context: Context,
     private val storage: ProfileStorage,
 ) {
+    /** Explicit CLI export: reuse the GUI report without an export file, share intent or activity. */
+    internal suspend fun exportText(state: PersistedState): String = withContext(Dispatchers.IO) {
+        buildDiagnostics(state)
+    }
+
     suspend fun exportAndShare(): Result<File> = runCatching {
         val exportFile = withContext(Dispatchers.IO) {
             runCatching {

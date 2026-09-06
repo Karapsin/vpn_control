@@ -9,6 +9,75 @@ import kotlin.test.assertTrue
 
 class DesktopAutostartManagerTest {
     @Test
+    fun linuxAutostartPreservesWorkspaceAndEscapesDesktopFieldCodes() {
+        val tempDir = Files.createTempDirectory("vpn-control-autostart-workspace")
+        try {
+            val launcher = createExecutableLauncher(tempDir, "launcher %f dir/vpn-control")
+            val workspace = tempDir.resolve("owner's 東京 %f \$USER & workspace")
+            val manager = DesktopAutostartManager(
+                configHome = tempDir,
+                commandResolver = { launcher },
+                platform = DesktopAutostartPlatform.LINUX,
+                workspaceDirectory = workspace,
+                executableChecker = launcherExecutableChecker(launcher),
+                environment = { mapOf("I3SOCK" to "test-owned-session") },
+            )
+            assertTrue(manager.setEnabled(true).isSuccess)
+            assertTrue(manager.inspectEnabled())
+            val entry = Files.readString(tempDir.resolve("autostart/vpn-control.desktop"))
+            assertTrue(entry.contains("launcher %%f dir"))
+            assertTrue(entry.contains(" --autostart --state-dir \""))
+            assertTrue(entry.contains("owner's 東京 %%f \\\\\$USER & workspace"))
+            assertFalse(Files.exists(workspace))
+
+            // Verify i3 recognition independently of the XDG entry.
+            Files.delete(tempDir.resolve("autostart/vpn-control.desktop"))
+            assertTrue(manager.inspectEnabled())
+            val line = Files.readAllLines(tempDir.resolve("i3/config")).single { it.startsWith("exec ") }
+            assertTrue(line.endsWith(shellArg(workspace.toString())))
+            if (Files.isExecutable(Path.of("/bin/sh"))) {
+                // Only this disposable argument-echo launcher is executed, never the application.
+                Files.writeString(Path.of(launcher), "#!/bin/sh\nprintf '%s\\n' \"\$@\"\n")
+                val process = ProcessBuilder("/bin/sh", "-c", line.removePrefix("exec --no-startup-id ")).start()
+                assertTrue(process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertEquals(0, process.exitValue())
+                assertEquals(listOf("--autostart", "--state-dir", workspace.toString()),
+                    process.inputStream.bufferedReader().readLines())
+            }
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun windowsAutostartPreservesExplicitWorkspaceAsOneQuotedArgument() {
+        val directories = listOf("C:\\work space\\東京", "C:\\", "C:\\work & space\\東京\\")
+        directories.forEach { directory ->
+            val commands = mutableListOf<List<String>>()
+            val workspace = Path.of(directory)
+            val manager = DesktopAutostartManager(
+                commandResolver = { "C:\\Program Files\\VPN 東京\\vpn-control.exe" },
+                platform = DesktopAutostartPlatform.WINDOWS,
+                workspaceDirectory = workspace,
+                commandRunner = { command ->
+                    commands += command
+                    DesktopAutostartCommandResult(if (command[1] == "/Create") 0 else 1, "")
+                },
+            )
+            assertTrue(manager.setEnabled(true).isSuccess)
+            val create = commands.single { it.take(2) == listOf("schtasks", "/Create") }
+            // Path normalizes trailing separators differently on native Windows and Unix hosts.
+            val raw = workspace.toString()
+            val expectedDirectory = raw + "\\".repeat(raw.takeLastWhile { it == '\\' }.length)
+            assertEquals(
+                "\"C:\\Program Files\\VPN 東京\\vpn-control.exe\" --autostart --state-dir \"$expectedDirectory\"",
+                create[create.indexOf("/TR") + 1],
+            )
+            assertTrue(commands.none { it.first() !in setOf("schtasks", "reg") })
+        }
+    }
+
+    @Test
     fun setEnabledCreatesAndRemovesXdgAutostartEntryWithoutSystemdService() {
         val tempDir = Files.createTempDirectory("vpn-control-autostart")
         try {
@@ -98,6 +167,7 @@ class DesktopAutostartManagerTest {
             val enabled = manager.setEnabled(true)
 
             assertTrue(enabled.isSuccess)
+            assertTrue(manager.inspectEnabled())
             assertTrue(manager.isEnabled())
             assertTrue(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
             assertFalse(Files.exists(systemdUserDir.resolve("vpn-control.service")))
@@ -138,6 +208,9 @@ class DesktopAutostartManagerTest {
                 environment = { emptyMap() },
             )
 
+            assertTrue(manager.inspectEnabled())
+            assertFalse(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
+            assertTrue(Files.exists(systemdUserDir.resolve("vpn-control.service")))
             assertTrue(manager.isEnabled())
             assertTrue(Files.exists(tempDir.resolve("autostart").resolve("vpn-control.desktop")))
             assertFalse(Files.exists(systemdUserDir.resolve("vpn-control.service")))
@@ -507,6 +580,10 @@ class DesktopAutostartManagerTest {
             },
         )
 
+        assertTrue(manager.inspectEnabled())
+        assertFalse(taskEnabled)
+        assertTrue(legacyRunEnabled)
+        assertTrue(commands.all { it.take(2) in listOf(listOf("schtasks", "/Query"), listOf("reg", "query")) })
         assertTrue(manager.isEnabled())
         assertTrue(taskEnabled)
         assertFalse(legacyRunEnabled)

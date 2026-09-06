@@ -21,33 +21,49 @@ internal class DesktopLocationBenchmarkService(
     private val stateProvider: () -> MainUiState,
     private val locationsProvider: () -> List<DesktopLocationRecord>,
     private val benchmarkLocation: DesktopLocationBenchmarker,
-    private val commitState: (nextState: MainUiState, nextLocations: List<DesktopLocationRecord>) -> Unit,
+    private val commitState: (nextState: MainUiState, nextLocations: List<DesktopLocationRecord>) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
 ) {
-    suspend fun benchmark(index: Int) {
-        val location = locationsProvider().firstOrNull { it.index == index } ?: return
+    suspend fun benchmark(index: Int, expectedLocation: DesktopLocationRecord? = null): Result<ProfileBenchmark> {
+        if (stateProvider().isBusy) return Result.failure(IllegalStateException("BUSY"))
+        val location = locationsProvider().firstOrNull { it.index == index }
+            ?: return Result.failure(IllegalArgumentException(if (expectedLocation == null) "NOT_FOUND" else "CONFLICT"))
+        if (expectedLocation != null && !location.sameConfiguration(expectedLocation)) {
+            return Result.failure(IllegalStateException("CONFLICT"))
+        }
         val profile = runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }
         if (profile.isFailure) {
-            updateState { it.withStatus(profile.exceptionOrNull()?.message ?: LocationStatusMessages.invalidLocationConfig()) }
-            return
+            updateState { it.withStatus(LocationStatusMessages.invalidLocationConfig()) }
+            return Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
         }
 
         val state = stateProvider()
         updateState { it.copy(isBusy = true).withStatus(LocationStatusLogic.testingLocation(location.name)) }
         val validationSettings = state.validationSettings.normalized()
-        val benchmark = benchmarkLocation(
-            profile.getOrThrow(),
-            state.dnsSettings,
-            BenchmarkUrls(
-                test = validationSettings.testUrl,
-            ),
-            validationSettings.toDesktopValidationSettings(),
-        )
+        val benchmark = try {
+            benchmarkLocation(
+                profile.getOrThrow(),
+                state.dnsSettings,
+                BenchmarkUrls(test = validationSettings.testUrl),
+                validationSettings.toDesktopValidationSettings(),
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            updateState { it.copy(isBusy = false) }
+            throw cancelled
+        } catch (_: Exception) {
+            Result.failure(IllegalStateException("BENCHMARK_FAILED"))
+        }
 
         if (benchmark.isSuccess) {
             val result = benchmark.getOrThrow()
-            val updatedLocations = locationsProvider().map { existing ->
-                if (existing.index == index) {
+            val currentLocations = locationsProvider()
+            val currentTarget = currentLocations.singleOrNull { it.sameConfiguration(location) }
+            if (currentTarget == null) {
+                updateState { it.copy(isBusy = false) }
+                return Result.failure(IllegalStateException("CONFLICT"))
+            }
+            val updatedLocations = currentLocations.map { existing ->
+                if (existing === currentTarget) {
                     existing.copy(
                         benchmarkDetail = result.detail.toCompactBenchmarkLabel(),
                         isValid = result.testStatus == "ok",
@@ -56,18 +72,22 @@ internal class DesktopLocationBenchmarkService(
                     existing
                 }
             }
-            commitState(
+            return commitState(
                 stateProvider().copy(isBusy = false).withStatus(
                     BenchmarkStatusMessages.benchmarkedLocation(location.name, result.testStatus),
                 ),
                 updatedLocations,
-            )
+            ).map { result }.onFailure { updateState { it.copy(isBusy = false) } }
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
-                    benchmark.exceptionOrNull()?.message ?: BenchmarkStatusMessages.benchmarkLocationFailed(location.name),
+                    BenchmarkStatusMessages.benchmarkLocationFailed(location.name),
                 )
             }
+            return Result.failure(IllegalStateException("BENCHMARK_FAILED"))
         }
     }
+
+    private fun DesktopLocationRecord.sameConfiguration(other: DesktopLocationRecord): Boolean =
+        sourceUrl == other.sourceUrl && rawLink == other.rawLink
 }

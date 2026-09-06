@@ -132,7 +132,7 @@ import com.kardinal.vpncontrol.shared.ui.LocationsScreen as SharedLocationsScree
 import com.kardinal.vpncontrol.shared.ui.MainScreen as SharedMainScreen
 import com.kardinal.vpncontrol.shared.ui.ProfileScreen as SharedProfileScreen
 import com.kardinal.vpncontrol.shared.ui.RoutingRulesScreen as SharedRoutingRulesScreen
-import com.kardinal.vpncontrol.shared.ui.SavedLocationRow as SharedSavedLocationRow
+import com.kardinal.vpncontrol.androidLocationRows
 import com.kardinal.vpncontrol.shared.ui.StatsScreen as SharedStatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.VpnControlColors
@@ -153,6 +153,7 @@ internal val LocalVisualExportTimestamp = compositionLocalOf<String?> { null }
 @Composable
 fun VpnControlApp(
     state: MainUiState,
+    locationVisualState: com.kardinal.vpncontrol.AndroidLocationVisualState? = null,
     onNavigateBack: () -> Unit,
     onProfileChange: (String) -> Unit,
     onProfileTitleChange: (String) -> Unit,
@@ -273,6 +274,7 @@ fun VpnControlApp(
     ) {
         HomeTabsScreen(
             state = state,
+            locationVisualState = locationVisualState,
             onOpenMainTab = onOpenMainTab,
             onOpenProfileTab = onOpenProfileTab,
             onOpenLocationsTab = onOpenLocationsTab,
@@ -1061,6 +1063,7 @@ private fun RefreshProgressDialog(
 @Composable
 private fun HomeTabsScreen(
     state: MainUiState,
+    locationVisualState: com.kardinal.vpncontrol.AndroidLocationVisualState? = null,
     onOpenMainTab: () -> Unit,
     onOpenProfileTab: () -> Unit,
     onOpenLocationsTab: () -> Unit,
@@ -1194,6 +1197,7 @@ private fun HomeTabsScreen(
                 }
                 AppScreen.LOCATIONS -> LocationsScreen(
                     state = state,
+                    locationVisualState = locationVisualState,
                     onShowAddLocation = onShowAddLocation,
                     onExportLocations = onExportLocations,
                     onImportLocations = onImportLocations,
@@ -1580,7 +1584,6 @@ private fun ImportMenuButton(
     }
 }
 
-private const val MAX_QR_EXPORT_BYTES = 1600
 
 private data class ExportQrContent(
     val title: String,
@@ -1722,6 +1725,7 @@ private fun generateQrBitmap(payload: String): Bitmap? {
     return runCatching {
         val hints = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java).apply {
             put(EncodeHintType.MARGIN, 1)
+            put(EncodeHintType.CHARACTER_SET, "UTF-8")
         }
         val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 768, 768, hints)
         Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).apply {
@@ -1838,6 +1842,7 @@ private fun ProxyOnlyInfoCard(state: MainUiState) {
 @Composable
 private fun LocationsScreen(
     state: MainUiState,
+    locationVisualState: com.kardinal.vpncontrol.AndroidLocationVisualState? = null,
     onShowAddLocation: () -> Unit,
     onExportLocations: () -> Unit,
     onImportLocations: () -> Unit,
@@ -1855,36 +1860,8 @@ private fun LocationsScreen(
     val visualExportTimestamp = LocalVisualExportTimestamp.current
     var exportQrContent by remember { mutableStateOf<ExportQrContent?>(null) }
     var exportQrError by remember { mutableStateOf<String?>(null) }
-    val selectedLocation = LocationConfigs.selectedStoredReference(
-        selectedProfileJson = state.selectedProfileJson,
-        selectedProfileRawLink = state.selectedProfileRawLink,
-    )
     val selectedLocationOutsideActiveSubscription = selectedLocationOutsideCurrentSubscription(state)
-    val locations = state.currentLocations
-        .mapIndexed { index, rawLink ->
-            val parsed = runCatching { LocationConfigs.decodeStoredLocation(rawLink) }.getOrNull()
-            SharedSavedLocationRow(
-                index = index,
-                rawLink = rawLink,
-                name = parsed?.remarks?.let { strings.locationLabel(state.profileSourceMode, it) } ?: strings.get(UiText.INVALID_LOCATION_CONFIG),
-                server = parsed?.server ?: strings.get(UiText.COULD_NOT_READ_LOCATION),
-                details = parsed?.let {
-                    if (it.protocol.name == "CUSTOM") {
-                        strings.get(UiText.CUSTOM_SING_BOX_CONFIG)
-                    } else {
-                        listOf(it.protocol.name.lowercase(), it.serverPort.toString(), it.network, it.sni)
-                            .filter { value -> value.isNotBlank() }
-                            .joinToString(" • ")
-                    }
-                } ?: strings.get(UiText.TAP_EDIT_TO_FIX_LOCATION),
-                benchmarkDetail = stripBenchmarkLocationPrefix(
-                    state.locationBenchmarkDetails[rawLink].orEmpty(),
-                ),
-                autoSelectable = parsed != null,
-                isSelected = rawLink == selectedLocation,
-            )
-        }
-        .sortedWith(locationRowComparator())
+    val locations = androidLocationRows(state, strings, locationVisualState)
     val selectedName = locations.firstOrNull { it.isSelected }?.name
         ?: state.selectedProfileName.takeIf { it.isNotBlank() }?.let { strings.locationLabel(state.profileSourceMode, it) }
     val canMutateLocations = state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS
@@ -1924,6 +1901,9 @@ private fun LocationsScreen(
         onEditLocation = onEditLocation,
         onDeleteLocation = onDeleteLocation,
         controls = {
+            if (locationVisualState?.restartRequired == true) {
+                Text(strings.get(UiText.HOME_SSH_PENDING), color = Color(0xFFFFC46B))
+            }
             if (canMutateLocations) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1940,8 +1920,8 @@ private fun LocationsScreen(
                     ExportMenuButton(
                         onQrClick = {
                             val document = buildLocationsExportDocument(state, visualExportTimestamp)
-                            val bytes = document.content.toByteArray(Charsets.UTF_8).size
-                            if (bytes > MAX_QR_EXPORT_BYTES) {
+                            val bytes = com.kardinal.vpncontrol.data.QrExportPolicy.byteCount(document.content)
+                            if (!com.kardinal.vpncontrol.data.QrExportPolicy.fits(document.content)) {
                                 exportQrError = strings.format(
                                     UiText.QR_TOO_LARGE_MESSAGE,
                                     strings.get(UiText.EXPORT_KIND_LOCATIONS),
@@ -1965,8 +1945,8 @@ private fun LocationsScreen(
                 ExportMenuButton(
                     onQrClick = {
                         val document = buildLocationsExportDocument(state, visualExportTimestamp)
-                        val bytes = document.content.toByteArray(Charsets.UTF_8).size
-                        if (bytes > MAX_QR_EXPORT_BYTES) {
+                        val bytes = com.kardinal.vpncontrol.data.QrExportPolicy.byteCount(document.content)
+                        if (!com.kardinal.vpncontrol.data.QrExportPolicy.fits(document.content)) {
                             exportQrError = strings.format(
                                 UiText.QR_TOO_LARGE_MESSAGE,
                                 strings.get(UiText.EXPORT_KIND_LOCATIONS),
@@ -2675,8 +2655,8 @@ private fun RoutingRulesScreen(
                             buildEditedRoutingRules(state),
                             visualExportTimestamp,
                         )
-                        val bytes = document.content.toByteArray(Charsets.UTF_8).size
-                        if (bytes > MAX_QR_EXPORT_BYTES) {
+                        val bytes = com.kardinal.vpncontrol.data.QrExportPolicy.byteCount(document.content)
+                        if (!com.kardinal.vpncontrol.data.QrExportPolicy.fits(document.content)) {
                             exportQrError = strings.format(
                                 UiText.QR_TOO_LARGE_MESSAGE,
                                 strings.get(UiText.EXPORT_KIND_RULES),
@@ -2741,41 +2721,6 @@ private fun isAllSubscriptionsActive(state: MainUiState): Boolean =
 
 private fun selectedLocationOutsideCurrentSubscription(state: MainUiState): Boolean {
     return sharedSelectedLocationOutsideCurrentSubscription(state)
-}
-
-private fun locationRowComparator(): Comparator<SharedSavedLocationRow> {
-    return compareBy<SharedSavedLocationRow> { locationBenchmarkRank(it.benchmarkDetail) }
-        .thenBy { parseBenchmarkScore(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
-        .thenBy { parseBenchmarkTimingMillis(it.benchmarkDetail) ?: Double.POSITIVE_INFINITY }
-        .thenBy { it.name.lowercase(Locale.ROOT) }
-}
-
-private fun locationBenchmarkRank(detail: String): Int {
-    return when {
-        parseBenchmarkScore(detail) != null -> 0
-        parseBenchmarkTimingMillis(detail) != null -> 1
-        else -> 2
-    }
-}
-
-private fun parseBenchmarkScore(detail: String): Double? {
-    return Regex("""\bscore=([0-9]+(?:\.[0-9]+)?)""")
-        .find(detail)
-        ?.groupValues
-        ?.getOrNull(1)
-        ?.toDoubleOrNull()
-}
-
-private fun parseBenchmarkTimingMillis(detail: String): Double? {
-    return Regex("""\btcp=([0-9]+(?:\.[0-9]+)?)ms""")
-        .find(detail)
-        ?.groupValues
-        ?.getOrNull(1)
-        ?.toDoubleOrNull()
-}
-
-private fun stripBenchmarkLocationPrefix(detail: String): String {
-    return detail.substringAfter(": ", detail).trim()
 }
 
 @Composable

@@ -9,6 +9,19 @@ import kotlin.test.assertIs
 
 class LocationMutationLogicTest {
     @Test
+    fun directLinkAndItsEditorJsonCannotCreateDuplicateLocations() {
+        val state = MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            locationDraft = "socks://127.0.0.1:1080#First")
+        val added = assertIs<SaveLocationDecision.Plan>(LocationMutationLogic.planSaveLocation(state))
+        assertIs<SaveLocationDecision.Duplicate>(LocationMutationLogic.planSaveLocation(state.copy(
+            currentLocations = added.nextLocations, locationDraft = added.normalizedLocation,
+        )))
+        assertIs<SaveLocationDecision.Duplicate>(LocationMutationLogic.planSaveLocation(state.copy(
+            currentLocations = added.nextLocations,
+        )))
+    }
+
+    @Test
     fun subscriptionModeMutationBlocksUseStructuredStatuses() {
         val saveDecision = LocationMutationLogic.planSaveLocation(
             MainUiState(

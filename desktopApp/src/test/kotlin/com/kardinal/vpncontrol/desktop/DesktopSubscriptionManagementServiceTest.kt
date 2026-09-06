@@ -151,7 +151,7 @@ class DesktopSubscriptionManagementServiceTest {
             locationsProvider = locationsProvider,
             validateSubscriptionSource = { Result.success(Unit) },
             stopConnection = stopConnection,
-            commitState = commitState,
+            commitState = { state, locations -> commitState(state, locations); Result.success(Unit) },
             updateState = { transform ->
                 commitState(transform(stateProvider()), locationsProvider())
             },

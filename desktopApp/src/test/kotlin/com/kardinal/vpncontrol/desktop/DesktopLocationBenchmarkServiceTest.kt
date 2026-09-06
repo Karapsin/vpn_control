@@ -17,6 +17,60 @@ import kotlinx.coroutines.test.runTest
 
 class DesktopLocationBenchmarkServiceTest {
     @Test
+    fun capturedBenchmarkRejectsReplacementBeforeProbeAndFollowsSameConfigurationAfterReindex() = runTest {
+        val original = testLocation(7)
+        val replacement = testLocation(7, profile = testProfile("Replacement"))
+        var state = MainUiState()
+        var locations = listOf(replacement)
+        var probes = 0
+        val service = DesktopLocationBenchmarkService(
+            stateProvider = { state }, locationsProvider = { locations },
+            benchmarkLocation = { profile, _, _, _ ->
+                probes++
+                locations = listOf(replacement, original.copy(index = 9))
+                Result.success(ProfileBenchmark(profile = profile, primaryStatus = "ok", secondaryStatus = "ok",
+                    primaryTotal = 1.0, secondaryTotal = null, score = 1.0, detail = "tcp=1ms test=ok"))
+            },
+            commitState = { nextState, nextLocations -> state = nextState; locations = nextLocations; Result.success(Unit) },
+            updateState = { state = it(state) },
+        )
+        assertEquals("CONFLICT", service.benchmark(7, original).exceptionOrNull()?.message)
+        assertEquals(0, probes)
+        locations = listOf(original)
+        assertTrue(service.benchmark(7, original).isSuccess)
+        assertEquals(1, probes)
+        assertEquals(replacement, locations[0])
+        assertEquals(9, locations[1].index)
+        assertTrue(locations[1].isValid)
+        assertFalse(state.isBusy)
+    }
+
+    @Test
+    fun benchmarkNeverAppliesMeasurementsToReplacementOrAmbiguousConfiguration() = runTest {
+        val original = testLocation(7)
+        val replacement = testLocation(7, profile = testProfile("Replacement"))
+        for (afterProbe in listOf(listOf(replacement), emptyList(), listOf(original, original.copy(index = 9)))) {
+            var state = MainUiState()
+            var locations = listOf(original)
+            var commits = 0
+            val service = DesktopLocationBenchmarkService(
+                stateProvider = { state }, locationsProvider = { locations },
+                benchmarkLocation = { profile, _, _, _ ->
+                    locations = afterProbe
+                    Result.success(ProfileBenchmark(profile = profile, primaryStatus = "ok", secondaryStatus = "ok",
+                        primaryTotal = 1.0, secondaryTotal = null, score = 1.0, detail = "test=ok"))
+                },
+                commitState = { _, _ -> commits++; Result.success(Unit) },
+                updateState = { state = it(state) },
+            )
+            assertEquals("CONFLICT", service.benchmark(7, original).exceptionOrNull()?.message)
+            assertEquals(0, commits)
+            assertEquals(afterProbe, locations)
+            assertFalse(state.isBusy)
+        }
+    }
+
+    @Test
     fun benchmarkSuccessUpdatesLocationAndUsesStateSettings() = runTest {
         val profile = testProfile("Germany")
         val rawLink = LocationConfigs.encodeStoredLocation(profile)
@@ -60,6 +114,7 @@ class DesktopLocationBenchmarkServiceTest {
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
+                Result.success(Unit)
             },
             updateState = { transform -> state = transform(state) },
         )
@@ -118,6 +173,7 @@ class DesktopLocationBenchmarkServiceTest {
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
+                Result.success(Unit)
             },
             updateState = { transform -> state = transform(state) },
         )
@@ -125,9 +181,57 @@ class DesktopLocationBenchmarkServiceTest {
         service.benchmark(2)
 
         assertFalse(state.isBusy)
-        assertEquals("network failed", state.statusMessage)
+        assertEquals(BenchmarkStatusMessages.benchmarkLocationFailed("France"), state.statusMessage)
         assertEquals("Imported", locations.single().benchmarkDetail)
         assertTrue(locations.single().isValid)
+    }
+
+    @Test
+    fun rejectedAndFailedBenchmarksPreserveSelectionAndReleaseBusy() = runTest {
+        val location = testLocation(7)
+        val initial = MainUiState(isVpnRunning = true, selectedProfileRawLink = location.rawLink)
+        var state = initial
+        var calls = 0
+        var commitCalls = 0
+        var failure: Throwable? = null
+        val service = DesktopLocationBenchmarkService(
+            stateProvider = { state },
+            locationsProvider = { listOf(location) },
+            benchmarkLocation = { profile, _, _, _ ->
+                calls++
+                failure?.let { throw it }
+                Result.success(ProfileBenchmark(
+                    profile = profile, primaryStatus = "ok", secondaryStatus = "ok",
+                    primaryTotal = 1.0, secondaryTotal = 1.0, score = 1.0, detail = "ok",
+                ))
+            },
+            commitState = { _, _ ->
+                commitCalls++
+                Result.failure(IllegalStateException("PERSISTENCE_FAILED"))
+            },
+            updateState = { state = it(state) },
+        )
+        assertEquals("NOT_FOUND", service.benchmark(99).exceptionOrNull()?.message)
+        state = initial.copy(isBusy = true)
+        assertEquals("BUSY", service.benchmark(7).exceptionOrNull()?.message)
+        assertEquals(0, calls)
+        assertEquals(0, commitCalls)
+        state = initial
+        assertEquals("PERSISTENCE_FAILED", service.benchmark(7).exceptionOrNull()?.message)
+        assertFalse(state.isBusy)
+        assertEquals(1, commitCalls)
+        failure = IllegalStateException("https://secret.example/token")
+        assertEquals("BENCHMARK_FAILED", service.benchmark(7).exceptionOrNull()?.message)
+        assertFalse(state.statusMessage.contains("secret.example"))
+        assertFalse(state.isBusy)
+        failure = kotlinx.coroutines.CancellationException("cancelled")
+        var cancelled = false
+        try { service.benchmark(7) } catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+        assertTrue(cancelled)
+        assertFalse(state.isBusy)
+        assertTrue(state.isVpnRunning)
+        assertEquals(initial.selectedProfileRawLink, state.selectedProfileRawLink)
+        assertEquals(1, commitCalls)
     }
 }
 

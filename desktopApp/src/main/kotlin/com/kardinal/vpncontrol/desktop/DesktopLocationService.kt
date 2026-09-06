@@ -9,8 +9,13 @@ import com.kardinal.vpncontrol.LocationMutationLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SelectionCandidate
 import com.kardinal.vpncontrol.SelectionMappingLogic
+import com.kardinal.vpncontrol.SaveLocationDecision
+import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.data.LocationConfigs
+import com.kardinal.vpncontrol.control.ControlLocationResolution
+import com.kardinal.vpncontrol.control.ControlLocationSelection
 import com.kardinal.vpncontrol.model.AppMode
+import com.kardinal.vpncontrol.model.ControlCode
 import java.nio.file.Path
 
 internal class DesktopLocationService(
@@ -18,8 +23,12 @@ internal class DesktopLocationService(
     private val locationsProvider: () -> List<DesktopLocationRecord>,
     private val currentRuntimeMode: () -> AppMode?,
     private val stopConnection: suspend (String?) -> Result<Unit>,
-    private val commitState: (MainUiState, List<DesktopLocationRecord>) -> Unit,
+    private val commitState: (MainUiState, List<DesktopLocationRecord>) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
+    private val isActiveLocation: (DesktopLocationRecord) -> Boolean = { it.rawLink == stateProvider().selectedProfileRawLink },
+    private val captureRestore: () -> (suspend () -> Result<Unit>) = {
+        { Result.failure(IllegalStateException("ROLLBACK_FAILED")) }
+    },
 ) {
     fun visibleLocations(): List<DesktopLocationRecord> {
         return locationsProvider().filter { it.rawLink in stateProvider().currentLocations }
@@ -31,67 +40,89 @@ internal class DesktopLocationService(
             ?: visibleLocations().firstOrNull { it.isSelected }
     }
 
-    fun addSampleLocation() {
-        val locations = locationsProvider()
-        val nextIndex = (locations.maxOfOrNull { it.index } ?: 0) + 1
-        val newLocation = DesktopLocationRecord(
-            index = nextIndex,
-            sourceUrl = "",
-            rawLink = "vless://desktop-$nextIndex",
-            name = "Desktop Node $nextIndex",
-            server = "desktop-$nextIndex.example.net",
-            details = "VLESS TCP",
-            benchmarkDetail = "test ok • tcp ${120 + nextIndex}.0ms",
-            isValid = true,
-        )
-        commitState(
-            stateProvider().withStatus(LocationStatusMessages.locationAdded(newLocation.name)),
-            locations + newLocation,
-        )
-    }
-
-    fun editLocation(index: Int) {
-        val updatedLocations = locationsProvider().map { location ->
-            if (location.index == index) {
-                location.copy(name = "${location.name} (edited)")
-            } else {
-                location
-            }
-        }
-        commitState(
-            stateProvider().withStatus(LocationStatusMessages.locationEdited(index)),
-            updatedLocations,
-        )
-    }
-
-    suspend fun deleteLocation(index: Int) {
+    fun saveLocation(raw: String, index: Int? = null, expectedRaw: String? = null): Result<DesktopLocationRecord> {
         val state = stateProvider()
         val locations = locationsProvider()
-        val removed = locations.firstOrNull { it.index == index } ?: return
+        if (state.isBusy) return Result.failure(IllegalStateException("BUSY"))
+        if (state.profileSourceMode != ProfileSourceMode.CURRENT_LOCATIONS) {
+            return Result.failure(IllegalArgumentException(LocationStatusMessages.subscriptionLocationSaveReadOnly()))
+        }
+        val edited = index?.let { id -> locations.firstOrNull { it.index == id } }
+        if (index != null && (edited == null || edited.sourceUrl.isNotBlank())) {
+            return Result.failure(IllegalArgumentException(LocationStatusMessages.locationEditUnavailable()))
+        }
+        if (expectedRaw != null && edited?.rawLink != expectedRaw) return Result.failure(IllegalStateException("CONFLICT"))
+        val manual = locations.filter { it.sourceUrl.isBlank() }
+        val decision = LocationMutationLogic.planSaveLocation(state.copy(
+            currentLocations = manual.map { it.rawLink }, locationDraft = raw,
+            editingLocationIndex = edited?.let { manual.indexOf(it) },
+        ))
+        val plan = when (decision) {
+            is SaveLocationDecision.Plan -> decision
+            is SaveLocationDecision.Invalid -> return Result.failure(IllegalArgumentException(decision.message))
+            is SaveLocationDecision.Duplicate -> return Result.failure(IllegalArgumentException(decision.message))
+            is SaveLocationDecision.MutationBlocked -> return Result.failure(IllegalArgumentException(decision.message))
+        }
+        var nextIndex = (locations.maxOfOrNull { it.index } ?: 0) + 1
+        val nextManual = plan.nextLocations.distinct().map { link ->
+            manual.firstOrNull { it.rawLink == link } ?: listOf(link).toDesktopLocationRecords(
+                if (link == plan.normalizedLocation && edited != null) edited.index else nextIndex++,
+            ).single()
+        }
+        val saved = nextManual.first { it.rawLink == plan.normalizedLocation }
+        val nextState = if (edited != null && state.selectedProfileRawLink == edited.rawLink) {
+            state.copy(selectedProfileRawLink = saved.rawLink, selectedProfileJson = saved.rawLink,
+                selectedProfileName = saved.name, selectedProfileServer = saved.server, selectedProfileSourceUrl = "")
+        } else state
+        return commitState(
+            nextState.withStatus(LocationMutationLogic.saveLocationSuccessMessage(plan)),
+            locations.filter { it.sourceUrl.isNotBlank() } + nextManual,
+        ).map { saved }
+    }
+
+    suspend fun deleteLocation(index: Int, expectedLocation: DesktopLocationRecord? = null,
+        validateAdmission: () -> Result<Unit> = { Result.success(Unit) },
+        guardedCommit: (MainUiState, List<DesktopLocationRecord>) -> Result<Unit> = commitState,
+        captureRestoreAction: () -> (suspend () -> Result<Unit>) = captureRestore,
+    ): Result<Unit> {
+        validateAdmission().getOrElse { return Result.failure(it) }
+        val state = stateProvider()
+        if (state.isBusy) return Result.failure(IllegalStateException("BUSY"))
+        val locations = locationsProvider()
+        val removed = locations.firstOrNull { it.index == index }
+            ?: return Result.failure(IllegalArgumentException("NOT_FOUND"))
+        if (expectedLocation != null && (removed.rawLink != expectedLocation.rawLink || removed.sourceUrl != expectedLocation.sourceUrl))
+            return Result.failure(IllegalStateException("CONFLICT"))
+        if (removed.sourceUrl.isNotBlank()) return Result.failure(IllegalArgumentException("READ_ONLY"))
         val removedSelected = removed.rawLink == state.selectedProfileRawLink
-        if (removedSelected && state.isVpnRunning) {
-            val stopResult = stopConnection(
+        return commitDesktopRuntimeMutation(
+            stopRequired = isActiveLocation(removed) && state.isVpnRunning,
+            captureRestore = captureRestoreAction,
+            stop = { stopConnection(
                 ConnectionStatusMessages.connectionStopped(currentRuntimeMode() ?: state.appMode),
-            )
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-        val latestState = stateProvider()
-        val updatedLocations = locations.filterNot { it.index == index }
-        commitState(
-            latestState.clearSelectedLocationIf(removedSelected)
-                .withStatus(LocationStatusMessages.locationRemoved(removed.name)),
-            updatedLocations,
+            ) },
+            commit = {
+                val latestState = stateProvider()
+                val updatedLocations = locations.filterNot { it.index == index }
+                guardedCommit(
+                    latestState.clearSelectedLocationIf(removedSelected)
+                        .withStatus(LocationStatusMessages.locationRemoved(removed.name)),
+                    updatedLocations,
+                )
+            },
         )
     }
 
-    fun applySelection(index: Int, messagePrefix: String = "Selected") {
+    fun applySelection(index: Int, messagePrefix: String = "Selected"): Result<Unit> {
         val state = stateProvider()
         val locations = locationsProvider()
-        val selected = locations.firstOrNull { it.index == index } ?: return
+        val selected = locations.firstOrNull { it.index == index }
+            ?: return Result.failure(IllegalArgumentException("NOT_FOUND"))
+        if (selected.rawLink == state.selectedProfileRawLink && selected.sourceUrl == state.selectedProfileSourceUrl &&
+            selected.name == state.selectedProfileName && selected.server == state.selectedProfileServer &&
+            locations.all { it.isSelected == (it.index == index) }) return Result.success(Unit)
         val updatedLocations = locations.map { it.copy(isSelected = it.index == index) }
-        commitState(
+        return commitState(
             state.withStatus(ConnectionStatusMessages.selectedLocationSet(selected.name)).copy(
                 selectedProfileName = selected.name,
                 selectedProfileServer = selected.server,
@@ -103,36 +134,35 @@ internal class DesktopLocationService(
     }
 
     fun applyCliSelection(target: String): Result<DesktopLocationRecord> {
-        val visibleLocations = visibleLocations()
-        val nameMatches = visibleLocations.filter { it.name == target }
-        if (nameMatches.size > 1) {
-            val message = "Multiple visible locations are named \"$target\"."
-            updateState { it.withStatus(message) }
-            return Result.failure(IllegalArgumentException(message))
+        val selected = when (val resolution = ControlLocationSelection.resolve(target, visibleLocations(), DesktopLocationRecord::name)) {
+            is ControlLocationResolution.Found -> resolution.location
+            is ControlLocationResolution.Rejected -> {
+                // A failed selector is untrusted input, not a safe log/status label.
+                updateState { it.withStatus(ConnectionStatusMessages.selectedLocationSelectFailed()) }
+                return Result.failure(IllegalArgumentException(resolution.code.wireName))
+            }
         }
-        val selected = nameMatches.singleOrNull()
-            ?: target.toIntOrNull()
-                ?.takeIf { it > 0 }
-                ?.let { visibleLocations.getOrNull(it - 1) }
-        if (selected == null) {
-            val message = "Location not found: $target"
-            updateState { it.withStatus(message) }
-            return Result.failure(IllegalArgumentException(message))
-        }
-        applySelection(selected.index)
-        return Result.success(selected)
+        return applySelection(selected.index).map { selected }
     }
 
-    suspend fun importRaw(raw: String) {
-        when (val decision = LocationMutationLogic.planImportLocations(stateProvider(), raw)) {
+    suspend fun importRaw(raw: String,
+        validateAdmission: () -> Result<Unit> = { Result.success(Unit) },
+        guardedCommit: (MainUiState, List<DesktopLocationRecord>) -> Result<Unit> = commitState,
+        captureRestoreAction: () -> (suspend () -> Result<Unit>) = captureRestore,
+    ): Result<Unit> {
+        validateAdmission().getOrElse { return Result.failure(it) }
+        if (stateProvider().isBusy) return Result.failure(IllegalStateException("BUSY"))
+        return when (val decision = LocationMutationLogic.planImportLocations(stateProvider(), raw)) {
             is ImportLocationsDecision.Blocked -> {
                 updateState { it.withStatus(decision.message) }
+                Result.failure(IllegalArgumentException("READ_ONLY"))
             }
             is ImportLocationsDecision.Invalid -> {
                 updateState { it.withStatus(decision.message) }
+                Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
             }
             is ImportLocationsDecision.Plan -> {
-                applyImportPlan(decision)
+                applyImportPlan(decision, validateAdmission, guardedCommit, captureRestoreAction)
             }
         }
     }
@@ -207,34 +237,46 @@ internal class DesktopLocationService(
         }
     }
 
-    private suspend fun applyImportPlan(decision: ImportLocationsDecision.Plan) {
+    private suspend fun applyImportPlan(decision: ImportLocationsDecision.Plan,
+        validateAdmission: () -> Result<Unit>,
+        guardedCommit: (MainUiState, List<DesktopLocationRecord>) -> Result<Unit>,
+        captureRestoreAction: () -> (suspend () -> Result<Unit>),
+    ): Result<Unit> {
         val state = stateProvider()
         val preservedSubscriptionLocations = locationsProvider().filter { it.sourceUrl.isNotBlank() }
+        val existingManualReferences = locationsProvider().filter { it.sourceUrl.isBlank() }.associateBy {
+            LocationConfigs.normalizeStoredReference(it.rawLink)
+        }
         val importedLocations = decision.importedLocations.toDesktopLocationRecords(
             startIndex = nextLocationIndex(preservedSubscriptionLocations),
-        )
+        ).map { imported ->
+            val existing = existingManualReferences[LocationConfigs.normalizeStoredReference(imported.rawLink)]
+            // A format-only round trip must retain the reference used by the active runtime.
+            if (existing == null) imported else imported.copy(rawLink = existing.rawLink)
+        }
         val nextLocations = preservedSubscriptionLocations + importedLocations
         val removedSelected = state.selectedProfileRawLink.isNotBlank() &&
             nextLocations.none { it.rawLink == state.selectedProfileRawLink }
-        if (removedSelected && state.isVpnRunning) {
-            val stopResult = stopConnection(
+        val removedActive = locationsProvider().any(isActiveLocation) && nextLocations.none(isActiveLocation)
+        validateAdmission().getOrElse { return Result.failure(it) }
+        return commitDesktopRuntimeMutation(
+            stopRequired = removedActive && state.isVpnRunning,
+            captureRestore = captureRestoreAction,
+            stop = { stopConnection(
                 LocationMutationLogic.importLocationsStoppedStatusMessage(state.appMode),
-            )
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-        val latestState = stateProvider()
-        val message = if (removedSelected && latestState.isVpnRunning) {
-            LocationMutationLogic.importLocationsStoppedStatusMessage(latestState.appMode)
-        } else {
-            LocationMutationLogic.importLocationsStatusMessage(removedSelected)
-        }
-        commitState(
-            latestState.clearSelectedLocationIf(removedSelected)
-                .copy(isVpnRunning = if (removedSelected) false else latestState.isVpnRunning)
-                .withStatus(message),
-            nextLocations,
+            ) },
+            commit = {
+                val latestState = stateProvider()
+                val message = if (removedActive && state.isVpnRunning) {
+                    LocationMutationLogic.importLocationsStoppedStatusMessage(latestState.appMode)
+                } else {
+                    LocationMutationLogic.importLocationsStatusMessage(removedSelected)
+                }
+                guardedCommit(
+                    latestState.clearSelectedLocationIf(removedSelected).withStatus(message),
+                    nextLocations,
+                )
+            },
         )
     }
 }

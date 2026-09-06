@@ -30,102 +30,20 @@ internal class AndroidUpdateActionsService(
     private val manifestUrl: String = AppUpdateLogic.LATEST_MANIFEST_URL,
     private val trustUrl: (String) -> Boolean = AppUpdateLogic::isTrustedGithubUrl,
 ) {
-    private var activeJob: Job? = null
-    private var preparedFile: File? = null
+    private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>()
+    val control = AndroidUpdateControl(launch, currentVersion, currentBuildNumber,
+        fetch = { AppUpdateLogic.parseManifest(fetchText(manifestUrl), trustUrl) },
+        select = { manifest -> AppUpdateLogic.selectAsset(manifest, UpdatePlatform.ANDROID,
+            Build.SUPPORTED_ABIS.toSet(), listOf(UpdatePackageType.APK)) },
+        download = ::downloadAsset, verify = { file, asset, build -> withContext(Dispatchers.IO) { verifyApk(file, asset, build) } },
+        cleanup = { withContext(Dispatchers.IO) { cleanupPartialDownloads() } },
+        cancelNetwork = { activeCall.get()?.cancel() }, emit = ::updateAppState)
 
-    fun checkAndDownload() {
-        if (activeJob?.isActive == true) return
-        preparedFile = null
-        updateState {
-            it.copy(
-                appUpdate = AppUpdateState(
-                    showDialog = true,
-                    phase = AppUpdatePhase.CHECKING,
-                    currentVersion = currentVersion,
-                ),
-            )
-        }
-        lateinit var job: Job
-        job = launch {
-            try {
-                val manifest = AppUpdateLogic.parseManifest(fetchText(manifestUrl), trustUrl)
-                if (!AppUpdateLogic.isUpdateAvailable(currentBuildNumber, manifest)) {
-                    updateAppState {
-                        it.copy(
-                            phase = AppUpdatePhase.UP_TO_DATE,
-                            releaseNotesUrl = manifest.releaseNotesUrl,
-                        )
-                    }
-                    return@launch
-                }
-                val asset = AppUpdateLogic.selectAsset(
-                    manifest = manifest,
-                    platform = UpdatePlatform.ANDROID,
-                    architectureAliases = Build.SUPPORTED_ABIS.toSet(),
-                    preferredPackageTypes = listOf(UpdatePackageType.APK),
-                )
-                if (asset == null) {
-                    updateAppState {
-                        it.copy(
-                            phase = AppUpdatePhase.UNSUPPORTED,
-                            releaseNotesUrl = manifest.releaseNotesUrl,
-                        )
-                    }
-                    return@launch
-                }
-                updateAppState {
-                    it.copy(
-                        phase = AppUpdatePhase.DOWNLOADING,
-                        availableVersion = asset.displayVersion,
-                        releaseNotesUrl = manifest.releaseNotesUrl,
-                        totalBytes = asset.sizeBytes,
-                    )
-                }
-                val file = downloadAsset(asset)
-                updateAppState { it.copy(phase = AppUpdatePhase.VERIFYING) }
-                verifyApk(file, asset, manifest.buildNumber)
-                preparedFile = file
-                updateAppState {
-                    it.copy(
-                        phase = AppUpdatePhase.READY,
-                        downloadedBytes = asset.sizeBytes,
-                        totalBytes = asset.sizeBytes,
-                        preparedAsset = asset,
-                    )
-                }
-            } catch (_: CancellationException) {
-                cleanupPartialDownloads()
-            } catch (error: Throwable) {
-                cleanupPartialDownloads()
-                updateAppState {
-                    it.copy(
-                        phase = AppUpdatePhase.FAILED,
-                        message = error.message.orEmpty(),
-                        preparedAsset = null,
-                    )
-                }
-            } finally {
-                if (activeJob === job) activeJob = null
-            }
-        }
-        activeJob = job
-    }
-
-    fun dismissOrCancel() {
-        activeJob?.cancel(CancellationException("Update canceled by user"))
-        activeJob = null
-        cleanupPartialDownloads()
-        updateState {
-            it.copy(
-                appUpdate = AppUpdateState(
-                    currentVersion = currentVersion,
-                ),
-            )
-        }
-    }
+    fun showDialog() { updateAppState { it.copy(showDialog = true) } }
 
     fun buildInstallIntent(): Intent? {
-        val file = preparedFile?.takeIf(File::isFile) ?: return null
+        if (control.busy()) return null
+        val file = control.preparedFile?.takeIf(File::isFile) ?: return null
         if (!context.packageManager.canRequestPackageInstalls()) {
             updateAppState {
                 it.copy(message = "Allow VPN Control to install apps, then tap Install update again.")
@@ -151,7 +69,7 @@ internal class AndroidUpdateActionsService(
             .header("Accept", "application/json")
             .header("User-Agent", "VPNControlAndroid/$currentVersion")
             .build()
-        client.newCall(request).execute().use { response ->
+        response(request) { response ->
             if (!response.isSuccessful) throw IOException("GitHub update check failed: HTTP ${response.code}")
             response.body?.string()?.takeIf(String::isNotBlank)
                 ?: throw IOException("The update source returned an empty manifest")
@@ -169,7 +87,7 @@ internal class AndroidUpdateActionsService(
             .header("Accept", "application/octet-stream")
             .header("User-Agent", "VPNControlAndroid/$currentVersion")
             .build()
-        client.newCall(request).execute().use { response ->
+        response(request) { response ->
             if (!response.isSuccessful) throw IOException("Update download failed: HTTP ${response.code}")
             val body = response.body ?: throw IOException("GitHub returned an empty update package")
             val expectedTotal = asset.sizeBytes
@@ -181,11 +99,10 @@ internal class AndroidUpdateActionsService(
                         ensureActive()
                         val read = input.read(buffer)
                         if (read < 0) break
+                        require(copied + read <= expectedTotal) { "Update exceeds manifest size" }
                         output.write(buffer, 0, read)
                         copied += read
-                        updateAppState {
-                            it.copy(downloadedBytes = copied, totalBytes = expectedTotal)
-                        }
+                        control.progress(copied, expectedTotal)
                     }
                 }
             }
@@ -240,6 +157,15 @@ internal class AndroidUpdateActionsService(
     private fun cleanupPartialDownloads() {
         File(context.cacheDir, UPDATE_DIRECTORY).listFiles { file -> file.name.endsWith(".part") }
             ?.forEach(File::delete)
+    }
+
+    private suspend fun <T> response(request: Request, block: (okhttp3.Response) -> T): T {
+        val call = client.newCall(request)
+        check(activeCall.compareAndSet(null, call))
+        return try {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            call.execute().use(block)
+        } finally { activeCall.compareAndSet(call, null) }
     }
 
     private fun updateAppState(transform: (AppUpdateState) -> AppUpdateState) {

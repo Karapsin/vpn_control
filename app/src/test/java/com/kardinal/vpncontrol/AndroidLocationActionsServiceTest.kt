@@ -11,12 +11,42 @@ import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidLocationActionsServiceTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun locationMutationOwnsLeaseThroughPersistenceAndIsNotCancelledMidCommit() = kotlinx.coroutines.test.runTest {
+        val jobs = AndroidCommandJobs(backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var writes = 0
+        val raw = testProfile("Candidate").rawLink
+        val harness = harness(
+            initialState = MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS, locationDraft = raw),
+            launchMutation = { jobs.launchMutation(it) },
+            updateCurrentLocations = { _, _ ->
+                writes++; gate.await(); LocationUpdateResult(false)
+            },
+        )
+        val lease = requireNotNull(jobs.tryAcquireMutation())
+        harness.service.saveLocation()
+        runCurrent()
+        assertEquals(0, writes)
+        jobs.releaseMutation(lease)
+        harness.service.saveLocation()
+        runCurrent()
+        assertEquals(1, writes)
+        assertTrue(jobs.busy.value)
+        jobs.cancelActive()
+        runCurrent()
+        org.junit.Assert.assertNull(jobs.tryAcquireMutation())
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(jobs.busy.value)
+    }
     @Test
     fun saveLocationShowsBlockedDialogForSubscriptionEdit() {
         val rawLink = testProfile("Blocked").rawLink
@@ -133,6 +163,7 @@ class AndroidLocationActionsServiceTest {
 
     private fun harness(
         initialState: MainUiState,
+        launchMutation: (suspend () -> Unit) -> Unit = { block -> runBlocking { block() } },
         updateStatus: suspend (String) -> Unit = {},
         snapshot: suspend () -> PersistedState = { PersistedState() },
         restoreSnapshot: suspend (MainController, PersistedState) -> Unit = { _, _ -> },
@@ -170,6 +201,7 @@ class AndroidLocationActionsServiceTest {
             stopConnection = { stopConnection(controller) },
             benchmarkLocation = benchmarkLocation,
             appendLatencyHistory = {},
+            launchMutation = launchMutation,
         )
         return Harness(service, controller)
     }

@@ -41,6 +41,8 @@ assert_file() {
 run_launcher_smoke() {
   local launcher="$1"
   local state_dir="$2"
+  python3 "$repo_root/scripts/test_packaged_cli.py" --launcher "$launcher" \
+    --expected-version "$(python3 "$repo_root/scripts/version_metadata.py" --field version)"
   rm -rf "$state_dir"
   mkdir -p "$state_dir"
   echo "[vpn-control] running Linux package smoke test: $launcher"
@@ -88,6 +90,7 @@ if command -v rpm2cpio >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
     exit 1
   fi
   assert_file "$rpm_launcher" "RPM vpn-control launcher is missing"
+  run_launcher_smoke "$rpm_launcher" "$validation_root/rpm-smoke-state"
 else
   echo "[vpn-control] skipping RPM extraction because rpm2cpio/cpio is unavailable"
 fi

@@ -74,11 +74,7 @@ internal fun windowsRouteDnsToolingCheck(
 
 class DesktopProxyRuntimeManager(
     private val runtimeConfigStore: RuntimeConfigStore,
-    private val baseDir: Path = Paths.get(
-        System.getProperty("user.home"),
-        ".vpn-control-desktop",
-        "runtime",
-    ),
+    private val baseDir: Path = DesktopWorkspacePaths.root().resolve("runtime"),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
     private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,

@@ -149,14 +149,6 @@ internal fun MainUiState.toPersistedState(
     locations: List<DesktopLocationRecord>,
 ): PersistedState {
     val synced = syncDesktopUiStateWithLocations(this, locations)
-    val routingRules = RoutingRules(
-        ignoreRules = synced.routingIgnoreRulesDraft,
-        blockQuicUdp443 = synced.routingBlockQuicUdp443Draft,
-        proxyPackages = RoutingRules.normalizePackageNames(synced.routingProxyPackagesDraft),
-        bypassPackages = emptyList(),
-        directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(synced.routingDirectDomainsDraft),
-        ruleSets = emptyList(),
-    )
     return PersistedState(
         appLanguage = synced.appLanguage,
         subscriptionHwid = synced.subscriptionHwid,
@@ -176,7 +168,7 @@ internal fun MainUiState.toPersistedState(
         locationBenchmarkDetails = synced.locationBenchmarkDetails,
         dnsSettings = synced.dnsSettings,
         homeSshRouteSettings = synced.homeSshRouteSettings,
-        routingRules = routingRules,
+        routingRules = synced.routingRules,
         selectedProfileName = synced.selectedProfileName,
         selectedProfileServer = synced.selectedProfileServer,
         selectedProfileRawLink = synced.selectedProfileRawLink,

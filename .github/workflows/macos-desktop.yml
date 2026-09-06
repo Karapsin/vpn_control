@@ -22,6 +22,8 @@ on:
       - "scripts/check_release_metadata.py"
       - "scripts/package_macos_desktop.sh"
       - "scripts/test_macos_desktop_package.sh"
+      - "scripts/test_packaged_cli.py"
+      - "scripts/test_packaged_cli_harness.py"
 
 jobs:
   package-macos-desktop:

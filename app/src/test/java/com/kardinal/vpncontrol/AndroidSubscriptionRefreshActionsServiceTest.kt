@@ -6,11 +6,35 @@ import com.kardinal.vpncontrol.data.SubscriptionRefreshFailure
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class AndroidSubscriptionRefreshActionsServiceTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun manualRefreshExcludesOtherMutationsUntilItsFinalStatusCompletes() = kotlinx.coroutines.test.runTest {
+        val jobs = AndroidCommandJobs(backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var refreshed = 0
+        val controller = MainController(MainUiState(subscriptions = listOf(SubscriptionSource("sub", "https://example.com/sub"))))
+        val service = service(controller,
+            launch = { jobs.launchMutation(it) },
+            runAllRefresh = { refreshed++; gate.await(); Result.success(SubscriptionRefreshBatchResult(1)) })
+        val lease = requireNotNull(jobs.tryAcquireMutation())
+        service.refreshAllSubscriptionsCaches()
+        runCurrent()
+        assertEquals(0, refreshed)
+        jobs.releaseMutation(lease)
+        service.refreshAllSubscriptionsCaches()
+        runCurrent()
+        assertEquals(1, refreshed)
+        org.junit.Assert.assertNull(jobs.tryAcquireMutation())
+        jobs.cancelActive()
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(jobs.busy.value)
+    }
     @Test
     fun activeRefreshWithoutSubscriptionsReportsEmptyState() {
         val controller = MainController(MainUiState())
@@ -168,6 +192,7 @@ class AndroidSubscriptionRefreshActionsServiceTest {
 
     private fun service(
         controller: MainController,
+        launch: (suspend () -> Unit) -> Unit = { block -> runBlocking { block() } },
         updateStatus: suspend (String) -> Unit = {},
         runActiveRefresh: suspend () -> Result<SubscriptionRefreshBatchResult> = {
             Result.success(SubscriptionRefreshBatchResult(refreshedCount = 1))
@@ -181,7 +206,7 @@ class AndroidSubscriptionRefreshActionsServiceTest {
     ): AndroidSubscriptionRefreshActionsService {
         return AndroidSubscriptionRefreshActionsService(
             stateProvider = controller::currentState,
-            launch = { block -> runBlocking { block() } },
+            launch = launch,
             setBusy = { busy -> controller.update { it.copy(isBusy = busy) } },
             updateStatus = updateStatus,
             runActiveRefresh = runActiveRefresh,

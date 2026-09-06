@@ -10,7 +10,7 @@ internal fun MainUiState.withStatus(message: String): MainUiState {
     return copy(
         statusMessage = message,
         connectionLog = (connectionLog + ConnectionLogEntry(
-            id = "desktop-$now-${connectionLog.size}",
+            id = java.util.UUID.randomUUID().toString(),
             message = message,
             createdAtEpochMillis = now,
         )).takeLast(MAX_DESKTOP_CONNECTION_LOG_ITEMS),

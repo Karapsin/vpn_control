@@ -53,11 +53,13 @@ object LocationMutationLogic {
         }
 
         val profile = parsed.getOrThrow()
-        val normalized = LocationConfigs.encodeStoredLocation(profile)
+        // Use the same canonical form for direct links and re-imported editor JSON.
+        val canonical = LocationConfigs.normalizeStoredReference(LocationConfigs.encodeStoredLocation(profile))
         val nextLocations = state.currentLocations.toMutableList()
         val editIndex = state.editingLocationIndex
         val replacedRawLink = editIndex?.let { nextLocations.getOrNull(it) }
-        val duplicateIndex = nextLocations.indexOf(normalized)
+        val duplicateIndex = nextLocations.indexOfFirst { LocationConfigs.normalizeStoredReference(it) == canonical }
+        val normalized = nextLocations.getOrNull(duplicateIndex) ?: canonical
 
         if (editIndex == null && duplicateIndex != -1) {
             return SaveLocationDecision.Duplicate(LocationStatusMessages.locationAlreadySaved(profile.remarks))

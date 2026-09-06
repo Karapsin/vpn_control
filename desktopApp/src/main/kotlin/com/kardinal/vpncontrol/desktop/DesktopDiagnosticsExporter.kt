@@ -42,7 +42,7 @@ object DesktopDiagnosticsExporter {
         return buildString {
             appendLine("VPN Control Desktop Diagnostics")
             appendLine("generated_at=${Instant.now()}")
-            appendLine("status=${state.statusMessage}")
+            appendLine("status=${DiagnosticsSanitizer.redactText(state.statusMessage)}")
             appendLine("app_mode=${state.appMode}")
             appendLine("runtime_mode=${runtimeMode ?: "none"}")
             appendLine("runtime_process_id=${runtimeProcessId ?: "none"}")
@@ -50,7 +50,7 @@ object DesktopDiagnosticsExporter {
             appendLine("is_runtime_running=${state.isVpnRunning}")
             appendLine("subscription_hwid_present=${state.subscriptionHwid.isNotBlank()}")
             appendLine("active_subscription_id=${state.activeSubscriptionId}")
-            appendLine("selected_profile_name=${state.selectedProfileName}")
+            appendLine("selected_profile_name=${DiagnosticsSanitizer.redactText(state.selectedProfileName)}")
             appendLine("selected_profile_server_present=${state.selectedProfileServer.isNotBlank()}")
             appendLine("selected_profile_source_url=${DiagnosticsSanitizer.redactText(state.selectedProfileSourceUrl).ifBlank { "<empty>" }}")
             appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")
@@ -59,7 +59,7 @@ object DesktopDiagnosticsExporter {
             appendLine("legacy_dns_migration_pending=${state.dnsSettings.legacyRawAddress.isNotBlank()}")
             appendLine("current_proxy_port=${currentPort ?: "none"}")
             appendLine("runtime_log_file=${logFile?.toAbsolutePath()?.let { DiagnosticsSanitizer.redactText(it.toString()) } ?: "none"}")
-            appendLine("last_benchmark_summary=${state.lastBenchmarkSummary}")
+            appendLine("last_benchmark_summary=${DiagnosticsSanitizer.redactText(state.lastBenchmarkSummary)}")
             appendLine("find_best_state=${findBestState(state)}")
             appendLine("successful_starts=${state.successfulStarts}")
             appendLine("successful_stops=${state.successfulStops}")
@@ -76,11 +76,11 @@ object DesktopDiagnosticsExporter {
                     appendLine(
                         listOf(
                             "id=${subscription.id}",
-                            "name=${subscription.customName.ifBlank { subscription.url.substringAfter("://").substringBefore('/') }}",
+                            "name=${DiagnosticsSanitizer.redactText(subscription.customName).ifBlank { "<unnamed>" }}",
                             "url=${DiagnosticsSanitizer.redactText(subscription.url).ifBlank { "<empty>" }}",
                             "cached=${subscription.cachedLocations.size}",
                             "last_refreshed_at=${subscription.lastRefreshedAtEpochMillis}",
-                            "status=${subscription.lastRefreshStatus.ifBlank { "not refreshed yet" }}",
+                            "status=${DiagnosticsSanitizer.redactText(subscription.lastRefreshStatus).ifBlank { "not refreshed yet" }}",
                         ).joinToString(" | "),
                     )
                 }
@@ -118,7 +118,7 @@ object DesktopDiagnosticsExporter {
         return when {
             state.isRefreshing && state.isBusy -> "running"
             state.isRefreshing -> "refreshing"
-            state.lastBenchmarkSummary.isNotBlank() -> "last_result=${state.lastBenchmarkSummary}"
+            state.lastBenchmarkSummary.isNotBlank() -> "last_result=${DiagnosticsSanitizer.redactText(state.lastBenchmarkSummary)}"
             else -> "not_run"
         }
     }

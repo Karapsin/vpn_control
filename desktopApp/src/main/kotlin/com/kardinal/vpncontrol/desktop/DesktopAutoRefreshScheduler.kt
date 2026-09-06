@@ -49,6 +49,8 @@ class DesktopAutoRefreshScheduler(
     private var activeJob: Job? = null
     private var activeConfig: Config? = null
 
+    internal fun hasScheduledWork(state: MainUiState): Boolean = state.toSchedulerConfig().enabled
+
     fun sync(state: MainUiState) {
         val nextConfig = state.toSchedulerConfig()
         if (nextConfig.sameScheduleAs(activeConfig) && activeJob?.isActive == true) {

@@ -21,6 +21,9 @@ internal class AndroidSettingsActionsService(
     private val updateConnectionTestToolsEnabled: suspend (Boolean) -> Unit,
     private val credentialStore: com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore? = null,
     private val updateHomeSshRouteSettings: suspend (com.kardinal.vpncontrol.model.HomeSshRouteSettings) -> Unit = {},
+    private val launchMutation: (suspend () -> Unit) -> Unit = launch,
+    private val importKey: (suspend (String) -> com.kardinal.vpncontrol.model.ControlResult)? = null,
+    private val homeSshPendingRestart: suspend () -> Boolean? = { null },
 ) {
     fun toggleDnsDialog() {
         controller.toggleDnsDialog()
@@ -50,23 +53,18 @@ internal class AndroidSettingsActionsService(
     }
 
     fun importHomeSshPrivateKey(content: String) {
+        // The owner operation acquires the shared mutation lease itself.
         launch {
             runCatching {
-                (credentialStore ?: error("SSH Routing credential storage is unavailable"))
-                    .importPrivateKey(content)
+                val result = (importKey ?: error("UNSUPPORTED"))(content)
+                check(result.code == com.kardinal.vpncontrol.model.ControlCode.OK) { result.code.wireName }
+                result
             }
-                .onSuccess {
-                    val state = controller.currentState()
-                    val updated = state.homeSshRouteSettings.copy(
-                        credentialVersion = state.homeSshRouteSettings.credentialVersion + 1L,
-                    )
-                    val restartRequired = state.isVpnRunning && updated.enabled
-                    updateHomeSshRouteSettings(updated)
+                .onSuccess { result ->
                     controller.update {
                         it.copy(
-                            homeSshRouteSettings = updated,
-                            showHomeSshRestartDialog = restartRequired,
-                            homeSshRestartPending = restartRequired,
+                            showHomeSshRestartDialog = result.restartRequired,
+                            homeSshRestartPending = result.restartRequired,
                         )
                     }
                     updateStatus(SettingsStatusMessages.homeSshPrivateKeyImported())
@@ -78,28 +76,30 @@ internal class AndroidSettingsActionsService(
     }
 
     fun saveHomeSshRoute() {
-        val state = controller.currentState()
-        val resolved = HomeSshRouteLogic.fromDraft(state).mapCatching { settings ->
-            HomeSshRouteLogic.validate(settings, credentialStore?.hasPrivateKey() == true).getOrThrow()
-        }
-        if (resolved.isFailure) {
-            postStatus(SettingsStatusMessages.homeSshSettingsInvalid(resolved.exceptionOrNull()?.message.orEmpty()))
-            return
-        }
-        val settings = resolved.getOrThrow()
-        val restartRequired = state.isVpnRunning &&
-            HomeSshRouteLogic.runtimeFingerprint(settings) !=
-            HomeSshRouteLogic.runtimeFingerprint(state.homeSshRouteSettings)
-        controller.update {
-            it.copy(
-                homeSshRouteSettings = settings,
-                showHomeSshRouteDialog = false,
-                showHomeSshRestartDialog = restartRequired,
-                homeSshRestartPending = restartRequired,
-            )
-        }
-        launch {
+        launchMutation mutation@{
+            val state = controller.currentState()
+            val resolved = HomeSshRouteLogic.fromDraft(state).mapCatching { settings ->
+                HomeSshRouteLogic.validate(settings, credentialStore?.hasPrivateKey(settings.credentialVersion) == true).getOrThrow()
+            }
+            if (resolved.isFailure) {
+                updateStatus(SettingsStatusMessages.homeSshSettingsInvalid(resolved.exceptionOrNull()?.message.orEmpty()))
+                return@mutation
+            }
+            val settings = resolved.getOrThrow()
             updateHomeSshRouteSettings(settings)
+            // The previous committed settings are not the active runtime settings:
+            // a key import or earlier save may already be pending. Only a known
+            // owner comparison may clear that warning (including a genuine revert).
+            val restartRequired = try { homeSshPendingRestart() }
+                catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (_: Exception) { null } ?: true
+            controller.update {
+                it.copy(
+                    showHomeSshRouteDialog = false,
+                    showHomeSshRestartDialog = restartRequired,
+                    homeSshRestartPending = restartRequired,
+                )
+            }
             updateStatus(SettingsStatusMessages.homeSshRouteSaved(restartRequired))
         }
     }
@@ -181,28 +181,26 @@ internal class AndroidSettingsActionsService(
     }
 
     fun setAppLanguage(language: AppLanguage) {
-        effectSink.handle(controller.setAppLanguage(language))
+        launchMutation { effectSink.handleWithinMutation(controller.setAppLanguage(language)) }
     }
 
     fun setAppMode(value: AppMode) {
-        val state = controller.currentState()
-        if (state.appMode == value) return
-        if (state.isVpnRunning) {
-            launch {
+        launchMutation mutation@{
+            val state = controller.currentState()
+            if (state.appMode == value) return@mutation
+            if (state.isVpnRunning) {
                 val stopResult = stopConnection()
                 if (stopResult.isFailure) {
                     updateStatus(
                         stopResult.exceptionOrNull()?.message
                             ?: ConnectionStatusMessages.connectionStopFailed(state.appMode),
                     )
-                    return@launch
+                    return@mutation
                 }
                 controller.update { it.copy(isVpnRunning = false) }
-                effectSink.handle(controller.setAppMode(value))
             }
-            return
+            effectSink.handleWithinMutation(controller.setAppMode(value))
         }
-        effectSink.handle(controller.setAppMode(value))
     }
 
     fun onDnsDraftChanged(value: String) {
@@ -246,15 +244,15 @@ internal class AndroidSettingsActionsService(
     }
 
     fun saveSubscriptionRefreshPolicy() {
-        effectSink.handle(controller.saveSubscriptionRefreshPolicy())
+        launchMutation { effectSink.handleWithinMutation(controller.saveSubscriptionRefreshPolicy()) }
     }
 
     fun saveValidationSettings() {
-        effectSink.handle(controller.saveValidationSettings())
+        launchMutation { effectSink.handleWithinMutation(controller.saveValidationSettings()) }
     }
 
     fun saveDns() {
-        effectSink.handle(controller.saveDns())
+        launchMutation { effectSink.handleWithinMutation(controller.saveDns()) }
     }
 
     fun postStatus(message: String) {

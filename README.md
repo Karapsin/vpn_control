@@ -1,6 +1,6 @@
 # VPN Control Install Files
 
-**Version:** `2.0.18`
+**Version:** `2.1.1`
 
 Install files are available from the latest GitHub Release. In an installed app, open the settings menu and choose `Update` to download and install the compatible package.
 

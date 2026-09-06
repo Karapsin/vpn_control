@@ -25,6 +25,10 @@ on:
       - "scripts/integration/**"
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
+      - "scripts/test_packaged_cli.py"
+      - "scripts/test_packaged_cli_harness.py"
+      - "scripts/windows_launcher_utf8.py"
+      - "scripts/test_windows_launcher_utf8.py"
       - "scripts/test_windows_installed_desktop.ps1"
 
 jobs:

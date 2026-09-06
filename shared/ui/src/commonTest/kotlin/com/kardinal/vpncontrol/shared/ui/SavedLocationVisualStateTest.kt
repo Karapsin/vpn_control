@@ -7,6 +7,23 @@ import kotlin.test.assertTrue
 
 class SavedLocationVisualStateTest {
     @Test
+    fun explicitPendingSelectionDoesNotReplaceActiveRowWithoutRawConfiguration() {
+        val running = MainUiState(isVpnRunning = true, selectedProfileRawLink = "legacy-wrong")
+        val pending = savedLocationVisualState(row("").copy(selection = SavedLocationSelection(true, false)), running)
+        val active = savedLocationVisualState(row("").copy(selection = SavedLocationSelection(false, true)), running)
+        assertTrue(pending.isSelected)
+        assertFalse(pending.isInUse)
+        assertFalse(pending.togglesConnection)
+        assertFalse(active.isSelected)
+        assertTrue(active.isInUse)
+        assertTrue(active.togglesConnection)
+        val stopped = savedLocationVisualState(row("").copy(selection = SavedLocationSelection(true, true)), MainUiState())
+        assertTrue(stopped.isSelected)
+        assertFalse(stopped.isInUse)
+        assertTrue(stopped.togglesConnection)
+    }
+
+    @Test
     fun diagnosticsNeverDisableManualLocationActions() {
         assertTrue(savedLocationManualActionEnabled(appEnabled = true, autoSelectable = false))
         assertFalse(savedLocationManualActionEnabled(appEnabled = false, autoSelectable = true))

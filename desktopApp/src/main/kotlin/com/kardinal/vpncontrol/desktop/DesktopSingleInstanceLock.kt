@@ -18,11 +18,7 @@ internal class DesktopSingleInstanceLock private constructor(
 
     companion object {
         fun acquire(
-            lockFile: Path = Path.of(
-                System.getProperty("user.home"),
-                ".vpn-control-desktop",
-                "vpn-control.lock",
-            ),
+            lockFile: Path = DesktopWorkspacePaths.root().resolve("vpn-control.lock"),
         ): DesktopSingleInstanceLock? {
             Files.createDirectories(lockFile.parent)
             val channel = FileChannel.open(

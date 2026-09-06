@@ -27,4 +27,7 @@ VPN_CONTROL_SKIP_OWNERSHIP=true \
 [[ -x "$install_root/bin/sing-box" ]] || { echo "Updated sing-box is missing" >&2; exit 1; }
 [[ ! -e "$install_root/old-version" ]] || { echo "Old install was not replaced" >&2; exit 1; }
 [[ ! -e "$install_root.update-backup" ]] || { echo "Update backup was not cleaned" >&2; exit 1; }
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$repo_root/scripts/test_packaged_cli.py" --launcher "$install_root/bin/vpn-control" \
+  --expected-version "$(python3 "$repo_root/scripts/version_metadata.py" --field version)"
 echo "[vpn-control] Arch update bundle smoke passed"

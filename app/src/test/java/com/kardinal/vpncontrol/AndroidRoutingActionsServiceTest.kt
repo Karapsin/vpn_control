@@ -5,12 +5,37 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.InstalledApp
 import com.kardinal.vpncontrol.model.RoutingRules
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidRoutingActionsServiceTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun routingSaveAndImportRespectSharedLeaseAndRetainDraftChanges() = kotlinx.coroutines.test.runTest {
+        val jobs = AndroidCommandJobs(backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var writes = 0
+        val controller = MainController()
+        val service = service(controller, launch = { jobs.launchMutation(it) },
+            updateRoutingRules = { writes++; gate.await(); Result.success(Unit) })
+        val lease = requireNotNull(jobs.tryAcquireMutation())
+        service.onRoutingDirectDomainsDraftChanged("example.com")
+        service.importRoutingRules("{}")
+        runCurrent()
+        assertEquals(0, writes)
+        jobs.releaseMutation(lease)
+        service.saveRoutingRules()
+        runCurrent()
+        assertEquals(1, writes)
+        jobs.cancelActive()
+        org.junit.Assert.assertNull(jobs.tryAcquireMutation())
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(jobs.busy.value)
+        assertTrue(controller.currentState().routingRules.directDomainSuffixes.contains("example.com"))
+    }
     @Test
     fun directDomainDraftChangeAutosavesRulesAndStaysOnScreen() {
         val controller = MainController(
@@ -166,6 +191,7 @@ class AndroidRoutingActionsServiceTest {
         controller: MainController,
         updateStatus: suspend (String) -> Unit = {},
         updateRoutingRules: suspend (RoutingRules) -> Result<Unit> = { Result.success(Unit) },
+        launch: (suspend () -> Unit) -> Unit = { block -> runBlocking { block() } },
     ): AndroidRoutingActionsService {
         return AndroidRoutingActionsService(
             controller = controller,
@@ -177,7 +203,7 @@ class AndroidRoutingActionsServiceTest {
                     }
                 }
             },
-            launch = { block -> runBlocking { block() } },
+            launch = launch,
             setBusy = { busy -> controller.update { it.copy(isBusy = busy) } },
             updateRoutingRules = updateRoutingRules,
             updateStatus = updateStatus,

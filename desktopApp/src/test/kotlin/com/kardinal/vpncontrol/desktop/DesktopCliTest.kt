@@ -6,6 +6,18 @@ import kotlin.test.assertNull
 
 class DesktopCliTest {
     @Test
+    fun helpVersionAndUnknownOptionsNeverContactOrStartAController() {
+        for ((args, expected) in listOf(
+            arrayOf("--help") to 0, arrayOf("help") to 0, arrayOf("--version") to 0,
+            arrayOf("--typo") to 1, arrayOf("--tray", "--typo") to 1,
+        )) {
+            assertEquals(expected, DesktopCli.handleArgs(args, printLine = {},
+                requestCommand = { error("No controller access expected") },
+                startHeadlessController = { error("No controller startup expected") }))
+        }
+    }
+
+    @Test
     fun nonCliArgsAreIgnored() {
         assertNull(DesktopCli.handleArgs(emptyArray(), printLine = {}))
         assertNull(DesktopCli.handleArgs(arrayOf("--tray"), printLine = {}))

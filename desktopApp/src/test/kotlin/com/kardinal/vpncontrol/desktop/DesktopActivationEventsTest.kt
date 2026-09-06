@@ -4,8 +4,34 @@ import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class DesktopActivationEventsTest {
+    @Test
+    fun commandDispatchDoesNotRequireSwingAndTimedOutWaitDoesNotCancelOwnerResult() {
+        val events = DesktopActivationEvents(commandTimeoutMillis = 1)
+        lateinit var result: java.util.concurrent.CompletableFuture<DesktopCliResponse>
+        events.setCliCommandHandler { _, future ->
+            assertFalse(SwingUtilities.isEventDispatchThread())
+            result = future
+        }
+        val response = events.requestCliCommand(DesktopCliCommand.FindBest)
+        assertEquals(2, response.exitCode)
+        assertEquals("TIMEOUT", response.message)
+        assertFalse(result.isCancelled)
+        assertTrue(result.complete(DesktopCliResponse.success("Completed after client wait expired")))
+        assertTrue(result.get().success)
+    }
+
+    @Test
+    fun dispatchExceptionsNeverExposePrivateDetailsOrClaimKnownFailure() {
+        val events = DesktopActivationEvents()
+        events.setCliCommandHandler { _, _ -> error("https://private.example/secret") }
+        val response = events.requestCliCommand(DesktopCliCommand.On)
+        assertEquals(2, response.exitCode)
+        assertEquals("OUTCOME_UNKNOWN", response.message)
+    }
+
     @Test
     fun requestBeforeHandlerIsDeliveredWhenHandlerIsRegistered() {
         val events = DesktopActivationEvents()

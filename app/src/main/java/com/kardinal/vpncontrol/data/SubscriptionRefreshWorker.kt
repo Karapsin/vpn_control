@@ -21,11 +21,16 @@ class SubscriptionRefreshWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
-    private val storage = ProfileStorage(appContext)
+    private val owner = com.kardinal.vpncontrol.AndroidApplicationOwner.get(appContext)
+    private val storage = owner.storage
 
     override suspend fun doWork(): Result {
+        return owner.commands.runTracked { refreshInOwner() } ?: Result.retry()
+    }
+
+    private suspend fun refreshInOwner(): Result {
         val state = storage.snapshot()
-        val subscriptionRefreshScheduler = SubscriptionRefreshScheduler(applicationContext)
+        val subscriptionRefreshScheduler = owner.subscriptionRefreshScheduler
         val refreshAll = isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
         if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION ||
             state.subscriptionRefreshPolicy == SubscriptionRefreshPolicy.OFF ||
@@ -68,13 +73,9 @@ class SubscriptionRefreshWorker(
         }
         var leaseOutcome = "started"
         return try {
-        val orchestrator = BenchmarkOrchestrator(applicationContext, storage)
-        val vpnManager = VpnManager(applicationContext, storage)
-        val repository = AppRepository(
-            storage = storage,
-            orchestrator = orchestrator,
-            subscriptionRefreshScheduler = subscriptionRefreshScheduler,
-        )
+        val orchestrator = owner.orchestrator
+        val vpnManager = owner.vpnManager
+        val repository = owner.repository
         suspend fun finishAndScheduleNext(outcome: String = "success"): Result {
             leaseOutcome = outcome
             DiagnosticsLogger.append(

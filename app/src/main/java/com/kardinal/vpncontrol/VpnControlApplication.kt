@@ -8,6 +8,8 @@ import java.io.File
 import java.util.Locale
 
 class VpnControlApplication : Application() {
+    internal val controlOwner: AndroidApplicationOwner by lazy { AndroidApplicationOwner(this) }
+
     override fun onCreate() {
         super.onCreate()
 

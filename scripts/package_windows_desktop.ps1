@@ -97,7 +97,9 @@ Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:packageDistributionForCurrentO
 
 Write-Host "[vpn-control] packages written under: $OutputRoot"
 
-$Packages = Get-ChildItem -Path $OutputRoot -Recurse -Include *.exe,*.msi
+$Packages = Get-ChildItem -Path $OutputRoot -Recurse -File -Include *.exe,*.msi |
+    Where-Object { ($_.Extension -eq ".exe" -and $_.Directory.Name -eq "exe") -or
+        ($_.Extension -eq ".msi" -and $_.Directory.Name -eq "msi") }
 if (-not $Packages) {
     throw "No Windows installer artifacts were produced under $OutputRoot"
 }

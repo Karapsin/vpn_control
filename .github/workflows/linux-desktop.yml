@@ -24,6 +24,8 @@ on:
       - "scripts/integration/**"
       - "scripts/package_linux_desktop.sh"
       - "scripts/test_linux_desktop_package.sh"
+      - "scripts/test_packaged_cli.py"
+      - "scripts/test_packaged_cli_harness.py"
       - "scripts/package_arch_desktop_update.sh"
       - "scripts/install_arch_desktop_update.sh"
       - "scripts/test_arch_desktop_update.sh"
@@ -58,6 +60,7 @@ jobs:
           sudo apt-get install -y fakeroot rpm cpio
 
       - name: Build Linux packages
+        # Package validation invokes the disconnected public-launcher CLI smoke.
         run: ./scripts/package_linux_desktop.sh
 
       - name: Upload Linux packages

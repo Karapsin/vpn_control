@@ -54,11 +54,7 @@ data class DesktopValidationSettings(
 )
 
 class DesktopProxyValidationRuntime(
-    private val baseDir: Path = Paths.get(
-        System.getProperty("user.home"),
-        ".vpn-control-desktop",
-        "validation",
-    ),
+    private val baseDir: Path = DesktopWorkspacePaths.root().resolve("validation"),
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
     private val userCountryResolver: UserCountryResolver = DesktopRemoteCountryResolver(),
     private val candidateCountryResolver: CandidateCountryResolver = DesktopRemoteCountryResolver(),

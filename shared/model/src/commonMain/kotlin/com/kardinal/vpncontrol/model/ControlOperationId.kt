@@ -1,0 +1,31 @@
+package com.kardinal.vpncontrol.model
+
+/** Canonical domain actions; presentation gestures and aliases do not get separate handlers. */
+enum class ControlOperationId(val wireName: String) {
+    ON("on"), OFF("off"), STATUS("status"), RESTART("restart"), FIND_BEST("find-best"),
+    SOURCE_SHOW("source.show"), SOURCE_SET("source.set"),
+    SUBSCRIPTIONS_LIST("subscriptions.list"), SUBSCRIPTIONS_SHOW("subscriptions.show"),
+    SUBSCRIPTIONS_ADD("subscriptions.add"), SUBSCRIPTIONS_UPDATE("subscriptions.update"),
+    SUBSCRIPTIONS_DELETE("subscriptions.delete"), SUBSCRIPTIONS_REFRESH("subscriptions.refresh"),
+    LOCATIONS_LIST("locations.list"), LOCATIONS_SHOW("locations.show"),
+    LOCATIONS_ADD("locations.add"), LOCATIONS_UPDATE("locations.update"),
+    LOCATIONS_DELETE("locations.delete"), LOCATIONS_SELECT("locations.select"),
+    LOCATIONS_BENCHMARK("locations.benchmark"), LOCATIONS_IMPORT("locations.import"),
+    LOCATIONS_EXPORT("locations.export"),
+    ROUTING_SHOW("routing.show"), ROUTING_SET("routing.set"),
+    ROUTING_IMPORT("routing.import"), ROUTING_EXPORT("routing.export"),
+    ROUTING_APPS_LIST("routing.apps.list"), ROUTING_APPS_SET("routing.apps.set"),
+    ROUTING_APPS_ADD("routing.apps.add"), ROUTING_APPS_REMOVE("routing.apps.remove"),
+    ROUTING_APPS_SELECT_ALL("routing.apps.select-all"), ROUTING_APPS_CLEAR("routing.apps.clear"),
+    SETTINGS_SHOW("settings.show"), SETTINGS_SET("settings.set"),
+    SETTINGS_APPLY("settings.apply"), SETTINGS_LANGUAGES("settings.languages"),
+    SSH_KEY_STATUS("ssh.key.status"), SSH_KEY_IMPORT("ssh.key.import"),
+    STATS("stats"), LOGS("logs"), DIAGNOSTICS_EXPORT("diagnostics.export"),
+    OPERATIONS_LIST("operations.list"), OPERATIONS_STATUS("operations.status"),
+    OPERATIONS_WAIT("operations.wait"), OPERATIONS_CANCEL("operations.cancel"),
+    UPDATES_STATUS("updates.status"), UPDATES_CHECK("updates.check"),
+    UPDATES_DOWNLOAD("updates.download"), UPDATES_INSTALL("updates.install"),
+    UPDATES_CANCEL("updates.cancel"), UPDATES_DISMISS("updates.dismiss"),
+    SERVE("serve"), GUI_SHOW("gui.show"), GUI_HIDE("gui.hide"), QUIT("quit"),
+    CAPABILITIES("capabilities"),
+}

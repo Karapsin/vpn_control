@@ -16,6 +16,13 @@ internal class DesktopRuntimeStatusService(
     private val currentLogFile: () -> Path?,
     private val defaultLogFile: () -> Path,
 ) {
+    fun presentation(): DesktopRuntimePresentation {
+        val state = stateProvider()
+        val report = lastPreflightReport().takeIf { state.appMode == AppMode.VPN }
+        return DesktopRuntimePresentation(currentMode() ?: state.appMode, currentPort(), report?.appMode,
+            report?.checks?.count { it.status == DesktopPreflightStatus.FAIL })
+    }
+
     fun details(): List<String> {
         val state = stateProvider()
         val runtimeMode = currentMode() ?: state.appMode

@@ -143,13 +143,16 @@ internal class AndroidRoutingActionsService(
     }
 
     fun importRoutingRules(raw: String) {
-        launch {
+        launch { importRoutingRulesWithinMutation(raw) }
+    }
+
+    suspend fun importRoutingRulesWithinMutation(raw: String) {
             setBusy(true)
             val parsed = runCatching { RoutingRulesTransfer.import(raw) }
             if (parsed.isFailure) {
                 updateStatus(RoutingRulesStatusLogic.importFailed(parsed.exceptionOrNull()))
                 setBusy(false)
-                return@launch
+                return
             }
 
             val rules = MainDraftLogic.sanitizeRoutingRules(parsed.getOrThrow())
@@ -167,7 +170,6 @@ internal class AndroidRoutingActionsService(
                 ),
             )
             setBusy(false)
-        }
     }
 
     private fun filteredRoutingPackages(): List<String> {

@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +80,10 @@ import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.DnsMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.ControlCommand
+import com.kardinal.vpncontrol.model.ControlOperationId
+import com.kardinal.vpncontrol.model.ControlValue
+import com.kardinal.vpncontrol.model.ControlCode
 import com.kardinal.vpncontrol.shared.ui.HomeTabScaffold
 import com.kardinal.vpncontrol.shared.ui.LanguageSettingsDialog
 import com.kardinal.vpncontrol.shared.ui.AppUpdateDialog
@@ -92,12 +97,9 @@ import com.kardinal.vpncontrol.shared.ui.StatsScreen
 import com.kardinal.vpncontrol.shared.ui.UiText
 import com.kardinal.vpncontrol.shared.ui.VpnControlColors
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
-import com.kardinal.vpncontrol.shared.ui.activeProfileLabel
 import com.kardinal.vpncontrol.shared.ui.appLayoutDirection
-import com.kardinal.vpncontrol.shared.ui.currentSubscriptionSelectionLabel
 import com.kardinal.vpncontrol.shared.ui.formatLocationCountLabel
 import com.kardinal.vpncontrol.shared.ui.ignoreRulesDescription
-import com.kardinal.vpncontrol.shared.ui.selectedLocationOutsideCurrentSubscription
 import com.kardinal.vpncontrol.shared.ui.rememberAppStrings
 import java.awt.GraphicsEnvironment
 import java.util.Locale
@@ -105,46 +107,74 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlin.system.exitProcess
 
-fun main(args: Array<String>) {
+fun main(rawArgs: Array<String>) {
+    val invocation = DesktopWorkspacePaths.parse(rawArgs.toList()).getOrElse {
+        if (desktopCliWantsJson(rawArgs.toList())) {
+            desktopCliPrintLine(desktopCliJsonFailure(com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT,
+                java.util.UUID.randomUUID().toString()).message)
+        } else desktopCliPrintLine("INVALID_ARGUMENT: invalid state directory or command.")
+        exitProcess(1)
+    }
+    DesktopWorkspacePaths.configure(invocation)
+    val requestedFrontendOwner = if (invocation.arguments.firstOrNull() == DESKTOP_FRONTEND_OWNER_ARGUMENT) {
+        val value = invocation.arguments.getOrNull(1)
+        if (invocation.arguments.size != 2 || value == null ||
+            runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false).not()) {
+            desktopCliPrintLine("INVALID_ARGUMENT")
+            exitProcess(1)
+        }
+        value
+    } else null
+    val args = if (requestedFrontendOwner != null) emptyArray() else invocation.arguments.toTypedArray()
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
     DesktopHeadlessController.handleArgs(args)?.let { exitProcess(it) }
     DesktopCli.handleArgs(args)?.let { exitProcess(it) }
-    DesktopWindowsElevation.elevateIfRequired(args)?.let { exitProcess(it) }
+    val relaunchArgs = (if (requestedFrontendOwner != null) arrayOf(DESKTOP_FRONTEND_OWNER_ARGUMENT, requestedFrontendOwner) else args) +
+        invocation.directory?.let { arrayOf("--state-dir", it.toString()) }.orEmpty()
+    DesktopWindowsElevation.elevateIfRequired(relaunchArgs)?.let { exitProcess(it) }
     DesktopVpnIntegrationTest.handleArgs(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
         println("VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
         return
     }
-    val instanceLock = DesktopSingleInstanceLock.acquire()
-    if (instanceLock == null) {
-        when (DesktopActivationServer.requestShow()) {
-            DesktopActivationShowResult.SHOWN -> Unit
-            DesktopActivationShowResult.HEADLESS ->
-                println("VPN Control is running headless. Run `vpn-control off` before launching the GUI.")
-            DesktopActivationShowResult.UNAVAILABLE -> println("VPN Control is already running.")
+    val activationEvents = DesktopActivationEvents()
+    val hideEvents = DesktopActivationEvents()
+    val visibility = DesktopFrontendVisibility()
+    val frontendRegistration = DesktopFrontendInstance.start(DesktopWorkspacePaths.root(), visibility)
+    if (frontendRegistration == null) {
+        if (requestedFrontendOwner == null) DesktopFrontendInstance.show(DesktopWorkspacePaths.root())
+        else runCatching {
+            val endpoint = DesktopFrontendInstance.endpoint(DesktopWorkspacePaths.root())
+            val existing = DesktopControlEndpoint.read(endpoint)
+            DesktopActivationServer.requestCliCommand(DesktopCliCommand.ControlSubmit(
+                com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                    com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.GUI_SHOW,
+                        mapOf("owner" to com.kardinal.vpncontrol.model.ControlValue.Text(requestedFrontendOwner))),
+                    controllerId = existing.controllerId), 3), endpoint)
         }
         return
     }
-    val activationEvents = DesktopActivationEvents()
-    val activationServer = DesktopActivationServer.start(
-        onShowWindow = {
-            activationEvents.requestShowWindow()
-            DesktopActivationShowResult.SHOWN
-        },
-        onCliCommand = activationEvents::requestCliCommand,
-    )
+    val frontendScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    val connection = kotlinx.coroutines.runBlocking {
+        DesktopGuiOwnerConnection.connect(frontendScope, frontendRegistration.identity, expectedOwnerId = requestedFrontendOwner)
+    }.getOrElse {
+        frontendRegistration.close()
+        frontendScope.coroutineContext[Job]?.cancel()
+        desktopCliPrintLine("UNAVAILABLE: could not attach graphical frontend.")
+        return
+    }
+    val frontend = DesktopFrontendClient(connection.session, connection.session.presentations, connection.failure)
+    visibility.ownerId = connection.session.snapshots.value.controllerId
+    visibility.available = { connection.failure.value == null }
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
     try {
         application {
-            DesktopApplication(
-                startInTray = startInTray,
-                activationEvents = activationEvents,
-                onExitApplication = ::exitApplication,
-            )
+            DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, ::exitApplication)
         }
     } finally {
-        activationServer?.close()
-        instanceLock.close()
+        connection.close()
+        frontendRegistration.close()
+        frontendScope.coroutineContext[Job]?.cancel()
     }
 }
 
@@ -152,11 +182,12 @@ fun main(args: Array<String>) {
 private fun DesktopApplication(
     startInTray: Boolean,
     activationEvents: DesktopActivationEvents,
+    hideEvents: DesktopActivationEvents,
+    frontend: DesktopFrontendClient,
+    visibility: DesktopFrontendVisibility,
     onExitApplication: () -> Unit,
 ) {
-    val service = remember { DesktopAppServiceFactory.default() }
     val coroutineScope = rememberCoroutineScope()
-    val autoRefreshScheduler = remember { DesktopAutoRefreshScheduler(service, coroutineScope) }
     var trayWindowState by remember {
         mutableStateOf(
             initialDesktopTrayWindowState(
@@ -166,87 +197,82 @@ private fun DesktopApplication(
         )
     }
     var exitRequested by remember { mutableStateOf(false) }
+    var commandFailure by remember { mutableStateOf<com.kardinal.vpncontrol.model.ControlCode?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
-    val state = service.state
+    var updateDialogRequested by remember { mutableStateOf(false) }
+    val presentation by frontend.presentations.collectAsState()
+    val connectionFailure by frontend.failure.collectAsState()
+    val state = presentation?.toFrontendUiState() ?: return
     val appStrings = rememberAppStrings(state.appLanguage, Locale.getDefault().language)
+    suspend fun executeGuiCommand(command: DesktopCliCommand): DesktopCliResponse = executeDesktopGuiCommand(
+        command, frontend::execute,
+    ) { code ->
+        commandFailure = code
+        trayWindowState = trayWindowState.withWindowShown()
+    }
     DisposableEffect(activationEvents) {
         activationEvents.setShowWindowHandler {
             trayWindowState = trayWindowState.withWindowShown()
         }
-        activationEvents.setCliCommandHandler { command, future ->
-            coroutineScope.launch {
-                val response = runCatching { service.executeCliCommand(command) }
-                    .getOrElse { error ->
-                        DesktopCliResponse.failure(error.message ?: "VPN Control CLI command failed.")
-                    }
-                future.complete(response)
-            }
-        }
         onDispose {
             activationEvents.setShowWindowHandler(null)
-            activationEvents.setCliCommandHandler(null)
         }
     }
+    DisposableEffect(hideEvents) {
+        hideEvents.setShowWindowHandler { trayWindowState = trayWindowState.withHideWindowRequested() }
+        onDispose { hideEvents.setShowWindowHandler(null) }
+    }
 
-    fun exitAfterStoppingRuntime() {
+    fun detachFrontend() {
         if (exitRequested) return
         exitRequested = true
         coroutineScope.launch {
-            service.shutdownForExit()
-            onExitApplication()
+            javax.swing.SwingUtilities.invokeLater { onExitApplication() }
+        }
+    }
+    fun quitOwner() {
+        if (exitRequested) return
+        coroutineScope.launch {
+            val result = frontend.read(ControlOperationId.QUIT)
+            if (result.ok && result.final) detachFrontend() else commandFailure = result.code
         }
     }
 
     fun checkAndDownloadUpdate() {
         if (updateJob?.isActive == true) return
+        updateDialogRequested = true
         updateJob = coroutineScope.launch {
-            service.checkAndDownloadUpdate()
-            updateJob = null
-        }
-    }
-
-    fun dismissOrCancelUpdate() {
-        updateJob?.cancel()
-        updateJob = null
-        service.dismissUpdate()
-    }
-
-    fun installPreparedUpdate() {
-        if (updateJob?.isActive == true) return
-        updateJob = coroutineScope.launch {
-            val authorized = service.authorizeUpdateInstaller()
-            if (authorized.isSuccess) {
-                val stopped = service.shutdownForExit()
-                if (stopped.isSuccess) {
-                    onExitApplication()
-                } else {
-                    service.cancelUpdateInstaller()
-                    service.reportUpdateInstallFailure(
-                        stopped.exceptionOrNull()?.message ?: "Could not stop the active connection for update",
-                    )
+            val checked = frontend.read(ControlOperationId.UPDATES_CHECK)
+            if (!checked.ok) commandFailure = checked.code
+            else {
+                val status = frontend.read(ControlOperationId.UPDATES_STATUS)
+                if (!status.ok) commandFailure = status.code
+                else if ((status.data["available"] as? ControlValue.BooleanValue)?.value == true) {
+                    val downloaded = frontend.read(ControlOperationId.UPDATES_DOWNLOAD)
+                    if (!downloaded.ok) commandFailure = downloaded.code
                 }
             }
             updateJob = null
         }
     }
 
-    LaunchedEffect(Unit) {
-        service.resumePreviousConnectionIfNeeded()
+    fun dismissOrCancelUpdate() {
+        updateDialogRequested = false
+        updateJob?.cancel()
+        updateJob = null
+        coroutineScope.launch {
+            val result = frontend.read(ControlOperationId.UPDATES_CANCEL)
+            if (!result.ok) commandFailure = result.code
+        }
     }
 
-    LaunchedEffect(
-        state.profileSourceMode,
-        state.subscriptionRefreshPolicy,
-        state.subscriptionRefreshCustomHours,
-        state.activeSubscriptionId,
-        state.subscriptions,
-    ) {
-        autoRefreshScheduler.sync(state)
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            autoRefreshScheduler.cancel()
+    fun installPreparedUpdate() {
+        if (updateJob?.isActive == true) return
+        updateJob = coroutineScope.launch {
+            val result = frontend.read(ControlOperationId.UPDATES_INSTALL)
+            if (!result.ok) commandFailure = result.code
+            else javax.swing.SwingUtilities.invokeLater { onExitApplication() }
+            updateJob = null
         }
     }
 
@@ -258,16 +284,16 @@ private fun DesktopApplication(
             showWindowLabel = appStrings.get(UiText.SHOW_WINDOW),
             hideWindowLabel = appStrings.get(UiText.HIDE_WINDOW),
             exitLabel = appStrings.get(UiText.EXIT),
-            connectionActionEnabled = !state.isBusy,
-            findBestEnabled = !state.isBusy,
+            connectionActionEnabled = !state.isBusy && connectionFailure == null,
+            findBestEnabled = !state.isBusy && connectionFailure == null,
             onToggleConnection = {
-                if (!service.state.isBusy) {
-                    coroutineScope.launch { service.toggleSelectedLocationProxy() }
+                if (!state.isBusy && connectionFailure == null) {
+                    coroutineScope.launch { executeGuiCommand(if (state.isVpnRunning) DesktopCliCommand.Off else DesktopCliCommand.On) }
                 }
             },
             onFindBest = {
-                if (!service.state.isBusy) {
-                    coroutineScope.launch { service.findBestLocation() }
+                if (!state.isBusy && connectionFailure == null) {
+                    coroutineScope.launch { executeGuiCommand(DesktopCliCommand.FindBest) }
                 }
             },
             onShowWindow = {
@@ -276,7 +302,7 @@ private fun DesktopApplication(
             onHideWindow = {
                 trayWindowState = trayWindowState.withHideWindowRequested()
             },
-            onExit = ::exitAfterStoppingRuntime,
+            onExit = ::quitOwner,
             onTrayAvailable = {
                 trayWindowState = trayWindowState.withTrayAvailable()
             },
@@ -292,11 +318,27 @@ private fun DesktopApplication(
             if (trayWindowState.canHideToTray) {
                 trayWindowState = trayWindowState.withCloseRequestHiddenToTray()
             } else {
-                exitAfterStoppingRuntime()
+                detachFrontend()
             }
         },
         title = appStrings.get(UiText.APP_TITLE),
     ) {
+        DisposableEffect(window, visibility, trayWindowState.canHideToTray) {
+            visibility.install { shown ->
+                if (!shown && !trayWindowState.canHideToTray) com.kardinal.vpncontrol.model.ControlCode.UNSUPPORTED
+                else {
+                    trayWindowState = if (shown) trayWindowState.withWindowShown() else trayWindowState.withHideWindowRequested()
+                    window.isVisible = shown
+                    if (shown) {
+                        window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
+                        window.toFront(); window.requestFocus()
+                    }
+                    if (window.isVisible == shown) com.kardinal.vpncontrol.model.ControlCode.OK
+                    else com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE
+                }
+            }
+            onDispose { visibility.install(null) }
+        }
         LaunchedEffect(trayWindowState.windowVisible) {
             if (trayWindowState.windowVisible) {
                 window.toFront()
@@ -304,10 +346,22 @@ private fun DesktopApplication(
             }
         }
         VpnControlTheme {
+            commandFailure?.let { failure ->
+                AlertDialog(
+                    onDismissRequest = { commandFailure = null },
+                    title = { Text(appStrings.get(UiText.STATUS)) },
+                    text = { Text(failure.wireName) },
+                    confirmButton = {
+                        TextButton(onClick = { commandFailure = null }) { Text(appStrings.get(UiText.CLOSE)) }
+                    },
+                )
+            }
             Surface(color = Color.Transparent) {
                 DesktopVpnControlApp(
                     windowProvider = { window },
-                    service = service,
+                    frontend = frontend,
+                    showUpdateDialog = updateDialogRequested,
+                    executeCommand = ::executeGuiCommand,
                     onCheckAndDownloadUpdate = ::checkAndDownloadUpdate,
                     onDismissOrCancelUpdate = ::dismissOrCancelUpdate,
                     onInstallUpdate = ::installPreparedUpdate,
@@ -395,23 +449,302 @@ internal fun isDesktopDisplayAvailable(
 @Composable
 internal fun DesktopVpnControlApp(
     windowProvider: () -> ComposeWindow,
-    service: DesktopAppService,
+    frontend: DesktopFrontendClient,
     onCheckAndDownloadUpdate: () -> Unit,
     onDismissOrCancelUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
+    actionScope: kotlinx.coroutines.CoroutineScope? = null,
+    executeCommand: suspend (DesktopCliCommand) -> DesktopCliResponse = frontend::execute,
+    previewState: MainUiState? = null,
+    showUpdateDialog: Boolean = false,
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val state = service.state
-    val showMismatchWarning = selectedLocationOutsideCurrentSubscription(state)
+    val controlSession = frontend.session
+    val presentation by frontend.presentations.collectAsState()
+    val connectionFailure by frontend.failure.collectAsState()
+    val ownerFrame = presentation ?: return
+    val frame = ownerFrame.frontend
+    val localScope = rememberCoroutineScope()
+    val coroutineScope = actionScope ?: localScope
+    val locationActionIdentity = remember { java.util.UUID.randomUUID().toString() }
+    var currentScreen by remember { mutableStateOf(previewState?.currentScreen ?: AppScreen.MAIN) }
+    val renderedState = previewState ?: ownerFrame.toFrontendUiState().let { it.copy(appUpdate = it.appUpdate.copy(showDialog = showUpdateDialog)) }
+    val state = renderedState.copy(currentScreen = currentScreen,
+        isBusy = connectionFailure != null || frame.activity.busy)
+    var dnsDraft by remember {
+        mutableStateOf(if (state.showDnsDialog && previewState != null) DesktopDnsDraft(ownerFrame.controllerId, ownerFrame.configurationRevision,
+            state.dnsModeDraft, state.customDnsEndpointDraft) else null)
+    }
+    var dnsSaving by remember { mutableStateOf(false) }
+    var dnsOpening by remember { mutableStateOf(false) }
+    var dnsOpenFailure by remember { mutableStateOf<com.kardinal.vpncontrol.model.ControlCode?>(null) }
+    LaunchedEffect(connectionFailure) { if (connectionFailure != null) dnsOpenFailure = connectionFailure }
+    var settingsDraft by remember { mutableStateOf<DesktopSettingsDraft?>(null) }
+    var settingsSaving by remember { mutableStateOf(false) }
+    var settingsOpening by remember { mutableStateOf(false) }
+    var routingDraft by remember { mutableStateOf<DesktopFrontendRoutingDraft?>(null) }
+    var routingSaving by remember { mutableStateOf(false) }
+    var logs by remember { mutableStateOf(previewState?.connectionLog) }
+    var logsFailure by remember { mutableStateOf<ControlCode?>(null) }
+    LaunchedEffect(currentScreen) {
+        if (currentScreen == AppScreen.STATS && previewState == null) while (true) {
+            val result = frontend.read(ControlOperationId.LOGS, mapOf("limit" to ControlValue.Text("100")))
+            if (result.ok) {
+                runCatching { desktopFrontendLogs(result) }.onSuccess { logs = it; logsFailure = null }
+                    .onFailure { logsFailure = ControlCode.INCOMPATIBLE_PROTOCOL }
+            } else logsFailure = result.code
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+    fun guardedAction(command: ControlCommand) {
+        val request = desktopFrontendGuardedRequest(ownerFrame, command, locationActionIdentity)
+        coroutineScope.launch {
+            val result = frontend.submit(request)
+            if (!result.ok) dnsOpenFailure = result.code
+            else if (command.operation == ControlOperationId.ROUTING_IMPORT) {
+                val read = frontend.read(ControlOperationId.ROUTING_SHOW)
+                if (!read.ok) dnsOpenFailure = read.code
+                else routingDraft = runCatching { DesktopFrontendRoutingDraft.from(read) }.getOrElse {
+                    dnsOpenFailure = ControlCode.INCOMPATIBLE_PROTOCOL; routingDraft
+                }
+            }
+        }
+    }
+    fun importContent(operation: ControlOperationId, content: Result<String?>) {
+        content.fold(onSuccess = { text -> if (text != null) guardedAction(ControlCommand(operation,
+            mapOf("input" to ControlValue.Text(text)))) }, onFailure = { dnsOpenFailure = ControlCode.INVALID_ARGUMENT })
+    }
+    fun exportContent(operation: ControlOperationId, clipboard: Boolean, title: String, filename: String) {
+        coroutineScope.launch {
+            val result = frontend.read(operation)
+            val content = (result.data["content"] as? ControlValue.Text)?.value
+            if (!result.ok || content == null) dnsOpenFailure = if (!result.ok) result.code else ControlCode.INCOMPATIBLE_PROTOCOL
+            else {
+                val written = if (clipboard) DesktopTextTransfer.writeClipboardText(content)
+                    else DesktopTextTransfer.saveTextFile(windowProvider(), title, filename, content).map { Unit }
+                if (written.isFailure) dnsOpenFailure = ControlCode.PERSISTENCE_FAILED
+            }
+        }
+    }
+    LaunchedEffect(currentScreen) {
+        if (currentScreen == AppScreen.ROUTING_RULES && previewState == null) {
+            val result = frontend.read(ControlOperationId.ROUTING_SHOW)
+            if (result.ok) routingDraft = runCatching { DesktopFrontendRoutingDraft.from(result) }.getOrElse {
+                dnsOpenFailure = ControlCode.INCOMPATIBLE_PROTOCOL; null
+            } else dnsOpenFailure = result.code
+        }
+    }
+    LaunchedEffect(routingDraft, routingSaving) {
+        val captured = routingDraft ?: return@LaunchedEffect
+        if (captured.failure != null || routingSaving || captured.domains == captured.committedDomains) return@LaunchedEffect
+        kotlinx.coroutines.delay(350)
+        routingSaving = true
+        coroutineScope.launch {
+        try {
+            val result = frontend.submit(captured.request())
+            if (routingDraft?.openingId == captured.openingId) {
+                if (!result.ok) { routingDraft = routingDraft?.copy(failure = result.code); dnsOpenFailure = result.code }
+                else routingDraft = routingDraft?.copy(revision = result.configurationRevision, committedDomains = captured.domains)
+            }
+        } finally { routingSaving = false }
+        }
+    }
+    var subscriptionDraft by remember {
+        mutableStateOf(if (previewState != null && state.showAddSubscriptionEditor)
+            DesktopSubscriptionDraft(ownerFrame.controllerId, ownerFrame.configurationRevision, null, state.profileDraft, state.profileTitleDraft)
+        else if (previewState != null && state.showProfileHistoryRenameDialog)
+            state.subscriptions.singleOrNull { it.url == state.profileHistoryRenameSource }?.let {
+                DesktopSubscriptionDraft(ownerFrame.controllerId, ownerFrame.configurationRevision, it.id,
+                    state.profileHistoryRenameUrlDraft, state.profileHistoryRenameDraft)
+            }
+        else null)
+    }
+    var subscriptionOpening by remember { mutableStateOf(false) }
+    var subscriptionSaving by remember { mutableStateOf(false) }
+    fun openSubscriptionEditor(id: String?) {
+        if (subscriptionOpening) return
+        subscriptionOpening = true
+        dnsOpenFailure = null
+        coroutineScope.launch {
+            try {
+                val command = if (id == null) com.kardinal.vpncontrol.model.ControlCommand(
+                    com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SHOW) else com.kardinal.vpncontrol.model.ControlCommand(
+                    com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_SHOW,
+                    mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(id)))
+                val result = frontend.read(command.operation, command.arguments)
+                if (result.ok) subscriptionDraft = DesktopSubscriptionDraft.from(result, id) else dnsOpenFailure = result.code
+            } finally { subscriptionOpening = false }
+        }
+    }
+    fun saveSubscriptionEditor() {
+        val captured = subscriptionDraft ?: return
+        if (subscriptionSaving) return
+        subscriptionSaving = true
+        coroutineScope.launch {
+            try {
+                val code = frontend.submit(captured.request()).code
+                if (subscriptionDraft?.openingId == captured.openingId) {
+                    subscriptionDraft = if (code == com.kardinal.vpncontrol.model.ControlCode.OK && subscriptionDraft == captured) null
+                        else subscriptionDraft?.copy(failure = if (code == com.kardinal.vpncontrol.model.ControlCode.OK)
+                            com.kardinal.vpncontrol.model.ControlCode.CONFLICT else code)
+                }
+            } finally { subscriptionSaving = false }
+        }
+    }
+    var sshRestartDialog by remember { mutableStateOf(state.showHomeSshRestartDialog) }
+    var sshKeyImport by remember { mutableStateOf<DesktopSshKeyImportAction?>(null) }
+    var sshKeyImporting by remember { mutableStateOf(false) }
+    var sshKeyPresent by remember { mutableStateOf(previewState?.let { it.homeSshRouteSettings.credentialVersion > 0L }) }
+    fun toggleLocalSettings(group: DesktopSettingsDraftGroup, onOpened: ((DesktopSettingsDraft) -> Unit)? = null) {
+        if (settingsDraft?.group == group && onOpened == null) { settingsDraft = null; sshKeyImport = null; return }
+        if (settingsOpening) return
+        sshKeyImport = null
+        settingsOpening = true
+        dnsOpenFailure = null
+        coroutineScope.launch {
+            try {
+                val result = frontend.read(com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SHOW)
+                if (result.ok) {
+                    val opened = DesktopSettingsDraft.from(group, result)
+                    settingsDraft = opened
+                    onOpened?.invoke(opened)
+                    if (group == DesktopSettingsDraftGroup.SSH) {
+                        val key = frontend.read(ControlOperationId.SSH_KEY_STATUS)
+                        sshKeyPresent = if (key.ok) (key.data["present"] as? ControlValue.BooleanValue)?.value else null
+                    }
+                } else dnsOpenFailure = result.code
+            } finally { settingsOpening = false }
+        }
+    }
+    fun editLocalSettings(key: String, value: String) { settingsDraft = settingsDraft?.edit(key, value) }
+    fun saveLocalSettings(captured: DesktopSettingsDraft? = settingsDraft) {
+        captured ?: return
+        if (settingsSaving) return
+        val request = captured.request().getOrElse {
+            settingsDraft = captured.copy(failure = com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT)
+            return
+        }
+        settingsSaving = true
+        coroutineScope.launch {
+            try {
+                val result = frontend.submit(request)
+                val code = result.code
+                if (frontendSettingsNeedsRestart(captured.group, result)) sshRestartDialog = true
+                if (captured.group == DesktopSettingsDraftGroup.LANGUAGE && code != com.kardinal.vpncontrol.model.ControlCode.OK)
+                    dnsOpenFailure = code
+                if (settingsDraft?.openingId == captured.openingId) {
+                    settingsDraft = if (code == com.kardinal.vpncontrol.model.ControlCode.OK && settingsDraft == captured) null
+                        else settingsDraft?.copy(failure = if (code == com.kardinal.vpncontrol.model.ControlCode.OK)
+                            com.kardinal.vpncontrol.model.ControlCode.CONFLICT else code)
+                    if (settingsDraft == null) sshKeyImport = null
+                }
+            } finally { settingsSaving = false }
+        }
+    }
+    fun toggleLocalDns() {
+        if (dnsDraft != null) { dnsDraft = null; return }
+        if (dnsOpening) return
+        dnsOpening = true
+        dnsOpenFailure = null
+        coroutineScope.launch {
+            try {
+                val result = frontend.read(com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SHOW)
+                if (result.ok) dnsDraft = DesktopDnsDraft.from(result) else dnsOpenFailure = result.code
+            } finally { dnsOpening = false }
+        }
+    }
+    fun saveLocalDns() {
+        val captured = dnsDraft ?: return
+        if (dnsSaving) return
+        dnsSaving = true
+        coroutineScope.launch {
+            try {
+                val code = frontend.submit(captured.request()).code
+                if (dnsDraft?.openingId == captured.openingId) {
+                    dnsDraft = if (code == com.kardinal.vpncontrol.model.ControlCode.OK && dnsDraft == captured) null
+                        else dnsDraft?.copy(failure = if (code == com.kardinal.vpncontrol.model.ControlCode.OK)
+                            com.kardinal.vpncontrol.model.ControlCode.CONFLICT else code)
+                }
+            } finally { dnsSaving = false }
+        }
+    }
+    LaunchedEffect(controlSession) {
+        if (controlSession != null && state.showDnsDialog && dnsDraft == null) toggleLocalDns()
+        if (state.showRefreshPolicyDialog) toggleLocalSettings(DesktopSettingsDraftGroup.REFRESH)
+        else if (state.showValidationSettingsDialog) toggleLocalSettings(DesktopSettingsDraftGroup.VALIDATION)
+        else if (state.showLanguageDialog) toggleLocalSettings(DesktopSettingsDraftGroup.LANGUAGE)
+        else if (state.showHomeSshRouteDialog) toggleLocalSettings(DesktopSettingsDraftGroup.SSH)
+        else if (state.showAppModeDialog) toggleLocalSettings(DesktopSettingsDraftGroup.MODE)
+    }
+    val sourcePresentation = frame.source
+    val showMismatchWarning = sourcePresentation.selectedOutsideCurrent
     val systemLanguageCode = Locale.getDefault().language
     val appStrings = rememberAppStrings(state.appLanguage, systemLanguageCode)
-    val activeProfile = activeProfileLabel(state, service::sourceLabelFor, appStrings)
-    val currentSelection = currentSubscriptionSelectionLabel(state, service::sourceLabelFor, appStrings)
+    val activeProfile = sourcePresentation.selected.render(appStrings)
+    val currentSelection = sourcePresentation.current.render(appStrings)
+    var locationEditorOpen by remember { mutableStateOf(state.showLocationDialog) }
+    var locationEditorTarget by remember {
+        mutableStateOf(state.editingLocationIndex?.let { frame.locations.getOrNull(it)?.id })
+    }
+    var locationEditorText by remember { mutableStateOf(state.locationDraft) }
+    var locationEditorError by remember { mutableStateOf<String?>(null) }
+    var locationEditorOpening by remember { mutableStateOf(false) }
+    var locationEditorSaving by remember { mutableStateOf(false) }
+    var locationDraft by remember {
+        mutableStateOf(if (previewState != null && state.showLocationDialog) DesktopLocationDraft(ownerFrame.controllerId,
+            ownerFrame.configurationRevision, locationEditorTarget, state.locationDraft) else null)
+    }
 
     CompositionLocalProvider(
         LocalAppStrings provides appStrings,
         LocalLayoutDirection provides appLayoutDirection(appStrings.language),
     ) {
+    dnsOpenFailure?.let { failure ->
+        AlertDialog(onDismissRequest = { dnsOpenFailure = null },
+            title = { Text(appStrings.get(UiText.STATUS)) }, text = { Text(failure.wireName) },
+            confirmButton = { TextButton(onClick = { dnsOpenFailure = null }) { Text(appStrings.get(UiText.CLOSE)) } })
+    }
+    if (locationEditorOpen) {
+        AlertDialog(
+            onDismissRequest = { locationEditorOpen = false; locationDraft = null },
+            containerColor = Color(0xFF141F2D), textContentColor = Color.White,
+            title = { Text(appStrings.get(if (locationEditorTarget == null) UiText.ADD_LOCATION else UiText.EDIT_LOCATION), color = Color.White) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = locationEditorText, onValueChange = { locationEditorText = it; locationEditorError = null },
+                        modifier = Modifier.fillMaxWidth().testTag("location-draft"),
+                        minLines = 5, maxLines = 12,
+                        label = { Text(appStrings.get(UiText.LOCATION_CONFIG_LABEL)) },
+                    )
+                    Text(appStrings.get(UiText.LOCATION_CONFIG_HELP), color = Color(0xFFD3E3EE), fontSize = 12.sp)
+                    locationEditorError?.let { Text(appStrings.statusMessage(it), color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !state.isBusy && !locationEditorSaving, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"), onClick = {
+                    val captured = locationDraft?.copy(content = locationEditorText)
+                    if (captured != null && !locationEditorSaving) {
+                        locationEditorSaving = true
+                        coroutineScope.launch {
+                            try {
+                                val code = frontend.submit(captured.request()).code
+                                if (locationDraft?.openingId == captured.openingId) {
+                                    if (code == com.kardinal.vpncontrol.model.ControlCode.OK && locationEditorText == captured.content) {
+                                        locationEditorOpen = false; locationDraft = null
+                                    } else locationEditorError = if (code == com.kardinal.vpncontrol.model.ControlCode.OK) "CONFLICT" else code.wireName
+                                }
+                            } finally { locationEditorSaving = false }
+                        }
+                    }
+                }) { Text(appStrings.get(UiText.SAVE)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { locationEditorOpen = false; locationDraft = null }, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
+                    Text(appStrings.get(UiText.CANCEL))
+                }
+            },
+        )
+    }
     AppUpdateDialog(
         state = state.appUpdate,
         onDismiss = onDismissOrCancelUpdate,
@@ -424,53 +757,95 @@ internal fun DesktopVpnControlApp(
         },
     )
     DesktopSettingsDialogs(
-        state = state,
+        subscriptionCount = frame.subscriptions.size,
+        state = (settingsDraft?.overlay(state) ?: state.copy(showRefreshPolicyDialog = false, showValidationSettingsDialog = false,
+            showLanguageDialog = false, showHomeSshRouteDialog = false, showAppModeDialog = false))
+            .copy(showDnsDialog = dnsDraft != null, dnsModeDraft = dnsDraft?.mode ?: state.dnsSettings.mode,
+                customDnsEndpointDraft = dnsDraft?.endpoint ?: state.dnsSettings.endpoint,
+                showHomeSshRestartDialog = sshRestartDialog),
+        dnsFailure = dnsDraft?.failure,
+        dnsSaving = dnsSaving,
+        settingsFailure = settingsDraft?.failure,
+        settingsSaving = settingsSaving,
+        sshKeyRetryAvailable = sshKeyImport != null && !sshKeyImporting,
+        sshKeyImporting = sshKeyImporting,
+        sshKeyPresent = sshKeyPresent,
         systemLanguageCode = systemLanguageCode,
-        onToggleDnsDialog = service::toggleDnsDialog,
-        onDnsModeDraftChange = service::setDnsModeDraft,
-        onCustomDnsDraftChange = service::setCustomDnsDraft,
-        onSaveDns = service::saveDns,
-        onToggleHomeSshRouteDialog = service::toggleHomeSshRouteDialog,
-        onHomeSshEnabledChange = service::setHomeSshEnabledDraft,
-        onHomeSshHostChange = service::setHomeSshHostDraft,
-        onHomeSshPortChange = service::setHomeSshPortDraft,
-        onHomeSshUserChange = service::setHomeSshUserDraft,
-        onHomeSshHostKeysChange = service::setHomeSshHostKeysDraft,
-        onHomeSshRelayPortChange = service::setHomeSshRelayPortDraft,
+        onToggleDnsDialog = ::toggleLocalDns,
+        onDnsModeDraftChange = { mode -> dnsDraft = dnsDraft?.copy(mode = mode) },
+        onCustomDnsDraftChange = { endpoint -> dnsDraft = dnsDraft?.copy(endpoint = endpoint) },
+        onSaveDns = ::saveLocalDns,
+        onToggleHomeSshRouteDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.SSH) },
+        onHomeSshEnabledChange = { editLocalSettings("ssh.enabled", it.toString()) },
+        onHomeSshHostChange = { editLocalSettings("ssh.host", it) },
+        onHomeSshPortChange = { editLocalSettings("ssh.port", it) },
+        onHomeSshUserChange = { editLocalSettings("ssh.user", it) },
+        onHomeSshHostKeysChange = { editLocalSettings("ssh.host-keys", it) },
+        onHomeSshRelayPortChange = { editLocalSettings("ssh.relay-port", it) },
         onImportHomeSshPrivateKey = {
-            DesktopTextTransfer.openTextFile(
-                windowProvider(),
-                appStrings.get(UiText.IMPORT_PRIVATE_KEY),
-            ).onSuccess { content -> content?.let(service::importHomeSshPrivateKey) }
-                .onFailure { error -> service.postStatus(error.message ?: "SSH private key import failed") }
-        },
-        onSaveHomeSshRoute = service::saveHomeSshRoute,
-        onDismissHomeSshRestart = service::dismissHomeSshRestartDialog,
-        onRestartForHomeSsh = {
-            coroutineScope.launch { service.restartForHomeSshSettings() }
-        },
-        onToggleAppModeDialog = service::toggleAppModeDialog,
-        onSetAppMode = { mode ->
-            if (!state.isBusy) {
-                coroutineScope.launch { service.setAppMode(mode) }
+            if (!sshKeyImporting) {
+                val capturedSnapshot = ownerFrame
+                val revision = capturedSnapshot.configurationRevision
+                val action = sshKeyImport ?: DesktopTextTransfer.openTextFile(
+                    windowProvider(), appStrings.get(UiText.IMPORT_PRIVATE_KEY),
+                ).fold(onSuccess = { content -> content?.let {
+                    DesktopSshKeyImportAction(capturedSnapshot.controllerId, revision, it)
+                } }, onFailure = { dnsOpenFailure = com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT; null })
+                if (action != null) {
+                sshKeyImport = action
+                sshKeyImporting = true
+                coroutineScope.launch {
+                    try {
+                        val result = frontend.submit(action.request())
+                        if (sshKeyImport?.openingId == action.openingId) {
+                            if (result.ok) {
+                                sshKeyImport = null
+                                sshKeyPresent = true
+                                if (result.restartRequired) sshRestartDialog = true
+                            } else settingsDraft = settingsDraft?.copy(failure = result.code)
+                        }
+                    } finally { sshKeyImporting = false }
+                }
+                }
             }
         },
-        onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
-        onSubscriptionRefreshPolicyDraftChange = service::setSubscriptionRefreshPolicyDraft,
-        onFindBestAfterSubscriptionRefreshDraftChange = service::setFindBestAfterSubscriptionRefreshDraft,
-        onSubscriptionRefreshCustomHoursDraftChange = service::setSubscriptionRefreshCustomHoursDraft,
-        onSaveSubscriptionRefreshPolicy = service::saveSubscriptionRefreshPolicy,
-        onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
-        onValidationTestUrlDraftChange = service::setValidationTestUrlDraft,
-        onValidationBatchSizeDraftChange = service::setValidationBatchSizeDraft,
+        onSaveHomeSshRoute = { saveLocalSettings() },
+        onDismissHomeSshRestart = { sshRestartDialog = false },
+        onRestartForHomeSsh = {
+            coroutineScope.launch {
+                if (executeCommand(DesktopCliCommand.Restart).success) sshRestartDialog = false
+            }
+        },
+        onToggleAppModeDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.MODE) },
+        onSetAppMode = { mode ->
+            if (!settingsSaving) settingsDraft?.edit("mode", if (mode == AppMode.VPN) "vpn" else "proxy-only")?.let {
+                settingsDraft = it
+                saveLocalSettings(it)
+            }
+        },
+        onToggleRefreshPolicyDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.REFRESH) },
+        onSubscriptionRefreshPolicyDraftChange = { editLocalSettings("refresh.policy", when (it) {
+            SubscriptionRefreshPolicy.OFF -> "off"; SubscriptionRefreshPolicy.EVERY_HOUR -> "every-hour"; SubscriptionRefreshPolicy.CUSTOM -> "custom"
+        }) },
+        onFindBestAfterSubscriptionRefreshDraftChange = { editLocalSettings("refresh.find-best-after-refresh", it.toString()) },
+        onSubscriptionRefreshCustomHoursDraftChange = { editLocalSettings("refresh.custom-hours", it) },
+        onSaveSubscriptionRefreshPolicy = { saveLocalSettings() },
+        onToggleValidationSettingsDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.VALIDATION) },
+        onValidationTestUrlDraftChange = { editLocalSettings("validation.test-url", it) },
+        onValidationBatchSizeDraftChange = { editLocalSettings("validation.batch-size", it) },
         onValidationSubscriptionRefreshConcurrencyDraftChange =
-            service::setValidationSubscriptionRefreshConcurrencyDraft,
-        onValidationRetryCountDraftChange = service::setValidationRetryCountDraft,
+            { editLocalSettings("validation.subscription-refresh-concurrency", it) },
+        onValidationRetryCountDraftChange = { editLocalSettings("validation.retry-count", it) },
         onValidationActiveVerificationWindowSizeDraftChange =
-            service::setValidationActiveVerificationWindowSizeDraft,
-        onSaveValidationSettings = service::saveValidationSettings,
-        onToggleLanguageDialog = service::toggleLanguageDialog,
-        onSetAppLanguage = service::setAppLanguage,
+            { editLocalSettings("validation.active-verification-window-size", it) },
+        onSaveValidationSettings = { saveLocalSettings() },
+        onToggleLanguageDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.LANGUAGE) },
+        onSetAppLanguage = { language ->
+            if (!settingsSaving) settingsDraft?.edit("language", if (language == AppLanguage.SYSTEM) "system" else language.code)?.let {
+                settingsDraft = it
+                saveLocalSettings(it)
+            }
+        },
     )
 
     Box(
@@ -482,58 +857,69 @@ internal fun DesktopVpnControlApp(
     ) {
         HomeTabScaffold(
             currentScreen = state.currentScreen,
-            onOpenMainTab = { service.openScreen(AppScreen.MAIN) },
-            onOpenProfileTab = { service.openScreen(AppScreen.PROFILE) },
-            onOpenLocationsTab = { service.openScreen(AppScreen.LOCATIONS) },
-            onOpenStatsTab = { service.openScreen(AppScreen.STATS) },
-            onOpenRoutingRules = { service.openScreen(AppScreen.ROUTING_RULES) },
+            onOpenMainTab = { currentScreen = AppScreen.MAIN },
+            onOpenProfileTab = { currentScreen = AppScreen.PROFILE },
+            onOpenLocationsTab = { currentScreen = AppScreen.LOCATIONS },
+            onOpenStatsTab = { currentScreen = AppScreen.STATS },
+            onOpenRoutingRules = { currentScreen = AppScreen.ROUTING_RULES },
             mainIcon = Icons.Filled.Home,
             profileIcon = Icons.Filled.Person,
             locationsIcon = Icons.Filled.Public,
             statsIcon = Icons.Filled.QueryStats,
             rulesIcon = Icons.Filled.Tune,
         ) {
+            val rowRuntime = ownerFrame
+            val presentationLocations = rowRuntime.locations
+            fun submitSource(command: com.kardinal.vpncontrol.model.ControlCommand) {
+                val request = desktopGuiSourceAction(locationActionIdentity,
+                    rowRuntime.controllerId, rowRuntime.configurationRevision, command)
+                coroutineScope.launch {
+                    val code = frontend.submit(request).code
+                    if (code != com.kardinal.vpncontrol.model.ControlCode.OK) dnsOpenFailure = code
+                }
+            }
             when (state.currentScreen) {
                 AppScreen.MAIN -> MainScreen(
                     state = state,
                     activeProfileLabel = activeProfile,
                     showSubscriptionMismatchWarning = showMismatchWarning,
-                    statusDetails = service.runtimeStatusDetails(),
+                    statusDetails = frame.activity.runtimeDetails.messages(),
                     onToggleVpn = {
                         if (state.isBusy) return@MainScreen
-                        coroutineScope.launch { service.toggleSelectedLocationProxy() }
+                        coroutineScope.launch { executeCommand(if (state.isVpnRunning) DesktopCliCommand.Off else DesktopCliCommand.On) }
                     },
                     onRefresh = {
                         if (state.isBusy) return@MainScreen
-                        coroutineScope.launch { service.findBestLocation() }
+                        coroutineScope.launch { executeCommand(DesktopCliCommand.FindBest) }
                     },
                     onExportDiagnostics = {
                         if (state.isBusy) return@MainScreen
-                        val selection = DesktopTextTransfer.chooseSaveFile(
-                            window = windowProvider(),
-                            title = appStrings.get(UiText.EXPORT_DIAGNOSTICS),
-                            suggestedFileName = DesktopDiagnosticsExporter.suggestedFileName(),
-                        )
-                        coroutineScope.launch { service.exportDiagnostics(selection) }
+                        exportContent(ControlOperationId.DIAGNOSTICS_EXPORT, false, appStrings.get(UiText.EXPORT_DIAGNOSTICS),
+                            DesktopDiagnosticsExporter.suggestedFileName())
                     },
                     powerIcon = Icons.Filled.PowerSettingsNew,
                     findBestIcon = Icons.Filled.MyLocation,
                     headerActions = {
                         DesktopAdditionalSettingsMenu(
+                            subscriptionCount = frame.subscriptions.size,
                             state = state,
-                            onToggleDnsDialog = service::toggleDnsDialog,
-                            onToggleHomeSshRouteDialog = service::toggleHomeSshRouteDialog,
-                            onSetStartOnBootEnabled = service::setStartOnBootEnabled,
+                            onToggleDnsDialog = ::toggleLocalDns,
+                            onToggleHomeSshRouteDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.SSH) },
+                            onSetStartOnBootEnabled = { guardedAction(ControlCommand(ControlOperationId.SETTINGS_SET,
+                                mapOf("key" to ControlValue.Text("autostart"), "value" to ControlValue.Text(it.toString())))) },
                             onSetAppMode = { mode ->
-                                if (!state.isBusy) {
-                                    coroutineScope.launch { service.setAppMode(mode) }
+                                if (!settingsSaving) toggleLocalSettings(DesktopSettingsDraftGroup.MODE) { opened ->
+                                    val edited = opened.edit("mode", if (mode == AppMode.VPN) "vpn" else "proxy-only")
+                                    settingsDraft = edited
+                                    saveLocalSettings(edited)
                                 }
                             },
-                            onToggleRefreshPolicyDialog = service::toggleRefreshPolicyDialog,
-                            onToggleValidationSettingsDialog = service::toggleValidationSettingsDialog,
-                            onToggleLanguageDialog = service::toggleLanguageDialog,
+                            onToggleRefreshPolicyDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.REFRESH) },
+                            onToggleValidationSettingsDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.VALIDATION) },
+                            onToggleLanguageDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.LANGUAGE) },
                             onCheckAndDownloadUpdate = onCheckAndDownloadUpdate,
-                            onIgnoreRulesChange = service::setRoutingIgnoreRulesDraft,
+                            onIgnoreRulesChange = { guardedAction(ControlCommand(ControlOperationId.ROUTING_SET,
+                                mapOf("key" to ControlValue.Text("ignore-rules"), "value" to ControlValue.Text(it.toString())))) },
                         )
                     },
                 )
@@ -543,111 +929,173 @@ internal fun DesktopVpnControlApp(
                     currentSelectionLabel = currentSelection,
                 ) {
                     DesktopProfileContent(
-                        state = state,
-                        resolveSourceLabel = service::sourceLabelFor,
-                        onActivateSelection = service::activateSelection,
-                        onSetSourceMode = service::setSourceMode,
-                        onToggleAddSubscriptionEditor = service::toggleAddSubscriptionEditor,
-                        onProfileDraftChange = service::setProfileDraft,
-                        onProfileTitleDraftChange = service::setProfileTitleDraft,
-                        onClearProfileDraft = service::clearProfileDraft,
-                        onSaveSubscriptionDraft = service::saveSubscriptionDraft,
+                        state = state.copy(showAddSubscriptionEditor = subscriptionDraft?.subscriptionId == null && subscriptionDraft != null,
+                            profileDraft = subscriptionDraft?.source.orEmpty(), profileTitleDraft = subscriptionDraft?.name.orEmpty(),
+                            showProfileHistoryRenameDialog = subscriptionDraft?.subscriptionId != null,
+                            profileHistoryRenameUrlDraft = subscriptionDraft?.source.orEmpty(),
+                            profileHistoryRenameDraft = subscriptionDraft?.name.orEmpty()),
+                        editorFailure = subscriptionDraft?.failure,
+                        editorSaving = subscriptionSaving,
+                        subscriptions = frame.subscriptions,
+                        onActivateSelection = { id -> submitSource(com.kardinal.vpncontrol.model.ControlCommand(
+                            com.kardinal.vpncontrol.model.ControlOperationId.SOURCE_SET,
+                            if (id == com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID) mapOf("source" to com.kardinal.vpncontrol.model.ControlValue.Text("all"))
+                            else mapOf("source" to com.kardinal.vpncontrol.model.ControlValue.Text("subscription"),
+                                "subscription-id" to com.kardinal.vpncontrol.model.ControlValue.Text(id)))) },
+                        onSetSourceMode = { mode -> submitSource(com.kardinal.vpncontrol.model.ControlCommand(
+                            com.kardinal.vpncontrol.model.ControlOperationId.SOURCE_SET,
+                            mapOf("mode" to com.kardinal.vpncontrol.model.ControlValue.Text(
+                                if (mode == ProfileSourceMode.CURRENT_LOCATIONS) "current-locations" else "subscription")))) },
+                        onToggleAddSubscriptionEditor = { if (subscriptionDraft != null) subscriptionDraft = null else openSubscriptionEditor(null) },
+                        onProfileDraftChange = { subscriptionDraft = subscriptionDraft?.copy(source = it) },
+                        onProfileTitleDraftChange = { subscriptionDraft = subscriptionDraft?.editName(it) },
+                        onClearProfileDraft = { subscriptionDraft = subscriptionDraft?.copy(source = "", name = "") },
+                        onSaveSubscriptionDraft = ::saveSubscriptionEditor,
                         onDeleteSubscription = { subscriptionId ->
                             if (state.isBusy) return@DesktopProfileContent
-                            coroutineScope.launch { service.deleteSubscription(subscriptionId) }
+                            submitSource(com.kardinal.vpncontrol.model.ControlCommand(
+                                com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_DELETE,
+                                mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(subscriptionId))))
                         },
-                        onShowSubscriptionRenameDialog = service::showSubscriptionRenameDialog,
-                        onCloseSubscriptionRenameDialog = service::closeSubscriptionRenameDialog,
-                        onSubscriptionRenameUrlDraftChange = service::setSubscriptionRenameUrlDraft,
-                        onSubscriptionRenameDraftChange = service::setSubscriptionRenameDraft,
-                        onSaveSubscriptionRename = service::saveSubscriptionRename,
+                        onShowSubscriptionRenameDialog = ::openSubscriptionEditor,
+                        onCloseSubscriptionRenameDialog = { subscriptionDraft = null },
+                        onSubscriptionRenameUrlDraftChange = { subscriptionDraft = subscriptionDraft?.copy(source = it) },
+                        onSubscriptionRenameDraftChange = { subscriptionDraft = subscriptionDraft?.editName(it) },
+                        onSaveSubscriptionRename = ::saveSubscriptionEditor,
                         onRefreshSubscription = { subscriptionId ->
                             if (state.isBusy) return@DesktopProfileContent
-                            coroutineScope.launch { service.refreshSubscription(subscriptionId) }
+                            coroutineScope.launch { executeCommand(DesktopCliCommand.SubscriptionRefresh(subscriptionId)) }
                         },
                         onRefreshAllSubscriptions = {
                             if (state.isBusy) return@DesktopProfileContent
-                            coroutineScope.launch { service.refreshAllSubscriptions() }
+                            coroutineScope.launch { executeCommand(DesktopCliCommand.SubscriptionRefresh("all")) }
                         },
                     )
                 }
 
                 AppScreen.LOCATIONS -> LocationsScreen(
                     state = state,
-                    locations = service.visibleDesktopLocations().map { it.toSharedRow() },
+                    locations = presentationLocations.map { it.toSharedRow() },
                     selectedName = state.selectedProfileName.takeIf(String::isNotBlank),
                     activeProfileLabel = activeProfile,
                     showSubscriptionMismatchWarning = showMismatchWarning,
                     onShowAddLocation = if (state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS) ({
-                        service.addSampleLocation()
+                        if (!locationEditorOpening) {
+                            locationEditorOpening = true
+                            coroutineScope.launch {
+                                try {
+                                    val result = frontend.read(com.kardinal.vpncontrol.model.ControlOperationId.STATUS)
+                                    if (result.ok) {
+                                        locationDraft = DesktopLocationDraft.from(result, null)
+                                        locationEditorTarget = null; locationEditorText = ""; locationEditorError = null; locationEditorOpen = true
+                                    } else dnsOpenFailure = result.code
+                                } finally { locationEditorOpening = false }
+                            }
+                        }
                     }) else null,
                     onToggleSelectedLocationVpn = {
                         if (state.isBusy) return@LocationsScreen
-                        coroutineScope.launch { service.toggleSelectedLocationProxy() }
+                        coroutineScope.launch { executeCommand(if (state.isVpnRunning) DesktopCliCommand.Off else DesktopCliCommand.On) }
                     },
                     onBenchmarkLocation = { index ->
                         if (state.isBusy) return@LocationsScreen
-                        coroutineScope.launch { service.benchmarkLocation(index) }
+                        val id = presentationLocations.getOrNull(index)?.id ?: return@LocationsScreen
+                        val command = DesktopCliCommand.LocationBenchmark(target = "", configurationId = id)
+                        coroutineScope.launch { executeCommand(command) }
                     },
-                    onSelectLocation = { index -> service.applyLocationSelection(index) },
-                    onEditLocation = { index -> service.editLocation(index) },
+                    onSelectLocation = { index ->
+                        presentationLocations.getOrNull(index)?.id?.let { id ->
+                            val request = desktopGuiLocationAction(locationActionIdentity, rowRuntime.controllerId,
+                                rowRuntime.configurationRevision, id, com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_SELECT)
+                            coroutineScope.launch {
+                                val code = frontend.submit(request).code
+                                if (code != com.kardinal.vpncontrol.model.ControlCode.OK) dnsOpenFailure = code
+                            }
+                        }
+                    },
+                    onEditLocation = { index ->
+                        presentationLocations.getOrNull(index)?.let { target ->
+                            if (!locationEditorOpening) {
+                                locationEditorOpening = true
+                                val id = presentationLocations.getOrNull(index)?.id
+                                val epoch = rowRuntime.controllerId
+                                coroutineScope.launch {
+                                    try {
+                                        val read = com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_SHOW,
+                                            mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(id.orEmpty())))
+                                        val result = frontend.submit(
+                                            com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                                                read, controllerId = epoch))
+                                        val content = (result.data["configuration"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
+                                        if (!result.ok || content == null) {
+                                            dnsOpenFailure = if (!result.ok) result.code
+                                                else com.kardinal.vpncontrol.model.ControlCode.INCOMPATIBLE_PROTOCOL
+                                        } else {
+                                            locationEditorTarget = target.id
+                                            locationDraft = DesktopLocationDraft.from(result, id)
+                                            locationEditorText = content
+                                            locationEditorError = null
+                                            locationEditorOpen = true
+                                        }
+                                    } finally { locationEditorOpening = false }
+                                }
+                            }
+                        }
+                    },
                     onDeleteLocation = { index ->
                         if (state.isBusy) return@LocationsScreen
-                        coroutineScope.launch { service.deleteLocation(index) }
+                        presentationLocations.getOrNull(index)?.id?.let { id ->
+                            val request = desktopGuiLocationAction(locationActionIdentity, rowRuntime.controllerId,
+                                rowRuntime.configurationRevision, id, com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_DELETE)
+                            coroutineScope.launch {
+                                val code = frontend.submit(request).code
+                                if (code != com.kardinal.vpncontrol.model.ControlCode.OK) dnsOpenFailure = code
+                            }
+                        }
                     },
                     controls = {
                         DesktopActionRow(
                             visualScope = "locations",
                             onImportFile = {
-                                val selection = DesktopTextTransfer.chooseOpenFile(
-                                    window = windowProvider(),
-                                    title = appStrings.get(UiText.IMPORT),
-                                )
-                                coroutineScope.launch { service.importLocationsFromFile(selection) }
+                                importContent(ControlOperationId.LOCATIONS_IMPORT,
+                                    DesktopTextTransfer.openTextFile(windowProvider(), appStrings.get(UiText.IMPORT)))
                             },
-                            onImportClipboard = { coroutineScope.launch { service.importLocationsFromClipboard() } },
+                            onImportClipboard = { importContent(ControlOperationId.LOCATIONS_IMPORT, DesktopTextTransfer.readClipboardText()) },
                             onExportFile = {
-                                service.exportLocationsToFile(
-                                    window = windowProvider(),
-                                    title = appStrings.get(UiText.LOCATIONS_EXPORT_TITLE),
-                                )
+                                exportContent(ControlOperationId.LOCATIONS_EXPORT, false, appStrings.get(UiText.LOCATIONS_EXPORT_TITLE), "locations.json")
                             },
-                            onExportClipboard = service::exportLocationsToClipboard,
+                            onExportClipboard = { exportContent(ControlOperationId.LOCATIONS_EXPORT, true, "", "") },
                         )
                     },
                 )
 
                 AppScreen.ROUTING_RULES -> RoutingRulesScreen(
-                    state = state,
-                    onAppSearchChange = service::setRoutingAppSearch,
-                    onToggleProxyApp = service::toggleProxyApp,
-                    onSelectAllProxyApps = service::selectAllProxyApps,
-                    onClearAllProxyApps = service::clearAllProxyApps,
-                    onDirectDomainsChange = service::setRoutingDirectDomainsDraft,
+                    state = state.copy(routingDirectDomainsDraft = routingDraft?.domains ?: state.routingDirectDomainsDraft),
+                    onAppSearchChange = {},
+                    onToggleProxyApp = {},
+                    onSelectAllProxyApps = {},
+                    onClearAllProxyApps = {},
+                    onDirectDomainsChange = { routingDraft = routingDraft?.copy(domains = it) },
                     onBlockQuicUdp443Change = {},
                     showAppAssignments = false,
                     controls = {
                         DesktopActionRow(
                             visualScope = "routing",
                             onImportFile = {
-                                service.importRoutingRulesFromFile(
-                                    window = windowProvider(),
-                                    title = appStrings.get(UiText.IMPORT),
-                                )
+                                importContent(ControlOperationId.ROUTING_IMPORT,
+                                    DesktopTextTransfer.openTextFile(windowProvider(), appStrings.get(UiText.IMPORT)))
                             },
-                            onImportClipboard = service::importRoutingRulesFromClipboard,
+                            onImportClipboard = { importContent(ControlOperationId.ROUTING_IMPORT, DesktopTextTransfer.readClipboardText()) },
                             onExportFile = {
-                                service.exportRoutingRulesToFile(
-                                    window = windowProvider(),
-                                    title = appStrings.get(UiText.RULES_EXPORT_TITLE),
-                                )
+                                exportContent(ControlOperationId.ROUTING_EXPORT, false, appStrings.get(UiText.RULES_EXPORT_TITLE), "routing-rules.json")
                             },
-                            onExportClipboard = service::exportRoutingRulesToClipboard,
+                            onExportClipboard = { exportContent(ControlOperationId.ROUTING_EXPORT, true, "", "") },
                         )
                     },
                 )
 
-                AppScreen.STATS -> StatsScreen(state = state)
+                AppScreen.STATS -> if (logs != null && logsFailure == null) StatsScreen(state = state.copy(connectionLog = logs.orEmpty()))
+                    else Text((logsFailure ?: ControlCode.UNAVAILABLE).wireName, color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -667,7 +1115,7 @@ private fun trayConnectionActionLabel(
 @Composable
 private fun DesktopProfileContent(
     state: MainUiState,
-    resolveSourceLabel: (String) -> String,
+    subscriptions: List<DesktopPresentationSubscription>,
     onActivateSelection: (String) -> Unit,
     onSetSourceMode: (ProfileSourceMode) -> Unit,
     onToggleAddSubscriptionEditor: () -> Unit,
@@ -683,6 +1131,8 @@ private fun DesktopProfileContent(
     onSaveSubscriptionRename: () -> Unit,
     onRefreshSubscription: (String) -> Unit,
     onRefreshAllSubscriptions: () -> Unit,
+    editorFailure: com.kardinal.vpncontrol.model.ControlCode? = null,
+    editorSaving: Boolean = false,
 ) {
     val strings = LocalAppStrings.current
     if (state.showProfileHistoryRenameDialog) {
@@ -691,6 +1141,7 @@ private fun DesktopProfileContent(
             confirmButton = {
                 TextButton(
                     onClick = onSaveSubscriptionRename,
+                    enabled = !editorSaving,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"),
                 ) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
@@ -709,6 +1160,7 @@ private fun DesktopProfileContent(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    editorFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     OutlinedTextField(
                         value = state.profileHistoryRenameUrlDraft,
                         onValueChange = onSubscriptionRenameUrlDraftChange,
@@ -814,7 +1266,7 @@ private fun DesktopProfileContent(
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
                 )
-                if (state.subscriptions.size > 1) {
+                if (subscriptions.size > 1) {
                     val allSelected = state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID
                     Card(
                         modifier = Modifier
@@ -854,7 +1306,7 @@ private fun DesktopProfileContent(
                                     strings.format(
                                         UiText.ALL_SUBSCRIPTIONS_TITLE,
                                         strings.locationCountLabel(
-                                            state.subscriptions.sumOf { it.cachedLocations.size },
+                                            subscriptions.sumOf { it.locationCount }.toInt(),
                                             merged = true,
                                         ),
                                     ),
@@ -901,9 +1353,9 @@ private fun DesktopProfileContent(
                         }
                     }
                 }
-                state.subscriptions.forEachIndexed { visualIndex, subscription ->
+                subscriptions.forEachIndexed { visualIndex, subscription ->
                     val isSelected = state.activeSubscriptionId == subscription.id
-                    val refreshStatus = subscription.lastRefreshStatus
+                    val refreshStatus = subscription.refreshStatus?.encoded().orEmpty()
                         .takeIf { it.isNotBlank() }
                         ?.let(strings::statusMessage)
                         ?: strings.get(UiText.NOT_REFRESHED_YET)
@@ -930,7 +1382,7 @@ private fun DesktopProfileContent(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    resolveSourceLabel(subscription.url),
+                                    subscription.name,
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
@@ -944,7 +1396,7 @@ private fun DesktopProfileContent(
                                     )
                                 }
                                 Text(
-                                    "${strings.locationCountLabel(subscription.cachedLocations.size)} • $refreshStatus",
+                                    "${strings.locationCountLabel(subscription.locationCount.toInt())} • $refreshStatus",
                                     color = Color(0xFFD3E3EE),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -1036,6 +1488,7 @@ private fun DesktopProfileContent(
                                 }
                             }
                         }
+                        editorFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                         OutlinedTextField(
                             value = state.profileDraft,
                             onValueChange = onProfileDraftChange,
@@ -1059,6 +1512,7 @@ private fun DesktopProfileContent(
                         )
                         Button(
                             onClick = onSaveSubscriptionDraft,
+                            enabled = !editorSaving,
                             modifier = Modifier.heightIn(min = 48.dp).testTag("profile-save"),
                         ) {
                             Text(strings.get(UiText.SAVE_SUBSCRIPTION))
@@ -1077,6 +1531,7 @@ private fun DesktopProfileContent(
 @Composable
 private fun DesktopAdditionalSettingsMenu(
     state: MainUiState,
+    subscriptionCount: Int,
     onToggleDnsDialog: () -> Unit,
     onToggleHomeSshRouteDialog: () -> Unit,
     onSetStartOnBootEnabled: (Boolean) -> Unit,
@@ -1089,7 +1544,7 @@ private fun DesktopAdditionalSettingsMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
-    val refreshScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
+    val refreshScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && subscriptionCount > 1) {
         strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
     } else {
         strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
@@ -1305,6 +1760,8 @@ private fun DesktopAdditionalSettingsMenu(
 @Composable
 private fun DesktopSettingsDialogs(
     state: MainUiState,
+    subscriptionCount: Int,
+    sshKeyPresent: Boolean?,
     systemLanguageCode: String?,
     onToggleDnsDialog: () -> Unit,
     onDnsModeDraftChange: (DnsMode) -> Unit,
@@ -1337,6 +1794,12 @@ private fun DesktopSettingsDialogs(
     onSaveValidationSettings: () -> Unit,
     onToggleLanguageDialog: () -> Unit,
     onSetAppLanguage: (AppLanguage) -> Unit,
+    dnsFailure: com.kardinal.vpncontrol.model.ControlCode? = null,
+    dnsSaving: Boolean = false,
+    settingsFailure: com.kardinal.vpncontrol.model.ControlCode? = null,
+    settingsSaving: Boolean = false,
+    sshKeyRetryAvailable: Boolean = false,
+    sshKeyImporting: Boolean = false,
 ) {
     val strings = LocalAppStrings.current
 
@@ -1357,6 +1820,7 @@ private fun DesktopSettingsDialogs(
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    dnsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(
                         strings.get(UiText.DNS_APPLIES_NEW_DESKTOP_SESSIONS),
                         color = Color(0xFFD3E3EE),
@@ -1401,7 +1865,7 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
+                TextButton(enabled = !dnsSaving, onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
@@ -1424,6 +1888,7 @@ private fun DesktopSettingsDialogs(
                     modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    settingsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(strings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
                     Row(
                         modifier = Modifier.fillMaxWidth().testTag("ssh-enabled"),
@@ -1475,14 +1940,15 @@ private fun DesktopSettingsDialogs(
                     )
                     OutlinedButton(
                         onClick = onImportHomeSshPrivateKey,
+                        enabled = !sshKeyImporting,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ssh-key"),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9ED6FF)),
                     ) {
-                        Text(strings.get(UiText.IMPORT_PRIVATE_KEY))
+                        Text(strings.get(if (sshKeyRetryAvailable) UiText.UPDATE_RETRY else UiText.IMPORT_PRIVATE_KEY))
                     }
                     Text(
-                        strings.get(
-                            if (state.homeSshRouteSettings.credentialVersion > 0L) {
+                        if (sshKeyPresent == null) ControlCode.UNAVAILABLE.wireName else strings.get(
+                            if (sshKeyPresent) {
                                 UiText.HOME_SSH_KEY_IMPORTED
                             } else {
                                 UiText.HOME_SSH_KEY_MISSING
@@ -1493,7 +1959,7 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveHomeSshRoute, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
+                TextButton(enabled = !settingsSaving, onClick = onSaveHomeSshRoute, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
@@ -1538,6 +2004,7 @@ private fun DesktopSettingsDialogs(
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    settingsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(
                         text = strings.get(UiText.APP_MODE_DESKTOP_DESCRIPTION),
                         color = Color(0xFFD3E3EE),
@@ -1610,7 +2077,7 @@ private fun DesktopSettingsDialogs(
     }
 
     if (state.showRefreshPolicyDialog) {
-        val refreshTarget = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
+        val refreshTarget = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && subscriptionCount > 1) {
             strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
         } else {
             strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
@@ -1628,6 +2095,7 @@ private fun DesktopSettingsDialogs(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    settingsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(
                         text = strings.format(UiText.REFRESH_DESCRIPTION_DESKTOP, refreshTarget),
                         color = Color(0xFFD3E3EE),
@@ -1713,6 +2181,7 @@ private fun DesktopSettingsDialogs(
             confirmButton = {
                 TextButton(
                     onClick = onSaveSubscriptionRefreshPolicy,
+                    enabled = !settingsSaving,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save"),
                 ) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
@@ -1727,7 +2196,7 @@ private fun DesktopSettingsDialogs(
     }
 
     if (state.showValidationSettingsDialog) {
-        val searchScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && state.subscriptions.size > 1) {
+        val searchScope = if (state.activeSubscriptionId == ALL_SUBSCRIPTIONS_ID && subscriptionCount > 1) {
             strings.get(UiText.SETTINGS_ALL_SUBSCRIPTIONS)
         } else {
             strings.get(UiText.SETTINGS_SELECTED_SUBSCRIPTION)
@@ -1745,6 +2214,7 @@ private fun DesktopSettingsDialogs(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    settingsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(
                         text = strings.format(UiText.VALIDATION_DESCRIPTION_DESKTOP, searchScope),
                         color = Color(0xFFD3E3EE),
@@ -1801,7 +2271,7 @@ private fun DesktopSettingsDialogs(
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveValidationSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
+                TextButton(enabled = !settingsSaving, onClick = onSaveValidationSettings, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },
@@ -2016,7 +2486,7 @@ private fun DesktopActionRow(
     }
 }
 
-private fun DesktopLocationRecord.toSharedRow(): SavedLocationRow {
+internal fun DesktopLocationRecord.toSharedRow(configurationId: String?, selectedId: String?, activeId: String?): SavedLocationRow {
     return SavedLocationRow(
         index = index,
         rawLink = rawLink,
@@ -2026,5 +2496,9 @@ private fun DesktopLocationRecord.toSharedRow(): SavedLocationRow {
         benchmarkDetail = benchmarkDetail,
         autoSelectable = isValid,
         isSelected = isSelected,
+        selection = com.kardinal.vpncontrol.shared.ui.SavedLocationSelection(
+            selected = configurationId != null && configurationId == selectedId,
+            active = configurationId != null && configurationId == activeId,
+        ),
     )
 }

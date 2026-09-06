@@ -18,7 +18,7 @@ class DesktopRoutingRulesServiceTest {
         )
         val service = DesktopRoutingRulesService(
             stateProvider = { state },
-            commitState = { nextState -> state = nextState },
+            commitState = { nextState -> state = nextState; Result.success(Unit) },
             updateState = { transform -> state = transform(state) },
         )
 
@@ -36,7 +36,7 @@ class DesktopRoutingRulesServiceTest {
         var state = MainUiState(isVpnRunning = true, appMode = AppMode.VPN)
         val service = DesktopRoutingRulesService(
             stateProvider = { state },
-            commitState = { nextState -> state = nextState },
+            commitState = { nextState -> state = nextState; Result.success(Unit) },
             updateState = { transform -> state = transform(state) },
         )
 
@@ -55,7 +55,7 @@ class DesktopRoutingRulesServiceTest {
         var state = MainUiState(isVpnRunning = true, appMode = AppMode.VPN)
         val service = DesktopRoutingRulesService(
             stateProvider = { state },
-            commitState = { nextState -> state = nextState },
+            commitState = { nextState -> state = nextState; Result.success(Unit) },
             updateState = { transform -> state = transform(state) },
         )
 

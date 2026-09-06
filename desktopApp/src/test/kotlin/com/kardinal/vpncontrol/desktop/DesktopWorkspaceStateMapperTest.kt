@@ -17,6 +17,19 @@ import kotlin.test.assertTrue
 
 class DesktopWorkspaceStateMapperTest {
     @Test
+    fun persistenceDoesNotPromoteAnOpenRoutingDraftToCommittedConfiguration() {
+        val committed = RoutingRules(ignoreRules = false, directDomainSuffixes = listOf("committed.example"))
+        val state = MainUiState(
+            routingRules = committed,
+            routingIgnoreRulesDraft = true,
+            routingDirectDomainsDraft = "pending.example",
+            routingBlockQuicUdp443Draft = !committed.blockQuicUdp443,
+        )
+        assertEquals(committed, state.toPersistedState(emptyList()).routingRules)
+        assertEquals(committed, state.copy(statusMessage = "status only").toPersistedState(emptyList()).routingRules)
+    }
+
+    @Test
     fun defaultWorkspaceStartsEmptyWithPlatformModeStatus() {
         val workspace = defaultDesktopWorkspace()
 
@@ -129,15 +142,14 @@ class DesktopWorkspaceStateMapperTest {
     }
 
     @Test
-    fun toPersistedStateStoresSavedLocationsAndNormalizedRoutingDrafts() {
+    fun toPersistedStateStoresSavedLocationsAndCommittedRoutingRules() {
         val saved = location(index = 0, sourceUrl = "", rawLink = "socks://saved#saved")
         val remote = location(index = 1, sourceUrl = "https://example.com/sub", rawLink = "socks://remote#remote")
         val persisted = MainUiState(
             appMode = AppMode.VPN,
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
-            routingIgnoreRulesDraft = false,
-            routingProxyPackagesDraft = setOf("  org.example.app  ", ""),
-            routingDirectDomainsDraft = "example.com\n",
+            routingRules = RoutingRules(ignoreRules = false, proxyPackages = listOf("org.example.app"),
+                directDomainSuffixes = listOf("example.com")),
         ).toPersistedState(listOf(saved, remote))
 
         assertEquals(listOf(saved.rawLink), persisted.savedLocations)

@@ -141,7 +141,7 @@ class BenchmarkOrchestrator(
                                         ),
                                         sourceUrl = selectedTarget.sourceUrl,
                                         managementProxyPort = activeVerificationPort,
-                                    ),
+                                    ).also { rememberPreparedSelection(it, state) },
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
                                 )
@@ -178,7 +178,7 @@ class BenchmarkOrchestrator(
                                             activeVerificationPort = activeVerificationPort,
                                         ),
                                         managementProxyPort = activeVerificationPort,
-                                    ),
+                                    ).also { rememberPreparedSelection(it, state) },
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
                                 )
@@ -350,7 +350,7 @@ class BenchmarkOrchestrator(
                 },
                 sourceUrl = state.selectedProfileSourceUrl,
                 managementProxyPort = managementProxyPort,
-            )
+            ).also { rememberPreparedSelection(it, state) }
         }
     }
 
@@ -390,7 +390,7 @@ class BenchmarkOrchestrator(
                     state.selectedProfileSourceUrl
                 },
                 managementProxyPort = managementProxyPort,
-            )
+            ).also { rememberPreparedSelection(it, state) }
         }
     }
 
@@ -450,6 +450,19 @@ class BenchmarkOrchestrator(
         )
     }
 
+    private fun rememberPreparedSelection(selection: ProfileSelection, state: PersistedState) {
+        // Legacy cached runtime JSON lacks its generation inputs. Keep SSH preparation
+        // conservative until version-pinned native loading has integration evidence.
+        if (selection.profile.rawLink.isBlank() || state.homeSshRouteSettings.enabled) return
+        com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(
+            selection,
+            com.kardinal.vpncontrol.control.ControlRuntimeConfiguration(
+                selection.profile.rawLink, selection.sourceUrl, state.appMode,
+                state.routingRules, state.dnsSettings, state.homeSshRouteSettings,
+            ),
+        )
+    }
+
     private fun buildRuntimeConfig(
         profile: ProxyProfile,
         state: PersistedState,
@@ -461,7 +474,7 @@ class BenchmarkOrchestrator(
             ?.let { settings ->
                 HomeSshRouteRuntimeOptions(
                     settings = settings,
-                    privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
+                    privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull(settings.credentialVersion)
                         ?: error("SSH Routing private key is missing"),
                 ).validated()
             }

@@ -37,9 +37,28 @@ function Assert-FileExists {
     }
 }
 
+function Assert-PeSubsystem {
+    param([string]$FilePath, [int]$Expected)
+    $Bytes = [System.IO.File]::ReadAllBytes($FilePath)
+    if ($Bytes.Length -lt 64 -or $Bytes[0] -ne 0x4D -or $Bytes[1] -ne 0x5A) {
+        throw "Launcher is not a Windows PE executable: $FilePath"
+    }
+    $PeOffset = [System.BitConverter]::ToInt32($Bytes, 0x3C)
+    if ($PeOffset -lt 0 -or $PeOffset -gt ($Bytes.Length - 94) -or
+        [System.BitConverter]::ToUInt32($Bytes, $PeOffset) -ne 0x00004550) {
+        throw "Launcher has an invalid PE header: $FilePath"
+    }
+    $Subsystem = [System.BitConverter]::ToUInt16($Bytes, $PeOffset + 92)
+    if ($Subsystem -ne $Expected) {
+        throw "Launcher subsystem is $Subsystem, expected $Expected`: $FilePath"
+    }
+}
+
 Write-Host "[vpn-control] package regression root: $ResolvedPackageRoot"
 
-$Packages = Get-ChildItem -Path $ResolvedPackageRoot -Recurse -File -Include *.exe,*.msi
+$Packages = Get-ChildItem -Path $ResolvedPackageRoot -Recurse -File -Include *.exe,*.msi |
+    Where-Object { ($_.Extension -eq ".exe" -and $_.Directory.Name -eq "exe") -or
+        ($_.Extension -eq ".msi" -and $_.Directory.Name -eq "msi") }
 if (-not $Packages) {
     throw "No Windows installer artifacts were produced under $ResolvedPackageRoot"
 }
@@ -77,6 +96,30 @@ $Launcher = Get-ChildItem -Path $ValidationRoot -Recurse -File -Filter "vpn-cont
     Sort-Object Length -Descending |
     Select-Object -First 1
 Assert-FileExists "MSI payload is missing vpn-control.exe launcher" $Launcher
+
+$CliLauncher = Get-Item (Join-Path $Launcher.DirectoryName "vpn-control-cli.exe") -ErrorAction SilentlyContinue
+Assert-FileExists "MSI payload is missing vpn-control-cli.exe console launcher" $CliLauncher
+Assert-PeSubsystem -FilePath $Launcher.FullName -Expected 2
+Assert-PeSubsystem -FilePath $CliLauncher.FullName -Expected 3
+& python3 (Join-Path $RepoRoot "scripts/windows_launcher_utf8.py") --verify-only --app-image $Launcher.DirectoryName
+if ($LASTEXITCODE -ne 0) { throw "Extracted Windows launchers are missing safe UTF-8 manifests" }
+$ExpectedVersion = & python3 (Join-Path $RepoRoot "scripts/version_metadata.py") --field version
+if ($LASTEXITCODE -ne 0) { throw "Could not read expected package version" }
+& python3 (Join-Path $RepoRoot "scripts/test_packaged_cli.py") --launcher $CliLauncher.FullName --expected-version $ExpectedVersion
+if ($LASTEXITCODE -ne 0) { throw "Native console CLI smoke failed" }
+$CliOutput = Join-Path $ValidationRoot "cli-help.stdout.txt"
+$CliError = Join-Path $ValidationRoot "cli-help.stderr.txt"
+$CliProcess = Start-Process -FilePath $CliLauncher.FullName -ArgumentList @("--help") `
+    -RedirectStandardOutput $CliOutput -RedirectStandardError $CliError -PassThru
+try {
+    if (-not $CliProcess.WaitForExit(30000)) { throw "Console CLI help timed out" }
+    $CliProcess.Refresh()
+    if ($CliProcess.ExitCode -ne 0 -or (Get-Content $CliOutput -Raw) -notmatch "Usage:") {
+        throw "Console CLI did not return help on stdout with exit code 0"
+    }
+} finally {
+    if (-not $CliProcess.HasExited) { Stop-Process -Id $CliProcess.Id -Force -ErrorAction SilentlyContinue }
+}
 
 $RuntimeRelease = Get-ChildItem -Path $ValidationRoot -Recurse -File -Filter "release" |
     Where-Object { $_.FullName -match "\\runtime\\release$" } |

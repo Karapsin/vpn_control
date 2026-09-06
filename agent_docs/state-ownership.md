@@ -47,6 +47,15 @@ Android owns platform operations that need Android APIs, permissions, WorkManage
 
 Android should call shared controller/logic for pure state decisions and then execute the returned platform side effects. Keep profile/import action orchestration in `AndroidProfileActionsService`, connection UI commands in `AndroidConnectionActionsService`, start/stop selection lifecycle in `AndroidConnectionLifecycleService`, Find Best command orchestration in `AndroidFindBestActionsService`, location mutation/selection orchestration in `AndroidLocationActionsService`, routing draft/import/save orchestration in `AndroidRoutingActionsService`, manual subscription refresh orchestration in `AndroidSubscriptionRefreshActionsService`, settings persistence in `AndroidSettingsActionsService`, diagnostics export orchestration in `AndroidDiagnosticsActionsService`, installed-app catalog/effect orchestration in `AndroidInstalledAppsActionsService`, GitHub update/APK installer orchestration in `AndroidUpdateActionsService`, and persistence effect execution in `AndroidControllerEffectHandler` instead of growing `MainViewModel`.
 
+`AndroidApplicationOwner`, lazily held by `VpnControlApplication`, constructs the
+shared repository/storage/runtime-service graph and update service/state.
+`AndroidCommandJobs` owns accepted job lifetimes and tracked-operation admission.
+MainViewModel factories and refresh workers reuse this owner instead of building
+independent graphs. ViewModels retain local controllers/drafts and observe owner
+busy/update state. Full frontend-independent action state and typed ControlSession
+admission are still being migrated; do not mistake this lifetime extraction for
+complete Android CLI ownership.
+
 ## Desktop Owns Desktop IO And Runtime Side Effects
 
 Desktop owns file persistence, tray/single-instance lifecycle, autostart, process management, and Linux/Windows VPN runtime setup:

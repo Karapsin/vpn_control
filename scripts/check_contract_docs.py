@@ -20,7 +20,7 @@ def main() -> int:
         errors.append("duplicate contract IDs: " + ", ".join(duplicates))
     domains = {identifier.split("-", 1)[0] for identifier in identifiers}
     required_domains = {
-        "PRODUCT", "UI", "STATE", "PLATFORM", "DESKTOP", "CONFIG", "L10N", "ARTIFACT", "VISUAL", "RELEASE",
+        "PRODUCT", "UI", "STATE", "PLATFORM", "DESKTOP", "CLI", "CONFIG", "L10N", "ARTIFACT", "VISUAL", "RELEASE",
     }
     missing_domains = sorted(required_domains - domains)
     if missing_domains:

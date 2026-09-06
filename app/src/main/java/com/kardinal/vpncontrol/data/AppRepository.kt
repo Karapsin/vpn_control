@@ -24,6 +24,7 @@ class AppRepository(
     private val storage: RepositoryStateStore,
     private val orchestrator: BenchmarkOrchestrator,
     private val subscriptionRefreshScheduler: RefreshScheduler,
+    private val runtimeRunning: () -> Boolean? = { null },
 ) {
     val state: Flow<PersistedState> = storage.state
 
@@ -296,7 +297,7 @@ class AppRepository(
 
     private suspend fun snapshotAfterSourceChange(): PersistedState {
         val state = storage.snapshot()
-        return if (!state.isVpnRunning && RepositoryWorkflowService.shouldClearSelectionForSourceState(state)) {
+        return if (AndroidSourceControl.clearsSelection(state, runtimeRunning())) {
             storage.clearSelection()
             storage.snapshot()
         } else {

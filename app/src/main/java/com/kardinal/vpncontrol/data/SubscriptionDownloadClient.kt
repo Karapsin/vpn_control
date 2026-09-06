@@ -64,7 +64,7 @@ class SubscriptionDownloadClient(
             SubscriptionDownloadRoute.HOME_RELAY -> {
                 val appContext = context ?: error("SSH Routing is unavailable")
                 val settings = state?.homeSshRouteSettings ?: error("SSH Routing is not configured")
-                val keyPath = AndroidHomeSshCredentialStore(appContext).privateKeyPathOrNull()
+                val keyPath = AndroidHomeSshCredentialStore(appContext).privateKeyPathOrNull(settings.credentialVersion)
                     ?: error("SSH Routing private key is missing")
                 AndroidHomeSshBootstrapProxy(appContext).useProxy(
                     HomeSshRouteRuntimeOptions(settings, keyPath),

@@ -2,9 +2,14 @@ package com.kardinal.vpncontrol.desktop
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.swing.SwingUtilities
 
-internal class DesktopActivationEvents {
+internal class DesktopActivationEvents(
+    private val commandTimeoutMillis: Long = 600_000L,
+    private val handlerTimeoutMillis: Long = 5_000L,
+) {
+    init { require(commandTimeoutMillis > 0 && handlerTimeoutMillis > 0) }
     private val cliHandlerMonitor = Object()
 
     @Volatile
@@ -41,21 +46,25 @@ internal class DesktopActivationEvents {
     }
 
     fun requestCliCommand(command: DesktopCliCommand): DesktopCliResponse {
-        val handler = awaitCliCommandHandler()
+        val handler = try { awaitCliCommandHandler(handlerTimeoutMillis) }
+        catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return DesktopCliResponse.failure("UNAVAILABLE", exitCode = 2)
+        }
             ?: return DesktopCliResponse.failure("VPN Control desktop app is not ready.", exitCode = 2)
         val future = CompletableFuture<DesktopCliResponse>()
-        SwingUtilities.invokeLater {
-            runCatching { handler(command, future) }
-                .onFailure { error ->
-                    future.complete(
-                        DesktopCliResponse.failure(error.message ?: "VPN Control CLI command failed."),
-                    )
-                }
+        try {
+            // The handler dispatches into its owner's coroutine scope; only window actions need Swing.
+            handler(command, future)
+        } catch (_: Exception) {
+            return DesktopCliResponse.failure("OUTCOME_UNKNOWN", exitCode = 2)
         }
-        return runCatching { future.get() }
-            .getOrElse { error ->
-                DesktopCliResponse.failure(error.message ?: "VPN Control CLI command failed.")
-            }
+        return try { future.get(commandTimeoutMillis, TimeUnit.MILLISECONDS) }
+        catch (_: TimeoutException) { DesktopCliResponse.failure("TIMEOUT", exitCode = 2) }
+        catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            DesktopCliResponse.failure("OUTCOME_UNKNOWN", exitCode = 2)
+        } catch (_: Exception) { DesktopCliResponse.failure("OUTCOME_UNKNOWN", exitCode = 2) }
     }
 
     private fun awaitCliCommandHandler(timeoutMillis: Long = 5_000L): (

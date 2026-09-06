@@ -164,7 +164,7 @@ class DesktopConnectionActionsServiceTest {
             setResumeConnectionOnLaunch = setResume,
             getLaunchResumeAttempted = getAttempted,
             setLaunchResumeAttempted = setAttempted,
-            commitState = commitState,
+            commitState = { locations, state -> commitState(locations, state); Result.success(Unit) },
             updateState = updateState,
         )
     }

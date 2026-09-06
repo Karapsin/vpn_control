@@ -6,11 +6,52 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SubscriptionRefreshSchedulerTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun schedulingWaitsForConfirmationAndQueuedCallerUsesLatestState() = runTest {
+        val confirmation = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        var current = scheduleableState()
+        val scheduler = SubscriptionRefreshScheduler(object : SubscriptionRefreshWorkOperations {
+            override fun cancelUniqueWork(workName: String) = SubscriptionRefreshCompletion { events += "cancelled" }
+            override fun enqueueUniqueRefresh(workName: String, policy: ExistingWorkPolicy, intervalMinutes: Long): SubscriptionRefreshCompletion {
+                events += "submitted"
+                return SubscriptionRefreshCompletion { confirmation.await(); events += "confirmed" }
+            }
+        }, latestState = { current })
+        val first = async { scheduler.sync(current) }
+        runCurrent()
+        assertEquals(listOf("submitted"), events)
+        assertTrue(!first.isCompleted)
+        val staleSnapshot = current
+        current = current.copy(subscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF)
+        val second = async { scheduler.sync(staleSnapshot) }
+        runCurrent()
+        assertEquals(listOf("submitted"), events)
+        confirmation.complete(Unit)
+        first.await()
+        second.await()
+        assertEquals(listOf("submitted", "confirmed", "cancelled"), events)
+    }
+
+    @Test fun schedulingFailureIsNotReportedAsSuccessfulCompletion() = runTest {
+        val scheduler = SubscriptionRefreshScheduler(object : SubscriptionRefreshWorkOperations {
+            override fun cancelUniqueWork(workName: String) = SubscriptionRefreshCompletion { error("fixture failure") }
+            override fun enqueueUniqueRefresh(workName: String, policy: ExistingWorkPolicy, intervalMinutes: Long) =
+                SubscriptionRefreshCompletion { error("fixture failure") }
+        })
+        assertEquals("fixture failure", runCatching { scheduler.sync(scheduleableState()) }.exceptionOrNull()?.message)
+        assertEquals("fixture failure", runCatching { scheduler.sync(scheduleableState(policy = SubscriptionRefreshPolicy.OFF)) }.exceptionOrNull()?.message)
+    }
+
     @Test
     fun syncSchedulesCustomHalfHourAsThirtyMinuteReplacement() = runBlocking {
         val operations = FakeSubscriptionRefreshWorkOperations()
@@ -99,19 +140,21 @@ private class FakeSubscriptionRefreshWorkOperations : SubscriptionRefreshWorkOpe
     val cancelled = mutableListOf<String>()
     val enqueued = mutableListOf<EnqueuedRefresh>()
 
-    override fun cancelUniqueWork(workName: String) {
+    override fun cancelUniqueWork(workName: String): SubscriptionRefreshCompletion {
         cancelled += workName
+        return SubscriptionRefreshCompletion {}
     }
 
     override fun enqueueUniqueRefresh(
         workName: String,
         policy: ExistingWorkPolicy,
         intervalMinutes: Long,
-    ) {
+    ): SubscriptionRefreshCompletion {
         enqueued += EnqueuedRefresh(
             workName = workName,
             policy = policy,
             intervalMinutes = intervalMinutes,
         )
+        return SubscriptionRefreshCompletion {}
     }
 }

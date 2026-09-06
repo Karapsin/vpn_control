@@ -18,11 +18,16 @@ class VpnManager(
     suspend fun start(
         selection: ProfileSelection,
         rememberProfile: Boolean = true,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    ): Result<Unit> = startAndAwait(selection, rememberProfile, 15_000L, null)
+
+    internal suspend fun startForControl(selection: ProfileSelection, eligible: () -> Boolean): Result<Unit> =
+        startAndAwait(selection, true, 300_000L, eligible)
+
+    private suspend fun startAndAwait(selection: ProfileSelection, rememberProfile: Boolean, timeoutMillis: Long,
+        eligible: (() -> Boolean)?): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            if (eligible != null) withContext(Dispatchers.Main.immediate) { check(eligible()) { "INTERACTION_REQUIRED" } }
             val initialState = storage.snapshot()
-            val initialStatus = initialState.statusMessage
-            val initialRuntimeStartSequence = initialState.runtimeStartSequence
             val appMode = initialState.appMode
             storage.runtimeConfigFile().apply {
                 parentFile?.mkdirs()
@@ -35,12 +40,23 @@ class VpnManager(
                     storage.lastProfileFile().delete()
                 }
             }
+            val prepared = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections
+            val preparedId = prepared.dispatch(selection)
+            val commands = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).runtimeCommands
+            val ticket = commands.register(com.kardinal.vpncontrol.AndroidRuntimeAction.START, selection.runtimeConfigJson)
             val intent = Intent(context, AndroidVpnService::class.java).apply {
                 action = AndroidVpnService.ACTION_START
+                putExtra(AndroidVpnService.EXTRA_PREPARED_CONNECTION_ID, preparedId)
+                putExtra(AndroidVpnService.EXTRA_COMMAND_ID, ticket.id)
             }
             try {
-                context.startForegroundService(intent)
+                withContext(Dispatchers.Main.immediate) {
+                    check(eligible == null || eligible()) { "INTERACTION_REQUIRED" }
+                    context.startForegroundService(intent)
+                }
             } catch (error: Throwable) {
+                prepared.discard(preparedId)
+                commands.discard(ticket)
                 throw VpnCommandException(
                     message = error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode),
                     cause = error,
@@ -48,11 +64,9 @@ class VpnManager(
                 )
             }
             try {
-                waitForStart(
-                    initialStatus = initialStatus,
-                    initialRuntimeStartSequence = initialRuntimeStartSequence,
-                )
+                commands.await(ticket, timeoutMillis).getOrThrow()
             } catch (error: Throwable) {
+                prepared.discard(preparedId)
                 throw VpnCommandException(
                     message = error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode),
                     cause = error,
@@ -62,16 +76,25 @@ class VpnManager(
         }
     }
 
-    suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun stop(): Result<Unit> = stopAndAwait(STOP_TIMEOUT_MILLIS)
+
+    // Provider wait cancellation never cancels this owner operation. Keep admission
+    // while waiting for actual cleanup, up to the bounded native receipt retention.
+    internal suspend fun stopForControl(): Result<Unit> = stopAndAwait(300_000L)
+
+    private suspend fun stopAndAwait(timeoutMillis: Long): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val initialState = storage.snapshot()
-            val initialStatus = initialState.statusMessage
+            val commands = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).runtimeCommands
+            val ticket = commands.register(com.kardinal.vpncontrol.AndroidRuntimeAction.STOP)
             val intent = Intent(context, AndroidVpnService::class.java).apply {
                 action = AndroidVpnService.ACTION_STOP
+                putExtra(AndroidVpnService.EXTRA_COMMAND_ID, ticket.id)
             }
             try {
                 context.startService(intent)
             } catch (error: Throwable) {
+                commands.discard(ticket)
                 throw VpnCommandException(
                     message = error.message ?: ConnectionStatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
@@ -79,45 +102,18 @@ class VpnManager(
                 )
             }
             try {
-                waitForStop(initialStatus)
+                commands.await(ticket, timeoutMillis).getOrThrow()
             } catch (error: Throwable) {
                 throw VpnCommandException(
                     message = error.message ?: ConnectionStatusMessages.connectionStopFailed(initialState.appMode),
                     cause = error,
                     commandDispatched = true,
                 )
-            }
-        }
-    }
-
-    private suspend fun waitForStart(
-        initialStatus: String,
-        initialRuntimeStartSequence: Long,
-    ) {
-        VpnStartWaiter.waitForStart(
-            snapshot = storage::snapshot,
-            initialStatus = initialStatus,
-            initialRuntimeStartSequence = initialRuntimeStartSequence,
-        )
-    }
-
-    private suspend fun waitForStop(initialStatus: String) {
-        withTimeout(STOP_TIMEOUT_MILLIS) {
-            while (true) {
-                val state = storage.snapshot()
-                if (!state.isVpnRunning &&
-                    state.statusMessage.isNotBlank() &&
-                    state.statusMessage != initialStatus
-                ) {
-                    return@withTimeout
-                }
-                delay(POLL_INTERVAL_MILLIS)
             }
         }
     }
 
     private companion object {
-        const val POLL_INTERVAL_MILLIS = 100L
         const val STOP_TIMEOUT_MILLIS = 10_000L
     }
 }
@@ -153,4 +149,10 @@ class VpnCommandException(
     message: String,
     cause: Throwable? = null,
     val commandDispatched: Boolean,
-) : IOException(message, cause)
+) : IOException(message, cause) {
+    /** Waiting ending is not evidence that the native operation failed. */
+    val outcomeUnknown: Boolean = commandDispatched &&
+        (cause is kotlinx.coroutines.CancellationException ||
+            cause is com.kardinal.vpncontrol.AndroidRuntimeOutcomeUnknownException ||
+            cause?.message == "RUNTIME_OUTCOME_UNKNOWN")
+}

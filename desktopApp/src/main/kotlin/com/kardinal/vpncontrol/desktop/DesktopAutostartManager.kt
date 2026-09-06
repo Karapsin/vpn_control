@@ -14,6 +14,7 @@ internal class DesktopAutostartManager(
     private val systemctlResolver: () -> Path? = ::platformSystemctl,
     private val executableChecker: (Path) -> Boolean = Files::isExecutable,
     private val environment: () -> Map<String, String> = System::getenv,
+    private val workspaceDirectory: Path? = DesktopWorkspacePaths.overrideDirectory(),
 ) {
     private val autostartFile = configHome
         .resolve("autostart")
@@ -35,6 +36,13 @@ internal class DesktopAutostartManager(
             DesktopAutostartPlatform.WINDOWS -> isWindowsTaskEnabled() || migrateLegacyWindowsRunEntry()
             DesktopAutostartPlatform.UNSUPPORTED -> false
         }
+    }
+
+    /** Queries configuration without migrating entries, deleting files, or repairing i3 setup. */
+    fun inspectEnabled(): Boolean = when (platform) {
+        DesktopAutostartPlatform.LINUX -> isXdgAutostartEnabled() || isI3AutostartEnabled() || legacyLinuxSystemdAutostartExists()
+        DesktopAutostartPlatform.WINDOWS -> isWindowsTaskEnabled() || isWindowsRunEnabled()
+        DesktopAutostartPlatform.UNSUPPORTED -> false
     }
 
     fun setEnabled(enabled: Boolean): Result<Boolean> {
@@ -158,7 +166,7 @@ internal class DesktopAutostartManager(
         val stripped = withoutManagedI3AutostartBlock(content).trimEnd()
         val block = """
             |$I3_AUTOSTART_BEGIN
-            |${i3AutostartExecLine(command)}
+            |${i3AutostartExecLine(command, workspaceDirectory)}
             |$I3_AUTOSTART_END
         """.trimMargin()
         return listOf(stripped, block)
@@ -193,9 +201,10 @@ internal class DesktopAutostartManager(
 
     private fun i3ShellWrapperCommand(command: String): String? {
         val words = splitShellWords(command) ?: return null
-        if (words.size != 5) return null
+        if (words.size != 5 && words.size != 6) return null
         if (words[0] != "sh" || words[1] != "-c") return null
-        if (words[2] != I3_SHELL_SCRIPT || words[3] != I3_SHELL_ARG0) return null
+        val script = if (words.size == 5) I3_SHELL_SCRIPT else I3_WORKSPACE_SHELL_SCRIPT
+        if (words[2] != script || words[3] != I3_SHELL_ARG0) return null
         return words[4].takeIf(String::isNotBlank)
     }
 
@@ -288,7 +297,7 @@ internal class DesktopAutostartManager(
             |Version=1.0
             |Name=VPN Control
             |Comment=Start VPN Control at login
-            |Exec=${quoteDesktopExec(command)} --autostart
+            |Exec=${quoteDesktopExec(command)} --autostart${workspaceDirectory?.let { " --state-dir ${quoteDesktopExec(it.toString())}" } ?: ""}
             |Terminal=false
             |Categories=Network;
             |X-GNOME-Autostart-enabled=true
@@ -328,7 +337,7 @@ internal class DesktopAutostartManager(
                     "/SC",
                     "ONLOGON",
                     "/TR",
-                    windowsScheduledTaskCommand(command),
+                    windowsScheduledTaskCommand(command, workspaceDirectory),
                     "/RL",
                     "HIGHEST",
                     "/F",
@@ -372,6 +381,7 @@ internal class DesktopAutostartManager(
         private const val I3_AUTOSTART_BEGIN = "# VPN Control autostart: begin"
         private const val I3_AUTOSTART_END = "# VPN Control autostart: end"
         private const val I3_SHELL_SCRIPT = "exec \"\$1\" --autostart"
+        private const val I3_WORKSPACE_SHELL_SCRIPT = "exec \"\$1\" --autostart --state-dir \"\$2\""
         private const val I3_SHELL_ARG0 = "vpn-control-i3"
 
         private fun defaultConfigHome(): Path {
@@ -412,12 +422,28 @@ internal class DesktopAutostartManager(
             }
         }
 
-        private fun windowsScheduledTaskCommand(command: String): String {
-            return "${quoteWindowsCommandPath(command)} --autostart"
+        private fun windowsScheduledTaskCommand(command: String, workspaceDirectory: Path?): String {
+            return "${quoteWindowsCommandPath(command)} --autostart" +
+                (workspaceDirectory?.let { " --state-dir ${quoteWindowsCommandPath(it.toString())}" } ?: "")
         }
 
         private fun quoteWindowsCommandPath(value: String): String {
-            return "\"${value.replace("\"", "\\\"")}\""
+            // Windows argv parsing doubles backslashes before quotes and the closing quote.
+            return buildString {
+                append('"')
+                var backslashes = 0
+                value.forEach { char ->
+                    if (char == '\\') {
+                        backslashes++
+                    } else {
+                        repeat(if (char == '"') backslashes * 2 + 1 else backslashes) { append('\\') }
+                        append(char)
+                        backslashes = 0
+                    }
+                }
+                repeat(backslashes * 2) { append('\\') }
+                append('"')
+            }
         }
 
         private fun quoteDesktopExec(value: String): String {
@@ -432,12 +458,17 @@ internal class DesktopAutostartManager(
                     }
                 }
             }
-            return "\"$escaped\""
+            // Desktop-entry string escaping is a separate layer, decoded before Exec quoting.
+            return "\"$escaped\"".replace("\\", "\\\\")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+                .replace("%", "%%")
         }
 
-        private fun i3AutostartExecLine(command: String): String {
-            return "exec --no-startup-id sh -c ${quoteI3ShellArg(I3_SHELL_SCRIPT)} " +
-                "$I3_SHELL_ARG0 ${quoteI3ShellArg(command)}"
+        private fun i3AutostartExecLine(command: String, workspaceDirectory: Path?): String {
+            val script = if (workspaceDirectory == null) I3_SHELL_SCRIPT else I3_WORKSPACE_SHELL_SCRIPT
+            return "exec --no-startup-id sh -c ${quoteI3ShellArg(script)} " +
+                "$I3_SHELL_ARG0 ${quoteI3ShellArg(command)}" +
+                (workspaceDirectory?.let { " ${quoteI3ShellArg(it.toString())}" } ?: "")
         }
 
         private fun quoteI3ShellArg(value: String): String {
@@ -451,7 +482,24 @@ internal class DesktopAutostartManager(
                 ?.substringAfter('=')
                 ?.trim()
                 ?: return null
-            return parseDesktopExecCommand(execValue)
+            val decoded = buildString {
+                var index = 0
+                while (index < execValue.length) {
+                    val char = execValue[index++]
+                    if (char == '\\' && index < execValue.length) {
+                        val escaped = execValue[index++]
+                        append(when (escaped) {
+                            's' -> ' '
+                            'n' -> '\n'
+                            'r' -> '\r'
+                            't' -> '\t'
+                            '\\' -> '\\'
+                            else -> { append('\\'); escaped }
+                        })
+                    } else append(char)
+                }
+            }
+            return parseDesktopExecCommand(decoded)?.replace("%%", "%")
         }
 
         private fun parseDesktopExecCommand(value: String): String? {

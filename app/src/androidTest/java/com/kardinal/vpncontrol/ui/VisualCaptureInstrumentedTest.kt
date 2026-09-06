@@ -598,7 +598,7 @@ private fun androidVisualState(sceneId: String): MainUiState {
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
             currentLocations = List(80) { index -> firstLocation.replace("#Berlin", "#Berlin-$index") },
         )
-        "locations-selected" -> state.copy(isVpnRunning = true)
+        "locations-selected" -> com.kardinal.vpncontrol.androidSelectedLocationVisualFixture(state)
         "locations-add-dialog" -> state.copy(
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
             showLocationDialog = true,

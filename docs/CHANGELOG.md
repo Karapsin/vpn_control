@@ -3,6 +3,56 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Acknowledge CLI window actions, add Android consent-wait cancellation, and return normalized routing/import results.
+- Extend Android configuration and SSH import parity, fix GUI launch lifecycle, and add protected installer-job storage.
+- Add Android SSH/update status, preserve truthful SSH restart warnings, and support TrustedInstaller-owned Windows ancestors.
+- Add guarded Android source switching and local configuration/diagnostics exports with private file creation.
+- Add guarded Android subscription editing and routing application commands while preserving active source state.
+- Reject export destinations with inherited macOS access grants or unenforced Windows permissions before writing private data.
+- Add readable Android CLI results with truthful unknown metadata, operation progress and escaped terminal controls.
+- Stage Android location edits without restarting active VPN and add tracked update check, download and cancellation commands.
+
+## 2.1.1 - 2026-09-06
+
+- Add authenticated remote control sessions, JSON file exports and atomic Android configuration revision tracking.
+- Keep DNS edits frontend-local, add cursor-based CLI streams and confirm Android settings scheduling outcomes.
+- Add guarded Android settings and frontend-local desktop settings with authenticated presentation updates.
+- Guard GUI mode and SSH key actions and correlate Android native runtime completion.
+- Separate selected and active GUI locations, sanitize source display references and serialize tracked Android mutations.
+- Guard subscription editor saves, keep GUI navigation local and admit Android location and refresh mutations.
+- Preserve Unicode Windows launcher arguments and guard location saves plus Android routing and SSH mutations.
+- Guard location selection and deletion, await Android configuration effects, and verify native CLI streams and Unicode QR paths.
+- Attach the GUI to a separate owner, add Android consent-aware connection control, and guard imports and owner shutdown.
+- Expose owner-bound CLI revision guards and Android status, and harden desktop update authorization and rollback.
+
+## 2.1.0 - 2026-09-06
+
+- Route GUI connection and benchmark actions through CLI operation tracking and support async connection commands.
+- Add JSON CLI reads for session stats, redacted logs, source selection and languages.
+- Add JSON configuration inspection for locations, subscriptions, routing, SSH keys and updates.
+- Support tracked JSON writes for desktop configuration, imports and source selection.
+- Write CLI output as UTF-8 and keep failed selection inputs out of stored status.
+- Share Android application dependencies, command lifetimes and update state across frontends.
+- Exercise native packaged CLI launchers with disconnected cross-platform smoke checks.
+- Bind GUI benchmarks to captured configuration identities instead of numeric selectors.
+- Add observable desktop control sessions, UTF-8 QR file exchange and a protected Android read provider.
+- Connect Android CLI reads over protected ADB, observe live Android runtime state, and report GUI rejections and normalized settings results.
+
+## 2.0.19 - 2026-09-06
+
+- Preserve desktop CLI operation revisions and pending-restart metadata in retained results.
+- Reject stale desktop settings revisions before persistence or autostart effects.
+- Bind typed desktop settings requests to controller revisions and deduplicate retries.
+- Return consistent typed controller responses for rejected and completed requests.
+- Add JSON output for desktop CLI settings reads and writes.
+- Support JSON operation control and consistent CLI startup errors.
+- Verify controller endpoint ownership and private access rules before use.
+- Add client-only response timeouts to JSON CLI commands without cancelling owner work.
+- Expose static CLI capability discovery without starting a controller.
+- Share the GUI and headless controller session and expose structured connection status.
+
 ## 2.0.18 - 2026-09-04
 
 - Make Android QR visual capture converge and retry safely.

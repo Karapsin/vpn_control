@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
@@ -20,8 +21,8 @@ class DesktopHomeSshCredentialStore(
     private val credentialFile = baseDir.resolve("credentials/home-ssh-private-key")
 
     fun importPrivateKey(content: String): String {
-        val normalized = content.trim().takeIf(String::isNotBlank)
-            ?: error("SSH private key is empty")
+        val normalized = content.trim()
+        require(normalized.isNotBlank()) { "SSH private key is empty" }
         require(normalized.length <= MAX_PRIVATE_KEY_CHARS) { "SSH private key is too large" }
         val header = normalized.lineSequence().firstOrNull().orEmpty()
         require(header in SUPPORTED_PRIVATE_KEY_HEADERS) {
@@ -33,6 +34,7 @@ class DesktopHomeSshCredentialStore(
         Files.createDirectories(credentialFile.parent)
         val temporary = Files.createTempFile(credentialFile.parent, "home-ssh-key-", ".tmp")
         try {
+            restrictToCurrentUser(temporary)
             Files.writeString(
                 temporary,
                 "$normalized\n",
@@ -41,13 +43,12 @@ class DesktopHomeSshCredentialStore(
                 TRUNCATE_EXISTING,
                 WRITE,
             )
-            restrictToCurrentUser(temporary)
-            runCatching {
+            java.nio.channels.FileChannel.open(temporary, WRITE).use { it.force(true) }
+            try {
                 Files.move(temporary, credentialFile, REPLACE_EXISTING, ATOMIC_MOVE)
-            }.recoverCatching {
+            } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(temporary, credentialFile, REPLACE_EXISTING)
-            }.getOrThrow()
-            restrictToCurrentUser(credentialFile)
+            }
         } finally {
             Files.deleteIfExists(temporary)
         }
@@ -64,6 +65,30 @@ class DesktopHomeSshCredentialStore(
     }
 
     fun hasPrivateKey(): Boolean = privateKeyPathOrNull() != null
+
+    /** Keep key material out of persisted state and restore it if its metadata commit fails. */
+    internal fun importAndCommit(content: String, commit: (changed: Boolean) -> Result<Unit>): Result<Unit> {
+        val previous = runCatching {
+            require(!Files.isSymbolicLink(credentialFile))
+            if (Files.exists(credentialFile)) {
+                require(Files.size(credentialFile) <= MAX_PRIVATE_KEY_CHARS * 4L + 1)
+                Files.readString(credentialFile)
+            } else null
+        }.getOrElse { return Result.failure(IllegalStateException("PERSISTENCE_FAILED")) }
+        try {
+            importPrivateKey(content)
+        } catch (_: IllegalArgumentException) {
+            return Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
+        } catch (_: Exception) {
+            return Result.failure(IllegalStateException("PERSISTENCE_FAILED"))
+        }
+        val result = runCatching { commit(previous?.trim() != content.trim()).getOrThrow() }
+        if (result.isSuccess) return Result.success(Unit)
+        val restored = runCatching {
+            if (previous == null) Files.deleteIfExists(credentialFile) else importPrivateKey(previous)
+        }
+        return Result.failure(IllegalStateException(if (restored.isSuccess) "PERSISTENCE_FAILED" else "ROLLBACK_FAILED"))
+    }
 
     private fun restrictToCurrentUser(path: Path) {
         runCatching {

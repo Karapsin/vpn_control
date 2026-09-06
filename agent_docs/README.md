@@ -14,6 +14,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Translation debt or historical audit follow-up | `localization-untranslated-audit.md`, `localization.md` | Current catalogs first; use the audit only as historical context | Localization mapped check set |
 | Shared UI behavior, layout, or theme | `contracts.md`, `state-ownership.md`, `visual-regression.md`, `test-matrix.md` | `shared/ui/`, platform roots, scene manifest, affected capture drivers | `python3 scripts/check_ui_theme.py`, `./gradlew :shared:ui:desktopTest`; add platform compile/test if callbacks or state shape change |
 | Desktop lifecycle, tray, autostart, reconnect | `desktop-lifecycle.md`, `state-ownership.md`, `desktop-runtime-troubleshooting.md` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/` | `./gradlew :desktopApp:test` |
+| GUI/CLI parity, control protocol, headless commands, Android ADB | `cli.md`, `contracts.md`, `state-ownership.md` | shared control DTOs/codecs, desktop CLI/controller, Android control adapters | Shared model/core tests plus affected platform tests; native public-CLI package tests for launcher/transport changes |
 | Desktop runtime failure, VPN stopped, proxy not ready | `runtime-troubleshooting.md`, `desktop-runtime-troubleshooting.md`, `platform-matrix.md` | Redacted desktop preflight snippets, runtime logs/configs, desktop runtime services | Read-only preflight first; then `./gradlew :desktopApp:test` if code changed |
 | Android runtime failure or VPN config issue | `contracts.md`, `runtime-troubleshooting.md`, `sing-box-development.md` | Exported Android diagnostics, `app/src/main/java/com/kardinal/vpncontrol/data/`, `app/src/androidTest/` config tests | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin`; add instrumentation when config shape changes |
 | Protocol, parser, subscription import | `contracts.md`, `sing-box-development.md`, `architecture.md` | parsers and outbound/config builders in `shared/core/`, Android/desktop parity tests | `./gradlew :shared:core:desktopTest`; add platform config tests when shape changes |
@@ -38,6 +39,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `runtime-troubleshooting.md` | General runtime safety and read-only diagnostics before interrupting VPN/runtime. |
 | `desktop-runtime-troubleshooting.md` | Desktop state, logs, config paths, and platform-specific runtime details. |
 | `desktop-lifecycle.md` | Tray, single-instance, autostart, reconnect, refresh, and direct-probe invariants. |
+| `cli.md` | GUI/CLI operation inventory, shared control boundary, platform adapter implementation and validation. |
 | `sing-box-development.md` | sing-box owner files, tests, and protocol-change procedure. |
 | `native-runtime-artifacts.md` | Which native binaries are tracked, generated, or ignored. |
 | `localization.md` | Language catalog architecture, editing rules, validation, and test-update guidance. |

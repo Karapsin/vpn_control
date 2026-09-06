@@ -13,7 +13,7 @@ internal class DesktopConnectionActionsService(
     private val setResumeConnectionOnLaunch: (Boolean) -> Unit,
     private val getLaunchResumeAttempted: () -> Boolean,
     private val setLaunchResumeAttempted: (Boolean) -> Unit,
-    private val commitState: (nextLocations: List<DesktopLocationRecord>, nextState: MainUiState) -> Unit,
+    private val commitState: (nextLocations: List<DesktopLocationRecord>, nextState: MainUiState) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
 ) {
     fun shouldResumeConnectionOnLaunch(): Boolean = getResumeConnectionOnLaunch()
@@ -52,6 +52,10 @@ internal class DesktopConnectionActionsService(
         if (stateProvider().isVpnRunning) {
             return stop()
         }
+        return startSelectedLocation()
+    }
+
+    suspend fun startSelectedLocation(): Result<Unit> {
         val location = selectedDesktopLocation()
         return if (location == null) {
             updateState { it.withStatus(LocationStatusLogic.selectLocationFirst()) }

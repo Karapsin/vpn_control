@@ -33,6 +33,8 @@ bash scripts/test_arch_install_hygiene.sh
 python3 scripts/test_assemble_update_release.py
 python3 scripts/test_version_metadata.py
 python3 scripts/test_vpn_integration_fixture.py
+python3 scripts/test_packaged_cli_harness.py
+python3 scripts/test_windows_launcher_utf8.py
 python3 scripts/test_user_facing_terminology.py
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py

@@ -95,6 +95,9 @@ for dmg in "${dmg_files[@]}"; do
     echo "[vpn-control] signing identity is not configured; skipping codesign verification"
   fi
 
+  python3 "$repo_root/scripts/test_packaged_cli.py" \
+    --launcher "$app_path/Contents/MacOS/$executable_name" --expected-version "$expected_version"
+
   echo "[vpn-control] macOS DMG smoke passed: $bundle_name $version"
   cleanup
   trap - EXIT

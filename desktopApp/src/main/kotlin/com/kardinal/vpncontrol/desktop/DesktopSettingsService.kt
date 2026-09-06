@@ -16,8 +16,8 @@ import com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput
 internal class DesktopSettingsService(
     private val stateProvider: () -> MainUiState,
     private val autostartManager: DesktopAutostartManager,
-    private val stopConnection: suspend (String) -> Result<Unit>,
-    private val commitState: (MainUiState) -> Unit,
+    private val applySettings: (Map<String, com.kardinal.vpncontrol.model.ControlValue>) -> Result<Map<String, com.kardinal.vpncontrol.model.ControlValue>>,
+    private val commitState: (MainUiState) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
     private val homeSshCredentialStore: DesktopHomeSshCredentialStore? = null,
 ) {
@@ -56,13 +56,14 @@ internal class DesktopSettingsService(
 
     fun updateHomeSshDraft(transform: (MainUiState) -> MainUiState) = updateState(transform)
 
-    fun importHomeSshPrivateKey(content: String) {
-        runCatching {
-            (homeSshCredentialStore ?: error("SSH Routing credential storage is unavailable"))
-                .importPrivateKey(content)
-        }
-            .onSuccess {
+    fun importHomeSshPrivateKey(content: String): Result<Unit> {
+        if (stateProvider().isBusy) return Result.failure(IllegalStateException("BUSY"))
+        val store = homeSshCredentialStore ?: return Result.failure(IllegalStateException("UNSUPPORTED"))
+        return store.importAndCommit(content) { changed ->
                 val state = stateProvider()
+                if (!changed) return@importAndCommit commitState(state.withStatus(SettingsStatusMessages.homeSshPrivateKeyImported()))
+                if (state.homeSshRouteSettings.credentialVersion == Long.MAX_VALUE)
+                    return@importAndCommit Result.failure(IllegalStateException("PERSISTENCE_FAILED"))
                 val updated = state.homeSshRouteSettings.copy(
                     credentialVersion = state.homeSshRouteSettings.credentialVersion + 1L,
                 )
@@ -144,8 +145,8 @@ internal class DesktopSettingsService(
     }
 
     fun setStartOnBootEnabled(enabled: Boolean) {
-        val result = autostartManager.setEnabled(enabled)
-        val actual = autostartManager.isEnabled()
+        val result = applySettings(mapOf("autostart" to com.kardinal.vpncontrol.model.ControlValue.BooleanValue(enabled)))
+        val actual = autostartManager.inspectEnabled()
         val status = if (result.isSuccess) {
             if (actual) {
                 SettingsStatusMessages.startOnLoginEnabled()
@@ -258,17 +259,12 @@ internal class DesktopSettingsService(
         )
     }
 
-    suspend fun setAppMode(mode: AppMode) {
-        val state = stateProvider()
-        if (state.isVpnRunning && mode != state.appMode) {
-            val stopResult = stopConnection(
-                SettingsStatusMessages.connectionStoppedForAppMode(state.appMode, mode),
-            )
-            if (stopResult.isFailure) {
-                return
-            }
-        }
-        updateState { it.withStatus(SettingsStatusMessages.appModeChanged(mode)).copy(appMode = mode, showAppModeDialog = false) }
+    suspend fun setAppMode(mode: AppMode): Result<Unit> = applySettings(
+        mapOf("mode" to com.kardinal.vpncontrol.model.ControlValue.Text(
+            if (mode == AppMode.VPN) "vpn" else "proxy-only",
+        )),
+    ).map {
+        updateState { it.withStatus(SettingsStatusMessages.appModeChanged(mode)).copy(showAppModeDialog = false) }
     }
 
     suspend fun toggleAppMode() {

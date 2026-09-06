@@ -17,6 +17,79 @@ import kotlinx.coroutines.test.runTest
 
 class DesktopSubscriptionRefreshServiceTest {
     @Test
+    fun refreshRestoresStoppedRuntimeOnCommitFailureAndReportsFailedRollback() = runTest {
+        for (rollbackFails in listOf(false, true)) {
+            val source = SubscriptionSource(id = "source", url = "https://example.test/sub")
+            val old = DesktopLocationRecord(0, source.url, "old", "Old", "example.test", "SOCKS", "Imported", true)
+            var state = MainUiState(subscriptions = listOf(source), isVpnRunning = true,
+                selectedProfileRawLink = "old", selectedProfileSourceUrl = source.url)
+            var restored = 0
+            var stops = 0
+            val service = DesktopSubscriptionRefreshService(
+                stateProvider = { state }, locationsProvider = { listOf(old) },
+                subscriptionService = DesktopSubscriptionService(RefreshSubscriptionFetcher(
+                    mapOf(source.url to "socks://127.0.0.1:1080#New"))),
+                isRuntimeRunning = { state.isVpnRunning },
+                stopConnection = { stops++; state = state.copy(isVpnRunning = false); Result.success(Unit) },
+                findBestAfterRefresh = { error("No selection") },
+                commitState = { _, _ -> Result.failure(IllegalStateException("PERSISTENCE_FAILED")) },
+                updateState = { state = it(state) },
+                captureRestore = {
+                    assertTrue(state.isVpnRunning)
+                    suspend {
+                        restored++
+                        if (rollbackFails) Result.failure(IllegalStateException("private runtime error"))
+                        else { state = state.copy(isVpnRunning = true); Result.success(Unit) }
+                    }
+                },
+            )
+            val result = service.refreshAll()
+            assertEquals(if (rollbackFails) "ROLLBACK_FAILED" else "PERSISTENCE_FAILED", result.exceptionOrNull()?.message)
+            assertEquals(1, stops)
+            assertEquals(1, restored)
+            assertEquals(!rollbackFails, state.isVpnRunning)
+            assertEquals("old", state.selectedProfileRawLink)
+            assertFalse(state.isBusy)
+            assertFalse(state.isRefreshing)
+        }
+    }
+
+    @Test
+    fun persistenceFailureAndCancellationDoNotPublishCacheOrLeaveBusy() = runTest {
+        val subscription = SubscriptionSource(id = "test", url = "https://example.test/source")
+        val initial = MainUiState(subscriptions = listOf(subscription))
+        var state = initial
+        var cancel = false
+        var commits = 0
+        val service = DesktopSubscriptionRefreshService(
+            stateProvider = { state }, locationsProvider = { emptyList() },
+            subscriptionService = DesktopSubscriptionService(object : SubscriptionContentFetcher {
+                override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
+                    if (cancel) throw kotlinx.coroutines.CancellationException("cancelled")
+                    return FetchedSubscriptionContent("socks://127.0.0.1:1080#Test", "text/plain")
+                }
+            }),
+            isRuntimeRunning = { false }, stopConnection = { error("Must not stop") },
+            findBestAfterRefresh = { error("Must not select") },
+            commitState = { _, _ -> commits++; Result.failure(IllegalStateException("PERSISTENCE_FAILED")) },
+            updateState = { state = it(state) },
+        )
+        assertEquals("PERSISTENCE_FAILED", service.refreshAll().exceptionOrNull()?.message)
+        assertEquals(1, commits)
+        assertEquals(initial.subscriptions, state.subscriptions)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+        cancel = true
+        var cancelled = false
+        try { service.refreshAll() } catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+        assertTrue(cancelled)
+        assertEquals(1, commits)
+        assertEquals(initial.subscriptions, state.subscriptions)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
+    @Test
     fun refreshActiveWithoutTargetsPostsNoRemoteSourceMessage() = runTest {
         var state = MainUiState()
         val service = service(
@@ -118,6 +191,7 @@ class DesktopSubscriptionRefreshServiceTest {
 
     @Test
     fun refreshStopsRunningConnectionWhenSelectedLocationWasRemoved() = runTest {
+        for (selectedWasActive in listOf(true, false)) {
         val subscription = SubscriptionSource(
             id = "sub",
             url = "https://example.com/subscription.txt",
@@ -151,6 +225,7 @@ class DesktopSubscriptionRefreshServiceTest {
         )
         var stopMessage = ""
         val service = service(
+            isActiveLocation = { selectedWasActive && it.rawLink == "old-location" },
             stateProvider = { state },
             locationsProvider = { locations },
             fetcher = RefreshSubscriptionFetcher(
@@ -173,10 +248,11 @@ class DesktopSubscriptionRefreshServiceTest {
             statusPrefix = "Refreshing",
         )
 
-        assertEquals(SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(AppMode.VPN), stopMessage)
-        assertFalse(state.isVpnRunning)
+        assertEquals(if (selectedWasActive) SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(AppMode.VPN) else "", stopMessage)
+        assertEquals(!selectedWasActive, state.isVpnRunning)
         assertEquals("", state.selectedProfileRawLink)
         assertEquals(1, locations.size)
+        }
     }
 
     private fun service(
@@ -188,6 +264,7 @@ class DesktopSubscriptionRefreshServiceTest {
         findBestAfterRefresh: suspend () -> Unit = {},
         commitState: (MainUiState, List<DesktopLocationRecord>) -> Unit = { _, _ -> },
         updateState: ((MainUiState) -> MainUiState) -> Unit,
+        isActiveLocation: (DesktopLocationRecord) -> Boolean = { it.matchesSelectedLocation(stateProvider()) },
     ): DesktopSubscriptionRefreshService {
         return DesktopSubscriptionRefreshService(
             stateProvider = stateProvider,
@@ -200,8 +277,9 @@ class DesktopSubscriptionRefreshServiceTest {
             isRuntimeRunning = isRuntimeRunning,
             stopConnection = stopConnection,
             findBestAfterRefresh = findBestAfterRefresh,
-            commitState = commitState,
+            commitState = { state, locations -> commitState(state, locations); Result.success(Unit) },
             updateState = updateState,
+            isActiveLocation = isActiveLocation,
         )
     }
 }

@@ -21,6 +21,7 @@ import com.kardinal.vpncontrol.model.restoreDnsSettings
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
+import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,7 +30,6 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.APPEND
 import java.nio.file.StandardOpenOption.CREATE
-import java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
 import java.nio.file.StandardOpenOption.WRITE
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
@@ -68,6 +68,9 @@ data class DesktopWorkspace(
     val resumeConnectionOnLaunch: Boolean = persistedState.isVpnRunning,
 )
 
+/** Safe across the command boundary: filesystem exceptions may contain private paths. */
+class DesktopPersistenceException : IOException("PERSISTENCE_FAILED")
+
 class DesktopStateStore(
     private val baseDir: Path,
 ) : PersistedStateStore, RuntimeConfigStore {
@@ -91,22 +94,26 @@ class DesktopStateStore(
         val loadedWorkspace = loadStoredWorkspace(defaultWorkspace)
         val workspace = loadedWorkspace.migrateLegacyDesktopDefaults()
         if (workspace != loadedWorkspace) {
-            writeWorkspace(workspace)
+            writeWorkspace(workspace).getOrThrow()
         }
         stateFlow.value = workspace.persistedState
         return workspace
     }
 
-    fun writeWorkspace(workspace: DesktopWorkspace) {
-        runCatching {
+    fun writeWorkspace(workspace: DesktopWorkspace): Result<Unit> {
+        return runCatching {
             Files.createDirectories(baseDir)
             writeWorkspaceAtomically(
                 json.encodeToString(JsonObject.serializer(), encodeWorkspace(workspace)),
             )
             stateFlow.value = workspace.persistedState
-        }.onFailure { error ->
-            logWorkspaceWriteError(error)
-        }
+        }.fold(
+            onSuccess = { Result.success(Unit) },
+            onFailure = { error ->
+                logWorkspaceWriteError(error)
+                Result.failure(DesktopPersistenceException())
+            },
+        )
     }
 
     private fun loadStoredWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
@@ -119,7 +126,7 @@ class DesktopStateStore(
         if (workspace != null) {
             return workspace
         }
-        writeWorkspace(defaultWorkspace)
+        writeWorkspace(defaultWorkspace).getOrThrow()
         return defaultWorkspace
     }
 
@@ -149,12 +156,11 @@ class DesktopStateStore(
         val tempFile = Files.createTempFile(baseDir, "workspace-", ".tmp")
         try {
             Files.writeString(tempFile, content)
+            FileChannel.open(tempFile, WRITE).use { it.force(true) }
             try {
                 Files.move(tempFile, targetFile, REPLACE_EXISTING, ATOMIC_MOVE)
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(tempFile, targetFile, REPLACE_EXISTING)
-            } catch (_: IOException) {
-                Files.writeString(targetFile, content, CREATE, TRUNCATE_EXISTING, WRITE)
             }
         } finally {
             Files.deleteIfExists(tempFile)
@@ -170,10 +176,8 @@ class DesktopStateStore(
                     append(Instant.now())
                     append(' ')
                     append(error::class.qualifiedName ?: error::class.simpleName ?: "Throwable")
-                    append(": ")
-                    append(error.message.orEmpty())
+                    append(" PERSISTENCE_FAILED")
                     appendLine()
-                    appendLine(error.stackTraceToString())
                 },
                 CREATE,
                 APPEND,
@@ -194,25 +198,26 @@ class DesktopStateStore(
     }
 
     override suspend fun writeRuntimeConfig(configJson: String) {
-        runCatching {
+        try {
             Files.createDirectories(baseDir)
-            Files.writeString(runtimeConfigFile, configJson)
+            writeWorkspaceFile(runtimeConfigFile, configJson)
+        } catch (_: IOException) {
+            throw DesktopPersistenceException()
         }
     }
 
     override suspend fun clearRuntimeConfig() {
-        runCatching {
+        try {
             Files.deleteIfExists(runtimeConfigFile)
+        } catch (_: IOException) {
+            throw DesktopPersistenceException()
         }
     }
 
     companion object {
         fun default(): DesktopStateStore {
             return DesktopStateStore(
-                baseDir = Paths.get(
-                    System.getProperty("user.home"),
-                    ".vpn-control-desktop",
-                ),
+                baseDir = DesktopWorkspacePaths.root(),
             )
         }
 

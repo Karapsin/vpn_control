@@ -26,7 +26,10 @@ internal data class DesktopSubscriptionRefreshPayload(
     val locations: List<DesktopLocationRecord>,
     val refreshedCount: Int,
     val statusMessage: String,
+    val outcomes: List<DesktopSubscriptionRefreshOutcome> = emptyList(),
 )
+
+internal data class DesktopSubscriptionRefreshOutcome(val id: String, val ok: Boolean, val locationCount: Int?)
 
 internal class DesktopSubscriptionService(
     private val subscriptionContentFetcher: SubscriptionContentFetcher,
@@ -114,6 +117,9 @@ internal class DesktopSubscriptionService(
                 locations = rebuiltLocations,
                 refreshedCount = loadedByUrl.size,
                 statusMessage = summary,
+                outcomes = results.map { DesktopSubscriptionRefreshOutcome(
+                    it.subscription.id, it.result.isSuccess, it.result.getOrNull()?.size,
+                ) },
             ),
         )
     }
@@ -134,6 +140,8 @@ internal class DesktopSubscriptionService(
                         subscription = subscription,
                         result = runCatching {
                             loadSubscriptionProfiles(subscription.url, subscriptionHwid)
+                        }.onFailure {
+                            if (it is kotlinx.coroutines.CancellationException) throw it
                         },
                     )
                 }

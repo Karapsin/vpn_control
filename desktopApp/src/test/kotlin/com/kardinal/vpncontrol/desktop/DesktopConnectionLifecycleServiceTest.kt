@@ -15,6 +15,96 @@ import kotlinx.coroutines.test.runTest
 
 class DesktopConnectionLifecycleServiceTest {
     @Test
+    fun capturedRuntimeRestoreDoesNotApplyPendingSelectionOrSettings() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val first = desktopLifecycleLocation(0)
+        assertTrue(service.startConnection(state, listOf(first), first, null, { state }, {},
+            commitState = { _, next -> state = next; Result.success(Unit) },
+            updateState = { state = it(state) }).isSuccess)
+        val original = service.activeConfiguration
+        val originalRuntime = kotlin.test.assertNotNull(service.activeConnection).runtimeId
+        state = state.copy(selectedProfileRawLink = "socks://127.0.0.2:1080#Pending", appMode = AppMode.VPN)
+        val restore = service.captureRuntimeRestore()
+        assertTrue(service.stopConnection(state, listOf(first), null, { state }, {},
+            commitState = { _, next -> state = next; Result.success(Unit) },
+            updateState = { state = it(state) }).isSuccess)
+        assertTrue(restore().isSuccess)
+        val restoredRuntime = kotlin.test.assertNotNull(service.activeConnection).runtimeId
+        assertTrue(originalRuntime != restoredRuntime)
+        assertTrue(restore().isSuccess)
+        assertEquals(restoredRuntime, service.activeConnection?.runtimeId)
+        assertEquals(original, service.activeConfiguration)
+        assertEquals(first.rawLink, service.activeLocation?.rawLink)
+        assertEquals(listOf("Selected", "Selected"), runtime.startedProfiles.map { it.remarks })
+        assertEquals("socks://127.0.0.2:1080#Pending", state.selectedProfileRawLink)
+        assertEquals(AppMode.VPN, state.appMode)
+    }
+
+    @Test
+    fun failedStartPersistenceNeverReportsSuccessOrLeavesNewRuntimeRunning() = runTest {
+        for (failureAt in listOf(1, 2)) {
+            val runtime = FakeDesktopRuntimeController()
+            val service = DesktopConnectionLifecycleService(runtime)
+            var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+            val locations = listOf(desktopLifecycleLocation(0))
+            var writes = 0
+            var resume = false
+            val result = service.startConnection(state, locations, locations.single(), null, { state },
+                { resume = it }, commitState = { _, next ->
+                    writes++
+                    if (writes == failureAt) Result.failure(DesktopPersistenceException())
+                    else { state = next; Result.success(Unit) }
+                }, updateState = { state = it(state) })
+            assertEquals("PERSISTENCE_FAILED", result.exceptionOrNull()?.message)
+            assertEquals(failureAt - 1, runtime.startedProfiles.size)
+            assertFalse(runtime.running)
+            assertFalse(state.isVpnRunning)
+            assertFalse(state.isBusy)
+            assertFalse(resume)
+        }
+    }
+
+    @Test
+    fun failedRestartCommitRestoresActualPriorRuntimeNotPendingSelection() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val first = desktopLifecycleLocation(0)
+        val second = first.copy(index = 1, rawLink = "socks://127.0.0.2:1080#Second", name = "Second")
+        val locations = listOf(first, second)
+        var failCommit = false
+        suspend fun start(location: DesktopLocationRecord) = service.startConnection(
+            state, locations, location, null, { state }, {}, commitState = { _, next ->
+                if (failCommit && !next.isBusy) Result.failure(DesktopPersistenceException())
+                else { state = next; Result.success(Unit) }
+            }, updateState = { state = it(state) })
+        assertTrue(start(first).isSuccess)
+        failCommit = true
+        assertEquals("PERSISTENCE_FAILED", start(second).exceptionOrNull()?.message)
+        assertEquals(listOf("Selected", "Second", "Selected"), runtime.startedProfiles.map { it.remarks })
+        assertEquals(first.rawLink, service.activeLocation?.rawLink)
+        assertEquals(second.rawLink, state.selectedProfileRawLink)
+        assertTrue(state.isVpnRunning)
+        assertFalse(state.isBusy)
+    }
+
+    @Test
+    fun failedStopSaveStillPublishesActualStoppedStateAndReturnsFailure() = runTest {
+        val runtime = FakeDesktopRuntimeController(running = true)
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(isVpnRunning = true)
+        val result = service.stopConnection(state, emptyList(), null, { state }, {},
+            commitState = { _, _ -> Result.failure(DesktopPersistenceException()) },
+            updateState = { state = it(state) })
+        assertEquals("PERSISTENCE_FAILED", result.exceptionOrNull()?.message)
+        assertFalse(runtime.running)
+        assertFalse(state.isVpnRunning)
+        assertFalse(state.isBusy)
+    }
+
+    @Test
     fun startConnectionSelectsLocationStartsRuntimeAndEnablesResume() = runTest {
         val runtime = FakeDesktopRuntimeController(
             startResult = Result.success(
@@ -32,7 +122,9 @@ class DesktopConnectionLifecycleServiceTest {
             runtime = runtime,
             clockMillis = { 1234L },
         )
-        var state = MainUiState(appMode = AppMode.VPN)
+        val committedRules = RoutingRules(directDomainSuffixes = listOf("committed.example"))
+        var state = MainUiState(appMode = AppMode.VPN, routingRules = committedRules,
+            routingDirectDomainsDraft = "unsaved.example")
         var locations = listOf(desktopLifecycleLocation(index = 0))
         var resume = false
 
@@ -46,6 +138,7 @@ class DesktopConnectionLifecycleServiceTest {
             commitState = { nextLocations, nextState ->
                 locations = nextLocations
                 state = nextState
+                Result.success(Unit)
             },
             updateState = { transform ->
                 state = transform(state)
@@ -53,6 +146,12 @@ class DesktopConnectionLifecycleServiceTest {
         )
 
         assertTrue(result.isSuccess)
+        assertEquals(committedRules, runtime.startedRules.single())
+        val active = kotlin.test.assertNotNull(service.activeConfiguration)
+        assertFalse(active.hasPendingChanges(state))
+        assertTrue(active.hasPendingChanges(state.copy(appMode = AppMode.PROXY_ONLY)))
+        assertFalse(active.hasPendingChanges(state.copy(routingDirectDomainsDraft = "another-unsaved.example")))
+        assertEquals(locations.single().rawLink, service.activeLocation?.rawLink)
         assertTrue(resume)
         assertEquals("Selected", runtime.startedProfiles.single().remarks)
         assertTrue(locations.single().isSelected)
@@ -84,6 +183,7 @@ class DesktopConnectionLifecycleServiceTest {
             setResumeConnectionOnLaunch = { resume = it },
             commitState = { _, nextState ->
                 state = nextState
+                Result.success(Unit)
             },
             updateState = { transform ->
                 state = transform(state)
@@ -118,6 +218,7 @@ class DesktopConnectionLifecycleServiceTest {
             setResumeConnectionOnLaunch = { resume = it },
             commitState = { _, nextState ->
                 state = nextState
+                Result.success(Unit)
             },
             updateState = { transform ->
                 state = transform(state)
@@ -163,6 +264,7 @@ private class FakeDesktopRuntimeController(
     private val stopResult: Result<Unit> = Result.success(Unit),
 ) : DesktopRuntimeController {
     val startedProfiles = mutableListOf<ProxyProfile>()
+    val startedRules = mutableListOf<RoutingRules>()
 
     override suspend fun start(
         profile: ProxyProfile,
@@ -173,6 +275,7 @@ private class FakeDesktopRuntimeController(
         homeSshRouteSettings: com.kardinal.vpncontrol.model.HomeSshRouteSettings,
     ): Result<DesktopRuntimeSession> {
         startedProfiles += profile
+        startedRules += routingRules
         if (startResult.isSuccess) {
             running = true
             mode = appMode

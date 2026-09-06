@@ -13,6 +13,26 @@ import kotlinx.coroutines.test.runTest
 
 class DesktopLocationServiceTest {
     @Test
+    fun selectingAlreadySelectedLocationDoesNotPersistAgain() {
+        val location = desktopLocation(index = 17, rawLink = "vless://same", name = "Same", isSelected = true)
+        val state = MainUiState(
+            currentLocations = listOf(location.rawLink), selectedProfileName = location.name,
+            selectedProfileServer = location.server, selectedProfileRawLink = location.rawLink,
+            selectedProfileSourceUrl = location.sourceUrl, isVpnRunning = true,
+        )
+        var commits = 0
+        val service = desktopLocationService(
+            stateProvider = { state }, locationsProvider = { listOf(location) },
+            commitState = { _, _ -> commits++ }, updateState = { error("Unexpected status mutation") },
+        )
+
+        service.applySelection(location.index)
+        assertTrue(service.applyCliSelection("Same").isSuccess)
+
+        assertEquals(0, commits)
+    }
+
+    @Test
     fun deleteSelectedLocationKeepsStoppedStateAfterRuntimeStop() = runTest {
         var state = MainUiState(
             appMode = AppMode.VPN,
@@ -35,6 +55,7 @@ class DesktopLocationServiceTest {
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
+                Result.success(Unit)
             },
             updateState = { transform -> state = transform(state) },
         )
@@ -64,6 +85,7 @@ class DesktopLocationServiceTest {
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
+                Result.success(Unit)
             },
             updateState = { transform -> state = transform(state) },
         )
@@ -157,7 +179,7 @@ class DesktopLocationServiceTest {
 
         assertTrue(result.isFailure)
         assertEquals("", state.selectedProfileName)
-        assertEquals("Multiple visible locations are named \"Duplicate\".", state.statusMessage)
+        assertEquals(com.kardinal.vpncontrol.model.ConnectionStatusMessages.selectedLocationSelectFailed(), state.statusMessage)
         assertFalse(locations.any { it.isSelected })
     }
 
@@ -183,7 +205,7 @@ class DesktopLocationServiceTest {
 
         assertTrue(result.isFailure)
         assertEquals("", state.selectedProfileName)
-        assertEquals("Location not found: Missing", state.statusMessage)
+        assertEquals(com.kardinal.vpncontrol.model.ConnectionStatusMessages.selectedLocationSelectFailed(), state.statusMessage)
         assertFalse(locations.single().isSelected)
     }
 
@@ -199,6 +221,7 @@ class DesktopLocationServiceTest {
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
+                Result.success(Unit)
             },
             updateState = { transform -> state = transform(state) },
         )
@@ -219,7 +242,7 @@ class DesktopLocationServiceTest {
             locationsProvider = locationsProvider,
             currentRuntimeMode = { null },
             stopConnection = { Result.success(Unit) },
-            commitState = commitState,
+            commitState = { state, locations -> commitState(state, locations); Result.success(Unit) },
             updateState = updateState,
         )
     }

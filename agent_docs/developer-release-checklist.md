@@ -49,10 +49,18 @@ Windows desktop from a Windows host:
 
 - PowerShell is available.
 - Git Bash or another Bash-compatible shell is available as `bash`.
-- Python 3 is available as `python3` for documentation hygiene checks.
+- Python 3 is available as `python3` for documentation hygiene and launcher manifest preparation.
 - JDK 17 is available.
 - WiX is downloaded by the Compose packaging task when needed.
 - Package regression scripts validate MSI/EXE payloads and extracted launcher smoke behavior.
+- MSI-extracted GUI/CLI launchers also pass read-only `windows_launcher_utf8.py
+  --verify-only`; verification is safe after signing and must not repair test inputs.
+- The Windows app-image task runs `scripts/windows_launcher_utf8.py` on both generated
+  launchers before installers consume them. It sets the per-process UTF-8 code page,
+  preserves non-elevated execution/DPI/compatibility, and refuses already signed
+  binaries. Sign only after this step. It does not change the system locale.
+  [The manifest facility requires Windows 10 1903+](https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page); earlier Windows Unicode argument
+  handling remains unverified and must not be inferred from modern Windows tests.
 
 Windows desktop from Linux VM:
 

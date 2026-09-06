@@ -4,17 +4,10 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.kardinal.vpncontrol.data.AppRepository
-import com.kardinal.vpncontrol.data.BenchmarkOrchestrator
-import com.kardinal.vpncontrol.data.DiagnosticsExporter
 import com.kardinal.vpncontrol.data.DiagnosticsLogger
-import com.kardinal.vpncontrol.data.InstalledAppsCatalog
 import com.kardinal.vpncontrol.data.ImportPreference
 import com.kardinal.vpncontrol.data.LocationsExportDocument
-import com.kardinal.vpncontrol.data.ProfileStorage
 import com.kardinal.vpncontrol.data.RoutingRulesExportDocument
-import com.kardinal.vpncontrol.data.SubscriptionRefreshScheduler
-import com.kardinal.vpncontrol.data.VpnManager
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -22,44 +15,47 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetAction
 import com.kardinal.vpncontrol.model.RoutingRuleSetFormat
 import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 
-class MainViewModel(
+class MainViewModel internal constructor(
     private val appContext: Context,
-    private val repository: AppRepository,
-    private val vpnManager: VpnManager,
-    private val diagnosticsExporter: DiagnosticsExporter,
-    private val installedAppsCatalog: InstalledAppsCatalog,
-    private val diagnosticsLogger: (String) -> Unit = {},
+    private val owner: AndroidApplicationOwner,
 ) : ViewModel() {
+    private val repository = owner.repository
+    private val vpnManager = owner.vpnManager
+    private val diagnosticsExporter = owner.diagnosticsExporter
+    private val installedAppsCatalog = owner.installedAppsCatalog
+    private val commands = owner.commands
     private val controller = MainController()
     private val _uiState = controller.mutableState
     val uiState: StateFlow<MainUiState> = controller.state
-    private var activeBusyJob: Job? = null
+    internal val runtimeObservation = owner.runtimeObserver.state
+    private val mutableLocationVisualState = kotlinx.coroutines.flow.MutableStateFlow(AndroidLocationVisualState())
+    val locationVisualState: kotlinx.coroutines.flow.StateFlow<AndroidLocationVisualState> = mutableLocationVisualState
     private val installedAppsActions = AndroidInstalledAppsActionsService(
         stateProvider = { _uiState.value },
         updateState = { transform -> _uiState.value = transform(_uiState.value) },
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         loadInstalledApps = installedAppsCatalog::load,
         updateStatus = repository::updateStatus,
     )
-    private val controllerEffectHandler = AndroidControllerEffectHandler(
+    private val controllerEffectHandler: AndroidControllerEffectHandler = AndroidControllerEffectHandler(
         repository = repository,
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         ensureInstalledAppsLoaded = installedAppsActions::ensureLoaded,
-        importRoutingRules = ::importRoutingRules,
+        importRoutingRules = { routingActions.importRoutingRulesWithinMutation(it) },
+        launchMutation = ::launchMutationOrReportBusy,
     )
     private val profileActions = AndroidProfileActionsService(
         controller = controller,
         stateProvider = { _uiState.value },
         effectSink = controllerEffectHandler,
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         updateStatus = repository::updateStatus,
+        launchMutation = ::launchMutationOrReportBusy,
     )
     private val connectionLifecycle = AndroidConnectionLifecycleService(
         stateProvider = { _uiState.value },
@@ -82,10 +78,13 @@ class MainViewModel(
         launchTrackedBusyOperation = ::launchTrackedBusyOperation,
     )
     private val locationActions = AndroidLocationActionsService(
+        guarded = AndroidGuiLocationActions(controller, { _uiState.value }, commands::launch,
+            owner.storage::configurationSnapshot, owner.settingsControl::execute),
         controller = controller,
         stateProvider = { _uiState.value },
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         launchTrackedBusyOperation = ::launchTrackedBusyOperation,
+        launchMutation = { commands.launchMutation(it) },
         setBusy = ::setBusy,
         setRefreshing = { value -> _uiState.value = _uiState.value.copy(isRefreshing = value) },
         updateStatus = repository::updateStatus,
@@ -99,18 +98,18 @@ class MainViewModel(
         benchmarkLocation = repository::benchmarkLocation,
         appendLatencyHistory = repository::appendLatencyHistory,
     )
-    private val routingActions = AndroidRoutingActionsService(
+    private val routingActions: AndroidRoutingActionsService = AndroidRoutingActionsService(
         controller = controller,
         stateProvider = { _uiState.value },
         effectSink = controllerEffectHandler,
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = ::launchMutationOrReportBusy,
         setBusy = ::setBusy,
         updateRoutingRules = repository::updateRoutingRules,
         updateStatus = repository::updateStatus,
     )
     private val subscriptionRefreshActions = AndroidSubscriptionRefreshActionsService(
         stateProvider = { _uiState.value },
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = { commands.launchMutation(it) },
         setBusy = ::setBusy,
         updateStatus = repository::updateStatus,
         runActiveRefresh = repository::refreshActiveSubscriptionCache,
@@ -134,12 +133,12 @@ class MainViewModel(
         stopConnection = vpnManager::stop,
         updateLocationBenchmarkDetails = repository::updateLocationBenchmarkDetails,
         appendLatencyHistory = repository::appendLatencyHistory,
-        diagnosticsLogger = diagnosticsLogger,
+        diagnosticsLogger = { message -> DiagnosticsLogger.append(appContext, message) },
     )
     private val settingsActions = AndroidSettingsActionsService(
         controller = controller,
         effectSink = controllerEffectHandler,
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         stopConnection = vpnManager::stop,
         updateStatus = repository::updateStatus,
         updateSessionStatsEnabled = repository::updateSessionStatsEnabled,
@@ -150,28 +149,31 @@ class MainViewModel(
         updateConnectionTestToolsEnabled = repository::updateConnectionTestToolsEnabled,
         credentialStore = com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore(appContext),
         updateHomeSshRouteSettings = repository::updateHomeSshRouteSettings,
+        launchMutation = ::launchMutationOrReportBusy,
+        importKey = owner::importSshKey,
+        homeSshPendingRestart = owner::pendingRestartAfterSettingsSave,
     )
     private val diagnosticsActions = AndroidDiagnosticsActionsService(
-        launch = { block -> viewModelScope.launch { block() } },
+        launch = commands::launch,
         setBusy = ::setBusy,
         updateStatus = repository::updateStatus,
         exportAndShare = diagnosticsExporter::exportAndShare,
     )
-    private val updateActions = AndroidUpdateActionsService(
-        context = appContext,
-        stateProvider = { _uiState.value },
-        updateState = { transform -> _uiState.value = transform(_uiState.value) },
-        launch = { block -> viewModelScope.launch { block() } },
-    )
+    private val updateActions = owner.updateActions
 
     init {
-        repository.state.onEach { persisted ->
+        repository.state.combine(runtimeObservation) { persisted, observation -> persisted to observation }.onEach { (persisted, observation) ->
             controller.mergePersistedState(persisted)
+            _uiState.value = observation.applyKnownState(_uiState.value)
+            mutableLocationVisualState.value = owner.runtimeObserver.locationVisualState(persisted)
         }.launchIn(viewModelScope)
 
-        viewModelScope.launch {
-            repository.syncSubscriptionRefreshScheduling()
-        }
+        commands.busy.onEach { busy ->
+            _uiState.value = _uiState.value.copy(isBusy = busy)
+        }.launchIn(viewModelScope)
+        owner.updateState.onEach { update ->
+            _uiState.value = _uiState.value.copy(appUpdate = update)
+        }.launchIn(viewModelScope)
     }
 
     fun toggleDnsDialog() {
@@ -273,11 +275,11 @@ class MainViewModel(
     }
 
     fun checkAndDownloadUpdate() {
-        updateActions.checkAndDownload()
+        owner.checkAndDownloadUpdate()
     }
 
     fun dismissOrCancelUpdate() {
-        updateActions.dismissOrCancel()
+        owner.dismissOrCancelUpdate()
     }
 
     fun buildUpdateInstallIntent(): android.content.Intent? {
@@ -593,7 +595,7 @@ class MainViewModel(
     }
 
     fun cancelActiveOperation() {
-        activeBusyJob?.cancel(CancellationException("Cancelled by user"))
+        commands.cancelActive()
     }
 
     fun refresh() {
@@ -613,45 +615,29 @@ class MainViewModel(
     }
 
     private fun setBusy(value: Boolean) {
-        _uiState.value = _uiState.value.copy(isBusy = value)
+        commands.setBusy(value)
+        _uiState.value = _uiState.value.copy(isBusy = commands.busy.value)
     }
 
     private fun launchTrackedBusyOperation(block: suspend () -> Unit) {
-        if (activeBusyJob?.isActive == true) return
-        lateinit var job: Job
-        job = viewModelScope.launch {
-            try {
-                block()
-            } finally {
-                if (activeBusyJob === job) {
-                    activeBusyJob = null
-                }
-            }
+        commands.launchTracked(block)
+    }
+
+    private fun launchMutationOrReportBusy(block: suspend () -> Unit) {
+        if (commands.launchMutation(block) == null) {
+            commands.launch { repository.updateStatus("BUSY") }
         }
-        activeBusyJob = job
     }
 
     companion object {
         fun factory(context: Context): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                val storage = ProfileStorage(context)
-                val subscriptionRefreshScheduler = SubscriptionRefreshScheduler(context)
-                val repository = AppRepository(
-                    storage = storage,
-                    orchestrator = BenchmarkOrchestrator(context, storage),
-                    subscriptionRefreshScheduler = subscriptionRefreshScheduler,
-                )
-                val vpnManager = VpnManager(context, storage)
-                val diagnosticsExporter = DiagnosticsExporter(context, storage)
-                val installedAppsCatalog = InstalledAppsCatalog(context)
+                require(modelClass.isAssignableFrom(MainViewModel::class.java))
+                val owner = AndroidApplicationOwner.get(context)
                 return MainViewModel(
                     appContext = context.applicationContext,
-                    repository = repository,
-                    vpnManager = vpnManager,
-                    diagnosticsExporter = diagnosticsExporter,
-                    installedAppsCatalog = installedAppsCatalog,
-                    diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
+                    owner = owner,
                 ) as T
             }
         }

@@ -7,11 +7,73 @@ import com.kardinal.vpncontrol.model.DnsSettings
 import com.kardinal.vpncontrol.model.RoutingStatusMessages
 import com.kardinal.vpncontrol.model.UiSettingsStatusItem
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidSettingsActionsServiceTest {
+    @Test fun unchangedSshSaveCannotClearImportedKeyRestartWarning() {
+        val settings = com.kardinal.vpncontrol.model.HomeSshRouteSettings(credentialVersion = 1)
+        val controller = MainController(MainUiState(isVpnRunning = true, homeSshRouteSettings = settings,
+            homeSshRestartPending = true, showHomeSshRouteDialog = true))
+        var writtenVersion: Long? = null
+        service(controller, updateHomeSshRouteSettings = { writtenVersion = it.credentialVersion },
+            homeSshPendingRestart = { assertEquals(1L, writtenVersion); true }).saveHomeSshRoute()
+        assertEquals(1L, writtenVersion)
+        assertTrue(controller.currentState().homeSshRestartPending)
+        assertTrue(controller.currentState().showHomeSshRestartDialog)
+    }
+    @Test fun actualRevertClearsWarningButUnknownRuntimeCannotClearIt() {
+        for (knownPending in listOf(false, true, null)) {
+            val controller = MainController(MainUiState(isVpnRunning = true, homeSshRestartPending = true,
+                showHomeSshRouteDialog = true, showHomeSshRestartDialog = true,
+                homeSshRouteSettings = com.kardinal.vpncontrol.model.HomeSshRouteSettings(credentialVersion = 4)))
+            var saved = false
+            service(controller, updateHomeSshRouteSettings = { saved = true; assertEquals(4, it.credentialVersion) },
+                homeSshPendingRestart = { assertTrue(saved); knownPending }).saveHomeSshRoute()
+            assertEquals(knownPending ?: true, controller.currentState().homeSshRestartPending)
+            assertEquals(knownPending ?: true, controller.currentState().showHomeSshRestartDialog)
+            assertEquals(4, controller.currentState().homeSshRouteSettings.credentialVersion)
+            org.junit.Assert.assertFalse(controller.currentState().showHomeSshRouteDialog)
+        }
+    }
+    @Test fun failedPostSaveObservationIsConservativeWithoutUndoingCommittedSave() {
+        val controller = MainController(MainUiState(showHomeSshRouteDialog = true))
+        var writes = 0
+        service(controller, updateHomeSshRouteSettings = { writes++ },
+            homeSshPendingRestart = { throw java.io.IOException("PRIVATE_FAILURE") }).saveHomeSshRoute()
+        assertEquals(1, writes)
+        assertTrue(controller.currentState().homeSshRestartPending)
+        assertTrue(controller.currentState().showHomeSshRestartDialog)
+        org.junit.Assert.assertFalse(controller.currentState().showHomeSshRouteDialog)
+    }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun sshSaveKeepsDraftOnBusyAndOwnsLeaseUntilPersistenceCompletes() = kotlinx.coroutines.test.runTest {
+        val jobs = AndroidCommandJobs(backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val controller = MainController(MainUiState(showHomeSshRouteDialog = true))
+        var writes = 0
+        val service = service(controller, launchMutation = { jobs.launchMutation(it) },
+            updateHomeSshRouteSettings = { writes++; gate.await() })
+        val lease = requireNotNull(jobs.tryAcquireMutation())
+        service.saveHomeSshRoute()
+        service.importHomeSshPrivateKey("not-a-real-key")
+        runCurrent()
+        assertEquals(0, writes)
+        assertTrue(controller.currentState().showHomeSshRouteDialog)
+        jobs.releaseMutation(lease)
+        service.saveHomeSshRoute()
+        runCurrent()
+        assertEquals(1, writes)
+        assertTrue(controller.currentState().showHomeSshRouteDialog)
+        jobs.cancelActive()
+        org.junit.Assert.assertNull(jobs.tryAcquireMutation())
+        gate.complete(Unit)
+        runCurrent()
+        org.junit.Assert.assertFalse(controller.currentState().showHomeSshRouteDialog)
+        org.junit.Assert.assertFalse(jobs.busy.value)
+    }
     @Test
     fun setSessionStatsEnabledPersistsAndReportsStatus() {
         val controller = MainController()
@@ -147,6 +209,9 @@ class AndroidSettingsActionsServiceTest {
         stopConnection: suspend () -> Result<Unit> = { Result.success(Unit) },
         updateStatus: suspend (String) -> Unit = {},
         updateSessionStatsEnabled: suspend (Boolean) -> Unit = {},
+        launchMutation: (suspend () -> Unit) -> Unit = { block -> runBlocking { block() } },
+        updateHomeSshRouteSettings: suspend (com.kardinal.vpncontrol.model.HomeSshRouteSettings) -> Unit = {},
+        homeSshPendingRestart: suspend () -> Boolean? = { null },
     ): AndroidSettingsActionsService {
         return AndroidSettingsActionsService(
             controller = controller,
@@ -160,6 +225,9 @@ class AndroidSettingsActionsServiceTest {
             updateLatencyHistoryEnabled = {},
             updateConnectionLogEnabled = {},
             updateConnectionTestToolsEnabled = {},
+            launchMutation = launchMutation,
+            updateHomeSshRouteSettings = updateHomeSshRouteSettings,
+            homeSshPendingRestart = homeSshPendingRestart,
         )
     }
 }

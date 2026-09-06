@@ -32,13 +32,17 @@ internal class AndroidLocationActionsService(
     private val stopConnection: suspend () -> Result<Unit>,
     private val benchmarkLocation: suspend (String) -> Result<ProfileBenchmark>,
     private val appendLatencyHistory: suspend (LatencyHistoryEntry) -> Unit,
+    private val launchMutation: (suspend () -> Unit) -> Unit = launchTrackedBusyOperation,
+    private val guarded: AndroidGuiLocationActions? = null,
 ) {
     fun showAddLocationDialog() {
+        guarded?.let { it.open(); return }
         effectStatus(controller.showAddLocationDialog())
     }
 
     fun editLocation(index: Int) {
         val rawLink = stateProvider().currentLocations.getOrNull(index) ?: return
+        guarded?.let { it.open(rawLink); return }
         controller.editLocation(
             index = index,
             rawLink = runCatching { LocationConfigs.prettyStoredLocation(rawLink) }.getOrDefault(rawLink),
@@ -46,6 +50,7 @@ internal class AndroidLocationActionsService(
     }
 
     fun closeLocationDialog() {
+        guarded?.close()
         controller.closeLocationDialog()
     }
 
@@ -58,20 +63,21 @@ internal class AndroidLocationActionsService(
     }
 
     fun saveLocation() {
+        guarded?.let { it.save(); return }
         val decision = LocationMutationLogic.planSaveLocation(stateProvider())
-        launch {
+        launchMutation mutation@{
             when (decision) {
                 is SaveLocationDecision.MutationBlocked -> {
                     controller.showLocationMutationBlockedDialog(decision.message)
-                    return@launch
+                    return@mutation
                 }
                 is SaveLocationDecision.Invalid -> {
                     updateStatus(decision.message)
-                    return@launch
+                    return@mutation
                 }
                 is SaveLocationDecision.Duplicate -> {
                     updateStatus(decision.message)
-                    return@launch
+                    return@mutation
                 }
                 is SaveLocationDecision.Plan -> Unit
             }
@@ -89,7 +95,7 @@ internal class AndroidLocationActionsService(
                         selectionResult.exceptionOrNull()?.message
                             ?: ConnectionStatusMessages.updatedSelectedLocationApplyFailed(),
                     )
-                    return@launch
+                    return@mutation
                 }
                 val applyResult = applyAndPersistSelection(
                     selectionResult.getOrThrow(),
@@ -111,7 +117,7 @@ internal class AndroidLocationActionsService(
                         message
                     }
                     updateStatus(resolvedMessage)
-                    return@launch
+                    return@mutation
                 }
             }
             updateStatus(LocationMutationLogic.saveLocationSuccessMessage(plan))
@@ -126,7 +132,7 @@ internal class AndroidLocationActionsService(
                 return
             }
             DeleteLocationDecision.Missing -> return
-            is DeleteLocationDecision.Plan -> launch {
+            is DeleteLocationDecision.Plan -> launchMutation {
                 val previousState = snapshot()
                 val update = updateCurrentLocations(decision.nextLocations)
                 val removedSelected = update.selectedMissing
@@ -183,7 +189,8 @@ internal class AndroidLocationActionsService(
 
     fun selectLocation(index: Int) {
         val rawLink = stateProvider().currentLocations.getOrNull(index) ?: return
-        launch {
+        guarded?.let { it.select(rawLink); return }
+        launchMutation {
             setBusy(true)
             val isSelected = rawLink == selectedLocationReference()
             val previousState = snapshot()
@@ -248,15 +255,15 @@ internal class AndroidLocationActionsService(
     }
 
     fun importLocations(raw: String) {
-        launch {
+        launchMutation mutation@{
             when (val decision = LocationMutationLogic.planImportLocations(stateProvider(), raw)) {
                 is ImportLocationsDecision.Blocked -> {
                     updateStatus(decision.message)
-                    return@launch
+                    return@mutation
                 }
                 is ImportLocationsDecision.Invalid -> {
                     updateStatus(decision.message)
-                    return@launch
+                    return@mutation
                 }
                 is ImportLocationsDecision.Plan -> {
                     setBusy(true)

@@ -11,22 +11,31 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.isAllSubscriptionsGroupActive
 import com.kardinal.vpncontrol.shared.storageapi.RefreshScheduler
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executor
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 internal class SubscriptionRefreshScheduler(
     private val workOperations: SubscriptionRefreshWorkOperations,
     private val diagnosticsLogger: (String) -> Unit = {},
+    private val latestState: (suspend () -> PersistedState)? = null,
 ) : RefreshScheduler {
-    constructor(context: Context) : this(
+    constructor(context: Context, latestState: suspend () -> PersistedState) : this(
         workOperations = AndroidSubscriptionRefreshWorkOperations(context),
         diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
+        latestState = latestState,
     )
+    private val scheduling = Mutex()
 
     override suspend fun sync(state: PersistedState) {
-        schedule(state)
+        scheduling.withLock { schedule(latestState?.invoke() ?: state) }
     }
 
     override suspend fun scheduleNext(state: PersistedState) {
-        schedule(state)
+        scheduling.withLock { schedule(latestState?.invoke() ?: state) }
     }
 
     private suspend fun schedule(state: PersistedState) {
@@ -45,7 +54,7 @@ internal class SubscriptionRefreshScheduler(
             intervalMinutes == null ||
             !validSource
         ) {
-            workOperations.cancelUniqueWork(WORK_NAME)
+            workOperations.cancelUniqueWork(WORK_NAME).await()
             diagnosticsLogger(
                 "Subscription refresh scheduling canceled: mode=${state.profileSourceMode} activeUrlSet=${state.profileUrl.isNotBlank()} subscriptions=${state.subscriptions.size} policy=${state.subscriptionRefreshPolicy} refreshAll=$refreshAll validSource=$validSource",
             )
@@ -56,7 +65,7 @@ internal class SubscriptionRefreshScheduler(
             workName = WORK_NAME,
             policy = ExistingWorkPolicy.REPLACE,
             intervalMinutes = intervalMinutes,
-        )
+        ).await()
         diagnosticsLogger(
             "Subscription refresh scheduled: policy=${state.subscriptionRefreshPolicy} refreshAll=$refreshAll intervalMinutes=$intervalMinutes workPolicy=${ExistingWorkPolicy.REPLACE}",
         )
@@ -72,29 +81,30 @@ internal class SubscriptionRefreshScheduler(
 }
 
 internal interface SubscriptionRefreshWorkOperations {
-    fun cancelUniqueWork(workName: String)
+    fun cancelUniqueWork(workName: String): SubscriptionRefreshCompletion
 
     fun enqueueUniqueRefresh(
         workName: String,
         policy: ExistingWorkPolicy,
         intervalMinutes: Long,
-    )
+    ): SubscriptionRefreshCompletion
 }
+
+internal fun interface SubscriptionRefreshCompletion { suspend fun await() }
 
 private class AndroidSubscriptionRefreshWorkOperations(
     context: Context,
 ) : SubscriptionRefreshWorkOperations {
     private val workManager = WorkManager.getInstance(context)
 
-    override fun cancelUniqueWork(workName: String) {
-        workManager.cancelUniqueWork(workName)
-    }
+    override fun cancelUniqueWork(workName: String): SubscriptionRefreshCompletion =
+        completion(workManager.cancelUniqueWork(workName))
 
     override fun enqueueUniqueRefresh(
         workName: String,
         policy: ExistingWorkPolicy,
         intervalMinutes: Long,
-    ) {
+    ): SubscriptionRefreshCompletion {
         val request = OneTimeWorkRequestBuilder<SubscriptionRefreshWorker>()
             .setConstraints(
                 Constraints.Builder()
@@ -105,10 +115,21 @@ private class AndroidSubscriptionRefreshWorkOperations(
             .addTag(workName)
             .build()
 
-        workManager.enqueueUniqueWork(
+        return completion(workManager.enqueueUniqueWork(
             workName,
             policy,
             request,
-        )
+        ))
+    }
+
+    private fun completion(operation: androidx.work.Operation) = SubscriptionRefreshCompletion {
+        // Cancelling a wait does not undo WorkManager's already-submitted operation.
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val future = operation.result
+            future.addListener({
+                try { future.get(); continuation.resume(Unit) }
+                catch (error: Exception) { continuation.resumeWithException(error) }
+            }, Executor { it.run() })
+        }
     }
 }

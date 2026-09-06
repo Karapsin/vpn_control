@@ -2,6 +2,7 @@
 
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 
 val hostOs = OperatingSystem.current()
 val desktopPackageTargets = when {
@@ -74,6 +75,10 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("com.dorkbox:SystemTray:4.4")
+    // Align with SystemTray's existing JPMS dependencies; protected Windows IPC uses native handles.
+    implementation("net.java.dev.jna:jna-jpms:5.13.0")
+    implementation("net.java.dev.jna:jna-platform-jpms:5.13.0")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     testImplementation(kotlin("test"))
@@ -90,6 +95,28 @@ sourceSets {
 
 tasks.named("processResources") {
     dependsOn(generateDesktopVersionResource)
+}
+
+tasks.withType<AbstractJPackageTask>().configureEach {
+    if (hostOs.isWindows && targetFormat == TargetFormat.AppImage) {
+        val cliLauncher = project.file("src/main/packaging/windows-cli.properties")
+        inputs.file(cliLauncher)
+        freeArgs.addAll("--add-launcher", "vpn-control-cli=${cliLauncher.absolutePath}")
+        val utf8LauncherPatch = rootProject.file("scripts/windows_launcher_utf8.py")
+        inputs.file(utf8LauncherPatch)
+        doLast {
+            project.exec {
+                commandLine("python3", utf8LauncherPatch.absolutePath, "--app-image",
+                    destinationDir.get().dir(packageName.get()).asFile.absolutePath)
+            }
+        }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    doFirst {
+        systemProperty("vpnControl.test.mainClasspath", sourceSets.main.get().runtimeClasspath.asPath)
+    }
 }
 
 val visualCapture by tasks.registering(Test::class) {
@@ -121,6 +148,7 @@ compose.desktop {
         mainClass = "com.kardinal.vpncontrol.desktop.MainKt"
 
         nativeDistributions {
+            modules("java.net.http")
             targetFormats(*desktopPackageTargets)
             packageName = "vpn-control"
             packageVersion = canonicalVersion.get()

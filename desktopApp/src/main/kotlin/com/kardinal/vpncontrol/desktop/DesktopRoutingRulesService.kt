@@ -15,9 +15,17 @@ import com.kardinal.vpncontrol.model.RoutingRuleSetSourceType
 
 internal class DesktopRoutingRulesService(
     private val stateProvider: () -> MainUiState,
-    private val commitState: (MainUiState) -> Unit,
+    private val commitState: (MainUiState) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
 ) {
+    fun setControlValue(key: String, value: String): Result<Unit> {
+        val state = stateProvider()
+        if (state.isBusy) return Result.failure(IllegalStateException("BUSY"))
+        val next = com.kardinal.vpncontrol.control.ControlRoutingLogic.set(state, key, value)
+            .getOrElse { return Result.failure(IllegalArgumentException("INVALID_ARGUMENT")) }
+        return commitState(next.withStatus(RoutingRulesStatusLogic.saved(state.isVpnRunning, state.appMode)))
+    }
+
     fun setIgnoreRulesDraft(enabled: Boolean) {
         updateRoutingDraftAndSave { it.copy(routingIgnoreRulesDraft = enabled) }
     }
@@ -101,11 +109,12 @@ internal class DesktopRoutingRulesService(
         }
     }
 
-    fun importRaw(raw: String) {
+    fun importRaw(raw: String): Result<Unit> {
+        if (stateProvider().isBusy) return Result.failure(IllegalStateException("BUSY"))
         val parsed = runCatching { RoutingRulesTransfer.import(raw) }
         if (parsed.isFailure) {
             updateState { it.withStatus(parsed.exceptionOrNull()?.message ?: RoutingStatusMessages.routingRulesImportFailed()) }
-            return
+            return Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
         }
         val state = stateProvider()
         val rules = MainDraftLogic.sanitizeRoutingRules(parsed.getOrThrow())
@@ -114,7 +123,7 @@ internal class DesktopRoutingRulesService(
         } else {
             RoutingStatusMessages.routingRulesImported()
         }
-        commitState(
+        return commitState(
             MainDraftLogic.applyImportedRoutingRules(
                 state.copy(routingRules = rules),
                 rules,

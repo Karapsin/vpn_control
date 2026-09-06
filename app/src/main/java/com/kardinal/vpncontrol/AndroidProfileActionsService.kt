@@ -13,6 +13,7 @@ internal class AndroidProfileActionsService(
     private val effectSink: AndroidControllerEffectSink,
     private val launch: (suspend () -> Unit) -> Unit,
     private val updateStatus: suspend (String) -> Unit,
+    private val launchMutation: (suspend () -> Unit) -> Unit = launch,
     private val sourcePreviewTitle: (String) -> String? = { source ->
         RemoteSourceResolver.preview(source)?.title
     },
@@ -67,11 +68,11 @@ internal class AndroidProfileActionsService(
     }
 
     fun setProfileSourceMode(value: ProfileSourceMode) {
-        effectSink.handle(controller.setProfileSourceMode(value))
+        launchMutation { effectSink.handleWithinMutation(controller.setProfileSourceMode(value)) }
     }
 
     fun saveProfile() {
-        effectSink.handle(controller.saveProfile(validateProfileSource))
+        launchMutation { effectSink.handleWithinMutation(controller.saveProfile(validateProfileSource)) }
     }
 
     fun clearProfileSource() {
@@ -85,14 +86,14 @@ internal class AndroidProfileActionsService(
     fun handleIncomingImportText(raw: String, preference: ImportPreference = ImportPreference.AUTO) {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return
-        launch {
+        launchMutation {
             resolveIncomingImport(
                 trimmed,
                 preference,
                 validateProfileSource,
             ).fold(
                 onSuccess = { payload ->
-                    effectSink.handle(controller.handleIncomingImport(payload, preference))
+                    effectSink.handleWithinMutation(controller.handleIncomingImport(payload, preference))
                 },
                 onFailure = { error ->
                     updateStatus(error.message ?: SubscriptionStatusMessages.sharedTextUnsupportedImport())
@@ -102,14 +103,14 @@ internal class AndroidProfileActionsService(
     }
 
     fun useProfileHistoryEntry(subscriptionId: String) {
-        effectSink.handle(controller.useProfileHistoryEntry(subscriptionId))
+        launchMutation { effectSink.handleWithinMutation(controller.useProfileHistoryEntry(subscriptionId)) }
     }
 
     fun deleteProfileHistoryEntry(source: String) {
-        effectSink.handle(controller.deleteProfileHistoryEntry(source))
+        launchMutation { effectSink.handleWithinMutation(controller.deleteProfileHistoryEntry(source)) }
     }
 
     fun saveProfileHistoryRename() {
-        effectSink.handle(controller.saveProfileHistoryRename(validateProfileSource))
+        launchMutation { effectSink.handleWithinMutation(controller.saveProfileHistoryRename(validateProfileSource)) }
     }
 }

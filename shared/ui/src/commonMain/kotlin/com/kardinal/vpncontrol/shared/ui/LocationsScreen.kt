@@ -53,7 +53,11 @@ data class SavedLocationRow(
     val benchmarkDetail: String,
     val autoSelectable: Boolean,
     val isSelected: Boolean,
+    val selection: SavedLocationSelection? = null,
 )
+
+/** Authoritative selection and active-runtime identity; null preserves legacy caller matching. */
+data class SavedLocationSelection(val selected: Boolean, val active: Boolean)
 
 internal data class SavedLocationVisualState(
     val isSelected: Boolean,
@@ -71,6 +75,11 @@ internal fun savedLocationVisualState(
     location: SavedLocationRow,
     state: MainUiState,
 ): SavedLocationVisualState {
+    location.selection?.let { explicit ->
+        val active = state.isVpnRunning && explicit.active
+        return SavedLocationVisualState(explicit.selected, active,
+            active || (!state.isVpnRunning && explicit.selected))
+    }
     val selectedKey = SelectionMappingLogic.selectedStoredKey(
         selectedProfileJson = state.selectedProfileJson,
         selectedProfileRawLink = state.selectedProfileRawLink,

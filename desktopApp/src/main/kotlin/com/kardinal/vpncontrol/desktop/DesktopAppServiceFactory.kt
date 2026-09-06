@@ -54,16 +54,23 @@ object DesktopAppServiceFactory {
             service.findBestLocation(refreshSubscriptionsFirst = false)
         },
         forceRunningState: Boolean? = null,
+        controlPlatform: com.kardinal.vpncontrol.model.ControlPlatform? = currentDesktopControlPlatform(),
+        runtimeController: DesktopRuntimeController = runtimeManager,
+        locationBenchmarker: DesktopLocationBenchmarker = { profile, dns, urls, settings ->
+            validationRuntime.benchmarkLocation(profile, dns, urls, settings)
+        },
     ): DesktopAppService {
         val service = DesktopAppService(
             desktopStore = store,
             runtimeManager = runtimeManager,
             validationRuntime = validationRuntime,
-            connectionLifecycle = DesktopConnectionLifecycleService(runtimeManager),
+            connectionLifecycle = DesktopConnectionLifecycleService(runtimeController),
             subscriptionService = DesktopSubscriptionService(subscriptionContentFetcher),
             autostartManager = autostartManager,
             autoRefreshBestSelectionAction = autoRefreshBestSelectionAction,
             initialWorkspace = initialWorkspace,
+            locationBenchmarker = locationBenchmarker,
+            controlPlatform = controlPlatform,
         )
         if (forceRunningState != null) {
             service.forceRunningStateForTesting(forceRunningState)

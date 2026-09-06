@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -17,6 +16,7 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
+import com.kardinal.vpncontrol.model.effective
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
 import com.kardinal.vpncontrol.model.DEFAULT_SUBSCRIPTION_REFRESH_CUSTOM_HOURS
 import com.kardinal.vpncontrol.model.DnsSettings
@@ -57,7 +57,191 @@ private val Context.dataStore by preferencesDataStore(name = "vpn_control")
 
 class ProfileStorage(
     private val context: Context,
+    private val runtimeRunning: () -> Boolean? = { null },
 ) : RepositoryStateStore, SearchStateStore {
+    private val configurationStore by lazy { AndroidConfigurationStore(context.dataStore, ::mapState) }
+    internal val committedConfiguration get() = configurationStore.state
+    internal suspend fun configurationSnapshot() = configurationStore.snapshot()
+
+    internal suspend fun commitControlRouting(
+        operation: com.kardinal.vpncontrol.model.ControlOperationId,
+        arguments: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        runtimeKnown: () -> Boolean,
+        installedApps: suspend () -> List<com.kardinal.vpncontrol.model.InstalledApp>,
+    ): AndroidSettingsCommit {
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            check(runtimeKnown()) { "RUNTIME_STATE_UNKNOWN" }
+            val apps = if (operation in AndroidRoutingControl.appOperations) installedApps() else emptyList()
+            val rules = AndroidRoutingControl.plan(mapState(prefs), operation, arguments, apps)
+            prefs[Keys.ignoreRules] = rules.ignoreRules
+            prefs[Keys.blockQuicUdp443] = rules.blockQuicUdp443
+            prefs[Keys.proxyPackages] = encodeList(rules.proxyPackages)
+            prefs[Keys.bypassPackages] = ""
+            prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
+            prefs[Keys.ruleSets] = ""
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged = false)
+    }
+
+    internal suspend fun commitControlSource(
+        arguments: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        runtimeRunning: () -> Boolean?,
+    ): AndroidSettingsCommit {
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            val running = runtimeRunning() ?: error("RUNTIME_STATE_UNKNOWN")
+            val (mode, id) = AndroidSourceControl.target(mapState(prefs), arguments)
+            prefs[Keys.profileSourceMode] = mode.name
+            if (mode == ProfileSourceMode.SUBSCRIPTION) {
+                prefs[Keys.activeSubscriptionId] = id
+                prefs[Keys.profileUrl] = mapState(prefs).subscriptions.firstOrNull { it.id == id }?.url.orEmpty()
+            }
+            if (AndroidSourceControl.clearsSelection(mapState(prefs), running)) {
+                clearStoredSelection(prefs, deleteArtifacts = false)
+                AndroidSelectionCacheInvalidation.invalidate(prefs)
+            }
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged = true)
+    }
+
+    internal suspend fun commitControlLocation(
+        operation: com.kardinal.vpncontrol.model.ControlOperationId,
+        arguments: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        prepare: suspend (PersistedState, String) -> com.kardinal.vpncontrol.model.ProfileSelection,
+    ): AndroidSettingsCommit {
+        var id = ""
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            check(runtimeRunning() != null) { "RUNTIME_STATE_UNKNOWN" }
+            val previous = mapState(prefs)
+            val language = previous.appLanguage.effective(java.util.Locale.getDefault().language)
+            val plan = AndroidLocationControl.plan(previous, operation, arguments, expectedControllerId,
+                com.kardinal.vpncontrol.shared.ui.AppStrings(language))
+            id = plan.id
+            val selection = plan.selected?.let { prepare(AndroidLocationControl.preparationState(previous, plan), it) }
+            check(runtimeRunning() != null) { "RUNTIME_STATE_UNKNOWN" }
+            plan.locations?.let { rows ->
+                prefs[Keys.savedLocations] = encodeList(rows)
+                prefs[Keys.currentLocations] = encodeList(rows)
+                prefs[Keys.locationBenchmarkDetails] = encodeStringMap(decodeStringMap(prefs[Keys.locationBenchmarkDetails]).filterKeys { it in rows })
+            }
+            if (selection != null) {
+                prefs[Keys.selectedProfileName] = selection.profile.remarks
+                prefs[Keys.selectedProfileServer] = selection.profile.server
+                prefs[Keys.selectedProfileRawLink] = selection.profile.rawLink
+                prefs[Keys.selectedProfileJson] = LocationConfigs.encodeStoredLocation(selection.profile)
+                prefs[Keys.selectedProfileSourceUrl] = plan.source
+                prefs[Keys.lastBenchmarkSummary] = selection.benchmark.detail
+                prefs[Keys.runtimeConfigJson] = selection.runtimeConfigJson
+                prefs[Keys.managementProxyPort] = selection.managementProxyPort?.takeIf { it in 1..65535 } ?: 0
+                AndroidSelectionCacheInvalidation.selected(prefs, true)
+            }
+        }
+        return AndroidSettingsCommit(committed, false, mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(id)))
+    }
+
+    internal suspend fun commitControlSubscription(
+        operation: com.kardinal.vpncontrol.model.ControlOperationId,
+        arguments: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+    ): AndroidSettingsCommit {
+        var targetId = ""
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            val running = runtimeRunning() ?: error("RUNTIME_STATE_UNKNOWN")
+            val plan = AndroidSubscriptionControl.plan(mapState(prefs), operation, arguments,
+                RemoteSourceResolver::validateProfileSource, { UUID.randomUUID().toString() })
+            targetId = plan.targetId
+            prefs[Keys.subscriptions] = encodeSubscriptions(plan.subscriptions)
+            prefs[Keys.profileHistory] = encodeList(plan.subscriptions.map { it.url })
+            prefs[Keys.profileHistoryNames] = encodeStringMap(plan.subscriptions.associateNotNull { subscription ->
+                subscription.customName.takeIf { it.isNotBlank() }?.let { subscription.url to it }
+            })
+            prefs[Keys.activeSubscriptionId] = plan.activeId
+            prefs[Keys.profileSourceMode] = plan.mode.name
+            prefs[Keys.profileUrl] = plan.subscriptions.firstOrNull { it.id == plan.activeId }?.url.orEmpty()
+            if (!running && (plan.invalidatesSelectedSource || AndroidSourceControl.clearsSelection(mapState(prefs), running))) {
+                clearStoredSelection(prefs, deleteArtifacts = false)
+                AndroidSelectionCacheInvalidation.invalidate(prefs)
+            }
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged = true,
+            resultData = mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(targetId)))
+    }
+
+    /** Key payload is durable before its identity joins the atomic configuration commit. */
+    internal suspend fun commitControlSshKey(
+        content: String,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        runtimeKnown: () -> Boolean,
+    ): AndroidSettingsCommit {
+        val keys = AndroidSshCredentialVersions(File(context.filesDir, "credentials"))
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+            check(runtimeKnown()) { "RUNTIME_STATE_UNKNOWN" }
+            val previous = mapState(prefs).homeSshRouteSettings.credentialVersion
+            val version = try { keys.stage(content, previous) }
+                catch (_: IllegalArgumentException) { error("INVALID_ARGUMENT") }
+            prefs[Keys.homeSshCredentialVersion] = version
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged = false)
+    }
+
+    /** Storage commit only: caller still owns scheduling/result publication and request deduplication. */
+    internal suspend fun commitControlSettings(
+        patch: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        credentialAvailable: (PersistedState) -> Boolean,
+        runtimeKnown: () -> Boolean,
+    ): AndroidSettingsCommit {
+        var schedulingChanged = false
+        val committed = configurationStore.edit(expectedControllerId, expectedRevision) { prefs ->
+        check(runtimeKnown()) { "RUNTIME_STATE_UNKNOWN" }
+        val previous = mapState(prefs)
+        val plan = com.kardinal.vpncontrol.control.ControlSettingsLogic.plan(
+            previous, patch, com.kardinal.vpncontrol.model.ControlPlatform.ANDROID, credentialAvailable(previous),
+        )
+        val proposed = when (plan) {
+            is com.kardinal.vpncontrol.control.ControlSettingsPlan.Configuration -> plan.state
+            is com.kardinal.vpncontrol.control.ControlSettingsPlan.Rejected -> error(plan.code.wireName)
+            is com.kardinal.vpncontrol.control.ControlSettingsPlan.Autostart -> error("UNSUPPORTED")
+        }
+        schedulingChanged = previous.subscriptionRefreshPolicy != proposed.subscriptionRefreshPolicy ||
+            previous.subscriptionRefreshCustomHours != proposed.subscriptionRefreshCustomHours
+        prefs[Keys.appMode] = proposed.appMode.name
+        prefs[Keys.appLanguage] = proposed.appLanguage.name
+        prefs[Keys.dnsMode] = proposed.dnsSettings.mode.name
+        prefs[Keys.customDnsEndpoint] = proposed.dnsSettings.endpoint
+        prefs[Keys.legacyCustomDnsAddress] = proposed.dnsSettings.legacyRawAddress
+        prefs[Keys.useCustomDns] = false
+        prefs[Keys.homeSshEnabled] = proposed.homeSshRouteSettings.enabled
+        prefs[Keys.homeSshHost] = proposed.homeSshRouteSettings.host
+        prefs[Keys.homeSshPort] = proposed.homeSshRouteSettings.port
+        prefs[Keys.homeSshUser] = proposed.homeSshRouteSettings.user
+        prefs[Keys.homeSshHostKeys] = encodeList(proposed.homeSshRouteSettings.hostKeys)
+        prefs[Keys.homeSshRelayPort] = proposed.homeSshRouteSettings.relayPort
+        prefs[Keys.homeSshCredentialVersion] = proposed.homeSshRouteSettings.credentialVersion
+        prefs[Keys.subscriptionRefreshPolicy] = proposed.subscriptionRefreshPolicy.name
+        prefs[Keys.findBestAfterSubscriptionRefresh] = proposed.findBestAfterSubscriptionRefresh
+        prefs[Keys.subscriptionRefreshCustomHours] = proposed.subscriptionRefreshCustomHours
+        prefs.remove(Keys.legacySubscriptionRefreshCustomHours)
+        prefs[Keys.validationTestUrl] = proposed.validationSettings.testUrl
+        prefs[Keys.validationBatchSize] = proposed.validationSettings.batchSize
+        prefs[Keys.validationSubscriptionRefreshConcurrency] = proposed.validationSettings.subscriptionRefreshConcurrency
+        prefs[Keys.validationRetryCount] = proposed.validationSettings.retryCount
+        prefs[Keys.validationActiveVerificationWindowSize] = proposed.validationSettings.activeVerificationWindowSize
+        prefs.remove(Keys.validationPrimaryUrl)
+        prefs.remove(Keys.validationSecondaryUrl)
+        prefs.remove(Keys.legacyValidationGeneralUrl)
+        prefs.remove(Keys.legacyValidationChatGptUrl)
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged)
+    }
 
     private object Keys {
         val profileUrl = stringPreferencesKey("profile_url")
@@ -147,7 +331,7 @@ class ProfileStorage(
 
     override suspend fun ensureSubscriptionHwid(): String {
         var resolved = ""
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val existing = prefs[Keys.subscriptionHwid]
                 ?.trim()
                 .orEmpty()
@@ -158,7 +342,7 @@ class ProfileStorage(
     }
 
     override suspend fun updateProfileUrl(url: String, rememberInHistory: Boolean, name: String) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val trimmed = url.trim()
             val normalizedName = name.trim()
             val subscriptions = decodeSubscriptions(prefs).toMutableList()
@@ -198,7 +382,7 @@ class ProfileStorage(
     }
 
     override suspend fun deleteProfileHistoryEntry(url: String) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
                 .filterNot { it.url == url }
             prefs[Keys.subscriptions] = encodeSubscriptions(subscriptions)
@@ -228,7 +412,7 @@ class ProfileStorage(
 
     override suspend fun updateProfileHistoryName(url: String, name: String) {
         val normalizedName = name.trim()
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs).map { subscription ->
                 if (subscription.url == url) {
                     subscription.copy(customName = normalizedName)
@@ -257,7 +441,7 @@ class ProfileStorage(
         val normalizedSource = source.trim()
         val normalizedNewSource = newSource.trim()
         val normalizedName = name.trim()
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             val target = subscriptions.firstOrNull { it.url == normalizedSource } ?: return@edit
             val sourceChanged = normalizedSource != normalizedNewSource
@@ -287,22 +471,24 @@ class ProfileStorage(
             } else {
                 updatedSubscriptions.firstOrNull { it.id == activeId }?.url.orEmpty()
             }
-            if (sourceChanged && prefs[Keys.selectedProfileSourceUrl].orEmpty() == normalizedSource) {
-                clearStoredSelection(prefs)
+            if (AndroidSubscriptionControl.renamedSelectionNeedsInvalidation(sourceChanged,
+                    prefs[Keys.selectedProfileSourceUrl].orEmpty(), normalizedSource, runtimeRunning())) {
+                clearStoredSelection(prefs, deleteArtifacts = false)
+                AndroidSelectionCacheInvalidation.invalidate(prefs)
             }
         }
         DiagnosticsLogger.append(context, "Subscription source updated")
     }
 
     override suspend fun updateProfileSourceMode(mode: ProfileSourceMode) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.profileSourceMode] = mode.name
         }
         DiagnosticsLogger.append(context, "Profile source mode updated: $mode")
     }
 
     override suspend fun selectActiveSubscription(subscriptionId: String) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             when {
                 isAllSubscriptionsGroupActive(subscriptionId, subscriptions) -> {
@@ -329,14 +515,14 @@ class ProfileStorage(
     }
 
     override suspend fun updateAppMode(mode: AppMode) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.appMode] = mode.name
         }
         DiagnosticsLogger.append(context, "App mode updated: $mode")
     }
 
     override suspend fun updateAppLanguage(language: AppLanguage) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.appLanguage] = language.name
         }
         DiagnosticsLogger.append(context, "App language updated: $language")
@@ -348,7 +534,7 @@ class ProfileStorage(
         findBestAfterRefresh: Boolean,
     ) {
         val normalizedHours = normalizeSubscriptionRefreshCustomHours(customHours)
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.subscriptionRefreshPolicy] = policy.name
             prefs[Keys.findBestAfterSubscriptionRefresh] = findBestAfterRefresh
             prefs[Keys.subscriptionRefreshCustomHours] = normalizedHours
@@ -362,7 +548,7 @@ class ProfileStorage(
 
     override suspend fun updateValidationSettings(settings: BenchmarkValidationSettings) {
         val normalized = settings.normalized()
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.validationTestUrl] = normalized.testUrl
             prefs[Keys.validationBatchSize] = normalized.batchSize
             prefs[Keys.validationSubscriptionRefreshConcurrency] = normalized.subscriptionRefreshConcurrency
@@ -384,7 +570,7 @@ class ProfileStorage(
         var result = LocationUpdateResult(
             selectedMissing = false,
         )
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val sourceMode = prefs[Keys.profileSourceMode]
             if (sourceMode == ProfileSourceMode.SUBSCRIPTION.name) {
                 val subscriptions = decodeSubscriptions(prefs).toMutableList()
@@ -464,7 +650,7 @@ class ProfileStorage(
     ): LocationUpdateResult {
         val normalized = normalizeStoredLocations(rawLinks)
         var result = LocationUpdateResult(selectedMissing = false)
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             if (subscriptions.none { it.id == subscriptionId }) {
                 return@edit
@@ -543,7 +729,7 @@ class ProfileStorage(
         subscriptionId: String,
         status: String,
     ) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val subscriptions = decodeSubscriptions(prefs)
             if (subscriptions.none { it.id == subscriptionId }) {
                 return@edit
@@ -567,14 +753,14 @@ class ProfileStorage(
     }
 
     override suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.locationBenchmarkDetails] = encodeStringMap(details)
         }
         DiagnosticsLogger.append(context, "Location benchmark details updated: count=${details.size}")
     }
 
     override suspend fun updateDns(settings: DnsSettings) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.dnsMode] = settings.mode.name
             prefs[Keys.customDnsEndpoint] = settings.endpoint
             prefs[Keys.legacyCustomDnsAddress] = settings.legacyRawAddress
@@ -590,14 +776,15 @@ class ProfileStorage(
     }
 
     override suspend fun updateHomeSshRouteSettings(settings: HomeSshRouteSettings) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.homeSshEnabled] = settings.enabled
             prefs[Keys.homeSshHost] = settings.host
             prefs[Keys.homeSshPort] = settings.port
             prefs[Keys.homeSshUser] = settings.user
             prefs[Keys.homeSshHostKeys] = encodeList(settings.hostKeys)
             prefs[Keys.homeSshRelayPort] = settings.relayPort
-            prefs[Keys.homeSshCredentialVersion] = settings.credentialVersion
+            // Only commitControlSshKey may advance the credential identity. A GUI
+            // settings draft must not restore an older imported key version.
         }
         DiagnosticsLogger.append(
             context,
@@ -607,7 +794,7 @@ class ProfileStorage(
     }
 
     override suspend fun updateRoutingRules(rules: RoutingRules) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.ignoreRules] = rules.ignoreRules
             prefs[Keys.blockQuicUdp443] = rules.blockQuicUdp443
             prefs[Keys.proxyPackages] = encodeList(sanitizePackageNames(rules.proxyPackages))
@@ -629,7 +816,8 @@ class ProfileStorage(
         sourceUrl: String,
         managementProxyPort: Int,
     ) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
+            AndroidSelectionCacheInvalidation.selected(prefs, present = true)
             prefs[Keys.selectedProfileName] = profile.remarks
             prefs[Keys.selectedProfileServer] = profile.server
             prefs[Keys.selectedProfileRawLink] = profile.rawLink
@@ -646,7 +834,7 @@ class ProfileStorage(
     }
 
     override suspend fun updateStatus(message: String) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.statusMessage] = message
             val updated = (
                 StatsCodec.decodeConnectionLog(prefs[Keys.connectionLog]) +
@@ -662,49 +850,49 @@ class ProfileStorage(
     }
 
     override suspend fun updateSessionStatsEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.sessionStatsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Session stats UI enabled: $enabled")
     }
 
     override suspend fun updateLiveTrafficStatsEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.liveTrafficStatsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Live traffic stats UI enabled: $enabled")
     }
 
     override suspend fun updateProfileTotalsEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.profileTotalsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Profile totals UI enabled: $enabled")
     }
 
     override suspend fun updateLatencyHistoryEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.latencyHistoryEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Latency history UI enabled: $enabled")
     }
 
     override suspend fun updateConnectionLogEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.connectionLogEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Connection log UI enabled: $enabled")
     }
 
     override suspend fun updateConnectionTestToolsEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.connectionTestToolsEnabled] = enabled
         }
         DiagnosticsLogger.append(context, "Connection test tools UI enabled: $enabled")
     }
 
     override suspend fun appendLatencyHistory(entry: LatencyHistoryEntry) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             if (!(prefs[Keys.latencyHistoryEnabled] ?: false)) return@edit
             val updated = (StatsCodec.decodeLatencyHistory(prefs[Keys.latencyHistory]) + entry)
                 .takeLast(MAX_LATENCY_HISTORY_ITEMS)
@@ -713,7 +901,7 @@ class ProfileStorage(
     }
 
     override suspend fun clearSelection() {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             clearStoredSelection(prefs)
         }
         DiagnosticsLogger.append(context, "Stored selection cleared")
@@ -731,7 +919,8 @@ class ProfileStorage(
         restoreRuntimeArtifacts: Boolean,
         sourceUrlOverride: String?,
     ) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
+            AndroidSelectionCacheInvalidation.selected(prefs, state.selectedProfileRawLink.isNotBlank() || state.selectedProfileJson.isNotBlank())
             prefs[Keys.selectedProfileName] = state.selectedProfileName
             prefs[Keys.selectedProfileServer] = state.selectedProfileServer
             prefs[Keys.selectedProfileRawLink] = state.selectedProfileRawLink
@@ -764,7 +953,7 @@ class ProfileStorage(
     }
 
     suspend fun updateVpnRunning(running: Boolean) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val wasRunning = prefs[Keys.isVpnRunning] ?: false
             prefs[Keys.isVpnRunning] = running
             if (running) {
@@ -833,7 +1022,7 @@ class ProfileStorage(
         staleAfterMillis: Long = BACKGROUND_REFRESH_LEASE_STALE_MILLIS,
     ): Boolean {
         var acquired = false
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             val currentOwner = prefs[Keys.backgroundRefreshLeaseOwner].orEmpty()
             val startedAt = prefs[Keys.backgroundRefreshLeaseStartedAtEpochMillis] ?: 0L
             if (BackgroundRefreshLeaseLogic.canAcquire(
@@ -862,7 +1051,7 @@ class ProfileStorage(
 
     suspend fun releaseBackgroundRefreshLease(owner: String) {
         var released = false
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             if (prefs[Keys.backgroundRefreshLeaseOwner] == owner) {
                 prefs.remove(Keys.backgroundRefreshLeaseOwner)
                 prefs.remove(Keys.backgroundRefreshLeaseStartedAtEpochMillis)
@@ -877,26 +1066,28 @@ class ProfileStorage(
     override suspend fun snapshot(): PersistedState = state.first()
 
     override suspend fun readLastSelectedProfile(): String? {
-        return lastProfileFile()
+        val prefs = context.dataStore.data.first()
+        return AndroidSelectionCacheInvalidation.read(prefs, prefs[Keys.selectedProfileRawLink].orEmpty()) { lastProfileFile()
             .takeIf(File::exists)
             ?.runCatching { readText() }
             ?.getOrNull()
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+        }
     }
 
     override suspend fun readRuntimeConfig(): String? {
-        val fromState = snapshot().runtimeConfigJson.takeIf { it.isNotBlank() }
-        if (fromState != null) return fromState
-        return runtimeConfigFile()
+        val prefs = context.dataStore.data.first()
+        return AndroidSelectionCacheInvalidation.read(prefs, prefs[Keys.runtimeConfigJson].orEmpty()) { runtimeConfigFile()
             .takeIf(File::exists)
             ?.runCatching { readText() }
             ?.getOrNull()
             ?.takeIf { it.isNotBlank() }
+        }
     }
 
     override suspend fun writeRuntimeConfig(configJson: String) {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs[Keys.runtimeConfigJson] = configJson
         }
         runCatching {
@@ -909,7 +1100,7 @@ class ProfileStorage(
     }
 
     override suspend fun clearRuntimeConfig() {
-        context.dataStore.edit { prefs ->
+        configurationStore.edit { prefs ->
             prefs.remove(Keys.runtimeConfigJson)
         }
         runCatching { runtimeConfigFile().delete() }
@@ -1301,7 +1492,7 @@ class ProfileStorage(
         )
     }
 
-    private fun clearStoredSelection(prefs: MutablePreferences) {
+    private fun clearStoredSelection(prefs: MutablePreferences, deleteArtifacts: Boolean = true) {
         prefs.remove(Keys.selectedProfileName)
         prefs.remove(Keys.selectedProfileServer)
         prefs.remove(Keys.selectedProfileRawLink)
@@ -1311,8 +1502,10 @@ class ProfileStorage(
         prefs.remove(Keys.runtimeConfigJson)
         prefs.remove(Keys.sessionStartRxBytes)
         prefs.remove(Keys.sessionStartTxBytes)
-        runCatching { runtimeConfigFile().delete() }
-        runCatching { lastProfileFile().delete() }
+        if (deleteArtifacts) {
+            runCatching { runtimeConfigFile().delete() }
+            runCatching { lastProfileFile().delete() }
+        }
     }
 
     private companion object {

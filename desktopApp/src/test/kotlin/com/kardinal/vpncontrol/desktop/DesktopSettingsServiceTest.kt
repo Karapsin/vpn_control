@@ -51,27 +51,21 @@ class DesktopSettingsServiceTest {
     }
 
     @Test
-    fun setAppModeStopsRunningConnectionBeforeChangingMode() = runTest {
+    fun setAppModeSavesThroughSettingsActionWithoutStoppingConnection() = runTest {
         var state = MainUiState(
             appMode = AppMode.VPN,
             isVpnRunning = true,
             showAppModeDialog = true,
         )
-        val stopMessages = mutableListOf<String>()
         val service = service(
             stateProvider = { state },
             commitState = { state = it },
             updateState = { transform -> state = transform(state) },
-            stopConnection = {
-                stopMessages += it
-                state = state.copy(isVpnRunning = false)
-                Result.success(Unit)
-            },
         )
 
         service.setAppMode(AppMode.PROXY_ONLY)
 
-        assertEquals(listOf(SettingsStatusMessages.connectionStoppedForAppMode(AppMode.VPN, AppMode.PROXY_ONLY)), stopMessages)
+        assertEquals(true, state.isVpnRunning)
         assertEquals(AppMode.PROXY_ONLY, state.appMode)
         assertFalse(state.showAppModeDialog)
         assertEquals(SettingsStatusMessages.appModeChanged(AppMode.PROXY_ONLY), state.statusMessage)
@@ -99,13 +93,18 @@ class DesktopSettingsServiceTest {
         stateProvider: () -> MainUiState,
         commitState: (MainUiState) -> Unit,
         updateState: ((MainUiState) -> MainUiState) -> Unit,
-        stopConnection: suspend (String) -> Result<Unit> = { Result.success(Unit) },
     ): DesktopSettingsService {
         return DesktopSettingsService(
             stateProvider = stateProvider,
             autostartManager = DesktopAutostartManager(platform = DesktopAutostartPlatform.UNSUPPORTED),
-            stopConnection = stopConnection,
-            commitState = commitState,
+            applySettings = { patch ->
+                assertEquals(setOf("mode"), patch.keys)
+                commitState(stateProvider().copy(appMode = if (
+                    (patch.getValue("mode") as com.kardinal.vpncontrol.model.ControlValue.Text).value == "vpn"
+                ) AppMode.VPN else AppMode.PROXY_ONLY))
+                Result.success(patch)
+            },
+            commitState = { state -> commitState(state); Result.success(Unit) },
             updateState = updateState,
         )
     }

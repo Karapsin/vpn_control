@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
         MainViewModel.factory(applicationContext)
     }
-    private var visualStateOverride by mutableStateOf<MainUiState?>(null)
+    private var visualStateOverride by mutableStateOf<AndroidVisualCaptureFrame?>(null)
     private var visualStateRevision by mutableIntStateOf(0)
     private var pendingRoutingRulesExport: String? = null
     private var pendingLocationsExport: String? = null
@@ -177,7 +177,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state = viewModel.uiState.collectAsStateWithLifecycle()
-            val renderedState = visualStateOverride ?: state.value
+            val locationVisualState = viewModel.locationVisualState.collectAsStateWithLifecycle()
+            val renderedState = visualStateOverride?.state ?: state.value
             VpnControlTheme {
                 key(visualStateRevision) {
                 CompositionLocalProvider(
@@ -189,6 +190,7 @@ class MainActivity : ComponentActivity() {
                     LocalVisualExportTimestamp provides if (visualStateOverride == null) null else VISUAL_EXPORT_TIMESTAMP,
                 ) {
                 VpnControlApp(
+                    locationVisualState = visualStateOverride?.locations ?: locationVisualState.value,
                 state = renderedState,
                 onNavigateBack = viewModel::navigateBack,
                 onProfileChange = viewModel::onProfileDraftChanged,
@@ -365,7 +367,7 @@ class MainActivity : ComponentActivity() {
     /** Installs deterministic in-memory presentation state for debug visual capture only. */
     internal fun replaceStateForVisualCapture(state: MainUiState) {
         check(BuildConfig.DEBUG) { "Visual state injection is available only in debug builds" }
-        visualStateOverride = state
+        visualStateOverride = androidVisualCaptureFrame(state)
         visualStateRevision += 1
     }
 

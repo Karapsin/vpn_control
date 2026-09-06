@@ -38,6 +38,8 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Touched Area | Run |
 | --- | --- |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
+| Shared control DTOs, protocol codec, registry or command grammar | `./gradlew :shared:model:desktopTest :shared:core:desktopTest`; add affected desktop/Android adapter tests when wiring dispatch |
+| GUI/CLI controller lifecycle, authentication or launchers | Shared control and affected platform tests, then public-CLI tests from each affected native package in disposable environments; see `cli.md` |
 | Shared typed status helpers or status models | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:model:desktopTest :shared:ui:desktopTest` |
 | Status domain facade call-site migration | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest` |
 | Structured status renderer, dynamic status parser, or benchmark status rendering | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:ui:desktopTest` |

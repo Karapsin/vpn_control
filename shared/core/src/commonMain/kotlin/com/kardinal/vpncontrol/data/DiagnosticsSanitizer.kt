@@ -22,8 +22,14 @@ object DiagnosticsSanitizer {
         """(?i)\b(uuid|password|public_key|short_id|raw_link|source_url|server|server_name|sni|pbk|sid)=([^\s|,]+)""",
     )
 
-    fun redactText(raw: String): String {
+    fun redactText(raw: String): String = redactTextBounded(raw, 0)
+
+    private fun redactTextBounded(raw: String, depth: Int): String {
+        if (depth > 8) return "<nested-status-redacted>"
         if (raw.isBlank()) return raw
+        com.kardinal.vpncontrol.model.StatusMessages.decode(raw)?.let { status ->
+            return status.key.name + status.args.joinToString(prefix = "(", postfix = ")") { redactTextBounded(it, depth + 1) }
+        }
         return raw
             .replace(proxyLinkRegex) { match ->
                 "<${match.groupValues[1].lowercase()}-link-redacted>"

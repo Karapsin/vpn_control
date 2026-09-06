@@ -228,7 +228,7 @@ object LocationConfigs {
             network = root.string("network").ifBlank { root.string("transport") }.ifBlank { "tcp" },
             flow = root.string("flow"),
             security = root.string("security"),
-            sni = root.string("sni").ifBlank { server },
+            sni = if ("sni" in root) root.string("sni") else server,
             fingerprint = root.string("fingerprint")
                 .ifBlank { root.string("fp") }
                 .ifBlank { "chrome" },
