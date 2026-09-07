@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.4 - 2026-09-07
 
 - Route Android Find Best through the shared owner with guarded selection commits, cancellation, and consent handling.
 - Harden shared CLI streams, large routing persistence and platform installer recovery with native failure regressions.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve POSIX installer wire tests and clarify asynchronous test readiness failures.
 - Fix Windows packaging verification task discovery and retain full Android test failure diagnostics.
 - Fix large Android routing saves and macOS installer survival; harden native helper validation and package recovery checks.
+- Make installer regression fixtures portable across Linux, macOS and Windows without weakening admission checks.
 
 ## 2.1.3 - 2026-09-06
 

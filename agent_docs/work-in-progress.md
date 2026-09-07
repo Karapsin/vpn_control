@@ -1382,3 +1382,36 @@ and passed9 quick tests. Its full-lifetime x64 observer captured24 System32 DLL
 loads and confirmed child exit; inert companion cases remain in progress.
 Evidence lives under /tmp/vpn-windows-finish.WhKUbn. Privileged product roles,
 production broker binding, and packaged native integration remain incomplete.
+
+Checkpoint04f3f276fccd678dce56418340113a12df5d627f passed managed prepush and
+was pushed (fifth checkpoint). Linux-hosted required workflows then rejected the
+new unmanaged-base regression fixture because its root-ownership shim retained
+public temporary-ancestor modes. Windows rejected the same fixture because
+os.uname/getuid are absent. Production ancestry checks remain unchanged; the
+test now separately proves public ancestry rejection and models private fixture
+ancestry. Missing-POSIX-API coverage and actual Linux/Windows runs precede the
+next push. Failed logs: /tmp/vpn-parity-04f-{fast,windows}-failed.log. Exact-SHA
+CI is not green; the earlier packaged Windows help failure is still pending.
+
+Immutable04f3 Android fixture15/16 is built from fingerprint
+de00267264a863bcc61a2c1db01fcbca3d3758cb3e1bc7a860a8f12ae8af68bf.
+Base SHA adaeafe3052239ddec5e23be6d17f277ea4e70ba4efa5f7aac04c30db156b2b5;
+target SHA5474b0f3a8560ec8c0aa116ee1b052cb84c5af52132a41abbb76578833afe915.
+Both are nondebuggable, compatibly signed local fixtures, with identical AArch64
+16KiB-aligned JNI0752488e6a7c8485529ed8a80a7ddd473110b5544fe5c30eeca52c6494611b3d.
+Manifest pointer: /tmp/vpn-parity-android-gui-spool-freeze-path.txt. API29 native
+large GUI-save verification is assigned to the Android worker on5582 only.
+
+Windows frozen validate-only v4 companion matrix passed six cases with24
+System32 DLL loads per case and confirmed process-handle exit. Pre-fix v3
+causally loaded the inert app-local bcrypt canary and failed, while plain v3
+succeeded. Registry loader overrides were inspected only. No privileged role
+is enabled by this evidence. Full record: /tmp/vpn-windows-finish.WhKUbn/loader-matrix-v2-result.json.
+
+Fresh Ubuntu2318 same-source package-managed DEB replacement/recovery passed.
+Public operation2cf68c72-cbb8-4e58-86a1-7bf1a2f3f0e1 produced protected job
+b00fb2c5-5593-455f-a134-a8107e6209ad SUCCEEDED/OK; the new owner recovered
+matching controller/request/job and target2.1.4. Guest evidence is
+/tmp/vpn-public-install-evidence-chlwdo60 and fixture-201b/public-recovery-pty-result.json.
+Replacement owner5769 remains alive/off; no runtime interrupted. This source201b
+scenario is distinct from Ubuntu2315 fresh-dependency installation evidence.

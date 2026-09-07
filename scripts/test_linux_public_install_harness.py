@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 import zipfile
@@ -74,25 +75,45 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
 
             def root_owned(path, *args, **kwargs):
                 info = original_stat(path, *args, **kwargs)
-                return os.stat_result((info.st_mode, info.st_ino, info.st_dev, info.st_nlink, 0, info.st_gid,
+                # Model a private root-owned fixture mount. The temporary host
+                # directory is deliberately not part of that fixture ancestry.
+                return os.stat_result((info.st_mode & ~0o022, info.st_ino, info.st_dev, info.st_nlink, 0, info.st_gid,
                                        info.st_size, info.st_atime, info.st_mtime, info.st_ctime))
+
+            public_ancestor = launcher.resolve().parents[3]
+
+            def public_temp_ancestor(path, *args, **kwargs):
+                info = root_owned(path, *args, **kwargs)
+                if path.resolve() == public_ancestor:
+                    return os.stat_result((info.st_mode | 0o022, info.st_ino, info.st_dev, info.st_nlink,
+                                           info.st_uid, info.st_gid, info.st_size, info.st_atime,
+                                           info.st_mtime, info.st_ctime))
+                return info
 
             original_open = open
 
             def open_tty(path, *args, **kwargs):
                 return io.BytesIO() if path == "/dev/tty" else original_open(path, *args, **kwargs)
 
-            with mock.patch("test_linux_public_install.subprocess.run") as command, \
-                 mock.patch("test_linux_public_install.os.uname", return_value=type("Unix", (), {"sysname": "Linux"})()), \
-                 mock.patch("test_linux_public_install.os.getuid", return_value=1000), \
-                 mock.patch("test_linux_public_install.Path.stat", root_owned), \
-                 mock.patch("builtins.open", open_tty):
-                command.side_effect = [
-                    subprocess.CompletedProcess(["dpkg-query"], 1, "", "not owned"),
-                    FileNotFoundError(), FileNotFoundError(),
-                ]
-                with self.assertRaisesRegex(RuntimeError, "owned by vpn-control package metadata"):
-                    run(launcher, "1.0.5", True, same_source_recovery=True)
+            # Windows lacks uname/getuid. Start with a child os namespace that
+            # has neither attribute, then create only the deterministic Linux
+            # fixture APIs that this test needs.
+            with mock.patch("test_linux_public_install.os", types.SimpleNamespace()):
+                common = dict(return_value=type("Unix", (), {"sysname": "Linux"})(), create=True)
+                with mock.patch("test_linux_public_install.os.uname", **common), \
+                     mock.patch("test_linux_public_install.os.getuid", return_value=1000, create=True), \
+                     mock.patch("builtins.open", open_tty):
+                    with mock.patch("test_linux_public_install.Path.stat", public_temp_ancestor):
+                        with self.assertRaisesRegex(RuntimeError, "ancestry"):
+                            run(launcher, "1.0.5", True, same_source_recovery=True)
+                    with mock.patch("test_linux_public_install.subprocess.run") as command, \
+                         mock.patch("test_linux_public_install.Path.stat", root_owned):
+                        command.side_effect = [
+                            subprocess.CompletedProcess(["dpkg-query"], 1, "", "not owned"),
+                            FileNotFoundError(), FileNotFoundError(),
+                        ]
+                        with self.assertRaisesRegex(RuntimeError, "owned by vpn-control package metadata"):
+                            run(launcher, "1.0.5", True, same_source_recovery=True)
             self.assertEqual(["dpkg-query", "--search", str(launcher.resolve())], command.call_args_list[0].args[0])
 
     def test_same_source_recovery_accepts_debian_owned_launcher(self):
