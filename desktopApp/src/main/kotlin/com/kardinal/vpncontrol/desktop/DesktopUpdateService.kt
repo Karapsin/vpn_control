@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -32,6 +34,25 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class DesktopUpdateCheck(val updateAvailable: Boolean, val asset: UpdateAsset?, val releaseNotesUrl: String)
+
+internal suspend fun readDesktopUpdateManifest(response: CompletableFuture<HttpResponse<InputStream>>): String =
+    coroutineScope {
+        val lease = DesktopUpdateResponseLease(response)
+        val reader = async(Dispatchers.IO) {
+            runInterruptible {
+                val received = response.get()
+                val input = lease.acquire(received)
+                if (received.statusCode() !in 200..299) {
+                    input.close()
+                    error("Update request failed: HTTP ${received.statusCode()}")
+                }
+                input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            }
+        }
+        // Cancelling await releases the response before the scope joins its
+        // blocking reader. Interrupting an InputStream alone may not unblock it.
+        try { reader.await() } finally { lease.close() }
+    }
 
 /** Owns a manifest response body even when coroutine cancellation wins the get() handoff race. */
 internal class DesktopUpdateResponseLease(private val response: CompletableFuture<HttpResponse<InputStream>>) : AutoCloseable {
@@ -400,17 +421,7 @@ internal class DesktopUpdateService(
 
     private suspend fun fetchText(url: String): String = withTimeoutOrNull(300_000) {
         val response = httpClient.sendAsync(updateRequest(url, "application/json"), HttpResponse.BodyHandlers.ofInputStream())
-        DesktopUpdateResponseLease(response).use { lease ->
-            runInterruptible(Dispatchers.IO) {
-                val received = response.get()
-                val input = lease.acquire(received)
-                if (received.statusCode() !in 200..299) {
-                    input.close()
-                    error("Update request failed: HTTP ${received.statusCode()}")
-                }
-                input.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            }
-        }
+        readDesktopUpdateManifest(response)
     } ?: error("Update network deadline exceeded")
 
     private suspend fun download(asset: UpdateAsset): Path = withTimeoutOrNull(300_000) {

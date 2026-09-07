@@ -310,11 +310,13 @@ internal class DesktopWindowsTransferPins private constructor(
             // and private current-user payload admission remain unchanged.
             val installer = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
             // OWNER RIGHTS is the retained object's current owner, not another user.
-            // Python-created private workspace parents use this ACE. Resolve it only
-            // for an ancestor whose native owner is exactly the current token SID;
-            // private payloads continue to require the explicit current-user ACE.
+            // Python-created private workspace parents use this ACE. Elevated tokens
+            // may default their object owner to Administrators. Resolve it only to
+            // the retained ancestor's current user or already trusted BA/SY owner;
+            // private payloads still require the explicit current-user ACE.
             fun trusted(principal: String) = principal == sid || !private && (
-                principal == installer || principal == "S-1-3-4" && info.owner == sid)
+                principal == installer || principal == "S-1-3-4" &&
+                    info.owner in setOf(sid, trustedCurrent, "S-1-5-18"))
             WindowsInstallTrust.verify(info.copy(owner = if (trusted(info.owner)) trustedCurrent else info.owner,
                 dacl = info.dacl?.map { if (trusted(it.sid)) it.copy(sid = trustedCurrent) else it }),
                 if (private) WindowsInstallTrust.Kind.DIRECTORY else WindowsInstallTrust.Kind.ANCESTOR,

@@ -16,7 +16,85 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Latest checkpoint observation (supersedes the earlier checkpoint details below):
+Checkpoint12 `23d1ef8407c6e23ddfde0aa5e85168f8f4a14351` is pushed, canonical2.1.5.
+Managed prepush passed1616 selected/1559 executed/57 skips, zero failures. Its
+ordinary x64 Windows image passes public disconnected CLI smoke and the full
+desktop suite (880 selected/825 executed/55 skips, zero failures); verified
+evidence is `/tmp/vpn-windows-finish.WhKUbn/bcd9-owner-rights-v1-verified-summary.json`.
+That native image is2.1.4 with the exact reviewed transfer delta, not a2.1.5 MSI.
+Fixture tests passed34/34 on Mac and Arch,28/34 with6 explicit ordinary Windows
+skips; the3 symlink cases separately passed in the same guest under SYSTEM.
+These results did not close CI: Android and macOS passed; Fast Checks and Linux
+failed `cancelledManifestCheckStopsWhileHeadersOrBodyAreStalled`; Windows still
+failed packaged serve after extracting its MSI. Logs are `/tmp/vpn-23d-{fast,linux,windows}-ci-failed.log`.
+
+Current quick-script native coverage:12 launchers,107 tests, zero skips/failures
+on Arch2317 x86_64/Python3.14.7. All script hashes match the worktree. This
+covers Linux postinst/DEB/RPM packaging regressions, public-install and VM
+harnesses, Android tool/fixture/routing-evidence/visual-inventory helpers, desktop
+fixture extraction, and packaged-CLI harnesses. It does not replace real package
+installation or Android device scenarios. Full logs and hash mapping:
+`/tmp/vpn-native-quick-23d-arch-evidence.json`, SHA
+`6d1b6bd4e4b475e588efd22accc10a64ef2ec3d017ac6824118eb7a70696ce15`.
+Guest runner14766 is terminal; only task-owned evidence/source remain.
+
+Root owns the corrective cancellation slice in `DesktopUpdateService.kt` and
+`DesktopUpdateCancellationTest.kt`. A close-only, interruption-resistant input
+reproduced the response-lifetime failure before the fix (`/tmp/vpn-manifest-close-order-red.log`
+and `.xml`). The reader now runs as a child whose cancellable await closes the
+response before the scope joins it. All6 focused tests pass locally and in the
+owned Arch2317 guest with exact23d sources plus the two-file delta; receipt
+`/tmp/vpn-cancel-native-23d-evidence.json` has SHA
+`5e38bd18e67cdb327c3069f9bdcfde95cd7ef20bb696b89b5b467206da7bb5ce`.
+The same6 tests also pass in the owned Windows x64 guest; XML SHA
+`cff7c0902690113737ca850435cbb6a641b584c835b7fb9ddd08800a6684008c`.
+The next prepush/push remain required.
+The Windows owner has separately proved elevated Python temporary directories
+are owned by Administrators with OWNER RIGHTS ACEs, unlike the ordinary user
+fixture. The unchanged exact23d/version2.1.5 public image now reproduces serve exit2
+under that elevated token. Two causal transfer tests reproduce the same
+unsupported-access-mask rejection. The correction maps OWNER RIGHTS only to
+the retained ancestor's current SID or already trusted Administrators/SYSTEM
+owner; private-leaf and installer receipt trust remain unchanged. All23
+transfer/installer policy tests pass (zero skips). Corrected ordinary/elevated
+public image checks are running before checkpoint delivery. Evidence:
+`/tmp/vpn-windows-finish.WhKUbn/elevated-owner-rights-causal-red` and
+`/tmp/vpn-windows-finish.WhKUbn/elevated-owner-rights-focused-green`.
+
+Android Shark heap analysis now identifies the previous routing String retained
+by a long-lived DataStore `data` collector's `$startState`; a hand-written HPROF
+root parser was incorrect and is not acceptance evidence. The scratch owner is
+testing one-shot resubscription that releases the previous collector before
+publishing its next committed snapshot, preserving cross-facade observation and
+persisted formats. Scratch2.2.13 (APK SHA `000bae37a2f2a965a22dc42c45ce4922f823ff56a168840c7b89a7d02e7147ed`)
+now passes API29/48MiB visible add/remove in the same PID8503, with revisions1/2
+and both retained operations succeeded. Exact full routing digests prove
+56008→56009→56008 domains, then independent cold56008 again. Root inspected
+`/tmp/5584-fix233-{preaction-cold,warm-after-add,warm-after-remove,cold-after-remove}.ndjson`.
+Baseline/restored newline SHA is
+`0ef2ce70d306e71d44a899d52a56a375022cb194cc534fab005934fb83bdaaa7`.
+The old permanent collector also fails a deterministic collector-lifetime test.
+Clean integration review, diagnostic-free package verification and API35 remain;
+no Android candidate has been copied into the tracked tree yet.
+Correction to the prior partial CLI audit: `DesktopCli.handleArgs` dispatches
+flags to `DesktopCliStream.run` before `DesktopAndroidCli.handle`, selecting the
+Android transport and serial explicitly. `AndroidControlReader` already uses
+shared `ControlLogCursorJournal`, with owner publication attached by
+`AndroidApplicationOwner`. `DesktopAndroidStreamTest` covers selected device,
+owner pinning, duplicate logs/limit0, loss/replacement and closed output. The
+remaining gate is current public/native stream verification; the downstream
+nonempty-flag rejection does not establish a missing public implementation.
+
+The reviewed fixture pruning path passed a real Mac23d base2.1.17/target2.1.18
+build under `/tmp/vpn-parity-macos-native-20260907.O45e6J/update-fixture-23d1ef84-r2/fixture`.
+Both code fingerprints match; receipt SHA
+`1228843a88644acbd3d111cbb255a7ec1a4de04f152f8f4311c9b7e9a66ef60b`.
+Sampled free space stayed above720068KiB, and both completed build trees were
+pruned. This proves build/storage behavior, not update replacement. A fresh,
+separate machine-owned base fixture is assigned to the Mac worker; old uncertain
+jobs and their applications remain untouched.
+
+Earlier checkpoint11 and its corrective evidence:
 `bcd9a3be2b04e5617ee2df5782b2ed2c90220b39` was pushed after managed prepush
 and the full actual-source Windows desktop run:878 selected,823 executed,
 55 explicit skips, zero failures. Native evidence archive
@@ -282,11 +360,11 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and existing scratch | App Gradle/CI remain root | Diagnostic2.2.8 and exact warm/cold evidence retained | Preserve5582; owned5584 API29;5580 protected | Second GUI edit fails final String allocation at48MiB; no persistence/replay | Retention accounting and causal fix, then API35/lifecycle/visuals |
-| F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/ActivationServer/common update remain root | bcd9 app-image public-path trace; privileged roles pending | Real x64 guest2314; ARM2299 historical only | Public serve rejects transfer-parent ACL; exact cause under review | Packaged fix, kernel-process proof integration, VPN/MSI binding |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and scratch | App Gradle/CI remain root | Scratch2.2.13 native chain passed | Owned5584 API29;5580/5582 protected | Add/remove/cold56008 exact; causal collector RED/GREEN | Clean integration review, diagnostic-free verification, API35/lifecycle/visuals |
+| F/E-Windows | windows (Astra) | Transfer-parent correction/tests, broker/helper/MSI | Factory/Main/autostart/ActivationServer/common update remain root | Exact23d elevated public serve failed | Owned real x64 guest2314 | Two causal ACL regressions RED; narrow trusted-owner fix validating | Corrected ordinary/elevated package smoke, VPN/MSI binding |
 | E-Linux | root (previous worker inactive) | Linux native evidence and remaining execution | Common update/build remain root | Ubuntu2318 and Arch2317 same-source recovery passed | Fedora2316 evidence review pending; preserve unrelated VMs | Native quick launchers passed; full inventory audit pending | Remaining traffic, rollback and final-package coverage |
 | E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | User-local recovery passed; machine outcome unknown and preserved | Fresh fixture, machine authorization/recovery, visuals |
-| E-Fixture | mac_fixture_terra (Terra medium) | prepare_desktop_update_fixture.py, fixture_environment.py and their two test files | Lifecycle/docs/version remain root | Completed-stage cleanup and Python3.9 archive compatibility | Same Mac guest for exclusive fixture checks; Arch task storage | Portable tests passed; archive graph safety correction under review | Final hashes/native Windows tests, then fresh space-bounded fixture |
+| E-Fixture | mac_fixture_terra (Terra medium) | Fresh machine fixture and guest native execution; fixture scripts | Lifecycle/docs/version and shared UI remain root | Frozen23d base17/target18; helper resource verified | Exclusive macOS15.7.7 ARM64 guest192.168.64.3 | Machine base static/disconnected public smoke passed | New private TLS, public installation and authoritative recovery; old unknown jobs preserved |
 
 Only one host Gradle invocation at a time. No source edits during artifact freeze.
 Native artifacts are immutable and require source fingerprints and byte hashes.

@@ -3,6 +3,40 @@ package com.kardinal.vpncontrol.desktop
 import kotlin.test.*
 
 class DesktopWindowsTransferPinsTest {
+    @Test fun administrativeOwnerRightsOnElevatedWorkspaceAncestorsKeepPublicationPins() {
+        // An elevated Windows token keeps its user SID but defaults new objects to BA ownership.
+        // CPython 3.12.10 uses OWNER RIGHTS in this private temporary-parent DACL.
+        assertAdministrativeOwnerRightsKeepPins("S-1-5-32-544")
+    }
+
+    @Test fun systemOwnerRightsOnWorkspaceAncestorsKeepPublicationPins() {
+        assertAdministrativeOwnerRightsKeepPins("S-1-5-18")
+    }
+
+    private fun assertAdministrativeOwnerRightsKeepPins(owner: String) {
+        for (flags in listOf(0x3, 0x13)) {
+            val info = directory(owner).copy(dacl = listOf(
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-5-18"),
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-5-32-544"),
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-3-4"),
+            ))
+            val native = Fake().also { it.hostile = info }
+            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native)
+            val child = pins.createDirectory()
+            assertEquals(1, native.creates) // Fake also verifies an explicit current-SID-only private SDDL.
+            assertTrue(native.opened.all { !it.shareDelete && !it.closed })
+            assertFails { native.replace("C:\\Users\\東京") }
+            pins.deleteDirectory()
+            assertEquals(listOf(child), native.deleted)
+            pins.close()
+            assertTrue(native.opened.all { it.closed })
+            assertFails { DesktopWindowsTransferPins.verify(info, SID, private = true) }
+            assertFails { WindowsInstallTrust.verify(info, WindowsInstallTrust.Kind.ANCESTOR) }
+            assertFails { DesktopWindowsTransferPins.verify(info.copy(dacl = info.dacl.orEmpty() +
+                WindowsInstallAce(0, 0, 0x40000, "S-1-1-0")), SID) }
+        }
+    }
+
     @Test fun currentOwnerRightsOnPythonWorkspaceAncestorsKeepPublicationPins() {
         // CPython 3.12.10 creates private temporary directories with OWNER RIGHTS;
         // the workspace inherits that ACE instead of an explicit current-user SID.
@@ -28,7 +62,7 @@ class DesktopWindowsTransferPinsTest {
 
     @Test fun ownerRightsCannotAuthorizeForeignOwnersOrPrivatePayloads() {
         val ownerRights = WindowsInstallAce(0, 3, 0x1f01ff, "S-1-3-4")
-        for (owner in listOf("S-1-5-21-9-8-7-6", "S-1-5-18", "S-1-5-32-544")) {
+        for (owner in listOf("S-1-5-21-9-8-7-6", "S-1-5-18-1", "S-1-5-32-544-1", "S-1-1-0")) {
             val native = Fake().also { it.hostile = directory(owner).copy(dacl = listOf(ownerRights)) }
             assertFails { DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native) }
             assertEquals(0, native.creates)

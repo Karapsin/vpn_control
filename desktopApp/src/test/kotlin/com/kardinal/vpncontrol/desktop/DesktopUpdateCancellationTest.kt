@@ -32,6 +32,45 @@ import kotlin.test.assertTrue
 
 class DesktopUpdateCancellationTest {
     @Test
+    fun cancellationClosesManifestBodyBeforeWaitingForItsReader() = runBlocking {
+        val reading = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        val input = object : InputStream() {
+            override fun read(): Int {
+                reading.countDown()
+                while (closed.count != 0L) {
+                    try { closed.await() } catch (_: InterruptedException) { /* Close owns release. */ }
+                }
+                return -1
+            }
+            override fun close() { closed.countDown() }
+        }
+        val response = object : HttpResponse<InputStream> {
+            override fun statusCode() = 200
+            override fun request(): HttpRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1/manifest")).GET().build()
+            override fun previousResponse(): Optional<HttpResponse<InputStream>> = Optional.empty()
+            override fun headers(): HttpHeaders = HttpHeaders.of(emptyMap()) { _, _ -> true }
+            override fun body(): InputStream = input
+            override fun sslSession() = Optional.empty<javax.net.ssl.SSLSession>()
+            override fun uri(): URI = URI.create("http://127.0.0.1/manifest")
+            override fun version(): HttpClient.Version = HttpClient.Version.HTTP_1_1
+        }
+        val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val action = owner.launch { readDesktopUpdateManifest(CompletableFuture.completedFuture(response)) }
+        try {
+            assertTrue(reading.await(5, TimeUnit.SECONDS), "Manifest body reader never started")
+            action.cancel()
+            assertTrue(withTimeoutOrNull(2_000) { action.join(); true } ?: false,
+                "Cancellation must close the body before waiting for an interruption-resistant reader")
+            assertEquals(0L, closed.count)
+        } finally {
+            input.close()
+            action.join()
+            owner.cancel()
+        }
+    }
+
+    @Test
     fun completedResponseWithoutGetHandoffIsClosedDuringCancellation() {
         class TrackingInput : ByteArrayInputStream(byteArrayOf('{'.code.toByte())) {
             var closed = false

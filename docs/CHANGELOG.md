@@ -6,6 +6,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Run generated-source fixture rejection without requiring Windows symlink privileges.
+- Close cancelled update manifest responses before joining blocked body readers.
+- Allow trusted Windows ancestor owner-rights ACLs during elevated CLI workspace startup.
 
 ## 2.1.5 - 2026-09-08
 
