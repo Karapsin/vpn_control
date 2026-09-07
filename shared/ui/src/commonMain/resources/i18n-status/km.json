@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "បរាជ័យក្នុងការស្តារទីតាំង {connectionLabel:0} មុនឡើងវិញ: {1}។ បរាជ័យក្នុងការបញ្ឈប់ {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "បានរក្សាទុកច្បាប់កំណត់ផ្លូវ។ ចាប់ផ្តើម {connectionLabel:0} ឡើងវិញ ដើម្បីអនុវត្ត",
     "ROUTING_RULES_SAVE_FAILED": "បរាជ័យក្នុងការរក្សាទុកច្បាប់បញ្ជូនផ្លូវ",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "មិនដឹងលទ្ធផលនៃការផ្លាស់ប្ដូរការបញ្ជូនផ្លូវទេ។ សូមព្យាយាមម្ដងទៀតដោយប្រើទិន្នន័យដដែល។",
+    "ROUTING_RULES_STALE_DRAFT": "ការកំណត់បញ្ជូនផ្លូវបានផ្លាស់ប្ដូរ។ សូមបើកកម្មវិធីកែសម្រួលឡើងវិញមុនពេលរក្សាទុក។",
     "DIAGNOSTICS_EXPORT_OPENED": "ការនាំចេញរោគវិនិច្ឆ័យបានបើក",
     "APPS_LOAD_FAILED": "បរាជ័យក្នុងការផ្ទុកកម្មវិធី",
     "SUBSCRIPTION_RECEIVED": "បានទទួលការជាវ។ ពិនិត្យ ហើយរក្សាទុកវានៅផ្ទាំងកម្រងព័ត៌មាន។",

@@ -1,11 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if (($# > 3)); then
+  echo "Usage: test_linux_desktop_package.sh [package-root] [validation-root] [expected-version]" >&2
+  exit 2
+fi
+
 package_root="${1:-desktopApp/build/compose/binaries/main}"
 validation_root="${2:-desktopApp/build/compose/validation/linux-package}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+
+# Property-built disposable fixtures specify their expected version explicitly.
+# Normal packaging keeps canonical metadata as the authority. Validate before
+# clearing a previous evidence directory or invoking any packaged launcher.
+expected_version="$(python3 - "$repo_root/scripts" "${3-}" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from version_metadata import parse_version, product_version, read_version
+
+version = sys.argv[2] or read_version(Path(sys.argv[1]).parent)
+try:
+    if product_version(parse_version(version)) != version:
+        raise ValueError("Noncanonical version")
+except ValueError:
+    raise SystemExit("Expected package version must be canonical (a.b.c, each component below 20)")
+print(version)
+PY
+)"
 
 if [[ ! -d "$package_root" ]]; then
   echo "Package root does not exist: $package_root" >&2
@@ -42,7 +66,7 @@ run_launcher_smoke() {
   local launcher="$1"
   local state_dir="$2"
   python3 "$repo_root/scripts/test_packaged_cli.py" --launcher "$launcher" \
-    --expected-version "$(python3 "$repo_root/scripts/version_metadata.py" --field version)"
+    --expected-version "$expected_version"
   rm -rf "$state_dir"
   mkdir -p "$state_dir"
   echo "[vpn-control] running Linux package smoke test: $launcher"
@@ -55,6 +79,19 @@ echo "[vpn-control] validating DEB payload: ${deb_packages[0]}"
 deb_root="$validation_root/deb"
 mkdir -p "$deb_root"
 dpkg-deb -x "${deb_packages[0]}" "$deb_root"
+deb_control="$validation_root/deb-control"
+dpkg-deb -e "${deb_packages[0]}" "$deb_control"
+python3 - "$repo_root/scripts" "${deb_packages[0]}" "$repo_root/desktopApp/packaging/linux/postinst" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+sys.path.insert(0, sys.argv[1])
+from package_linux_deb import verify_postinst
+
+archive = subprocess.run(["dpkg-deb", "--ctrl-tarfile", sys.argv[2]],
+                         check=True, capture_output=True).stdout
+verify_postinst(archive, Path(sys.argv[3]).read_text(), "vpn-control")
+PY
 
 deb_launcher="$(find "$deb_root" -type f -path '*/bin/vpn-control' | sort | head -n 1)"
 if [[ -z "$deb_launcher" ]]; then

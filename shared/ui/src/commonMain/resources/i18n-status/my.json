@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "ယခင် {connectionLabel:0} တည်နေရာကို ပြန်လည်ရယူရန် မအောင်မြင်ပါ: {1}။ {connectionLabel:0} ကို ရပ်တန့်ရန် မအောင်မြင်ပါ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Routing စည်းမျဉ်းများကို သိမ်းဆည်းပြီးပါပြီ။ အသုံးပြုရန် {connectionLabel:0} ကို ပြန်လည်စတင်ပါ",
     "ROUTING_RULES_SAVE_FAILED": "လမ်းကြောင်းစည်းမျဉ်းများ သိမ်းရန် မအောင်မြင်ပါ",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "လမ်းကြောင်းပြောင်းလဲမှု၏ ရလဒ်ကို မသိရပါ။ တူညီသောအချက်အလက်ဖြင့် ထပ်မံကြိုးစားပါ။",
+    "ROUTING_RULES_STALE_DRAFT": "လမ်းကြောင်းဆက်တင်များ ပြောင်းလဲသွားပါပြီ။ မသိမ်းမီ တည်းဖြတ်စနစ်ကို ပြန်ဖွင့်ပါ။",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostics ထုတ်ယူမှု ဖွင့်ပြီးပြီ",
     "APPS_LOAD_FAILED": "အက်ပ်များ load လုပ်ရန် မအောင်မြင်ပါ",
     "SUBSCRIPTION_RECEIVED": "စာရင်းသွင်းမှု လက်ခံရရှိသည်။ Profile tab တွင် စစ်ဆေးပြီး သိမ်းပါ။",

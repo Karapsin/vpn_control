@@ -108,19 +108,39 @@ import kotlinx.coroutines.Job
 import kotlin.system.exitProcess
 
 fun main(rawArgs: Array<String>) {
+    // Pure parsing precedes admission; no workspace IO, owner/bootstrap or GUI work does.
     val invocation = DesktopWorkspacePaths.parse(rawArgs.toList()).getOrElse {
         if (desktopCliWantsJson(rawArgs.toList())) {
-            desktopCliPrintLine(desktopCliJsonFailure(com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT,
+            desktopCliPrintLine(desktopCliJsonFailure(ControlCode.INVALID_ARGUMENT,
                 java.util.UUID.randomUUID().toString()).message)
-        } else desktopCliPrintLine("INVALID_ARGUMENT: invalid state directory or command.")
+        } else writeDesktopCliLine(System.err, "INVALID_ARGUMENT: invalid state directory or command.")
         exitProcess(1)
     }
+    val allowsPendingControl = DesktopWindowsControlOnlyStartup.allowsPending(invocation.arguments)
+    var pendingControlOnly = false
+    runCatching {
+        DesktopWindowsProcessAdmission.install(allowPendingControl = allowsPendingControl,
+            onPendingControl = { pendingControlOnly = true })
+        DesktopLinuxProcessAdmission.install(allowPendingControl = allowsPendingControl,
+            onPendingControl = { pendingControlOnly = true })
+        DesktopMacProcessAdmission.install(allowPendingControl = allowsPendingControl,
+            onPendingControl = { pendingControlOnly = true })
+    }.getOrElse { failure ->
+        val code = if (failure.message == "BUSY" &&
+            DesktopWindowsControlOnlyStartup.isBlockingWait(invocation.arguments)) ControlCode.INTERACTION_REQUIRED
+            else if (failure.message == "BUSY") ControlCode.BUSY else ControlCode.UNAVAILABLE
+        if (desktopCliWantsJson(rawArgs.toList())) {
+            desktopCliPrintLine(desktopCliJsonFailure(code, java.util.UUID.randomUUID().toString()).message)
+        } else writeDesktopCliLine(System.err, code.wireName)
+        exitProcess(code.exitCode)
+    }
     DesktopWorkspacePaths.configure(invocation)
+    if (pendingControlOnly) exitProcess(DesktopWindowsControlOnlyStartup.execute(invocation.arguments.toTypedArray()))
     val requestedFrontendOwner = if (invocation.arguments.firstOrNull() == DESKTOP_FRONTEND_OWNER_ARGUMENT) {
         val value = invocation.arguments.getOrNull(1)
         if (invocation.arguments.size != 2 || value == null ||
             runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false).not()) {
-            desktopCliPrintLine("INVALID_ARGUMENT")
+            writeDesktopCliLine(System.err, "INVALID_ARGUMENT")
             exitProcess(1)
         }
         value
@@ -134,8 +154,8 @@ fun main(rawArgs: Array<String>) {
     DesktopWindowsElevation.elevateIfRequired(relaunchArgs)?.let { exitProcess(it) }
     DesktopVpnIntegrationTest.handleArgs(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
-        println("VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
-        return
+        writeDesktopCliLine(System.err, "VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
+        exitProcess(ControlCode.UNAVAILABLE.exitCode)
     }
     val activationEvents = DesktopActivationEvents()
     val hideEvents = DesktopActivationEvents()
@@ -271,7 +291,7 @@ private fun DesktopApplication(
         updateJob = coroutineScope.launch {
             val result = frontend.read(ControlOperationId.UPDATES_INSTALL)
             if (!result.ok) commandFailure = result.code
-            else javax.swing.SwingUtilities.invokeLater { onExitApplication() }
+            else if (desktopInstallHandoffIsFinal(result)) javax.swing.SwingUtilities.invokeLater { onExitApplication() }
             updateJob = null
         }
     }
@@ -884,6 +904,13 @@ internal fun DesktopVpnControlApp(
                     activeProfileLabel = activeProfile,
                     showSubscriptionMismatchWarning = showMismatchWarning,
                     statusDetails = frame.activity.runtimeDetails.messages(),
+                    connectionConfiguration = com.kardinal.vpncontrol.shared.ui.ConnectionConfigurationPresentation(
+                        runtimeRunning = frame.runtime.runtimeRunning,
+                        activeLocationName = frame.runtime.activeLocationId?.let { id ->
+                            frame.locations.singleOrNull { it.id == id }?.name
+                        },
+                        restartRequired = frame.runtime.restartRequired,
+                    ),
                     onToggleVpn = {
                         if (state.isBusy) return@MainScreen
                         coroutineScope.launch { executeCommand(if (state.isVpnRunning) DesktopCliCommand.Off else DesktopCliCommand.On) }
@@ -1070,7 +1097,8 @@ internal fun DesktopVpnControlApp(
                 )
 
                 AppScreen.ROUTING_RULES -> RoutingRulesScreen(
-                    state = state.copy(routingDirectDomainsDraft = routingDraft?.domains ?: state.routingDirectDomainsDraft),
+                    state = state.copy(routingDirectDomainsDraft = routingDraft?.domains ?: state.routingDirectDomainsDraft,
+                        routingDirectDomainSuffixesDraft = if (routingDraft != null) null else state.routingDirectDomainSuffixesDraft),
                     onAppSearchChange = {},
                     onToggleProxyApp = {},
                     onSelectAllProxyApps = {},

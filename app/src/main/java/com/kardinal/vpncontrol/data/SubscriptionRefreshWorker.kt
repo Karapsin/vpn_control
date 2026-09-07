@@ -24,77 +24,39 @@ class SubscriptionRefreshWorker(
     private val owner = com.kardinal.vpncontrol.AndroidApplicationOwner.get(appContext)
     private val storage = owner.storage
 
+    private var recoveryPoint: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint? = null
+    private var recoveryWarning: String? = null
+    private var retainedSession: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession? = null
+
     override suspend fun doWork(): Result {
-        return owner.commands.runTracked { refreshInOwner() } ?: Result.retry()
+        val state = storage.snapshot()
+        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION || state.subscriptionRefreshPolicy == SubscriptionRefreshPolicy.OFF)
+            return Result.success()
+        val result = owner.refreshSubscriptions("active", ::afterRefresh)
+        if (result.code == com.kardinal.vpncontrol.model.ControlCode.BUSY ||
+            result.code == com.kardinal.vpncontrol.model.ControlCode.CONFLICT) return Result.retry()
+        return Result.success()
     }
 
-    private suspend fun refreshInOwner(): Result {
-        val state = storage.snapshot()
-        val subscriptionRefreshScheduler = owner.subscriptionRefreshScheduler
+    private suspend fun afterRefresh(previousState: com.kardinal.vpncontrol.model.PersistedState,
+        batch: SubscriptionRefreshBatchResult, point: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint?): List<String> {
+        recoveryPoint = point
+        recoveryWarning = null
+        if (point != null && owner.runtimeObserver.state.value != point.observation) return listOf("REFRESH_RUNTIME_CHANGED")
+        val state = previousState.copy(isVpnRunning = point != null, appMode = point?.configuration?.mode ?: previousState.appMode)
         val refreshAll = isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)
-        if (state.profileSourceMode != ProfileSourceMode.SUBSCRIPTION ||
-            state.subscriptionRefreshPolicy == SubscriptionRefreshPolicy.OFF ||
-            if (refreshAll) state.subscriptions.isEmpty() else state.profileUrl.isBlank()
-        ) {
-            WorkManager.getInstance(applicationContext)
-                .cancelUniqueWork(SubscriptionRefreshScheduler.WORK_NAME)
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription sync skipped: mode=${state.profileSourceMode} policy=${state.subscriptionRefreshPolicy} urlSet=${state.profileUrl.isNotBlank()}",
-            )
-            return Result.success()
-        }
-        val hasValidSource = if (refreshAll) {
-            state.subscriptions.any { subscription ->
-                subscription.url.isNotBlank() &&
-                    RemoteSourceResolver.validateProfileSource(subscription.url).isSuccess
-            }
-        } else {
-            RemoteSourceResolver.validateProfileSource(state.profileUrl).isSuccess
-        }
-        if (!hasValidSource) {
-            WorkManager.getInstance(applicationContext)
-                .cancelUniqueWork(SubscriptionRefreshScheduler.WORK_NAME)
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription sync skipped: unsupported remote source",
-            )
-            return Result.success()
-        }
-
-        val leaseOwner = "background-refresh-${UUID.randomUUID()}"
-        if (!storage.tryAcquireBackgroundRefreshLease(leaseOwner)) {
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription sync skipped: another refresh is already running",
-            )
-            subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
-            return Result.success()
-        }
-        var leaseOutcome = "started"
-        return try {
         val orchestrator = owner.orchestrator
         val vpnManager = owner.vpnManager
         val repository = owner.repository
-        suspend fun finishAndScheduleNext(outcome: String = "success"): Result {
-            leaseOutcome = outcome
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription refresh finishing: outcome=$outcome",
-            )
-            subscriptionRefreshScheduler.scheduleNext(storage.snapshot())
-            return Result.success()
+        suspend fun finishAndScheduleNext(outcome: String = "success"): List<String> {
+            return (if (outcome in setOf("replacement_failed", "vpn_permission_unavailable", "refresh_failed"))
+                listOf("REFRESH_" + outcome.uppercase(java.util.Locale.ROOT)) else emptyList()) + listOfNotNull(recoveryWarning)
         }
-        val previousSelectedStored = LocationConfigs.selectedStoredReference(
-            selectedProfileJson = state.selectedProfileJson,
-            selectedProfileRawLink = state.selectedProfileRawLink,
-        )
-        val refreshResult = if (refreshAll) {
-            repository.refreshAllSubscriptionsCaches()
-        } else {
-            repository.refreshActiveSubscriptionCache()
-        }
-        refreshResult.fold(
+        if (batch.refreshedCount == 0) return finishAndScheduleNext("refresh_failed")
+        val previousSelectedStored = LocationConfigs.selectedStoredReference(state.selectedProfileJson, state.selectedProfileRawLink)
+        val refreshResult = kotlin.Result.success(batch)
+        var releaseFailed = false
+        val outcome = try { refreshResult.fold(
             onSuccess = { refresh ->
                 val refreshedState = storage.snapshot()
                 val failedSubscriptions = refresh.failedSubscriptions
@@ -112,11 +74,6 @@ class SubscriptionRefreshWorker(
 
                 if (state.isVpnRunning && state.findBestAfterSubscriptionRefresh) {
                     if (state.appMode == AppMode.VPN && VpnService.prepare(applicationContext) != null) {
-                        storage.restoreSelection(
-                            state,
-                            restoreRuntimeArtifacts = true,
-                            sourceUrlOverride = "",
-                        )
                         storage.updateStatus(ConnectionStatusMessages.backgroundVpnPermissionRequiredKeepingPrevious())
                         DiagnosticsLogger.append(
                             applicationContext,
@@ -124,6 +81,8 @@ class SubscriptionRefreshWorker(
                         )
                         return@fold finishAndScheduleNext("vpn_permission_unavailable")
                     }
+                    retainedSession = owner.retainedRuntimeServices.acquire(requireNotNull(point).observation)
+                    if (retainedSession == null) return@fold listOf("REFRESH_RUNTIME_SERVICE_UNAVAILABLE")
                     storage.updateStatus(SubscriptionStatusMessages.backgroundRefreshFindingBest())
                     var switchFailure: Throwable? = null
                     val replacement = findBestProfileWithRetries(
@@ -194,11 +153,6 @@ class SubscriptionRefreshWorker(
                 }
 
                 if (selectedMissing && state.isVpnRunning) {
-                    storage.restoreSelection(
-                        state,
-                        restoreRuntimeArtifacts = true,
-                        sourceUrlOverride = "",
-                    )
                     storage.updateStatus(
                         SubscriptionRefreshResultLogic.backgroundSelectedMissingMessage(
                             appMode = state.appMode,
@@ -241,21 +195,11 @@ class SubscriptionRefreshWorker(
                 )
                 finishAndScheduleNext("refresh_failed")
             },
-        )
-        } catch (error: Throwable) {
-            leaseOutcome = "exception_${error.javaClass.simpleName}"
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription refresh failed with exception: ${diagnosticsErrorSummary(error)}",
-            )
-            throw error
-        } finally {
-            DiagnosticsLogger.append(
-                applicationContext,
-                "Background subscription refresh lease releasing: outcome=$leaseOutcome",
-            )
-            storage.releaseBackgroundRefreshLease(leaseOwner)
+        ) } finally {
+            releaseFailed = retainedSession?.let { runCatching { it.release().getOrThrow() }.isFailure } == true
+            retainedSession = null
         }
+        return outcome + if (releaseFailed) listOf("REFRESH_SERVICE_RELEASE_FAILED") else emptyList()
     }
 
     private suspend fun findBestProfileWithRetries(
@@ -265,7 +209,7 @@ class SubscriptionRefreshWorker(
         return ConnectionOrchestrationLogic.findBestProfileWithRetries(
             retryCount = retryCount,
             onRetryStatus = storage::updateStatus,
-            action = orchestrator::refreshBestProfileAttemptPlan,
+            action = orchestrator::refreshCachedBestProfileAttemptPlan,
         )
     }
 
@@ -349,8 +293,13 @@ class SubscriptionRefreshWorker(
                 val appMode = storage.snapshot().appMode
                 storage.updateStatus(ConnectionStatusMessages.startingConnectionWithBestLocation(appMode))
                 onSwitchAttempted()
-                val startResult = vpnManager.start(attempt.selection)
+                val expected = owner.runtimeObserver.state.value
+                if (expected.knowledge == com.kardinal.vpncontrol.AndroidRuntimeKnowledge.UNKNOWN)
+                    return kotlin.Result.failure(IllegalStateException("RUNTIME_OUTCOME_UNKNOWN"))
+                val startResult = vpnManager.startRetained(attempt.selection, requireNotNull(retainedSession), expected)
                 if (startResult.isFailure) {
+                    if (owner.runtimeObserver.state.value.knowledge == com.kardinal.vpncontrol.AndroidRuntimeKnowledge.UNKNOWN ||
+                        (startResult.exceptionOrNull() as? VpnCommandException)?.outcomeUnknown == true) return startResult.map { attempt.selection }
                     lastFailure = startResult.exceptionOrNull()
                     recordLocationBenchmark(
                         BenchmarkSearchLogic.failedActiveVerificationBenchmark(
@@ -426,7 +375,8 @@ class SubscriptionRefreshWorker(
                 storage.updateStatus(
                     BenchmarkStatusMessages.switchingAfterVerificationFailure(attempt.selection.profile.remarks),
                 )
-                val stopResult = vpnManager.stop()
+                val stopResult = vpnManager.stopRetained(owner.runtimeObserver.state.value, requireNotNull(retainedSession))
+                if (stopResult.isFailure) return stopResult.map { attempt.selection }
                 stopResult.exceptionOrNull()?.let { error ->
                     DiagnosticsLogger.append(
                         applicationContext,
@@ -458,57 +408,15 @@ class SubscriptionRefreshWorker(
         orchestrator: BenchmarkOrchestrator,
         vpnManager: VpnManager,
     ): String {
-        if (!switchAttempted) {
-            storage.restoreSelection(
-                previousState,
-                restoreRuntimeArtifacts = true,
-                sourceUrlOverride = "",
-            )
-            return SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
-        }
-        val previousSelection = orchestrator.rehydrateSelection(previousState)
-        if (previousSelection.isSuccess) {
-            val restartResult = vpnManager.start(previousSelection.getOrThrow())
-            if (restartResult.isSuccess) {
-                storage.restoreSelection(
-                    previousState,
-                    restoreRuntimeArtifacts = false,
-                    sourceUrlOverride = "",
-                )
-                return SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(previousState.appMode)
-            }
-        }
-        val stopResult = vpnManager.stop()
-        return stopResult.fold(
-            onSuccess = {
-                storage.clearSelection()
-                SubscriptionStatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
-            },
-            onFailure = { error ->
-                SubscriptionStatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
-            },
-        )
-    }
-
-    private suspend fun stopVpnForBackgroundPermissionLoss(
-        previousState: com.kardinal.vpncontrol.model.PersistedState,
-        vpnManager: VpnManager,
-    ): String {
-        val stopResult = vpnManager.stop()
-        return stopResult.fold(
-            onSuccess = {
-                storage.clearSelection()
-                SubscriptionStatusMessages.backgroundRefreshReplacementStopped(previousState.appMode)
-            },
-            onFailure = { error ->
-                storage.restoreSelection(
-                    previousState,
-                    restoreRuntimeArtifacts = true,
-                    sourceUrlOverride = "",
-                )
-                SubscriptionStatusMessages.backgroundRefreshRestoreOrStopFailed(previousState.appMode, error.message.orEmpty())
-            },
-        )
+        val point = recoveryPoint ?: return "RUNTIME_OUTCOME_UNKNOWN".also { recoveryWarning = it }
+        val outcome = com.kardinal.vpncontrol.recoverAndroidRefresh(point, switchAttempted,
+            { owner.runtimeObserver.state.value }, { expected -> vpnManager.stopRetained(expected, requireNotNull(retainedSession)) },
+            { actual, stopped -> vpnManager.restoreRetained(actual, stopped, requireNotNull(retainedSession)) }, owner.runtimeObserver::captureRuntime)
+        recoveryWarning = outcome
+        if (outcome == "RUNTIME_NOT_CHANGED" && vpnManager.restoreUnchangedRuntimeArtifacts(point).isFailure)
+            recoveryWarning = "RUNTIME_ARTIFACT_RESTORE_FAILED"
+        return if (outcome in setOf("RUNTIME_NOT_CHANGED", "RUNTIME_RESTORED"))
+            SubscriptionStatusMessages.backgroundRefreshPreviousLocationKept(point.configuration.mode) else outcome
     }
 
     private fun didDispatchVpnSwitchAttempt(error: Throwable): Boolean {

@@ -1,7 +1,7 @@
 [mcp_servers.vpn_control]
-command = "bash"
-args = ["agent_tools/mcp_server.sh"]
-cwd = "."
+command = @BASH@
+args = [@LAUNCHER@]
+cwd = @ROOT@
 required = true
 startup_timeout_sec = 300
 tool_timeout_sec = 3600

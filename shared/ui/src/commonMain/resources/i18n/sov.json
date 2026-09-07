@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Для установки нужен интерактивный сеанс.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "В разрешении на установку отказано.",
+  "UPDATE_INSTALL_CANCELLED": "Установка отменена.",
+  "UPDATE_INSTALL_CONFIRMATION": "Ожидается подтверждение установки.",
+  "UPDATE_INSTALL_COMPLETED": "Обновление установлено.",
+  "UPDATE_INSTALL_UNKNOWN": "Результат установки не установлен.",
   "APP_TITLE": "Управление спецканалом",
   "TAB_MAIN": "Штаб",
   "TAB_PROFILE": "Партучёт",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Действующий узел: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Действующий узел: недоступен",
+  "CONNECTION_RESTART_PENDING": "Перезапустите соединение для ввода сохранённых изменений в действие.",
+  "CONNECTION_RESTART_UNKNOWN": "Необходимость перезапуска не установлена."
 }

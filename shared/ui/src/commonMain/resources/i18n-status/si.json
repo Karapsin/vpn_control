@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "පෙර {connectionLabel:0} ස්ථානය ප්‍රතිස්ථාපනය කිරීමට අසමත් විය: {1}. {connectionLabel:0} නැවැත්වීමට අසමත් විය: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Routing rules සුරැකිණි. යෙදීමට {connectionLabel:0} නැවත ආරම්භ කරන්න",
     "ROUTING_RULES_SAVE_FAILED": "routing නීති සුරැකීමට අසමත් විය",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "මාර්ගගත කිරීමේ වෙනසෙහි ප්‍රතිඵලය නොදනී. එම ආදානයෙන්ම නැවත උත්සාහ කරන්න.",
+    "ROUTING_RULES_STALE_DRAFT": "මාර්ගගත කිරීමේ සැකසුම් වෙනස් වී ඇත. සුරැකීමට පෙර සංස්කාරකය නැවත විවෘත කරන්න.",
     "DIAGNOSTICS_EXPORT_OPENED": "රෝගනිර්ණ අපනයනය විවෘත විය",
     "APPS_LOAD_FAILED": "යෙදුම් පූරණය කිරීමට අසමත් විය",
     "SUBSCRIPTION_RECEIVED": "දායකත්වය ලැබුණි. පැතිකඩ ටැබයේ එය සමාලෝචනය කර සුරකින්න.",

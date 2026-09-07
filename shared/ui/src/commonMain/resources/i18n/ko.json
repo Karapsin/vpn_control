@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "설치하려면 대화형 세션이 필요합니다.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "설치 권한이 거부되었습니다.",
+  "UPDATE_INSTALL_CANCELLED": "설치가 취소되었습니다.",
+  "UPDATE_INSTALL_CONFIRMATION": "설치 확인을 기다리는 중입니다.",
+  "UPDATE_INSTALL_COMPLETED": "업데이트가 설치되었습니다.",
+  "UPDATE_INSTALL_UNKNOWN": "설치 결과를 알 수 없습니다.",
   "APP_TITLE": "VPN 제어",
   "TAB_MAIN": "메인",
   "TAB_PROFILE": "프로필",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "활성 위치: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "활성 위치: 사용할 수 없음",
+  "CONNECTION_RESTART_PENDING": "저장된 변경 사항을 적용하려면 연결을 다시 시작하세요.",
+  "CONNECTION_RESTART_UNKNOWN": "다시 시작해야 하는지 알 수 없습니다."
 }

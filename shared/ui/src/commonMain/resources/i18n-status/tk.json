@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Öňki {connectionLabel:0} ýerleşişini dikeltmek başartmady: {1}. {connectionLabel:0}-ni duruzmak başartmady: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Marşrutlaşdyrma düzgünleri saklandy. Güýje girmegi üçin {connectionLabel:0}-ni täzeden başlatmaly",
     "ROUTING_RULES_SAVE_FAILED": "Ugrukdyryş düzgünlerini saklap bolmady",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Ugrukdyryş üýtgetmesiniň netijesi näbelli. Şol bir maglumatlar bilen gaýtadan synanyşyň.",
+    "ROUTING_RULES_STALE_DRAFT": "Ugrukdyryş sazlamalary üýtgedi. Saklamazdan öň redaktory täzeden açyň.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostika eksporty açyldy",
     "APPS_LOAD_FAILED": "Programmalary ýükläp bolmady",
     "SUBSCRIPTION_RECEIVED": "Abuna ýazylma alyndy. Ony Profil goýmasynda gözden geçiriň we saklaň.",

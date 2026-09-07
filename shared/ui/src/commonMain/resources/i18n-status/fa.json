@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "بازیابی مکان قبلی {connectionLabel:0} ناموفق بود: {1}. توقف {connectionLabel:0} ناموفق بود: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "قوانین مسیریابی ذخیره شدند. برای اعمال، {connectionLabel:0} را دوباره راه‌اندازی کنید",
     "ROUTING_RULES_SAVE_FAILED": "عملیات ناموفق بود",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "نتیجهٔ تغییر مسیریابی نامشخص است. با همان ورودی دوباره تلاش کنید.",
+    "ROUTING_RULES_STALE_DRAFT": "تنظیمات مسیریابی تغییر کرده‌اند. پیش از ذخیره، ویرایشگر را دوباره باز کنید.",
     "DIAGNOSTICS_EXPORT_OPENED": "خروجی تشخیص باز شد",
     "APPS_LOAD_FAILED": "بارگذاری برنامه‌ها ناموفق بود",
     "SUBSCRIPTION_RECEIVED": "اشتراک دریافت شد. آن را در زبانهٔ نمایه بازبینی و ذخیره کنید.",

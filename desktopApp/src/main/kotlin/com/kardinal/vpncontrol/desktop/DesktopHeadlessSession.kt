@@ -31,23 +31,26 @@ internal class DesktopHeadlessSession(
     private val mutateSource: (suspend (com.kardinal.vpncontrol.model.ControlCommand, Long?) -> DesktopControlWriteResponse)? = null,
     private val mutateConfiguration: (suspend (DesktopCliCommand, Long?) -> DesktopControlWriteResponse)? = null,
     private val quitOwner: (suspend (String, Long?) -> DesktopControlWriteResponse)? = null,
+    private val install: DesktopControlInstallActions? = null,
 ) : AutoCloseable {
     private val mutations = Mutex()
-    private val operations = DesktopOperationRunner(scope, controllerId, metadataProvider = metadataProvider)
+    private val operations = DesktopOperationRunner(scope, controllerId, metadataProvider = metadataProvider,
+        recoverInstalls = install?.recover)
 
     internal fun operationSnapshot() = operations.snapshot()
+    internal fun installBarrier() = operations.installBarrier()
     internal val operationChanges get() = operations.changes
 
     internal fun hasBackgroundWork(): Boolean = mutations.isLocked ||
         operations.snapshot().any { !it.phase.terminal } || scheduler.hasScheduledWork(stateProvider())
     private val scheduler = DesktopAutoRefreshScheduler(
         scope = scope,
-        runAutoRefreshCycle = { mutations.withLock { refresh() } },
+        runAutoRefreshCycle = { mutations.withLock { if (!operations.installBarrier()) refresh() } },
         nowMillis = nowMillis,
     )
     private var observer: Job? = null
 
-    internal suspend fun initialize(action: suspend () -> Unit) = mutations.withLock { action() }
+    internal suspend fun initialize(action: suspend () -> Unit) = mutations.withLock { if (!operations.installBarrier()) action() }
 
     fun start() {
         check(observer == null)
@@ -68,13 +71,13 @@ internal class DesktopHeadlessSession(
                 com.kardinal.vpncontrol.model.ControlCode.OK, captured.configurationRevision,
                 restartRequired = captured.restartRequired, data = captured.values,
                 warnings = listOf("EXPLICIT_CONFIGURATION_READS_REQUIRED"))
-            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result))
+            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result))
         }
         if (command is DesktopCliCommand.ControlSnapshotRead) {
             if (command.controllerId != null && command.controllerId != controllerId) return DesktopCliResponse.failure("CONFLICT")
             val retainedOperations = operations.snapshot()
             val snapshot = inspectStatus?.invoke(controllerId) ?: return DesktopCliResponse.failure("UNSUPPORTED")
-            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlSnapshotCodec.encode(
+            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlSnapshotCodec.encodeDocument(
                 snapshot.copy(operations = retainedOperations)))
         }
         if (command is DesktopCliCommand.ControlSubmit) return submit(command.request)
@@ -99,6 +102,7 @@ internal class DesktopHeadlessSession(
     }
 
     private suspend fun executeMutation(command: DesktopCliCommand): DesktopCliResponse {
+        if (operations.installBarrier()) return DesktopCliResponse.failure("BUSY")
         if (!mutations.tryLock()) return DesktopCliResponse.failure("BUSY")
         return try { executeCommand(command) } finally { mutations.unlock() }
     }
@@ -108,7 +112,7 @@ internal class DesktopHeadlessSession(
         // Only this adapter and the owner ledger produce these responses; never copy
         // arbitrary action/error text into the public envelope.
         val retained = runCatching {
-            com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(response.message)
+            com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(response.message)
         }.getOrNull()
         if (retained != null) return response
         val code = com.kardinal.vpncontrol.model.ControlCode.entries.firstOrNull {
@@ -120,11 +124,25 @@ internal class DesktopHeadlessSession(
             message = code.wireName, restartRequired = metadata.restartRequired,
         )
         return DesktopCliResponse(result.ok,
-            com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result), result.exitCode)
+            com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
     }
 
     private suspend fun submitInternal(request: com.kardinal.vpncontrol.model.ControlRequest): DesktopCliResponse {
         if (request.controllerId != controllerId) return DesktopCliResponse.failure("CONFLICT")
+        if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL) {
+            if (request.requestId.isBlank() || request.requestId.length > 256 ||
+                request.requestId.any { it.code < 32 } || request.command.arguments.isNotEmpty() || request.interactive)
+                return DesktopCliResponse.failure("INVALID_ARGUMENT")
+            val actions = install ?: return DesktopCliResponse.failure("UNSUPPORTED")
+            return operations.executeInstall(request, actions.copy(prepare = { correlation, revision ->
+                if (!mutations.tryLock()) DesktopInstallHandoffResult(com.kardinal.vpncontrol.model.ControlCode.BUSY)
+                else try {
+                    if (revision != null && revision != metadataProvider().configurationRevision)
+                        DesktopInstallHandoffResult(com.kardinal.vpncontrol.model.ControlCode.CONFLICT)
+                    else actions.prepare(correlation, revision)
+                } finally { mutations.unlock() }
+            }))
+        }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.QUIT && quitOwner != null) {
             if (request.command.arguments.isNotEmpty() || request.interactive || request.asynchronous)
                 return DesktopCliResponse.failure("INVALID_ARGUMENT")
@@ -162,7 +180,7 @@ internal class DesktopHeadlessSession(
                 metadata.configurationRevision, restartRequired = metadata.restartRequired,
                 data = if (report.success) mapOf("content" to com.kardinal.vpncontrol.model.ControlValue.Text(report.message)) else emptyMap(),
                 warnings = listOf("METADATA_OBSERVED_AFTER_REPORT"))
-            return DesktopCliResponse(result.ok, com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result), result.exitCode)
+            return DesktopCliResponse(result.ok, com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
         }
         if (request.command.operation in DesktopControlInspection.operations) {
             if (request.interactive || request.asynchronous || request.ifRevision != null)
@@ -173,7 +191,7 @@ internal class DesktopHeadlessSession(
                 snapshot.metadata.configurationRevision, restartRequired = snapshot.metadata.restartRequired,
                 data = snapshot.values.getOrDefault(emptyMap()))
             return DesktopCliResponse(result.ok,
-                com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result), result.exitCode)
+                com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
         }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.STATUS) {
             if (request.interactive || request.asynchronous || request.ifRevision != null)
@@ -183,7 +201,7 @@ internal class DesktopHeadlessSession(
             val result = com.kardinal.vpncontrol.model.ControlResult(controllerId, request.requestId,
                 com.kardinal.vpncontrol.model.ControlCode.OK, snapshot.configurationRevision,
                 restartRequired = snapshot.restartRequired, data = snapshot.toControlValues())
-            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result))
+            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result))
         }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.CAPABILITIES) {
             if (request.interactive || request.asynchronous || request.ifRevision != null)
@@ -195,7 +213,7 @@ internal class DesktopHeadlessSession(
                 com.kardinal.vpncontrol.model.ControlCode.OK, metadata.configurationRevision,
                 restartRequired = metadata.restartRequired, data = DesktopControlSupport.describe(platform),
                 warnings = listOf("RUNTIME_READINESS_NOT_CHECKED"))
-            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result))
+            return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result))
         }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SHOW) {
             if (request.interactive || request.asynchronous || request.ifRevision != null)
@@ -212,7 +230,7 @@ internal class DesktopHeadlessSession(
                 snapshot.metadata.configurationRevision, restartRequired = snapshot.metadata.restartRequired,
                 data = if (key == null) snapshot.values else snapshot.values.filterKeys { it == key })
             return DesktopCliResponse(result.ok,
-                com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result), result.exitCode)
+                com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
         }
         if (request.command.operation in setOf(com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SET,
                 com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_APPLY)) {
@@ -360,13 +378,21 @@ internal class DesktopHeadlessSession(
                 com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_WAIT,
                 com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_CANCEL)) {
             if (request.asynchronous) return DesktopCliResponse.failure("UNSUPPORTED")
+            if (request.command.operation in setOf(
+                    com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS,
+                    com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_WAIT)) {
+                val result = operations.inspectResult(text("id"), request.requestId,
+                    request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_WAIT)
+                if (result != null) return DesktopCliResponse(result.ok,
+                    com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
+            }
             val response = when (request.command.operation) {
                 com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_LIST -> operations.listResponse()
                 com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS -> operations.statusResponse(text("id"))
                 com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_WAIT -> operations.waitResponse(text("id"))
                 else -> operations.cancelResponse(text("id"))
             }
-            val data = runCatching { com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeValues(
+            val data = runCatching { com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeValues(
                 if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_LIST)
                     "{\"operations\":${response.message}}" else response.message)
             }.getOrNull() ?: return response
@@ -379,7 +405,7 @@ internal class DesktopHeadlessSession(
             val result = com.kardinal.vpncontrol.model.ControlResult(controllerId, request.requestId, code,
                 metadata.configurationRevision, restartRequired = metadata.restartRequired, data = data)
             return DesktopCliResponse(result.ok,
-                com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeResult(result), result.exitCode)
+                com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
         }
         val command = when (request.command.operation) {
             com.kardinal.vpncontrol.model.ControlOperationId.ON -> DesktopCliCommand.On
@@ -403,3 +429,11 @@ internal class DesktopHeadlessSession(
         scheduler.cancel()
     }
 }
+
+/** Callbacks retain the exact external job; cancellation is an observed result, not coroutine exit. */
+internal data class DesktopControlInstallActions(
+    val prepare: suspend (DesktopInstallCorrelation, Long?) -> DesktopInstallHandoffResult,
+    val recover: () -> Result<List<DesktopInstallCorrelationRecovery>>,
+    val cancel: () -> DesktopInstallHandoffResult,
+    val settle: (DesktopInstallCorrelation, DesktopInstallJobReceipt) -> Result<Unit> = { _, _ -> Result.success(Unit) },
+)

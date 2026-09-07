@@ -42,7 +42,6 @@ import java.security.KeyStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -55,15 +54,54 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private val notifications by lazy { getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager }
     private val commandMutex = Mutex()
+    private val lifecycleCleanup = AndroidVpnServiceCleanup(serviceScope, commandMutex) { stopVpn(it) }
 
     private var tunInterface: ParcelFileDescriptor? = null
     private var boxService: BoxService? = null
+    private val retainedRefresh = com.kardinal.vpncontrol.AndroidRuntimeRetentionGate()
+    private val retentionHost = object : com.kardinal.vpncontrol.AndroidRetainedRuntimeServices.Host {
+        override suspend fun acquire(expected: com.kardinal.vpncontrol.AndroidRuntimeObservation): com.kardinal.vpncontrol.AndroidRetainedRuntimeSession? = commandMutex.withLock {
+            val token = retainedRefresh.acquire(expected, owner.runtimeObserver.state.value,
+                !lifecycleCleanup.finishing && boxService != null) ?: return@withLock null
+            object : com.kardinal.vpncontrol.AndroidRetainedRuntimeSession {
+                override suspend fun dispatch(action: com.kardinal.vpncontrol.AndroidRuntimeAction, commandId: String, preparedId: String?) {
+                    serviceScope.launch {
+                        commandMutex.withLock {
+                            val result = runCatching {
+                                retainedRefresh.checkCurrent(token, !lifecycleCleanup.finishing)
+                                when (action) {
+                                    com.kardinal.vpncontrol.AndroidRuntimeAction.START -> startVpn(preparedId = preparedId, commandId = commandId, retainForeground = true).getOrThrow()
+                                    com.kardinal.vpncontrol.AndroidRuntimeAction.STOP -> {
+                                        check(owner.runtimeCommands.claim(commandId, action, observation = owner.runtimeObserver.state.value)) { "RUNTIME_COMMAND_STALE" }
+                                        stopVpn(stoppedText(currentAppMode()), retainForeground = true)
+                                        check(owner.runtimeObserver.state.value.knowledge == com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) { "RUNTIME_OUTCOME_UNKNOWN" }
+                                    }
+                                }
+                            }
+                            owner.runtimeCommands.complete(commandId, result)
+                        }
+                    }
+                }
+                override suspend fun release(): Result<Unit> = commandMutex.withLock {
+                    runCatching {
+                        retainedRefresh.release(token)
+                        if (!lifecycleCleanup.finishing && owner.runtimeObserver.state.value.knowledge == com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED)
+                            stopVpn(null)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCreate() { super.onCreate(); owner.retainedRuntimeServices.register(retentionHost) }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         serviceScope.launch {
             commandMutex.withLock {
                 val commandId = intent?.getStringExtra(EXTRA_COMMAND_ID)
                 val result = runCatching {
+                    check(!lifecycleCleanup.finishing) { "RUNTIME_COMMAND_STALE" }
+                    check(!retainedRefresh.occupied) { "RUNTIME_COMMAND_STALE" }
                     when (intent?.action) {
                         ACTION_STOP -> {
                             check(commandId == null || owner.runtimeCommands.claim(commandId,
@@ -82,25 +120,18 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     }
 
     override fun onDestroy() {
-        runBlocking {
-            commandMutex.withLock {
-                stopVpn(null)
-            }
-        }
-        serviceScope.cancel()
+        owner.retainedRuntimeServices.unregister(retentionHost)
+        lifecycleCleanup.finish(null)
         super.onDestroy()
     }
 
     override fun onRevoke() {
-        runBlocking {
-            commandMutex.withLock {
-                stopVpn("VPN permission revoked")
-            }
-        }
+        owner.retainedRuntimeServices.unregister(retentionHost)
+        lifecycleCleanup.finish("VPN permission revoked")
         super.onRevoke()
     }
 
-    private suspend fun startVpn(startId: Int? = null, preparedId: String? = null, commandId: String? = null): Result<Unit> {
+    private suspend fun startVpn(startId: Int? = null, preparedId: String? = null, commandId: String? = null, retainForeground: Boolean = false): Result<Unit> {
         var replacingRuntime = false
         return try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
@@ -117,6 +148,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             check(!needsTun || prepare(this) == null) { "android: missing vpn permission" }
 
             replacingRuntime = true
+            lifecycleCleanup.runtimeWorkStarted()
             resetRuntimeSession()
             check(owner.runtimeObserver.state.value.knowledge ==
                 com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) { "RUNTIME_OUTCOME_UNKNOWN" }
@@ -143,7 +175,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             DiagnosticsLogger.append(applicationContext, "Failed to start VPN", error)
             val appMode = currentAppMode()
             if (replacingRuntime) {
-                runCatching { stopVpn(error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode), startId) }
+                runCatching { stopVpn(error.message ?: ConnectionStatusMessages.connectionStartFailed(appMode), startId, retainForeground) }
             } else if (owner.runtimeObserver.state.value.knowledge ==
                 com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED && startId != null) {
                 // A rejected fresh start must not leave an unpromoted service waiting
@@ -165,14 +197,16 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         DefaultNetworkMonitor.stop()
     }
 
-    private suspend fun stopVpn(statusMessage: String?, startId: Int? = null) {
+    private suspend fun stopVpn(statusMessage: String?, startId: Int? = null, retainForeground: Boolean = false) {
         DiagnosticsLogger.append(applicationContext, "AndroidVpnService.stopVpn invoked: ${statusMessage ?: "no status"}")
         resetRuntimeSession()
         storage.updateVpnRunning(false)
         if (!statusMessage.isNullOrBlank()) {
             storage.updateStatus(statusMessage)
         }
+        if (retainForeground) return
         stopForeground(STOP_FOREGROUND_REMOVE)
+        lifecycleCleanup.stopped()
         if (startId != null) {
             stopSelfResult(startId)
         } else {

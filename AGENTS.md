@@ -37,7 +37,7 @@ The project MCP configured in `.codex/config.toml` is the normal entry point for
 
 1. Call `prepare_start` before normal repository searches, file inspection, tests, or edits.
 2. Read the instruction files returned by the tool. Use its local `docs` RAG and `change_impact` result before broad exploratory searches.
-3. If MCP is not yet available, allow `agent_tools/mcp_server.sh` to create `.agent_venv/` and install `agent_tools/requirements-mcp.txt`, then restart the session if its MCP inventory is already fixed.
+3. If `.codex/config.toml` is missing, generate it with `python3 agent_tools/configure_codex.py`; it is local and ignored. If MCP is not yet available, allow `agent_tools/mcp_server.sh` to create `.agent_venv/` and install `agent_tools/requirements-mcp.txt`, then restart the session if its MCP inventory is already fixed.
 4. If the transport still cannot be used, run the equivalent `agent_tools/mcp_tool.sh` command and report the MCP limitation.
 
 The only startup-sync exception is a clearly read-only request where current remote state is irrelevant. State explicitly that sync was skipped and findings may be stale. This exception does not authorize edits, tests that create meaningful repository state, commits, pushes, or releases.
@@ -56,7 +56,7 @@ The only startup-sync exception is a clearly read-only request where current rem
 - After changes are done and validated, push completed commits to `origin/dev`, then complete the post-push CI verification loop before reporting success.
 - Never merge to `main`, publish, tag, or dispatch the stable publisher unless the user explicitly commands a release. Do not infer a release command from requests to finish, ship, implement, or push development work.
 - After every non-documentation change, use `version_bump` to add one concise `Unreleased` changelog bullet. It rolls the changelog and three-part base-20 product version only at 10 bullets, or when an explicitly requested release uses `force_release`.
-- When VPN Integration finds a product failure, add the fastest deterministic unit or contract regression that reproduces it before fixing the integration path.
+- For every distinct failure type discovered in VM, emulator, native/package, manual, visual, or integration testing, add a quick deterministic regression before fixing it and include it in routine checks. Follow `TEST-001` in `agent_docs/contracts.md`; record failing/passing evidence and keep the native scenario.
 - If large work intentionally spans multiple dirty buckets, document the intent in `agent_docs/work-in-progress.md`.
 - Start low-context repository navigation from `agent_docs/README.md`.
 - Use `agent_docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.

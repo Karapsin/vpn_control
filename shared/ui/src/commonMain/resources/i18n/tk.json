@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Gurnamak üçin interaktiw sessiýa gerek.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Gurnamaga rugsat berilmedi.",
+  "UPDATE_INSTALL_CANCELLED": "Gurnama ýatyryldy.",
+  "UPDATE_INSTALL_CONFIRMATION": "Gurnamagyň tassyklanmagyna garaşylýar.",
+  "UPDATE_INSTALL_COMPLETED": "Täzelenme gurnaldy.",
+  "UPDATE_INSTALL_UNKNOWN": "Gurnamagyň netijesi näbelli.",
   "APP_TITLE": "VPN dolandyryşy",
   "TAB_MAIN": "Esasy",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Işjeň ýerleşiş: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Işjeň ýerleşiş: elýeterli däl",
+  "CONNECTION_RESTART_PENDING": "Saklanan üýtgeşmeleri ulanmak üçin birikmäni täzeden başladyň.",
+  "CONNECTION_RESTART_UNKNOWN": "Täzeden başlamagyň zerurdygy belli däl."
 }

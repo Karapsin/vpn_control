@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Gagal memulihkan lokasi {connectionLabel:0} sebelumnya: {1}. Gagal menghentikan {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Peraturan penghalaan disimpan. Mulakan semula {connectionLabel:0} supaya ia berkuat kuasa",
     "ROUTING_RULES_SAVE_FAILED": "Gagal menyimpan peraturan penghalaan",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Hasil perubahan penghalaan tidak diketahui. Cuba lagi dengan input yang sama.",
+    "ROUTING_RULES_STALE_DRAFT": "Tetapan penghalaan telah berubah. Buka semula penyunting sebelum menyimpan.",
     "DIAGNOSTICS_EXPORT_OPENED": "Eksport diagnostik dibuka",
     "APPS_LOAD_FAILED": "Gagal memuatkan aplikasi",
     "SUBSCRIPTION_RECEIVED": "Langganan diterima. Semak dan simpan pada tab Profil.",

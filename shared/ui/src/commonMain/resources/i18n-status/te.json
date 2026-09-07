@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "మునుపటి {connectionLabel:0} స్థానాన్ని పునరుద్ధరించడం విఫలమైంది: {1}. {connectionLabel:0} ఆపడం విఫలమైంది: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి. వర్తింపజేయడానికి {connectionLabel:0}ను పునఃప్రారంభించండి",
     "ROUTING_RULES_SAVE_FAILED": "రూటింగ్ నియమాలను సేవ్ చేయడంలో విఫలమైంది",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "రూటింగ్ మార్పు ఫలితం తెలియదు. అదే ఇన్‌పుట్‌తో మళ్లీ ప్రయత్నించండి.",
+    "ROUTING_RULES_STALE_DRAFT": "రూటింగ్ సెట్టింగ్‌లు మారాయి. సేవ్ చేసే ముందు ఎడిటర్‌ను మళ్లీ తెరవండి.",
     "DIAGNOSTICS_EXPORT_OPENED": "డయాగ్నస్టిక్స్ ఎగుమతి తెరవబడింది",
     "APPS_LOAD_FAILED": "appsను లోడ్ చేయడంలో విఫలమైంది",
     "SUBSCRIPTION_RECEIVED": "సబ్‌స్క్రిప్షన్ అందింది. ప్రొఫైల్ ట్యాబ్‌లో సమీక్షించి సేవ్ చేయండి.",

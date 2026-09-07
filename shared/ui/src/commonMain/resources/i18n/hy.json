@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Տեղադրումը պահանջում է ինտերակտիվ նիստ։",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Տեղադրման թույլտվությունը մերժվել է։",
+  "UPDATE_INSTALL_CANCELLED": "Տեղադրումը չեղարկված է։",
+  "UPDATE_INSTALL_CONFIRMATION": "Սպասում է տեղադրման հաստատմանը։",
+  "UPDATE_INSTALL_COMPLETED": "Թարմացումը տեղադրված է։",
+  "UPDATE_INSTALL_UNKNOWN": "Տեղադրման արդյունքն անհայտ է։",
   "APP_TITLE": "VPN կառավարում",
   "TAB_MAIN": "Գլխավոր",
   "TAB_PROFILE": "Պրոֆիլ",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Ակտիվ տեղադրություն՝ {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Ակտիվ տեղադրություն՝ հասանելի չէ",
+  "CONNECTION_RESTART_PENDING": "Պահպանված փոփոխությունները կիրառելու համար վերագործարկեք կապը։",
+  "CONNECTION_RESTART_UNKNOWN": "Հայտնի չէ՝ արդյոք վերագործարկում է պահանջվում։"
 }

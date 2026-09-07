@@ -10,7 +10,11 @@ import com.kardinal.vpncontrol.shared.ui.SavedLocationRow
 import com.kardinal.vpncontrol.shared.ui.UiText
 import java.util.Locale
 
-data class AndroidLocationVisualState(val activeLocationKey: String? = null, val restartRequired: Boolean? = null)
+data class AndroidLocationVisualState(
+    val activeLocationKey: String? = null,
+    val restartRequired: Boolean? = null,
+    val connectionConfiguration: com.kardinal.vpncontrol.shared.ui.ConnectionConfigurationPresentation? = null,
+)
 
 class AndroidRenderedLocationTarget internal constructor(internal val raw: String, internal val scope: String, internal val sourceKey: String) {
     override fun toString(): String = "AndroidRenderedLocationTarget(<redacted>)"

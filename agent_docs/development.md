@@ -95,7 +95,13 @@ After the final non-documentation edit, call `version_bump` once with a concise 
 - `force_release` may roll fewer than 10 notes only while carrying out an explicit release command.
 - Android version code and the update build number append an internal zero component before base-20 encoding so they remain newer than legacy builds. Every displayed and packaged product version remains exactly canonical; do not restore commit-count or platform-specific versions.
 
-When a full integration job exposes a defect, first add the quickest deterministic unit or fixture-contract test that would have caught the same defect. Keep the slower integration coverage too.
+Follow `TEST-001` in `contracts.md` for every distinct failure type found during VM, emulator, native/package, manual, visual, or integration testing. Before fixing the implementation:
+
+1. Reduce the failure to the quickest deterministic unit, component, constrained-heap, or fixture-contract reproducer that exercises the cause.
+2. Run it against the unfixed behavior and retain the failing evidence. After the fix, retain the passing result and add the test to the routine suite identified in `test-matrix.md`.
+3. Record the failure-to-test mapping and exact commands in the task evidence/WIP, including OS-only gaps. Keep and rerun the original native scenario on the fixed artifact; a host regression does not replace native verification.
+
+Apply the same approach to reproducible harness and infrastructure defects with script or workflow-contract tests. Do not count an opt-in native test skipped by ordinary host checks as the required quick regression.
 
 The MCP server is agent-only infrastructure. Its environment and index remain ignored in `.agent_venv/` and `.rag_index/`; the application build must not depend on either directory.
 

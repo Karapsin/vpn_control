@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.control.ControlCliParseResult
 import com.kardinal.vpncontrol.control.ControlCliParser
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 
 internal data class DesktopWorkspaceInvocation(val arguments: List<String>, val directory: Path?)
 
@@ -12,6 +13,15 @@ internal object DesktopWorkspacePaths {
     fun root(): Path = selected ?: Path.of(System.getProperty("user.home"), ".vpn-control-desktop")
     fun overrideDirectory(): Path? = selected
     fun configure(invocation: DesktopWorkspaceInvocation) { selected = invocation.directory }
+
+    /** New POSIX workspace ancestors are private from creation, regardless of umask.
+     * Existing directories are never chmodded; endpoint ancestry validation remains authoritative.
+     */
+    fun createDirectories(path: Path): Path =
+        if ("posix" in path.fileSystem.supportedFileAttributeViews()) {
+            Files.createDirectories(path,
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+        } else Files.createDirectories(path)
 
     /** Read-only resolution coalesces symlink aliases even when the final directory does not exist. */
     fun resolve(raw: String, workingDirectory: Path = Path.of("").toAbsolutePath()): Path {

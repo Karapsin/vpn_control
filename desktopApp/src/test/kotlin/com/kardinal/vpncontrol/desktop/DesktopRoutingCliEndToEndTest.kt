@@ -16,9 +16,10 @@ class DesktopRoutingCliEndToEndTest {
         val empty = DesktopWorkspace(PersistedState(), emptyList())
         val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory), empty)
         val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
         val server = assertNotNull(DesktopActivationServer.start(
             onShowWindow = { DesktopActivationShowResult.HEADLESS },
-            onCliCommand = { runBlocking { service.executeCliCommand(it) } }, portFile = endpoint,
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
             fun invoke(vararg args: String): Pair<Int?, String> {
@@ -30,7 +31,7 @@ class DesktopRoutingCliEndToEndTest {
             assertEquals(0, invoke("routing", "set", "direct-domains", "*.Example.COM.\n.local").first)
             assertEquals(listOf("example.com", "local"), service.state.routingRules.directDomainSuffixes)
             service.setRoutingIgnoreRulesDraft(true)
-            assertTrue(RoutingRulesTransfer.import(invoke("routing", "show").second).ignoreRules)
+            assertTrue(invoke("routing", "show").second.contains("ignore_rules: true"))
             val original = service.state.routingRules
             assertEquals(1, invoke("routing", "set", "ignore-rules", "not-boolean").first)
             assertEquals(original, service.state.routingRules)
@@ -45,6 +46,6 @@ class DesktopRoutingCliEndToEndTest {
             assertEquals(original, DesktopStateStore(directory).loadWorkspace(empty).persistedState.routingRules)
             assertEquals(1, DesktopCli.handleArgs(arrayOf("routing", "apps", "clear"), printLine = {},
                 requestCommand = { error("Unsupported app assignment must not contact owner") }))
-        } finally { server.close(); directory.toFile().deleteRecursively() }
+        } finally { server.close(); owner.close(); directory.toFile().deleteRecursively() }
     }
 }

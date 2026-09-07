@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Instalimi kërkon një seancë ndërvepruese.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Leja për instalim u refuzua.",
+  "UPDATE_INSTALL_CANCELLED": "Instalimi u anulua.",
+  "UPDATE_INSTALL_CONFIRMATION": "Në pritje të konfirmimit të instalimit.",
+  "UPDATE_INSTALL_COMPLETED": "Përditësimi u instalua.",
+  "UPDATE_INSTALL_UNKNOWN": "Rezultati i instalimit është i panjohur.",
   "APP_TITLE": "Kontrolli i VPN",
   "TAB_MAIN": "Kryesore",
   "TAB_PROFILE": "Profili",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Vendndodhja aktive: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Vendndodhja aktive: e padisponueshme",
+  "CONNECTION_RESTART_PENDING": "Rinisni lidhjen për të zbatuar ndryshimet e ruajtura.",
+  "CONNECTION_RESTART_UNKNOWN": "Nuk dihet nëse nevojitet rinisje."
 }

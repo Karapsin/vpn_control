@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Барои насб сеанси интерактивӣ лозим аст.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Иҷозати насб рад карда шуд.",
+  "UPDATE_INSTALL_CANCELLED": "Насб бекор карда шуд.",
+  "UPDATE_INSTALL_CONFIRMATION": "Тасдиқи насб интизор аст.",
+  "UPDATE_INSTALL_COMPLETED": "Навсозӣ насб шуд.",
+  "UPDATE_INSTALL_UNKNOWN": "Натиҷаи насб номаълум аст.",
   "APP_TITLE": "Идоракунии VPN",
   "TAB_MAIN": "Асосӣ",
   "TAB_PROFILE": "Профил",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Ҷойгиршавии фаъол: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Ҷойгиршавии фаъол: дастнорас",
+  "CONNECTION_RESTART_PENDING": "Барои татбиқи тағйироти захирашуда пайвастро аз нав оғоз кунед.",
+  "CONNECTION_RESTART_UNKNOWN": "Маълум нест, ки оғози дубора лозим аст ё не."
 }

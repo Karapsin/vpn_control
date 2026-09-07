@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import socket
+import re
+import shlex
 import threading
 import unittest
 from pathlib import Path
@@ -14,6 +16,21 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class SocksHttpFixtureTest(unittest.TestCase):
+    def test_android_probe_uses_api29_and_api35_toybox_flags_with_bounded_eof(self) -> None:
+        source = (REPOSITORY / "app/src/androidTest/java/com/kardinal/vpncontrol/data/FullVpnLifecycleInstrumentedTest.kt").read_text(encoding="utf-8")
+        command = re.search(r'const val SHELL_TCP_PROBE = "([^"]+)"', source)
+        self.assertIsNotNone(command)
+        argv = shlex.split(command.group(1))
+        self.assertEqual(["toybox", "nc"], argv[:2])
+        # Use the intersection of recorded API29/API35 toybox nc flags: API29
+        # lacks -n/-z. Connect, idle-read and EOF waits must all be finite.
+        supported = {"-4", "-w", "-W", "-q"}
+        self.assertFalse(set(arg for arg in argv[2:] if arg.startswith("-")) - supported)
+        for option in ("-w", "-W", "-q"):
+            self.assertIn(option, argv)
+            self.assertEqual("5", argv[argv.index(option) + 1])
+        self.assertEqual(["203.0.113.1", "80"], argv[-2:])
+
     def test_android_probe_uses_vpn_covered_shell_and_self_contained_fixture(self) -> None:
         release_manifest = (REPOSITORY / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         lifecycle_test = (

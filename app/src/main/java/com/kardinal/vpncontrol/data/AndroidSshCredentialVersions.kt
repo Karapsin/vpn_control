@@ -30,9 +30,12 @@ internal class AndroidSshCredentialVersions(
             ?.absolutePath
     }
 
-    fun stage(content: String, committedVersion: Long): Long = synchronized(lock) {
+    fun stage(content: String, committedVersion: Long,
+        validateKey: (String) -> Unit = { AndroidSshPrivateKeyValidation.validateRuntime(it) },
+    ): Long = synchronized(lock) {
         require(committedVersion >= 0 && committedVersion < Long.MAX_VALUE)
-        val normalized = normalize(content)
+        val normalized = AndroidSshPrivateKeyValidation.normalize(content)
+        validateKey(normalized)
         path(committedVersion)?.let { current ->
             if (File(current).readText().trim() == normalized.trim()) return@synchronized committedVersion
         }
@@ -78,18 +81,8 @@ internal class AndroidSshCredentialVersions(
         }
     }
 
-    private fun normalize(content: String): String {
-        val normalized = content.trim()
-        require(normalized.isNotEmpty() && normalized.length <= 128 * 1024)
-        require(normalized.lineSequence().first() in headers)
-        require("Proc-Type: 4,ENCRYPTED" !in normalized)
-        return "$normalized\n"
-    }
-
     private companion object {
         val lock = Any()
         const val MAX_BYTES = 128 * 1024 * 4L + 1
-        val headers = setOf("-----BEGIN OPENSSH PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----",
-            "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----", "-----BEGIN DSA PRIVATE KEY-----")
     }
 }

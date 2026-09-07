@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Мурунку {connectionLabel:0} жайгашкан жерин калыбына келтирүү ишке ашкан жок: {1}. {connectionLabel:0} токтотулбады: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Багыттоо эрежелери сакталды. Колдонуу үчүн {connectionLabel:0} кайра иштетиңиз",
     "ROUTING_RULES_SAVE_FAILED": "Багыттоо эрежелери сакталбады",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Багыттоо өзгөртүүсүнүн натыйжасы белгисиз. Ошол эле маалыматтар менен кайра аракет кылыңыз.",
+    "ROUTING_RULES_STALE_DRAFT": "Багыттоо жөндөөлөрү өзгөрдү. Сактоодон мурун түзөткүчтү кайра ачыңыз.",
     "DIAGNOSTICS_EXPORT_OPENED": "Диагностика экспорту ачылды",
     "APPS_LOAD_FAILED": "Колдонмолор жүктөлбөдү",
     "SUBSCRIPTION_RECEIVED": "Жазылуу алынды. Аны Профиль өтмөгүндө карап чыгып сактаңыз.",

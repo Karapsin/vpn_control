@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Kailangan ng interactive na session para sa pag-install.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Tinanggihan ang pahintulot na mag-install.",
+  "UPDATE_INSTALL_CANCELLED": "Kinansela ang pag-install.",
+  "UPDATE_INSTALL_CONFIRMATION": "Naghihintay ng kumpirmasyon ng pag-install.",
+  "UPDATE_INSTALL_COMPLETED": "Na-install na ang update.",
+  "UPDATE_INSTALL_UNKNOWN": "Hindi alam ang resulta ng pag-install.",
   "APP_TITLE": "Kontrol ng VPN",
   "TAB_MAIN": "Pangunahin",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktibong lokasyon: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktibong lokasyon: hindi available",
+  "CONNECTION_RESTART_PENDING": "I-restart ang koneksyon upang ilapat ang mga na-save na pagbabago.",
+  "CONNECTION_RESTART_UNKNOWN": "Hindi alam kung kailangan ng pag-restart."
 }

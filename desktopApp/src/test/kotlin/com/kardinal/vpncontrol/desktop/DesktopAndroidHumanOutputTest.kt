@@ -36,7 +36,7 @@ class DesktopAndroidHumanOutputTest {
     @Test fun plainAsyncAcceptanceNeverLooksFinalAndEscapesTerminalControls() {
         val lines = mutableListOf<String>()
         assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--async", "subscriptions", "add", "--source", "https://test.invalid"),
-            printLine = lines::add, androidRequest = { request, _, _ ->
+            printLine = { error("Pending progress belongs on stderr") }, printProgress = lines::add, androidRequest = { request, _, _ ->
                 DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner", request.requestId,
                     ControlCode.ACCEPTED, 3, final = false, operationId = "job-id",
                     data = mapOf("phase" to ControlValue.Text("running"), "name" to ControlValue.Text("東京\u001b[2J")))))
@@ -51,7 +51,7 @@ class DesktopAndroidHumanOutputTest {
 
     @Test fun plainLocalFailureDoesNotPresentUnknownRevisionAsZero() {
         val lines = mutableListOf<String>()
-        assertEquals(2, DesktopCli.handleArgs(arrayOf("--android", "status"), printLine = lines::add,
+        assertEquals(2, DesktopCli.handleArgs(arrayOf("--android", "status"), printLine = { error("Failure belongs on stderr") }, printProgress = lines::add,
             androidRequest = { request, _, _ -> desktopCliJsonFailure(ControlCode.UNAVAILABLE, request.requestId) }))
         val output = lines.joinToString("\n")
         assertContains(output, "UNAVAILABLE")

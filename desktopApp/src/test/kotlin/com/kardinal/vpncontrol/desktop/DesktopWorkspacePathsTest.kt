@@ -7,6 +7,20 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DesktopWorkspacePathsTest {
+    @Test fun creatingPrivateWorkspacePreservesExistingDirectoryPermissions() {
+        val parent = Files.createTempDirectory("vpn-control-existing-permissions")
+        try {
+            if (!Files.getFileStore(parent).supportsFileAttributeView("posix")) return
+            val mode = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-x---")
+            Files.setPosixFilePermissions(parent, mode)
+            DesktopWorkspacePaths.createDirectories(parent.resolve("workspace"))
+            DesktopWorkspacePaths.createDirectories(parent)
+            assertEquals(mode, Files.getPosixFilePermissions(parent))
+            assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"),
+                Files.getPosixFilePermissions(parent.resolve("workspace")))
+        } finally { parent.toFile().deleteRecursively() }
+    }
+
     @Test fun ownerPinnedFrontendLaunchRetainsIsolatedWorkspaceAndRejectsMalformedVectors() {
         val parent = Files.createTempDirectory("frontend-workspace-arguments")
         try {

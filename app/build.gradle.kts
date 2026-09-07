@@ -35,6 +35,14 @@ android {
     namespace = "com.kardinal.vpncontrol"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    ndkVersion = "28.2.13676358"
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.kardinal.vpncontrol"
@@ -126,6 +134,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.9")
     implementation("androidx.datastore:datastore-preferences:1.1.2")
+    // Same-version runtime artifacts exposed for the compatible exact-allocation serializer.
+    implementation("androidx.datastore:datastore-preferences-proto:1.1.2")
+    implementation("androidx.datastore:datastore-preferences-external-protobuf:1.1.2")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
@@ -149,4 +160,54 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+}
+
+// Exercise the production JNI implementation in the ordinary fast unit tier,
+// including child JVMs that enforce the Android-sized Java heap.
+val nativeStringHostDirectory = layout.buildDirectory.dir("native-string-host")
+val hostWindows = System.getProperty("os.name").startsWith("Windows")
+val hostJniPlatform = when {
+    hostWindows -> "win32"
+    System.getProperty("os.name").startsWith("Mac") -> "darwin"
+    else -> "linux"
+}
+val nativeStringCmakeBin = providers.provider { android.sdkDirectory.resolve("cmake/3.22.1/bin") }
+val configureNativeStringHost by tasks.registering(Exec::class) {
+    inputs.files(fileTree("src/main/cpp"), fileTree("src/test/cpp"))
+    inputs.property("jniHome", System.getProperty("java.home"))
+    outputs.file(nativeStringHostDirectory.map { it.file("CMakeCache.txt") })
+    doFirst {
+        val output = nativeStringHostDirectory.get().asFile
+        val cmakeBin = nativeStringCmakeBin.get()
+        commandLine(
+            cmakeBin.resolve(if (hostWindows) "cmake.exe" else "cmake"),
+            "-S", file("src/main/cpp"), "-B", output, "-G", "Ninja",
+            "-DCMAKE_MAKE_PROGRAM=${cmakeBin.resolve(if (hostWindows) "ninja.exe" else "ninja")}",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DVPN_CONTROL_JNI_INCLUDE_DIR=${System.getProperty("java.home")}/include",
+            "-DVPN_CONTROL_JNI_PLATFORM_DIR=${System.getProperty("java.home")}/include/$hostJniPlatform",
+            "-DVPN_CONTROL_HOST_TESTS=ON",
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${output.resolve("lib")}",
+            "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${output.resolve("lib")}",
+        )
+    }
+}
+val buildNativeStringHost by tasks.registering(Exec::class) {
+    dependsOn(configureNativeStringHost)
+    inputs.files(fileTree("src/main/cpp"), fileTree("src/test/cpp"))
+    outputs.dir(nativeStringHostDirectory.map { it.dir("lib") })
+    doFirst {
+        commandLine(
+            nativeStringCmakeBin.get().resolve(if (hostWindows) "cmake.exe" else "cmake"),
+            "--build", nativeStringHostDirectory.get().asFile,
+        )
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(buildNativeStringHost)
+    doFirst {
+        systemProperty("vpnControl.test.runtimeClasspath", classpath.asPath)
+        systemProperty("java.library.path", nativeStringHostDirectory.get().dir("lib").asFile.absolutePath)
+    }
 }

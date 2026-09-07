@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Չհաջողվեց վերականգնել նախորդ {connectionLabel:0} տեղադրությունը՝ {1}։ Չհաջողվեց կանգնեցնել {connectionLabel:0}-ը՝ {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Երթուղավորման կանոնները պահպանվեցին։ Վերագործարկեք {connectionLabel:0}-ը՝ կիրառելու համար",
     "ROUTING_RULES_SAVE_FAILED": "Չհաջողվեց պահել երթուղավորման կանոնները",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Երթուղավորման փոփոխության արդյունքն անհայտ է։ Կրկին փորձեք նույն տվյալներով։",
+    "ROUTING_RULES_STALE_DRAFT": "Երթուղավորման կարգավորումները փոխվել են։ Պահելուց առաջ կրկին բացեք խմբագրիչը։",
     "DIAGNOSTICS_EXPORT_OPENED": "Ախտորոշման արտահանումը բացվեց",
     "APPS_LOAD_FAILED": "Չհաջողվեց բեռնել հավելվածները",
     "SUBSCRIPTION_RECEIVED": "Բաժանորդագրությունը ստացվեց։ Ստուգեք և պահեք այն «Պրոֆիլ» ներդիրում։",

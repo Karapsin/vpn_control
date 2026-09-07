@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "अघिल्लो {connectionLabel:0} स्थान पुनर्स्थापना गर्न असफल: {1}। {connectionLabel:0} रोक्न असफल: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "राउटिङ नियमहरू सुरक्षित गरिए। लागू गर्न {connectionLabel:0} पुनः सुरु गर्नुहोस्",
     "ROUTING_RULES_SAVE_FAILED": "रुटिङ नियमहरू सुरक्षित गर्न असफल",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "राउटिङ परिवर्तनको नतिजा अज्ञात छ। उही जानकारी प्रयोग गरी फेरि प्रयास गर्नुहोस्।",
+    "ROUTING_RULES_STALE_DRAFT": "राउटिङ सेटिङहरू परिवर्तन भएका छन्। बचत गर्नुअघि सम्पादक फेरि खोल्नुहोस्।",
     "DIAGNOSTICS_EXPORT_OPENED": "डायग्नोस्टिक्स निर्यात खोलियो",
     "APPS_LOAD_FAILED": "एपहरू लोड गर्न असफल",
     "SUBSCRIPTION_RECEIVED": "सदस्यता प्राप्त भयो। प्रोफाइल ट्याबमा समीक्षा गरी सुरक्षित गर्नुहोस्।",

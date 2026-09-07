@@ -10,6 +10,25 @@ Authoritative native and generated artifact policy is `ARTIFACT-001` through `AR
 | `app/src/main/jniLibs/arm64-v8a/libsing-box.so` | Android release ARM64 native sing-box runtime. | Tracked. Refresh only as part of an explicit runtime update. |
 | `app/src/debug/jniLibs/x86_64/libsing-box.so` | Android emulator/debug x86_64 native sing-box runtime. | Tracked. Keep compatible with debug instrumentation/smoke testing. |
 
+## Application JNI String Construction
+
+`app/src/main/cpp/` contains application-owned C sources for `vpn_control_strings`.
+This helper constructs a Java String from bounded spool reads through standard JNI;
+it does not replace or upgrade libbox or sing-box. Native temporary storage still
+scales with the document size, and allocation/read failures must remain explicit.
+
+Android builds pin NDK `28.2.13676358` and CMake `3.22.1`. Install them with
+`sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"`. Release uses ARM64 and debug also
+supports x86_64, matching the existing runtime ABI filters. Generated libraries
+belong under ignored `app/build/` outputs; do not commit compiled helpers.
+
+The ordinary `:app:testDebugUnitTest` tier builds the same C implementation for
+the host using the pinned SDK CMake/Ninja, the Gradle JDK JNI headers, and a host
+C compiler. Host-only allocator failure hooks are excluded from Android builds.
+Child JVM memory tests must propagate `java.library.path` from the parent test.
+The consecutive large-routing regression exercises the actual helper with a
+48-MiB Java heap; passing it does not replace API29/API35 packaged verification.
+
 ## Tracked Desktop Test Fixtures
 
 | Path | Purpose | Policy |

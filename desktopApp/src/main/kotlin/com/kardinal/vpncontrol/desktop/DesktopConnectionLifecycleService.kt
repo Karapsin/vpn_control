@@ -57,10 +57,16 @@ internal class DesktopConnectionLifecycleService(
 
     /** Captures the running configuration, never the next selection or open drafts. */
     fun captureRuntimeRestore(): suspend () -> Result<Unit> {
-        val captured = activeConnection.takeIf { runtime.isRunning() }
+        val wasRunning = runtime.isRunning()
+        val captured = activeConnection.takeIf { wasRunning }
         val configuration = captured?.configuration
         val location = captured?.location
         return restore@{
+            if (!wasRunning) {
+                val stopped = if (runtime.isRunning()) runtime.stop() else Result.success(Unit)
+                if (!runtime.isRunning()) clearActiveConfiguration()
+                return@restore stopped
+            }
             if (configuration == null) return@restore Result.failure(IllegalStateException("ROLLBACK_FAILED"))
             if (runtime.isRunning() && activeConfiguration == configuration) return@restore Result.success(Unit)
             val restored = runCatching {
@@ -92,6 +98,7 @@ internal class DesktopConnectionLifecycleService(
         commitState: (List<DesktopLocationRecord>, MainUiState) -> Result<Unit>,
         updateState: ((MainUiState) -> MainUiState) -> Unit,
         activeVerificationPort: Int? = null,
+        commitSelectionOnSuccessOnly: Boolean = false,
     ): Result<Unit> {
         val targetMode = state.appMode
         val previous = activeConnection.takeIf { runtime.isRunning() }
@@ -112,8 +119,13 @@ internal class DesktopConnectionLifecycleService(
             selectedProfileRawLink = location.rawLink,
             selectedProfileSourceUrl = location.sourceUrl,
         ).withStatus(MainCommandLogic.startingConnectionLabel(targetMode))
-        val prepared = commitState(selectedLocations, startingState)
-        if (prepared.isFailure) return prepared
+        if (commitSelectionOnSuccessOnly) {
+            // Automatic candidates are provisional until authorized runtime startup succeeds.
+            updateState { it.copy(isBusy = true).withStatus(MainCommandLogic.startingConnectionLabel(targetMode)) }
+        } else {
+            val prepared = commitState(selectedLocations, startingState)
+            if (prepared.isFailure) return prepared
+        }
 
         val result = runtime.start(
             profile = profile.getOrThrow(),
@@ -136,6 +148,10 @@ internal class DesktopConnectionLifecycleService(
             val committed = commitState(
                 selectedLocations,
                 latestState.copy(
+                    selectedProfileName = startingState.selectedProfileName,
+                    selectedProfileServer = startingState.selectedProfileServer,
+                    selectedProfileRawLink = startingState.selectedProfileRawLink,
+                    selectedProfileSourceUrl = startingState.selectedProfileSourceUrl,
                     isBusy = false,
                     isVpnRunning = true,
                     hasVpnPermission = true,
@@ -156,21 +172,37 @@ internal class DesktopConnectionLifecycleService(
                     ).getOrThrow()
                     Unit
                 }
+                var recovered: ActiveConnection? = null
                 if (rollback.isSuccess) {
-                    if (previousConfiguration != null) recordStarted(previousConfiguration, previousLocation)
+                    if (previousConfiguration != null) recovered = recordStarted(previousConfiguration, previousLocation)
                     else clearActiveConfiguration()
                 } else if (!runtime.isRunning()) clearActiveConfiguration()
                 setResumeConnectionOnLaunch(runtime.isRunning())
-                updateState { it.copy(isBusy = false, isVpnRunning = runtime.isRunning()) }
+                updateState { it.copy(isBusy = false, isVpnRunning = runtime.isRunning(),
+                    sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
+                    sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis) }
                 return if (rollback.isSuccess) committed else Result.failure(IllegalStateException("ROLLBACK_FAILED"))
             }
         } else {
-            if (!runtime.isRunning()) clearActiveConfiguration()
+            val stillRunning = runtime.isRunning()
+            val transition = result.exceptionOrNull() as? DesktopRuntimeTransitionFailure
+            val recovered = if (stillRunning && previous != null &&
+                transition?.recoveredSession != null && !transition.recoveryFailed) {
+                // Native recovery restarted actual A. Retain its configuration and location,
+                // but end the old child's telemetry identity without applying pending B.
+                recordStarted(previous.configuration, previous.location)
+            } else null
+            if (!stillRunning) clearActiveConfiguration()
+            val status = if (result.exceptionOrNull()?.message == "CANCELLED")
+                ConnectionStatusMessages.connectionStartCancelled(targetMode)
+            else ConnectionStatusMessages.connectionStartFailed(targetMode)
             updateState {
                 it.copy(
                     isBusy = false,
-                    isVpnRunning = false,
-                ).withStatus(result.exceptionOrNull()?.message ?: ConnectionStatusMessages.connectionStartFailed(targetMode))
+                    isVpnRunning = stillRunning,
+                    sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
+                    sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis,
+                ).withStatus(status)
             }
         }
         return result.map { Unit }
@@ -201,10 +233,11 @@ internal class DesktopConnectionLifecycleService(
         updateState { it.copy(isBusy = true) }
         val result = runtime.stop()
         val stoppedAt = clockMillis()
-        if (result.isSuccess) {
+        val resourceFailure = result.exceptionOrNull() as? DesktopRuntimeResourcePublicationFailure
+        if (result.isSuccess || resourceFailure != null && !runtime.isRunning()) {
             clearActiveConfiguration()
             val latestState = currentState()
-            return commitState(
+            val committed = commitState(
                 locations,
                 latestState.copy(
                     isBusy = false,
@@ -213,6 +246,9 @@ internal class DesktopConnectionLifecycleService(
                     successfulStops = latestState.successfulStops + 1,
                 ).withStatus(message ?: MainCommandLogic.stoppedConnectionStatus(stoppedMode)),
             ).onFailure { updateState { it.copy(isBusy = false, isVpnRunning = false, sessionStoppedAtEpochMillis = stoppedAt) } }
+            // Native exit is established independently of resource publication. Preserve its
+            // failure and recovery identity while committing the actual disconnected state.
+            return if (resourceFailure != null) result else committed
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(
@@ -248,10 +284,11 @@ internal class DesktopConnectionLifecycleService(
         updateState { it.copy(isBusy = true) }
         val result = runtime.stop()
         val stoppedAt = clockMillis()
-        if (result.isSuccess) {
+        val resourceFailure = result.exceptionOrNull() as? DesktopRuntimeResourcePublicationFailure
+        if (result.isSuccess || resourceFailure != null && !runtime.isRunning()) {
             clearActiveConfiguration()
             val latestState = currentState()
-            return commitState(
+            val committed = commitState(
                 locations,
                 latestState.copy(
                     isBusy = false,
@@ -259,6 +296,7 @@ internal class DesktopConnectionLifecycleService(
                     sessionStoppedAtEpochMillis = stoppedAt,
                 ).withStatus(ConnectionStatusMessages.connectionStoppedReconnectOnNextLaunch(stoppedMode)),
             ).onFailure { updateState { it.copy(isBusy = false, isVpnRunning = false, sessionStoppedAtEpochMillis = stoppedAt) } }
+            return if (resourceFailure != null) result else committed
         } else {
             updateState {
                 it.copy(isBusy = false).withStatus(

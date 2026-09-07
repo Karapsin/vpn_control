@@ -3,8 +3,17 @@ package com.kardinal.vpncontrol.desktop
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
+import com.kardinal.vpncontrol.model.*
 
 class DesktopCliTest {
+    private fun success(command: DesktopCliCommand, message: String): DesktopCliResponse {
+        val request = assertIs<DesktopCliCommand.ControlSubmit>(command).request
+        return DesktopCliResponse.success(ControlDocumentCodec.encodeResult(
+            ControlResult("owner", request.requestId, ControlCode.OK, 0, message = message)))
+    }
     @Test
     fun helpVersionAndUnknownOptionsNeverContactOrStartAController() {
         for ((args, expected) in listOf(
@@ -33,14 +42,14 @@ class DesktopCliTest {
             printLine = lines::add,
             requestCommand = {
                 command = it
-                DesktopCliResponse.success("VPN started.")
+                success(it, "VPN started.")
             },
             startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(0, exitCode)
-        assertEquals(DesktopCliCommand.On, command)
-        assertEquals(listOf("VPN started."), lines)
+        assertEquals(ControlOperationId.ON, assertIs<DesktopCliCommand.ControlSubmit>(command).request.command.operation)
+        assertTrue(lines.single().contains("VPN started."))
     }
 
     @Test
@@ -52,29 +61,30 @@ class DesktopCliTest {
             printLine = {},
             requestCommand = {
                 command = it
-                DesktopCliResponse.success("selected")
+                success(it, "selected")
             },
             startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(0, exitCode)
-        assertEquals(DesktopCliCommand.Select("New York"), command)
+        val typed = assertIs<DesktopCliCommand.ControlSubmit>(command).request.command
+        assertEquals(ControlOperationId.LOCATIONS_SELECT, typed.operation)
+        assertEquals(ControlValue.Text("New York"), typed.arguments["selector"])
     }
 
     @Test
-    fun invalidCommandPrintsUsageAndFails() {
+    fun invalidCommandReportsFailureOnStderr() {
         val lines = mutableListOf<String>()
 
         val exitCode = DesktopCli.handleArgs(
             args = arrayOf("unknown"),
-            printLine = lines::add,
+            printLine = { error("No stdout for failure") }, printProgress = lines::add,
             requestCommand = { error("request should not be sent") },
             startHeadlessController = { error("headless controller should not start") },
         )
 
         assertEquals(1, exitCode)
-        assertEquals("Unknown command: unknown", lines.first())
-        assertEquals(true, lines.last().contains("vpn-control find-best"))
+        assertTrue(lines.single().startsWith("INVALID_ARGUMENT"))
     }
 
     @Test
@@ -83,7 +93,7 @@ class DesktopCliTest {
 
         val exitCode = DesktopCli.handleArgs(
             args = arrayOf("off"),
-            printLine = lines::add,
+            printLine = { error("No stdout for failure") }, printProgress = lines::add,
             requestCommand = { DesktopCliResponse.notRunning() },
             startHeadlessController = {
                 DesktopCliResponse.failure("VPN Control desktop app is not running.", exitCode = 2)
@@ -91,7 +101,7 @@ class DesktopCliTest {
         )
 
         assertEquals(2, exitCode)
-        assertEquals(listOf("VPN Control desktop app is not running."), lines)
+        assertTrue(lines.single().startsWith("UNAVAILABLE"))
     }
 
     @Test
@@ -105,13 +115,13 @@ class DesktopCliTest {
             requestCommand = { DesktopCliResponse.notRunning() },
             startHeadlessController = {
                 startedCommand = it
-                DesktopCliResponse.success("Best location selected: Berlin")
+                success(it, "Best location selected: Berlin")
             },
         )
 
         assertEquals(0, exitCode)
-        assertEquals(DesktopCliCommand.FindBest, startedCommand)
-        assertEquals(listOf("Best location selected: Berlin"), lines)
+        assertEquals(ControlOperationId.FIND_BEST, assertIs<DesktopCliCommand.ControlSubmit>(startedCommand).request.command.operation)
+        assertTrue(lines.single().contains("Best location selected: Berlin"))
     }
 
     @Test
@@ -119,12 +129,12 @@ class DesktopCliTest {
         val lines = mutableListOf<String>()
         val exitCode = DesktopCli.handleArgs(
             args = arrayOf("status"),
-            printLine = lines::add,
+            printLine = { error("No stdout for failure") }, printProgress = lines::add,
             requestCommand = { DesktopCliResponse.notRunning() },
             startHeadlessController = { error("status must not start a controller") },
         )
 
         assertEquals(DesktopCliResponse.UNAVAILABLE_EXIT_CODE, exitCode)
-        assertEquals(listOf(DesktopCliResponse.NOT_RUNNING_MESSAGE), lines)
+        assertTrue(lines.single().startsWith("UNAVAILABLE"))
     }
 }

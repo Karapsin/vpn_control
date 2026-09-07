@@ -117,6 +117,8 @@ class FullVpnLifecycleInstrumentedTest {
     private companion object {
         const val EXPECTED_BODY = "vpn-control-full-vpn-ok"
         const val EXPECTED_DESTINATION = "203.0.113.1:80"
-        const val SHELL_TCP_PROBE = "toybox nc -4 -n -w 5 -z 203.0.113.1 80"
+        // Older Android toybox lacks -n and -z. Keep the connection
+        // alive briefly after shell stdin EOF so the VPN can finish forwarding.
+        const val SHELL_TCP_PROBE = "toybox nc -4 -w 5 -W 5 -q 5 203.0.113.1 80"
     }
 }

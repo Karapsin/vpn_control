@@ -19,9 +19,10 @@ class DesktopSettingsCliEndToEndTest {
         val store = DesktopStateStore(directory)
         val service = DesktopAppServiceFactory.createForTesting(store = store, initialWorkspace = empty)
         val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
         val server = assertNotNull(DesktopActivationServer.start(
             onShowWindow = { DesktopActivationShowResult.HEADLESS },
-            onCliCommand = { runBlocking { service.executeCliCommand(it) } }, portFile = endpoint,
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
             fun invoke(vararg args: String): Pair<Int?, String> {
@@ -55,6 +56,7 @@ class DesktopSettingsCliEndToEndTest {
             assertFalse(service.shouldResumeConnectionOnLaunch())
         } finally {
             server.close()
+            owner.close()
             directory.toFile().deleteRecursively()
         }
     }

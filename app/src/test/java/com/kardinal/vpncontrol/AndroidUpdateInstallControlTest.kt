@@ -10,6 +10,201 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AndroidUpdateInstallControlTest {
+    @Test fun foreignInteractionSessionCannotPrepareOrCommitPackageInstallation() = runTest {
+        val f = Fixture(backgroundScope)
+        var preparations = 0
+        var leavesAwaiting = 0
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = {
+            object : AndroidUpdateInstallControl.Pinned {
+                override val version = "2.2.0"
+                override suspend fun verify() {}
+                override suspend fun prepareDispatch() { preparations++ }
+                override fun dispatch(launcher: (android.content.Intent) -> Unit) { error("foreign session") }
+                override fun release(handedOff: Boolean) {}
+            }
+        }, pin = { error("No new session") })
+        val work = async { install.execute("protected") { if (!it) leavesAwaiting++; true } }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("protected"))
+        requireNotNull(f.interactions.attach(token, "owner", null))
+        assertFalse(install.dispatch(token, "foreign-session") {})
+        assertEquals(0, preparations)
+        assertEquals(0, leavesAwaiting)
+        assertFalse(work.isCompleted)
+        install.cancel("protected")
+        assertEquals(ControlCode.CANCELLED, work.await().code)
+    }
+
+    @Test fun confirmationLaunchedBeforeJournalFailureStillReportsHandoff() = runTest {
+        val f = Fixture(backgroundScope)
+        var launched = false
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = {
+            object : AndroidUpdateInstallControl.Pinned {
+                override val version = "2.2.0"
+                override suspend fun verify() {}
+                override fun handedOff() = launched
+                override fun dispatch(launcher: (android.content.Intent) -> Unit) {
+                    launched = true
+                    error("Receipt fsync failed after OS acknowledgement")
+                }
+                override fun release(handedOff: Boolean) { assertTrue(handedOff) }
+            }
+        }, pin = { error("No new session") })
+        val work = async { install.execute("launched") { true } }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("launched"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        install.dispatch(token, session) {}
+        val result = work.await()
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(ControlValue.BooleanValue(true), result.data["installerStarted"])
+    }
+    @Test fun installReceiptDoesNotOverwriteNewerCheckedAvailabilityAndSurvivesDismiss() = runTest {
+        val f = Fixture(backgroundScope)
+        val session = AppInstallSessionStatus("receipt", AppInstallSessionPhase.INSTALLED, "1.1.0", false)
+        f.engine.installSessionChanged(session)
+        f.prepare()
+        assertEquals(AppUpdatePhase.READY, f.state.phase)
+        assertEquals("2.2.0", f.state.availableVersion)
+        assertEquals(session, f.state.installSession)
+        f.engine.execute(ControlOperationId.UPDATES_DISMISS)
+        assertEquals(session, f.state.installSession)
+        assertEquals(AppUpdatePhase.IDLE, f.state.phase)
+    }
+    @Test fun recoveredSessionUsesOwnerReservationAndNeverCreatesAnotherSession() = runTest {
+        val f = Fixture(backgroundScope)
+        var abandoned = false
+        val recovered = object : AndroidUpdateInstallControl.Pinned {
+            override val version = "2.2.0"
+            override suspend fun verify() {}
+            override fun dispatch(launcher: (android.content.Intent) -> Unit) {}
+            override fun release(handedOff: Boolean) { abandoned = !handedOff }
+        }
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = { recovered },
+            pin = { error("Recovery must not create a new session") })
+        val work = async { install.execute("recovered") { true } }
+        runCurrent()
+        assertTrue(f.engine.busy())
+        assertEquals(ControlCode.BUSY, f.engine.execute(ControlOperationId.UPDATES_CHECK).code)
+        assertEquals(ControlCode.BUSY, f.engine.execute(ControlOperationId.UPDATES_DISMISS).code)
+        val token = requireNotNull(f.interactions.tokenFor("recovered"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        assertTrue(install.dispatch(token, session) {})
+        assertEquals(ControlCode.OK, work.await().code)
+        assertFalse(abandoned)
+        assertFalse(f.engine.busy())
+        // A recovered receipt does not fabricate a checked/downloaded manifest in this owner.
+        assertEquals(AppUpdatePhase.IDLE, f.state.phase)
+    }
+
+    @Test fun exactTerminalCallbackBeforeConfirmationDeterminesResultAndOuterState() = runTest {
+        for ((phase, code, outer) in listOf(
+            Triple(AppInstallSessionPhase.INSTALLED, ControlCode.OK, AppUpdatePhase.IDLE),
+            Triple(AppInstallSessionPhase.FAILED, ControlCode.RUNTIME_FAILED, AppUpdatePhase.FAILED),
+            Triple(AppInstallSessionPhase.CANCELLED, ControlCode.CANCELLED, AppUpdatePhase.IDLE),
+            Triple(AppInstallSessionPhase.UNKNOWN, ControlCode.OUTCOME_UNKNOWN, AppUpdatePhase.IDLE),
+        )) {
+            val f = Fixture(backgroundScope)
+            f.prepare()
+            val status = AppInstallSessionStatus("receipt", phase, "2.2.0", false)
+            val install = AndroidUpdateInstallControl(f.engine, f.interactions, pin = {
+                object : AndroidUpdateInstallControl.Pinned {
+                    override val version = "2.2.0"
+                    override suspend fun verify() {}
+                    override suspend fun prepareDispatch() {
+                        f.engine.installSessionChanged(status)
+                        error("No pending confirmation")
+                    }
+                    override fun snapshot() = AndroidUpdateInstallControl.PinnedState(status, mapOf(
+                        "installed" to when (phase) {
+                            AppInstallSessionPhase.INSTALLED -> ControlValue.BooleanValue(true)
+                            AppInstallSessionPhase.FAILED, AppInstallSessionPhase.CANCELLED -> ControlValue.BooleanValue(false)
+                            else -> ControlValue.Null
+                        }))
+                    override fun dispatch(launcher: (android.content.Intent) -> Unit) { error("No confirmation") }
+                    override fun release(handedOff: Boolean) {}
+                }
+            })
+            val work = async { install.execute("terminal-$phase") { true } }
+            runCurrent()
+            val token = requireNotNull(f.interactions.tokenFor("terminal-$phase"))
+            val session = requireNotNull(f.interactions.attach(token, "owner", null))
+            assertFalse(install.dispatch(token, session) {})
+            val result = work.await()
+            assertEquals(code, result.code)
+            assertEquals(outer, f.state.phase)
+            assertEquals(status, f.state.installSession)
+            assertFalse(f.engine.busy())
+        }
+    }
+
+    @Test fun recoveredHandoffAndFailureAreProjectedWithoutInventingCheckedManifest() = runTest {
+        val f = Fixture(backgroundScope)
+        val pending = AppInstallSessionStatus("recovered", AppInstallSessionPhase.HANDED_OFF, "2.2.0", true)
+        f.engine.installSessionChanged(pending)
+        val ticket = requireNotNull(f.engine.reserveRecoveredInstallation())
+        f.engine.finishRecoveredInstallation(ticket, handedOff = true)
+        assertEquals(AppUpdatePhase.INSTALLING, f.state.phase)
+        f.engine.installSessionChanged(pending.copy(phase = AppInstallSessionPhase.FAILED, resumable = false))
+        assertEquals(AppUpdatePhase.FAILED, f.state.phase)
+        assertNull(f.engine.checkedStatus())
+    }
+
+    @Test fun cancellationDuringVerificationCannotPrepareAnInstallerAfterRetiringItsInteraction() = runTest {
+        val f = Fixture(backgroundScope)
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        var preparations = 0
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = {
+            object : AndroidUpdateInstallControl.Pinned {
+                override val version = "2.2.0"
+                override suspend fun verify() { entered.complete(Unit); resume.await() }
+                override suspend fun prepareDispatch() { preparations++ }
+                override fun dispatch(launcher: (android.content.Intent) -> Unit) { error("Cancelled") }
+                override fun release(handedOff: Boolean) {}
+            }
+        }, pin = { error("No new session") })
+        val work = async { install.execute("cancel-during-verify") { true } }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("cancel-during-verify"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        val dispatch = async { install.dispatch(token, session) {} }
+        entered.await()
+        install.cancel("cancel-during-verify")
+        assertEquals(ControlCode.CANCELLED, work.await().code)
+        resume.complete(Unit)
+        assertFalse(dispatch.await())
+        assertEquals(0, preparations)
+    }
+
+    @Test fun commitWithoutConfirmationIsNotHandoffAndRetainsUnknownReceipt() = runTest {
+        val f = Fixture(backgroundScope)
+        var committed = false
+        var abandoned = false
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = {
+            object : AndroidUpdateInstallControl.Pinned {
+                override val version = "2.2.0"
+                override suspend fun verify() {}
+                override suspend fun prepareDispatch() { committed = true; error("INSTALL_OUTCOME_UNKNOWN") }
+                override fun dispatch(launcher: (android.content.Intent) -> Unit) { error("No confirmation") }
+                override fun release(handedOff: Boolean) { abandoned = !committed }
+                override fun snapshot() = AndroidUpdateInstallControl.PinnedState(
+                    AppInstallSessionStatus("receipt", AppInstallSessionPhase.COMMITTING, version, false),
+                    mapOf("installPhase" to ControlValue.Text("committing")))
+            }
+        }, pin = { error("No new session") })
+        val work = async { install.execute("unknown") { true } }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("unknown"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        assertFalse(install.dispatch(token, session) {})
+        val result = work.await()
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, result.code)
+        assertEquals(ControlValue.BooleanValue(false), result.data["installerStarted"])
+        assertEquals(ControlValue.Null, result.data["installed"])
+        assertEquals(ControlValue.Text("committing"), result.data["installPhase"])
+        assertFalse(abandoned)
+    }
     private class Fixture(scope: CoroutineScope) {
         var state = AppUpdateState()
         var pins = 0

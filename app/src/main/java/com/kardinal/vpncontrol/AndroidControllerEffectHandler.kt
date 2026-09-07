@@ -15,7 +15,7 @@ internal class AndroidEffectBatchRunner(
     override fun handle(effects: List<MainControllerEffect>) {
         if (effects.isEmpty()) return
         val dispatcher = if (effects.any { it !is MainControllerEffect.UpdateStatus &&
-            it != MainControllerEffect.EnsureInstalledAppsLoaded }) launchMutation else launch
+            it != MainControllerEffect.EnsureInstalledAppsLoaded && it !is MainControllerEffect.ImportRoutingRules }) launchMutation else launch
         dispatcher { execute(effects) }
     }
     override suspend fun handleWithinMutation(effects: List<MainControllerEffect>) { execute(effects) }

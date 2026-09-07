@@ -43,9 +43,12 @@
             android:exported="false"
             android:theme="@style/zxing_CaptureTheme" />
 
+        <!-- An older installer task must not capture a newly authorized interaction's focus. -->
         <activity android:name=".AndroidControlInteractionActivity"
             android:exported="true" android:permission="android.permission.DUMP"
-            android:excludeFromRecents="true" />
+            android:excludeFromRecents="true" android:documentLaunchMode="always" />
+
+        <receiver android:name=".AndroidInstallSessionReceiver" android:exported="false" />
 
         <service
             android:name=".vpn.AndroidVpnService"

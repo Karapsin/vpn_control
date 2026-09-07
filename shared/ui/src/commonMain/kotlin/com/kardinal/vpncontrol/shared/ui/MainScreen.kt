@@ -45,6 +45,7 @@ fun MainScreen(
     findBestIcon: ImageVector,
     modifier: Modifier = Modifier,
     headerActions: @Composable () -> Unit = {},
+    connectionConfiguration: ConnectionConfigurationPresentation? = null,
 ) {
     val activeMode = state.profileSourceMode
     val strings = LocalAppStrings.current
@@ -102,6 +103,7 @@ fun MainScreen(
                     state = state,
                     activeProfileLabel = activeProfileLabel,
                     extraDetails = statusDetails,
+                    connectionConfiguration = connectionConfiguration,
                     modifier = Modifier.testTag("status"),
                 )
                 MainActionButton(

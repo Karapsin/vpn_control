@@ -73,11 +73,22 @@ class BenchmarkOrchestrator(
         diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
     )
 
-    suspend fun refreshBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> = withContext(Dispatchers.IO) {
+    suspend fun refreshBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> = refreshBestProfileAttemptPlan(false)
+
+    internal suspend fun refreshCachedBestProfileAttemptPlan(): Result<ProfileSelectionAttemptPlan> = refreshBestProfileAttemptPlan(true)
+
+    internal suspend fun stageBestProfileAttemptPlan(state: PersistedState): Result<com.kardinal.vpncontrol.AndroidFindBestPlan> {
+        var caches: Map<String, List<String>> = emptyMap()
+        return refreshBestProfileAttemptPlan(false, state, false) { caches = it }
+            .map { com.kardinal.vpncontrol.AndroidFindBestPlan(it, caches) }
+    }
+
+    private suspend fun refreshBestProfileAttemptPlan(cachedOnly: Boolean, captured: PersistedState? = null,
+        persist: Boolean = true, captureCaches: ((Map<String, List<String>>) -> Unit)? = null): Result<ProfileSelectionAttemptPlan> = withContext(Dispatchers.IO) {
         try {
             Result.success(
                 withTimeout(settings.refreshTimeoutMillis) {
-                    val state = storage.snapshot()
+                    val state = captured ?: storage.snapshot()
                     val validationSettings = state.validationSettings.normalized()
                     val benchmarkUrls = BenchmarkUrls(
                         test = validationSettings.testUrl,
@@ -93,7 +104,8 @@ class BenchmarkOrchestrator(
                             val loaded = SelectionWorkflowService.loadProfilesForTargets(
                                 targets = searchTargets,
                                 onStatus = storage::updateStatus,
-                                loadProfiles = ::loadRemoteSourceLocations,
+                                loadProfiles = { source -> if (cachedOnly) decodeStoredLocations(state.subscriptions.firstOrNull { it.url == source }?.cachedLocations.orEmpty())
+                                    else loadRemoteSourceLocations(source) },
                                 concurrency = validationSettings.subscriptionRefreshConcurrency,
                             )
                             val loadedProfiles = loaded.allProfiles
@@ -114,15 +126,18 @@ class BenchmarkOrchestrator(
                                 },
                             )
                             benchmarkDetails.putAll(attemptPlan.locationBenchmarkDetails)
+                            captureCaches?.invoke(loaded.profilesById.mapValues { (_, profiles) ->
+                                profiles.map(LocationConfigs::encodeStoredLocation)
+                            })
 
-                            loaded.profilesById.forEach { (subscriptionId, profiles) ->
+                            if (persist && !cachedOnly) loaded.profilesById.forEach { (subscriptionId, profiles) ->
                                 if (subscriptionId == state.activeSubscriptionId) {
                                     storage.updateCurrentLocations(profiles.map { it.rawLink })
                                 } else {
                                     storage.updateSubscriptionCache(subscriptionId, profiles.map { it.rawLink })
                                 }
                             }
-                            storage.updateLocationBenchmarkDetails(benchmarkDetails)
+                            if (persist) storage.updateLocationBenchmarkDetails(benchmarkDetails)
 
                             val attempts = attemptPlan.orderedAttempts.map { preflight ->
                                 val selectedTarget = loaded.profileSourceTargets[
@@ -164,7 +179,7 @@ class BenchmarkOrchestrator(
                                 benchmarkUrls = benchmarkUrls,
                                 sourceKey = "SAVED_LOCATIONS",
                             )
-                            storage.updateLocationBenchmarkDetails(attemptPlan.locationBenchmarkDetails)
+                            if (persist) storage.updateLocationBenchmarkDetails(attemptPlan.locationBenchmarkDetails)
                             val attempts = attemptPlan.orderedAttempts.map { preflight ->
                                 val activeVerificationPort = activeVerificationPortFor(state.appMode)
                                 ProfileSelectionAttempt(
@@ -263,9 +278,16 @@ class BenchmarkOrchestrator(
     }
 
     suspend fun benchmarkLocation(rawLink: String): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
+        benchmarkLocation(rawLink, storage.snapshot(), persist = true)
+    }
+
+    /** Same validation engine, without telemetry writes before owner commit admission. */
+    internal suspend fun stageLocationBenchmark(rawLink: String, state: PersistedState): ProfileBenchmark =
+        benchmarkLocation(rawLink, state, persist = false).getOrThrow()
+
+    private suspend fun benchmarkLocation(rawLink: String, state: PersistedState, persist: Boolean): Result<ProfileBenchmark> = withContext(Dispatchers.IO) {
         runCatching {
             withTimeout(settings.refreshTimeoutMillis) {
-                val state = storage.snapshot()
                 val validationSettings = state.validationSettings.normalized()
                 val benchmarkUrls = BenchmarkUrls(
                     test = validationSettings.testUrl,
@@ -286,18 +308,18 @@ class BenchmarkOrchestrator(
                     )
                     val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
                     updatedDetails[normalizedRawLink] = benchmark.detail
-                    storage.updateLocationBenchmarkDetails(updatedDetails)
+                    if (persist) storage.updateLocationBenchmarkDetails(updatedDetails)
                     return@withTimeout benchmark
                 }
 
-                storage.updateStatus(BenchmarkStatusMessages.checkingTcpSpeed(profile.remarks))
+                if (persist) storage.updateStatus(BenchmarkStatusMessages.checkingTcpSpeed(profile.remarks))
                 val preflight = validationRuntime.preflightProfile(profile, settings)
                 val updatedDetails = state.locationBenchmarkDetails.toMutableMap()
 
                 val benchmark = if (preflight.connectMillis == null) {
                     BenchmarkSearchLogic.failedBenchmark(profile, preflight, "unreachable")
                 } else {
-                    storage.updateStatus(LocationStatusMessages.testingLocation(profile.remarks))
+                    if (persist) storage.updateStatus(LocationStatusMessages.testingLocation(profile.remarks))
                     benchmarkPreflightCandidate(
                         candidate = preflight,
                         idx = 0,
@@ -307,10 +329,10 @@ class BenchmarkOrchestrator(
                 }
 
                 updatedDetails[normalizedRawLink] = benchmark.detail
-                storage.updateLocationBenchmarkDetails(updatedDetails)
+                if (persist) storage.updateLocationBenchmarkDetails(updatedDetails)
                 benchmark
             }
-        }
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
     }
 
     suspend fun rehydrateSelection(state: PersistedState): Result<ProfileSelection> = withContext(Dispatchers.Default) {
@@ -451,15 +473,8 @@ class BenchmarkOrchestrator(
     }
 
     private fun rememberPreparedSelection(selection: ProfileSelection, state: PersistedState) {
-        // Legacy cached runtime JSON lacks its generation inputs. Keep SSH preparation
-        // conservative until version-pinned native loading has integration evidence.
-        if (selection.profile.rawLink.isBlank() || state.homeSshRouteSettings.enabled) return
         com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(
-            selection,
-            com.kardinal.vpncontrol.control.ControlRuntimeConfiguration(
-                selection.profile.rawLink, selection.sourceUrl, state.appMode,
-                state.routingRules, state.dnsSettings, state.homeSshRouteSettings,
-            ),
+            selection, state,
         )
     }
 

@@ -6,10 +6,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
 
+internal const val DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS = 15_000L
+
 /** Acknowledgement is produced by the actual window adapter, never by enqueueing work. */
 internal class DesktopFrontendVisibility(
     private val dispatch: (() -> Unit) -> Unit = { SwingUtilities.invokeLater(it) },
-    private val timeoutMillis: Long = 2_000,
+    private val timeoutMillis: Long = DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS,
 ) {
     @Volatile var ownerId: String? = null
     @Volatile var available: () -> Boolean = { false }

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ההתקנה דורשת הפעלה אינטראקטיבית.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "הרשאת ההתקנה נדחתה.",
+  "UPDATE_INSTALL_CANCELLED": "ההתקנה בוטלה.",
+  "UPDATE_INSTALL_CONFIRMATION": "ממתין לאישור ההתקנה.",
+  "UPDATE_INSTALL_COMPLETED": "העדכון הותקן.",
+  "UPDATE_INSTALL_UNKNOWN": "תוצאת ההתקנה אינה ידועה.",
   "APP_TITLE": "ניהול VPN",
   "TAB_MAIN": "ראשי",
   "TAB_PROFILE": "פרופיל",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "מיקום פעיל: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "מיקום פעיל: לא זמין",
+  "CONNECTION_RESTART_PENDING": "יש להפעיל מחדש את החיבור כדי להחיל את השינויים שנשמרו.",
+  "CONNECTION_RESTART_UNKNOWN": "לא ידוע אם נדרשת הפעלה מחדש."
 }

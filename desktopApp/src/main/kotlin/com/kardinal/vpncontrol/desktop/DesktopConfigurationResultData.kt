@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
 
 /** Explicit committed public values only; never retain import content or arbitrary human messages. */
@@ -23,7 +23,7 @@ internal object DesktopConfigurationResultData {
 
     fun decode(operation: ControlOperationId, raw: String): Map<String, ControlValue> {
         require(operation in operations)
-        return ControlProtocolCodec.decodeValues(raw).also { values ->
+        return ControlDocumentCodec.decodeValues(raw).also { values ->
             when (operation) {
                 ControlOperationId.LOCATIONS_IMPORT -> {
                     require(values.keys == setOf("importedLocations"))

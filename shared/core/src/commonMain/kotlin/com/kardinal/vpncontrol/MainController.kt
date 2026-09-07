@@ -354,7 +354,12 @@ class MainController(
     }
 
     fun onRoutingDirectDomainsDraftChanged(value: String) {
-        _state.value = _state.value.copy(routingDirectDomainsDraft = value)
+        _state.value = _state.value.copy(routingDirectDomainsDraft = value, routingDirectDomainSuffixesDraft = null)
+    }
+
+    fun onRoutingDirectDomainSuffixesDraftChanged(value: List<String>) {
+        _state.value = _state.value.copy(routingDirectDomainsDraft = "",
+            routingDirectDomainSuffixesDraft = DirectDomainDrafts.snapshot(value))
     }
 
     fun showAddRuleSetDialog() {

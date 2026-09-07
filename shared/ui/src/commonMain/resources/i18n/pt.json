@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "A instalação requer uma sessão interativa.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "A permissão para instalar foi negada.",
+  "UPDATE_INSTALL_CANCELLED": "Instalação cancelada.",
+  "UPDATE_INSTALL_CONFIRMATION": "Aguardando confirmação da instalação.",
+  "UPDATE_INSTALL_COMPLETED": "Atualização instalada.",
+  "UPDATE_INSTALL_UNKNOWN": "O resultado da instalação é desconhecido.",
   "APP_TITLE": "Controle de VPN",
   "TAB_MAIN": "Início",
   "TAB_PROFILE": "Perfil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Localização ativa: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Localização ativa: indisponível",
+  "CONNECTION_RESTART_PENDING": "Reinicie a ligação para aplicar as alterações guardadas.",
+  "CONNECTION_RESTART_UNKNOWN": "Não se sabe se é necessário reiniciar."
 }

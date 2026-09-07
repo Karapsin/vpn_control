@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "আগের {connectionLabel:0} লোকেশন পুনরুদ্ধার করতে ব্যর্থ: {1}। {connectionLabel:0} বন্ধ করতে ব্যর্থ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "রাউটিং নিয়ম সংরক্ষিত হয়েছে। প্রয়োগ করতে {connectionLabel:0} পুনরায় চালু করুন",
     "ROUTING_RULES_SAVE_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "রাউটিং পরিবর্তনের ফলাফল অজানা। একই তথ্য দিয়ে আবার চেষ্টা করুন।",
+    "ROUTING_RULES_STALE_DRAFT": "রাউটিং সেটিংস পরিবর্তিত হয়েছে। সংরক্ষণের আগে সম্পাদকটি আবার খুলুন।",
     "DIAGNOSTICS_EXPORT_OPENED": "ডায়াগনস্টিক এক্সপোর্ট খোলা হয়েছে",
     "APPS_LOAD_FAILED": "অ্যাপ লোড করা যায়নি",
     "SUBSCRIPTION_RECEIVED": "সাবস্ক্রিপশন পাওয়া গেছে। প্রোফাইল ট্যাবে দেখে সংরক্ষণ করুন।",

@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -26,6 +27,51 @@ class AndroidConfigurationStoreTest {
     private val running = booleanPreferencesKey("is_vpn_running")
     private val keyVersion = longPreferencesKey("home_ssh_credential_version")
 
+    @Test fun projectedNoOpReusesCommittedStateAndChecksRevisionBeforeTransform() = fixture(production = true) { dataStore ->
+        val owner = wrapper(dataStore)
+        owner.edit("owner", 0) { it[mode] = AppMode.PROXY_ONLY.name }
+        val prior = owner.snapshot()
+        val same = owner.editProjected("owner", 1) { _, value -> assertSame(prior.value, value) }
+        assertSame(prior.value, same.value)
+        assertEquals(1L, same.revision)
+        var called = false
+        assertEquals("CONFLICT", runCatching {
+            owner.editProjected("owner", 0) { _, _ -> called = true }
+        }.exceptionOrNull()?.message)
+        assertFalse(called)
+    }
+
+    @Test fun immutableSnapshotsShareDecodedIdentityAndLegacyTelemetryInvalidatesCache() = fixture { dataStore ->
+        var decodes = 0
+        val owner = AndroidConfigurationStore(dataStore, { prefs ->
+            decodes++
+            PersistedState(appMode = prefs[mode]?.let(AppMode::valueOf) ?: AppMode.VPN,
+                statusMessage = prefs[status].orEmpty())
+        }, "owner")
+        val initial = owner.snapshot()
+        assertSame(initial.value, owner.snapshot().value)
+        assertSame(initial.value, owner.state.first().value)
+        assertEquals(1, decodes)
+        val changed = owner.edit("owner", 0) { it[mode] = AppMode.PROXY_ONLY.name }
+        assertEquals(1L, changed.revision)
+        assertNotSame(initial.value, changed.value)
+        val afterCommit = decodes
+        assertSame(changed.value, owner.snapshot().value)
+        assertSame(changed.value, owner.state.first().value)
+        assertEquals(afterCommit, decodes)
+        // A legacy facade and a telemetry-only update publish new immutable values,
+        // even when the public configuration revision does not change.
+        val legacy = wrapper(dataStore, "owner")
+        legacy.edit { it[status] = "fresh telemetry" }
+        val telemetry = owner.snapshot()
+        assertEquals(1L, telemetry.revision)
+        assertEquals("fresh telemetry", telemetry.value.statusMessage)
+        assertNotSame(changed.value, telemetry.value)
+        assertSame(telemetry.value, owner.state.first().value)
+        assertEquals(AppMode.PROXY_ONLY, telemetry.value.appMode)
+        assertEquals("", changed.value.statusMessage)
+    }
+
     @Test fun stagedKeyFailureKeepsOldIdentityAndStaleGuardRunsBeforeFilesystemEffects() = fixture { dataStore ->
         val root = temporary.newFolder()
         val old = "-----BEGIN PRIVATE KEY-----\nOLD\n-----END PRIVATE KEY-----\n"
@@ -36,7 +82,7 @@ class AndroidConfigurationStoreTest {
         var staged = -1L
         assertTrue(runCatching {
             owner.edit("owner", 0) { prefs ->
-                staged = keys.stage(fresh, prefs[keyVersion] ?: 0)
+                staged = keys.stage(fresh, prefs[keyVersion] ?: 0) {}
                 prefs[keyVersion] = staged
                 error("fixture metadata failure")
             }
@@ -44,12 +90,12 @@ class AndroidConfigurationStoreTest {
         assertEquals(0, owner.snapshot().revision)
         assertEquals(0, owner.snapshot().value.homeSshRouteSettings.credentialVersion)
         assertEquals(old, File(keys.path(0)!!).readText())
-        val committed = owner.edit("owner", 0) { prefs -> prefs[keyVersion] = keys.stage(fresh, 0) }
+        val committed = owner.edit("owner", 0) { prefs -> prefs[keyVersion] = keys.stage(fresh, 0) {} }
         assertTrue(committed.value.homeSshRouteSettings.credentialVersion > staged)
         assertEquals(1, committed.revision)
         val entries = root.walkTopDown().count()
         assertEquals("CONFLICT", runCatching {
-            owner.edit("owner", 0) { prefs -> prefs[keyVersion] = keys.stage(old, 0) }
+            owner.edit("owner", 0) { prefs -> prefs[keyVersion] = keys.stage(old, 0) {} }
         }.exceptionOrNull()?.message)
         assertEquals(entries, root.walkTopDown().count())
         assertEquals(fresh, File(keys.path(committed.value.homeSshRouteSettings.credentialVersion)!!).readText())
@@ -127,11 +173,14 @@ class AndroidConfigurationStoreTest {
             homeSshRouteSettings = com.kardinal.vpncontrol.model.HomeSshRouteSettings(credentialVersion = preferences[keyVersion] ?: 0),
         ) }, epoch)
 
-    private fun fixture(block: suspend CoroutineScope.(androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>) -> Unit) = runBlocking {
+    private fun fixture(production: Boolean = false,
+        block: suspend CoroutineScope.(androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>) -> Unit) = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val file = File(temporary.newFolder(), "configuration.preferences_pb")
-            val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+            val store = if (production) androidx.datastore.core.DataStoreFactory.create(
+                serializer = AndroidPreferencesSerializer(file.parentFile.toPath()), scope = scope) { file }
+                else PreferenceDataStoreFactory.create(scope = scope) { file }
             block(store)
         } finally {
             scope.cancel()

@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.ControlCode
 import com.kardinal.vpncontrol.model.ControlRequest
 import com.kardinal.vpncontrol.model.ControlResult
@@ -13,14 +13,18 @@ internal fun desktopCliJsonFailure(code: ControlCode, requestId: String, operati
     val result = ControlResult(null, requestId, code, configurationRevision = 0,
         message = code.wireName, warnings = listOf("OWNER_METADATA_UNAVAILABLE"), operationId = operationId,
         final = code !in setOf(ControlCode.TIMEOUT, ControlCode.OUTCOME_UNKNOWN))
-    return DesktopCliResponse(false, ControlProtocolCodec.encodeResult(result), code.exitCode)
+    return DesktopCliResponse(false, ControlDocumentCodec.encodeResult(result), code.exitCode)
 }
 
 internal fun desktopCliJsonResponse(request: ControlRequest, response: DesktopCliResponse): DesktopCliResponse {
-    val result = runCatching { ControlProtocolCodec.decodeResult(response.message) }.getOrNull()
+    val result = runCatching { ControlDocumentCodec.decodeResult(response.message) }.getOrNull()
+    val localTransportFailure = result != null && result.controllerId == null && result.code in setOf(
+        ControlCode.OUTCOME_UNKNOWN, ControlCode.TIMEOUT, ControlCode.UNAVAILABLE,
+        ControlCode.PERMISSION_DENIED, ControlCode.INCOMPATIBLE_PROTOCOL) && result == ControlDocumentCodec.decodeResult(
+        desktopCliJsonFailure(result.code, result.requestId, result.operationId).message)
     if (result != null && result.requestId == request.requestId && result.exitCode == response.exitCode &&
         result.ok == response.success && (request.controllerId == null || result.controllerId == request.controllerId ||
-            result.code == ControlCode.CONFLICT)) {
+            result.code == ControlCode.CONFLICT || localTransportFailure)) {
         return response
     }
     val code = when {

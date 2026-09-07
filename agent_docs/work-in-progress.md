@@ -1,1711 +1,1212 @@
-# Work In Progress Notes
-
-Use this file only when a large task intentionally leaves multiple buckets changed at once. If the worktree is clean or changes are small, leave this file as a template.
-
-## Current Work: GUI/CLI Parity
-
-Fresh-agent checkpoint map (2026-09-06; read newest notes before older history):
-
-Latest delivered source checkpoint is `e7b4f8ab8ff9557c8d6c24b0235e6b6041a82af7`
-on `origin/dev` (full prepush801 passed, version2.1.1/9 Unreleased notes).
-Its Fast Checks/Android/Linux/macOS required workflows succeeded. Windows34028407135
-passed unit tests and built EXE/MSI, then failed package extraction validation with
-a null `Assert-FileExists` argument. Root owns a native helper regression/diagnostic
-fix; native_cli_checks owns packaging graph correction and extracted-payload proof.
-The suspected graph defect is AppImage-only CLI/UTF8 customization while Exe/Msi
-tasks construct independent images. No development checkpoint has all five required
-workflows green yet; do not report delivery complete. Full goal remains open.
-
-Windows packaging correction is now source-frozen: native helper27357 reproduced
-the null binding failure; AllowNull makes the intended missing-artifact diagnostic
-reachable and the AST-only helper suite passed natively. The final Gradle graph
-regression73719 failed against checkpoint source (missing createDistributable
-dependency) and passed with the fix. Exe/Msi now depend on and consume the same
-CLI/UTF8-patched app image. The init regression checks dependency without building
-an image and verifies the actual input path in installer doFirst; package scripts
-invoke both tests, and workflow path filters include them. Actual native package
-build/administrative extraction remains in progress. Root is applying the normal
-10th note/version roll and full prepush concurrently in the independent host checkout;
-no installation, elevation prompt or VPN action is involved.
-
-The preceding Windows source fixes have native50 standard-user and118 elevated-user
-tests passing, covering every prior failed unit-test class. Evidence is
-/tmp/vpn-windows-ci-native.XOkCOr/native-receipt.txt (root read the receipt). Those
-results do not cover the newly exposed MSI payload issue. No VPN/installer was run.
-Root asked asynchronously for permission to perform future real VPN/installer
-verification only in disposable agent-owned environments; no answer/approval has
-been received at this checkpoint. Host VPN, personal data and emulator5580 stay out
-of scope. New generic-response/internal-codec and Android typed-refresh audits are
-persisted in cli.md for the next implementation slices.
-
-Development checkpoint `4d8a2e7a23ba0b805b235929574dc21a261b60cd` is committed
-and pushed to `origin/dev`. Fresh full prepush752 passed before the push. Fast Checks,
-Android Release APK, Linux Desktop Package and macOS Desktop Package succeeded for
-that SHA; Windows Desktop Package34027258751 failed59/467 tests. Advisory VPN
-Integration also succeeded. The development delivery gate is therefore NOT complete.
-The next intentionally parallel dirty buckets are Android runtime-safe DELETE/IMPORT
-(gui_location_reference), Android protected installer interaction (android_session),
-and shared bounded chunk-transfer protocol/state (native_cli_checks). Root owns
-integration, transfer adapters and CI follow-up. These are implementation assignments,
-not completed functionality. Agents coordinate shared owner/adapter edit regions;
-one local Gradle invocation at a time. No live VPN/installer permission tests are
-authorized by this checkpoint, and the full parity goal remains open.
-
-Next-batch evidence and findings (in progress, not pushed):
-
-- Source frozen after final Android2682:35 app tests (planner5/destructive7/GUI6/
-  runtimecommands8/observer4/legacy5) plus Android/instrumentation compilation passed.
-  Public ADB16 passed21286/50649. DELETE/IMPORT now use guarded asynchronous owner
-  admission, private actual-runtime capture, acknowledged pinned stop, commit and
-  runtime-only recovery. Deleting pending B preserves active A and its telemetry.
-  EDIT/SELECT/DELETE carry rendered raw+source scope/hash, rejecting reordered,
-  disappeared or source-drifted targets. Import captures revision before picker.
-  Actual runtime stop/recovery/consent denial and screenshots remain untested.
-  Benchmark still uses positional GUI targeting and is a remaining parity gap.
-- Final Android install21286 passed8 install regressions plus existing update/location
-  union and16 ADB tests. All Android source is frozen for consolidated validation.
-- Native Windows2137 passed50 tests65.369s under real elevation0;16772 passed50
-  tests75.592s under linked elevation1 with the same account SID. Includes endpoint
-  ownership, spool default-directory privacy, native installer IO/reparse policy,
-  ADB, autostart, public Main process/Unicode and QR tests. Frozen evidence host
-  /tmp/vpn-windows-ci-native.XOkCOr; guest
-  C:\\Users\\visualagent\\AppData\\Local\\Temp\\vpn-ci-XOkCOr.
-  Bundle SHA25647f0d09dd07098e1f4fe651a8509f425b544352795e48e36739d1dd6379aa73a.
-  Microsoft OpenJDK17.0.20.1+1 x64 on WindowsARM64 (x64 emulation), not hostedx64
-  package proof. Remaining previously failing Windows classes are running separately.
-  Host/defaultVPN and all application runtimes were untouched. No installer was run.
-- Root is applying one consolidated changelog note and fresh full prepush for this
-  batch, then will push and restart all five exact-SHA required workflows. This is
-  not full-goal completion; large transfer adapters, Android refresh/find-best/
-  benchmark/streams, complete install recovery and desktop elevation/install work,
-  native live-traffic and visual proof remain open.
-
-- Latest combined50864 passed24s: final shared transfer11 tests and focused desktop
-  ADB/bootstrap/native-platform-gated/spool/endpoint/transport/autostart union.
-  It includes the single-retained-file spool refinement. JVM process bootstrap
-  regression91745 passed3 tests afterward: test-only ASCII/base64 argv transport
-  reaches actual Main with original Unicode args; real stdout/PNG/owner assertions
-  remain. Production public-launcher Unicode behavior is still tested separately.
-- Android install/update union58984 passed; next21286 includes more permission
-  cases and current location work. A dispatched installer pin survives cancellation
-  of its waiting owner coroutine. Installer handoff is not installed confirmation.
-  IMPORTANT remaining gap: at most8 handed-off APKs are retained across owner
-  lifetimes, without automatic reader-completion cleanup or installation reconciliation.
-  Native permission/installer proof is not performed. Do not count this as full
-  Android update installation completion/recovery.
-- Native Windows agent is preparing a frozen class bundle for the already-running
-  dedicated VM, ordinary and inherited elevated token cases only; no UAC policy,
-  account, installer or VPN changes. No Windows result for these fixes exists yet.
-
-- Root added DesktopControlTransferSpool: native private empty-file creation inside
-  a verified private directory, then one retained no-follow FileChannel with bounded
-  append/read buffers and incremental SHA256. No document-size cap or per-chunk
-  in-memory index. Red42996 showed the missing implementation; initial green74817
-  passed4 tests. Final single-file refinement and Windows ACL assertions need the
-  next focused/native union. No public transport adapter is wired yet.
-- Shared ControlTransferStore/Codec/Models/Spool were added by native_cli_checks;
-  core53856 and combined99811 passed before the final chunk-response DTO addition.
-  Cover UTF8 chunk boundaries, retry identity/offsets, seal/hash, private bindings,
-  capacity, expiry and retained consumers. This is infrastructure, not completed
-  large GUI/CLI transfer parity.
-- Windows endpoint publish used ordinary temp-file owner (Administrators under
-  an elevated Windows token), then required invoking-user ownership. Root switched
-  creation to the existing private native writer with explicit token-user SID;
-  verifier remains strict. Added direct invoking-owner regression. Local56916 and
-  combined99811 passed endpoint/transport tests; native Windows proof is outstanding.
-- Windows AutostartManager fixture expected only Exec argument escaping, missing
-  the separate .desktop string layer. Root corrected the fixture helper and added
-  explicit backslash/percent expectations; combined99811 passed. Production encoder
-  already used both layers and was not relaxed.
-- Windows fake-ADB fixture transported a Unicode temp path through Java17 argv;
-  native_cli_checks changed only bootstrap path encoding to ASCII base64 and added
-  a legacy-codepage regression. Real request content remains stdin. Native installer
-  IO fixtures now exercise inherited standard or elevated tokens, explicitly assert
-  actual file owner SID, and retain production-policy rejection; they never request
-  elevation. Both changes await focused/native proof.
-- Android DELETE/IMPORT red83582 reproduced INVALID_ARGUMENT. Runtime capture,
-  pinned stop/recovery, guarded storage and dedicated executor are being integrated.
-  Android INSTALL protected interaction/pinned APK path is also being integrated.
-  Root requested regressions for cancellation after native stop/installer dispatch.
-  These Android actions are not yet validated end to end.
-
-| Bucket | Implemented checkpoint | Evidence still required / unfinished scope |
-| --- | --- | --- |
-| Shared control and desktop commands | Typed registry, authenticated sessions, guarded/retry-safe settings/subscription/location/source/routing/SSH operations, operation inspection, cursor streams, QR/export paths. | Large chunked imports/exports; final current-SHA native public CLI proof. |
-| Desktop GUI ownership | Separate background owner/frontend, guarded drafts, acknowledged visibility, owner-aware shutdown, selected versus active presentation. | Live traffic across GUI crash/detach, remaining visual/error/localization cases. |
-| Android protected adapter | Non-debuggable API29/API35 ADB authorization, actual runtime inspection, consent-aware connection responses, guarded settings/source/SSH, reads and exports. | Actual consent grant/denial and live VPN/SSH loading; complete GUI/worker operation coverage. |
-| Android newer commands | Subscription CRUD/routing apps focused55; human output focused13; location/GUI staging+update union60; final update cancellation20 and visual fixture2; frozen release API29/API35 matrix150 calls all passed. | DELETE/IMPORT, refresh/find-best/benchmark, install and streams remain. No native live VPN, network refresh or update download/install proof. |
-| Private exports | POSIX private creation plus macOS descriptor ACL rejection and Windows enforced owner-only ACL verification. | Current package proof; real non-ACL Windows volume rejection not executed (deterministic gate test exists). |
-| Installer/elevation | Native protected job storage and several rollback/helper fixes. | Real helper/channel wiring, machine-wide admission, both-process handoff, typed installation/recovery; Windows operation-specific VPN elevation. No installer success claimed. |
-| Development delivery | Full prepush728 passed at version2.1.1/8 notes; later edits only record evidence/design handoff and require a fresh receipt. | This is the precommit snapshot based on32de4ee. Consult Git/workflow status for subsequent checkpoint delivery; exact-SHA five-workflow CI success is not established by these notes. |
-
-Current coordination: gui_location_reference owns location/GUI projection and
-shared Android adapter integration; android_session owns the update engine/service;
-native_cli_checks owns disconnected device harness/evidence and large-transfer
-audit; root owns readable CLI output, docs and consolidated verification. One Gradle
-invocation at a time. Freeze this batch before adding more work or building native
-artifacts. Host VPN and emulator5580 remain out of runtime-test scope. iOS was
-discussed as future architecture only and is not part of this implementation goal.
-
-Android subscription/routing checkpoint (2026-09-06):
-
-- Full prepush728 passed; build98793 produced frozen release APK and macOS app image.
-  Native46735 passed75 public CLI calls on each non-debuggable API29/API35 device
-  (150 total), plus readable human status on both. Covered positive subscription
-  CRUD/source subscription+all, routing apps/rules/import, no-op/stale guards,
-  location ADD/SELECT/selected UPDATE, client-file/raw-stdout JSON exports,
-  no-overwrite, QR export and routing QR import. No product defect was found; two
-  temporary harness assumptions were corrected (local argument-error owner metadata
-  and localized displayed location names).
-- Root macOS public packaged CLI smoke60163 passed against the same copied app:
-  isolated workspaces/owners, headless commands, UTF8, NDJSON/Ctrl-C and QR paths.
-  This is app-image/disconnected evidence, not DMG installation or live traffic.
-  Artifacts/evidence: /tmp/vpn-android-native-728.FHNLM4/.
-  APK SHA2566537051c63638e8493bcec0d67026d79eccd4d4ff18a000dda6de03bb1431eca;
-  launcher SHA256f50b3a758497552365fa694ca29b3daf8ed553154207a2f8e31f83cbf7df6146.
-  API29 report matrix-final/emulator-5582/report.json SHA256
-  a312ed0b5e590c98f193114d941170a8a8e0f2322299aaf94d52587bc684d08e;
-  API35 report matrix-final/emulator-5590/report.json SHA256
-  01c3a52d72e0acc555c9b8e967f7cae7f0b7ae8950ee02a0081a2909e2d15e8e.
-  Both ended runtimeRunning=false, zero starts/stops, no runtime ID/app services;
-  task AVDs5582/5590 stopped,5580 and host VPN untouched. No native refresh,
-  update download/install, consent or connectivity evidence is claimed.
-- Source remains frozen. Root is refreshing full validation after documentation
-  updates, then preparing a coherent development checkpoint and exact-SHA CI.
-  Full goal remains open; remaining runtime-safe deletion/import, installation and
-  bounded large-transfer design handoffs are recorded in cli.md.
-- All source frozen after visual2386:2 fixture regressions and Android instrumentation
-  compilation passed. MainActivity injects one immutable synthetic frame containing
-  both UI and location projection, never real owner flags; locations-selected uses
-  canonical row/selected-profile/benchmark references. No screenshot approval is
-  claimed; pending A/B scenes, row-specific/banner tags, geometry/stress captures and
-  actual review still remain. Root is applying consolidated metadata and running a
-  fresh full prepush before frozen APK/launcher native matrix execution.
-- Android update check/download/cancel/dismiss final61799 passed20 tests plus Android
-  compilation after combined25788. Manifest-only checking is separate from download;
-  exact checked asset/APK verification remains private. GUI and ADB use the owner
-  ledger. Unknown VPN runtime does not block safe update operations. Progress and
-  generic operations cancellation are wired; cancellation reserves the exact target
-  under admission before awaiting cleanup, so it cannot cancel a replacement job.
-  Immutable terminal code/data survive dismiss-before-waiter-resumes. No native
-  network/download/install/permission tests performed; CLI install is unsupported.
-  Update source frozen. One Android visual-fixture correction is still in progress:
-  synthetic captures must not borrow real stopped-owner row flags. Full pending A/B
-  screenshot cases and baseline review remain separate unfinished visual evidence.
-- Location ADD/UPDATE/SELECT and real GUI staging/projection are now implemented.
-  Final focused25788 passed60 tests: Android32 (planner4/owner1/frontend3/legacy5/
-  settings12/updateengine4/updateowner1/updateinspection2), desktop28 (ADB15/CLI9/
-  human4). GUI never reapplies live runtime for manual selection/selected-row edit;
-  active-A/selected-B row flags and pending banner flow observer→ViewModel→Activity.
-  Reverting to active configuration clears pending only when inputs match.
-  Source preparation uses the captured planned source (not stale selected source);
-  single-subscription ownership is not inferred from another subscription's cache.
-  Read-only subscription editor inspection remains available. Definite final click
-  rejection releases stale retry identity for the next explicit click; uncertain
-  outcomes retain it. Native/screenshot proof remains outstanding, DELETE/IMPORT
-  remain unsupported. Update cancellation reservation is receiving one further
-  race regression/fix;25788 does not cover those subsequent edits.
-- Android human output now renders readable owner/request/revision/completion,
-  operation, pending restart, warnings and nested data for non-JSON responses.
-  Unknown metadata remains unknown, async acceptance remains pending, and C0/C1
-  terminal controls are escaped. JSON/raw exports are unchanged; file export
-  summaries now preserve metadata/warnings too. Red44104 (3 failures) reproduced
-  the missing human surface; green27416 passed. Additional C1 injection regression
-  failed before escaping correction; final11678 passed13 tests (human4+AndroidCLI9).
-  Android location add/update/select and update actions are in parallel development;
-  no consolidated final prepush receipt exists for those or this output addition.
-- Export ACL correction is now implemented and frozen. macOS checks the exact open
-  descriptor for inherited ACLs before payload IO; Windows requires persistent ACL
-  enforcement and verifies actual owner-only, noninherited file permissions before
-  writing. Unsafe destinations can leave a new empty file, never exported bytes;
-  existing destinations remain untouched. Real macOS regression57113 failed before
-  the fix; focused20465 passed23 tests afterward. Windows native NTFS verification
-  passed (3 applicable tests;2 platform skips), including the new volume-info binding.
-  Evidence: /tmp/vpn-control-windows-native.aYyBpY/privacy-acl-result.txt,
-  SHA256232299e6de4ab6ef5e104076a71c5b51dc66c9c823c5066b708962232a0f96b8.
-  Unsupported ACL filesystems have deterministic policy coverage, not real FAT tests.
-  Packaged-CLI harness8 and Windows UTF8 launcher4 tests also passed on review.
-- Review continuation: changelog note5 is present and docs hygiene/diff checks pass.
-  Full validation is deferred while two concrete review findings are corrected:
-  private export creation must account for inherited macOS ACLs and Windows volumes
-  without persistent ACL enforcement; POSIX mode0600 alone is not sufficient proof.
-  Android GUI selection/selected-row updates still call a live-reapply wrapper,
-  violating staged-selection semantics. Assigned location work must correct GUI
-  and CLI together, not expose the existing runtime-restarting wrapper through ADB.
-  DELETE/IMPORT additionally need actual-active identity and runtime-only rollback;
-  mutable selected identity/persisted running flags are not adequate stop decisions.
-- Implemented subscription add/update/delete with strict argument/ID handling,
-  guarded atomic commits, retained retry results, async add/update, exact result IDs,
-  scheduling and source-cache invalidation. GUI source cleanup now uses actual
-  runtime observation: unknown/running state preserves selected runtime artifacts.
-- Implemented routing set/import and apps list/set/add/remove/select-all/clear.
-  Shared GUI normalization/search is retained, filtered bulk changes preserve other
-  assignments, and malformed/unknown explicit packages fail before persistence.
-  Owner lease/revision guards and public ADB binding cover the new mutations.
-- Focused run94294 passed55 tests (Android28, desktop ADB/CLI23, shared4).
-  Latest full prepush647 passed before this batch and is now historical; this batch
-  needs its changelog note and a fresh complete pre-push validation receipt.
-- Frozen647 public packaged CLI passed non-debuggable Android API29/API35 checks:
-  settings write/no-op, source validation, SSH import/retry/stale guards, reads,
-  routing/diagnostics file/stdout exports, no-overwrite, and routing PNG export.
-  Evidence: /tmp/vpn-android-release-native.4FU9Am/report.json.
-  APK SHA256: 5b32e609472fed5849dc037bf5e9e923e68cdbbae0a860a5a6208a16fac8098a.
-  Empty location/subscription data prevented positive location-export and
-  subscription/all-source verification. Frozen647 did not yet support apps list;
-  this is implemented in current source, not verified by that older native run.
-- Both task devices remained stopped with zero runtime starts; task emulators5582
-  and5590 were stopped afterward, existing5580 untouched. No live VPN, consent,
-  elevation or installer verification is claimed. No commits/pushes yet.
-- Next: consolidated validation; review coherent commits; Android location commands
-  and native verification of the new subscription/routing commands. Large transfers,
-  update/install integration, remaining Android jobs/streams and final exact-SHA
-  cross-platform CI remain required for the full goal.
-
-Android source and complete export-command batch (2026-09-06):
-
-- Android source set current-locations/subscriptionID/all now uses owner lease,
-  strict IDs, epoch/revision guards and retry deduplication. Running selection stays
-  intact; stopped out-of-scope selection invalidates legacy cache atomically without
-  deleting runtime files. Cache invalidation remains permanent: valid committed
-  components win, but partial restores with blank fields never revive stale files.
-  Result/scheduling-failure metadata comes from the exact commit.
-- Location, routing and diagnostics exports are wired end-to-end through Android
-  read callbacks/shared GUI builders and the local CLI writer. Diagnostics export
-  does not launch share UI. JSON destinations/report format never reach Android;
-  envelope success follows writing and omits content. Raw stdout is exact UTF8/PNG
-  with no appended success; errors use stderr. QR/default-no-overwrite tests added.
-- Default export files are now private at creation: POSIX0600 and Windows protected
-  current-token-owner ACL via CREATE_NEW. No post-write tightening or overwrite.
-  Focused3670 passed; actual Windows tests verified owner-only noninherited DACL and
-  preserved existing files. Evidence privacy-result.txt in the retained Windows temp
-  directory, SHA2569c12c779705b69d1d4d3e9ce5122999e4373218eeca2bbedae629b0407edfcdc.
-- Final focused76780 passed51 tests: source/cache3, sourceowner2, settingscontrol12,
-  reader12, AndroidADB13, AndroidCLI9. Source/native device smoke remains unexecuted;
-  prior Android debug durability tests are not public source/export release proof.
-- All agents have frozen source. Root is updating version/docs and running the full
-  consolidated tier. Latest passed full604 remains historical until this run passes.
-  No commits/pushes. Next priority: remaining end-to-end Android commands and public
-  native release verification, not additional speculative backend infrastructure.
-
-Native Windows/Android proof and Android exports (2026-09-06):
-
-- Windows native rename failed with ERROR87 despite correct packet layout. Root
-  now uses the pinned directory handle's normalized volume-GUID path and a null
-  RootDirectory, preserving ancestor pins and avoiding DOS drive remapping. Packet
-  tests cover both pointer widths and Unicode; focused73892 passed. Actual Windows
-  standard-user tests then passed2/2, including replacement and Unicode paths.
-  Result: `/tmp/vpn-control-windows-native.aYyBpY/result.txt`, SHA256
-  d06ce25d0b97fde6d551d743a333ea8c6a5c7535f1bd7d2633d82c129cc5fada.
-  Windows11 ARM64 build26200.9168, MicrosoftJDK17.0.20.1; no elevation/installers.
-  Temporary HTTP server stopped; test WindowsVM remains available.
-- AndroidSshCredentialVersionsInstrumentedTest passed3/3 on both API29/5582 and
-  API35/5590. Real directory fsync, atomic rename, private0600, DataStore disk-write
-  failure, reopen/restart preservation and retry immutable-version skipping were
-  exercised. Debug APK SHA256:
-  67e9ae68c6b3e70811a594f7e393d9cf54abf73701c5cc0b0cd5477cef10793e.
-  Test APK SHA256:
-  f377ec300bb4a8cd5f9d29a6feada3fcf3b36e02e28cc2a20af4bd759d5ca7d4.
-  Dedicated emulators stopped; existing5580 untouched. This is debug instrumentation,
-  not non-debuggable public SSH command or native SSH-loading/traffic evidence.
-- Root implemented Android location/routing exports through shared transfer formats
-  and client-side output/QR conversion. Output/format never reach Android as paths;
-  JSON success follows completed file writing and omits payload. Raw stdout is exact
-  bytes with no envelope/suffix; write errors go to stderr. Focused shared/desktop/
-  Android reader tests and APK builds passed26672. Two later default-no-overwrite/QR
-  stdout tests await the next focused run. Initial59123 assertion compared independent
-  timestamps; export helpers/tests now share the captured deterministic timestamp.
-- Export review found inherited permissions could expose credential-bearing files.
-  Windows agent owns a narrow private-at-creation writer helper and DesktopCli default
-  writer wiring/tests. Root owns DesktopAndroidCli/export tests; no overlap.
-- GUI agent is implementing guarded Android source set end-to-end, including minimal
-  transactional cache invalidation needed to avoid deleting selection artifacts before
-  a failed metadata commit. This work owns SettingsControl, ProfileStorage, source
-  helper/tests, Owner callback and AndroidADB source binding. No VPN interruption.
-- Scope remains frozen; next full check/changelog follows coherent source/export
-  batch. Latest full604 is historical; no commits or pushes yet.
-
-Android status completion and native storage verification (2026-09-06):
-
-- SSH key status is now wired to the captured committed credential version and
-  returns only presence. Update status reads the same immutable GUI update state;
-  it never starts work or exposes raw errors/download URLs. Unknown or failed-check
-  availability/compatibility remains explicit null instead of falsely up-to-date.
-- The restart-warning regression reproduced (23940). GUI save now asks the owner
-  to compare actual runtime with committed configuration: true remains pending,
-  known false clears a real revert, unavailable/error conservatively retains the
-  warning. It never overwrites the committed credential version.
-- Focused final union 77265 passed 30 tests (settings actions9, reader11, update
-  projection2, Windows backend8); two Windows-native tests compiled and correctly
-  skipped on macOS. Native Android durability/loading still needs device proof.
-- Actual Linux backend tests passed5/5 twice, default umask and child-only077:
-  Ubuntu24.04.4 ARM64, OpenJDK17.0.20, ordinary uid1000. SecureDirectoryStream,
-  symlink/writable ancestry rejection, retained cancellation, permissions and
-  production untrusted-root rejection were exercised. Test-owned VM stopped.
-  Store JAR SHA256: 9ce96a287cff0755f0551e06d3c53e1cddda9e1d6595e8f716eff5b8dceaec61.
-- Actual Windows standard-user tests exposed C:\\ ownership by the exact Windows
-  TrustedInstaller service SID, so the prior owner policy rejected legitimate
-  ancestors. A regression reproduced before a narrow ancestor-only trust fix;
-  final product/job/file policy and ACL write grants were not broadened. Native
-  rerun is pending; fake tests are not its proof. WindowsVM remains test-owned,
-  no elevation/installers/global writes/VPN actions authorized or performed.
-- Previous full pre-push604 is historical. Root is adding the concise changelog
-  note and rerunning consolidated checks after this frozen batch; no commits/pushes.
-
-Checkpoint and review follow-up (2026-09-06):
-
-- Consolidated pre-push **604 passed** at 2.1.1 / 2 Unreleased notes, covering the
-  Android SSH integration/location reads and all current installer-backend sources.
-  Windows-only native tests compile but skip on macOS; actual Windows execution is
-  ongoing in the isolated standard-user VM. No commits or pushes.
-- Review found a remaining SSH GUI warning bug: after importing a key, saving an
-  unchanged SSH dialog compares against current committed settings and can erase
-  restart-pending despite the older active runtime. GUI agent is adding the fastest
-  regression and replacing that comparison with authoritative runtime-versus-
-  committed-state observation (including conservative unknown handling). This new
-  follow-up invalidates 604; it is not a reusable final receipt.
-
-Android SSH owner integration and location reads (2026-09-06):
-
-- Root wired immutable key staging inside the all-writer DataStore transaction;
-  owner/revision checks happen before filesystem work. The selected version commits
-  with configuration metadata. Payload and directory entries are synced before
-  publication; failed metadata commits leave immutable unselected versions. Same
-  key content is a no-op, and settings drafts cannot restore old credential versions.
-- GUI import and protected ADB `ssh key import --input` now use the same owner job,
-  lease, request deduplication and sanitized result path. Key bytes travel through
-  stdin, never process arguments or retained operation results. GUI no longer
-  writes a mutable key then optimistically increments metadata. Runtime preparation
-  and subscription SSH lookups resolve the captured committed credential version.
-- Focused Android SSH filesystem, real DataStore failure/guard, owner/retry,
-  settings UI and reader tests, instrumentation compilation, and desktop ADB
-  transport tests passed together (21468). Later edit only clarifies the conservative
-  prepared-runtime comment: SSH native readiness/active-identity proof remains
-  disabled pending integration evidence. Actual Android key import/native loading
-  and read-only SSH status still need verification/implementation respectively.
-- Android location reads are implemented: GUI and CLI share exact localized row
-  names and benchmark/name sorting; indices follow visible order. List exposes no
-  raw profiles, explicit show uses the same repairable configuration text as GUI.
-  Four projection and ten reader tests plus Android compilation passed (67175).
-- Protected installer backends passed final 15-test union (55420), including actual
-  macOS temp-directory descriptor/ACL tests and seven Windows fake-native tests.
-  New Windows-only native tests are being compiled before this consolidated check;
-  actual standard-user VM execution is still outstanding. No installer integration.
-- Root is consolidating changelog/full pre-push after this batch. No commits/pushes;
-  all earlier receipts remain historical until the new unchanged-content run passes.
-
-Immutable Android SSH prerequisite and native backend follow-up (2026-09-06):
-
-- `AndroidSshCredentialVersions` and three temporary-filesystem tests were added;
-  focused Android compilation/tests passed (7718). Staging archives the legacy key
-  without replacing it, produces immutable numbered payloads, skips orphan versions
-  after failed metadata commits, and never substitutes the legacy key for a missing
-  version after migration. **Not production-wired yet.** Next root work must stage
-  inside the serialized DataStore configuration transaction, persist the selected
-  credential version atomically, migrate all runtime/subscription/validation lookups
-  to that committed version, and route GUI/CLI imports through the same owner action.
-  Directory-entry durability and failure-injection checks remain before wiring.
-- Native common/macOS backend and Windows fake-native union passed (63735): five
-  common-store and seven Windows tests. Darwin arm64 `openat` required the proper
-  JNA vararg ABI; the initial native fixture exposed it. Additional permission/ACL
-  checks are still in flight. This does not establish installer integration or
-  privileged production-root behavior. Windows agent is now preparing actual
-  isolated native tests with no elevation, global-directory writes or installer.
-- GUI agent now owns extracting Android's visible localized location ordering for
-  shared GUI/CLI list/show reads. Root owns SSH storage/import; keep these files
-  disjoint. Full pre-push 549 remains the historical, invalidated checkpoint.
-
-Native visibility follow-up and protected installer prerequisites (2026-09-06):
-
-- Consolidated pre-push 549 passed at version 2.1.1 / 1 Unreleased note. New
-  changes below invalidate it. No commits or pushes yet; scope remains frozen.
-- Native macOS testing exposed two lifecycle bugs: workspace parsing rejected the
-  internal pinned frontend launch arguments, and quitting an absent owner started
-  one unnecessarily. Both were reproduced by focused regressions before narrow
-  fixes; focused tests and the rebuilt app image passed (95863). The isolated VM
-  then passed public text/JSON show/hide, unchanged owner identity/revision, a
-  paused-frontend nonterminal timeout, recovery, and absent-owner quit/hide checks.
-  Runtime remained stopped; task processes were cleaned up. This is not live-VPN
-  or final exact-SHA package evidence.
-- Protected installer receipt/cancel backends are being implemented independently.
-  Windows fake-native security/lifetime tests passed; real Windows backend execution
-  is still required. macOS Java lacks SecureDirectoryStream, so the POSIX backend
-  correctly fails closed there; a native descriptor adapter is being developed.
-  No production installer wiring, elevation or machine-wide directory writes have
-  been performed. Existing privileged marker writes and full installer parity remain
-  unresolved until the new channel and admission/handoff design are integrated.
-- Root added a shared committed subscription-list/show and routing-show projection
-  and wired Android reads to it. Lists omit source secrets; explicit show preserves
-  the usable source URL, never cached raw profiles. Focused shared projection,
-  Android snapshot/revision/encoded-transport, desktop inspection and Windows
-  backend tests passed together (89817), including the Windows data-only cancel
-  handle's WRITE_THROUGH regression. This is not native Windows execution.
-- Keep one Gradle invocation at a time. Full checks follow coherent changes, while
-  native verification and non-overlapping source work continue independently.
-
-Acknowledged visibility, Android cancellation and routing results (2026-09-06):
-
-- Consolidated pre-push 527 passed at 2.1.1 after the automatic 10-note roll.
-  New changes below invalidate that receipt; no commits/pushes yet.
-- Public text/JSON `gui show/hide` now uses a separate owner lane, strict owner/
-  frontend binding, bounded launch and actual UI-thread acknowledgement. Hide never
-  bootstraps and rejects no-tray hiding. Timeout/unknown replies are `final=false`;
-  retries do not repeat uncertain window actions. Startup waits for window/owner
-  binding. Final 73049 passed 42 desktop + 2 shared tests. Earlier macOS screenshots
-  predate these commands; native show/hide evidence remains required. Windows global
-  GUI elevation and explicit stale-frontend close/reopen after owner quit remain open.
-- Android provider operation list and consent-wait cancellation are implemented.
-  Approval/cancellation compete before preparation; no coroutine cancellation can
-  interrupt native/persistence effects. Acknowledgement awaits token/lease cleanup.
-  Duplicate cancellation, owner guards and bounded retention are tested. Full Android
-  unit/instrumentation compilation + 10 ADB tests passed (43744); final 12 connection
-  tests passed (44962). List excludes GUI/worker jobs, whose migration remains open.
-  No real consent/VPN test has been approved or performed.
-- Root fixed JSON-array direct-domain input being saved as literal brackets/quotes;
-  JSON and GUI/plain text now share normalization. Guarded routing writes return their
-  own committed normalized values, not later state. Imports return counts/public
-  controls without private profile/package content, and warn about unsupported desktop
-  app assignments. Strict result schemas and original retry metadata passed in 73049.
-- Installer audit found privileged marker writes to replaceable user-workspace paths
-  on all desktops. Captured script/private DMG do not solve this. Native/Android agents
-  have only designed protected receipt/cancel backends (POSIX secure directory handles,
-  Windows retained Win32 handles using already bundled JNA 5.13.0). No backend edits
-  yet. Machine-wide admission, staged JVM guard, two-process waits, typed INSTALL and
-  actual installer proof remain open. Do not claim installer parity complete.
-- Source is frozen for root's concise changelog note/consolidated pre-push checkpoint.
-  Backend/Windows implementation follows. Keep one Gradle invocation at a time and
-  native testing isolated; host/default VPN and existing emulator 5580 remain untouched.
-
-Public revision guards and disconnected native evidence (2026-09-06):
-
-- Previous consolidated pre-push 489 passed at version 2.1.0 / 9 Unreleased
-  notes. The new changes below invalidate that receipt. No commits or pushes yet.
-- Public `--controller-id ID --if-revision N` now carries the same snapshot's
-  owner epoch and revision through desktop and Android adapters. Bare revisions
-  are rejected, and pinned desktop requests never start a replacement owner.
-  Desktop capabilities list the supported guarded writes; runtime/job guards
-  outside that list remain unsupported. Parser, authenticated public guard,
-  JSON handling, Android forwarding and capabilities tests passed (64308);
-  subsequent small rendering/capability-test edits await the consolidated run.
-- Native Android API29/35 **non-debuggable release** verification passed (57190,
-  8237; release build 53031). APK SHA256:
-  `63cd69101fa4bd34829a9bf3e99a36f1c1ef1a6b45b55a6ea728c709bb16fd75`.
-  Both exercise authorized shell transport, settings commit/retry/stale/no-op,
-  unknown/null arguments, known-stopped OFF and noninteractive ON/RESTART denial.
-  Separate ordinary app UIDs are denied even after an explicit DUMP grant.
-  Invalid interaction token and encoded traversal are rejected. Final stats:
-  stopped, zero successful starts. Task-owned emulators 5582/5590 were stopped;
-  existing 5580 was untouched. Sources/probe retained under
-  `/tmp/vpn-control-android-check.vw0SNR`. Actual consent grant and traffic remain
-  unverified; no approval to start emulator VPN has been received.
-- Android STATUS was implemented **after** that release artifact: synchronized
-  actual runtime/prepared-config projection, opaque selected versus active IDs,
-  pending restart, and explicit UNAVAILABLE/nulls when native knowledge is missing.
-  Eleven focused status/reader tests and Android compilation passed (9152).
-  Do not attribute earlier emulator evidence to this later STATUS change.
-- Authenticated fixed frontend endpoint process proof now validates registration,
-  actual PID/start identity, OS user and canonical executable without caller PID/path
-  authority. Twenty-two identity/frontend/transport/lease/bootstrap/exit tests
-  passed (10317). This is a prerequisite, **not** a completed installer fence.
-- Real isolated macOS VM GUI smoke passed, including SSH and Language dialogs. Unsaved SSH
-  host edits leave committed state unchanged. Language Save reaches CLI state at
-  revision 1. Terminating only task frontend 6343 leaves owner 6377 alive; reopening
-  creates frontend 6478 attached to the same owner epoch. Runtime stayed stopped;
-  CLI quit stopped the owner; the remaining task frontend was stopped separately,
-  and all recorded task processes are gone. Evidence and eight screenshots:
-  `build/gui-smoke-lrIt5T/README.md`. This does not prove uninterrupted live VPN
-  traffic or canonical visual approval.
-- Installer prerequisite batch is source-frozen: Linux timeout does not relaunch
-  without an installed receipt. macOS obtains required authorization before ready,
-  captures immutable worker script bytes before the prompt, uses a clean fixed
-  privileged PATH, and verifies a private DMG copy before readiness. A real temporary
-  filesystem regression reproduced the failed-copy nested-backup defect (36450);
-  rollback now restores the exact app target. Thirteen helper/update tests passed
-  (93360). No real installer/elevation action was performed. Two-process installer
-  coordination, machine-wide admission fence and typed install remain open.
-- Root is applying the batch's 10th note (automatic 2.1.1 roll) and full pre-push
-  checks after final content. GUI/Android agents completed read-only plans for
-  public acknowledged show/hide and consent-wait operation cancellation; neither
-  next implementation has begun. Do not treat those plans as completed parity.
-
-Remote GUI and Android consent checkpoint (2026-09-06):
-
-- Normal Main now boots/attaches to the separate headless owner through
-  `DesktopGuiOwnerConnection` and uses a service-free frontend client. Preview-only
-  service adaptation is isolated. Local editor/routing drafts, explicit settings,
-  configuration and bounded LOGS reads preserve current UI behavior. Unknown retained
-  state disables actions; visual unavailable states still need actual scene review.
-- Owner leases/heartbeat, exactly-once reconnect, client-only detach and exact final
-  response-flush exit gates are implemented. Root QUIT awaits durable shutdown before
-  allowing exit; UPDATES_CANCEL deduplicates cancellation, awaits check/download cleanup
-  then dismisses. Typed install is NOT functional yet: helpers must safely wait for both
-  owner and GUI and fence competing starts across workspaces before executable replacement.
-- Root guarded imports/runtime-link tests passed (78491). Combined facade/lease/bootstrap/
-  exit/quit/cancel/runtime/import union passed (11112). Earlier failures were fixture errors:
-  HWID alone does not advance product revision, endpoint owner must be UUID, and normalized
-  settings API requires DecimalValue for custom hours. No validation was weakened.
-- Android full ON/RESTART + protected consent/foreground interaction and ADB continuation
-  passed final Android unit/main/instrumentation and 9 ADB tests (88984), including 8
-  ON/RESTART and 2 interaction tests. No real-device consent/FGS/native traffic proof.
-- Source freeze for consolidated checkpoint: root owns docs/version/full checks; GUI
-  edits stopped; native agent designs multi-process installer handoff; Android agent
-  inventories isolated API29/35 emulator capability read-only. Do not reuse receipt 417
-  for this new content. Version remains 2.1.0 before the next 9th Unreleased bullet.
-
-Independent frontend and runtime-control implementation (2026-09-06):
-
-- Guarded source/subscription delete and coherent location projection integration
-  passed 18 focused tests (89928). Full typed routine presentation passed 8 tests
-  (40029); settings include committed autostart, and refresh/benchmark/update messages
-  distinguish unsafe legacy text from an empty result.
-- Root added `DesktopFrontendInstance`: independent frontend lock/endpoint, authenticated
-  window-only activation/hide, workspace isolation, and idempotent cleanup that cannot
-  remove a replacement frontend endpoint or stop the owner. Frontend/transport tests
-  passed (58751). Native agent has since added owner frontend leases/bootstrap; that
-  newer code awaits compile/test after the Main refactor is coherent.
-- GUI agent is actively removing production service access from Main through a typed
-  frontend client and local drafts/actions. Main is temporarily uncompilable while this
-  larger coherent change is assembled. Do not mistake those transient compile errors
-  for owner guard failures, or rerun desktop Gradle before its compile-ready signal.
-- Root added guarded owner callbacks for ROUTING_SET/ROUTING_IMPORT/LOCATIONS_IMPORT
-  and internal opaque-ID LOCATIONS_BENCHMARK dispatch. Import revalidates before effects
-  and durable commit and uses runtime-only restoration. Four new owner regressions
-  await Main compilation; 9483 stopped at the in-progress Main refactor. Native agent
-  owns ControllerOwner frontend lifecycle additions; root constructor wiring is separate.
-- Root added cached safe runtime-detail presentation (mode, local proxy port, preflight
-  summary without path/raw errors or log IO) and validated public release-notes link.
-  Outbound-warning availability remains explicitly false; no healthy status is invented.
-  Three new runtime/link privacy tests await compilation. GUI agent consumes these fields.
-- Android ON/RESTART, protected interaction registry/Activity, operation status/wait,
-  native config validation before replacement and ADB interactive continuation are in
-  progress. Android unit/main/instrumentation checks passed at milestone 32452; subsequent
-  security/test refinements are still running. No device/runtime evidence yet. Android
-  agent owns its provider/Activity/ADB files, not desktop GUI or owner lifecycle files.
-- Run only one Gradle invocation at a time: simultaneous focused runs overwrite shared
-  reports. Native, Android and root desktop tests are queued behind GUI compile readiness.
-  Full pre-push receipt remains 417 / 2.1.0 / 8 notes and is invalid for these newer edits.
-  No commit/push/release or complete-parity claim is justified yet.
-
-Remote-GUI boundary and Android disconnect continuation (2026-09-06):
-
-- Consolidated pre-push check 417 passed at version 2.1.0 / 8 Unreleased notes,
-  covering the previous Windows/mutation batch below. Later edits invalidate that
-  receipt. No commits or pushes yet; full owner-process/Android/platform plan remains
-  open, not complete merely because the focused package harness is green.
-- Routine location presentation now has a typed strict decoder and shared-row
-  mapping with no raw profile content. Selected/active flags come from actual owner
-  identities; malformed/extra private fields are rejected before replacing the last
-  good remote presentation. Eight focused presentation/remote tests passed. GUI
-  agent is integrating these rows while migrating source/subscription select/delete.
-- Protected Android OFF now uses application-owned admission and correlated native
-  cleanup, including stopped no-op, stale guards and retry retention. Five OFF tests,
-  full Android unit/main/instrumentation compilation and focused ADB tests passed
-  (33732). Expired receipts retain explicit unknown-outcome warnings with no retry
-  redispatch. ON/RESTART and consent are still open; Android agent is designing that
-  next slice. No device or host VPN actions occurred.
-- Native agent's read-only architectural audit confirmed normal GUI still creates
-  its service/owner. It is now implementing the remaining typed routine presentation
-  boundary. Separate frontend registration, owner bootstrap and actual Main remote
-  wiring remain required; do not claim GUI crash/detach survival yet.
-- Current ownership: GUI agent owns Main/source/subscription services and guards;
-  Android agent owns Android OFF plus the narrow ADB owner-binding change; native
-  agent owns remaining frontend presentation decoding/projection. Root owns review,
-  docs and consolidated metadata/checks. Avoid overlapping edits and batch full
-  checks only after all source edits are final.
-
-Windows native pass and mutation-batch continuation (2026-09-06):
-
-- Ordinary-user Windows disconnected verification is now green: complete packaged
-  harness, status/stats/log-follow with real console Ctrl-C exit 130, cursor entries,
-  Unicode QR export/delete/import and unchanged disconnected owner identity. Context:
-  Windows 11 ARM64 build 26200, x64 Temurin 17.0.20.1 under emulation, Medium-integrity
-  visualagent, ACP1252/OEM437 unchanged. This is not MSI, signed-release, x64-hardware,
-  VPN/UAC, older-Windows or final-SHA evidence. Reusable harness verification passed;
-  no test-owned CLI/runtime remained, temporary bridges were stopped, and only the
-  dedicated Windows VM started for this task was shut down.
-- The new `--verify-only` manifest path passed natively without modifying either
-  launcher or readonly flags. CLI SHA-256:
-  `a8693c8a6a49e6fe06a26b50e2cf61c89dbb60634931be234f485c322ee9c6e2`;
-  GUI-owner SHA-256:
-  `5ef13847d786d6843f8d614b2c829e33d46fc77df4d4e89e9df55004efae6e2a`.
-  Source archive `6b82b2c4da63b191d435e0d60a99eb5630e2b84dd7e4fdff22086d7e6c7fb414`,
-  desktop JAR `f7cf89d475f7bb8705173569eaac68ded93db84389d531ea37ee3684056d1003`.
-  MSI extraction checks now invoke read-only manifest verification before CLI smoke.
-  Four fast manifest/PE tests pass. The reusable packaged CLI harness now checks
-  bounded NDJSON status/stats/log-follow, cursor deduplication, Ctrl-C exit 130 with
-  owner survival, and Unicode-path QR round trips. Windows console interruption is
-  isolated to a helper attached only to each test-owned stream console. Eight fast
-  harness tests plus native macOS and ordinary-user Windows runs passed.
-- Android mode/source/language/DNS/subscription/refresh-policy/validation controller
-  effects now execute sequential awaited batches within shared admission rather than
-  detached per-effect jobs. Mode stop-to-save retains the same lease. Full Android
-  unit/main/instrumentation compilation passed. Follow-up read-only caller audit
-  found the six statistics/logging/test preference setters dormant, with no reachable
-  Android GUI wiring; do not expand parity/revision scope to cover them. No additional
-  reachable configuration bypass was found. Direct repository APIs remain exposed;
-  callback-level exclusion regressions and optimistic persistence-failure UI handling
-  remain open.
-- Guarded location SELECT/DELETE now use rendered opaque IDs and owner/revision
-  checks, return normalized IDs and deduplicate retries. Active-delete failure
-  restores actual prior runtime without overwriting newer settings; durable rollback
-  failure cannot claim successful deletion. Sixteen focused tests passed, covering
-  stale/replaced/reordered targets, active versus pending deletion, concurrent settings,
-  stop/persistence failure and retries.
-- Previous consolidated check covered 2.1.0 / 7 Unreleased notes. Current source edits
-  require a fresh final note/check. No commits/pushes; remaining full plan unchanged.
-
-Windows Unicode fix and guarded location-save continuation (2026-09-06):
-
-- The Windows Unicode failure was reproduced with file-backed escaped Python
-  inputs: Python preserves Japanese characters, Java 17 and 21 replace them with
-  question marks under ACP1252. Java charset flags do not fix native argv ingress.
-  A copied native launcher with per-process UTF-8 activeCodePage passed the same
-  Unicode capabilities probe without system-locale changes. Production script
-  `scripts/windows_launcher_utf8.py` patches both generated CLI and GUI-owner
-  manifests; the Windows AppImage Gradle task invokes it before installer creation.
-  It preserves asInvoker/DPI/compatibility and all manifest languages, restores
-  read-only flags, and rejects signed/truncated PE input. Three fast tests and
-  exact production-script execution on a copied native app image passed. Windows before
-  10 1903 remains unverified; do not silently narrow the full CLI parity objective.
-- SYSTEM-account native serve tests hit a distinct identity-probe limitation:
-  Java user.name is the machine account, not SYSTEM. Endpoint ACL checks were NOT
-  weakened. Native agent is moving disconnected tests to the existing logged-in
-  visualagent token, without account/password/global-policy changes. No VPN runs.
-- Location ADD/UPDATE now have guarded typed owner commits. Internal updates use
-  opaque IDs resolved under the same revision check and save monitor; public
-  selectors/async behavior remain unchanged. GUI editor captures opening metadata,
-  keeps conflicts local, retries the same request and no longer calls saveLocation
-  directly. Results retain normalized opaque ID only. Frontend/typed/location CLI/
-  operation tests passed, including reordered/replaced targets and persistence failure.
-- Android routing autosave/save/import and SSH settings/key-import now use shared
-  non-cancellable admission. BUSY uses the existing status path; drafts remain local.
-  Full Android unit/main/instrumentation compilation passed. Controller-effect
-  settings/source/subscription writes and credential-file/settings atomic rollback
-  remain unfinished.
-- Prior consolidated checks covered 2.1.0 / 6 Unreleased notes. Current edits need
-  final metadata and fresh pre-push receipt. No commits/pushes; full plan remains open.
-
-Frontend editor/admission and Windows-failure continuation (2026-09-06):
-
-- Desktop tab navigation is frontend-local and no longer invokes owner openScreen.
-  Location edit opens an explicit authenticated LOCATIONS_SHOW read by the rendered
-  opaque configuration ID, not a freshly interpreted index/name. The owner resolves
-  the ID under its commit monitor; missing/replaced identities conflict. Public
-  selector syntax is unchanged. Tests cover numeric names, list shifts, deletion,
-  stale epoch, ambiguous request shape and private-input exclusion from failures.
-  Location save/delete/select still need full guarded typed migration.
-- Subscription add/rename drafts are frontend-local, with coherent owner/revision
-  and stable-ID explicit reads. Guarded owner ADD/UPDATE captures commit metadata
-  and retains only normalized subscription ID in result data. Conflicts retain
-  input and retries recover prior results. Existing async public CLI support is
-  preserved. Frontend, subscription CLI, typed mutation and operation CLI tests passed.
-- Android manual active/specific/all subscription refresh and location save/delete/
-  select/import now use shared non-cancellable mutation admission through persistence
-  and direct lifecycle/rollback calls. Full Android unit/main/instrumentation compile
-  checks passed. Controller-effect settings/source/subscription edits, routing and
-  SSH actions remain untracked; busy-rejection GUI feedback also remains incomplete.
-- Windows x64 app image built under Windows ARM64 emulation. Existing packaged
-  harness found a real Unicode workspace failure: capabilities with an ASCII
-  state directory succeeds, the same invocation with a Japanese path fails
-  INVALID_ARGUMENT before any owner starts. Native agent is isolating launcher/JVM
-  conversion; do not claim Windows CLI parity or replace the failing Unicode test
-  with ASCII-only evidence. Help/version passed; streams/QR not yet verified.
-- Last consolidated pre-push receipt covered 2.1.0 / 5 Unreleased notes. Ongoing
-  content needs a fresh final note/check. No commits or pushes; full plan remains open.
-
-Selected/active rendering and shared Android admission continuation (2026-09-06):
-
-- Shared location rows accept explicit immutable selected/active flags, without
-  requiring raw configuration for visual matching. Desktop Main supplies actual
-  owner-local selected and active IDs. Pending selection A no longer marks A in use
-  while runtime B runs; Android/default callers retain the legacy fallback until
-  their explicit observer integration. Shared UI and desktop mapping tests passed.
-- Desktop source display now uses typed safe labels, optional subscription IDs and
-  an explicit selected-outside-current flag. Routine presentation exports these
-  values and the remote session validates their shape; Main uses the same typed
-  derivation. Labels use custom names or parsed hostnames, never URL credentials,
-  paths, query tokens or malformed raw input. Source/projection/session tests passed.
-  Main still reads local service state: this is not completed remote GUI attachment.
-- Android settings and tracked GUI/worker jobs now reserve one atomic identity-owned
-  mutation lease. Duplicate settings waits reuse accepted work; client cancellation
-  retains admission through owner cleanup; GUI Cancel cannot cancel settings.
-  Job start/cancel occur outside the admission monitor to avoid ledger lock inversion.
-  Full Android unit/main/instrumentation compile checks passed. Untracked GUI
-  mutation entry points still require explicit migration, not a blanket launch wrapper.
-- Native Windows build has reached desktop compilation under ARM64 x64 emulation;
-  public launcher checks have not run yet. Prior exact limitations still apply.
-- Last consolidated check covered 2.1.0 / 4 Unreleased notes. This batch needs its
-  own final note and fresh pre-push check. No commits or pushes yet; full plan open.
-
-Guarded-mode/key and Android-runtime-receipt continuation (2026-09-06):
-
-- App-mode dialog/menu switches now use coherent owner reads and frontend-local
-  guarded MODE drafts. Unsupported macOS VPN and stale saves retain local input;
-  tests prove no runtime stop/start when changing pending mode, no-op revision
-  stability and retry recovery.
-- Desktop SSH key import now has a dedicated typed owner branch with epoch and
-  revision guards, retained request identity, the shared mutation lane and exact
-  commit metadata. The service checks revision before credential IO. Key contents
-  are not retained in result data/history. Tests cover stale owner/revision with
-  no key creation, duplicate/reused identity, unchanged keys, captured metadata,
-  failed workspace persistence with credential rollback, and credential-version
-  overflow. Frontend key import now captures owner/revision before the picker and
-  retains a redacted transient action for Retry. Success or closing/reopening
-  discards the content; no implicit settings-draft rebase. Prompt uses committed
-  result metadata. Real-owner frontend tests passed; Retry visual coverage is open.
-  Existing file-pair crash atomicity and credential permission hardening remain
-  separate open work; guarded admission does not prove those properties.
-- Android native start/stop completion now has application-owned command IDs and
-  config-bound one-use claims. VpnManager no longer treats changed persisted
-  status text as command completion. Prepared input is validated before replacing
-  the old runtime. Claimed receipts survive waiter cancellation until completion
-  or bounded expiration with an explicit unknown outcome. Six receipt tests and
-  full Android unit/main/instrumentation compilation passed. These are
-  adapter prerequisites, NOT implemented public ON/OFF/RESTART or consent support.
-- Windows app-image build is running in the dedicated Windows 11 ARM64 VM with
-  checksum-verified unpack-only Temurin x64/Python under emulation. Temporary
-  public dependency fallbacks and exclusion of the MSI-only WiX download are
-  infrastructure workarounds. No Windows product verification has passed yet;
-  SYSTEM-user execution cannot prove ordinary-user permissions or UAC.
-- Previous consolidated pre-push check passed with 2.1.0 and 3 Unreleased notes.
-  The changes in this section invalidate that receipt and need a new consolidated
-  version bullet/check after final content. No commits or pushes yet.
-
-Presentation/native-verification continuation (2026-09-06):
-
-- Authenticated internal presentation reads now return explicit whitelisted GUI
-  summary values with owner/revision metadata. They never serialize MainUiState,
-  private configuration inputs, credentials, or unsaved drafts. Legacy unstructured
-  details/benchmark labels are omitted with explicit unavailable flags; editors
-  still require explicit configuration reads. DesktopRemoteControlSession can
-  opt into presentation polling and exposes retained presentation plus a separate
-  failure flow. Reads serialize with runtime refresh, reject owner replacement and
-  revision rollback, and do not revive a closed session. Focused presentation and
-  remote-session tests passed. Main GUI is NOT yet attached to this remote model;
-  complete rendering, actions and independent background-process lifecycle remain.
-- Refresh-policy, validation-settings, language and SSH dialogs now use
-  frontend-local guarded drafts and the shared retry identity helper, as DNS
-  does. Existing shared normalization is preserved. Language selection saves
-  immediately through the owner; SSH credential validation stays owner-side.
-  Focused draft tests passed. Key import still lacks frontend epoch/revision and
-  retry guards; importing a key makes an existing draft stale, requiring explicit
-  reopen. Visual/error-state verification remains open.
-- Native disconnected app-image checks passed on macOS and Linux ARM64: public
-  launcher smoke, status/stats NDJSON watch, cursor logs follow, real Ctrl-C exit
-  130 with owner surviving, and QR export/import through Unicode paths. These are
-  dirty-source snapshots, NOT final exact-commit certification or VPN traffic,
-  installers, Linux x86_64, or Windows evidence. Linux used Ubuntu 24.04.4 AArch64,
-  OpenJDK 17.0.20, and a guest-only offline Maven fallback for public ZXing 3.5.4
-  after guest network timeouts. Desktop JAR SHA-256:
-  `a39837ffb21618208db0378970d3ab0144406955a988f40925bc011390d99323`.
-  Only the dedicated Linux VM started for this task was stopped afterward.
-  Windows dedicated-VM readiness is the next independent verification task.
-- Android prepared connections now use bounded one-use descriptor handoffs tied
-  to actual generated configuration. Unknown/legacy/expired/mismatched handoffs
-  cannot claim a known active configuration; mutable SSH credentials remain an
-  explicit unknown case. Prepared-handoff and Android checks passed for that batch.
-  Protected provider SETTINGS_SET/APPLY are now wired through owner jobs, atomic
-  epoch/revision guards and confirmed refresh scheduling. ADB binds only omitted
-  settings owners from authenticated transfer creation. Rejection pending metadata
-  is truthful. Unknown runtime before admission is unavailable; uncertainty at
-  the atomic guard is a terminal not-committed runtime failure; after persistence
-  it explicitly reports committed configuration. Final Android unit/main/androidTest
-  compilation and host ADB tests exited zero (9 settings and 6 ADB client tests).
-  Device/consent/runtime-action verification and remaining provider actions are
-  still open, not implied by these settings tests.
-- No commits or pushes yet. Latest focused session/presentation tests passed;
-  a consolidated version bullet and fresh full pre-push run are required after
-  the active agents finish their content edits. Previous full-check receipts do
-  not cover these ongoing changes. Scope remains the entire existing parity plan.
-
-Frontend-DNS/streaming/Android-completion continuation (2026-09-06):
-
-- DNS is the first actual desktop frontend-local settings draft. Opening reads a
-  coherent settings/owner/revision response through ControlSession; GUI edits do
-  not touch service draft fields. Save uses guarded SETTINGS_APPLY, retains input
-  and opening revision on conflict, and requires explicit reopen to rebase. Same
-  opening/input retries have stable salted request identity and retrieve a lost
-  successful response rather than applying again. Changed input/reopen gets a new
-  identity. Tests cover two frontend drafts, response loss, stale owner/revision
-  and invalid DNS. Other dialogs and the complete frontend model still need
-  migration; inline failure/open-error visual coverage remains outstanding.
-- Desktop watch/follow now uses pinned authenticated owner reads, NDJSON or human
-  stderr progress, per-read timeouts, and no owner startup/rebind/cancellation.
-  `DesktopLogCursorJournal` updates with every published log state, supplies a
-  non-null cursor even for empty history/limit zero, and reports explicit gaps on
-  buffer rollover. Live state carries owner sequence IDs so restored old history
-  is not replayed as new entries. Desktop append IDs no longer collide at clock
-  resolution in a full ring. Tests cover duplicate message/timestamps, rollover,
-  restored history, batching/redaction, endpoint replacement, and actual public
-  JVM watch clients whose exit leaves their never-connected owner alive. Native
-  packaged Ctrl-C/streams and Android follow are not yet verified/implemented.
-- Android's six protected reads now use one strict committed metadata/value
-  snapshot. Refresh scheduling waits for WorkManager confirmation under a lane
-  that reads latest committed state. The internal AndroidSettingsControl uses
-  owner jobs, bounded deduplication/history, atomic settings commits, normalized
-  patch results and exact commit metadata. No-op saves skip rescheduling; failures
-  after durable commit explicitly report committed configuration and scheduling
-  failure/unknown outcome rather than claiming rollback. Tests cover pending
-  confirmation, cancelled client wait, retry, closed owner, concurrency and errors.
-  Public Android settings writes remain DISABLED: authoritative pending-restart
-  comparison needs an immutable prepared connection descriptor first. Runtime-
-  affecting settings are mode, DNS, SSH and credential version; language, refresh
-  and validation change configuration revision but not runtime configuration.
-
-Remote-session/export/Android-transaction continuation (2026-09-06):
-
-- `ControlSnapshotCodec` encodes an explicit runtime/operation DTO, with strict
-  version/types/identity checks; it does not serialize Compose or platform services.
-  Authenticated internal `ControlSnapshotRead` binds the endpoint owner epoch and
-  uses a ten-second response bound. `DesktopRemoteControlSession` attaches without
-  constructing an owner, polls snapshots, submits epoch-bound requests, and exposes
-  connection failure separately from its last known snapshot. Close only cancels
-  client observation. Tests cover two authenticated clients, settings/retry/history,
-  independent detach, owner replacement without replay, polling, malformed frames
-  and backwards revisions. This is NOT yet wired into the GUI, nor proof of GUI
-  crash survival. Operation and runtime captures remain ordered bounded reads,
-  not a full atomic all-domain snapshot transaction.
-- JSON locations/routing/diagnostics exports now write client files and acknowledge
-  success only after writing. Location/routing QR PNG is supported. Destinations
-  and formats are not owner paths/arguments; content is removed from final stdout
-  envelopes. Existing files are never overwritten. Diagnostics uses the genuine
-  sanitized report and explicitly marks metadata as observed after report creation.
-  Authenticated, CLI-process and QR regressions passed. Large chunked exports and
-  Android exports remain incomplete.
-- `AndroidConfigurationStore` now wraps all 34 legacy preference mutations in
-  DataStore's serialized transaction. Shared configuration identity determines
-  revision changes; telemetry/no-ops do not increment. Epoch/revision/preferences
-  commit together, with stale guards checked before proposals. Six real temporary
-  DataStore tests cover independent legacy facades, concurrent guarded writers,
-  stale/no-op/telemetry behavior, rollback, epoch recreation and overflow. Internal
-  guarded settings storage commit exists, but provider writes remain disabled until
-  deduplication, completion, scheduling and credential transaction semantics exist.
-
-Concrete next GUI migration boundary (read-only audit completed):
-
-- Keep `DesktopControllerOwner` as sole service/runtime owner. Add an authenticated
-  presentation projection: committed settings, source summaries, opaque location
-  rows with benchmark/selection data, structured activity/status, bounded stats and
-  updater summary. Existing generic `ControlSnapshot` lacks these fields. Do not
-  serialize `MainUiState` or hydrate a second service from the workspace.
-- Introduce `DesktopFrontendModel` using shared draft reducers. Move dialog/draft,
-  navigation, clipboard/picker/file IO there; saves retain opening owner/revision.
-  Replace `DesktopVpnControlApp`'s direct service dependency with model/actions.
-  Routing setters named `*Draft` currently autosave: preserve that behavior through
-  guarded owner requests instead of silently making them local-only.
-- Only after bindings migrate, split controller lock from frontend registration,
-  attach/start owner before GUI, route second launch to the existing frontend, and
-  replace GUI exit's `shutdownForExit` with detach. Updater jobs belong to owner;
-  frontend keeps operation IDs, not cancellation ownership. Installer handoff is
-  separate. Current headless-to-GUI refusal and same-process lifecycle remain.
-- Never put private keys, endpoint tokens, raw links/configuration, cached payloads,
-  installer paths/helper commands or raw exceptions into routine projections.
-  Explicit show/export may return usable configuration content.
-
-ADB/runtime/result integration continuation (2026-09-06):
-
-- Desktop settings JSON writes now retain the validated normalized public patch
-  in `data`; arbitrary action text and private imports are not promoted to result
-  data. An authenticated regression first reproduced the empty result. Commit
-  metadata is captured with the settings result, so another legacy GUI/service
-  write before ledger completion cannot relabel it with a later revision. Tests
-  cover clamped values, partial patches, retained retry results and deterministic
-  interleaving. This does not serialize every other mutation or implement their
-  missing normalized results.
-- Android service start/cleanup publishes application-owned runtime observations:
-  actual handle identity, runtime ID, mode, start time and salted configuration
-  identity. Raw runtime configuration is not retained. Provider stats distinguishes
-  live observation from historical persisted counters/timestamps. Unknown startup
-  or failed cleanup stays unknown; known observations update recreated GUI models.
-  The GUI's legacy Boolean running field still retains persisted state while live
-  state is unknown; complete tri-state presentation remains open. Provider status,
-  revisions, active location identity and connection mutations remain unsupported.
-  Android settings show now matches desktop NOT_FOUND for unknown typed keys.
-- Host `--android [--serial SERIAL]` routes through ADB to the protected provider,
-  including capabilities. Requests use descriptor stdin, never private shell
-  arguments; only canonical opaque paths reach fixed `content` commands. Device
-  selection, strict UTF-8/result correlation, deadlines, bounded IO and best-effort
-  discard are covered by fake-ADB JVM subprocess tests. No real ADB device was
-  exercised. Android currently returns JSON envelopes even without `--json`;
-  human rendering, streaming, exports, writes, revision guards and interactive
-  consent remain incomplete. Inspect device capabilities instead of assuming the
-  desktop operation inventory applies.
-- GUI/tray owner command rejections now produce frontend-local feedback rather
-  than disappearing. The dialog shows allowlisted technical codes under existing
-  localized STATUS/CLOSE labels, not arbitrary response text, and leaves running
-  action/persisted status untouched. Tray failures show the window. Richer localized
-  explanations and a visual scene/baseline for this dialog remain outstanding.
-
-Observable-session/QR/provider continuation (2026-09-06):
-
-- `DesktopControllerOwner` now implements shared `ControlSession`, publishing
-  sanitized snapshots when service state or retained operation state changes.
-  Typed submissions, operation lookup and cancellation reuse the existing owner
-  session. Focused session/owner tests passed; commits
-  made through the legacy service are observed, while unsaved DNS draft content
-  does not enter snapshots. Further deterministic tests prove direct legacy
-  RUNNING-to-terminal notifications, async completion/action cancellation and
-  client cancellation leaving owner work alive. The full desktop test task also
-  passed. This remains an in-process adapter, not remote GUI
-  attachment or a fully atomic cross-domain snapshot/commit coordinator. Timed
-  ledger expiry alone does not currently trigger a snapshot refresh.
-- Desktop QR image imports decode in the client; only decoded content reaches
-  the authenticated owner. Location/routing PNG exports use UTF-8, the shared
-  1600-byte export policy, binary-clean stdout and new-file-only destinations.
-  Image dimensions and input bytes are bounded; ambiguous/malformed images fail
-  without exposing private paths. QR unit, authenticated roundtrip and JVM
-  subprocess tests passed. Android now uses the same export-size policy and
-  explicit ZXing UTF-8. Native packaged QR, desktop GUI gestures and JSON export
-  envelopes are still outstanding.
-- Android's application-owned `${applicationId}.control` provider is implemented
-  with manifest DUMP permission, explicit app/shell UID authorization, strict
-  opaque transfer URIs, bounded memory and proxy file descriptors. It currently
-  routes only selected reads; it does not implement mutation admission, runtime
-  identity, usable revision guards or consent. Unit and Android/instrumentation
-  compile checks passed; instrumentation has NOT run on a device. Real external
-  Binder rejection and non-debuggable API 29/35 ADB evidence remain outstanding.
-  Runtime-read review reproduced a stale persisted `isVpnRunning` flag after an
-  ungraceful process death: stats now returns unknown running/elapsed values until
-  genuine live observation is available. Decoded request identity is preserved
-  on timeout/read failure. Regression tests and Android checks passed. Host ADB
-  transport and live service runtime observation are in progress in separate
-  agent scopes. Do not infer complete Android CLI support from provider presence.
-
-Parallel integration continuation (2026-09-06): the user authorized independent
-subagents. Android ownership, packaged CLI checks and GUI benchmark identity work
-were implemented in separate scopes and integrated with the desktop JSON writes.
-
-- Desktop JSON mutations now cover location/source selection, subscription
-  add/update/delete, location add/update/delete/import, routing set/import,
-  SSH-key import and update dismissal. Typed arguments reuse the shared grammar;
-  input paths are consumed in the client and only content reaches the owner.
-  Supported long writes additionally accept async (subscription add/update,
-  location delete/import). Existing actions still own validation, persistence,
-  rollback and normalized state. Results retain operation IDs and sanitized
-  completion metadata; normalized write-result data and public revision flags
-  remain unfinished. Authenticated tests cover durable changes, request retry
-  deduplication, async wait, imports, source eligibility and persistence failure.
-  Selection failures now preserve NOT_FOUND/AMBIGUOUS_LOCATION codes and avoid
-  copying untrusted selectors into persisted GUI status/log text.
-- CLI output explicitly writes UTF-8 bytes, bypassing legacy Windows PrintStream
-  encodings. Regression tests use a windows-1251 stream and launch actual JVM CLI
-  processes with windows-1251 defaults while checking Unicode language output,
-  Unicode input paths and JSON writes. Native Windows execution is still needed.
-- Android now has a lazy application-owned dependency graph and command-job
-  lifetime/admission. GUI factories and WorkManager reuse repository, storage,
-  orchestrator, VPN manager and scheduler. Update state/service and prepared-file
-  ownership survive ViewModel recreation. GUI drafts/navigation stay local;
-  accepted jobs survive a destroyed frontend or cancelled worker wait. Unit and
-  Android compile checks passed; a real factory recreation instrumentation test
-  compiles but has not run on a device. This is NOT a complete authoritative
-  ControlSession migration: some services still capture frontend controllers,
-  untracked mutations are not all serialized, and typed provider/ADB/consent,
-  revisions/ledger and device evidence remain open.
-- GUI benchmarks capture opaque configuration IDs from the rendered list rather
-  than numeric CLI selectors. Numeric names and list reordering cannot redirect
-  the request; replaced/disappeared/ambiguous configurations conflict. Benchmark
-  result persistence rechecks the captured configuration. Focused fake-runtime
-  and service tests passed. These IDs are now internal GUI benchmark references,
-  not public CLI selectors or permanent row IDs; full atomic proposal/commit
-  coordination still remains open.
-- `scripts/test_packaged_cli.py` now runs disconnected public-launcher smoke from
-  DEB/RPM/Arch/MSI/macOS package validation; desktop workflow path filters include
-  the harness. Native macOS jpackage app-image smoke passed, using a per-invocation
-  Homebrew vendor-check override; no repository vendor policy changed. This proves
-  native macOS launcher/headless/temp-workspace settings/read/operation behavior,
-  NOT DMG/signing, Windows/Linux execution, GUI attachment, VPN traffic or Android.
-  No test touched the host VPN, autostart or installer settings.
-
-Configuration inspection continuation (2026-09-06): desktop JSON now covers
-locations/subscriptions list and show, routing show, SSH-key status and update
-status. The owner captures data plus commit metadata together; malformed arguments,
-missing records and ambiguous location names retain explicit codes. List responses
-omit raw profiles and subscription URLs; explicit show keeps usable configuration
-as legacy inspection does. SSH status exposes only presence. Routing returns the
-existing v7 transfer object; its generated export timestamp can differ between
-reads, so regression checks compare the payload and import it back to rules.
-Authenticated tests use real service state, verify visible indices and secrets
-boundaries, compare legacy results and assert no state/operation changes. The
-never-connected public JVM process regression includes the new no-argument reads.
-Remaining: complete typed writes/export/streaming, Android adapter, owner/frontend
-process separation, scoped Windows elevation and native packaged evidence.
-
-Structured read continuation (2026-09-06): public desktop JSON now supports stats,
-bounded logs, source show and settings languages. `ControlReadLogic` owns pure
-state projections reusable by Android; production desktop captures data and
-revision/restart metadata under the commit monitor. Legacy stats use the same
-projection. Log `--limit` is transferred rather than dropped, zero yields no entries,
-and messages use existing secret redaction. Unknown/wrong typed arguments fail;
-watch/follow is still explicitly rejected. Shared tests cover timing, nulls,
-redaction, bounds and source shape; authenticated real-service tests compare legacy
-stats to typed data and confirm reads do not create ledger operations or mutations.
-The public JVM CLI process test also exercises these four reads against its
-never-connected temporary owner. This does not implement Android transport,
-streaming, all remaining JSON commands or packaged native evidence.
-
-GUI connection command continuation (2026-09-06): GUI/tray on/off, explicit restart
-and per-location benchmark now use the same session admission and operation
-history as CLI commands. On/off/restart also accept public JSON/async submission.
-The shared start action preserves the GUI's missing-selection status and keeps
-`on` idempotent when already connected. GUI benchmark callbacks translate storage
-indices into the CLI's one-based visible positions, including duplicate names.
-Focused authenticated real-service/fake-runtime tests pass for JSON restart/off,
-pending selection and async on: a blocked runtime start remains queryable, a retry
-retains one operation and one runtime start, changed request content conflicts,
-competing writes return busy, and completion/reconnect intent are retained.
-The public parser is exercised by `--json --async on`, not only direct DTO calls.
-No host VPN or OS settings were touched. Connection cancellation, stable row
-references across list reorder, GUI feedback for admission rejection and the
-separate-process owner/frontend architecture remain open. These changes do not
-prove native packaged availability or full parity.
-
-GUI controller ownership continuation (2026-09-06): the normal GUI entry point
-now constructs `DesktopControllerOwner` before Compose and binds its authenticated
-server directly to the same session graph used by headless mode. CLI command
-handling no longer depends on Compose installing a future handler; typed settings,
-status, JSON operations and revision-aware requests reach the owner when launched
-through the GUI path too. The owner holds action scope and auto-refresh scheduling;
-Compose disposal does not own/cancel that scope. Startup restore shares the session
-mutation lane, and listener startup failure aborts before runtime restoration.
-GUI/tray Find Best and GUI subscription refresh now use session operation admission
-and history. Production GUI async callbacks use the owner scope; visual-only
-fixtures retain their local fallback scope. Explicit app-exit/update-install paths
-still stop runtime and schedule application exit on Swing. Real-service transport
-tests exercise the process-owner graph before any UI composition and verify reads
-remain available while initialization rejects writes, then settings persist after
-initialization. This is a process-local ownership migration, NOT separate-process
-GUI attach/detach/crash survival: the headless-to-GUI refusal remains, GUI drafts
-still live in the service, many GUI actions still call service methods directly,
-and native GUI smoke/visual evidence is pending.
-
-Structured status continuation (2026-09-06): `status --json` now reports actual
-runtime-running state, selected/active opaque configuration identities, configured
-and active modes, runtime ID/start time, and pending restart with the committed
-revision. It never starts a missing owner. The lifecycle publishes one immutable
-active-connection descriptor and assigns a fresh runtime UUID on successful start
-or restored restart; no-op restore preserves it. Owner-local location hashes use
-a private random salt and length-delimited source identity, do not retain input,
-and are not persistent row IDs or accepted CLI selectors. Authenticated fake-runtime
-tests cover pending selection without restart, idempotent on, explicit restart,
-stop, and restored runtime identity. This is a bounded snapshot read, not the full
-shared StateFlow coordinator or atomic state/effect transaction required by the plan.
-
-Capability discovery continuation (2026-09-06): `capabilities [--json]` reports
-static desktop JSON adapter support without contacting or starting an owner or
-creating a workspace. The report covers every registry ID but marks unsupported
-JSON handlers NOT_IMPLEMENTED; it does not mislabel working legacy commands as
-unavailable. JSON/async command admission and operation cancellability now share
-the same implementation support lists used by discovery. Platform support is
-reported separately from explicitly unchecked runtime readiness. Unfinished
-public revision guards and GUI attach/detach remain false. Typed owner queries
-return the same static inventory with owner metadata. Registry/platform tests
-and a real CLI-process no-workspace regression cover discovery. This is not
-dynamic privilege/runtime readiness, native OS evidence or full capabilities
-parity for all legacy/product operations.
-
-Client timeout continuation (2026-09-06): supported JSON commands now accept
-`--timeout-seconds` with the shared default 600 and zero for unlimited response
-waiting. The local timeout is not serialized to the owner or included in request
-deduplication. One monotonic deadline covers the complete response frame, including
-partial reads; socket intervals are capped at the Java integer limit without
-truncating longer requested waits. Local TIMEOUT/OUTCOME_UNKNOWN results have
-final=false and preserve a supplied operation ID for operation inspection/wait.
-An authenticated regression times out a one-second wait, verifies the owner job
-is still running, then cancels it explicitly and receives exit 130. Deterministic
-stream tests cover partial response deadlines, waits longer than one socket
-interval, and unlimited waits. CLI tests verify timeout options stay client-side.
-This is response waiting only: connection/authentication/owner startup retain
-their own bounds. Non-JSON synchronous timeout options and eager cleanup of server
-wait observers after client disconnect remain unfinished; owner work is unaffected.
-
-Endpoint permission continuation (2026-09-06): descriptor reads now check current
-user ownership on every platform and validate Windows-style ACLs as well as POSIX
-permissions. The ACL policy requires owner read access and rejects grants to other
-principals; it fails closed instead of emulating group membership/ACL ordering.
-Publication verifies the resulting permissions before writing the authentication
-token. Reads reject non-regular files and symlinks and consume at most 4097 bytes
-to enforce the 4096-byte descriptor limit. Missing-file errors remain distinct so
-normal first-command controller startup still works. Pure ACL tests and real
-temporary-file/process tests pass on macOS; native Windows filesystem/provider
-verification is still pending. This does not prove protection against every
-hostile-directory replacement race or complete Windows privilege separation.
-
-Owner: coding agent, started 2026-09-05 on synchronized `dev` at
-`32de4ee72cc26a45e5bb8dca80c79a7a7cd76f14` (initially clean).
-
-Goal: implement the approved complete GUI/CLI parity plan, including Linux,
-Windows, macOS and Android ADB. No release is authorized. Do not interrupt the
-user's runtime. This is intentionally a multi-bucket task; contract updates
-describe required behavior, not a claim that all implementation is complete.
-
-Windows autostart continuation: the scheduled-task launch command now preserves
-the explicit resolved workspace through `--state-dir`. Windows argument quoting
-doubles trailing backslashes so root directories remain one argument. A mocked
-OS-command regression covers spaces, Unicode, shell metacharacters and trailing
-separators; the full desktop test suite passed on the macOS development host.
-No real login configuration was changed. Per-workspace autostart ownership and
-replacement of the existing highest-privilege task remain unfinished; this is
-not native Windows/reboot evidence.
-
-Linux autostart continuation: generated XDG and managed i3 commands now retain
-the explicit workspace. XDG quoting now applies both desktop-entry string and
-Exec escaping, including literal percent field-code escaping; read-only launcher
-inspection decodes those layers. The i3 recognizer accepts both legacy and
-workspace-aware wrappers. Regression coverage checks Unicode, spaces, apostrophe,
-dollar/percent/ampersand paths and executes only a disposable argument-echo script
-through the generated shell command. The full desktop suite passes on macOS;
-native XDG/i3 session and reboot behavior remain unverified.
-
-Update-relaunch continuation: all three desktop helpers now pass the owner's
-workspace on relaunch; the service gets that directory from its actual store.
-Linux's watcher regression executes only a disposable argument-echo launcher
-after a test-owned process has exited. macOS helper syntax is checked without
-executing installation. Windows preserves the workspace as UTF-8 Base64 during
-helper invocation, decodes it in the unelevated relauncher, and quotes native
-arguments for elevation, MSI and relaunch. A regression first reproduced its
-automatic `$PID` parameter collision; it now uses `ParentProcessId` and avoids
-overwriting PowerShell's `$args`. A Windows-only PowerShell regression mocks
-all process launches, including UAC, and checks generated relaunch/elevation
-arguments. That native test does not execute on the macOS development host.
-Mapped shared-core/UI, desktop, Android unit and Android compile checks passed
-after the helper fix; no real installation, UAC, reconnect or native Windows
-execution has been validated. Private helper staging/revalidation, installer
-receipts, and the broader controller lifecycle remain unfinished.
-
-Revision-boundary continuation: a mapper regression reproduced routing drafts
-being written as committed rules during unrelated saves. Desktop persistence now
-uses `routingRules`; explicit routing saves still build and commit normalized
-rules through the existing service. `ControlConfigurationIdentity` provides a
-shared comparison of committed settings, sources, location content and selection,
-excluding runtime/measurement/refresh-status telemetry. Desktop commits serialize
-the write/publication boundary and increment an internal revision only after a
-successful changed-configuration save; failed writes and no-op saves do not
-advance it. Tests cover mapper draft isolation, shared telemetry exclusion,
-durable settings/no-op saves, and primary/recovery write failure. Shared model,
-core, desktop and Android compile checks passed. This is not yet a public
-revision contract: credential/autostart transactions, atomic revision-checked
-proposals and unified snapshots remain unfinished. Operation result metadata is
-now connected to the desktop owner, as described below.
-SSH revision continuation: the existing credential-version field is included in
-configuration identity, so successful changed-key imports advance the workspace
-revision and failed metadata commits do not. A regression reproduced repeated
-identical-key imports incrementing that version. The credential transaction now
-compares normalized prior/new content privately and tells the settings action
-whether it changed; identical imports preserve credential version/revision and
-existing restart-dialog state, while still rewriting the key with private file
-permissions. Settings proposals, state transforms and key-import orchestration
-share the desktop commit monitor. Authenticated SSH CLI tests check initial
-import, identical reimport and failed replacement rollback with unchanged
-revision. Public revision-checked requests stay disabled.
-
-Settings revision-guard continuation: `applyControlSettings` accepts an internal
-expected revision and checks it under the same monitor as proposal construction,
-durable commit and autostart effects. Stale requests, including stale no-op saves,
-conflict before any OS inspection/write. Settings reads use that monitor too.
-A two-thread real-service regression starts competing saves at revision 0 and
-requires exactly one success, one conflict, revision 1 and the winning value;
-it checks unchanged persisted bytes after a stale retry and a current-revision
-no-op. Mocked autostart coverage requires zero OS calls for a stale request.
-This is not public optimistic concurrency yet: the session must first validate
-the controller epoch, typed settings dispatch must carry the guard, and GUI
-draft saves must retain their opening revision. The typed settings adapter is now
-wired as described next; public flags and GUI draft integration remain open.
-
-Typed settings continuation: authenticated `ControlSubmit` now accepts synchronous
-`settings.set` and `settings.apply`. Shared argument decoding requires exact keys
-and transfers JSON content for apply, not filesystem paths. The headless session
-validates the controller epoch, enters the operation ledger/mutation lane, and
-passes the revision to the real settings commit boundary. Fingerprints include
-operation and expected revision as well as normalized patch content. A matching
-retry returns the retained versioned envelope before checking the now-stale
-revision again; changing a request's revision conflicts. Synchronous typed
-settings results use the shared result envelope. Authenticated real-service tests cover durable set/apply,
-same-request retries, wrong epochs, stale writes, changed retry revisions,
-retained completion metadata and atomic invalid batches. No OS/runtime effects
-are invoked. Public `--if-revision`, other typed commands and GUI draft
-ownership remain unfinished; this is not full public protocol parity.
-
-Typed-response continuation: all handled typed submissions now return the shared
-versioned envelope, including validation/unsupported/owner-conflict/busy rejections
-before operation admission. Rejections include the request ID and the responding
-owner's current metadata without inventing an operation ID or retaining private
-input. Synchronous typed long actions now return retained result envelopes too,
-including when a caller switches from async acceptance to a synchronous retry.
-Legacy commands and transport-level failures still use their existing payloads;
-public JSON settings support is described below. Session and authenticated transport
-regressions cover malformed private input, busy rejection, owner mismatch,
-metadata and cancelled completion.
-
-Public JSON settings continuation: `settings show`, `settings set` and
-`settings apply` accept `--json` before or after the command. Show reads settings
-and revision/pending metadata under one service monitor; it does not create a
-mutation operation. Set/apply use the typed owner path. Argument/input errors in
-the CLI adapter return one sanitized INVALID_ARGUMENT envelope without starting
-an owner. Transport failures are converted to sanitized unavailable/unknown or
-incompatible responses; local responses explicitly have no controller identity
-and warn OWNER_METADATA_UNAVAILABLE (the schema's revision field is zero, not an
-authoritative snapshot). A mismatched response request ID is rejected.
-The real headless JVM-process regression passes on macOS for JSON read, set,
-apply from a space-containing path and unknown-key failure. Unit tests cover
-private invalid input, missing files, unsupported options and transport failures.
-Startup/workspace-parser errors now use the same sanitized JSON error formatter.
-Public revision flags, normalized write-result data and
-native packaged evidence remain open. No host runtime or OS settings were changed.
-
-Public operation JSON continuation: JSON is also wired for Find Best, location
-benchmark, subscription refresh, update check/download, and operation list/status/
-wait/cancel. The supported long commands accept JSON with or without async mode.
-Inspection puts the sanitized operation summary in `data` (`data.operations` for
-list); the envelope describes the inspection request, and the nested summary
-describes the observed operation. Wait preserves the operation's failure/cancel
-exit code. Missing operation history never starts a replacement owner, including
-on the JSON path. Authenticated transport tests cover async JSON admission, list,
-status, missing IDs, cancellation and wait exit 130. Real process tests cover
-JSON async download rejection without network and JSON startup rejection for
-invalid options or a file used as a state directory, without modifying that file
-or creating a workspace. Other commands, watch streams and native packages still
-need work.
-
-Autostart action continuation: GUI now calls the same validated settings action
-as CLI rather than invoking the OS manager independently. Successful verified
-enabled-state changes advance the internal revision once; repeated requests and
-failed OS writes without changes do not. OS errors crossing the CLI boundary are
-sanitized. Platform capability selection is injectable for deterministic owner
-tests without changing global system properties. A real-service regression uses
-mocked Windows task commands to exercise GUI enable, CLI no-op, failed GUI/CLI
-disable and successful CLI disable with identical state/revision outcomes.
-Shared-core and desktop tests passed; no real login settings changed. Native
-verification, partial-OS-write recovery and global-entry/workspace ownership
-still require work; boolean revision tracking does not yet account for command
-repair/migration when the entry remains enabled.
-
-Owner-operation continuation: `DesktopHeadlessSession` now executes Find Best,
-benchmark, refresh, update-check and download in owner-scoped jobs tracked by
-`ControlOperationLedger`. Cancelling the waiting coroutine does not cancel owner
-effects; reads stay responsive and conflicting long mutations return busy.
-Completed history retains sanitized codes, not input or arbitrary response text.
-Public `operations list`, `operations status <id>` and `operations wait <id>`
-now query that headless ledger through the existing authenticated CLI transport.
-They never start a replacement owner when history is unavailable. Status/list
-expose only identifiers, phase, nullable measured progress and sanitized result
-codes; terminal summaries include the revision and pending-restart state captured
-at completion. Wait propagates the terminal
-outcome's exit code, and cancelling its observer does not cancel owner work.
-An authenticated CLI regression checks running and retained benchmark operations;
-unit coverage checks failed wait outcomes and observer cancellation. The legacy
-GUI-owned executor explicitly returns UNAVAILABLE for these commands until the
-shared owner migration is wired. These are transitional payloads, not the full
-versioned result envelope. `operations cancel <id>` now requests cancellation of
-owner update-check/download jobs without taking the mutation admission lock.
-Other jobs remain non-cancellable until their rollback paths are audited.
-The runner safely registers lazy jobs and retains CANCELLING until cleanup has
-finished; a cancellation request is not a terminal-success claim. Authenticated
-CLI coverage checks cancel during an active mutation and wait exit 130; unit
-coverage delays cleanup and rejects cancellation of non-cancellable benchmarks.
-Shared model/core and desktop tests passed. Update HTTP IO now uses the JDK HTTP
-client inside interruptible coroutine blocks. A stalled-server regression first
-reproduced delayed cancellation; header, manifest-body and package-body stalls
-now cancel promptly on the development host, with partial-file cleanup before
-completion and unchanged running state. Requests/transfers have a five-minute
-total deadline (formerly a five-minute socket read timeout); an internal deadline
-is an update failure, not user cancellation. The packaged JVM explicitly includes
-`java.net.http`. Shared-core/UI, desktop and Android unit/compile checks passed;
-native packaged cancellation and other long-action cancellation paths remain
-unverified. Full protocol coverage, revision-checked requests and complete progress remain
-unfinished.
-The owner runner now accepts an explicit request ID, async admission flag and
-expected controller identity internally. Matching retries reuse the ledger entry;
-changed fingerprints or owner identity conflict before effects, and completed
-retries return the retained sanitized outcome. Async admission returns ACCEPTED
-with request/operation/controller IDs and final=false while nonterminal, rather
-than waiting for effects. Desktop tests verify one effect across retries and
-busy/conflict rejection. Public `--async` is now wired for Find Best, location
-benchmark, subscription refresh and update check/download. The client generates
-a request ID and transfers the shared typed request within the authenticated
-legacy framing; it binds the request to the endpoint's controller ID. A headless
-owner now creates one UUID for both endpoint and operation ledger. Matching
-retries reuse the operation; mismatched expected owners conflict. CLI transport
-tests cover async acceptance, request reuse, owner mismatch, cancel and wait.
-Requests with revision/interactive requirements fail explicitly until wired.
-Async acceptance and completed async retries now use the shared versioned result
-envelope. The production owner supplies revision/pending-restart metadata under
-its commit monitor; completed results retain that pair even after later edits.
-A session regression covers acceptance, completion and retained-result metadata.
-The real `MainKt` subprocess regression also passes on the macOS host: after a
-settings commit, async download without a checked manifest fails locally with
-revision 1; `operations wait` reports that terminal revision, and another settings
-commit does not alter the retained status. No network, installer or runtime is
-started by that operation. This is JVM-entrypoint evidence, not packaged evidence.
-The ledger deliberately rejects transport/wait codes as owner terminal results.
-A runner regression checks that an action incorrectly returning UNAVAILABLE or
-TIMEOUT is retained as RUNTIME_FAILED, not a waiter timeout or false cancellation.
-This remains a staged transport migration: legacy synchronous responses and
-operation query summaries are not full versioned envelopes. Public `--json` is
-currently supported for settings and the operation commands described above.
-Tests cover disconnected-waiter behavior and an owner cancelled before dispatch.
-Legacy synchronous requests still generate IDs on the server; async typed
-requests generate them in the client. Cancellability is
-limited to updates. Public watch, GUI session ownership, scheduled-refresh
-ledger integration still require implementation. Transient idle-lifetime now
-accounts for owned commands/operations, running connections and eligible
-scheduled refresh; a full 30-second quiet interval is required before exit.
-Pure-clock and headless-session regressions cover that accounting. GUI
-registration and the final admission/shutdown race still need native ownership
-integration; this is not evidence of complete GUI attach/detach support.
-
-GUI bridge continuation: CLI dispatch no longer goes through Swing (window
-activation still does). Handler readiness and response waits are bounded;
-response timeout does not cancel the dispatched future. Interrupted or failed
-dispatch reports unavailable/unknown outcome without private exception text.
-GUI coroutine completion also resolves pending callers if disposal cancels a
-job before it starts. Bridge regressions verify timeout, late completion and
-sanitized errors. GUI service ownership is still not separated from Compose,
-and these timeout responses still lack queryable client request/operation IDs.
-
-Workspace continuation: public startup now extracts validated `--state-dir`
-before service/CLI initialization, canonicalizes existing ancestors without
-creating a workspace, and shares that root across store, lock, endpoint,
-runtime/validation defaults and headless logs. Spawned headless and elevated GUI
-launches carry the resolved directory. Tests cover relative Unicode paths,
-duplicates, unsupported Android combinations, internal owner arguments and
-spawned argument/log propagation. Native public-process isolation, frontend
-registration, autostart and update-relaunch argument preservation still need
-completion; custom state paths do not authorize host TUN/installer/autostart tests.
-
-Public-process evidence: `DesktopCliProcessTest` launches the real `MainKt` JVM
-entry point with the main runtime classpath and no DISPLAY/WAYLAND. On the current
-macOS host, two test-owned `serve` processes in separate Unicode/space paths
-responded to CLI queries and kept a changed setting isolated. Help, invalid input
-and no-owner status created no workspace. Only never-connected test processes
-were stopped afterward. This regression is part of desktop tests; it does not
-prove packaged Windows console/macOS launcher behavior or native Linux/Windows
-execution until those platforms run it, and it does not test traffic or GUI
-attach/detach.
-
-Read-only startup correction: desktop initialization and settings reconciliation
-now use `DesktopAutostartManager.inspectEnabled`, which only reads existing
-Linux/i3/systemd or Windows task/Run state. Tests verify inspection preserves
-legacy files/registry entries and never issues migration commands. The older
-migrating `isEnabled` entry point remains for explicit legacy migration tests;
-normal service construction no longer invokes it.
-
-Windows launcher continuation: Compose's app-image task now adds the JDK
-`win-console=true` launcher `vpn-control-cli.exe`, leaving the primary launcher
-windowless. Empty console invocation defaults to help. Headless child launch
-selects the sibling windowless executable; argument tests cover Windows paths.
-The MSI extraction check now requires the console launcher and checks real help
-stdout/exit code. Installer collection excludes app-image executables. Windows
-packaging/PowerShell execution has not been performed on this macOS host;
-console behavior, scoped UAC helper and installation remain unverified.
-
-Decisions already made:
-
-- Android uses protected ADB content streams, not root, run-as, or a TCP daemon.
-- One desktop background owner; GUI attach/detach leaves its connection alive.
-- Current reachable routing controls only; do not resurrect dormant rule sets,
-  bypass-app lists, statistics-visibility writes, or HWID writes.
-- Manual selection and committed runtime settings apply on explicit restart or
-  next on. Find Best retains its explicit connect/verify/rollback behavior.
-- macOS stays proxy-only, Android package assignments stay Android-only,
-  autostart stays Linux/Windows. Unsupported actions must fail honestly.
-
-Delivery checklist (unchecked means unfinished, including native evidence):
-
-Benchmark continuation: `locations benchmark` now traverses the authenticated
-desktop CLI adapter into the same benchmark service used by GUI. The service
-returns checked persistence results, rejects busy/missing targets, releases busy
-after thrown probe failures or cancellation, and no longer publishes raw probe
-exceptions as status text. Synthetic service and transport regressions cover
-visible index/name targeting, success/failure, persisted results and unchanged
-selection. Native direct-probe behavior, full result envelopes, progress and
-operation cancellation remain unfinished; fake probes are not native evidence.
-
-Subscription refresh continuation: the desktop CLI now dispatches
-`subscriptions refresh <id|active|all>` through the GUI refresh service, returning
-per-source ID/success/location-count data and nonzero partial/all-failed results.
-Fetch cancellation propagates, refresh busy flags clear on cancellation/failure,
-and checked workspace commits prevent false success on persistence failure.
-Tests cover authenticated partial refresh with synthetic fetchers, sanitized CLI
-output, failed persistence and cancellation without cache publication. Refresh
-now distinguishes removed active identity from removed pending selection before
-stopping runtime. Refresh now captures active runtime plus workspace/reconnect
-intent before stopping. Failed stop/save attempts restore that capture, returning
-`ROLLBACK_FAILED` if runtime or restored-workspace persistence fails. The effect
-and commit phase is non-cancellable; fetch remains cancellable. Fake-runtime
-tests verify restoration does not apply pending selection/mode. Crash-atomic
-recovery, complete typed protocol
-envelopes and native refresh continuity remain unfinished.
-
-Location delete/import and subscription delete now share a non-cancellable
-stop/commit/restore helper and the same active-runtime/workspace checkpoint as
-refresh. Synthetic delete/import regressions exercise persistence and rollback
-failures; a transaction regression cancels during stop and proves save/rollback
-still finish. Subscription-delete native failure injection and crash recovery
-remain unverified.
-
-Update continuation: desktop update service now exposes a typed manifest-only
-`check` result and separate `downloadChecked` action. The existing GUI combined
-action composes them. A loopback HTTP fixture verifies no package fetch during
-check, manifest-required download, checksum rejection, dismissal invalidation,
-and unchanged running state. CLI check/download/status/dismiss are now wired;
-grammar/protocol tests and authenticated status/no-update tests supplement the
-HTTP service fixture. A per-update mutex rejects overlapping actions/dismissal
-without blocking status reads. Full CLI check/download through the authenticated
-transport, operation cancellation, Android shared
-decision extraction, localized new outcomes, owner/GUI installer coordination,
-and native installer evidence remain unfinished. No installer was launched.
-
-Update preflight continuation: the installer boundary now rechecks regular-file
-identity (rejecting symlinks), exact size and SHA-256 under the update action
-mutex before authorization. Downloads reject bytes beyond the declared size.
-Checks invalidate prior prepared packages; cancellation clears in-progress
-presentation phases. Fixture tests cover tampered packages, oversized responses
-and stale-ready invalidation without launching an installer. This preflight is
-not a substitute for privileged-helper private staging and revalidation; native
-Windows/macOS TOCTOU resistance and installer receipts are still unfinished.
-
-- [ ] A: authoritative CLI contracts, operation inventory, regression tests.
-- [ ] B: shared DTOs, codecs, validation, typed durable results, operation
-  ownership/deduplication, config revisions, active-versus-selected state.
-- [ ] C: authenticated desktop controller, separate GUI registration/client,
-  headless scheduler, lifecycle, launch/state-directory plumbing.
-- [ ] D: complete command grammar and action adapters, real desktop location
-  editing, terminal file/QR transfers, localization and pending-state UI.
-- [ ] E: application-scoped Android session, protected provider/streams,
-  consent/foreground interaction activity and host ADB transport.
-- [ ] F: Windows console launcher and scoped privileged runtime helper;
-  native Linux/macOS launchers, package checks and autostart/update coordination.
-- [ ] G: common/native parity tests, disposable traffic tests, targeted visual
-  evidence, public docs, final version note/prepush checks, commit/push dev,
-  exact-SHA success of all five required workflows.
-
-Planned dirty buckets: agent docs/contracts and guardrails; shared model/core;
-desktop runtime/lifecycle/UI; Android coordinator/provider/UI; shared UI/catalogs;
-packaging and CI; public CLI documentation. No generated runtime/build artifacts.
-
-Implemented so far (uncommitted):
-
-- CLI session stats, bounded connection-log reads and diagnostics export now
-  use the same state/report builder as the GUI. Unavailable session timing is
-  null, and no traffic measurements are fabricated. Structured status arguments
-  are decoded before shared redaction, with bounded nesting; more desktop report
-  status/name fields are sanitized and unnamed subscriptions no longer expose
-  their source host as a display-name fallback. The authenticated CLI test covers
-  counters, redacted structured secrets, client-side report export and unchanged
-  owner state. Watch/follow streams and full versioned result envelopes remain
-  pending. After an environment transition the Gradle handle was gone, but no
-  Gradle task process remained and the diagnostics CLI test report passed.
-- Desktop bulk location import/export is wired through the authenticated CLI
-  using the existing JSON transfer format and checked persistence. File IO stays
-  on the client. Import distinguishes removed pending selection from removed
-  active identity and preserves existing references for equivalent round trips.
-  The new round-trip regression exposed an existing shared parser defect:
-  explicit empty SNI became the server name after export/import. Explicit empty
-  SNI now stays empty; omitted SNI retains the legacy default. Shared regression,
-  desktop socket round-trip and pending-selection import tests cover this path.
-  Android compilation was also checked after the shared parser change.
-- Desktop CLI language listing and SSH key status/import now call the generated
-  language model and GUI credential action. Credentials are permission-restricted
-  before writing, flushed before replacement, and restored if the workspace
-  metadata commit fails. Atomic-move fallback is limited to unsupported atomic
-  moves. The authenticated CLI regression uses synthetic key-shaped input and
-  verifies status, no key content in output/workspace, credential-version updates
-  and restoration of the old key after failed persistence. This does not prove
-  native SSH authentication or crash-atomic multi-file transactions.
-- Desktop lifecycle commit callbacks now propagate persistence results through
-  connection actions. A failed preparation commit prevents runtime start. A
-  failed post-start commit restores the prior captured runtime (or stops a newly
-  started runtime) and returns failure; rollback failure has its own code.
-  Runtime-only publication is separate from persistence so failed stop saves do
-  not leave the UI claiming that the stopped runtime is still running. `off`
-  retries durable off intent even when already disconnected. Lifecycle tests
-  inject pre/post-start and stop-save failures plus restoration of a prior
-  active location distinct from pending selection. Native failures, complete
-  operation receipts and remaining focused-service Unit callbacks need review.
-- Desktop current routing show/set/import/export now use shared normalization
-  and v7 transfer documents. Terminal exports write on the client and refuse to
-  overwrite an existing destination; raw stdout output is supported. Desktop
-  app-package actions return unsupported before controller startup. Imported
-  Android package assignments remain round-trippable with an explicit warning
-  that they do not function on desktop. The socket end-to-end regression covers
-  GUI autosave, CLI normalization, invalid values, export/import and disk reload.
-  QR transfer and full structured warning/envelope output remain pending.
-- Desktop subscription list/show/add/update are wired through the authenticated
-  CLI path and existing shared GUI subscription save/rename plans. CLI saves
-  preserve open GUI drafts, reuse duplicate-source identity, and await durable
-  commits. Default lists omit source URLs; explicit show returns configuration.
-  `DesktopSubscriptionCliEndToEndTest` covers file input, GUI rename followed by
-  terminal name reset, invalid updates, duplicate identity and disk reload.
-  Shared grammar now permits an explicit empty subscription name, matching the
-  GUI reset action, without permitting empty input/source paths. Subscription
-  refresh operation results and QR input remain pending.
-- Desktop subscription/location delete now return checked results through the
-  CLI and reject missing/read-only targets. A shared runtime-input snapshot is
-  captured on successful desktop start and cleared after successful stop.
-  Deletion distinguishes that active identity from a pending selection. Fast
-  deletion tests cover active versus pending, read-only records and failed
-  persistence; the existing socket end-to-end tests now verify durable deletion.
-  Runtime start uses committed routing rules instead of open routing drafts.
-  Full active/pending GUI and JSON projection, Android adoption, and rollback when
-  persistence fails after stopping an actively deleted runtime remain pending.
-- CLI status now distinguishes actual active mode/location from pending selected
-  configuration. Idempotent `on` reports that state without restarting. Explicit
-  `restart` shares the GUI SSH restart action, requires a live connection and
-  applies committed configuration. `DesktopPendingConnectionCliTest` exercises
-  the authenticated terminal path with an injected fake runtime: stage/revert
-  selection, no restart on `on`, explicit restart, auto-saved routing versus
-  unsaved DNS dialog input, off and reconnect intent. No host runtime is used.
-- Removed the Linux-only headless startup gate: Linux, Windows, macOS/Darwin
-  can enter the owner path. Launch construction preserves Unicode/space paths,
-  prefers the packaged launcher, and retains classpath/main class for Java dev
-  launches. These are unit-tested paths, not native package certification.
-  Headless owners now run scheduled refresh without Swing through
-  `DesktopHeadlessSession`, sharing mutation admission with CLI writes while
-  allowing reads during refresh. Its synthetic coroutine test covers changed
-  refresh settings, busy writes, responsive reads and shutdown cancellation.
-  Full GUI attach/detach, alternate workspace plumbing, console packaging and
-  native traffic evidence are still pending. Transient owner completion is now
-  notified after response framing/socket cleanup, not when the command handler
-  returns. A loopback regression closes the server immediately on notification
-  and verifies that a large Unicode response arrives intact. Concurrent commands
-  are counted so a read cannot terminate an owner executing another command.
-- Desktop settings `show`, `set`, and atomic `apply` now cross the authenticated
-  CLI bridge into shared settings validation and durable workspace commits.
-  `DesktopSettingsCliEndToEndTest` covers Unicode input paths, normalized DNS,
-  atomic rejection, typed values and disk reload. GUI mode changes invoke that
-  same settings action and no longer stop a connection; the service regression
-  now requires the running flag to survive. General pending-restart UI and
-  active runtime identity tracking are still unfinished. Terminal scalar parsing
-  rejects extra JSON object members rather than silently ignoring them.
-- Added `CLI-001` through `CLI-008`; updated product, pending-setting and desktop
-  lifecycle contracts; made the contract guard require the CLI domain.
-- Added `agent_docs/cli.md`: complete target command inventory, settings schema,
-  action semantics, platform adapter/security/lifecycle design and test handoff.
-- Added `ControlOperationId` (56 canonical actions), control DTOs/stable result
-  codes, a shared session interface, operation registry, and pure CLI parser.
-  The parser covers all inventory actions, globals, aliases, mutually exclusive
-  inputs, native-GUI argument distinction, raw stdout/JSON conflict and safe
-  errors. This parser is NOT yet the packaged entry point.
-- Added a manual JSON request/result codec with UTF-8 size/nesting bounds,
-  strict request fields/types, duplicate-key rejection (including escaped key
-  aliases), explicit protocol mismatch, and sanitized parse failures. Framed,
-  authenticated shared-DTO/provider transports remain pending. The existing
-  desktop activation bridge now authenticates and frames its legacy payloads
-  (see below); it is not yet the complete ControlSession transport.
-- Added the pure operation ledger: deduplication by supplied request fingerprint,
-  conflicting mutation admission, responsive lookup/cancellation state, progress,
-  truthful terminal results, and 256-completed/30-minute retention. It requires
-  a serialized platform session and a monotonic clock; no platform binds it yet.
-- Added atomic shared settings proposals and inspection: flat supported keys,
-  typed values including fractional refresh, shared DNS/SSH/validation
-  normalization, whole-proposal validation, OS capabilities, separate autostart
-  transaction, and no runtime mutation. Neither GUI nor CLI dispatch binds it yet.
-- Extracted shared location selector resolution and wired existing desktop CLI
-  selection to it. Fixed repeated selection of the same exact desktop record to
-  avoid an unnecessary persistence write in both GUI and CLI paths.
-- Added `ControlCommitCoordinator`: revision/epoch guards, no-op detection,
-  telemetry-independent configuration revisions, busy mutation admission and
-  publish-after-persist ordering. Cancellation during the durable section does
-  not leave published memory behind disk. Platform sessions still need to bind
-  it with an explicit committed-configuration identity projection.
-- Desktop store writes now return `Result<Unit>` with sanitized
-  `DesktopPersistenceException` failures. Recovery remains successful storage.
-  Workspace replacement flushes the temporary file and no longer truncates the
-  old primary as an IOException fallback. Initial/default migration writes fail
-  closed. Runtime config write/delete failures are observable. The old facade
-  facade now publishes only after successful storage. Location selection propagates
-  failures to GUI and CLI; remaining Unit-returning action adapters still need
-  typed completion and runtime rollback migration.
-- Replaced desktop sample Add and append-name Edit with a real local-draft
-  configuration dialog and `saveLocation` facade action. Shared validation handles
-  supported links/JSON, duplicates, read-only sources, selected-reference remap,
-  stale target content and durable failures. Added desktop facade regressions.
-  Canonical duplicate comparison now treats direct links and editor JSON equally.
-  Desktop add/edit visual scene inventory is enabled; capture, review, native
-  baselines, dialog import affordances and complete revision guards remain pending.
-- Existing desktop activation and five-command CLI now use a 256-bit per-owner
-  credential, owner-private atomically published endpoint descriptor, bounded
-  length-prefixed UTF-8/JSON-string frames, authentication before handlers, and
-  a bounded daemon worker pool. Invalid clients cannot kill the listener; status
-  bypasses mutation admission and the service busy guard. Old/malformed endpoint
-  descriptors return protocol incompatibility rather than triggering a second
-  controller. Owner close does not delete a newer owner's descriptor. Native
-  Windows ACL evidence, full JSON DTO payloads, streamed large-document transfers
-  and operation-aware reconnect remain pending.
-- Wired desktop CLI `source show/set`, `locations list/show/add/update/select`
-  through authenticated transport to the real facade. File/stdin input is read
-  by the client, and save errors are sanitized. Source mutations now return checked
-  persistence results. The argument-to-socket-to-service-to-reload regression
-  exercises Unicode paths and interleaved GUI-action/CLI edits without a runtime.
-  Basic help/version are side-effect-free and unknown leading flags cannot fall
-  into GUI startup. Full global options, QR/large transfers, remaining commands,
-  process-level owner/frontend separation and native packaging are not complete.
-
-Validation already run:
-
-- Startup MCP succeeded, switched clean `main` to synchronized `dev`.
-- New no-op-selection regression failed on the original implementation, then
-  passed after the fix; full desktop tests also passed.
-- `./gradlew :shared:model:desktopTest :shared:core:desktopTest :desktopApp:test
-  :app:compileDebugKotlin` passed with the shared settings/ledger/parser/codec
-  additions (existing Kotlin/AGP and Android SDK XML compatibility warnings).
-- `./scripts/check_docs_hygiene.sh` passed, including 79 contract IDs.
-- Latest `workflow_status` confirmed only intended task paths. It reports the
-  expected unfinished changelog/version-note and final prepush-receipt steps.
-
-Immediate next work:
-
-1. Continue B: bind authoritative committed-versus-active state and the new
-   revision/persistence coordinator, plus runtime rollback. Desktop store now
-   exposes failures and the facade publishes after storage succeeds. Location
-   selection and editor actions propagate the result; other Unit-returning
-   adapters still need migration. GUI local drafts must remain separate from
-   the new session.
-2. Wire shared operations into genuine platform sessions and GUI callbacks,
-   then desktop authenticated transport/lifecycle. Do not advertise the new
-   registry inventory as implemented commands until handlers are real.
-3. Android ADB/provider/session, Windows helper/console packaging, native
-   platform E2E, UI/localization/visual evidence and the public CLI guide remain.
-4. Final content review, `version_bump`, prepush receipt, managed commit/push and
-   all five exact-SHA required workflows remain. No release actions.
-
-No task commits or pushes yet. Full parity is not implemented. The only existing
-public CLI behavior changed so far is desktop location selection; the new
-control foundation is deliberately not presented as a completed adapter.
-
-## Template
-
-When needed, replace the current-work line with:
-
-```text
-Owner:
-Date:
-Branch:
-Goal:
-
-Changed buckets:
-- Documentation:
-- Android runtime/config/UI:
-- Desktop runtime/tray/lifecycle:
-- Shared core/model/storage:
-- Shared UI/localization:
-- Packaging/CI:
-
-Validation already run:
--
-
-Known unfinished work:
--
-
-Files that are intentionally dirty:
--
-
-Files that look accidental and need classification:
--
-```
-
-## Rules
-
-- Do not use this file as a changelog for ordinary small patches.
-- Do not list generated artifacts as intentional dirty files.
-- Remove stale notes once the work is committed, stashed, or abandoned.
-- If a file looks accidental, classify it before deleting it.
+# Work In Progress
+
+## Active Objective And Safety
+
+Finish the full GUI/CLI parity handoff across Android, Linux, Windows and macOS,
+including current packaged native evidence, visual review, reviewed commits pushed
+to `origin/dev`, and all required CI for the exact pushed SHA. The goal is active
+and incomplete. No release, main merge, tag, publisher or runtime upgrade is authorized.
+Product authority: [contracts.md](contracts.md), especially CLI-001..008,
+STATE-001..005, DESKTOP-001..008; command specification: [cli.md](cli.md).
+
+VPN, installation and elevation are authorized only in positively identified
+agent-owned disposable VMs/emulators. Preserve the host VPN, personal workspaces,
+unrelated VMs, emulator 5580 and locally excluded `agent_docs/.Rhistory`.
+A timeout never authorizes restarting or killing an installer/runtime.
+
+## Current Repository And Scope
+
+Startup on 2026-09-07 fetched origin successfully. `dev` and `origin/dev` remain
+`60f8db884588047bea6eb1f108aea3d4c2ade07d`, ahead/behind zero. Canonical working-tree
+version is **2.1.3**, with one existing Unreleased note. No current-batch commit or
+push exists, and no final prepush receipt covers current contents.
+
+All 359 inherited dirty entries were preserved: 178 modified, 181 untracked.
+Buckets: Android 84, desktop 158, shared 90, scripts 16, agent docs 4, plus the
+macOS workflow, agent-tool test, root README, changelog, version, visual inventory,
+and `.codex/config.toml`. Product buckets belong to this parity batch.
+The user approved removing machine-specific Codex configuration from Git.
+The local `.codex/config.toml` is preserved and ignored; tracked template
+`agent_tools/codex-config.toml.in` plus `configure_codex.py` derives its paths.
+Its index deletion and portable generator are explicitly included in this batch.
+The generated MCP handshake and all28 agent-tool tests passed.
+
+Historical contradictory summaries and detailed native evidence are preserved in
+[parity-native-history.md](parity-native-history.md) and
+[parity-history.md](parity-history.md). Their process IDs and source versions must
+be revalidated before reuse.
+
+## Ownership And Build Coordination
+
+One writer per file. Root owns shared declarations, lifecycle tools, host Gradle,
+version metadata, documentation ledger, scope, commits, push and exact-SHA CI.
+Workers request ownership before editing common integration files and do not stage,
+commit, push, bump versions or spawn further agents.
+
+| Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/history/tests | App Gradle/CI remain root; routing UI/feedback and rendered test assigned | Immutable64d APK11/12; next reader snapshot pending | AVD5582 API29/48MiB;5590 API35 |Cold protobuf allocation RED; compatible reader under review | Current ART consecutive edits, actions/install lifecycle, visuals |
+| F | windows | VPN broker/resources/manager and focused tests | Factory/Main/autostart/common update remain root | NativeAOT helper migration; production disabled | ARM guest2299; later native x86 handoff | Host resource53 selected/44 executed GREEN; nativev19 pending | Strict pins, mutable resource binding/recovery, production/native packages |
+| E-Windows/Linux | linux_terra (Terra medium) | MSI worker/receipt/user identity and Linux installers/harnesses | Common update service/build integration stays root | Immutable aee288a7 MSI9/10 | Fresh x86 guest2314; old2310 unknown owner preserved | Defender blocked bootstrap; fixed NativeAOT helper in progress | Replacement/recovery, user-token modes; final Linux package reruns |
+| E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Final-source package and machine authorization | macOS15.7.7 ARM64 disposable guest | Source101268 GUI detach/crash252/252 traffic; older local install proof | Machine update/recovery and cleanup; current visual/package acceptance |
+
+Only one host Gradle invocation at a time. No source edits during artifact freeze.
+Native artifacts are immutable and require source fingerprints and byte hashes.
+
+## Implemented And Locally Tested
+
+Historical opening focused baseline completed 2026-09-07 (Gradle session 63042, 46 seconds); later source-specific evidence below supersedes it:
+
+- Shared core `*Control*Test`: 100 tests, zero failures/errors/skips.
+- Desktop CLI/Android adapter/large transport/install/Linux/Windows broker selection:
+  173 tests, zero failures/errors, 12 platform skips (Linux Arch/admission/pipe/
+  terminal/installer and Windows native broker/config tests).
+- Android Find Best, SSH draft, connection, GUI location, settings actions, refresh,
+  install/update and reader selection: 92 tests, zero failures/errors/skips.
+- `:app:compileDebugKotlin` and `:app:compileDebugAndroidTestKotlin` passed.
+
+Baseline changed-input fingerprint:
+`81a8ae7a9a09cc2ede6c1e0bcacc46bfb837ee1b01a1564900e460894772071e`.
+Manifest and copied XML/JSON selections are in temporary evidence directory
+`vpn-parity-resume-20260907.7h0oy59t` under the host temporary root.
+This is focused component evidence, not complete parity or package certification.
+Subsequent focused changes and evidence:
+
+- Shared invocation builder, registry-derived help, typed human/JSON dispatch,
+  stderr failure/progress rendering, Android status/stats watch and log follow.
+- Shared cursor journal with platform synchronization and Android post-durability
+  publication. Desktop/Android stream union: 29 desktop and 38 Android tests passed.
+- Android Find Best committed-result reconciliation, credential error redaction,
+  PackageInstaller correlation/cancellation/recovery and strict version-label checks.
+  Current action/installer selection: 92 passed; metadata mismatch regression red
+  then four passed. Android/UI compilation and localized installer presentation passed.
+- Android 56,000-domain memory test passed with cold reopen in a second 48 MiB JVM;
+  together with serializer and credential version checks: 12 passed, no skips.
+- Linux postinst race preserves an existing directory mode; headless install return
+  launches `serve`. Immutable desktop fixture builder and routine hygiene wiring added.
+- Windows scoped preparation interface and bounded configuration transfers compile;
+  six prepared-process tests pass. Native component evidence is ARM64/x64 emulation.
+- CLI public tests now use the authoritative controller. Lost subscription-refresh
+  outcomes and benchmark timings are fixed and retained; public desktop selection
+  133 passed, three platform skips. Startup failures now obey stderr rules.
+- Desktop rejected-restart regression passed: actual A, runtime identity, telemetry,
+  pending B and reconnect intent survive refusal; public cancellation is terminal130.
+  Production Windows manager integration remains outstanding.
+- Existing transient owners now adopt explicit `serve` without changing their epoch;
+  real process regression passed. Recovered desktop installation status now projects
+  protected receipt state, including unknown outcomes and bounded correlated history.
+  Common focused selection44 passed with two host platform skips; history10 passed.
+- Public Android Find Best consent launch was missing from the desktop ADB adapter.
+  Delayed-consent synchronous/async regression reproduced it; all21 adapter tests now
+  pass. The refreshed packaged CLI is included in immutable macOS sourcef77d below.
+- Windows capture failure classification and exact TrustedInstaller ancestor/witness
+  handling passed the host selection:73 selected,12 native platform skips, no failures.
+  Ordinary private spool policy and installer authority policy remain distinct.
+
+The source-matched Android release pair is in temporary directory
+`vpn-parity-android-bundle-20260907-llef0sbe`, with source fingerprint
+`417035001cd623dec7d2c4d2e6a18d3c5d3d5a4700dbf53ee20b59246ff9e52d`.
+Base 2.1.3/16460 SHA-256 `aa642ad6ddadc4dd9f9fea4dc53d694bad1948ea8a03e86ae30cefee70ce5fd9`;
+target 2.1.4/16480 `9395f7ad0c0473faf8e982d2130e06efbbdf63ca06052d79042f9766eb88af50`.
+Both are nondebuggable and signer-matched. Version overrides are fixture-only;
+canonical version metadata is unchanged. Android benchmark negative-measurement
+reporting was fixed in v2. Native API35 independent confirmation resume exposed a
+stale task; manifest regression red then two green, protected interaction now gets
+an independent document task. Current v3 pair is `vpn-parity-android-bundle-v3-x53dr1w7`,
+source `6b3d4ed8f4012fd5ae9291bb4e086692b6fd9f97760b170376a1dd8ae00d5b8d`;
+base SHA `bb7e188bd3a724b9fc604975c11ebe5eafaf663bd3ae513f0a75b1784e3da818`,
+target SHA `c748bcb10ab79d0f52d7726612e7c0e07a432aae18a18a7305bdb595ee46c656`.
+Both prior pending dialogs were authoritatively cancelled before replacement.
+API29/API35 current CLI rejects wrong signer/package/damaged/display-version APKs;
+unrelated caller provider access was rejected on both APIs, including with DUMP.
+
+Current v4 source `1ee0b7074b68b664f26f77f72789bd0ab4658f3451e421b52ef0bbd876598e44`
+is in `vpn-parity-android-bundle-v4-ef7ph_ah`. Compatible nondebuggable base2.1.4
+SHA `738ff44880ab9c5fbf25b5bf56377ab8522e7ac4ce6001bb91bae2b8ac477cde`
+and target2.1.5 SHA `dac4dd7edc4d680bf880a214560d936082817f41f2a4572719bdd98844521080`
+passed independent explicit confirmation recovery after cold STAGED and handed-off
+process loss on both APIs. Exact receipts: API29 `a6128739-9a41-47e4-b638-93b5e776f4bd`,
+session446531918; API35 `24240b33-ede3-4e5b-b154-f69fc05d70f5`, session189819957.
+Both installed2.1.5 with authoritative installed=true and terminal retry NOT_FOUND.
+The v4 same-session confirmation repair had31 focused tests and compilation pass.
+
+The large-routing second-write failure now has a passing full consecutive-edit
+48-MiB host regression using standard JNI construction and disk-backed history.
+The integrated37-test Android selection passes, including corruption, mutable
+capture, failed cleanup ownership, serializer and resource boundaries. Fresh
+API29/API35 APK10/11 verification remains open; historical first-import/cold-read
+evidence alone never certified consecutive edits.
+
+## Implemented But Awaiting Current Native Evidence
+
+- Authenticated owner/frontend lifetime, guarded drafts, operation retention and
+  document transfers exist; current packages need detach/crash/live-traffic proof.
+- Android large routing/persistence/export and Find Best/SSH paths exist; historical
+  API29 success does not cover current source, API35 or remaining failure lifecycle.
+- Android PackageInstaller independent confirmation/process-loss recovery is proven
+  for v4 on both APIs; remaining native actions, cancellation/retention and visual
+  scenarios still require their own evidence.
+- Desktop Linux/Windows/macOS installer adapters exist. Published Linux 2.0.18
+  installation after manual dependency repair is not fresh same-source recovery.
+- Windows broker native compilation/policy evidence exists; production runtime
+  remains gated pending preparation/authorization/configuration and native tests.
+
+## Remaining Implementation
+
+- B: finish capability correspondence and verify
+  common streams through fake ADB and current nondebuggable APKs/public packages.
+- C: audit Find Best commit uncertainty/cancellation and SSH credential rollback,
+  GUI callback identity, actual-A/pending-B refresh and service ownership.
+- D: review remaining Android installer cancellation, retention and visual scenarios
+  against the completed v4 independent recovery evidence.
+- E: current-source fresh Linux dependency/recovery; RPM/Arch; MSI original-user
+  execution and successful replacement; actual-architecture macOS worker/package.
+- F: broker prepare/authorize/commit, identity/storage/resource/CUSTOM/large-config
+  support, production binding, scoped elevation and ordinary autostart.
+- G: current cold-process large-document/persistence/resource/transfer/export gates.
+- H: reachable GUI parity, catalogs, changed visual scenes/baselines and routine
+  deterministic script/package-workflow checks.
+
+## Revalidated Environments And Live Work
+
+No host runtime was started or stopped. Host Gradle invocations remain serialized.
+API29 emulator5582 is `vpn-control-cli-task-api29`, ARM64, installed2.1.3/16460
+at discovery and 48 MiB growth limit. Worker booted task5590
+`vpn-control-cli-task-api35`, ARM64, previously2.1.2/16440, 192 MiB growth limit.
+Both had no active app service and no proxy setting at discovery;5580 untouched.
+Android owns task-only HTTPS/caller-probe setup and its exact trust/network cleanup.
+
+Windows QEMU20532 uses the repository-owned Windows disk, QGA/QMP sockets,
+VNC127.0.0.1:5 and SSH2299. Guest Windows11build26200 is ARM64; actual checksum-
+verified x64 JVM/runtime are under test and evidence is labelled emulation.
+Native broker prepared a suspended child and committed loopback traffic. Ordinary
+user real UAC approval passed19 component tests/one privileged-pin skip; v4 real
+denial preserved271 traffic samples. Native >8MiB configuration passed; one v4
+stage-cleanup test-order assertion was corrected. No public production/TUN/native
+x86 claim yet. Worker owns fixture processes/cleanup and is preparing a separate
+x86 Windows guest under remote `/home/kardinal/vpn-control-windows-native-20260907`.
+Native v6 component source `df8627d86e4f295936ca5273e7e87c5aba34269ad69d02b373c55f844acc4f56`
+completed successfully on the ARM64 guest with x64 JVM. JUnitCore reported52
+selected and no failures; an exact assumption count was not recorded, so this is
+not52 executed tests. Denial/TUN opt-ins were absent. Native x86 QEMU765494/SSH2310
+has reached guest-tools installation; its active installer must not be interrupted.
+
+Linux remote key was unlocked via the user's supplied passphrase at an interactive
+prompt. Reusable SSH master on jump host `/tmp/vpn-parity-ssh.IHuVWGp1/archlinux.sock`
+restored access; worker owns cleanup. Historical task9540bc92/2307 was stopped and
+preserved. Fresh task `/home/kardinal/vpn-control-install-vm-20260907-fresh`, forward2308,
+is Ubuntu24.04.4 x86_64, `vpnfixture` uid1000, 4vCPU/6GiB. Guest-only JDK17.0.20
+and Gradle8.10.2/build tools were prepared there. Linux worker owns its identified
+task guest/cache fixtures and cleanup; unrelated VMs remain untouched.
+Frozen source `6ffb0d359983f624aa0366fd5efdba8c0ecb6c0ec028579edb9428cd02a89368`
+built same-source DEB/RPM/Arch base2.1.3 and target2.1.4 in fresh guest2308. Separate
+audited verifier fixed Compose unpadded-MD5 filename normalization and matched all
+29,859 logical JAR entries except version metadata, without changing packages.
+Public help/version/capabilities and missing-owner status passed without a display.
+Native authorization denial exposed OUTCOME_UNKNOWN instead of CANCELLED: fixed
+wrapper reserves pkexec126/127; deterministic red then green. Real
+approval acquired only vpn-control+xdg-utils, proving dependency acquisition, then
+postinst failed: packaged hook was JDK default, so resource wiring needs correction.
+Guest2308 is half-configured; no global repair or package-manager termination occurred.
+Current frozen source `467fed6330d83884960ada91f6c8b229dd702dca9e8b80346e601bda76fa3500`
+contains the corrected explicit DEB packaging resource and public denial handling.
+It built base2.1.3/target2.1.4 DEB/RPM/Arch with matching code identity. Guest2309
+started without xdg-utils and passed real denial130 on two independent requests,
+including a detached persistent owner; native Linux components19 passed without skips.
+The subsequent approved install produced protected SUCCEEDED/OK seq4 and a new
+serving owner. Its initial unmanaged base image left an unreferenced old JAR, so
+the strict complete-image verifier intentionally rejected that fixture. Preserve it
+as fresh dependency/installed-target evidence; it does not prove a clean managed
+base-to-target image replacement. Guest2311 now passed clean package-managed DEB replacement and exact next-owner
+recovery (job a2c46e90-6dc3-4e66-9081-57ad22048ef5, protected seq4 SUCCEEDED).
+Its local evidence bundle SHA256 is
+13c9be384f0d29568c2df09326bdfc28089d73ce68a9fe5cf90f92477ad88d22.
+Fedora44 x86_64 guest2312 is running for RPM verification; Arch2313 is prepared.
+The retained SSH master is shared with the Windows worker and must remain available.
+
+macOS source6ff image was built with checksum-verified private Temurin17.0.20.1,
+actual ARM64 worker/runtime, and immutable app image under `vpn-parity-macos-image-6ffb-x8h75l1o`.
+The source6ff DMG-installed public CLI passed headless/static/operation/stream/large
+document smoke in the guest. That is installed-package evidence without live proxy
+traffic, GUI detach or successful update recovery. The first local update reached
+protected WAITING_FOR_EXIT, job `3eb4b84f-c9b2-4ced-b292-d33f93e6dd9f`, but Darwin
+reservation locking incorrectly blocked pending status/cancel admission. The
+worker eventually exited and its receipt remains nonterminal; preserve this
+uncertain job and staged package, do not replay or clear it to claim success.
+The exact native gate regression reproduced errno35; a separate protected reservation
+inode now allows pending readers while excluding another worker/replacement, and
+the regression passes in the owned macOS guest. Package CI now runs this regression.
+Current immutable source `f77d3a82861ca91f2b767c3d8d35508ea5ea9ee00e7a10f4a1d468ca7ca99b46`
+is in `vpn-parity-macos-current-20260907-ra456l4q`; its new app-image/DMG build includes
+the lock fix, current recovered status/serve behavior and ADB Find Best consent.
+The sourcef77d DMG-installed user-local update passed protected SUCCEEDED seq4
+and same-source next-owner receipt recovery, job
+`bd4aa216-c0ff-439a-8aa4-1b4f881238cb`. Automatic headless return failed because
+the native watcher always launched GUI mode. A native regression reproduced this;
+the helper now passes `serve` when no GUI frontend was captured. Three native
+helper tests pass; fresh packaged relaunch proof is still required. Terminal input
+cleanup after next-owner recovery remains under review.
+
+The latest desktop operation selection passed 29 tests selected, 7 native skips,
+0 failures, including four uncertain-outcome tests and an authenticated public CLI
+identity/wait/reconciliation scenario. Android large-replacement attempt4 passed
+14 of 15 tests; the same 48-MiB default-G1 third cold process still fails during
+final persisted-string allocation. That failure remains open; SerialGC diagnostic
+and actual API29 ART evidence are separate gates.
+
+Fresh immutable source `a7dc103d2da6080c242ccf688beec7e387045a971a344cdbca68c88df55a3307`
+includes the native headless-return fix. Base2.1.4 DMG SHA256
+`a029c8f3fc592b228d77b14ae52781cafe24dd77026b5b41d903bd3c7ddf5677`
+and target2.1.5 `2429e1169043bf6f6c0c9500a1e11a42c191062c1194c8a8a5cf3bc460006c63`
+have matching code fingerprint
+`680387fb8396a450895ba582939cd01bfe5fe6f0d6e38d79fb009251a1289dbe`.
+Host compilation/package output is under `vpn-parity-macos-relaunch-20260907-f_0n2dzz`;
+Public native verification passed on the guest's new `parity-a7dc103d` application path,
+`local-a7dc103d-workspace` and `local-a7dc103d-evidence`, preserving older jobs.
+Job `12920920-7579-4e8a-a6cd-be19896dbc9a` reached protected seq4 SUCCEEDED;
+new owner `55411491-1ed3-4f4c-8e52-e72904721600` returned automatically and
+remained serving disconnected for45 seconds before recovery inspection. Local
+`native-evidence` retains calls, receipt, process IDs and summary. Machine installation,
+GUI return, proxy traffic and terminal input cleanup remain open.
+The same source built diagnostic nondebuggable Android2.1.5/2.1.6 packages
+with the verified existing signer; actual ART48-MiB testing is next. Default-G1
+failure remains explicitly unclosed.
+
+Manager transition regressions reproduced four failures in the real manager's
+injected native path (12 selected), and the recovered-runtime lifecycle regression
+reproduced stale runtime identity (9 selected, one failure). Windows owns manager
+fixes; root owns lifecycle identity/timestamp integration. The first union is now
+green: manager12, lifecycle9, scoped-process6, broker14 selected/7 native skips,
+0 failures. Additional cancellation/uncertainty tests and production binding remain.
+The Android resource-boundary selection is also green:5 executed,0 skips/failures.
+
+Root owns macOS guest execution. Reused Tart guest192.168.64.3/macOS15.7.7 ARM64
+was already running and must remain running. Its exact task root is
+`/tmp/vpn-parity-macos-native-20260907.O45e6J`. TLS fixture trust is process-only;
+its private server/trust resources require cleanup after test-owned users finish.
+
+## Final Delivery Gates
+
+Every handoff requirement remains part of completion. Required matrix: installed
+Linux x86_64 DEB/RPM/Arch; native Windows x86_64 plus correctly labelled ARM64
+emulation; macOS installed DMG; Android API29/API35 nondebuggable ADB. Cover public
+launchers, modes/traffic, operations/cancellation, OS interactions, installation
+receipts/recovery, exports, one owner and GUI detach/crash/scheduled continuity.
+Capture/review changed GUI and installer scenes and update intentional baselines.
+
+After final content: workflow_status/scope review, version_bump, managed prepush,
+explicit reviewed staging/commit/push, then Fast Checks, Android Release APK,
+Linux Desktop Package, Windows Desktop Package and macOS Desktop Package all
+successful for the exact pushed SHA. Revalidate package evidence against delivered
+source. Advisory VPN Integration does not replace native parity evidence.
+
+Current additional native evidence: Windows native x86 v8 SYSTEM component run
+selected53/executed52/skipped1 denial opt-out,0 failures, including real TUN HTTP.
+Fedora2312 RPM denial/failure/recovery/success evidence is preserved locally at
+`/tmp/vpn-linux-2312-evidence-467fed6330d8.tar.gz`, SHA256
+`03f64692e44eb81acefb5e850896ed9ee5cb2d86061eaa09235da6e2d764c67a`.
+The old RPM removed the new desktop menu entry; six deterministic RPM tests now
+pass after posttrans registration/final-removal guards, with fresh native proof pending.
+Fedora is shut down cleanly; Arch2313 is bootstrapping in its assigned environment.
+Mac machine-owned base4 now exists at `/Applications/vpn-control.app` only in the
+owned guest, uid0; its public `--version` succeeds. Machine update authorization
+is not yet tested. Source-a7dc Android API29 actual ART48-MiB large replacement
+and full56k readback passed; the rest of that native chain remains in progress.
+
+Owner terminal-input maintenance now has deterministic RED→GREEN coverage, separate
+from read-only installation history. Previous-owner authoritative terminal inputs
+are released once per receipt; failed cleanup remains independently visible as
+`cleanupCode`, retains known installation outcome/evidence, and may retry cleanup.
+Cleanup/history/install selection14 plus Android SerialGC memory/resource selection16
+passed with no skips/failures. Native cleanup and GUI cleanup feedback still require
+verification. Windows manager cancellation/unknown-child selection34 passed with
+2 native capture skips; confirmed aborts now finish the real ledger as RUNTIME_FAILED,
+while unresolved outcomes retain their operation identity and remain pending.
+Default-G1 Android48-MiB RED evidence remains preserved; explicit SerialGC48-MiB
+three-cold-process regression and actual API29 ART48-MiB replacement/readback/cold
+reopen/export/exact retry/no-op chains are separately green.
+
+Android GUI large-document gate remains distinct from CLI: native sourcea7dc
+MainActivity crashed allocating a27,525,128-byte joined editor string after56k
+import. Shared GUI projection regression reproduced the eager read. List-backed
+drafts now avoid that text copy; indexed add/remove and asynchronously sorted indices
+preserve edits, while large domain lists compose only visible rows. Shared core226
+and UI37 tests passed, plus Android routing actions7 after its legacy-text assertion
+was updated. Native GUI proof and guarded/spooled Android picker import remain open.
+Android Find Best foreground token lifecycle regression reproduced early token
+release; its app fix passed connection13/interactions4/FindBest10 and both compiles.
+New source-matched APK6/7 is being prepared for native confirmation.
+Windows ownership broker v9 uses a retained original-owner native job before UAC;
+local broker16/scoped7/capture10/manager15 selection passed with10 native skips.
+Its immutable component source9590fef4 awaits native verification. Production and
+mutable cache/output remain gated. Linux new RPM mode normalization and Arch setup
+normalization require fresh snapshot/native packages; historical success records
+retain their exact earlier source/setup classifications.
+Mac source1794bb57 cleanup base5/target6 packages built with matching code fingerprint
+51da53f60a0b8a0f0a57d9821dbeaf99fb3e795e82ae5c603aad4a107ed187e6,
+but native cleanup is not yet verified. Machine a7dc attempt operationefa40b45
+has not reached an observable OS prompt; preserve its watcher13186/job07b5da81
+and originalowner13030. An independent inert /usr/bin/true AppleScript authorization
+probe returned OS error-60007; no grant/denial success is claimed.
+
+Latest verified checkpoint (supersedes the pending statements immediately above):
+Mac source1794bb57 user-local installed DMG5→6 public update completed with protected
+receipt60a74a21-bd62-4f4b-a699-5eacf53f93e9 sequence4 SUCCEEDED/OK. Automatic headless
+owner889ce592-5f53-489e-9eb9-e9929d9ea939 stayed alive disconnected for45 seconds;
+same-source installed image matched, public recovered status retained original
+request/operation/controller identities and installed=true. Cleanup independently
+reported cleanupCode=OK; the exact private input directory is absent and receipt
+evidence remains. Local native-evidence is under the macos-cleanup fixture pointed
+to by /tmp/vpn-parity-macos-cleanup-path.txt. This is user-local/runtime-off evidence,
+not machine authorization, GUI return or traffic evidence. Machine owner13030 and
+watcher13186 were reidentified alive; their unknown attempt is preserved. SDK
+Authorization.h identifies -60007 as errAuthorizationInteractionNotAllowed; the
+AppleScript generic password wording does not establish an incorrect password.
+
+Android sourceeb6379 API29 opens and scrolls the56k-domain GUI without the previous
+joined-string crash. Its Current Rules count still used legacy text: new shared UI
+regression reproduced this, then list-size projection fixed it without reading list
+elements (including an explicitly empty list overriding stale text). Shared UI39
+passed without skips. Native remove/save returned owner metadata unavailable and is
+under Android-owner investigation; large GUI editing/import is not certified.
+Malformed SSH body rejection regression independently failed as expected before
+Android-owner implementation; exact evidence is preserved under
+/tmp/vpn-parity-android-malformed-ssh-red-evidence.
+Windows prepared-close ownership regression also reproduced the failure before its
+fix. Full scoped-process8/manager15/broker16 selection now passes with8 explicit
+native broker skips, alongside the UI39 checks. XML and logs are retained under
+/tmp/vpn-parity-count-broker-close-green-evidence and matching log prefix.
+Linux sourceeb6379 packages built under restrictive umask and real old3→fixed4 RPM
+migration passed installed identity, ordinary launcher and desktop registration
+checks; public4→5 remains with the exclusive Fedora worker.
+
+Mac authorization isolation now has native evidence: the identical inert
+`/usr/bin/true` administrator AppleScript launched as a temporary Aqua LaunchAgent
+displayed the real OS password prompt. The screenshot was opened and reviewed;
+Escape returned -128 (user cancelled), exit1. The exact terminal LaunchAgent was
+removed, evidence retained at /tmp/vpn-parity-macos-gui-auth-evidence. This proves
+the SSH -60007 failure is a session interaction boundary, not guest authentication.
+It does not certify installer denial/recovery: the current adapter discards script
+output and only waits for protected receipts, so pre-worker authorization failures
+still need correlated typed handling. Original uncertain machine job is untouched.
+Android SSH envelope/parser/storage selection18 passed with no skips after its
+malformed-body RED; native bundled-parser proof requires the next source-matched APK.
+
+Mac authorization handling now preserves CANCELLED, PERMISSION_DENIED and
+INTERACTION_REQUIRED separately in bounded NOT_STARTED correlation dispositions;
+legacy markers remain cancellation. Missing/inaccessible protected state is never
+overridden merely by process exit. Only exact job-bound output from the completed
+authorization child proves rejection; the watcher must exit and protected absence
+is checked before publishing the disposition. Recovery projects failed versus
+cancelled consistently and installed=false only for this proven no-start case.
+Correlation and reply regressions failed before fixes; integrated selection34
+(Mac reply3/launch2/installer2, correlation13, Linux correlation10, recovered status4)
+passed without skips/failures. Evidence /tmp/vpn-parity-mac-auth-integrated-green-evidence.
+The exact production AppleScript was exercised in the owned macOS guest with an
+inert worker: SSH returned correlated -60007; a visually reviewed Aqua OS prompt
+cancelled with correlated -128, both script exit0. Probe LaunchAgent was removed;
+/tmp/vpn-parity-macos-auth-reply-native-evidence retains exact bytes and screenshot.
+This is script/component evidence; new installed-package public-path validation
+is still required, and the earlier unknown machine job remains untouched.
+
+Current frozen macOS source304c24fc682c7408281dab1b67e3bcd631bf9126f6a489ecfd6b2a485ffb3f58
+DMG6/7 built with code fingerprint918bf02041d92e4c17551aec4125467bbc60af9e6546f67c23d2893d5bdce265.
+Base SHA de9968ae6f82c794a77c4e169644c3e263af25ff904078d487cbe2bbdd5f563d;
+target SHA89bbc9b8341db32d081566476c87ebc5a721c9f98624b6fb826ba6ad36495594.
+Machine-owned installed base at /Applications/parity-304c24fc/vpn-control.app in the
+owned guest passed public SSH authorization rejection and next-owner recovery:
+operation1b4961b6-4664-45f2-a59d-29437ef8ccbc/job72606627-7304-491e-bac4-88c5f8fda885,
+INTERACTION_REQUIRED/exit1/final, failed phase and installed=false with original
+identities retained. Evidence under native-ssh-evidence in the fixture pointed to by
+/tmp/vpn-parity-macos-auth-path.txt. Runtime remained off. Aqua public cancellation
+harness is running as temporary jobcom.kardinal.vpncontrol.parity-public-auth-304c24fc;
+fixture TLS14686/port53689 has process-only JVM trust. Earlier unknown owners remain.
+Android guarded routing selection20 and debug/instrumentation compilation passed.
+The retained-GUI serializer regression first failed during fixture construction,
+so that result is not accepted as serializer RED; corrected construction is being
+checked before production changes. Native API29 add OOM remains independently proven
+at protobuf toByteArray, with previously committed55999 domains preserved.
+
+Mac source304c24fc public Aqua denial now also passed: real OS prompt screenshot
+opened/reviewed, Escape cancellation yielded operation88c434eb-f67c-48ed-8540-98fdfab53a42
+job3661380a-1368-4315-9830-d38f92c29fd6 CANCELLED/130/final, then exact next-owner
+recovery with installed=false. Native-cancel-evidence retained beside native-ssh-evidence.
+The exact terminal LaunchAgent was removed. TLS14686 is intentionally retained for
+the next machine grant scenario; no active runtime was started. New authorization
+codes still need catalog-backed GUI detail text (current update detail renderer only
+localizes cancellation/unknown), and proven-no-start private input cleanup remains
+a separate open gate. These do not invalidate the recorded CLI/native denial evidence.
+Corrected Android48MiB heap regression now reaches retained-snapshots-ready at
+36,617,704 bytes and reproduces OOM specifically in protobuf toByteArray/writeTo78;
+targeted RED evidence retained at /tmp/vpn-parity-android-serializer-retained-targeted-red-evidence.
+Android owner is implementing the compatible bounded writer; production/native proof
+is still pending. Windows actual x86 v9 denial preserved506 traffic samples with no
+failures, following ordinary-user repeated grant success; production remains gated.
+
+Installer authorization GUI detail now maps INTERACTION_REQUIRED and PERMISSION_DENIED
+to separate typed UI keys in all66 JSON catalogs. A regression first reproduced raw
+wire-code rendering; full shared UI checks passed, followed by focused3 presentation
+tests requiring translated, distinct outcomes in every language. Localization checker
+passed with existing unchanged-English status warnings; these new keys have no
+English fallback. Evidence /tmp/vpn-parity-install-auth-ui-green-evidence and matching
+UI/localization logs. Native source304c24fc predates these text-only changes; new
+visual captures remain required. Machine grant/replacement/rollback and GUI attach
+to an owner launched in a noninteractive session still need public-path verification.
+
+Owner cleanup now has a separately optional proven-no-start release callback;
+cleanup acknowledgments bind to both the receipt and disposition code, so they cannot
+decorate a later unknown outcome. Only CANCELLED/PERMISSION_DENIED/INTERACTION_REQUIRED
+without a protected receipt qualify; inconsistent flags with an active receipt or
+unknown code never authorize removal. Two regressions failed before fixes; cleanup5,
+correlation13 and recovered status4 passed (22 executed, no skips/failures), evidence
+/tmp/vpn-parity-no-start-cleanup-final-evidence. Platform release callbacks/native
+private-input disposal are not yet wired, so this does not close the cleanup gate.
+The disposable macOS guest administrator credential was queried asynchronously to
+continue the real machine grant test; this does not block other platform work.
+
+
+Current continuation evidence (2026-09-07):
+- Root owns DesktopGuiVisibilityControl and its tests; Linux now owns the new
+  synchronous operation client/tests and coordinated public-client dispatch.
+  Android app inputs are frozen after export10 passed; Windows owns manager
+  resource warning integration. No worker stages, commits or pushes.
+- Source304 installed macOS proxy traffic passed4552/4552 probes through public
+  hide/show, OS window close and exact frontend crash, unchanged owner/runtime.
+  Initial public show failed from the SSH owner; diagnostic LaunchServices attach
+  enabled these traffic checks, so automatic public launch is not certified.
+  Archive /tmp/vpn-parity-macos-proxy-304c24fc-evidence.tar.gz,
+  SHA91a0f71b9edc54653ddfe5c3457d11c17360364850ef3c4332471c6aec1e0d3f.
+  Explicit off/quit and exact fixture cleanup completed. Packaged macOS frontend
+  launch now uses LaunchServices; its regression failed before the fix and the
+  GUI selection12 passed. Fresh-package verification remains required.
+- Android serializer now streams compatible protobuf rather than allocating the
+  full byte array; focused retained-heap and compatibility evidence is green.
+  Latest Android union49 passed with no skips and both debug/instrumentation
+  compiles. Fresh picker completion after process loss reproduced an orphaned
+  empty document, then export selection10 passed after exact-URI cleanup and
+  duplicate-callback preservation. Evidence directories:
+  /tmp/vpn-parity-resource-red-android-freeze-evidence/android and
+  /tmp/vpn-parity-export-green-gui-close-red-evidence/android.
+  Both task AVDs are off and awaiting immutable base7/target8 APKs; native ART,
+  SSH identity/parser and GUI transfer checks still require those packages.
+- Windows manager resource regressions now execute: both fail as intended,
+  demonstrating lost committed warnings and incorrect confirmed-stop reporting.
+  An initial unsupported enum reference prevented compilation and is corrected;
+  no shared wire code was added. Evidence /tmp/vpn-parity-resource-export-red-evidence.
+- Linux installed eb6379 package passed GUI tray hide/show, detach/crash traffic,
+  real benchmark measurements, disconnected-client completion, five-minute
+  scheduled refresh (1724/1724 probes), and real TUN GUI lifecycle (31/31 probes).
+  Permission preflight retained active proxy A before guest-only caps were granted.
+  Explicit off restored routes; exact fixture processes/trust files/caps removed,
+  guest2311 shut down. Archives /tmp/vpn-linux-gui-proxy-evidence-eb6379d3658f.tar.gz
+  SHA52fd4db97f4d099942fe6fb698fce88b7b0dccaf9f4a37bb3bb6bb1c59c21fe8 and
+  /tmp/vpn-linux-https-traffic-evidence-eb6379d3658f.tar.gz
+  SHAcba692d68f674f85fccf10df925c8991cef48641b2e9915eda84525e2ae3831e.
+  Remaining defects: synchronous transport timeout loses accepted operation ID;
+  scheduled refresh lacks operation-list visibility; Home lacks pending/active cue.
+  Closed GUI endpoint falsely reported INCOMPATIBLE_PROTOCOL; deterministic RED
+  now proves this and mapping to UNAVAILABLE is implemented, green check pending.
+  No automatic replay against replacement frontend was introduced.
+- Final source review, native/visual closure, version bump, managed prepush,
+  commits/push and exact-SHA required CI remain outstanding. No full parity claim.
+
+
+Immutable sourcea2f17517c611c0e450f6236bbfde58f184fcdce14e5674315b39509d6710f9d3
+fixture pointer /tmp/vpn-parity-export-runtime-freeze-path.txt now contains macOS
+DMG7/8 and nondebuggable AndroidAPK7/8. Mac code009f1f0dc14e5b283735d4972cbf31194c0ee1c57fea8d883d2efeaee69e1093;
+DMGbase SHAad2d8ffd74434018b1ddf5c67d77c70c3e43fb0ea51d8ce7eddaab0252176cd7,
+target SHA65faea9f609db36c67bce611dbc1712fdbb48cf5362842b84f13ec048b0de9d6.
+APKbase SHAe54e7aa69d42666918cc9b1746a70960da0bd08f092bb57542fa130bc78b35b8,
+target SHAe17a885a6c331c07c07c95fbafdc1afe436903cc241b7768d12995cee3a9ae3d;
+both39456966 bytes and canonical signer verified, codes16540/16560. Android worker
+is installing base7 in the two off task AVDs for current native regressions.
+Manager2 and GUI13 passed without skips before this snapshot's packages were used.
+
+Fresh installed a2f17517 macOS base7 public gui show from SSH owner reached the
+Aqua frontend but timed out during cold initialization. A new explicit request
+succeeded, then public hide/show/status/quit all returned0. Screenshot opened and
+reviewed. Runtime never started; owner quit, exact lingering frontend terminated
+with SIGTERM after command/owner/workspace validation. Archive
+/tmp/vpn-parity-macos-gui-a2f17517-evidence.tar.gz captures this bounded evidence;
+first-call cold launch is still a failure, not a full native pass. Deterministic
+cold-readiness regression failed at the old two-second limit. Production now uses
+15-second bounded UI readiness plus an outer transport margin; green check and a
+new frozen package remain required. Sourcea2f17517 cannot certify that later fix.
+Linux CLI identity and observation-mode regressions both failed before fixes;
+worker is implementing authenticated acceptance/status polling without mutation
+replay. RED /tmp/vpn-parity-cli-identity-gui-cold-red-evidence. All final delivery
+gates remain active and no version bump, commit or push has been performed.
+
+
+Shared Home status now accepts authoritative ConnectionConfigurationPresentation:
+active display name (or explicit unavailable identity) while running, plus saved
+changes requiring restart. Pending selection is never used as the active-name
+fallback. Desktop uses the same authenticated frame's runtime/location identities;
+Android adapter wiring is reserved to Android owner. All66 catalogs have three
+translated UI keys, localization checker passed, shared UI44 passed without skips.
+Initial missing-details projection reproduced two failures before implementation.
+Evidence /tmp/vpn-parity-active-pending-ui-red-evidence and
+/tmp/vpn-parity-cli-identity-active-ui-green-evidence/ui. Native captures remain open.
+Latest bounded cold frontend readiness fix passed GUI14 without skips; sourcea2f175
+predates it. /tmp/vpn-parity-gui-cold-green-evidence records this focused proof.
+
+Synchronous desktop acceptance/status client first passed27 selected CLI checks;
+review then found authoritative terminal UNAVAILABLE was converted to a protocol
+failure. Added regression reproduced it; Linux owner is correcting this before
+acceptance. Never use that initial green union as proof for terminal-code fidelity.
+
+Android current-package native correction: cold readback proves56000 domains,
+including gui-added.example.test. Earlier eb6379 add therefore committed before
+its subsequent allocation crash; the prior statement that55999 remained is
+contradicted. Preserve the known56000 baseline. API29 current a2f175 GUI removal
+then committed revision1, but immediate full read while the GUI remained open
+returned OUTCOME_UNKNOWN. Android owner is gathering crash/heap evidence; root
+reserves shared draft/Compose retention investigation. No rollback/reimport was
+performed on the basis of that response failure. API35 malformed SSH envelope
+rejected INVALID_ARGUMENT without revision change; valid real fixture key accepted
+before runtime start. Further native SSH/runtime identity checks remain underway.
+
+
+API29 failure investigation refined: the owner3477552e-db53-4d5e-999a-07570df8e7aa
+remains alive with statusOK/revision1; GUI import operation7efe6b35-4ffa-4dfd-897f-9e6cc3906028
+is terminalOK. No new fatal crash. Heap36,572KiB and immediate read OUTCOME_UNKNOWN
+correlate with a separate eager ROUTING_SHOW path in ControlConfigurationInspection,
+which materialized every domain Text beside the retained GUI. Reader regression
+reproduced retained Text objects before fix; Android now supplies the immutable
+AndroidPersistedDomainSuffixes.controlValues adapter, while shared default reads
+still snapshot ordinary inputs. /tmp/vpn-parity-routing-inspection-red-evidence.
+Two independent retention regressions also reproduced: StateFlow retained an
+obsolete indexed draft when equal canonical data was applied, and Compose list
+keys compared equal after backing replacement. Committed draft generation now
+forces the UI-only state replacement; referential cache keys and sort-result
+holders release equal old backings. No persisted configuration format or control
+revision changed. RED evidence /tmp/vpn-parity-canonical-draft-red-evidence and
+/tmp/vpn-parity-domain-compose-key-red-evidence. Integrated checks running; native
+proof needs a new immutable APK and is not supplied by the older a2f175 artifact.
+
+
+Integrated continuation checks now GREEN: core13 (RoutingGuiProjection4,
+MainUiStateProjector4, ControlConfigurationInspection5), UI45, desktop42 across
+SynchronousOperationClient11/LinuxInstallClient6/Unified4/OperationProgress4/
+OperationCli3/ControlSession3/ControlInstallSession8/CliProcess3, all without skips
+or failures. /tmp/vpn-parity-routing-cli-integrated-green-evidence. Android reader18
+plus debug and instrumentation Kotlin compiles also passed without skips/failures,
+/tmp/vpn-parity-routing-reader-green-evidence. Actual ART read-with-GUI after these
+latest fixes still needs new APKs. Android worker is preparing a retained-reader
+48MiB component regression and Android active/pending projection wiring.
+
+Ownership transfer: Linux worker returned synchronous client/tests, public dispatch
+and fingerprint stanza to root after GREEN42. It now owns Windows MSI installer/
+coordinator/original-user admission/receipt implementations and tests/fixtures,
+excluding VPN broker/userfiles/runtime manager, shared JNA (ask first), common
+installation DTOs/dispatch, Main/factory and version metadata. Windows worker
+retains broker/resources and must confirm its current native x86 union terminal
+before transferring that environment to MSI; no overlapping operators authorized.
+Desktop Find Best cancellation remains an explicit open implementation gate:
+capabilities currently omit cancellation, recovery may capture pending selection,
+and persistence results are discarded by an existing Unit callback. Benchmark
+native cancellation cleanup also needs review; no support flag was enabled alone.
+Root must integrate new resource publication warnings into lifecycle/public results,
+including clearing active UI identity after a confirmed native stop with a resource
+publication failure. Manager-only green tests do not certify that integration.
+
+
+Connection presentation now preserves nullable runtime/restart knowledge for Android:
+unknown is not projected as off or no-pending. Active identity unavailable and restart
+requirement unknown are distinct localized facts (fourkeys in all66 catalogs).
+Focused presentation5 and localization checks passed; Android adapter pending.
+Docs hygiene initially found an unindexed historical parity-native-history.md;
+added its history-only routing entry, then docs hygiene passed. Windows native x86
+v12 component45 selected/44 executed/1 deliberate denial skip/0fail is terminal;
+Windows owner transferred exclusive x86 operator to MSI worker after a fresh
+no-runtime/no-msiexec/no-TUN inventory. Broker resource work moves to its separate
+ARM guest; native x86 evidence remains separately classified. MSI workspace-return
+regression is being checked before fixing the private request/worker relaunch.
+
+
+Latest focused gates GREEN: Android16 (retained public reader48MiB/full56000 entries1,
+connection presentation4, control status3, location presentation4, observer4) plus
+both compiles. Evidence /tmp/vpn-parity-android-reader-memory-presentation-green-evidence.
+This is a SerialGC JVM proxy; actual ART verification remains required. Lifecycle
+now clears active identity after confirmed native stop with resource publication
+failure while preserving original failure and off/reconnect intent; regression
+first failed, then lifecycle10/actions5 passed. Captured originally disconnected
+runtime restore also reproduced a failure and now restores off without treating
+unknown running identity as off; lifecycle12/actions5 passed afterward. Evidence
+/tmp/vpn-parity-runtime-off-restore-green-evidence. Resource warning presentation
+and public recovery metadata integration remain open, separate from these facts.
+MSI originating-workspace return fix passed19 tests with2 native-only skips; source
+and native worker return behavior still require x86 execution. Android/Mac/Windows
+base8/target9 snapshot is being frozen with all source owners paused.
+
+
+Fresh source101268569c0866cfd646b8ea938bd0a96959b4ec536abf9f57609e5513cddd92
+native macOS base8 passed first public GUI show from SSH owner in2.71s, then
+hide/show/status. Actual proxy A stayed active after selecting pendingB; screenshot
+opened/reviewed shows both names and restart notice. Continuous252/252 probes
+passed through hide/show, OS close and exact frontend crash/reopen, ownere94d30b8-94fd-468b-99b9-1c064fcac3b8
+runtime78a751a9-5742-4637-87f0-38bf40f7dd9b unchanged. Explicit off/quit, SOCKS and
+exact frontend cleanup completed; fresh process inventory empty for this fixture.
+Archive /tmp/vpn-parity-macos-gui-10126856-evidence.tar.gz SHAa77164add7419d78d1dfba9fceb0710d709fe97e6cc689f523061a90a00e8007.
+Supplementary static help/version/capabilities and missing-ownerstatus created no
+workspace. Valid settings set mode vpn returned authoritative UNSUPPORTED and
+preserved off/proxy-only; initial malformed settings mode invocation is retained
+as harness error, not a product failure. Static evidence archive
+/tmp/vpn-parity-macos-static-10126856-evidence.tar.gz SHAc0404cdc6a7b44248af0f5bfce8a2219081e6f32e6cf1a84a6d09bdfb188569b.
+Machine authorization grant/replacement/rollback, same-source update return and
+remaining cleanup gates stay open. Old unknown machine journals/owners and TLS
+fixture are unchanged; current proxy fixture alone is fully stopped.
+
+Android Reader now obtains one owner status snapshot for non-runtime read envelope
+warnings: settings reads no longer falsely claim unavailable runtime identity when
+the owner knows it, while explicit unknown status/telemetry keeps its warnings.
+Native discrepancy reproduced in a20reader regression beforefix; reader20 plus
+retained-reader-memory1 and both compiles passed afterward, evidence
+/tmp/vpn-parity-android-reader-observation-green-evidence. This change postdates
+101268 packages. SSH stale draft save is correctly rejected but native dialog hid
+failure feedback; three deterministic regressions failed, Android worker is fixing
+sanitized ephemeral feedback. MainUiState field ownership returned to root.
+Windows broker/user-files/return hostunion23 selected/10executed/13nativeskips/0fail,
+/tmp/vpn-parity-windows-resource-return-union-evidence. Native x86 MSI return component
+now passed after correcting test-only PowerShell literal indentation. Windows native
+fixture wrapper-path launch failed before product execution; corrected orchestration
+helper is separately hashed against unchanged101268 source, with failed build kept.
+
+
+Windows runtime workspace scope is now lazily bound by DesktopAppService before
+DesktopControllerOwner session construction. The owner regression first failed
+without binding, then passed; scope creation is deferred until runtime resource
+admission. Strict canonical records are never repaired/overwritten, and repeated
+admission verifies original path, parent/file identity, bytes and digest. Focused
+host union56 selected/41 executed/15 native-only skips/0failure, archived at
+/tmp/vpn-parity-windows-scope-binding-green-evidence. This is controller/component
+evidence, not production-enabled Windows VPN. Native resource leases and durable
+job correlation remain Windows/root integration work.
+
+Find Best now propagates benchmark/final persistence failures instead of discarding
+Result through a Unit callback. Failed initial benchmark persistence stops before
+verification/runtime mutation. Admitted search clears busy/refresh flags on probe
+cancellation and propagates candidate-verifier cancellation. Deterministic RED
+evidence: /tmp/vpn-parity-find-best-persistence-cancel-red-evidence (persistence);
+/tmp/vpn-parity-find-best-cancel-flags-red-evidence (busy flags). The first cancellation
+test also exposed coroutine exception stack-recovery copying, so identity assertion
+was corrected to type/message and the absent-cleanup regression independently rerun.
+Final FindBest7/BenchmarkCli2/Lifecycle12 all21 GREEN, zero skips/failures,
+/tmp/vpn-parity-find-best-persistence-cancel-green-evidence. This does not yet certify
+Find Best runtime transition cancellation, actual-A recovery, or known/unknown commit
+handling; cancellable capability remains unchanged until those are complete.
+
+Current ownership handoff:
+
+| Task | Agent | Owned subsystem | Dependency / next handoff |
+| --- | --- | --- | --- |
+| Windows durable runtime correlations | root | DesktopWindowsWorkspaceResourceJournalRegistry (new), scope provider binding, tests | Windows owner supplies immutable registry API and authoritative reconciliation |
+| Windows native resources | windows | Broker, runtime resource declarations, mutable leases/journals | Root durable registry, then production integration |
+| Android retained import OOM | android | RoutingRulesCharacterImport.kt and focused shared parser/memory tests, app heap tests | Exclusive shared parser ownership granted; request host check before native freeze |
+| Windows MSI native replacement | linux | Existing installer ownership, exclusive native x86 guest | Built source101268 base8/target9; public replacement/recovery next |
+
+Android source101268 first real48MiB GUI add and full read passed; subsequent remove
+failed without changing committed data. Worker traced ART OOM to existingDomains
+toTypedArray materializing persisted strings in RoutingRulesCharacterImport with
+retained GUI/operation snapshots. This parser-specific follow-up is assigned above;
+earlier eager-reader fix remains independently proved and no completed operation
+should be reclassified because this later mutation failed.
+
+Windows ordinary-workspace resource registry now binds scope.journals lazily.
+Immutable private job records contain exact original controller/scope proof and
+opaque resource identities, retain up to8 unresolved jobs without eviction, and
+never initiate helper work. Lost publication replies recover by exact job identity;
+conflicts/corruption and failed cleanup retain evidence. Registry6/scope3/owner2
+passed on host. Native conditional removal holds READ_DATA+DELETE with READ sharing
+only through ACL/content verification; a new opt-in Windows test remains pending.
+No native-registry or production-enabled VPN claim follows from host coverage.
+
+Android parser retained-string lookup fix passed shared7 and Android10 tests plus
+both Kotlin compiles, alongside desktop11: all28 selected/executed, zero skips or
+failures, /tmp/vpn-parity-resource-registry-android-import-evidence. Before-fix
+/tmp/vpn-parity-android-retained-import-red-evidence proves both eager old-list reads
+and actual constrained-heap OOM in preparation after fixture readiness. Native
+full-size consecutive GUI editing remains mandatory. New immutable source snapshot
+950ccc0fe4e1d3b344b9515a34314b701ac0bc77d895b6a7a0a5f731684ffb12
+is building Android diagnostic9/10; pointer /tmp/vpn-parity-retained-import-freeze-path.txt.
+This snapshot includes Reader warning and SSH feedback fixes omitted from101268.
+Registry native test/digest guard added afterward are not certified by this snapshot.
+
+User-required fast native-failure regression policy is now canonical TEST-001 in
+contracts.md, referenced by AGENTS.md, development.md and test-matrix.md. Applies
+to every distinct VM/emulator/native/package/manual/visual/integration failure
+type, requires pre-fix failing and post-fix passing behavior plus routine suite
+wiring, and records OS-only limitations. Source assertions or skipped native tests
+alone are not reproducers. Docs hygiene/diff whitespace passed after this change.
+
+Windows registry nativev15 is GREEN on ARM64 Windows SYSTEM with x64 JVM emulation:
+15selected/15executed/0skip/0failure,15.555s; exact native conditional record deletion
+and cold-owner recovery executed. /tmp/vpn-windows-finish.WhKUbn/native-arm-v15-resources-result.json.
+Not ordinary-user or installed-package evidence. Root latest host registry/scope/owner
+13selected/12executed/1native skip GREEN; /tmp/vpn-parity-resource-registry-native-ready-evidence.
+
+Find Best failure recovery now captures actual runtime before subscription refresh
+and invokes that restoration instead of starting the staged selected location.
+Regression failed with old fallback; /tmp/vpn-parity-find-best-actual-runtime-red-evidence.
+Cancelled candidate authorization now terminates the search after captured recovery
+instead of prompting for subsequent candidates; RED at
+/tmp/vpn-parity-find-best-authorization-cancel-red-evidence. Final FindBest9/Actions5/
+BenchmarkCli2/Lifecycle12/Manager transient-cleanup1 all29 GREEN, zero skips/failures,
+/tmp/vpn-parity-find-best-recovery-cancel-green-evidence. Remaining Find Best gates:
+coroutine cancellation during native mutation, pending-selection preservation after
+failed candidate staging, recovery on all early/exception exits, and committed/unknown
+result semantics. Cancellation capability remains unadvertised until fully verified.
+
+Source950 Android9/10 APKs built/verified same signer and nondebuggable. Base9 hash
+fd45dc27307dd77f3cc5ea4be7cbdcb3fa553ee9dd8d61c72e5b351f3e0df1ef; target10 hash
+9d822b51a70d6598e4d3af5f129ef3fe7ff657459b19d7cd147afa01854f0989.
+First API29 full GUI edit/read56001 passed, but second edit still fails under48MiB
+without changing committed data; exact new allocation diagnosis pending. The passing
+small-replacement heap regression proves old-pool materialization fixed, not full
+consecutive-edit memory acceptance. API35 stream cancellation/epoch termination and
+Reader warning correction passed on950. Android owns optional MainUiState
+routingDraftFailure stanza plus app Rules controls-slot feedback/tests; shared
+RoutingRulesScreen remains root-owned unless explicitly transferred.
+
+Find Best unknown-result boundary reproduced overwriting benchmark state after an
+OUTCOME_UNKNOWN start response, and CLI mapper downgraded unknown to runtime failure.
+Both fixed: mark owner operation pending, preserve code/exit2, no further candidate
+or restoration/write; competing GUI actions remain busy until reconciliation.
+Busy guard independently RED at /tmp/vpn-parity-find-best-unknown-busy-red-evidence.
+Final FindBest10/BenchmarkCli3/OperationProgress4 GREEN17/0skip/0failure,
+/tmp/vpn-parity-find-best-uncertainty-green-evidence. Earlier combined RED attempt
+failed compilation because of test nullable-list inference; its stale XML directory
+is explicitly named compile-failed-stale-xml-not-evidence and is not validation.
+Actual behavior RED: /tmp/vpn-parity-runtime-uncertainty-red-evidence; CLI RED:
+/tmp/vpn-parity-runtime-uncertainty-code-red-evidence. Native pending-result recovery
+and all early/exception/cancellation paths still require completion; no capability
+was enabled on this evidence alone.
+
+Resource registry schema2 adds required original native PID/creation FILETIME/SID,
+exactly roundtrips that identity on owner replacement, and rejects changed PID,
+PID reuse or foreign SID for the same scope/job/resources. Registry8 selected/7exec/
+1native skip plus MSI Prepared10/Captured2/ReceiptNative1skip/ReceiptScript1skip
+GREEN in /tmp/vpn-parity-msi-native-owner-union-evidence. Native publication journal
+v3 has corresponding owner tuple; Windows worker owns an exclusive admission gate
+that combines exact original-owner exit with durable closure to exclude delayed
+helper creation. Stage absence alone remains insufficient. Registry v1 records fail
+closed; only disposable component fixtures used that unshipped format.
+
+Full Android consecutive-edit regression now reproduces the second write without
+an emulator: first full56000 import commits, second starts near37.7MiB then OOM in
+AndroidStringListCodec.asciiString -> encodeOwned -> AndroidPreparedRouting.consume
+inside DataStore editProjected. /tmp/vpn-parity-runtime-uncertainty-android-chain-evidence
+(Android1RED; desktop30 executed/1native skip GREEN separately). Heap/source evidence
+/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/android-routing-consecutive-memory-17980896387461839969.
+Android worker is inspecting retained objects before choosing a fix; existing
+Preferences format unchanged. Host diagnostic helper /tmp/android-routing-hprof.py.
+
+
+### Coordinated receipt snapshot and memory boundary, 2026-09-07
+
+| Task ID | Agent | Owned subsystem | Shared reservations | Dependency/artifact | Current check | Next handoff |
+| --- | --- | --- | --- | --- | --- | --- |
+| B/F integration | Root | Desktop connection/Find Best; build/CI/docs | App Gradle, shared integration, final delivery | Host build serialized | Candidate selection/recovery35 GREEN | JNI host build and integrated regression |
+| C/G | Android | Android JNI C/CMake/Kotlin, retained result spools, Android tests | MainUiState routing failure stanza only | 48-MiB consecutive edit RED | Standard JNI and disk history implementation | Coherent host/native helper selection |
+| F | Windows | Native broker/resources and focused tests | Production binding coordinated with root | ARM component guest2299 | Gate/native owner regressions | Complete mutable resources and production evidence |
+| E Windows | Linux | MSI worker/token/receipt, fresh x86 guest | No common update changes without coordination | Frozen aee288a7 base9/target10 | Fresh guest bootstrap; old unknown owner preserved | Same-source replacement/recovery |
+
+Find Best now defers candidate selection until successful runtime transition;
+authorization denial preserves actual A and pending B. Failed final selection
+persistence restores A and publishes the restored session timestamp. Causal RED
+selections and final35 GREEN/0skip are retained under
+/tmp/vpn-parity-candidate-selection-recovery-green-evidence (FindBest10, Actions5,
+BenchmarkCli3, PendingConnectionCli2, Lifecycle15). This does not close remaining
+Find Best cancellation and uncertain-result recovery gates.
+
+The verified immutable Windows fixture is
+/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/vpn-parity-msi-receipt-freeze-i2cxnpxr/windows-fixture,
+source aee288a7602d579a444031eb10f0062c232e27ef0bea4e5107d5f018264455dc,
+base2.1.9/target2.1.10, actual x64 runtime
+ca74563c93440a2e9cb73eae6a04c109d3f5efce36a385f8261a654e362d2ea3.
+All workers paused for verified copying, then resumed. This snapshot includes the
+receipt rename/wait fixes and excludes subsequent linked-token/JNI/resource edits.
+New installation attempts use the fresh owned guest2314; the old2310 unknown
+installation owner/journal remain intact. Its separate build directory may build
+immutable inputs without touching the installed owner.
+
+Heap analysis isolates the second Android write peak to old Preferences backing,
+new output byte array, and new String allocation, with an8-MiB UI proxy; old token
+retention is no longer the cause. Android is implementing a standard-JNI String
+constructor with bounded callback reads and explicit allocation failures, plus
+private disk-backed historical results. Native temporary memory remains linear
+in document size. Root owns pinned NDK/CMake and ordinary fast-test build wiring;
+Android owns production C/CMake and host-only allocator tests. No libbox/sing-box
+runtime upgrade is involved. Full consecutive edit/native APK acceptance remains
+pending; the earlier small-replacement GREEN is not sufficient evidence.
+
+
+Find Best cross-source identity regression now proves a duplicate profile in a
+hidden source was selected instead of its observed visible-source record. Causal
+RED: /tmp/vpn-parity-find-best-source-causal-red-evidence (expected visible URL,
+actual hidden URL). The first attempted fixture omitted current locations and
+failed precondition; it is not causal evidence. Winner lookup now binds observed
+source URL/raw identity and winner flags select only that record, clearing other
+selection flags. Final union /tmp/vpn-parity-source-native-owner-final-green-evidence:
+FindBest11, NativeOwner3, Registry8/1native skip, Scope4, Reconciliation7;33 selected,
+32 executed,1 native skip,0 failures. NativeOwner separately reproduced non-ASCII
+SID digit acceptance before correction in /tmp/vpn-parity-native-owner-ascii-red-evidence.
+
+Pinned SDK NDK28.2.13676358/CMake3.22.1 installation completed successfully. App
+Gradle config parses with the new host JNI build tasks; actual C/test execution
+and new APK verification remain pending the Android worker's coherent handoff.
+Fast Checks and Android Release now explicitly install those pinned build tools.
+
+Host JNI configure/build passed with AppleClang21 and strict warnings, log
+/tmp/vpn-parity-native-string-host-build.log. Both production C and host allocator
+hooks compiled into the generated host dylib. This is compilation evidence only;
+Kotlin callback, constrained heap, failure-path execution and APK evidence remain
+pending. Android C source hold released after successful build.
+
+Android JNI boundary selection:11 selected,10 passed,1 NewString-allocation failure
+test failed; both Android Kotlin compiles passed. Evidence
+/tmp/vpn-parity-android-native-string-boundary-evidence. Android owns diagnosis.
+Root FindBest refresh-cancel regression initially failed cancellation exception
+identity due to coroutine stack recovery, not causal runtime restoration; changed
+to message assertion, needs rerun before accepting RED. No restoration fix yet.
+
+
+Find Best refresh/cancellation causal RED confirmed expected Actual A but observed
+Refresh temporary runtime in
+/tmp/vpn-parity-find-best-refresh-cancel-causal-red-evidence. Recovery now captures
+before refresh, tracks possible mutation and known commit, and restores at most
+once under NonCancellable on early failures or cancellation. Unknown outcomes keep
+owner work pending/busy; committed runtime is never rolled back for later metadata
+failure. Added restoration-failure/unknown and post-commit persistence guards.
+Initial cancellation fixture compared exception object identity, which coroutine
+stack recovery changes; that initial failure was not causal and was corrected.
+
+Integrated /tmp/vpn-parity-recovery-android-jni-chain-evidence passed:
+FindBest14, OperationProgress4, BenchmarkCli3, Broker19/9native skips,
+UserFiles7native skips; AndroidNativeString8, StringListCodec3,
+RoutingConsecutiveMemory1. Total59 selected,43 executed,16 native skips,0 failures;
+both Android Kotlin compiles passed. Full consecutive48-MiB GUI-like edit/history
+chain now passes in5.82 seconds. Fresh API29/API35 APK evidence and historical spool
+failure/lifetime tests remain mandatory. Native allocation test initially exhausted
+heap constructing its own pressure fixture before JNI; corrected fixture proves
+all input bytes were read before NewString OOM and successful cleanup/later use.
+This was a test-fixture correction, not an additional production memory fix.
+
+MSI same-user elevated-owner linked token probe failed1346 because token was
+identification-level impersonation. Root reviewed the documented retained-parent
+process token inheritance route and authorized a bounded native probe with exact
+same owner SID/session, non-elevated verified OS shell handle, and suspended-child
+identity verification. No name enumeration or alternate-user fallback is allowed;
+production integration still requires review and native evidence. Ordinary MSI
+replacement remains the Linux worker's first priority.
+
+Production ARM64 application JNI build passed via :app:externalNativeBuildRelease.
+ELF AArch64 with0x4000 LOAD alignment and only production JNI export (no host test
+hooks), unstripped32984 bytes SHA
+f677a0bc1aad244170c1a2f800031736b73cf8ff0f1acc1c82556c7724e7a758.
+C/CMake source hashes and component classification in
+/tmp/vpn-parity-native-string-arm64-identity.json; build log
+/tmp/vpn-parity-native-string-arm64-build.log. This is component build evidence,
+not a packaged APK or live ART acceptance result.
+
+Retained Android result lifecycle selection9 ran7 GREEN/2 RED before fixes:
+changingCaptureInputCannotPublishAnUnverifiableHistoricalResult, failedPartialSpoolCleanupRemainsOwnedForShutdownRetry.
+Evidence /tmp/vpn-parity-android-retained-results-red-evidence. Android owns fixes
+for mutable capture rejection and failed partial-spool cleanup ownership/retry;
+APK freeze waits for their coherent regression plus full48-MiB chain.
+
+
+Android retained-result capture/partial-cleanup fixes now pass the broader37-test
+selection, no skips/errors: history9, NativeString8, consecutive memory1, pipeline
+memory1, codec3, Preferences serializer9/memory1, resource boundary5. Both Android
+Kotlin compiles pass. /tmp/vpn-parity-history-green-admission-red-evidence/android.
+The same --continue build intentionally ran Windows admission2 causal RED tests;
+that independent failure does not invalidate the executed Android selection.
+Windows owns the pre-UAC ancestor pin fix before the next coherent source freeze.
+
+Debug JNI ARM64 and x86_64 builds passed. Both ELF architectures match their ABI,
+LOAD alignment0x4000, only production JNI export; identities in
+/tmp/vpn-parity-native-string-debug-identities.json. CMake generated app/.cxx was
+not previously ignored. New fixture regression reproduced cache inclusion before
+fix; source snapshot rejects .cxx, .gitignore excludes app/.cxx, and release hygiene
+rejects tracked cache paths. scripts/test_desktop_update_fixture.py now16 GREEN;
+this suite is already wired to routine hygiene/pre-push. No generated cache is
+part of the upcoming immutable APK source.
+
+
+Immutable source8dd8984f68118497f83fcf6fbf0418329df74db44576eb97b2b031476bfafa36
+verified1315 inputs with all owners paused. Root
+/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/vpn-parity-jni-history-freeze-t3g5u2d9;
+pointer /tmp/vpn-parity-jni-history-freeze-path.txt. Read-only source plus private
+build copy; generated .cxx excluded. WindowsAdmission2/Broker19 (9 native skips)
+passed before capture; native C# ancestor fix and later close-ownership tests are
+outside this snapshot. Source hold released after verification.
+
+Both8dd nondebuggable APKs built with canonical signer
+ a43b5330501b02f5558fa381c52e7f7dcdd9db362d6807d449d7bbb5e207c5a0:
+base2.1.10/code16600 SHA78e685403285f7c8b588c4e287a6cced875b487e29c04dad61d07270460269aa;
+target2.1.11/code16620 SHAe7fa443f7c51eb66401b80b95a8842a085b3a37d77cd6f333a2c8403e87f190d.
+Each39501439 bytes. artifacts.json and APK badging/signer/JNI ELF inspection are
+under android-diagnostic. JNI architecture/alignment/production-only exports pass.
+Android owns current native verification preserving API29 committed56001 domains.
+First f77d3 CLI→8dd APK reads are explicitly mixed-artifact; matching complete8dd
+macOS CLI app-image build follows from the same private checkout and captured
+unchanged ARM64 runtime e6c43070482bbe4d2282b5de704d4e9a510a78249d8ed67f9c9cf57e002a8651.
+
+
+Complete same8dd macOS ARM64 CLI app-image built and169-entry manifest verified:
+desktop-cli/vpn-control.app under the8dd root. Launcher
+Contents/MacOS/vpn-control SHA403fd6eb885f799f137eb3dbe9067125810c0d2a104a785fa4928394da634ae7.
+Generated files made read-only after checksum verification. Includes bundled JVM,
+unchanged captured runtime, and native Mac worker freshly compiled from8dd source.
+Classify app-image, not DMG-installed. Android worker received matching launcher
+for subsequent current-source ADB gates. Initial scratch build invocation attempted
+an unexecutable shell script directly; corrected to the existing bash invocation
+before any Gradle build started. No product source/permission change was needed.
+
+New Windows admission close-failure regressions run4 selected/2 GREEN/2 RED:
+readyChildAndUnclosedAdmissionAreBothRetainedAfterCleanupFailure loses its known
+child, and failedAdmissionRetainsUnclosedHandlesForExplicitRetry loses native pin
+ownership. /tmp/vpn-parity-windows-admission-close-red-evidence. Windows owns fixes;
+source hold released. Native C# ancestor5 GREEN is separate ARM component evidence,
+not part of8dd nor proof of production scoped VPN activation.
+
+
+## Current Native Findings And Regression Follow-up (2026-09-07, 12:55 UTC)
+
+- Android source8dd APK10 reproduced the second full GUI save failure at48MiB.
+  A real UID2000 heap dump identified the old approximately11.7MiB Preferences
+  backing retained through an offscreen Compose summary card's MainUiState.
+  The headless rendered DesktopRoutingSnapshotRetentionTest reproduced that
+  precise obsolete backing retention before the fix. Bounded outer cards now
+  use a scrolling Column and scalar summary presentation; domain/application
+  rows remain virtualized. The rendered regression, all46 shared UI tests and
+  both Android Kotlin compilation targets passed (Gradle31308). Evidence:
+  `/tmp/vpn-parity-routing-snapshot-causal-red-evidence` and
+  `/tmp/vpn-parity-routing-snapshot-resource-green-evidence`. Current ART full
+  GUI rerun remains required; host rendering is not low-memory device proof.
+- The same union passed Windows resource protocol3, configuration capture11
+  (2 native skips), broker19 (9 native skips), user-file8 (8 native skips).
+  Separately v17 Windows native storage/admission selected81/executed72/skipped9
+  runtime/UAC/TUN scenarios, zero failures, on ARM64 with verified AMD64 JVM.
+  Production scoped runtime remains disabled. No packaged runtime claim follows.
+- Fresh native x86 MSI sourceaee failed before UAC because Defender blocked the
+  dynamically compiled PowerShell worker. No protection exclusions or settings
+  were changed. NativeAOT fixed-role packaged executables are the agreed
+  replacement; Linux owns pinned projects/build preparer, Windows owns broker
+  source, root owns Gradle/workflows. Elevated Framework loading was rejected
+  because mutable adjacent configuration/CLR loading precedes managed Main.
+  Native loader/import authority and complete current-package execution remain
+  gates. Exact external pre-readiness worker exit now remains RUNTIME_FAILED
+  in both public operation and proven-no-start correlation. Shared34-test
+  selection passed; subsequent WindowsPreparedInstall12 selection passed.
+- Current macOS immutable8dd DMGs use test-only versions2.1.10/2.1.11; logical
+  code fingerprint is bbe5c84a554540607ce40ea5f86c582f2ff5ae3a0612f5e9772abab8138bf117.
+  BaseSHA b8bc1958edd8abcc65ec2990e543aec8986b5e526d97d5502109ac232eaac8cf;
+  targetSHA43a20451d0362f63a0259fbe8a61f5c0211717d41eb59e38daca4c30f68a33c9.
+  Machine-owned base is guest-only `/Applications/parity-8dd8984/vpn-control.app`.
+  Private fixture proxy/JKS is confined to its owner JVM; an initially incorrect
+  trustStorePassword option failed before networking and was removed to match
+  the existing fixture JKS configuration. Add a fast fixture regression for this
+  harness error. Download observer timeout preserved operation7537b527-0f44-4b80-b308-c96f207ecbb8;
+  waiting on the same operation later established successful full download.
+- Mac temporary guest admin vpnparity8dd was created without changing any
+  existing account password. Its credential remains guest-private and unprinted.
+  Remove that exact account and private credential after authorization scenarios.
+  Real OS grant for jobb2a33475-6c52-428d-ac58-e403c3b932cf arrived after the
+  preparation deadline: original operationa9d8e160-7db9-4ac8-897d-31f1dd4d3e8b
+  remained OUTCOME_UNKNOWN, then explicit public cancellation established
+  CANCELLED/130, protected terminal receipt and installed=false. No installer
+  was killed or uncertain mutation replayed. Only after terminal proof was a
+  new installation requested: operationbfdcc39a-34a8-4be4-bf26-3b66a8e76c25,
+  owner58a91157-8300-4628-99f5-030bb90b5e5c. Its outcome is pending observation.
+  Evidence/task root: `/tmp/vpn-parity-macos-native-20260907.O45e6J` on guest
+  192.168.64.3; current fixture proxy port49876 and exact transient LaunchAgent
+  com.vpncontrol.parity.machine8dd8984. Old unrelated/unknown owners preserved.
+
+
+### macOS Owner-Exit Watcher Regression (13:02 UTC)
+
+The timely retry is identified by
+job844718c1-91fe-4807-a035-79312660e52a, operationbfdcc39a-34a8-4be4-bf26-3b66a8e76c25.
+It reached protected WAITING_FOR_EXIT and authenticated handoffReady=true;
+owner21354 exited normally, then protected sequence3 became FAILED/CONFLICT.
+Base2.1.10 remained installed. The return watcher disappeared at owner exit.
+A real-worker component regression reproduced its inherited owner process group
+before any installer or receipt was created (0.562s, causal RED). The worker now
+sets its own process group before reporting readiness, retaining UID/eUID/session
+and all original generation/receipt checks. The portable production primitive
+also reproduced the inherited-group failure before the fix, then passed on the
+host; all5 native gate/watcher/return tests passed in the macOS guest (0.293s).
+This fast portable test is part of existing routine test_macos_install_gate.py
+hygiene wiring. Host run executes1 and explicitly skips4 guest-only tests.
+Native evidence is under the task root's watcher-group-red and watcher-group-green;
+portable logs are /tmp/vpn-parity-watcher-group-portable-{red,green}.log.
+Full source-matched installed replacement must still rerun with the fixed worker;
+no current package contains this fix yet. Do not change fixture launchd cleanup
+settings to conceal this product watcher lifetime failure.
+
+Android routing feedback/control regression selection additionally reproduced5
+failures before the fix: invisible failed autosave feedback, stale input feedback,
+unknown-result retry identity, and distinguishing import from editor retry.
+Evidence /tmp/vpn-parity-routing-feedback-causal-red-evidence (Gradle68150).
+Android owns the bounded field/message/catalog and explicit Save retry fix.
+
+Public macOS updates status started recovery owner3eba688e-b8d0-45c5-a49a-6d558a999f59
+in the same machine workspace and recovered both exact original correlations.
+The failed job reports CONFLICT/final=true/cleanupCode=OK/installed=null; cancelled
+job reports CANCELLED/final=true/cleanupCode=OK/installed=false. Retained uncertainty
+is not rewritten merely because external bundle inspection still sees base2.1.10.
+Evidence machine-8dd8984-evidence/failed-next-owner-recovery.json. New transient
+owner must be reidentified before further fixture changes; no new install requested.
+
+
+## Snapshot64d Routing Feedback And Watcher Packages
+
+Source64d43b7fdf17b94cb3d464f36bc31642688b8bb1f1d37234c6893747290a7c5d
+freezes1327 inputs after all three workers confirmed source holds. Pointer:
+/tmp/vpn-parity-routing-feedback-freeze-path.txt. Canonical version remains2.1.3;
+immutable fixture versions are2.1.11/2.1.12. Source includes Android rendered
+retention/typed feedback/explicit retry fixes, all66 status catalog additions,
+macOS independent watcher process group, and intentionally unwired Windows
+NativeAOT scaffolding. It is not a complete Windows implementation snapshot.
+
+Android Gradle77133 passed20 feedback/control/actions tests,47 shared UI tests
+and both app/instrumented Kotlin compilation targets. Current evidence:
+/tmp/vpn-parity-routing-feedback-green-evidence. The APK pair built in session47715
+(terminal0), retains canonical signer a43b5330501b02f5558fa381c52e7f7dcdd9db362d6807d449d7bbb5e207c5a0,
+and is nondebuggable. Base2.1.11/code16620 SHA
+c5ec9779219a0a8414573d2eabed867088fd2d82a4462d8a7b3688621ca2bf63;
+target2.1.12/code16640 SHA
+d130e8938afa377f3abc45877c085b5da3004676c0ddc05d2d770ccb6ecfff74.
+JNI ARM64 alignment/export checks passed. ART verification remains pending.
+Mac same-source DMG build session81582 failed before compilation because eager
+Android SDK lookup configured the unrelated app module without ANDROID_HOME.
+The immutable64d retry uses the installed SDK and a separate log (session26530);
+inspect its handle before further host Gradle work. A real launchd component test also reproduces
+watcher death with the old native worker (0.278s) and passes with the fixed worker
+(0.286s), without altering launchd's process-group cleanup behavior.
+
+User authorized Terra-medium for Android/routine Linux-packaging subagent work,
+while retaining Astra for privileged Windows architecture and final review.
+Worker ownership is transferring via explicit temporary handoffs; do not infer
+that old/new workers may operate a guest simultaneously. NativeAOT provisioning
+PID8056 in fresh Windows x86 guest continues; never restart it solely because
+observation times out.
+
+Model transition completed with explicit spawn settings gpt-5.6-terra/medium for
+/root/android_terra and /root/linux_terra. Old /root/android and /root/linux
+released all source/native ownership and finished; do not assign them writes.
+Handoffs: /tmp/vpn-parity-android-terra-handoff.md and
+/tmp/vpn-parity-linux-terra-handoff.md. Root and /root/windows retain inherited
+Astra for privileged design/review. Existing native fixtures/toolchain were
+preserved, and replacements must observe existing operation handles first.
+
+
+## Desktop SDK Configuration Regression And Resumed Checkpoint
+
+The no-SDK desktop task graph regression reproduced the package configuration
+failure before the fix (/tmp/vpn-parity-desktop-sdk-red.log). Lazy CMake SDK
+resolution alone still failed because the Android module was eagerly configured.
+Gradle configuration on demand plus deferred native-task SDK lookup passed the
+real graph regression (/tmp/vpn-parity-desktop-sdk-green.log); the final routine
+script permits dependency downloads for fresh CI caches. Android focused tests
+also compiled and passed with configuration on demand. The check is wired into
+release hygiene and mapped in test-matrix.md. This is build evidence, not native
+installation evidence.
+
+API29 base64d cold GUI startup exposed a separate Preferences protobuf allocation
+failure at 48MiB. The first 12MiB host pressure candidate passed, so it is not
+causal RED evidence. Android owns further reproduction; storage-format changes
+are not yet justified. Windows owns a newly identified rejected-witness close
+failure regression, awaiting the serialized host test slot before a fix.
+
+The next delivery milestone is a coherent validated checkpoint push, followed by
+exact-SHA required CI; full parity remains unfinished. The local Codex config
+contains machine-specific paths and approval overrides. The user authorized moving machine settings out of Git. The local file is now
+ignored and generated from agent_tools/codex-config.toml.in; its explicit index
+removal is part of the reviewed checkpoint, and the working local config remains
+present. configure_codex.py derives paths and backs up changed local settings.
+
+
+Source64d macOS base/target DMGs completed in session26530, terminal0. Base
+SHA b9d8fc32aa5e93565536ba105be479da5ebf6b8b62c8ffbd2743e02bd5894864;
+target SHA e16c0989588dc8df89cff9faf8c3521b4159cd5d1cf654effc1e98ba95aaa6d3.
+Both match codeFingerprint522ca69cd52eb502a70e898bcd06716740c00537dc1faf42e5a168d5e7246cb5.
+Transferred immutable DMGs/manifests to owned macOS guest task root
+update-fixture-64d43; installation has not started.
+
+Windows witness retention and accepted-candidate readiness OOM regressions
+reproduced both defects before fix (resource-causal-red-evidence under /tmp).
+The focused GREEN union ran53 tests,44 executed,9 native skips,zero failures;
+evidence /tmp/vpn-parity-windows-resource-green-evidence. Native component
+v19 source fingerprint f1419d878633fa32d58c5890702633a888562f4d941eb56627e606b56cb6e9ef
+is being verified independently. No production broker enablement is claimed.
+
+Android cold reopen now has causal host RED: stock protobuf readRawBytesSlowPath
+allocates beyond the48MiB heap before routing mapping. Evidence
+/tmp/vpn-parity-android-cold-read-red-evidence. Android owns compatible streaming
+read implementation and corpus checks; old protobuf/newline persistence remains
+required. This source slice is not frozen or ready for checkpoint yet.
+
+
+Checkpoint tooling verification: generated ignored Codex config passed a real
+MCP initialization/list-tools handshake (10 tools). The agent-tool suite ran28
+without skips in .agent_venv; ordinary Python omitted the MCP handshake dependency.
+Root dry-run prepush includes the full shared/desktop/Android task union.
+Hygiene first encountered external AppleSharpener injection writing diagnostics
+into a fixture process output. A rerun removes DYLD_INSERT_LIBRARIES only from
+the verification subprocess environment; host/global settings remain untouched.
+That rerun then exposed a real direct-script import failure in
+test_android_update_fixture.py. Adding its repository-root import path made the
+existing routine two-test command GREEN; failed log is
+/tmp/vpn-parity-checkpoint-hygiene-clean-process.log.
+
+WindowsNativeAOT fixed validate-only entrypoint compiles and executes in the fresh
+x64 guest after causal IL3050 RED identified Marshal.SizeOf(Type). The generic
+SizeOf<SecurityAttributes> correction preserves behavior. Emitted helper
+SHA a1c5120d8dc58f5b807cc7b24db0b27638c05a9c52b7a81b96e330c95cd16405.
+It has no installer role yet and is not wired into packages; emitted imports and
+loaded modules remain unverified. Current native helper script suite runs6 tests.
+
+The64d base DMG was installed in the owned guest at
+/Users/admin/Applications/parity-64d43/vpn-control.app; its public launcher reports
+2.1.11, exit0. Receipt under update-fixture-64d43/installed-base.json. No runtime
+or installer replacement started. Initial scratch checksum invocation used a
+Python3.11-only convenience unavailable on the guest; the resumed harness uses
+the fixture's existing bounded file_hash implementation.
+
+
+Checkpoint source hold: Android read compatibility and cold48MiB pipeline union
+passed22 tests (16 serializer,5 suffix-list,1 pipeline),zero skips/failures.
+Copied XML/log: /tmp/vpn-parity-android-reader-green-evidence. String decoding uses
+bounded private UTF-16 spooling and the existing JNI constructor; supported
+protobuf persistence remains unchanged. Segmented unique-domain ranges avoid
+large-array growth/final-copy peaks and preserve logical list bounds. Native
+API29/API35 reader acceptance is pending and is not certified by this host run.
+All workers now hold source for coordinator prepush/checkpoint delivery.
+Release hygiene passed with only documented platform-specific skips; metadata
+and managed prepush must still follow this final content edit.
+
+
+First managed prepush reached the broad desktop suite (868 selected,56 native
+skips) and found5 obsolete test assertions, with source behavior intact: human
+inspection is a labelled result and human failure output goes to stderr; routing
+drafts retain structured lists instead of eager duplicate text. Updated tests
+assert those contracts, exact JSON inspection data, and preserved revision guards.
+Focused rerun66441 passed; evidence /tmp/vpn-parity-checkpoint-desktop-alignment-green.
+Initial managed failure retained at /tmp/vpn-parity-checkpoint-prepush-red-evidence.
+A new managed receipt remains required after these test edits.
+
+
+Final checkpoint review: the full Android suite passed426 tests with no skips
+and Android instrumented sources compiled. Independent Preferences-reader review
+then added causal RED cases for overwide protobuf int32 tags/lengths and strict
+UTF-8 map keys. Corrections preserve stock AndroidX semantics; final focused
+serializer20 plus cold48MiB pipeline1 passed with zero skips/failures. Evidence:
+/tmp/vpn-parity-android-proto-overwide-red-evidence,
+/tmp/vpn-parity-android-proto-key-red-evidence, and
+/tmp/vpn-parity-android-proto-review-green-evidence. These are host regressions;
+new-reader API29/API35 packaged acceptance remains pending. Source is held for
+final metadata, managed prepush and checkpoint delivery.

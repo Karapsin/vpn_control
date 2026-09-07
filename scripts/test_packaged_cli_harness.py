@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fast checks for strict packaged CLI output verification (not native evidence)."""
 import json
+import os
 import subprocess
 from pathlib import Path
 import tempfile
@@ -8,7 +9,59 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-from test_packaged_cli import envelope, stream_records, verify_stream_records, interrupt_stream
+from test_packaged_cli import (envelope, stream_records, verify_stream_records, interrupt_stream,
+                               large_routing_fixture, verify_routing_export, implicit_owner_smoke)
+
+
+class ImplicitOwnerTest(unittest.TestCase):
+    def test_bootstrap_is_verified_and_only_its_owner_is_quit(self):
+        calls = []
+        def invoke(workspace, *args):
+            calls.append(args)
+            data = {"runtimeRunning": False} if args[-1] == "status" else {"validation.batch-size": 9}
+            return subprocess.CompletedProcess([], 0, json.dumps({"schemaVersion": 1, "code": "OK",
+                "ok": True, "final": True, "controllerId": "owner", "configurationRevision": 1, "data": data}), "")
+        with tempfile.TemporaryDirectory() as root:
+            implicit_owner_smoke(Path(root), invoke)
+        self.assertEqual(("--json", "settings", "set", "validation.batch-size", "9"), calls[0])
+        self.assertEqual(("--json", "--controller-id", "owner", "quit"), calls[-1])
+
+    def test_failed_bootstrap_still_attempts_non_starting_cleanup(self):
+        calls = []
+        def invoke(workspace, *args):
+            calls.append(args)
+            return subprocess.CompletedProcess([], 2, json.dumps({"schemaVersion": 1,
+                "code": "UNAVAILABLE", "ok": False}), "")
+        with tempfile.TemporaryDirectory() as root, self.assertRaises(AssertionError):
+            implicit_owner_smoke(Path(root), invoke)
+        self.assertEqual(("--json", "quit"), calls[-1])
+
+
+class LargeTransferTest(unittest.TestCase):
+    def test_real_fixture_exceeds_ten_mib_and_contains_valid_length_domains(self):
+        rules, content = large_routing_fixture()
+        self.assertGreater(len(content.encode("utf-8")), 10 * 1024 * 1024)
+        self.assertEqual(rules, json.loads(content)["rules"])
+        self.assertEqual(56000, len(rules["direct_domain_suffixes"]))
+        self.assertTrue(all(len(domain) <= 253 and all(len(label) <= 63 for label in domain.split("."))
+                            for domain in rules["direct_domain_suffixes"]))
+
+    def test_export_verifier_checks_content_count_and_private_permissions(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "東京 output.json"
+            rules, content = large_routing_fixture(2)
+            path.write_text(content, encoding="utf-8")
+            path.chmod(0o600)
+            size = path.stat().st_size
+            self.assertEqual(32, len(verify_routing_export(path, rules, size)))
+            with self.assertRaises(AssertionError):
+                verify_routing_export(path, rules, size + 1)
+            with self.assertRaises(AssertionError):
+                verify_routing_export(path, dict(rules, ignore_rules=True), size)
+            if os.name != "nt":
+                path.chmod(0o644)
+                with self.assertRaises(AssertionError):
+                    verify_routing_export(path, rules, size)
 
 
 class EnvelopeTest(unittest.TestCase):

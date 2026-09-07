@@ -46,6 +46,7 @@ echo "[vpn-control] checking Java runtime"
 java -version
 
 ./scripts/prepare_sing_box_macos_runtime.sh
+bash ./scripts/prepare_macos_install_worker.sh
 . ./scripts/setup_macos_signing.sh
 
 echo "[vpn-control] compiling desktop app"

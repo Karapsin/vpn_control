@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Diegimui reikalingas interaktyvus seansas.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Leidimas diegti nesuteiktas.",
+  "UPDATE_INSTALL_CANCELLED": "Diegimas atšauktas.",
+  "UPDATE_INSTALL_CONFIRMATION": "Laukiama diegimo patvirtinimo.",
+  "UPDATE_INSTALL_COMPLETED": "Atnaujinimas įdiegtas.",
+  "UPDATE_INSTALL_UNKNOWN": "Diegimo rezultatas nežinomas.",
   "APP_TITLE": "VPN valdymas",
   "TAB_MAIN": "Pagrindinis",
   "TAB_PROFILE": "Profilis",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktyvi vieta: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktyvi vieta: nepasiekiama",
+  "CONNECTION_RESTART_PENDING": "Paleiskite ryšį iš naujo, kad pritaikytumėte išsaugotus pakeitimus.",
+  "CONNECTION_RESTART_UNKNOWN": "Nežinoma, ar reikia paleisti iš naujo."
 }

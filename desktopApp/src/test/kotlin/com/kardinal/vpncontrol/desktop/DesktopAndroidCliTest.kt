@@ -6,6 +6,24 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class DesktopAndroidCliTest {
+    @Test fun largeAndroidInputAndOutputKeepLogicalDocumentSemantics() {
+        val file = Files.createTempFile("android-large-東京", ".json")
+        val content = "東京".repeat(1_800_000)
+        try {
+            Files.writeString(file, content)
+            val lines = mutableListOf<String>()
+            assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "locations", "import", "--input", file.toString()),
+                printLine = lines::add, androidRequest = { request, _, _ ->
+                    assertEquals(content, (request.command.arguments["input"] as ControlValue.Text).value)
+                    DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(
+                        ControlResult("android", request.requestId, ControlCode.OK, 42,
+                            data = mapOf("document" to ControlValue.Text(content)))))
+                }))
+            val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(lines.single())
+            assertEquals(42, result.configurationRevision)
+            assertEquals(content, (result.data["document"] as ControlValue.Text).value)
+        } finally { Files.delete(file) }
+    }
     @Test fun diagnosticsExportUsesAndroidReportAndNeverStartsDesktopOwner() {
         val lines = mutableListOf<String>()
         var written = ""
@@ -126,7 +144,6 @@ class DesktopAndroidCliTest {
             arrayOf("--android", "--version") to 0,
             arrayOf("--android", "capabilities", "--typo") to 1,
             arrayOf("--android", "serve") to 1,
-            arrayOf("--android", "logs", "--follow") to 1,
             arrayOf("--serial", "device", "settings", "show") to 1,
             arrayOf("--android", "--state-dir", "missing", "settings", "show") to 1,
         )) assertEquals(expected, DesktopCli.handleArgs(args, printLine = {},

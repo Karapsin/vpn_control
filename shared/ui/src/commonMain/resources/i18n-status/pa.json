@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "ਪਿਛਲਾ {connectionLabel:0} ਸਥਾਨ ਮੁੜ ਬਹਾਲ ਕਰਨ ਵਿੱਚ ਅਸਫਲ: {1}. {connectionLabel:0} ਬੰਦ ਕਰਨ ਵਿੱਚ ਅਸਫਲ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "ਰੂਟਿੰਗ ਨਿਯਮ ਸੰਭਾਲੇ ਗਏ। ਲਾਗੂ ਕਰਨ ਲਈ {connectionLabel:0} ਮੁੜ ਸ਼ੁਰੂ ਕਰੋ",
     "ROUTING_RULES_SAVE_FAILED": "ਰੂਟਿੰਗ ਨਿਯਮ ਸੰਭਾਲਣ ਵਿੱਚ ਅਸਫਲ",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "ਰੂਟਿੰਗ ਬਦਲਾਅ ਦਾ ਨਤੀਜਾ ਅਣਜਾਣ ਹੈ। ਉਸੇ ਜਾਣਕਾਰੀ ਨਾਲ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+    "ROUTING_RULES_STALE_DRAFT": "ਰੂਟਿੰਗ ਸੈਟਿੰਗਾਂ ਬਦਲ ਗਈਆਂ ਹਨ। ਸੰਭਾਲਣ ਤੋਂ ਪਹਿਲਾਂ ਸੰਪਾਦਕ ਦੁਬਾਰਾ ਖੋਲ੍ਹੋ।",
     "DIAGNOSTICS_EXPORT_OPENED": "ਡਾਇਗਨੋਸਟਿਕਸ ਨਿਰਯਾਤ ਖੋਲ੍ਹਿਆ ਗਿਆ",
     "APPS_LOAD_FAILED": "ਐਪਾਂ ਲੋਡ ਕਰਨ ਵਿੱਚ ਅਸਫਲ",
     "SUBSCRIPTION_RECEIVED": "ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਮਿਲੀ। ਪ੍ਰੋਫਾਈਲ ਟੈਬ ਤੇ ਇਸਦੀ ਸਮੀਖਿਆ ਕਰਕੇ ਸੰਭਾਲੋ।",

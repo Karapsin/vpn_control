@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "恢复之前的 {connectionLabel:0} 节点失败：{1}。停止 {connectionLabel:0} 失败：{2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "路由规则已保存。重启 {connectionLabel:0} 后生效",
     "ROUTING_RULES_SAVE_FAILED": "保存路由规则失败",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "路由更改的结果未知。请使用相同的输入重试。",
+    "ROUTING_RULES_STALE_DRAFT": "路由设置已更改。请在保存前重新打开编辑器。",
     "DIAGNOSTICS_EXPORT_OPENED": "诊断导出已打开",
     "APPS_LOAD_FAILED": "加载应用失败",
     "SUBSCRIPTION_RECEIVED": "已收到订阅。请在配置页检查并保存。",

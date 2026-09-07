@@ -13,6 +13,52 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidSettingsActionsServiceTest {
+    @Test fun staleSshSaveKeepsVisibleTypedFailureWithUnsavedInput() {
+        val controller = MainController()
+        val statuses = mutableListOf<String>()
+        val requests = mutableListOf<com.kardinal.vpncontrol.model.ControlRequest>()
+        val draft = AndroidSshDraftControl({ com.kardinal.vpncontrol.control.ControlCommitted("owner", 4,
+            com.kardinal.vpncontrol.model.PersistedState(homeSshRouteSettings =
+                com.kardinal.vpncontrol.model.HomeSshRouteSettings(host = "committed-host"))) }, { request ->
+            requests += request
+            com.kardinal.vpncontrol.model.ControlResult(controllerId = "owner", requestId = request.requestId,
+                code = com.kardinal.vpncontrol.model.ControlCode.CONFLICT, configurationRevision = 5)
+        })
+        val service = service(controller, sshDraft = draft, updateStatus = { statuses += it })
+        service.toggleHomeSshRouteDialog()
+        service.updateHomeSshDraft { it.copy(homeSshHostDraft = "unsaved.invalid") }
+        service.saveHomeSshRoute()
+        val failure = SettingsStatusMessages.homeSshSettingsInvalid("CONFLICT")
+        assertEquals(failure, controller.currentState().homeSshDraftFailure)
+        assertEquals(listOf(failure), statuses)
+        assertEquals("unsaved.invalid", controller.currentState().homeSshHostDraft)
+        assertTrue(controller.currentState().showHomeSshRouteDialog)
+        assertEquals(4L, requests.single().ifRevision)
+    }
+
+    @Test fun editingAndReopeningSshDraftClearPriorFeedback() {
+        val controller = MainController(MainUiState(showHomeSshRouteDialog = true,
+            homeSshDraftFailure = SettingsStatusMessages.homeSshSettingsInvalid("CONFLICT")))
+        val service = service(controller)
+        service.updateHomeSshDraft { it.copy(homeSshHostDraft = "new-input") }
+        org.junit.Assert.assertNull(controller.currentState().homeSshDraftFailure)
+        controller.update { it.copy(homeSshDraftFailure = SettingsStatusMessages.homeSshSettingsInvalid("CONFLICT")) }
+        service.toggleHomeSshRouteDialog()
+        service.toggleHomeSshRouteDialog()
+        org.junit.Assert.assertNull(controller.currentState().homeSshDraftFailure)
+    }
+
+    @Test fun sshImportResponseFailureNeverCopiesPrivateExceptionTextIntoStatus() {
+        val controller = MainController(MainUiState(showHomeSshRouteDialog = true, homeSshHostDraft = "unsaved-host"))
+        val statuses = mutableListOf<String>()
+        service(controller, updateStatus = { statuses += it }, importKey = { privateInput ->
+            throw java.io.IOException("Private input: $privateInput")
+        }).importHomeSshPrivateKey("PRIVATE_TEST_KEY_MATERIAL")
+        assertEquals(listOf(SettingsStatusMessages.homeSshPrivateKeyImportFailed("OUTCOME_UNKNOWN")), statuses)
+        assertEquals(statuses.single(), controller.currentState().homeSshDraftFailure)
+        assertTrue(controller.currentState().showHomeSshRouteDialog)
+        assertEquals("unsaved-host", controller.currentState().homeSshHostDraft)
+    }
     @Test fun unchangedSshSaveCannotClearImportedKeyRestartWarning() {
         val settings = com.kardinal.vpncontrol.model.HomeSshRouteSettings(credentialVersion = 1)
         val controller = MainController(MainUiState(isVpnRunning = true, homeSshRouteSettings = settings,
@@ -212,6 +258,8 @@ class AndroidSettingsActionsServiceTest {
         launchMutation: (suspend () -> Unit) -> Unit = { block -> runBlocking { block() } },
         updateHomeSshRouteSettings: suspend (com.kardinal.vpncontrol.model.HomeSshRouteSettings) -> Unit = {},
         homeSshPendingRestart: suspend () -> Boolean? = { null },
+        importKey: (suspend (String) -> com.kardinal.vpncontrol.model.ControlResult)? = null,
+        sshDraft: AndroidSshDraftControl? = null,
     ): AndroidSettingsActionsService {
         return AndroidSettingsActionsService(
             controller = controller,
@@ -228,6 +276,8 @@ class AndroidSettingsActionsServiceTest {
             launchMutation = launchMutation,
             updateHomeSshRouteSettings = updateHomeSshRouteSettings,
             homeSshPendingRestart = homeSshPendingRestart,
+            importKey = importKey,
+            sshDraft = sshDraft,
         )
     }
 }

@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Det gick inte att återställa föregående plats för {connectionLabel:0}: {1}. Det gick inte att stoppa {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Dirigeringsregler sparade. Starta om {connectionLabel:0} för att tillämpa dem",
     "ROUTING_RULES_SAVE_FAILED": "Misslyckades att spara routningsregler",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Resultatet av routningsändringen är okänt. Försök igen med samma uppgifter.",
+    "ROUTING_RULES_STALE_DRAFT": "Routningsinställningarna har ändrats. Öppna redigeraren igen innan du sparar.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostikexport öppnad",
     "APPS_LOAD_FAILED": "Misslyckades att läsa in appar",
     "SUBSCRIPTION_RECEIVED": "Prenumeration mottagen. Granska och spara den på fliken Profil.",

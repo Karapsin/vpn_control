@@ -95,13 +95,16 @@ settings, SSH-key import, subscription/location edits and selection, source chan
 routing set/import, bulk location import, and quit. Runtime/job guards outside that
 list remain unsupported. Android forwards both guards to its implemented owner
 handlers; this does not make its remaining domain commands implemented.
-The timeout is currently wired for supported desktop JSON commands. It bounds
-waiting for the response frame after sending the command; bounded connection,
-authentication and owner startup have their own limits. The timeout is client
-metadata, not part of the owner's request or deduplication identity. A timed-out
-operation wait reports exit 2, `TIMEOUT`, `final=false` and the known operation ID;
-it does not cancel the owner operation. Non-JSON synchronous timeout options still
-need migration.
+Human and JSON desktop commands share the timeout option. Synchronous commands
+that support asynchronous execution obtain acceptance and inspect the operation
+through one authenticated endpoint under a single client deadline. This preserves
+the original request and accepted operation IDs when waiting times out. Installer
+authorization retains its platform-specific client path; direct reads and other
+commands bound response-frame waiting. Owner startup has its own bounded lifecycle.
+Timeout and synchronous/asynchronous observation mode do not change deduplication
+identity. A timed-out operation wait reports exit 2, `TIMEOUT`, `final=false` and
+the known operation ID; it does not cancel owner work or replay a mutation against
+a replacement owner. A zero timeout permits unbounded observation.
 Preserve existing GUI-only `--autostart`, `--tray`, and `--minimized`. Unknown
 flags fail before startup rather than falling through to GUI initialization.
 Resolve file paths relative to the invoking client's working directory.
@@ -599,20 +602,18 @@ permission denial/revocation/return, locked/unfocused activity, recreation, dupl
 requests, cancel-versus-dispatch, pinned artifact replacement, dispatch failure and
 truthful handoff. These tests must precede any disposable-device installer exercise.
 
-## Large-Content Transfer Implementation Gap
+## Large-Content Transfer
 
-This section is an implementation plan, not a claim of supported transfers.
-`ControlProtocolCodec` bounds the complete JSON document at1MiB. Desktop additionally
-base64-encodes that JSON inside `DesktopCliProtocol` and frames the string in
-`DesktopControlEndpoint`, making the effective content ceiling lower than768KiB
-before escaping/envelope overhead. Android has independent limits in the CLI input
-reader, protocol codec, ADB stdout capture, provider transfer buffers and result
-reader. Its existing offset-based file descriptor API does not remove these limits.
-GUI import has no corresponding1MiB product limit; increasing one constant is not
-a complete fix.
+Logical documents use `ControlDocumentCodec`; individual authenticated wire frames
+remain bounded by `ControlProtocolCodec` and their platform envelopes. The desktop
+ActivationServer/GUI/CLI adapter and protected Android document provider now use
+opaque transfer references to avoid imposing a frame-sized product document limit.
+Old-owner small-command compatibility is explicit and cannot authorize an oversized
+command or retry against a replacement owner. This is not a claim that all resource,
+failure, native-package or platform completion gates have passed; current evidence
+and remaining gaps are maintained in [work-in-progress.md](work-in-progress.md).
 
-The planned adapter extension keeps bounded authenticated frames and introduces
-owner/principal/purpose-bound opaque blob references:
+The transport protocol preserves these requirements:
 
 1. Begin an upload without changing configuration; negotiate bounded chunk size.
 2. Append offset-addressed chunks (64KiB raw fits existing framing). Exact duplicate
@@ -645,9 +646,10 @@ export/no-overwrite and public desktop/fake/native ADB end-to-end cases.
 
 ### Generic Responses And Internal Document Serialization
 
-The new `ControlTransferStore`/`ControlTransferCodec` and desktop private spool are
-primitives only; no public transfer capability is wired yet. Import/export-only
-integration would leave large workspaces unusable:
+`ControlTransferStore`/`ControlTransferCodec` and private spools are wired through
+`DesktopControlDocuments` and Android's document provider/client. Integration covers
+generic results as well as explicit import/export. Keep these owners on logical
+document serialization; migrating only import/export leaves large workspaces unusable:
 
 - `DesktopPresentationSnapshot` returns all visible locations/subscriptions in
   routine GUI polling. `ControlSnapshotCodec` includes retained operation results
@@ -655,14 +657,14 @@ integration would leave large workspaces unusable:
   break initial GUI attachment even when each individual result was small.
 - Location list/show, routing/app catalogs, subscription lists, operation status/
   wait/retries and long individual log messages can exceed bounded frames.
-- `ControlConfigurationInspection` parses routing documents with frame-capped
-  `decodeValues`; `AndroidSettingsControl` fingerprints patches with frame-capped
-  `encodeValues`. Desktop normalized results pass through frame-capped codecs in
-  `DesktopAppService`, `DesktopConfigurationResultData` and `DesktopOperationRunner`,
-  potentially after persistence already succeeded.
+- `ControlConfigurationInspection` parses logical routing documents. Android request
+  fingerprints stream canonical values into a digest rather than constructing another
+  complete JSON String/UTF8 array. Desktop normalized result owners include
+  `DesktopAppService`, `DesktopConfigurationResultData` and `DesktopOperationRunner`;
+  imposing frame caps here could fail after persistence already succeeded.
 - Client decoding/re-encoding in `desktopCliJsonResponse`, `DesktopCliStream`,
-  `DesktopRemoteControlSession` and Android output validation imposes the same cap
-  after a hypothetical successful chunk download.
+  `DesktopRemoteControlSession` and Android output validation must keep using logical
+  codecs after chunk download, without reintroducing the old frame-sized limit.
 
 Separate document serialization from actual wire-frame validation, preserving
 schema, duplicate-key and depth checks. Keep the existing strict limit on every

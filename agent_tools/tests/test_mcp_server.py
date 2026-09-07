@@ -80,6 +80,15 @@ class McpSurfaceTest(unittest.TestCase):
             self.assertIsNotNone(mcp_server._validate_commit_paths(paths), paths)
         self.assertIsNone(mcp_server._validate_commit_paths(["AGENTS.md", "agent_tools"]))
 
+    def test_macos_package_pr_filters_include_native_installer_inputs(self) -> None:
+        workflow = (mcp_server.REPO_ROOT / ".github/workflows/macos-desktop.yml").read_text(encoding="utf-8")
+        pull_request = workflow.split("  pull_request:\n", 1)[1].split("\njobs:\n", 1)[0]
+        for source in ("scripts/prepare_macos_install_worker.sh", "scripts/native/macos_install_worker.c"):
+            self.assertIn(f'      - "{source}"', pull_request)
+            self.assertTrue((mcp_server.REPO_ROOT / source).is_file())
+        package = (mcp_server.REPO_ROOT / "scripts/package_macos_desktop.sh").read_text(encoding="utf-8")
+        self.assertLess(package.index("bash ./scripts/prepare_macos_install_worker.sh"), package.index("./gradlew :desktopApp:compileKotlin"))
+
     def test_required_workflow_manifest_matches_workflow_names(self) -> None:
         workflows = mcp_server._required_workflows()
         self.assertEqual(

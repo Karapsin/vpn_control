@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Η εγκατάσταση απαιτεί διαδραστική συνεδρία.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Η άδεια εγκατάστασης απορρίφθηκε.",
+  "UPDATE_INSTALL_CANCELLED": "Η εγκατάσταση ακυρώθηκε.",
+  "UPDATE_INSTALL_CONFIRMATION": "Αναμονή επιβεβαίωσης εγκατάστασης.",
+  "UPDATE_INSTALL_COMPLETED": "Η ενημέρωση εγκαταστάθηκε.",
+  "UPDATE_INSTALL_UNKNOWN": "Το αποτέλεσμα της εγκατάστασης είναι άγνωστο.",
   "APP_TITLE": "Έλεγχος VPN",
   "TAB_MAIN": "Κύρια",
   "TAB_PROFILE": "Προφίλ",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Ενεργή τοποθεσία: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Ενεργή τοποθεσία: μη διαθέσιμη",
+  "CONNECTION_RESTART_PENDING": "Επανεκκινήστε τη σύνδεση για να εφαρμοστούν οι αποθηκευμένες αλλαγές.",
+  "CONNECTION_RESTART_UNKNOWN": "Δεν είναι γνωστό αν απαιτείται επανεκκίνηση."
 }

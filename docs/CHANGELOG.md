@@ -3,6 +3,25 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Route Android Find Best through the shared owner with guarded selection commits, cancellation, and consent handling.
+- Harden shared CLI streams, large routing persistence and platform installer recovery with native failure regressions.
+- Preserve Preferences wire compatibility and verify typed CLI output contracts.
+
+## 2.1.3 - 2026-09-06
+
+- Extend GUI/CLI large-document transport and streaming exports, preserve Android refresh ownership, and fix packaged child startup.
+- Retain uncertain installer cancellation identity for retries and keep the frontend open until final handoff.
+- Preserve retained CLI operation results, bind Android location benchmarks to their owner, and verify packaged large routing transfers.
+- Preserve explicit-owner transport failures and test packaged CLI automatic controller startup and cleanup.
+- Fix Windows protected installer receipt replacement and atomic worker records while preserving existing readers and cancellation identity.
+- Preserve installer job identity when interrupted cancellation is unconfirmed; add Linux framed-input and terminal authorization groundwork.
+- Stream large Android routing requests and reuse verified immutable preference data so low-memory retries and cold-start no-op imports avoid duplicate buffers.
+- Stream low-memory Android routing exports and preserve normal CLI startup while allowing bounded pending-installer inspection.
+- Create private desktop workspaces under permissive umasks and fix Android installer status and delayed CLI confirmation.
+- Install verified Debian updates with required dependencies without removing packages or running global repair.
+
 ## 2.1.2 - 2026-09-06
 
 - Acknowledge CLI window actions, add Android consent-wait cancellation, and return normalized routing/import results.

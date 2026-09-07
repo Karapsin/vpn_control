@@ -48,6 +48,13 @@ if [[ "$skip_ownership" != true ]]; then
   chown -R root:root "$install_dir"
 fi
 
+# Only this newly copied application tree is normalized. A shared build umask
+# must not leave privileged install inputs writable by another group member.
+# Keep executable roles and jlink's file symlinks; do not chmod the parent.
+find "$install_dir" -type d -exec chmod 0755 '{}' +
+find "$install_dir" -type f -perm -0100 -exec chmod 0755 '{}' +
+find "$install_dir" -type f ! -perm -0100 -exec chmod 0644 '{}' +
+
 if [[ "$skip_capability" != true ]]; then
   setcap cap_net_admin,cap_net_raw+ep "$install_dir/bin/sing-box"
   installed_caps=$(getcap "$install_dir/bin/sing-box" || true)

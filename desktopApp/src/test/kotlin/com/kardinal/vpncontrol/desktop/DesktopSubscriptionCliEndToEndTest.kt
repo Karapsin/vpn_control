@@ -25,14 +25,15 @@ class DesktopSubscriptionCliEndToEndTest {
                 }
             })
         val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
         val server = assertNotNull(DesktopActivationServer.start(
             onShowWindow = { DesktopActivationShowResult.HEADLESS },
-            onCliCommand = { runBlocking { service.executeCliCommand(it) } }, portFile = endpoint,
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
             fun invoke(vararg args: String): Pair<Int?, String> {
                 val lines = mutableListOf<String>()
-                return DesktopCli.handleArgs(arrayOf(*args), lines::add,
+                return DesktopCli.handleArgs(arrayOf(*args), lines::add, printProgress = lines::add,
                     requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
                     startHeadlessController = { error("Reuse owner") }) to lines.joinToString("\n")
             }
@@ -74,7 +75,7 @@ class DesktopSubscriptionCliEndToEndTest {
             val failedId = service.state.subscriptions.first { it.id != id }.id
             val partial = invoke("subscriptions", "refresh", "all")
             assertEquals(1, partial.first)
-            assertTrue(partial.second.contains("PARTIAL_FAILURE"))
+            assertTrue(partial.second.contains("PARTIAL_FAILURE"), partial.second)
             assertTrue(partial.second.contains(id))
             assertTrue(partial.second.contains(failedId))
             assertFalse(partial.second.contains("failed.test"))
@@ -88,6 +89,6 @@ class DesktopSubscriptionCliEndToEndTest {
             assertEquals(1, invoke("subscriptions", "delete", id).first)
             assertTrue(DesktopStateStore(directory).loadWorkspace(empty).persistedState.subscriptions.isEmpty())
             assertFalse(service.state.isVpnRunning)
-        } finally { server.close(); directory.toFile().deleteRecursively() }
+        } finally { server.close(); owner.close(); directory.toFile().deleteRecursively() }
     }
 }

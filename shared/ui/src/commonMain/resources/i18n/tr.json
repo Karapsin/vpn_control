@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Kurulum için etkileşimli bir oturum gerekir.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Kurulum izni reddedildi.",
+  "UPDATE_INSTALL_CANCELLED": "Yükleme iptal edildi.",
+  "UPDATE_INSTALL_CONFIRMATION": "Kurulum onayı bekleniyor.",
+  "UPDATE_INSTALL_COMPLETED": "Güncelleme yüklendi.",
+  "UPDATE_INSTALL_UNKNOWN": "Kurulum sonucu bilinmiyor.",
   "APP_TITLE": "VPN Denetimi",
   "TAB_MAIN": "Ana",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Etkin konum: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Etkin konum: kullanılamıyor",
+  "CONNECTION_RESTART_PENDING": "Kaydedilen değişiklikleri uygulamak için bağlantıyı yeniden başlatın.",
+  "CONNECTION_RESTART_UNKNOWN": "Yeniden başlatma gerekip gerekmediği bilinmiyor."
 }

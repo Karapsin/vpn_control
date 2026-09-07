@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nepodarilo sa obnoviť predchádzajúcu lokalitu pre pripojenie {connectionLabel:0}: {1}. Nepodarilo sa zastaviť pripojenie {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Pravidlá smerovania boli uložené. Reštartujte pripojenie {connectionLabel:0}, aby sa použili",
     "ROUTING_RULES_SAVE_FAILED": "Nepodarilo sa uložiť smerovacie pravidlá",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Výsledok zmeny smerovania nie je známy. Skúste to znova s rovnakými údajmi.",
+    "ROUTING_RULES_STALE_DRAFT": "Nastavenia smerovania sa zmenili. Pred uložením znova otvorte editor.",
     "DIAGNOSTICS_EXPORT_OPENED": "Export diagnostiky otvorený",
     "APPS_LOAD_FAILED": "Nepodarilo sa načítať aplikácie",
     "SUBSCRIPTION_RECEIVED": "Predplatné prijaté. Skontrolujte ho a uložte na karte Profil.",

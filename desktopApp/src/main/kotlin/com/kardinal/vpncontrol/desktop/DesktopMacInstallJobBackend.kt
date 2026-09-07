@@ -7,6 +7,7 @@ import java.nio.file.Path
 
 /** Darwin's Java provider lacks SecureDirectoryStream; use pinned native descriptors, never path fallback. */
 internal class DesktopMacInstallJobBackend(
+    private val authority: DesktopMacReceiptAuthority? = null,
     private val verifyTrust: (Path, Stat) -> Unit = { _, stat -> require(stat.uid == 0 && stat.mode.toInt() and 0x12 == 0) },
 ) : DesktopInstallJobBackend {
     @Structure.FieldOrder("device", "mode", "links", "inode", "uid", "gid", "rdevice", "times",
@@ -49,33 +50,41 @@ internal class DesktopMacInstallJobBackend(
         require(System.getProperty("os.name").startsWith("Mac", true) && Native.POINTER_SIZE == 8)
         Native.load("System", Api::class.java)
     }
-    private fun checked(result: Int): Int { check(result >= 0) { "Protected installer storage operation failed" }; return result }
+    private fun checked(result: Int): Int = macInstallNativeResult(result, Native.getLastError())
     private fun stat(fd: Int): Stat = Stat().also { checked(api.fstat64(fd, it)) }
-    private fun inspect(fd: Int, path: Path, directory: Boolean, cancellation: Boolean = false) {
+    private val adminGroup by lazy { JnaMacInstallAdmission().adminGroupId() }
+    private fun inspect(fd: Int, path: Path, directory: Boolean, cancellation: Boolean = false, ancestry: Boolean = false) {
         val metadata = stat(fd)
         require(metadata.mode.toInt() and 0xf000 == if (directory) 0x4000 else 0x8000)
+        authority?.let { policy ->
+            policy.verify(MacAdmissionInfo(metadata.uid.toLong() and 0xffffffffL, metadata.mode.toInt() and 0xffff,
+                (metadata.links.toInt() and 0xffff).toLong(), metadata.size, metadata.device.toLong(), metadata.inode,
+                metadata.gid.toLong() and 0xffffffffL, DesktopMacAdmissionAcl.inspect(fd)), ancestry, cancellation, adminGroup)
+            return
+        }
         if (!cancellation) { verifyTrust(path, metadata); DesktopMacInstallJobAcl.requireAbsent(fd) }
         require(metadata.mode.toInt() and 0x12 == 0)
         if (!directory) require(metadata.links.toInt() == 1)
     }
     override fun openRoot(root: Path, create: Boolean): DesktopInstallJobBackend.Directory {
         require(root.isAbsolute && root == root.normalize() && root.nameCount > 0)
+        authority?.let { require(root == it.root) { "Receipt authority root mismatch" } }
         val retained = mutableListOf<Int>()
         try {
             var absolute = root.root
             var fd = checked(api.open("/", DIRECTORY_FLAGS)).also { retained += it }
-            inspect(fd, absolute, directory = true)
+            inspect(fd, absolute, directory = true, ancestry = true)
             root.forEachIndexed { index, name ->
                 var created = false
                 if (create && index == root.nameCount - 1) {
-                    val result = api.mkdirat(fd, name.toString(), 0x1ed)
+                    val result = api.mkdirat(fd, name.toString(), authority?.directoryMode ?: 0x1ed)
                     if (result != 0) require(Native.getLastError() == 17) // EEXIST; still inspect without following.
                     created = result == 0
                 }
                 fd = checked(api.openat(fd, name.toString(), DIRECTORY_FLAGS, 0)).also { retained += it }
-                if (created) checked(api.fchmod(fd, 0x1ed)) // Do not inherit helper's restrictive umask.
+                if (created) checked(api.fchmod(fd, authority?.directoryMode ?: 0x1ed)) // Do not inherit helper's restrictive umask.
                 absolute = absolute.resolve(name)
-                inspect(fd, absolute, directory = true)
+                inspect(fd, absolute, directory = true, ancestry = index < root.nameCount - 1)
             }
             return Directory(fd, absolute, retained)
         } catch (failure: Exception) { retained.asReversed().forEach { api.close(it) }; throw failure }
@@ -87,9 +96,9 @@ internal class DesktopMacInstallJobBackend(
         private fun checkOpen() = check(!closed)
         override fun createJob(jobId: String): DesktopInstallJobBackend.Directory {
             checkOpen(); require(DesktopInstallJobNames.validJob(jobId))
-            checked(api.mkdirat(fd, jobId, 0x1ed))
+            checked(api.mkdirat(fd, jobId, authority?.directoryMode ?: 0x1ed))
             val created = checked(api.openat(fd, jobId, DIRECTORY_FLAGS, 0))
-            try { checked(api.fchmod(created, 0x1ed)) } finally { api.close(created) }
+            try { checked(api.fchmod(created, authority?.directoryMode ?: 0x1ed)) } finally { api.close(created) }
             return openJob(jobId)
         }
         override fun openJob(jobId: String): DesktopInstallJobBackend.Directory {
@@ -104,15 +113,17 @@ internal class DesktopMacInstallJobBackend(
             checkOpen(); DesktopInstallJobNames.requireCreate(name, purpose)
             val cancel = purpose == DesktopInstallJobBackend.Purpose.CANCEL
             require(cancel == (clientPrincipal != null))
-            val file = checked(api.openat(fd, name, FILE_FLAGS or 2 or 0x200 or 0x800, if (cancel) 0x180 else 0x1a4))
+            val mode = if (cancel) 0x180 else authority?.statusMode ?: 0x1a4
+            val file = checked(api.openat(fd, name, FILE_FLAGS or 2 or 0x200 or 0x800, mode))
             try {
-                checked(api.fchmod(file, if (cancel) 0x180 else 0x1a4))
+                checked(api.fchmod(file, mode))
                 if (clientPrincipal != null) {
                     require(clientPrincipal.isNotBlank() && clientPrincipal.length <= 256 && '\u0000' !in clientPrincipal)
                     Memory(65536).use { buffer ->
                         val passwd = SystemB.Passwd()
                         val result = PointerByReference()
                         require(api.getpwnam_r(clientPrincipal, passwd, buffer, buffer.size(), result) == 0 && result.value != null)
+                        authority?.let { require(passwd.pw_uid.toLong() and 0xffffffffL == it.clientUid) }
                         checked(api.fchown(file, passwd.pw_uid, -1))
                     }
                 }

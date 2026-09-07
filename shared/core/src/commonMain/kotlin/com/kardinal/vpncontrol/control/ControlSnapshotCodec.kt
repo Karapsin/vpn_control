@@ -4,7 +4,10 @@ import com.kardinal.vpncontrol.model.*
 
 /** Explicit controller DTO transport, never serialization of platform service or Compose state. */
 object ControlSnapshotCodec {
-    fun encode(snapshot: ControlSnapshot): String = ControlProtocolCodec.encodeValues(snapshot.toControlValues() + mapOf(
+    fun encode(snapshot: ControlSnapshot): String = ControlProtocolCodec.bounded(encodeDocument(snapshot))
+    fun decode(frame: String): ControlSnapshot = decodeDocument(ControlProtocolCodec.bounded(frame))
+
+    fun encodeDocument(snapshot: ControlSnapshot): String = ControlDocumentCodec.encodeValues(snapshot.toControlValues() + mapOf(
         "schemaVersion" to ControlValue.IntegerValue(CONTROL_SCHEMA_VERSION.toLong()),
         "controllerId" to ControlValue.Text(snapshot.controllerId),
         "configurationRevision" to ControlValue.IntegerValue(snapshot.configurationRevision),
@@ -18,14 +21,14 @@ object ControlSnapshotCodec {
                 "completedUnits" to operation.completedUnits.value(),
                 "totalUnits" to operation.totalUnits.value(),
                 "result" to (operation.result?.let {
-                    ControlValue.ObjectValue(ControlProtocolCodec.decodeValues(ControlProtocolCodec.encodeResult(it)))
+                    ControlValue.ObjectValue(ControlDocumentCodec.decodeValues(ControlDocumentCodec.encodeResult(it)))
                 } ?: ControlValue.Null),
             ))
         }),
     ))
 
-    fun decode(frame: String): ControlSnapshot = try {
-        val values = ControlProtocolCodec.decodeValues(frame)
+    fun decodeDocument(document: String): ControlSnapshot = try {
+        val values = ControlDocumentCodec.decodeValues(document)
         require(values.keys == setOf("schemaVersion", "controllerId", "configurationRevision", "operations",
             "runtimeRunning", "selectedLocationId", "activeLocationId", "configuredMode", "activeMode",
             "runtimeId", "runtimeStartedAt", "restartRequired"))
@@ -40,7 +43,7 @@ object ControlSnapshotCodec {
             val requestId = row.text("requestId")
             val result = when (val resultValue = row.getValue("result")) {
                 ControlValue.Null -> null
-                is ControlValue.ObjectValue -> ControlProtocolCodec.decodeResult(ControlProtocolCodec.encodeValues(resultValue.values))
+                is ControlValue.ObjectValue -> ControlDocumentCodec.decodeResult(ControlDocumentCodec.encodeValues(resultValue.values))
                 else -> error("INVALID_ARGUMENT")
             }
             require(result == null || result.controllerId == controllerId && result.requestId == requestId && result.operationId == id)

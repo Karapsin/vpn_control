@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.kardinal.vpncontrol.AppUpdatePhase
 import com.kardinal.vpncontrol.AppUpdateState
+import com.kardinal.vpncontrol.AppInstallSessionPhase
 
 @Composable
 fun AppUpdateDialog(
@@ -28,7 +29,7 @@ fun AppUpdateDialog(
 ) {
     if (!state.showDialog) return
     val strings = LocalAppStrings.current
-    val busy = state.phase in setOf(
+    val busy = (state.phase != AppUpdatePhase.INSTALLING || state.installSession == null) && state.phase in setOf(
         AppUpdatePhase.CHECKING,
         AppUpdatePhase.DOWNLOADING,
         AppUpdatePhase.VERIFYING,
@@ -43,9 +44,14 @@ fun AppUpdateDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    updatePhaseText(state, strings),
+                    if (state.phase == AppUpdatePhase.INSTALLING && state.installSession != null)
+                        strings.format(UiText.SETTINGS_CURRENT_VERSION, state.currentVersion)
+                    else updatePhaseText(state, strings),
                     modifier = Modifier.testTag(if (busy) "update-progress" else "update-message"),
                 )
+                state.installSession?.let { session ->
+                    Text(strings.get(installSessionText(session.phase)), Modifier.testTag("update-install-session"))
+                }
                 if (state.phase == AppUpdatePhase.DOWNLOADING) {
                     state.progress?.let { progress ->
                         LinearProgressIndicator(
@@ -59,7 +65,7 @@ fun AppUpdateDialog(
                     Text(strings.get(UiText.UPDATE_INSTALL_WARNING))
                 }
                 if (state.message.isNotBlank()) {
-                    Text(state.message)
+                    Text(updateDetailText(state.message, strings))
                 }
                 if (state.releaseNotesUrl.isNotBlank()) {
                     OutlinedButton(
@@ -73,7 +79,10 @@ fun AppUpdateDialog(
             }
         },
         confirmButton = {
-            when (state.phase) {
+            if (state.installSession?.resumable == true) Button(onClick = onInstall,
+                modifier = Modifier.heightIn(min = 48.dp).testTag("update-install"), colors = darkButtonColors()) {
+                Text(strings.get(UiText.UPDATE_INSTALL))
+            } else when (state.phase) {
                 AppUpdatePhase.READY -> Button(
                     onClick = onInstall,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("update-install"),
@@ -96,7 +105,7 @@ fun AppUpdateDialog(
         dismissButton = {
             OutlinedButton(
                 onClick = onDismiss,
-                enabled = state.phase != AppUpdatePhase.INSTALLING,
+                enabled = state.phase != AppUpdatePhase.INSTALLING || state.installSession != null,
                 modifier = Modifier
                     .padding(end = 4.dp)
                     .heightIn(min = 48.dp)
@@ -110,6 +119,23 @@ fun AppUpdateDialog(
             }
         },
     )
+}
+
+internal fun installSessionText(phase: AppInstallSessionPhase): UiText = when (phase) {
+    AppInstallSessionPhase.PREPARING, AppInstallSessionPhase.STAGED, AppInstallSessionPhase.COMMITTING -> UiText.UPDATE_INSTALLING
+    AppInstallSessionPhase.AWAITING_CONFIRMATION, AppInstallSessionPhase.HANDED_OFF -> UiText.UPDATE_INSTALL_CONFIRMATION
+    AppInstallSessionPhase.INSTALLED -> UiText.UPDATE_INSTALL_COMPLETED
+    AppInstallSessionPhase.FAILED -> UiText.UPDATE_FAILED
+    AppInstallSessionPhase.UNKNOWN -> UiText.UPDATE_INSTALL_UNKNOWN
+    AppInstallSessionPhase.CANCELLED -> UiText.UPDATE_INSTALL_CANCELLED
+}
+
+internal fun updateDetailText(message: String, strings: AppStrings): String = when (message) {
+    "CANCELLED" -> strings.get(UiText.UPDATE_INSTALL_CANCELLED)
+    "OUTCOME_UNKNOWN" -> strings.get(UiText.UPDATE_INSTALL_UNKNOWN)
+    "INTERACTION_REQUIRED" -> strings.get(UiText.UPDATE_INSTALL_INTERACTION_REQUIRED)
+    "PERMISSION_DENIED" -> strings.get(UiText.UPDATE_INSTALL_PERMISSION_DENIED)
+    else -> message
 }
 
 private fun updatePhaseText(state: AppUpdateState, strings: AppStrings): String {

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Sazkirin danişîneke înteraktîf dixwaze.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Destûra sazkirinê hat redkirin.",
+  "UPDATE_INSTALL_CANCELLED": "Sazkirin hat betalkirin.",
+  "UPDATE_INSTALL_CONFIRMATION": "Li benda pejirandina sazkirinê ye.",
+  "UPDATE_INSTALL_COMPLETED": "Rojanekirin hat sazkirin.",
+  "UPDATE_INSTALL_UNKNOWN": "Encama sazkirinê nayê zanîn.",
   "APP_TITLE": "Kontrola VPN",
   "TAB_MAIN": "Sereke",
   "TAB_PROFILE": "Profîl",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Cihê çalak: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Cihê çalak: ne berdest e",
+  "CONNECTION_RESTART_PENDING": "Ji bo sepandina guhertinên tomarkirî girêdanê ji nû ve bidin destpêkirin.",
+  "CONNECTION_RESTART_UNKNOWN": "Nayê zanîn ka ji nû ve destpêkirin pêwîst e an na."
 }

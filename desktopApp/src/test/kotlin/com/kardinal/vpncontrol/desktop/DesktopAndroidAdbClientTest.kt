@@ -7,6 +7,44 @@ import java.nio.file.Path
 import kotlin.test.*
 
 class DesktopAndroidAdbClientTest {
+    @Test fun publicFindBestBindsOwnerWithoutImplicitInteractiveOptIn() = fixture { client, root ->
+        assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--async", "find-best"),
+            printLine = {}, androidRequest = client::request))
+        val sent = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
+        assertEquals(ControlOperationId.FIND_BEST, sent.command.operation)
+        assertEquals("android-test-owner", sent.controllerId)
+        assertTrue(sent.asynchronous); assertFalse(sent.interactive)
+        val stale = sent.copy(controllerId = "stale")
+        assertEquals(ControlCode.CONFLICT, ControlProtocolCodec.decodeResult(client.request(stale, null, 20).message).code)
+    }
+    @Test fun publicAsyncBenchmarkBindsOwnerAndPreservesExplicitStaleEpoch() = fixture { client, root ->
+        val output = mutableListOf<String>()
+        assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--async", "locations", "benchmark", "1"),
+            printLine = output::add, androidRequest = client::request))
+        val sent = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
+        assertEquals(ControlOperationId.LOCATIONS_BENCHMARK, sent.command.operation)
+        assertEquals(ControlValue.Text("1"), sent.command.arguments["selector"])
+        assertTrue(sent.asynchronous)
+        assertEquals("android-test-owner", sent.controllerId)
+        val stale = sent.copy(controllerId = "old-owner")
+        assertEquals(ControlCode.CONFLICT, ControlProtocolCodec.decodeResult(client.request(stale, null, 20).message).code)
+        assertEquals(stale, ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request"))))
+    }
+
+    @Test fun subscriptionRefreshBindsMissingOwnerAndPreservesExplicitOwner() = fixture { client, root ->
+        for (target in listOf("stable-id", "active", "all")) {
+            val output = mutableListOf<String>()
+            assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "subscriptions", "refresh", target),
+                printLine = output::add, androidRequest = client::request))
+            val sent = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
+            assertEquals(ControlOperationId.SUBSCRIPTIONS_REFRESH, sent.command.operation)
+            assertEquals("android-test-owner", sent.controllerId)
+            val stale = sent.copy(controllerId = "old-owner")
+            assertEquals(ControlCode.CONFLICT, ControlProtocolCodec.decodeResult(client.request(stale, null, 20).message).code)
+            assertEquals(stale, ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request"))))
+        }
+    }
+
     @Test fun publicLocationAddUpdateAndSelectBindOwnerAndKeepInputPrivate() = fixture { client, root ->
         val input = root.resolve("location 東京.json").also { Files.writeString(it, "socks://127.0.0.1:1080#PRIVATE_LOCATION") }
         for ((arguments, operation) in listOf(
@@ -107,6 +145,34 @@ class DesktopAndroidAdbClientTest {
         val on = ControlRequest("no-interaction", ControlCommand(ControlOperationId.ON))
         assertEquals(ControlCode.INTERACTION_REQUIRED, ControlProtocolCodec.decodeResult(client.request(on, null, 20).message).code)
         assertFalse(Files.readString(root.resolve("argv")).contains("\tam\t"))
+    }
+
+    @Test fun asynchronousInteractiveInstallWaitsForDelayedTokenBeforeReturning() = fixture("interactive-delayed") { client, root ->
+        val request = ControlRequest("resume-delayed", ControlCommand(ControlOperationId.UPDATES_INSTALL),
+            interactive = true, asynchronous = true)
+        val result = ControlProtocolCodec.decodeResult(client.request(request, null, 20).message)
+        assertEquals(ControlCode.ACCEPTED, result.code)
+        assertFalse(result.final)
+        val argv = Files.readAllLines(root.resolve("argv"))
+        assertEquals(1, argv.count { it.contains("\tam\tstart\t") })
+        assertEquals(2, argv.count { it.contains("\tinteraction\t") })
+        assertEquals("22a658de-80b4-45e9-b72e-8a1907baf861", result.operationId)
+    }
+
+    @Test fun interactiveFindBestPollsDelayedConsentForSynchronousAndAsynchronousRequests() {
+        for (asynchronous in listOf(false, true)) fixture("interactive-delayed") { client, root ->
+            val request = ControlRequest("interactive-find-best", ControlCommand(ControlOperationId.FIND_BEST),
+                interactive = true, asynchronous = asynchronous)
+            val result = ControlProtocolCodec.decodeResult(client.request(request, null, 20).message)
+            assertEquals(if (asynchronous) ControlCode.ACCEPTED else ControlCode.OK, result.code)
+            assertEquals(!asynchronous, result.final)
+            assertEquals(request.requestId, result.requestId)
+            assertEquals("22a658de-80b4-45e9-b72e-8a1907baf861", result.operationId)
+            val arguments = Files.readAllLines(root.resolve("argv"))
+            assertEquals(1, arguments.count { it.contains("\tam\tstart\t") })
+            assertEquals(2, arguments.count { it.contains("\tinteraction\t") })
+            assertFalse(arguments.any { it.contains("run-as") || it.contains("\tgrant\t") })
+        }
     }
 
     @Test fun interactiveInstallUsesProtectedTokenContinuationAndNoninteractiveDoesNotLaunch() {
@@ -247,7 +313,7 @@ object FakeAdbMain {
             return
         }
         if (command.getOrNull(4) == "am") {
-            check(mode == "interactive")
+            check(mode in setOf("interactive", "interactive-delayed"))
             Files.writeString(root.resolve("activity-started"), "yes")
             output("Starting: Intent { cmp=com.kardinal.vpncontrol/.AndroidControlInteractionActivity }\nStatus: ok\n")
             return
@@ -257,11 +323,17 @@ object FakeAdbMain {
         val uri = "content://com.kardinal.vpncontrol.control"
         when (command[5]) {
             "call" -> when (command[9]) {
+                "document-begin" -> output("Result: Bundle[{error=UNSUPPORTED}]\n")
                 "create" -> if (mode == "permission") {
                     System.err.print("SecurityException private-secret path")
                 } else output("Result: Bundle[{id=$id, requestUri=${if (mode == "bad-uri") "evil;command" else "$uri/requests/$id"}, resultUri=$uri/results/$id${if (mode == "no-owner") "" else ", controllerId=android-test-owner"}}]\n")
                 "status" -> output("Result: Bundle[{state=${if (mode == "pending") "pending" else "complete"}}]\n")
-                "interaction" -> output("Result: Bundle[{state=waiting, token=9ceba854-65c2-4a19-b93d-372b4c9474a0}]\n")
+                "interaction" -> {
+                    val first = mode == "interactive-delayed" && !Files.exists(root.resolve("interaction-queried"))
+                    Files.writeString(root.resolve("interaction-queried"), "yes")
+                    output(if (first) "Result: Bundle[{state=none}]\n" else
+                        "Result: Bundle[{state=waiting, token=9ceba854-65c2-4a19-b93d-372b4c9474a0}]\n")
+                }
                 "discard" -> output("Result: Bundle[{}]\n")
                 else -> error("Unexpected test method")
             }
@@ -272,12 +344,15 @@ object FakeAdbMain {
                     output(ControlProtocolCodec.encodeResult(ControlResult("android-test-owner", request.requestId, ControlCode.INTERACTION_REQUIRED, 0)))
                     return
                 }
-                if (mode == "interactive") {
+                if (mode in setOf("interactive", "interactive-delayed")) {
                     val complete = request.command.operation == ControlOperationId.OPERATIONS_STATUS && Files.exists(root.resolve("activity-started"))
                     output(ControlProtocolCodec.encodeResult(ControlResult("android-test-owner", request.requestId,
                         if (complete) ControlCode.OK else ControlCode.ACCEPTED, 0, final = complete,
                         operationId = "22a658de-80b4-45e9-b72e-8a1907baf861",
-                        data = mapOf("phase" to ControlValue.Text(if (complete) "succeeded" else "awaiting-user")))))
+                        data = mapOf("phase" to ControlValue.Text(if (complete) "succeeded" else
+                            if (mode == "interactive-delayed" && request.command.operation in setOf(
+                                ControlOperationId.UPDATES_INSTALL, ControlOperationId.FIND_BEST)) "running"
+                            else "awaiting-user")))))
                     return
                 }
                 output(ControlProtocolCodec.encodeResult(ControlResult("android-test-owner",

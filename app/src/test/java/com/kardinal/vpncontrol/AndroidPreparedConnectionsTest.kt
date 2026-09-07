@@ -7,6 +7,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidPreparedConnectionsTest {
+    @Test fun generatedSshRuntimeRetainsExactPreparationAndDetectsLaterCredentialChanges() {
+        val prepared = AndroidPreparedConnections()
+        val selection = selection()
+        val state = PersistedState(selectedProfileRawLink = selection.profile.rawLink,
+            homeSshRouteSettings = HomeSshRouteSettings(enabled = true, host = "127.0.0.1", user = "fixture", credentialVersion = 7))
+        prepared.remember(selection, state)
+        val token = prepared.dispatch(selection)
+        assertNotNull("A generated SSH runtime must retain its captured descriptor", token)
+        val descriptor = prepared.consume(token, selection.runtimeConfigJson)
+        assertNotNull(descriptor)
+        assertEquals(state.homeSshRouteSettings, descriptor!!.ssh)
+        val observer = AndroidRuntimeObserver()
+        observer.started(Any(), AppMode.VPN, selection.runtimeConfigJson, descriptor)
+        assertEquals(false, observer.pendingRestart(state))
+        assertTrue(observer.controlStatus(state).authoritative)
+        assertEquals(observer.controlStatus(state).data["selectedLocationId"], observer.controlStatus(state).data["activeLocationId"])
+        assertEquals(true, observer.pendingRestart(state.copy(homeSshRouteSettings = state.homeSshRouteSettings.copy(credentialVersion = 8))))
+        assertNotNull(observer.captureRuntime())
+        val legacy = selection.copy(profile = selection.profile.copy(rawLink = ""))
+        prepared.remember(legacy, state)
+        assertNull(prepared.dispatch(legacy))
+    }
+
     @Test fun delayedServiceStartUsesPreparedInputsNotLaterCommittedSettings() {
         val prepared = AndroidPreparedConnections()
         val selection = selection()

@@ -57,7 +57,7 @@ internal class DesktopRoutingRulesService(
     }
 
     fun setDirectDomainsDraft(value: String) {
-        updateRoutingDraftAndSave { it.copy(routingDirectDomainsDraft = value) }
+        updateRoutingDraftAndSave { it.copy(routingDirectDomainsDraft = value, routingDirectDomainSuffixesDraft = null) }
     }
 
     fun addSampleRuleSet() {

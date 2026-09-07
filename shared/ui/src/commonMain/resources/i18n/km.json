@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ការដំឡើងតម្រូវឱ្យមានវគ្គអន្តរកម្ម។",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ការអនុញ្ញាតឱ្យដំឡើងត្រូវបានបដិសេធ។",
+  "UPDATE_INSTALL_CANCELLED": "បានបោះបង់ការដំឡើង។",
+  "UPDATE_INSTALL_CONFIRMATION": "កំពុងរង់ចាំការបញ្ជាក់ការដំឡើង។",
+  "UPDATE_INSTALL_COMPLETED": "បានដំឡើងបច្ចុប្បន្នភាព។",
+  "UPDATE_INSTALL_UNKNOWN": "មិនស្គាល់លទ្ធផលនៃការដំឡើង។",
   "APP_TITLE": "ការគ្រប់គ្រង VPN",
   "TAB_MAIN": "ទំព័រមេ",
   "TAB_PROFILE": "កម្រងព័ត៌មាន",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "ទីតាំងសកម្ម៖ {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "ទីតាំងសកម្ម៖ មិនអាចប្រើបាន",
+  "CONNECTION_RESTART_PENDING": "ចាប់ផ្ដើមការតភ្ជាប់ឡើងវិញ ដើម្បីអនុវត្តការផ្លាស់ប្ដូរដែលបានរក្សាទុក។",
+  "CONNECTION_RESTART_UNKNOWN": "មិនទាន់ដឹងថាតើត្រូវចាប់ផ្ដើមឡើងវិញឬអត់។"
 }

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Pemasangan memerlukan sesi interaktif.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Kebenaran untuk memasang telah ditolak.",
+  "UPDATE_INSTALL_CANCELLED": "Pemasangan dibatalkan.",
+  "UPDATE_INSTALL_CONFIRMATION": "Menunggu pengesahan pemasangan.",
+  "UPDATE_INSTALL_COMPLETED": "Kemas kini telah dipasang.",
+  "UPDATE_INSTALL_UNKNOWN": "Hasil pemasangan tidak diketahui.",
   "APP_TITLE": "Kawalan VPN",
   "TAB_MAIN": "Utama",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Lokasi aktif: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Lokasi aktif: tidak tersedia",
+  "CONNECTION_RESTART_PENDING": "Mulakan semula sambungan untuk menggunakan perubahan yang disimpan.",
+  "CONNECTION_RESTART_UNKNOWN": "Tidak diketahui sama ada perlu dimulakan semula."
 }

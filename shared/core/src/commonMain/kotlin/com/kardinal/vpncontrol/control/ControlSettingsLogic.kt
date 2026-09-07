@@ -37,7 +37,7 @@ object ControlSettingsLogic {
             }
             com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_APPLY -> {
                 require(arguments.keys == setOf("input"))
-                ControlProtocolCodec.decodeValues(text("input"))
+                ControlDocumentCodec.decodeValues(text("input"))
             }
             else -> throw IllegalArgumentException("UNSUPPORTED")
         }
@@ -48,7 +48,7 @@ object ControlSettingsLogic {
         if (key in setOf("mode", "language", "dns.mode", "dns.endpoint", "ssh.host", "ssh.user", "refresh.policy", "validation.test-url")) {
             ControlValue.Text(raw)
         } else {
-            val values = ControlProtocolCodec.decodeValues("{\"value\":$raw}")
+            val values = ControlDocumentCodec.decodeValues("{\"value\":$raw}")
             require(values.keys == setOf("value"))
             values.getValue("value")
         }

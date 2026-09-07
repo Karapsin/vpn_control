@@ -127,13 +127,29 @@ class DesktopPendingConnectionCliTest {
             assertTrue(pending.data["selectedLocationId"] != pending.data["activeLocationId"])
             assertEquals(started.data["runtimeId"], pending.data["runtimeId"])
             assertEquals(started.data["runtimeStartedAt"], pending.data["runtimeStartedAt"])
-            assertTrue(invoke("status").second.contains("active: \"First\""))
-            assertTrue(invoke("status").second.contains("pending restart"))
+            val activeId = (started.data.getValue("activeLocationId") as ControlValue.Text).value
+            assertTrue(invoke("status").second.contains("activeLocationId: $activeId"))
+            assertTrue(invoke("status").second.contains("Restart required: yes"))
+            runtime.startFailure = DesktopWindowsRuntimeFailure("CANCELLED")
+            val denied = invoke("--json", "restart")
+            assertEquals(130, denied.first, denied.second)
+            val cancellation = ControlProtocolCodec.decodeResult(denied.second)
+            assertEquals(ControlCode.CANCELLED, cancellation.code)
+            assertTrue(cancellation.final)
+            assertTrue(cancellation.restartRequired)
+            assertNotNull(cancellation.operationId)
+            assertTrue(service.state.isVpnRunning)
+            assertTrue(service.shouldResumeConnectionOnLaunch())
+            assertEquals(started.data["runtimeId"], jsonStatus().data["runtimeId"])
+            assertEquals(started.data["activeLocationId"], jsonStatus().data["activeLocationId"])
+            assertEquals(pending.configurationRevision, jsonStatus().configurationRevision)
+            assertEquals(0, runtime.stops)
+            runtime.startFailure = null
             assertEquals(0, invoke("on").first)
             assertEquals(listOf("First"), runtime.names)
             assertEquals(started.data["runtimeId"], jsonStatus().data["runtimeId"])
             assertEquals(0, invoke("select", "First").first)
-            assertFalse(invoke("status").second.contains("pending restart"))
+            assertTrue(invoke("status").second.contains("Restart required: no"))
             assertEquals(0, invoke("select", "Second").first)
             // Routing controls auto-save; DNS dialog text remains an uncommitted draft.
             service.setRoutingDirectDomainsDraft("committed.example")
@@ -151,7 +167,7 @@ class DesktopPendingConnectionCliTest {
             assertFalse(restarted.restartRequired)
             assertTrue(runtime.rules.last().directDomainSuffixes.contains("committed.example"))
             assertEquals(committedDns, runtime.dns.last())
-            assertFalse(invoke("status").second.contains("pending restart"))
+            assertTrue(invoke("status").second.contains("Restart required: no"))
             val jsonOff = invoke("--json", "off")
             assertEquals(0, jsonOff.first, jsonOff.second)
             assertEquals(ControlCode.OK, com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(jsonOff.second).code)
@@ -169,6 +185,7 @@ class DesktopPendingConnectionCliTest {
 }
 
 private class RecordingRuntime(private val beforeStart: suspend () -> Unit = {}) : DesktopRuntimeController {
+    var startFailure: Throwable? = null
     @Volatile var starts = 0
     val names = mutableListOf<String>()
     val rules = mutableListOf<RoutingRules>()
@@ -177,6 +194,7 @@ private class RecordingRuntime(private val beforeStart: suspend () -> Unit = {})
     private var mode: AppMode? = null
     override suspend fun start(profile: ProxyProfile, routingRules: RoutingRules, dnsSettings: DnsSettings,
         appMode: AppMode, activeVerificationPort: Int?, homeSshRouteSettings: HomeSshRouteSettings): Result<DesktopRuntimeSession> {
+        startFailure?.let { return Result.failure(it) }
         starts++
         beforeStart()
         names += profile.remarks

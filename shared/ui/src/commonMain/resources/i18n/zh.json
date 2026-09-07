@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "安装需要交互式会话。",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "安装权限被拒绝。",
+  "UPDATE_INSTALL_CANCELLED": "安装已取消。",
+  "UPDATE_INSTALL_CONFIRMATION": "正在等待安装确认。",
+  "UPDATE_INSTALL_COMPLETED": "更新已安装。",
+  "UPDATE_INSTALL_UNKNOWN": "安装结果未知。",
   "APP_TITLE": "VPN 控制",
   "TAB_MAIN": "主页",
   "TAB_PROFILE": "配置",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "当前连接位置：{0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "当前连接位置：不可用",
+  "CONNECTION_RESTART_PENDING": "重新启动连接以应用已保存的更改。",
+  "CONNECTION_RESTART_UNKNOWN": "尚不清楚是否需要重新启动。"
 }

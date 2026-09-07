@@ -34,6 +34,18 @@ class DesktopAppService internal constructor(
         validationRuntime.benchmarkLocation(profile, dns, urls, settings)
     },
 ) {
+    private var runtimeResourceOwner: Pair<String, DesktopWindowsWorkspaceResourceScope>? = null
+
+    @Synchronized internal fun bindRuntimeResourceOwner(controllerId: String) {
+        if (controlPlatform != ControlPlatform.WINDOWS) return
+        val existing = runtimeResourceOwner
+        check(existing == null || existing.first == controllerId) { "CONFLICT" }
+        val provider = existing?.second ?: DesktopWindowsWorkspaceResourceScope(
+            desktopStore.updateDirectory().toAbsolutePath().parent, controllerId)
+        runtimeManager.bindRuntimeResourceScopeProvider(provider)
+        runtimeResourceOwner = controllerId to provider
+    }
+
     private var visualRuntimeStatusDetails: List<String>? = null
     private val controlLocationIdentity = DesktopControlLocationIdentity()
     @Volatile internal var configurationRevision: Long = 0
@@ -171,6 +183,7 @@ class DesktopAppService internal constructor(
         updateState = { transform -> state = transform(state) },
     )
     private val findBestService = DesktopFindBestService(
+        captureRuntimeRestore = ::captureRuntimeOnlyMutationRestore,
         stateProvider = { state },
         visibleLocationsProvider = { locationService.visibleLocations() },
         locationsProvider = { desktopLocations },
@@ -185,6 +198,7 @@ class DesktopAppService internal constructor(
                 location = location,
                 benchmarkSummary = summary,
                 activeVerificationPort = activeVerificationPort,
+                commitSelectionOnSuccessOnly = true,
             )
         },
         verifyCandidate = { candidate, dnsSettings, benchmarkUrls, settings ->
@@ -256,6 +270,18 @@ class DesktopAppService internal constructor(
     internal suspend fun downloadControlUpdate(): Result<Unit> = updateService.downloadChecked()
     internal fun checkedControlUpdate(): DesktopUpdateCheck? = updateService.checkedStatus()
     internal fun dismissControlUpdate(): Result<Unit> = updateService.dismiss()
+    internal suspend fun prepareControlInstall(correlation: DesktopInstallCorrelation,
+        frontend: DesktopFrontendProcessIdentity? = null): Result<DesktopPreparedInstall> =
+        updateService.prepareVerifiedInstaller(correlation, frontend)
+    internal suspend fun reconcileTerminalInstallInputs(ownerId: String): Result<Unit> =
+        updateService.reconcileTerminalInstallInputs(ownerId)
+
+    internal fun recoverControlInstalls(): Result<List<DesktopInstallCorrelationRecovery>> =
+        updateService.recoverInstallCorrelations()
+    internal fun settleControlInstall(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> =
+        updateService.settleVerifiedInstall(correlation, receipt)
+    internal fun controlInstallFrontend(registrationId: String): Result<DesktopFrontendProcessIdentity> =
+        DesktopFrontendProcessIdentity.read(desktopStore.updateDirectory().toAbsolutePath().parent, registrationId)
 
     fun dismissUpdate() {
         updateService.dismiss()
@@ -339,7 +365,7 @@ class DesktopAppService internal constructor(
         }
         return synchronized(this) {
             val response = result.fold({ DesktopCliResponse.success(
-                com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(requireNotNull(committedValues))) }, { error ->
+                com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(requireNotNull(committedValues))) }, { error ->
                 val code = when (error.message) {
                     "READ_ONLY" -> "READ_ONLY_SOURCE"
                     "CONFLICT", "BUSY", "INVALID_ARGUMENT", "PERSISTENCE_FAILED", "ROLLBACK_FAILED" -> error.message!!
@@ -376,7 +402,7 @@ class DesktopAppService internal constructor(
             is com.kardinal.vpncontrol.control.ControlLocationResolution.Rejected -> return failure(found.code.wireName)
         } else null
         val response = saveLocation(command.content, target?.index, target?.rawLink).fold(
-            onSuccess = { saved -> DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(
+            onSuccess = { saved -> DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(
                 mapOf("id" to ControlValue.Text(requireNotNull(controlLocationId(saved)))))) },
             onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code -> code in setOf("BUSY", "CONFLICT",
                 "PERSISTENCE_FAILED", "ROLLBACK_FAILED") } ?: "INVALID_ARGUMENT") })
@@ -448,7 +474,7 @@ class DesktopAppService internal constructor(
         if (expectedRevision != null && expectedRevision != configurationRevision)
             return DesktopControlWriteResponse(DesktopCliResponse.failure("CONFLICT"), controlMetadata())
         val response = saveControlSubscription(source, name, id).fold(
-            onSuccess = { saved -> DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(
+            onSuccess = { saved -> DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(
                 mapOf("id" to ControlValue.Text(saved)))) },
             onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code -> code in setOf("BUSY", "NOT_FOUND",
                 "INVALID_ARGUMENT", "PERSISTENCE_FAILED", "ROLLBACK_FAILED") } ?: "RUNTIME_FAILED") })
@@ -464,7 +490,7 @@ class DesktopAppService internal constructor(
             "INVALID_ARGUMENT", "PERSISTENCE_FAILED", "ROLLBACK_FAILED") } ?: "RUNTIME_FAILED"
         fun response(result: Result<Unit>, id: String, metadata: DesktopControlMetadata = controlMetadata()) =
             DesktopControlWriteResponse(result.fold(onSuccess = {
-                DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(
+                DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(
                     mapOf("id" to ControlValue.Text(id))))
             }, onFailure = { DesktopCliResponse.failure(code(it)) }), metadata)
         fun admission(): Result<Unit> = when {
@@ -725,7 +751,7 @@ class DesktopAppService internal constructor(
         }
         fun code(error: Throwable): String = error.message?.takeIf { it in setOf("CONFLICT", "BUSY", "INVALID_ARGUMENT",
             "NOT_FOUND", "AMBIGUOUS_LOCATION", "PERSISTENCE_FAILED", "ROLLBACK_FAILED", "READ_ONLY_SOURCE") } ?: "RUNTIME_FAILED"
-        fun success(id: String) = DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(
+        fun success(id: String) = DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(
             mapOf("id" to ControlValue.Text(id))))
         if (command.operation == com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_SELECT) return synchronized(this) {
             val row = resolve().getOrElse { return@synchronized failure(code(it)) }
@@ -999,7 +1025,7 @@ class DesktopAppService internal constructor(
     /** The session must validate the controller epoch before supplying a revision. */
     @Synchronized internal fun applyControlSettingsResponse(patch: Map<String, ControlValue>, expectedRevision: Long?): DesktopControlWriteResponse {
         val response = applyControlSettings(patch, expectedRevision).fold(
-            onSuccess = { DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(it)) },
+            onSuccess = { DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(it)) },
             onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code ->
                 code in setOf("INVALID_ARGUMENT", "UNSUPPORTED", "BUSY", "CONFLICT", "PERSISTENCE_FAILED")
             } ?: "RUNTIME_FAILED") },

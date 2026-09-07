@@ -17,7 +17,8 @@ class DesktopPublicRevisionGuardTest {
                 DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner", request.requestId,
                     ControlCode.OK, 4, data = mapOf("language" to ControlValue.Text("en")))))
             }))
-        assertEquals(ControlValue.Text("en"), ControlProtocolCodec.decodeResult(lines.single()).data["language"])
+        assertTrue(lines.single().contains("language: en"))
+        assertTrue(lines.single().contains("Controller: owner"))
     }
 
     @Test fun guardedCliWritesRejectStaleRevisionAndReplacementOwnerThroughAuthenticatedTransport() {
@@ -49,6 +50,7 @@ class DesktopPublicRevisionGuardTest {
     @Test fun pinnedHumanAndJsonRequestsDoNotBootstrapAndCarryBothGuards() {
         for (json in listOf(false, true)) {
             val lines = mutableListOf<String>()
+            val errors = mutableListOf<String>()
             assertEquals(2, DesktopCli.handleArgs((if (json) listOf("--json") else emptyList()).plus(listOf(
                 "settings", "set", "language", "en", "--controller-id", "owner", "--if-revision", "7")).toTypedArray(),
                 lines::add, requestCommand = {
@@ -56,9 +58,14 @@ class DesktopPublicRevisionGuardTest {
                     assertEquals("owner", request.controllerId)
                     assertEquals(7L, request.ifRevision)
                     DesktopCliResponse.notRunning()
-                }, startHeadlessController = { error("No replacement for a pinned owner") }))
-            if (json) assertEquals(ControlCode.UNAVAILABLE, ControlProtocolCodec.decodeResult(lines.single()).code)
-            else assertEquals("UNAVAILABLE", lines.single())
+                }, startHeadlessController = { error("No replacement for a pinned owner") }, printProgress = errors::add))
+            if (json) {
+                assertEquals(ControlCode.UNAVAILABLE, ControlProtocolCodec.decodeResult(lines.single()).code)
+                assertTrue(errors.isEmpty())
+            } else {
+                assertTrue(lines.isEmpty(), "Human failures must not pollute stdout")
+                assertTrue(errors.single().startsWith("UNAVAILABLE\n"))
+            }
         }
     }
 }

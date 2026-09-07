@@ -14,6 +14,75 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DesktopCliProcessTest {
+    @Test fun serveAdoptsAnExistingTransientOwnerWithoutReplacingEpoch() {
+        val directory = Files.createTempDirectory("vpn-cli-serve-existing")
+        val workspace = directory.resolve("workspace")
+        val javaName = if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
+        val java = Path.of(System.getProperty("java.home"), "bin", javaName).toString()
+        val classpath = DesktopJvmCliTestBootstrap.classpath(requireNotNull(System.getProperty("vpnControl.test.mainClasspath")))
+        val processes = mutableListOf<Process>()
+        fun start(argument: String): Pair<Process, Path> {
+            val log = directory.resolve("${processes.size}.log")
+            val process = ProcessBuilder(listOf(java, "-Djava.awt.headless=true", "-cp", classpath,
+                DesktopJvmCliTestBootstrap::class.java.name) + DesktopJvmCliTestBootstrap.encode(
+                    listOf("--state-dir", workspace.toString(), argument)))
+                .redirectErrorStream(true).redirectOutput(log.toFile()).start()
+            processes += process
+            return process to log
+        }
+        try {
+            val (owner, ownerLog) = start(DesktopHeadlessController.ARG)
+            val endpoint = workspace.resolve("activation.port")
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+            while (!Files.exists(endpoint) && owner.isAlive && System.nanoTime() < deadline) Thread.sleep(20)
+            assertTrue(owner.isAlive && Files.exists(endpoint), Files.readString(ownerLog))
+            val original = DesktopControlEndpoint.read(endpoint)
+            val (server, serverLog) = start("serve")
+            assertFalse(server.waitFor(3, TimeUnit.SECONDS), Files.readString(serverLog))
+            assertTrue(owner.isAlive)
+            assertEquals(original.controllerId, DesktopControlEndpoint.read(endpoint).controllerId)
+            assertTrue(Files.readString(serverLog).contains("headless service is ready"))
+        } finally {
+            // Both exact test-owned processes have an empty, never-connected workspace.
+            for (process in processes.reversed()) if (process.isAlive) {
+                process.destroy()
+                if (!process.waitFor(5, TimeUnit.SECONDS)) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS) }
+            }
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun invalidWorkspaceErrorsUseStderrAndJsonUsesStdout() {
+        val directory = Files.createTempDirectory("vpn-cli-startup-errors")
+        val javaName = if (System.getProperty("os.name").lowercase().contains("windows")) "java.exe" else "java"
+        val java = Path.of(System.getProperty("java.home"), "bin", javaName).toString()
+        val classpath = DesktopJvmCliTestBootstrap.classpath(requireNotNull(System.getProperty("vpnControl.test.mainClasspath")))
+        try {
+            for (json in listOf(false, true)) {
+                val stdout = directory.resolve("stdout-$json.txt")
+                val stderr = directory.resolve("stderr-$json.txt")
+                val arguments = listOf("--state-dir", "", "status") + if (json) listOf("--json") else emptyList()
+                val process = ProcessBuilder(listOf(java, "-Djava.awt.headless=true", "-cp", classpath,
+                    DesktopJvmCliTestBootstrap::class.java.name) + DesktopJvmCliTestBootstrap.encode(arguments))
+                    .redirectOutput(stdout.toFile()).redirectError(stderr.toFile()).start()
+                try {
+                    assertTrue(process.waitFor(15, TimeUnit.SECONDS), "Invalid input must exit before startup")
+                    assertEquals(1, process.exitValue())
+                    if (json) {
+                        assertTrue(Files.readString(stderr).isEmpty())
+                        assertEquals(com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT,
+                            ControlProtocolCodec.decodeResult(Files.readString(stdout).trim()).code)
+                    } else {
+                        assertTrue(Files.readString(stdout).isEmpty(), "Human startup errors belong on stderr")
+                        assertTrue(Files.readString(stderr).startsWith("INVALID_ARGUMENT"))
+                    }
+                } finally {
+                    if (process.isAlive) { process.destroy(); process.waitFor(5, TimeUnit.SECONDS) }
+                }
+            }
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
     @Test
     fun realHeadlessCliKeepsTwoUnicodeWorkspacesIsolated() {
         val root = Files.createTempDirectory("vpn-control-process-test")
@@ -93,7 +162,7 @@ class DesktopCliProcessTest {
             assertEquals(1L, result.configurationRevision)
             assertFalse(result.restartRequired)
             val operationId = assertNotNull(result.operationId)
-            val completed = invoke(first, "operations", "wait", operationId)
+            val completed = invoke(first, "--json", "operations", "wait", operationId)
             assertEquals(1, completed.first, completed.second)
             val terminal = Json.parseToJsonElement(completed.second).jsonObject
             assertEquals("true", terminal.getValue("final").jsonPrimitive.content)
@@ -101,9 +170,9 @@ class DesktopCliProcessTest {
             assertEquals(result.controllerId, terminal.getValue("controllerId").jsonPrimitive.content)
             val changedAgain = invoke(first, "settings", "set", "validation.batch-size", "8")
             assertEquals(0, changedAgain.first, changedAgain.second)
-            val retained = invoke(first, "operations", "status", operationId)
-            assertEquals(0, retained.first, retained.second)
-            assertEquals(terminal, Json.parseToJsonElement(retained.second).jsonObject)
+            val retained = invoke(first, "--json", "operations", "status", operationId)
+            assertEquals(completed.first, retained.first, retained.second)
+            assertEquals(terminal - "requestId", Json.parseToJsonElement(retained.second).jsonObject - "requestId")
             val jsonSettings = invoke(first, "--json", "settings", "show", "validation.batch-size")
             assertEquals(0, jsonSettings.first, jsonSettings.second)
             val inspected = ControlProtocolCodec.decodeResult(jsonSettings.second.trim())

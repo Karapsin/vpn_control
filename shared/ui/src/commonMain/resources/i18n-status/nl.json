@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Herstellen van de vorige {connectionLabel:0}-locatie mislukt: {1}. Stoppen van {connectionLabel:0} mislukt: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Routeringsregels opgeslagen. Start {connectionLabel:0} opnieuw om ze toe te passen",
     "ROUTING_RULES_SAVE_FAILED": "Routeringsregels opslaan mislukt",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Het resultaat van de routeringswijziging is onbekend. Probeer het opnieuw met dezelfde invoer.",
+    "ROUTING_RULES_STALE_DRAFT": "De routeringsinstellingen zijn gewijzigd. Open de editor opnieuw voordat u opslaat.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostiekexport geopend",
     "APPS_LOAD_FAILED": "Apps laden mislukt",
     "SUBSCRIPTION_RECEIVED": "Abonnement ontvangen. Controleer en sla het op op het tabblad Profiel.",

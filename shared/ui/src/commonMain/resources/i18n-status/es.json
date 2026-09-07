@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "No se pudo restaurar la ubicación anterior de {connectionLabel:0}: {1}. No se pudo detener {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Reglas de enrutamiento guardadas. Reinicia {connectionLabel:0} para aplicarlas",
     "ROUTING_RULES_SAVE_FAILED": "No se pudieron guardar las reglas de enrutamiento",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Se desconoce el resultado del cambio de enrutamiento. Vuelve a intentarlo con los mismos datos.",
+    "ROUTING_RULES_STALE_DRAFT": "La configuración de enrutamiento cambió. Vuelve a abrir el editor antes de guardar.",
     "DIAGNOSTICS_EXPORT_OPENED": "Exportación de diagnóstico abierta",
     "APPS_LOAD_FAILED": "No se pudieron cargar las apps",
     "SUBSCRIPTION_RECEIVED": "Suscripción recibida. Revísala y guárdala en la pestaña Perfil.",

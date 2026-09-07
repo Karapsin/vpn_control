@@ -9,13 +9,16 @@ internal object DesktopCliProtocol {
     private const val OK = "ok"
     private const val ERROR = "error"
 
-    fun encodeCommand(command: DesktopCliCommand): String {
+    fun encodeCommand(command: DesktopCliCommand): String = encodeCommand(command, false)
+    fun encodeCommandDocument(command: DesktopCliCommand): String = encodeCommand(command, true)
+    private fun encodeCommand(command: DesktopCliCommand, document: Boolean): String {
         return when (command) {
+            is DesktopCliCommand.ControlServe -> "$COMMAND_PREFIX\tcontrol-serve\t${encodeText(command.requestId)}\t${encodeText(command.controllerId)}"
             is DesktopCliCommand.ControlFrontendIdentityRead -> "$COMMAND_PREFIX\tfrontend-identity\t${encodeText(command.requestId)}\t${encodeText(command.frontendId)}"
             is DesktopCliCommand.ControlPresentationRead -> "$COMMAND_PREFIX\tcontrol-presentation\t${encodeText(command.requestId)}\t${encodeText(command.controllerId.orEmpty())}"
             is DesktopCliCommand.ControlSnapshotRead -> "$COMMAND_PREFIX\tcontrol-snapshot\t${encodeText(command.controllerId.orEmpty())}"
             is DesktopCliCommand.ControlFrontendLease -> "$COMMAND_PREFIX\tfrontend-lease\t${encodeText(command.requestId)}\t${encodeText(command.controllerId)}\t${encodeText(command.frontendId)}\t${command.action.name}"
-            is DesktopCliCommand.ControlSubmit -> "$COMMAND_PREFIX\tcontrol-submit\t${encodeText(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeRequest(command.request))}"
+            is DesktopCliCommand.ControlSubmit -> "$COMMAND_PREFIX\tcontrol-submit\t${encodeText(if (document) com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeRequest(command.request) else com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeRequest(command.request))}"
             DesktopCliCommand.On -> "$COMMAND_PREFIX\ton"
             DesktopCliCommand.Off -> "$COMMAND_PREFIX\toff"
             DesktopCliCommand.Restart -> "$COMMAND_PREFIX\trestart"
@@ -54,7 +57,7 @@ internal object DesktopCliProtocol {
                 (command.configurationId?.let { "\t${encodeText(it)}" } ?: "")
             is DesktopCliCommand.SubscriptionSave -> "$COMMAND_PREFIX\tsubscriptions-save\t${encodeOptional(command.source)}\t${encodeOptional(command.name)}\t${encodeOptional(command.id)}"
             is DesktopCliCommand.SettingsShow -> "$COMMAND_PREFIX\tsettings-show\t${encodeText(command.key.orEmpty())}"
-            is DesktopCliCommand.SettingsApply -> "$COMMAND_PREFIX\tsettings-apply\t${encodeText(com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(command.values))}"
+            is DesktopCliCommand.SettingsApply -> "$COMMAND_PREFIX\tsettings-apply\t${encodeText(if (document) com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(command.values) else com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(command.values))}"
             is DesktopCliCommand.SourceSet -> "$COMMAND_PREFIX\tsource-set\t${encodeText(command.subscriptionId.orEmpty())}"
             is DesktopCliCommand.LocationShow -> "$COMMAND_PREFIX\tlocations-show\t${encodeText(command.target)}"
             is DesktopCliCommand.LocationSave -> "$COMMAND_PREFIX\tlocations-save\t${encodeText(command.content)}\t${encodeText(command.target.orEmpty())}" +
@@ -62,13 +65,19 @@ internal object DesktopCliProtocol {
         }
     }
 
-    fun decodeCommand(line: String): Result<DesktopCliCommand> {
+    fun decodeCommand(line: String): Result<DesktopCliCommand> = decodeCommand(line, false)
+    fun decodeCommandDocument(line: String): Result<DesktopCliCommand> = decodeCommand(line, true)
+    private fun decodeCommand(line: String, document: Boolean): Result<DesktopCliCommand> {
         return runCatching {
             val parts = line.split('\t')
             if (parts.firstOrNull() != COMMAND_PREFIX) {
                 throw IllegalArgumentException("Unsupported activation command.")
             }
             when (parts.getOrNull(1)) {
+                "control-serve" -> {
+                    require(parts.size == 4)
+                    DesktopCliCommand.ControlServe(decodeText(parts[2]), decodeText(parts[3])).also { require(it.valid()) }
+                }
                 "frontend-identity" -> {
                     require(parts.size == 4)
                     DesktopCliCommand.ControlFrontendIdentityRead(decodeText(parts[2]), decodeText(parts[3])).also { require(it.valid()) }
@@ -99,7 +108,7 @@ internal object DesktopCliProtocol {
                 "find-best" -> DesktopCliCommand.FindBest
                 "source-show" -> { require(parts.size == 2); DesktopCliCommand.SourceShow }
                 "updates-status" -> { require(parts.size == 2); DesktopCliCommand.UpdatesStatus }
-                "control-submit" -> { require(parts.size == 3); DesktopCliCommand.ControlSubmit(com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeRequest(decodeText(parts[2]))) }
+                "control-submit" -> { require(parts.size == 3); DesktopCliCommand.ControlSubmit(if (document) com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeRequest(decodeText(parts[2])) else com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeRequest(decodeText(parts[2]))) }
                 "operations-list" -> { require(parts.size == 2); DesktopCliCommand.OperationsList }
                 "operations-status" -> { require(parts.size == 3); DesktopCliCommand.OperationStatus(decodeText(parts[2]).also { require(it.isNotBlank()) }) }
                 "operations-wait" -> { require(parts.size == 3); DesktopCliCommand.OperationWait(decodeText(parts[2]).also { require(it.isNotBlank()) }) }
@@ -138,7 +147,7 @@ internal object DesktopCliProtocol {
                 }
                 "settings-apply" -> {
                     require(parts.size == 3)
-                    DesktopCliCommand.SettingsApply(com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeValues(decodeText(parts[2])))
+                    DesktopCliCommand.SettingsApply(if (document) com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeValues(decodeText(parts[2])) else com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeValues(decodeText(parts[2])))
                 }
                 "source-set" -> {
                     require(parts.size == 3)

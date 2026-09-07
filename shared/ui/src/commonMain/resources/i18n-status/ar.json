@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "فشلت استعادة موقع {connectionLabel:0} السابق: {1}. فشل إيقاف {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "تم حفظ قواعد التوجيه. أعد تشغيل {connectionLabel:0} لتطبيقها",
     "ROUTING_RULES_SAVE_FAILED": "فشلت العملية",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "نتيجة تغيير التوجيه غير معروفة. أعد المحاولة باستخدام المدخلات نفسها.",
+    "ROUTING_RULES_STALE_DRAFT": "تغيّرت إعدادات التوجيه. أعد فتح المحرر قبل الحفظ.",
     "DIAGNOSTICS_EXPORT_OPENED": "تم فتح تصدير التشخيص",
     "APPS_LOAD_FAILED": "فشلت العملية",
     "SUBSCRIPTION_RECEIVED": "تم استلام الاشتراك. راجعه واحفظه في تبويب الملف.",

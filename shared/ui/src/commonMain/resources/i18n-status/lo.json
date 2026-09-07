@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "ບໍ່ສາມາດກູ້ຄືນສະຖານທີ່ {connectionLabel:0} ກ່ອນໜ້າໄດ້: {1}. ບໍ່ສາມາດຢຸດ {connectionLabel:0} ໄດ້: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງແລ້ວ. ເລີ່ມ {connectionLabel:0} ໃໝ່ເພື່ອນຳໃຊ້",
     "ROUTING_RULES_SAVE_FAILED": "ບັນທຶກກົດການກຳນົດເສັ້ນທາງບໍ່ສຳເລັດ",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "ບໍ່ຮູ້ຜົນຂອງການປ່ຽນແປງການກຳນົດເສັ້ນທາງ. ລອງອີກຄັ້ງດ້ວຍຂໍ້ມູນເດີມ.",
+    "ROUTING_RULES_STALE_DRAFT": "ການຕັ້ງຄ່າການກຳນົດເສັ້ນທາງປ່ຽນແປງແລ້ວ. ເປີດຕົວແກ້ໄຂອີກຄັ້ງກ່ອນບັນທຶກ.",
     "DIAGNOSTICS_EXPORT_OPENED": "ເປີດການສົ່ງອອກຂໍ້ມູນວິນິດໄສແລ້ວ",
     "APPS_LOAD_FAILED": "ໂຫຼດແອັບບໍ່ສຳເລັດ",
     "SUBSCRIPTION_RECEIVED": "ໄດ້ຮັບການສະໝັກແລ້ວ. ກວດເບິ່ງ ແລະບັນທຶກມັນໃນແຖບໂປຣໄຟລ໌.",

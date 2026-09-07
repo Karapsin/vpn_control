@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Prejšnje lokacije za {connectionLabel:0} ni bilo mogoče obnoviti: {1}. Ni bilo mogoče ustaviti {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Pravila usmerjanja so shranjena. Za uveljavitev znova zaženite {connectionLabel:0}",
     "ROUTING_RULES_SAVE_FAILED": "Pravil usmerjanja ni bilo mogoče shraniti",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Izid spremembe usmerjanja ni znan. Poskusite znova z istimi podatki.",
+    "ROUTING_RULES_STALE_DRAFT": "Nastavitve usmerjanja so se spremenile. Pred shranjevanjem znova odprite urejevalnik.",
     "DIAGNOSTICS_EXPORT_OPENED": "Izvoz diagnostike odprt",
     "APPS_LOAD_FAILED": "Aplikacij ni bilo mogoče naložiti",
     "SUBSCRIPTION_RECEIVED": "Naročnina prejeta. Preglejte in shranite jo na zavihku Profil.",

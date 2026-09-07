@@ -1,6 +1,8 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.ProfileBenchmark
+import com.kardinal.vpncontrol.model.ControlValue
+import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -10,6 +12,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DesktopBenchmarkCliTest {
+    @Test fun uncertainRuntimeFailureKeepsUnknownOutcomeAndTransportExitCode() {
+        val response = IllegalStateException("OUTCOME_UNKNOWN").toConnectionFailureResponse()
+        assertFalse(response.success)
+        assertEquals("OUTCOME_UNKNOWN", response.message)
+        assertEquals(2, response.exitCode)
+    }
+
     @Test
     fun guiReferenceBenchmarksIntendedNumericNamedRowAndRejectsStaleConfiguration() = runBlocking {
         val directory = Files.createTempDirectory("vpn-control-gui-benchmark-reference")
@@ -53,9 +62,10 @@ class DesktopBenchmarkCliTest {
                     detail = "tcp=12.0ms test=${if (pass) "ok" else "timeout"}"))
             })
         val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
         val server = assertNotNull(DesktopActivationServer.start(
             onShowWindow = { DesktopActivationShowResult.HEADLESS },
-            onCliCommand = { runBlocking { service.executeCliCommand(it) } }, portFile = endpoint,
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
             fun invoke(vararg args: String): Pair<Int?, String> {
@@ -72,7 +82,14 @@ class DesktopBenchmarkCliTest {
             val selected = service.state.selectedProfileRawLink
             assertEquals(1, invoke("locations", "benchmark", "99").first)
             assertEquals(0, probeCount)
-            assertEquals(0, invoke("locations", "benchmark", "1").first)
+            val completed = invoke("--json", "locations", "benchmark", "1")
+            assertEquals(0, completed.first)
+            val benchmark = ControlProtocolCodec.decodeResult(completed.second)
+            assertEquals(ControlValue.DecimalValue(12.0), benchmark.data["primaryTotalMs"])
+            assertEquals(ControlValue.Null, benchmark.data["secondaryTotalMs"])
+            assertEquals(ControlValue.BooleanValue(true), benchmark.data["committed"])
+            val retained = invoke("--json", "operations", "status", requireNotNull(benchmark.operationId))
+            assertEquals(benchmark.data, ControlProtocolCodec.decodeResult(retained.second).data)
             assertEquals(1, probeCount)
             assertTrue(service.desktopLocations.single().isValid)
             pass = false
@@ -84,6 +101,6 @@ class DesktopBenchmarkCliTest {
             assertFalse(service.state.isBusy)
             val restored = DesktopStateStore(directory).loadWorkspace(defaultDesktopWorkspace())
             assertFalse(restored.locations.single().isValid)
-        } finally { server.close(); directory.toFile().deleteRecursively() }
+        } finally { server.close(); owner.close(); directory.toFile().deleteRecursively() }
     }
 }

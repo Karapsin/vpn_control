@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Не ўдалося аднавіць папярэднюю лакацыю {connectionLabel:0}: {1}. Не ўдалося спыніць {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Правілы маршрутызацыі захаваны. Перазапусціце {connectionLabel:0}, каб ужыць іх",
     "ROUTING_RULES_SAVE_FAILED": "Не ўдалося захаваць правілы маршрутызацыі",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Вынік змены маршрутызацыі невядомы. Паўтарыце спробу з тымі ж данымі.",
+    "ROUTING_RULES_STALE_DRAFT": "Налады маршрутызацыі змяніліся. Перад захаваннем зноў адкрыйце рэдактар.",
     "DIAGNOSTICS_EXPORT_OPENED": "Экспарт дыягностыкі адкрыты",
     "APPS_LOAD_FAILED": "Не ўдалося загрузіць праграмы",
     "SUBSCRIPTION_RECEIVED": "Падпіска атрымана. Праверце і захавайце яе на ўкладцы «Профіль».",

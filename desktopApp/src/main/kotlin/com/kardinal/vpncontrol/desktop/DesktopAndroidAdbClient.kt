@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.ControlCode
 import com.kardinal.vpncontrol.model.ControlRequest
 import com.kardinal.vpncontrol.model.ControlOperationId
@@ -18,7 +18,7 @@ internal class DesktopAndroidAdbClient(
         var knownOperationId = if (request.command.operation in setOf(ControlOperationId.OPERATIONS_WAIT,
                 ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_CANCEL))
             (request.command.arguments["id"] as? ControlValue.Text)?.value else null
-        var bytes = runCatching { ControlProtocolCodec.encodeRequest(request).toByteArray(Charsets.UTF_8) }
+        var bytes = runCatching { ControlDocumentCodec.encodeRequest(request).toByteArray(Charsets.UTF_8) }
             .getOrElse { return desktopCliJsonFailure(ControlCode.INVALID_ARGUMENT, request.requestId) }
         if (timeoutSeconds < 0 || timeoutSeconds > Long.MAX_VALUE / 1000) {
             bytes.fill(0)
@@ -39,6 +39,10 @@ internal class DesktopAndroidAdbClient(
             val error = strictUtf8(response.stderr)
             if (response.exitCode != 0 || error.isNotBlank()) {
                 if ("SecurityException" in error || "PERMISSION_DENIED" in error) fail(ControlCode.PERMISSION_DENIED)
+                if ("document-begin" in args && Regex("(?m)^(?:java\\.lang\\.)?IllegalArgumentException: UNSUPPORTED\\r?$").containsMatchIn(error))
+                    fail(ControlCode.UNSUPPORTED)
+                if (Regex("(?m)^(?:java\\.lang\\.)?IllegalStateException: OUTCOME_UNKNOWN\\r?$").containsMatchIn(error))
+                    fail(ControlCode.OUTCOME_UNKNOWN)
                 fail(if (sent) ControlCode.OUTCOME_UNKNOWN else ControlCode.UNAVAILABLE)
             }
             return strictUtf8(response.stdout)
@@ -50,6 +54,12 @@ internal class DesktopAndroidAdbClient(
             val deviceResult = execute(listOf("devices"), byteArrayOf(), minOf(30_000L, remaining()))
             if (deviceResult.exitCode != 0) fail(ControlCode.UNAVAILABLE)
             selected = selectDevice(strictUtf8(deviceResult.stdout), serial)
+            val document = DesktopAndroidDocumentClient(
+                { args, input, cleanup -> content(*args.toTypedArray(), input = input, cleanup = cleanup) }, ::remaining)
+                .exchange({ owner -> bindRequestOwner(request, owner) }, { sent = true })
+            val response = if (document != null) ControlDocumentCodec.encodeResult(document) else {
+            // A known old provider may only receive bounded legacy documents.
+            if (bytes.size > 1_048_576) fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             val created = bundle(content("call", "--uri", URI, "--method", "create"))
             val id = created["id"] ?: fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             if (!OPAQUE.matches(id) || runCatching { UUID.fromString(id).toString() }.getOrNull() != id) {
@@ -66,20 +76,12 @@ internal class DesktopAndroidAdbClient(
             }
             // Bind only an omitted mutation owner. An explicit old epoch must reach the
             // provider unchanged so that its atomic stale-owner check rejects the write.
-            if (request.controllerId == null && request.command.operation in setOf(
-                    ControlOperationId.SETTINGS_SET, ControlOperationId.SETTINGS_APPLY, ControlOperationId.SSH_KEY_IMPORT, ControlOperationId.SOURCE_SET, ControlOperationId.OFF,
-                    ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE, ControlOperationId.SUBSCRIPTIONS_DELETE,
-                    ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE, ControlOperationId.LOCATIONS_SELECT,
-                    ControlOperationId.LOCATIONS_DELETE, ControlOperationId.LOCATIONS_IMPORT,
-                    ControlOperationId.UPDATES_CHECK, ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.UPDATES_CANCEL, ControlOperationId.UPDATES_DISMISS, ControlOperationId.UPDATES_INSTALL,
-                    ControlOperationId.ROUTING_SET, ControlOperationId.ROUTING_IMPORT, ControlOperationId.ROUTING_APPS_SET,
-                    ControlOperationId.ROUTING_APPS_ADD, ControlOperationId.ROUTING_APPS_REMOVE, ControlOperationId.ROUTING_APPS_SELECT_ALL, ControlOperationId.ROUTING_APPS_CLEAR,
-                    ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
-                    ControlOperationId.OPERATIONS_LIST, ControlOperationId.OPERATIONS_CANCEL)) {
-                if (owner == null) fail(ControlCode.INCOMPATIBLE_PROTOCOL)
+            val bound = bindRequestOwner(request, owner)
+            if (bound != request) {
                 bytes.fill(0)
-                bytes = ControlProtocolCodec.encodeRequest(request.copy(controllerId = owner)).toByteArray(Charsets.UTF_8)
+                bytes = ControlDocumentCodec.encodeRequest(bound).toByteArray(Charsets.UTF_8)
             }
+            if (bytes.size > 1_048_576) fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             sent = true
             if (content("write", "--uri", "$URI/requests/$id", input = bytes).isNotBlank()) {
                 fail(ControlCode.INCOMPATIBLE_PROTOCOL)
@@ -93,14 +95,16 @@ internal class DesktopAndroidAdbClient(
                     else -> fail(ControlCode.INCOMPATIBLE_PROTOCOL)
                 }
             }
-            val response = content("read", "--uri", "$URI/results/$id")
-            var result = runCatching { ControlProtocolCodec.decodeResult(response) }.getOrElse { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
+            content("read", "--uri", "$URI/results/$id")
+            }
+            var result = runCatching { ControlDocumentCodec.decodeResult(response) }.getOrElse { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
             if (result.requestId != request.requestId || result.controllerId.isNullOrBlank() ||
                 request.controllerId != null && result.controllerId != request.controllerId && result.code != ControlCode.CONFLICT) {
                 fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             }
-            val runtimeCommand = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.OFF, ControlOperationId.RESTART, ControlOperationId.UPDATES_INSTALL)
-            if ((runtimeCommand || request.command.operation == ControlOperationId.OPERATIONS_WAIT) && !result.final && result.operationId != null) {
+            val interactionCommand = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.OFF,
+                ControlOperationId.RESTART, ControlOperationId.FIND_BEST, ControlOperationId.UPDATES_INSTALL)
+            if ((interactionCommand || request.command.operation == ControlOperationId.OPERATIONS_WAIT) && !result.final && result.operationId != null) {
                 val operation = requireNotNull(result.operationId)
                 knownOperationId = operation
                 if (!OPAQUE.matches(operation)) fail(ControlCode.INCOMPATIBLE_PROTOCOL)
@@ -124,22 +128,25 @@ internal class DesktopAndroidAdbClient(
                             else -> fail(ControlCode.INCOMPATIBLE_PROTOCOL)
                         }
                     }
-                    val phase = (result.data["phase"] as? ControlValue.Text)?.value
-                    if (request.asynchronous && (!request.interactive || launchedInteraction || phase == "running")) break
+                    // RUNNING may still be preparing a protected interaction token. An
+                    // interactive async caller must launch that token before detaching;
+                    // otherwise a later AWAITING_USER operation has no visible Activity.
+                    if (request.asynchronous && (!request.interactive || launchedInteraction)) break
                     Thread.sleep(minOf(100L, remaining()))
                     val query = ControlRequest(UUID.randomUUID().toString(),
                         com.kardinal.vpncontrol.model.ControlCommand(ControlOperationId.OPERATIONS_STATUS,
                             mapOf("id" to ControlValue.Text(operation))), controllerId = boundOwner)
                     val waitSeconds = if (timeoutSeconds == 0L) 0L else ((remaining() - 1) / 1000 + 1).coerceAtLeast(1)
                     val queried = this.request(query, selected, waitSeconds)
-                    result = runCatching { ControlProtocolCodec.decodeResult(queried.message) }.getOrElse { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
+                    result = runCatching { ControlDocumentCodec.decodeResult(queried.message) }.getOrElse { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
+                    if (result.controllerId != null && result.controllerId != boundOwner) fail(ControlCode.OUTCOME_UNKNOWN)
                     if (result.code in setOf(ControlCode.OK, ControlCode.ACCEPTED) && result.operationId != operation)
                         fail(ControlCode.INCOMPATIBLE_PROTOCOL)
                     if (result.code != ControlCode.ACCEPTED && !result.final) break
                 }
                 result = result.copy(requestId = request.requestId)
             }
-            return DesktopCliResponse(result.ok, ControlProtocolCodec.encodeResult(result), result.exitCode)
+            return DesktopCliResponse(result.ok, ControlDocumentCodec.encodeResult(result), result.exitCode)
         } catch (error: Exception) {
             val code = when (error) {
                 is AdbFailure -> error.code
@@ -175,7 +182,22 @@ internal class DesktopAndroidAdbClient(
                 else authorized.singleOrNull { it == requested } ?: fail(ControlCode.UNAVAILABLE)
         }
 
-        private fun bundle(text: String): Map<String, String> {
+        internal fun bindRequestOwner(request: ControlRequest, owner: String?): ControlRequest {
+            if (request.controllerId != null || request.command.operation !in OWNER_BOUND) return request
+            return request.copy(controllerId = owner ?: fail(ControlCode.INCOMPATIBLE_PROTOCOL))
+        }
+        private val OWNER_BOUND = setOf(
+            ControlOperationId.SETTINGS_SET, ControlOperationId.SETTINGS_APPLY, ControlOperationId.SSH_KEY_IMPORT, ControlOperationId.SOURCE_SET, ControlOperationId.OFF,
+            ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE, ControlOperationId.SUBSCRIPTIONS_DELETE, ControlOperationId.SUBSCRIPTIONS_REFRESH,
+            ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE, ControlOperationId.LOCATIONS_SELECT,
+            ControlOperationId.LOCATIONS_DELETE, ControlOperationId.LOCATIONS_IMPORT, ControlOperationId.LOCATIONS_BENCHMARK, ControlOperationId.FIND_BEST,
+            ControlOperationId.UPDATES_CHECK, ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.UPDATES_CANCEL, ControlOperationId.UPDATES_DISMISS, ControlOperationId.UPDATES_INSTALL,
+            ControlOperationId.ROUTING_SET, ControlOperationId.ROUTING_IMPORT, ControlOperationId.ROUTING_APPS_SET,
+            ControlOperationId.ROUTING_APPS_ADD, ControlOperationId.ROUTING_APPS_REMOVE, ControlOperationId.ROUTING_APPS_SELECT_ALL, ControlOperationId.ROUTING_APPS_CLEAR,
+            ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
+            ControlOperationId.OPERATIONS_LIST, ControlOperationId.OPERATIONS_CANCEL)
+
+        internal fun bundle(text: String): Map<String, String> {
             val match = Regex("Result: Bundle\\[\\{([^{}\\r\\n]*)}]").matchEntire(text.trim())
                 ?: fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             val pairs = match.groupValues[1].split(", ").map {
@@ -187,7 +209,7 @@ internal class DesktopAndroidAdbClient(
             return pairs.toMap()
         }
 
-        private fun strictUtf8(bytes: ByteArray): String = try {
+        internal fun strictUtf8(bytes: ByteArray): String = try {
             Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
         } catch (_: Exception) { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
@@ -195,5 +217,5 @@ internal class DesktopAndroidAdbClient(
         private fun fail(code: ControlCode): Nothing = throw AdbFailure(code)
     }
 
-    private class AdbFailure(val code: ControlCode) : Exception(code.wireName)
+    internal class AdbFailure(val code: ControlCode) : Exception(code.wireName)
 }

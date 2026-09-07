@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Installasjon krever en interaktiv økt.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Tillatelse til installasjon ble avslått.",
+  "UPDATE_INSTALL_CANCELLED": "Installasjonen ble avbrutt.",
+  "UPDATE_INSTALL_CONFIRMATION": "Venter på bekreftelse av installasjonen.",
+  "UPDATE_INSTALL_COMPLETED": "Oppdateringen er installert.",
+  "UPDATE_INSTALL_UNKNOWN": "Resultatet av installasjonen er ukjent.",
   "APP_TITLE": "VPN-kontroll",
   "TAB_MAIN": "Hovedside",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktiv plassering: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktiv plassering: utilgjengelig",
+  "CONNECTION_RESTART_PENDING": "Start tilkoblingen på nytt for å bruke lagrede endringer.",
+  "CONNECTION_RESTART_UNKNOWN": "Det er ukjent om omstart er nødvendig."
 }

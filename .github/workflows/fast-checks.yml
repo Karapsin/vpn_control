@@ -51,10 +51,28 @@ on:
       - "scripts/version_metadata.py"
       - "scripts/test_version_metadata.py"
       - "scripts/test_vpn_integration_fixture.py"
+      - "scripts/test_linux_package_postinst.py"
+      - "scripts/package_linux_deb.py"
+      - "scripts/test_package_linux_deb.py"
+      - "scripts/package_linux_rpm.py"
+      - "scripts/test_package_linux_rpm.py"
+      - "scripts/test_linux_public_install.py"
+      - "scripts/test_linux_public_install_harness.py"
+      - "scripts/prepare_linux_install_vm.py"
+      - "scripts/test_prepare_linux_install_vm.py"
+      - "scripts/prepare_linux_public_install_image.py"
+      - "scripts/test_android_update_fixture.py"
+      - "scripts/test_android_install_visual_inventory.py"
+      - "scripts/prepare_desktop_update_fixture.py"
+      - "scripts/test_desktop_update_fixture.py"
+      - "scripts/test_macos_install_gate.py"
+      - "scripts/native/macos_install_worker.c"
       - "scripts/test_user_facing_terminology.py"
       - "scripts/integration/**"
       - "scripts/arch_install.sh"
       - "scripts/test_arch_install_hygiene.sh"
+      - "scripts/test_arch_update_permissions.py"
+      - "scripts/install_arch_desktop_update.sh"
 
 jobs:
   fast-checks:
@@ -120,6 +138,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Install pinned Android native build tools
+        run: sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

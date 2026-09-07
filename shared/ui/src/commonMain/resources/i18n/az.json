@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Quraşdırma üçün interaktiv sessiya tələb olunur.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Quraşdırma icazəsi rədd edildi.",
+  "UPDATE_INSTALL_CANCELLED": "Quraşdırma ləğv edildi.",
+  "UPDATE_INSTALL_CONFIRMATION": "Quraşdırma təsdiqi gözlənilir.",
+  "UPDATE_INSTALL_COMPLETED": "Yeniləmə quraşdırıldı.",
+  "UPDATE_INSTALL_UNKNOWN": "Quraşdırmanın nəticəsi məlum deyil.",
   "APP_TITLE": "VPN İdarəetməsi",
   "TAB_MAIN": "Əsas",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktiv məkan: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktiv məkan: əlçatan deyil",
+  "CONNECTION_RESTART_PENDING": "Saxlanmış dəyişiklikləri tətbiq etmək üçün yenidən başladın.",
+  "CONNECTION_RESTART_UNKNOWN": "Yenidən başlatmanın lazım olub-olmadığı məlum deyil."
 }

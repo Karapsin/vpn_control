@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Neizdevās atjaunot iepriekšējo {connectionLabel:0} atrašanās vietu: {1}. Neizdevās apturēt {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Maršrutēšanas noteikumi saglabāti. Restartējiet {connectionLabel:0}, lai tos lietotu",
     "ROUTING_RULES_SAVE_FAILED": "Neizdevās saglabāt maršrutēšanas noteikumus",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Maršrutēšanas izmaiņas rezultāts nav zināms. Mēģiniet vēlreiz ar tiem pašiem datiem.",
+    "ROUTING_RULES_STALE_DRAFT": "Maršrutēšanas iestatījumi ir mainījušies. Pirms saglabāšanas atkārtoti atveriet redaktoru.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostikas eksports atvērts",
     "APPS_LOAD_FAILED": "Neizdevās ielādēt lietotnes",
     "SUBSCRIPTION_RECEIVED": "Saņemts abonements. Pārskatiet un saglabājiet cilnē Profils.",

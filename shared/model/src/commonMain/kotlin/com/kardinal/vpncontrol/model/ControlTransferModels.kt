@@ -9,10 +9,12 @@ enum class ControlTransferPurpose(val wireName: String) {
     LOCATIONS_INPUT("locations.input"), ROUTING_INPUT("routing.input"), SETTINGS_INPUT("settings.input"),
     SSH_KEY_INPUT("ssh-key.input"), LOCATIONS_EXPORT("locations.export"), ROUTING_EXPORT("routing.export"),
     DIAGNOSTICS_EXPORT("diagnostics.export"),
+    COMMAND_DOCUMENT("command.document"), RESPONSE_DOCUMENT("response.document"),
 }
 
 /** Supplied by the authenticated adapter, never trusted from a request body. */
-data class ControlTransferBinding(val ownerId: String, val principal: String, val purpose: ControlTransferPurpose) {
+data class ControlTransferBinding(val ownerId: String, val principal: String, val purpose: ControlTransferPurpose,
+    val requestContext: String? = null) {
     override fun toString() = "ControlTransferBinding(<redacted>)"
 }
 

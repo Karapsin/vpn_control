@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
 
 internal data class DesktopFrontendRoutingDraft(val owner: String?, val revision: Long, val domains: String,
@@ -15,7 +15,7 @@ internal data class DesktopFrontendRoutingDraft(val owner: String?, val revision
         fun from(result: ControlResult): DesktopFrontendRoutingDraft {
             require(result.ok)
             val values = (result.data.getValue("routing") as ControlValue.ObjectValue).values
-            val rules = com.kardinal.vpncontrol.data.RoutingRulesTransfer.import(ControlProtocolCodec.encodeValues(values))
+            val rules = com.kardinal.vpncontrol.data.RoutingRulesTransfer.import(ControlDocumentCodec.encodeValues(values))
             return DesktopFrontendRoutingDraft(result.controllerId, result.configurationRevision, rules.directDomainSuffixes.joinToString("\n"))
         }
     }
@@ -23,4 +23,4 @@ internal data class DesktopFrontendRoutingDraft(val owner: String?, val revision
 
 internal fun desktopFrontendGuardedRequest(frame: DesktopPresentationSnapshot, command: ControlCommand,
     openingId: String): ControlRequest = frontendSettingsRequest(openingId, frame.controllerId, frame.configurationRevision,
-    command.arguments, command.operation.wireName + ":" + ControlProtocolCodec.encodeValues(command.arguments)).copy(command = command)
+    command.arguments, command.operation.wireName + ":" + ControlDocumentCodec.encodeValues(command.arguments)).copy(command = command)

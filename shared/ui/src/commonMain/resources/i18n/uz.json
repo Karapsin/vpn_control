@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "O‘rnatish uchun interaktiv seans kerak.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "O‘rnatishga ruxsat berilmadi.",
+  "UPDATE_INSTALL_CANCELLED": "O‘rnatish bekor qilindi.",
+  "UPDATE_INSTALL_CONFIRMATION": "O‘rnatish tasdig‘i kutilmoqda.",
+  "UPDATE_INSTALL_COMPLETED": "Yangilanish o‘rnatildi.",
+  "UPDATE_INSTALL_UNKNOWN": "O‘rnatish natijasi noma’lum.",
   "APP_TITLE": "VPN boshqaruvi",
   "TAB_MAIN": "Asosiy",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Faol joylashuv: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Faol joylashuv: mavjud emas",
+  "CONNECTION_RESTART_PENDING": "Saqlangan o‘zgarishlarni qo‘llash uchun ulanishni qayta ishga tushiring.",
+  "CONNECTION_RESTART_UNKNOWN": "Qayta ishga tushirish zarurligi nomaʼlum."
 }

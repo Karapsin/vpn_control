@@ -158,6 +158,8 @@ class ControlTransferStore(
     private fun validate(binding: ControlTransferBinding) {
         if (binding.ownerId != ownerId) fail(ControlCode.CONFLICT)
         valid(binding.principal.isNotBlank() && binding.principal.length <= 256)
+        val context = binding.requestContext
+        valid(context == null || context.isNotBlank() && context.length <= 256)
     }
     private fun authorize(binding: ControlTransferBinding, e: Entry) {
         if (binding != e.binding) fail(ControlCode.PERMISSION_DENIED)

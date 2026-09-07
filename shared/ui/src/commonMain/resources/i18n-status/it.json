@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Impossibile ripristinare la posizione {connectionLabel:0} precedente: {1}. Impossibile arrestare {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Regole di routing salvate. Riavvia {connectionLabel:0} per applicarle",
     "ROUTING_RULES_SAVE_FAILED": "Operazione non riuscita",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "L’esito della modifica dell’instradamento è sconosciuto. Riprova con gli stessi dati.",
+    "ROUTING_RULES_STALE_DRAFT": "Le impostazioni di instradamento sono cambiate. Riapri l’editor prima di salvare.",
     "DIAGNOSTICS_EXPORT_OPENED": "Esportazione diagnostica aperta",
     "APPS_LOAD_FAILED": "Impossibile caricare le app",
     "SUBSCRIPTION_RECEIVED": "Abbonamento ricevuto. Controllalo e salvalo nella scheda Profilo.",

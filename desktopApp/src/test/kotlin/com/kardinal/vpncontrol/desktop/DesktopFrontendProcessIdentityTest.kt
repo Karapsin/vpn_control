@@ -7,6 +7,23 @@ import java.util.UUID
 import kotlin.test.*
 
 class DesktopFrontendProcessIdentityTest {
+    @Test fun explicitWindowsServeOwnerAcceptsOnlyItsInstalledGuiLauncherPair() {
+        val directory = Files.createTempDirectory("frontend-launcher-pair")
+        try {
+            val gui = Files.createFile(directory.resolve("vpn-control.exe"))
+            val cli = Files.createFile(directory.resolve("vpn-control-cli.exe"))
+            val unrelated = Files.createFile(directory.resolve("other.exe"))
+            val otherInstall = Files.createDirectory(directory.resolve("other-install"))
+            val otherGui = Files.createFile(otherInstall.resolve("vpn-control.exe"))
+            assertTrue(desktopFrontendImagesMatch(gui, gui, windows = false))
+            assertTrue(desktopFrontendImagesMatch(cli, gui, windows = true))
+            assertTrue(desktopFrontendImagesMatch(gui, cli, windows = true))
+            assertFalse(desktopFrontendImagesMatch(cli, gui, windows = false))
+            assertFalse(desktopFrontendImagesMatch(unrelated, gui, windows = true))
+            assertFalse(desktopFrontendImagesMatch(cli, otherGui, windows = true))
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
     @Test fun fixedAuthenticatedEndpointProvesActualSelfProcessWithoutCallerPid() {
         val directory = Files.createTempDirectory("frontend-process-proof")
         val instance = assertNotNull(DesktopFrontendInstance.start(directory, DesktopFrontendVisibility()))

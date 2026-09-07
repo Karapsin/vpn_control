@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Для встановлення потрібен інтерактивний сеанс.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "У дозволі на встановлення відмовлено.",
+  "UPDATE_INSTALL_CANCELLED": "Встановлення скасовано.",
+  "UPDATE_INSTALL_CONFIRMATION": "Очікування підтвердження встановлення.",
+  "UPDATE_INSTALL_COMPLETED": "Оновлення встановлено.",
+  "UPDATE_INSTALL_UNKNOWN": "Результат встановлення невідомий.",
   "APP_TITLE": "Керування VPN",
   "TAB_MAIN": "Головна",
   "TAB_PROFILE": "Профіль",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Активна локація: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Активна локація: недоступна",
+  "CONNECTION_RESTART_PENDING": "Перезапустіть з’єднання, щоб застосувати збережені зміни.",
+  "CONNECTION_RESTART_UNKNOWN": "Невідомо, чи потрібен перезапуск."
 }

@@ -96,45 +96,23 @@ class MainViewModel internal constructor(
         rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
         stopConnection = vpnManager::stop,
         benchmarkLocation = repository::benchmarkLocation,
+        ownerBenchmark = owner::benchmarkLocation,
         appendLatencyHistory = repository::appendLatencyHistory,
     )
     private val routingActions: AndroidRoutingActionsService = AndroidRoutingActionsService(
         controller = controller,
         stateProvider = { _uiState.value },
         effectSink = controllerEffectHandler,
-        launch = ::launchMutationOrReportBusy,
+        launch = commands::launch,
         setBusy = ::setBusy,
         updateRoutingRules = repository::updateRoutingRules,
         updateStatus = repository::updateStatus,
+        guarded = AndroidRoutingDraftControl(
+            { AndroidControlInputSpool(AndroidControlTransferSpool.create(appContext.cacheDir.toPath())) },
+            owner.settingsControl::admitRoutingDocument, owner.settingsControl::operationIdForRequest),
+        committedSnapshot = owner.storage::configurationSnapshot,
     )
-    private val subscriptionRefreshActions = AndroidSubscriptionRefreshActionsService(
-        stateProvider = { _uiState.value },
-        launch = { commands.launchMutation(it) },
-        setBusy = ::setBusy,
-        updateStatus = repository::updateStatus,
-        runActiveRefresh = repository::refreshActiveSubscriptionCache,
-        runSubscriptionRefresh = repository::refreshSubscriptionCache,
-        runAllRefresh = repository::refreshAllSubscriptionsCaches,
-    )
-    private val findBestActions = AndroidFindBestActionsService(
-        stateProvider = { _uiState.value },
-        launchTrackedBusyOperation = ::launchTrackedBusyOperation,
-        setBusy = ::setBusy,
-        setRefreshing = { value -> _uiState.value = _uiState.value.copy(isRefreshing = value) },
-        updateStatus = repository::updateStatus,
-        snapshot = repository::snapshot,
-        restoreSnapshot = { state -> repository.restoreSnapshot(state) },
-        refreshBestProfileAttemptPlan = repository::refreshBestProfileAttemptPlan,
-        startSelection = connectionLifecycle::startSelection,
-        persistSelection = repository::persistSelection,
-        verifyActiveSelection = repository::verifyActiveSelection,
-        verifySelectionCandidate = repository::verifySelectionCandidate,
-        rollbackSelectionChange = connectionLifecycle::rollbackSelectionChange,
-        stopConnection = vpnManager::stop,
-        updateLocationBenchmarkDetails = repository::updateLocationBenchmarkDetails,
-        appendLatencyHistory = repository::appendLatencyHistory,
-        diagnosticsLogger = { message -> DiagnosticsLogger.append(appContext, message) },
-    )
+    private val sshDraft = AndroidSshDraftControl(owner.storage::configurationSnapshot, owner.settingsControl::execute)
     private val settingsActions = AndroidSettingsActionsService(
         controller = controller,
         effectSink = controllerEffectHandler,
@@ -148,9 +126,8 @@ class MainViewModel internal constructor(
         updateConnectionLogEnabled = repository::updateConnectionLogEnabled,
         updateConnectionTestToolsEnabled = repository::updateConnectionTestToolsEnabled,
         credentialStore = com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore(appContext),
-        updateHomeSshRouteSettings = repository::updateHomeSshRouteSettings,
         launchMutation = ::launchMutationOrReportBusy,
-        importKey = owner::importSshKey,
+        sshDraft = sshDraft,
         homeSshPendingRestart = owner::pendingRestartAfterSettingsSave,
     )
     private val diagnosticsActions = AndroidDiagnosticsActionsService(
@@ -160,9 +137,19 @@ class MainViewModel internal constructor(
         exportAndShare = diagnosticsExporter::exportAndShare,
     )
     private val updateActions = owner.updateActions
+    private val routingExport = AndroidRoutingExportControl(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id,
+        { request ->
+            val bytes = com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeRequest(request).toByteArray(Charsets.UTF_8)
+            owner.controlReader.documentResponse(java.io.ByteArrayInputStream(bytes), request.requestId)
+        }, { AndroidControlInputSpool(AndroidControlTransferSpool.create(appContext.cacheDir.toPath())) })
 
     init {
-        repository.state.combine(runtimeObservation) { persisted, observation -> persisted to observation }.onEach { (persisted, observation) ->
+        owner.settingsControl.findBestActive.onEach { active ->
+            _uiState.value = _uiState.value.copy(isRefreshing = active)
+        }.launchIn(viewModelScope)
+        owner.committedConfiguration.combine(runtimeObservation) { committed, observation -> committed to observation }.onEach { (committed, observation) ->
+            val persisted = committed.value
+            routingActions.observe(committed)
             controller.mergePersistedState(persisted)
             _uiState.value = observation.applyKnownState(_uiState.value)
             mutableLocationVisualState.value = owner.runtimeObserver.locationVisualState(persisted)
@@ -207,22 +194,24 @@ class MainViewModel internal constructor(
     }
 
     fun importHomeSshPrivateKey(content: String) = settingsActions.importHomeSshPrivateKey(content)
+    fun beginHomeSshKeyPicker(launchPicker: () -> Unit) { commands.launch {
+        sshDraft.beginKeyPicker()
+        launchPicker()
+    } }
+    fun cancelHomeSshKeyPicker() = sshDraft.cancelKeyPicker()
 
     fun saveHomeSshRoute() = settingsActions.saveHomeSshRoute()
 
     fun dismissHomeSshRestartDialog() = settingsActions.dismissHomeSshRestartDialog()
 
     fun restartForHomeSshSettings() {
-        launchTrackedBusyOperation {
-            val state = repository.snapshot()
-            val selection = repository.rehydrateSelection(state).getOrThrow()
-            val result = connectionLifecycle.reapplyConnectionIfRunning(
-                selection = selection,
-                statusMessage = com.kardinal.vpncontrol.model.SettingsStatusMessages.homeSshRouteRestarting(),
-            )
-            result.getOrThrow()
-            repository.persistSelection(selection)
-            settingsActions.markHomeSshRestartApplied()
+        commands.launch {
+            val current = owner.storage.configurationSnapshot()
+            val result = owner.settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+                com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.RESTART),
+                controllerId = current.controllerId, ifRevision = current.revision))
+            if (result.code == com.kardinal.vpncontrol.model.ControlCode.OK) settingsActions.markHomeSshRestartApplied()
+            else repository.updateStatus(com.kardinal.vpncontrol.model.SettingsStatusMessages.homeSshSettingsInvalid(result.code.wireName))
         }
     }
 
@@ -285,26 +274,32 @@ class MainViewModel internal constructor(
     fun installUpdate(launch: (android.content.Intent) -> Unit) = owner.installUpdate(launch)
 
     fun openRoutingRules() {
+        if (!routingActions.openEditor()) return
         handleControllerEffects(controller.openRoutingRules())
     }
 
     fun openMainTab() {
+        if (controller.currentState().currentScreen == AppScreen.ROUTING_RULES) routingActions.closeEditor()
         controller.openMainTab()
     }
 
     fun openProfileTab() {
+        if (controller.currentState().currentScreen == AppScreen.ROUTING_RULES) routingActions.closeEditor()
         controller.openProfileTab()
     }
 
     fun openLocationsTab() {
+        if (controller.currentState().currentScreen == AppScreen.ROUTING_RULES) routingActions.closeEditor()
         controller.openLocationsTab()
     }
 
     fun openStatsTab() {
+        if (controller.currentState().currentScreen == AppScreen.ROUTING_RULES) routingActions.closeEditor()
         controller.openStatsTab()
     }
 
     fun navigateBack() {
+        if (controller.currentState().currentScreen == AppScreen.ROUTING_RULES) routingActions.closeEditor()
         handleControllerEffects(controller.navigateBack())
     }
 
@@ -402,6 +397,10 @@ class MainViewModel internal constructor(
 
     fun onRoutingDirectDomainsDraftChanged(value: String) {
         routingActions.onRoutingDirectDomainsDraftChanged(value)
+    }
+
+    fun onRoutingDirectDomainSuffixesDraftChanged(value: List<String>) {
+        routingActions.onRoutingDirectDomainSuffixesDraftChanged(value)
     }
 
     fun showAddRuleSetDialog() {
@@ -505,15 +504,15 @@ class MainViewModel internal constructor(
     }
 
     fun refreshActiveSubscriptionCache() {
-        subscriptionRefreshActions.refreshActiveSubscriptionCache()
+        owner.refreshSubscriptionsFromGui("active")
     }
 
     fun refreshSubscriptionCache(subscriptionId: String) {
-        subscriptionRefreshActions.refreshSubscriptionCache(subscriptionId)
+        owner.refreshSubscriptionsFromGui(subscriptionId)
     }
 
     fun refreshAllSubscriptionsCaches() {
-        subscriptionRefreshActions.refreshAllSubscriptionsCaches()
+        owner.refreshSubscriptionsFromGui("all")
     }
 
     fun handleIncomingSharedText(raw: String) {
@@ -521,6 +520,7 @@ class MainViewModel internal constructor(
     }
 
     fun handleIncomingImportText(raw: String, preference: ImportPreference = ImportPreference.AUTO) {
+        if (preference == ImportPreference.ROUTING_RULES) { routingActions.importRoutingRules(raw); return }
         profileActions.handleIncomingImportText(raw, preference)
     }
 
@@ -579,6 +579,27 @@ class MainViewModel internal constructor(
     fun buildRoutingRulesExport(): RoutingRulesExportDocument {
         return routingActions.buildRoutingRulesExport()
     }
+    fun prepareRoutingRulesExport(openPicker: (String) -> Unit) {
+        commands.launch {
+            val prepared = routingExport.prepare()
+            if (prepared.result.code == com.kardinal.vpncontrol.model.ControlCode.OK && prepared.fileName != null) {
+                try { openPicker(prepared.fileName) }
+                catch (_: Exception) { routingExport.close(); repository.updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+            } else repository.updateStatus(prepared.result.code.wireName)
+        }
+    }
+    fun cancelRoutingRulesExport() { routingExport.close() }
+    fun writeRoutingRulesExport(openWriter: () -> java.io.Writer, discardFailedDestination: () -> Boolean) {
+        commands.launch {
+            val result = routingExport.write(openWriter, discardFailedDestination)
+            repository.updateStatus(if (result.code == com.kardinal.vpncontrol.model.ControlCode.OK) "Routing rules exported" else result.code.wireName)
+        }
+    }
+
+    override fun onCleared() {
+        routingExport.close()
+        super.onCleared()
+    }
 
     fun buildLocationsExport(): LocationsExportDocument {
         return locationActions.buildLocationsExport()
@@ -593,17 +614,20 @@ class MainViewModel internal constructor(
     fun importRoutingRules(raw: String) {
         routingActions.importRoutingRules(raw)
     }
+    fun beginImportRoutingRules(openPicker: () -> Unit) = routingActions.beginImport(openPicker)
+    fun cancelImportRoutingRules() = routingActions.cancelImport()
+    fun importRoutingRulesReader(openReader: () -> java.io.Reader) = routingActions.importRoutingReader(openReader)
 
     fun postStatus(message: String) {
         settingsActions.postStatus(message)
     }
 
     fun cancelActiveOperation() {
-        commands.cancelActive()
+        owner.cancelActiveOperationFromGui()
     }
 
     fun refresh() {
-        findBestActions.refresh()
+        owner.findBestFromGui()
     }
 
     fun toggleVpn() {

@@ -63,11 +63,23 @@ internal data class DesktopFrontendProcessIdentity(val registrationId: String, v
             val target = ProcessHandle.of(identity.pid).orElseThrow().info()
             val user = current.user().orElseThrow()
             require(target.user().orElseThrow() == user)
-            require(Path.of(target.command().orElseThrow()).toRealPath() == Path.of(current.command().orElseThrow()).toRealPath())
+            require(desktopFrontendImagesMatch(Path.of(current.command().orElseThrow()),
+                Path.of(target.command().orElseThrow()), System.getProperty("os.name").startsWith("Windows", true)))
             true
         }.getOrDefault(false)
     }
 }
+
+/** Windows' explicit public CLI serve owner and GUI are the two launchers of one installation. */
+internal fun desktopFrontendImagesMatch(owner: Path, frontend: Path, windows: Boolean): Boolean = runCatching {
+    val actualOwner = owner.toRealPath()
+    val actualFrontend = frontend.toRealPath()
+    if (actualOwner == actualFrontend) return@runCatching true
+    if (!windows || actualOwner.parent != actualFrontend.parent) return@runCatching false
+    setOf(actualOwner.fileName.toString().lowercase(java.util.Locale.ROOT),
+        actualFrontend.fileName.toString().lowercase(java.util.Locale.ROOT)) ==
+        setOf("vpn-control.exe", "vpn-control-cli.exe")
+}.getOrDefault(false)
 
 internal fun DesktopCliCommand.ControlFrontendIdentityRead.valid(): Boolean = runCatching {
     UUID.fromString(requestId).toString() == requestId && UUID.fromString(frontendId).toString() == frontendId

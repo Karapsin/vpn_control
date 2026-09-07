@@ -8,6 +8,63 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AndroidUpdateControlTest {
+    @Test fun guiFailureFeedbackPreservesAuthoritativeCancelledAndUnknownReceiptStates() {
+        for (phase in listOf(AppInstallSessionPhase.CANCELLED, AppInstallSessionPhase.UNKNOWN, AppInstallSessionPhase.INSTALLED)) {
+            val status = AppInstallSessionStatus("receipt", phase, "2.2.0", false)
+            val state = androidInstallFailureFeedback(AppUpdateState(installSession = status),
+                com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN, "receipt")
+            assertTrue(state.showDialog)
+            assertEquals(AppUpdatePhase.IDLE, state.phase)
+            assertEquals("", state.message)
+            assertEquals(status, state.installSession)
+            assertEquals(AppUpdatePhase.FAILED, androidInstallFailureFeedback(AppUpdateState(installSession = status),
+                com.kardinal.vpncontrol.model.ControlCode.CONFLICT, null).phase)
+        }
+        val denied = androidInstallFailureFeedback(AppUpdateState(phase = AppUpdatePhase.READY),
+            com.kardinal.vpncontrol.model.ControlCode.PERMISSION_DENIED, null)
+        assertEquals(AppUpdatePhase.FAILED, denied.phase)
+        assertEquals("PERMISSION_DENIED", denied.message)
+        for (code in listOf(com.kardinal.vpncontrol.model.ControlCode.CANCELLED,
+            com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN)) {
+            val incomplete = androidInstallFailureFeedback(AppUpdateState(phase = AppUpdatePhase.READY), code, null)
+            assertEquals(AppUpdatePhase.IDLE, incomplete.phase)
+            assertEquals(code.wireName, incomplete.message)
+        }
+    }
+    @Test fun terminalInstallerReceiptReconcilesOuterPhaseBeforeOrAfterHandoffCompletion() = runTest {
+        for (beforeCompletion in listOf(false, true)) for (phase in listOf(AppInstallSessionPhase.FAILED, AppInstallSessionPhase.INSTALLED)) {
+            var state = AppUpdateState()
+            val control = AndroidUpdateControl({ backgroundScope.launch { it() } }, "1.0.0", 10,
+                { manifest }, { asset }, { File("synthetic.apk") }, { _, _, _ -> }, {}, {}, { state = it(state) })
+            control.check(); control.downloadChecked()
+            val ticket = requireNotNull(control.reserveInstallation())
+            val status = AppInstallSessionStatus("receipt", phase, "2.2.0", false)
+            if (beforeCompletion) control.installSessionChanged(status)
+            control.finishInstallation(ticket, true)
+            if (!beforeCompletion) control.installSessionChanged(status)
+            assertEquals(if (phase == AppInstallSessionPhase.FAILED) AppUpdatePhase.FAILED else AppUpdatePhase.IDLE, state.phase)
+            assertEquals(status, state.installSession)
+            assertTrue(requireNotNull(control.checkedStatus()).available)
+            assertEquals("2.2.0", state.availableVersion)
+        }
+    }
+    @Test fun verificationFailureRetainsOnlyAllowlistedReasonAndNeverMarksPackageReady() = runTest {
+        var state = AppUpdateState()
+        val control = AndroidUpdateControl({ backgroundScope.launch { it() } }, "1.0.0", 10,
+            { manifest }, { asset }, { File("PRIVATE_PATH") },
+            { _, _, _ -> throw AndroidUpdateVerificationFailure(AndroidUpdateVerificationReason.ARCHIVE_SIGNERS_UNAVAILABLE) },
+            {}, {}, { state = it(state) })
+        control.check()
+        val result = control.execute(com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DOWNLOAD)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.RUNTIME_FAILED, result.code)
+        assertEquals(com.kardinal.vpncontrol.model.ControlValue.Text("ARCHIVE_SIGNERS_UNAVAILABLE"), result.data["verificationFailure"])
+        assertEquals(result.data["verificationFailure"], control.inspection { state }["verificationFailure"])
+        assertNull(control.preparedFile)
+        assertFalse(result.data.toString().contains("PRIVATE_PATH"))
+        control.check()
+        assertFalse(control.inspection { state }.containsKey("verificationFailure"))
+        assertEquals(com.kardinal.vpncontrol.model.ControlValue.Text("ARCHIVE_SIGNERS_UNAVAILABLE"), result.data["verificationFailure"])
+    }
     @Test fun reservedCancellationCannotRetargetANewerTransferAfterOldWorkerCompletes() = runTest {
         var state = AppUpdateState()
         val fetched = CompletableDeferred<UpdateManifest>()

@@ -28,6 +28,12 @@ object RoutingStatusMessages {
     fun routingRulesSaveFailed(): String =
         StatusMessageCodec.encode(StatusMessageKey.ROUTING_RULES_SAVE_FAILED)
 
+    fun routingRulesOutcomeUnknown(): String =
+        StatusMessageCodec.encode(StatusMessageKey.ROUTING_RULES_OUTCOME_UNKNOWN)
+
+    fun routingRulesStaleDraft(): String =
+        StatusMessageCodec.encode(StatusMessageKey.ROUTING_RULES_STALE_DRAFT)
+
     fun routingRulesImported(): String =
         StatusMessageCodec.encode(StatusMessageKey.ROUTING_RULES_IMPORTED)
 

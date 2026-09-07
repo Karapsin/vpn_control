@@ -85,7 +85,10 @@ class DesktopWorkspaceStateMapperTest {
         assertEquals("0.5", restored.subscriptionRefreshCustomHoursDraft)
         assertTrue(restored.routingIgnoreRulesDraft)
         assertEquals(setOf("org.example.app"), restored.routingProxyPackagesDraft)
-        assertEquals("example.com", restored.routingDirectDomainsDraft)
+        // Restore retains the committed suffixes in the structured draft; the
+        // text field is materialized only when a user edits it.
+        assertEquals("", restored.routingDirectDomainsDraft)
+        assertEquals(listOf("example.com"), restored.routingDirectDomainSuffixesDraft)
         assertEquals(listOf(location.rawLink), restored.currentLocations)
         assertEquals(location.rawLink, restored.selectedProfileRawLink)
         assertEquals("Selected", restored.selectedProfileName)

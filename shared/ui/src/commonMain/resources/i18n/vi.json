@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Việc cài đặt yêu cầu một phiên tương tác.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Quyền cài đặt đã bị từ chối.",
+  "UPDATE_INSTALL_CANCELLED": "Đã hủy cài đặt.",
+  "UPDATE_INSTALL_CONFIRMATION": "Đang chờ xác nhận cài đặt.",
+  "UPDATE_INSTALL_COMPLETED": "Đã cài đặt bản cập nhật.",
+  "UPDATE_INSTALL_UNKNOWN": "Chưa rõ kết quả cài đặt.",
   "APP_TITLE": "Quản lý VPN",
   "TAB_MAIN": "Chính",
   "TAB_PROFILE": "Hồ sơ",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Vị trí đang hoạt động: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Vị trí đang hoạt động: không khả dụng",
+  "CONNECTION_RESTART_PENDING": "Khởi động lại kết nối để áp dụng các thay đổi đã lưu.",
+  "CONNECTION_RESTART_UNKNOWN": "Chưa rõ có cần khởi động lại hay không."
 }

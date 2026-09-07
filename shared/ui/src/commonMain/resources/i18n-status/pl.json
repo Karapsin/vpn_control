@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nie udało się przywrócić poprzedniej lokalizacji dla {connectionLabel:0}: {1}. Nie udało się zatrzymać {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Reguły routingu zapisane. Uruchom ponownie {connectionLabel:0}, aby je zastosować",
     "ROUTING_RULES_SAVE_FAILED": "Nie udało się zapisać reguł routingu",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Wynik zmiany routingu jest nieznany. Spróbuj ponownie z tymi samymi danymi.",
+    "ROUTING_RULES_STALE_DRAFT": "Ustawienia routingu uległy zmianie. Otwórz edytor ponownie przed zapisaniem.",
     "DIAGNOSTICS_EXPORT_OPENED": "Eksport diagnostyki otwarty",
     "APPS_LOAD_FAILED": "Nie udało się wczytać aplikacji",
     "SUBSCRIPTION_RECEIVED": "Odebrano subskrypcję. Sprawdź ją i zapisz na karcie Profil.",

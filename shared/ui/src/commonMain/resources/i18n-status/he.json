@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "שחזור המיקום הקודם של {connectionLabel:0} נכשל: {1}. עצירת {connectionLabel:0} נכשלה: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "כללי הניתוב נשמרו. יש להפעיל מחדש את {connectionLabel:0} כדי להחיל אותם",
     "ROUTING_RULES_SAVE_FAILED": "שמירת כללי הניתוב נכשלה",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "תוצאת שינוי הניתוב אינה ידועה. יש לנסות שוב עם אותם נתונים.",
+    "ROUTING_RULES_STALE_DRAFT": "הגדרות הניתוב השתנו. יש לפתוח שוב את העורך לפני השמירה.",
     "DIAGNOSTICS_EXPORT_OPENED": "ייצוא האבחון נפתח",
     "APPS_LOAD_FAILED": "טעינת אפליקציות נכשלה",
     "SUBSCRIPTION_RECEIVED": "התקבל מנוי. בדוק ושמור אותו בכרטיסיית הפרופיל.",

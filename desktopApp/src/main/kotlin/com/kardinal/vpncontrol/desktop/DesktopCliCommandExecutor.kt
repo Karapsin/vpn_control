@@ -11,6 +11,7 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
         return DesktopCliResponse.failure("VPN Control is busy.")
     }
     return when (command) {
+        is DesktopCliCommand.ControlServe -> DesktopCliResponse.failure("UNSUPPORTED")
         is DesktopCliCommand.ControlFrontendIdentityRead -> DesktopCliResponse.failure("UNSUPPORTED")
         is DesktopCliCommand.ControlFrontendLease -> DesktopCliResponse.failure("UNSUPPORTED")
         is DesktopCliCommand.ControlPresentationRead -> DesktopCliResponse.failure("UNSUPPORTED")
@@ -73,9 +74,7 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
         DesktopCliCommand.Off -> cliTurnOff()
         DesktopCliCommand.Restart -> restartConnection().fold(
             onSuccess = { cliStatus() },
-            onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code ->
-                code in setOf("BUSY", "NOT_RUNNING", "NOT_FOUND", "PERSISTENCE_FAILED", "ROLLBACK_FAILED")
-            } ?: "RUNTIME_FAILED") },
+            onFailure = { it.toConnectionFailureResponse() },
         )
         DesktopCliCommand.Status -> cliStatus()
         DesktopCliCommand.FindBest -> cliFindBest()
@@ -111,9 +110,13 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
                 ?: resolveCliLocation(command.target)).getOrElse {
                 return DesktopCliResponse.failure(it.message ?: "NOT_FOUND")
             }
+            val locationId = controlLocationId(location) ?: return DesktopCliResponse.failure("CONFLICT")
             benchmarkLocation(location.index, location).fold(
-                onSuccess = { if (it.testStatus == "ok") DesktopCliResponse.success("Benchmark passed.")
-                    else DesktopCliResponse.failure("BENCHMARK_FAILED") },
+                onSuccess = {
+                    val data = com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(
+                        DesktopActionResultData.benchmark(locationId, it))
+                    if (it.testStatus == "ok") DesktopCliResponse.success(data) else DesktopCliResponse.failure(data)
+                },
                 onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code ->
                     code in setOf("BUSY", "NOT_FOUND", "CONFLICT", "INVALID_ARGUMENT", "PERSISTENCE_FAILED", "BENCHMARK_FAILED")
                 } ?: "BENCHMARK_FAILED") },
@@ -177,17 +180,27 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
     }
 }
 
-internal fun DesktopAppService.controlUpdateStatus(): String = kotlinx.serialization.json.buildJsonObject {
+internal fun DesktopAppService.controlUpdateStatus(): String {
+    val recovery = recoverControlInstalls().getOrThrow()
     val checked = checkedControlUpdate()
-    put("phase", JsonPrimitive(if (state.appUpdate.phase == com.kardinal.vpncontrol.AppUpdatePhase.IDLE && checked?.asset != null)
-        "available" else state.appUpdate.phase.name.lowercase(java.util.Locale.ROOT)))
-    put("checked", JsonPrimitive(checked != null))
-    put("available", JsonPrimitive(checked?.updateAvailable))
-    put("compatible", JsonPrimitive(checked?.let { !it.updateAvailable || it.asset != null }))
-    put("availableVersion", JsonPrimitive(checked?.asset?.displayVersion))
-    put("downloadedBytes", JsonPrimitive(state.appUpdate.downloadedBytes))
-    put("totalBytes", JsonPrimitive(checked?.asset?.sizeBytes))
-}.toString()
+    val update = state.appUpdate
+    fun boolean(value: Boolean?) = value?.let(com.kardinal.vpncontrol.model.ControlValue::BooleanValue)
+        ?: com.kardinal.vpncontrol.model.ControlValue.Null
+    return com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeValues(mapOf(
+        "phase" to com.kardinal.vpncontrol.model.ControlValue.Text(
+            if (update.phase == com.kardinal.vpncontrol.AppUpdatePhase.IDLE && checked?.asset != null)
+                "available" else update.phase.name.lowercase(java.util.Locale.ROOT)),
+        "checked" to boolean(checked != null),
+        "available" to boolean(checked?.updateAvailable),
+        "compatible" to boolean(checked?.let { !it.updateAvailable || it.asset != null }),
+        "availableVersion" to (checked?.asset?.displayVersion?.let(com.kardinal.vpncontrol.model.ControlValue::Text)
+            ?: com.kardinal.vpncontrol.model.ControlValue.Null),
+        "downloadedBytes" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(update.downloadedBytes),
+        "totalBytes" to (checked?.asset?.sizeBytes?.let(com.kardinal.vpncontrol.model.ControlValue::IntegerValue)
+            ?: com.kardinal.vpncontrol.model.ControlValue.Null),
+        "installations" to DesktopRecoveredInstallPresentation.values(recovery),
+    ))
+}
 
 private fun Result<Unit>.toRoutingResponse(warnDesktopPackages: Boolean = false): DesktopCliResponse = fold(
     onSuccess = { DesktopCliResponse.success("Routing saved." + if (warnDesktopPackages)
@@ -228,7 +241,7 @@ private suspend fun DesktopAppService.cliTurnOn(): DesktopCliResponse {
     return if (result.isSuccess) {
         DesktopCliResponse.success("${state.appMode.cliLabel()} started: ${selectedDesktopLocation()?.name.orEmpty()}")
     } else {
-        DesktopCliResponse.failure(result.exceptionOrNull()?.message ?: "Failed to start ${state.appMode.cliLabel()}.")
+        requireNotNull(result.exceptionOrNull()).toConnectionFailureResponse()
     }
 }
 
@@ -238,7 +251,7 @@ private suspend fun DesktopAppService.cliTurnOff(): DesktopCliResponse {
     return if (result.isSuccess) {
         DesktopCliResponse.success("${mode.cliLabel()} stopped.")
     } else {
-        DesktopCliResponse.failure(result.exceptionOrNull()?.message ?: "Failed to stop ${mode.cliLabel()}.")
+        requireNotNull(result.exceptionOrNull()).toConnectionFailureResponse()
     }
 }
 
@@ -255,8 +268,17 @@ private suspend fun DesktopAppService.cliFindBest(): DesktopCliResponse {
             },
         )
     } else {
-        DesktopCliResponse.failure(result.exceptionOrNull()?.message ?: "Failed to find the best location.")
+        requireNotNull(result.exceptionOrNull()).toConnectionFailureResponse()
     }
+}
+
+internal fun Throwable.toConnectionFailureResponse(): DesktopCliResponse {
+    if (message == "OUTCOME_UNKNOWN") return DesktopCliResponse.failure("OUTCOME_UNKNOWN", 2)
+    val code = message?.takeIf { it in setOf(
+        "CANCELLED", "BUSY", "NOT_RUNNING", "NOT_FOUND", "INVALID_ARGUMENT", "CONFLICT",
+        "PERMISSION_DENIED", "UNSUPPORTED", "PERSISTENCE_FAILED", "ROLLBACK_FAILED", "RUNTIME_FAILED",
+    ) } ?: "RUNTIME_FAILED"
+    return DesktopCliResponse.failure(code, if (code == "CANCELLED") 130 else 1)
 }
 
 private fun DesktopAppService.cliSelect(target: String): DesktopCliResponse {

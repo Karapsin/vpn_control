@@ -19,8 +19,11 @@ internal class JnaWindowsInstallNative : WindowsInstallNative {
     private val advapi by lazy { check(Platform.isWindows()); Native.load("advapi32", Advapi32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val extraKernel by lazy { check(Platform.isWindows()); Native.load("kernel32", ExtraKernel::class.java) }
     private val extraSecurity by lazy { check(Platform.isWindows()); Native.load("advapi32", ExtraSecurity::class.java) }
+    private val renameNt by lazy { check(Platform.isWindows()); Native.load("ntdll", RenameNt::class.java) }
     private class Handle(val value: WinNT.HANDLE, val restrictedWriter: Boolean) : WindowsInstallNative.Handle
     private fun handle(value: WindowsInstallNative.Handle) = (value as Handle).value
+    /** Borrowed by read-only admission; ownership remains with this native adapter. */
+    internal fun retainedHandle(value: WindowsInstallNative.Handle): WinNT.HANDLE = handle(value)
     private fun checked(ok: Boolean) { if (!ok) throw WindowsInstallNativeFailure(kernel.GetLastError()) }
 
     override fun programData(): String {
@@ -147,24 +150,108 @@ internal class JnaWindowsInstallNative : WindowsInstallNative {
         // both data and metadata are flushed by that documented caching mode.
     }
 
+    internal fun writeStreamAndSync(handle: WindowsInstallNative.Handle,
+                                   produce: ((ByteArray, Int) -> Unit) -> Unit) {
+        require(!(handle as Handle).restrictedWriter)
+        val opened = handle(handle)
+        checked(extraKernel.SetFilePointerEx(opened, 0, null, 0))
+        var length = 0L
+        produce { bytes, count ->
+            require(count in 1..8192 && count <= bytes.size)
+            var offset = 0
+            while (offset < count) {
+                val remaining = if (offset == 0) bytes else bytes.copyOfRange(offset, count)
+                val written = IntByReference()
+                checked(kernel.WriteFile(opened, remaining, count - offset, written, null))
+                require(written.value in 1..(count - offset))
+                offset += written.value
+                length = Math.addExact(length, written.value.toLong())
+            }
+        }
+        Memory(8).use { info ->
+            info.setLong(0, length)
+            checked(kernel.SetFileInformationByHandle(opened, 6, info, WinDef.DWORD(8)))
+        }
+        checked(kernel.FlushFileBuffers(opened))
+    }
+
     internal fun requirePrivateExport(handle: WindowsInstallNative.Handle, owner: String) {
         val flags = IntByReference()
         checked(extraKernel.GetVolumeInformationByHandleW(handle(handle), null, 0, null, null, flags, null, 0))
         requireWindowsPrivateExport(flags.value, inspect(handle), owner)
     }
 
-    override fun rename(handle: WindowsInstallNative.Handle, directory: WindowsInstallNative.Handle, name: String) {
-        require(name == DesktopInstallJobNames.STATUS)
-        // Win32 rejects the relative RootDirectory form on supported native hosts.
-        // Resolve the retained directory handle, not a caller path. Every ancestor
-        // stays pinned against rename/reparse mutation until this call completes.
-        // A volume GUID also avoids per-user DOS drive-letter remapping.
+    /** Existing correlation: read and delete the same pinned object without competing writers/deleters. */
+    internal fun openPrivateCorrelation(path: String): WindowsInstallNative.Handle {
+        val value = kernel.CreateFile(path, 0x00130081, 1, null, 3, 0x02200000, null)
+        if (value == WinBase.INVALID_HANDLE_VALUE || value.pointer == WinBase.INVALID_HANDLE_VALUE.pointer)
+            throw WindowsInstallNativeFailure(kernel.GetLastError())
+        return Handle(value, false)
+    }
+
+    /** Export-only retained RW+DELETE handle: private at creation, no competing writer/deleter. */
+    internal fun createExportPartial(path: String, owner: String): WindowsInstallNative.Handle =
+        withSecurity("O:${owner}G:${owner}D:P(A;;FA;;;$owner)") { security ->
+            val value = kernel.CreateFile(path, 0x40130083, 1, security, 1, 0x02200000, null)
+            if (value == WinBase.INVALID_HANDLE_VALUE || value.pointer == WinBase.INVALID_HANDLE_VALUE.pointer)
+                throw WindowsInstallNativeFailure(kernel.GetLastError())
+            Handle(value, false)
+        }
+
+    internal fun readExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
+        require(offset >= 0 && count in 1..8192 && count <= bytes.size)
+        checked(extraKernel.SetFilePointerEx(handle(value), offset, null, 0))
+        val received = IntByReference()
+        checked(kernel.ReadFile(handle(value), bytes, count, received, null))
+        require(received.value in 0..count)
+        return received.value
+    }
+
+    internal fun writeExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
+        require(offset >= 0 && count in 1..8192 && count <= bytes.size)
+        checked(extraKernel.SetFilePointerEx(handle(value), offset, null, 0))
+        val written = IntByReference()
+        checked(kernel.WriteFile(handle(value), bytes, count, written, null))
+        require(written.value in 1..count)
+        return written.value
+    }
+
+    internal fun syncExport(value: WindowsInstallNative.Handle) { checked(kernel.FlushFileBuffers(handle(value))) }
+
+    internal fun retainedExportDirectory(directory: WindowsInstallNative.Handle): String {
         val buffer = CharArray(32768)
         val length = extraKernel.GetFinalPathNameByHandleW(handle(directory), buffer, buffer.size, 1)
         if (length == 0) throw WindowsInstallNativeFailure(kernel.GetLastError())
-        require(length in 1 until buffer.size) { "Installer directory path exceeds native bound" }
-        val info = windowsInstallRenameInfo(String(buffer, 0, length), Native.POINTER_SIZE)
-        checked(kernel.SetFileInformationByHandle(handle(handle), 3, info, WinDef.DWORD(info.size())))
+        require(length in 1 until buffer.size)
+        return String(buffer, 0, length)
+    }
+
+    internal fun publishExportNoReplace(value: WindowsInstallNative.Handle, leaf: String) {
+        // The partial is already a sibling of the destination. NT's leaf-only form
+        // resolves against that file's retained parent without reopening a directory
+        // for write access, which would conflict with our strict ancestry pins.
+        windowsExportRenameInfo(leaf, Native.POINTER_SIZE).use { info ->
+            renameSibling(value, info)
+        }
+    }
+
+    private fun renameSibling(value: WindowsInstallNative.Handle, info: Memory, infoClass: Int = 10) {
+        Memory((Native.POINTER_SIZE * 2).toLong()).use { io ->
+            io.clear()
+            val status = renameNt.NtSetInformationFile(handle(value), io, info, info.size().toInt(), infoClass)
+            if (status < 0) throw WindowsInstallNativeFailure(renameNt.RtlNtStatusToDosError(status))
+        }
+    }
+
+    override fun rename(handle: WindowsInstallNative.Handle, directory: WindowsInstallNative.Handle, name: String) {
+        require(name == DesktopInstallJobNames.STATUS)
+        // Same-directory NT rename avoids reopening our strictly pinned parent for
+        // write access. Check handle-resolved volume paths before using a leaf name.
+        require(retainedExportDirectory(handle).substringBeforeLast('\\') ==
+            retainedExportDirectory(directory).trimEnd('\\')) { "Unlinked installer receipt" }
+        // FileRenameInformationEx (Windows 10 1709+) preserves already-open receipt
+        // readers with POSIX replacement. Unsupported systems fail closed.
+        windowsInstallStatusRenameInfo(Native.POINTER_SIZE).use { info -> renameSibling(handle, info, infoClass = 65) }
     }
 
     override fun delete(handle: WindowsInstallNative.Handle) {
@@ -184,6 +271,25 @@ internal class JnaWindowsInstallNative : WindowsInstallNative {
         fun ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl: WString, revision: Int,
             descriptor: PointerByReference, size: IntByReference?): Boolean
     }
+    private interface RenameNt : StdCallLibrary {
+        fun NtSetInformationFile(handle: WinNT.HANDLE, ioStatus: Pointer, info: Pointer, length: Int, infoClass: Int): Int
+        fun RtlNtStatusToDosError(status: Int): Int
+    }
+}
+
+/** NT FILE_RENAME_INFORMATION: no replacement, null root, same-directory UTF-16 leaf. */
+internal fun windowsExportRenameInfo(leaf: String, pointerSize: Int): Memory {
+    require(pointerSize == 4 || pointerSize == 8)
+    require(leaf.isNotBlank() && leaf !in setOf(".", "..") && leaf.none { it in "\\/:\u0000" })
+    require(leaf.length < 32768)
+    val bytes = leaf.toByteArray(Charsets.UTF_16LE)
+    val lengthOffset = pointerSize * 2L
+    val nameOffset = lengthOffset + 4
+    return Memory(nameOffset + bytes.size).also { info ->
+        info.clear()
+        info.setInt(lengthOffset, bytes.size)
+        info.write(nameOffset, bytes, 0, bytes.size)
+    }
 }
 
 internal fun requireWindowsPrivateExport(volumeFlags: Int, info: WindowsInstallInfo, owner: String) {
@@ -194,41 +300,26 @@ internal fun requireWindowsPrivateExport(volumeFlags: Int, info: WindowsInstallI
     require(acl.isNotEmpty() && acl.all { it.type == 0 && it.sid == owner && it.flags and 0x18 == 0 })
 }
 
-/** FILE_RENAME_INFO with a null RootDirectory and a handle-resolved absolute UTF-16 path. */
-internal fun windowsInstallRenameInfo(directory: String, pointerSize: Int): Memory {
-    require(pointerSize == 4 || pointerSize == 8)
-    val prefix = "\\\\?\\Volume{"
-    require(directory.startsWith(prefix) && directory.length > prefix.length + 37)
-    val id = directory.substring(prefix.length, prefix.length + 36)
-    require(java.util.UUID.fromString(id).toString().equals(id, ignoreCase = true))
-    require(directory.substring(prefix.length + 36).startsWith("}\\"))
-    require('\u0000' !in directory && '/' !in directory)
-    val target = directory.trimEnd('\\') + "\\" + DesktopInstallJobNames.STATUS
-    require(target.length < 32768)
-    val bytes = target.toByteArray(Charsets.UTF_16LE)
-    val rootOffset = if (pointerSize == 8) 8L else 4L
-    val lengthOffset = rootOffset + pointerSize
-    val nameOffset = lengthOffset + 4
-    return Memory(nameOffset + bytes.size + 2).also { info ->
-        info.clear() // RootDirectory must remain NULL.
-        info.setByte(0, 1)
-        info.setInt(lengthOffset, bytes.size)
-        info.write(nameOffset, bytes, 0, bytes.size)
-    }
-}
+/** REPLACE_IF_EXISTS | POSIX_SEMANTICS; protected old receipt readers keep their original object. */
+internal fun windowsInstallStatusRenameInfo(pointerSize: Int): Memory =
+    windowsExportRenameInfo(DesktopInstallJobNames.STATUS, pointerSize).also { it.setInt(0, 3) }
 
 internal data class WindowsInstallOpenOptions(val rights: Int, val share: Int, val creation: Int, val flags: Int)
 internal fun windowsInstallOpenOptions(access: Int, shareDelete: Boolean, create: Boolean): WindowsInstallOpenOptions {
+    require(access != WindowsInstallNative.PINNED_READ || (!shareDelete && !create))
     val rights = 0x00120080 or when (access) {
-        WindowsInstallNative.INSPECT -> 0
-        WindowsInstallNative.READ -> 1
+        // Windows does not enforce data/delete sharing against metadata-only handles.
+        // FILE_LIST_DIRECTORY/FILE_READ_DATA makes retained ancestry/witness pins participate.
+        WindowsInstallNative.INSPECT -> 1
+        WindowsInstallNative.READ, WindowsInstallNative.PINNED_READ -> 1
         WindowsInstallNative.READ_WRITE -> if (create) 0x40000003 else 3
         WindowsInstallNative.DELETE -> 0x00010000
         else -> error("Invalid installer access")
     }
     // Directory pins additionally deny direct write handles (including reparse mutation).
     // Cancellation readers/writers must share data writes with their cooperating retained handle.
-    return WindowsInstallOpenOptions(rights, 1 or (if (access == WindowsInstallNative.INSPECT) 0 else 2) or
+    val immutable = access == WindowsInstallNative.INSPECT || access == WindowsInstallNative.PINNED_READ
+    return WindowsInstallOpenOptions(rights, 1 or (if (immutable) 0 else 2) or
         (if (shareDelete) 4 else 0), if (create) 1 else 3,
         0x02200000 or if (access == WindowsInstallNative.READ_WRITE) 0x80000000.toInt() else 0)
 }

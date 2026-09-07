@@ -9,6 +9,7 @@ while IFS= read -r -d '' path; do
   case "$path" in
     build/*|\
     app/build/*|\
+    app/.cxx/*|\
     shared/*/build/*|\
     desktopApp/build/*|\
     desktopApp/src/main/resources/bin/*|\
@@ -30,10 +31,22 @@ fi
 
 bash scripts/check_docs_hygiene.sh
 bash scripts/test_arch_install_hygiene.sh
+python3 scripts/test_arch_update_permissions.py
 python3 scripts/test_assemble_update_release.py
 python3 scripts/test_version_metadata.py
 python3 scripts/test_vpn_integration_fixture.py
 python3 scripts/test_packaged_cli_harness.py
+python3 scripts/test_linux_package_postinst.py
+python3 scripts/test_package_linux_deb.py
+python3 scripts/test_package_linux_rpm.py
+python3 scripts/test_linux_public_install_harness.py
+python3 scripts/test_prepare_linux_install_vm.py
+python3 scripts/test_android_update_fixture.py
+python3 scripts/test_android_install_visual_inventory.py
+python3 scripts/test_desktop_update_fixture.py
+python3 scripts/test_desktop_sdk_independence.py
+python3 scripts/test_macos_install_gate.py
+python3 scripts/test_windows_native_helpers.py
 python3 scripts/test_windows_launcher_utf8.py
 python3 scripts/test_user_facing_terminology.py
 python3 scripts/check_ui_theme.py

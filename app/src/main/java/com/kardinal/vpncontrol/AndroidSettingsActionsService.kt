@@ -24,19 +24,34 @@ internal class AndroidSettingsActionsService(
     private val launchMutation: (suspend () -> Unit) -> Unit = launch,
     private val importKey: (suspend (String) -> com.kardinal.vpncontrol.model.ControlResult)? = null,
     private val homeSshPendingRestart: suspend () -> Boolean? = { null },
+    private val sshDraft: AndroidSshDraftControl? = null,
 ) {
     fun toggleDnsDialog() {
         controller.toggleDnsDialog()
     }
 
     fun toggleHomeSshRouteDialog() {
+        if (sshDraft != null) {
+            if (controller.currentState().showHomeSshRouteDialog) {
+                sshDraft.close()
+                controller.update { it.copy(showHomeSshRouteDialog = false, homeSshDraftFailure = null) }
+            } else launch {
+                val settings = sshDraft.open()
+                controller.update { it.copy(showHomeSshRouteDialog = true, homeSshDraftFailure = null,
+                    homeSshEnabledDraft = settings.enabled, homeSshHostDraft = settings.host,
+                    homeSshPortDraft = settings.port.toString(), homeSshUserDraft = settings.user,
+                    homeSshHostKeysDraft = settings.hostKeys.joinToString("\n"), homeSshRelayPortDraft = settings.relayPort.toString()) }
+            }
+            return
+        }
         controller.update { state ->
             if (state.showHomeSshRouteDialog) {
-                state.copy(showHomeSshRouteDialog = false)
+                state.copy(showHomeSshRouteDialog = false, homeSshDraftFailure = null)
             } else {
                 val settings = state.homeSshRouteSettings
                 state.copy(
                     showHomeSshRouteDialog = true,
+                    homeSshDraftFailure = null,
                     homeSshEnabledDraft = settings.enabled,
                     homeSshHostDraft = settings.host,
                     homeSshPortDraft = settings.port.toString(),
@@ -49,40 +64,60 @@ internal class AndroidSettingsActionsService(
     }
 
     fun updateHomeSshDraft(transform: (MainUiState) -> MainUiState) {
-        controller.update(transform)
+        controller.update { transform(it).copy(homeSshDraftFailure = null) }
+    }
+
+    private suspend fun reportHomeSshDraftFailure(message: String) {
+        controller.update { it.copy(homeSshDraftFailure = message) }
+        updateStatus(message)
     }
 
     fun importHomeSshPrivateKey(content: String) {
         // The owner operation acquires the shared mutation lease itself.
         launch {
-            runCatching {
-                val result = (importKey ?: error("UNSUPPORTED"))(content)
-                check(result.code == com.kardinal.vpncontrol.model.ControlCode.OK) { result.code.wireName }
-                result
+            val result = try {
+                sshDraft?.importKey(content) ?: (importKey ?: error("UNSUPPORTED"))(content)
+            } catch (_: Exception) {
+                // Provider/IO exceptions can contain private input or sandbox paths.
+                // The draft keeps the original request so explicit retry can recover it.
+                reportHomeSshDraftFailure(SettingsStatusMessages.homeSshPrivateKeyImportFailed("OUTCOME_UNKNOWN"))
+                return@launch
             }
-                .onSuccess { result ->
-                    controller.update {
-                        it.copy(
-                            showHomeSshRestartDialog = result.restartRequired,
-                            homeSshRestartPending = result.restartRequired,
-                        )
-                    }
-                    updateStatus(SettingsStatusMessages.homeSshPrivateKeyImported())
-                }
-                .onFailure { error ->
-                    updateStatus(SettingsStatusMessages.homeSshPrivateKeyImportFailed(error.message.orEmpty()))
-                }
+            if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK) {
+                reportHomeSshDraftFailure(SettingsStatusMessages.homeSshPrivateKeyImportFailed(result.code.wireName))
+                return@launch
+            }
+            controller.update { it.copy(showHomeSshRestartDialog = result.restartRequired, homeSshDraftFailure = null,
+                homeSshRestartPending = result.restartRequired) }
+            updateStatus(SettingsStatusMessages.homeSshPrivateKeyImported())
         }
     }
 
     fun saveHomeSshRoute() {
+        if (sshDraft != null) {
+            launch {
+                val settings = HomeSshRouteLogic.fromDraft(controller.currentState()).getOrNull()
+                if (settings == null) { reportHomeSshDraftFailure(SettingsStatusMessages.homeSshSettingsInvalid()); return@launch }
+                val result = try { sshDraft.save(settings) } catch (_: Exception) {
+                    reportHomeSshDraftFailure(SettingsStatusMessages.homeSshSettingsInvalid("OUTCOME_UNKNOWN")); return@launch
+                }
+                if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK) {
+                    reportHomeSshDraftFailure(SettingsStatusMessages.homeSshSettingsInvalid(result.code.wireName)); return@launch
+                }
+                sshDraft.close()
+                controller.update { it.copy(showHomeSshRouteDialog = false, homeSshDraftFailure = null,
+                    showHomeSshRestartDialog = result.restartRequired, homeSshRestartPending = result.restartRequired) }
+                updateStatus(SettingsStatusMessages.homeSshRouteSaved(result.restartRequired))
+            }
+            return
+        }
         launchMutation mutation@{
             val state = controller.currentState()
             val resolved = HomeSshRouteLogic.fromDraft(state).mapCatching { settings ->
                 HomeSshRouteLogic.validate(settings, credentialStore?.hasPrivateKey(settings.credentialVersion) == true).getOrThrow()
             }
             if (resolved.isFailure) {
-                updateStatus(SettingsStatusMessages.homeSshSettingsInvalid(resolved.exceptionOrNull()?.message.orEmpty()))
+                reportHomeSshDraftFailure(SettingsStatusMessages.homeSshSettingsInvalid("INVALID_ARGUMENT"))
                 return@mutation
             }
             val settings = resolved.getOrThrow()
@@ -96,6 +131,7 @@ internal class AndroidSettingsActionsService(
             controller.update {
                 it.copy(
                     showHomeSshRouteDialog = false,
+                    homeSshDraftFailure = null,
                     showHomeSshRestartDialog = restartRequired,
                     homeSshRestartPending = restartRequired,
                 )

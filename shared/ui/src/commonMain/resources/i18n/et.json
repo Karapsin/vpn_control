@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Paigaldamine nõuab interaktiivset seanssi.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Paigaldusluba ei antud.",
+  "UPDATE_INSTALL_CANCELLED": "Paigaldamine tühistati.",
+  "UPDATE_INSTALL_CONFIRMATION": "Oodatakse paigaldamise kinnitust.",
+  "UPDATE_INSTALL_COMPLETED": "Uuendus on paigaldatud.",
+  "UPDATE_INSTALL_UNKNOWN": "Paigaldamise tulemus pole teada.",
   "APP_TITLE": "VPN-i juhtimine",
   "TAB_MAIN": "Avaleht",
   "TAB_PROFILE": "Profiil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktiivne asukoht: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktiivne asukoht: pole saadaval",
+  "CONNECTION_RESTART_PENDING": "Salvestatud muudatuste rakendamiseks taaskäivitage ühendus.",
+  "CONNECTION_RESTART_UNKNOWN": "Pole teada, kas taaskäivitamine on vajalik."
 }

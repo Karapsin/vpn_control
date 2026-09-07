@@ -6,6 +6,7 @@ import java.nio.file.Path
 /** Native handles, not Java symbolic-link classification, define this trust boundary. */
 internal class DesktopWindowsInstallJobBackend(
     private val native: WindowsInstallNative = JnaWindowsInstallNative(),
+    private val ancestry: WindowsAdmissionNative = JnaWindowsInstallAdmission(),
 ) : DesktopInstallJobBackend {
     fun defaultRoot(): Path = Path.of(canonical(native.programData()) + "\\vpn-control-install-jobs")
 
@@ -38,15 +39,54 @@ internal class DesktopWindowsInstallJobBackend(
     private fun openDirectory(path: String, strict: Boolean): Pin {
         val handle = native.open(path, WindowsInstallNative.INSPECT, shareDelete = false)
         try {
-            WindowsInstallTrust.verify(native.inspect(handle), if (strict) WindowsInstallTrust.Kind.DIRECTORY else WindowsInstallTrust.Kind.ANCESTOR)
-            return Pin(handle)
+            val kind = if (strict) WindowsInstallTrust.Kind.DIRECTORY else WindowsInstallTrust.Kind.ANCESTOR
+            val info = native.inspect(handle)
+            try {
+                WindowsInstallTrust.verify(info, kind)
+                return Pin(handle)
+            } catch (rejection: IllegalArgumentException) {
+                if (strict) throw rejection
+                // Only the existing attribute/EA exception can request a witness.
+                WindowsInstallTrust.verify(info, kind, ancestorPinnedNonEmpty = true)
+                return Pin(handle, pinAncestorWitness(path, handle))
+            }
         } catch (error: Throwable) { native.close(handle); throw error }
     }
 
-    private inner class Pin(val handle: WindowsInstallNative.Handle) {
+    private fun pinAncestorWitness(path: String, parent: WindowsInstallNative.Handle): WindowsInstallNative.Handle {
+        val canonicalParent = ancestry.canonicalPath(parent).trimEnd('\\')
+        for (name in ancestry.children(path).take(4096)) {
+            if (name.isBlank() || name in setOf(".", "..") || name.any { it in "\\/:\u0000" }) continue
+            val child = runCatching {
+                native.open(path.trimEnd('\\') + "\\" + name, WindowsInstallNative.INSPECT, shareDelete = false)
+            }.getOrNull() ?: continue
+            var retained = false
+            try {
+                val info = native.inspect(child)
+                require(info.disk && info.attributes and 0x400 == 0 && info.reparseTag == 0)
+                require(ancestry.canonicalPath(child).substringBeforeLast('\\') == canonicalParent) { "Unlinked ancestor witness" }
+                // Recheck metadata and ACL after the linked non-delete-sharing child
+                // prevents the directory becoming empty (and thus becoming a reparse point).
+                WindowsInstallTrust.verify(native.inspect(parent), WindowsInstallTrust.Kind.ANCESTOR, ancestorPinnedNonEmpty = true)
+                require(ancestry.canonicalPath(parent).trimEnd('\\') == canonicalParent)
+                retained = true
+                return child
+            } catch (_: IllegalArgumentException) {
+                // Raced or unsuitable children prove nothing; fail closed if none qualify.
+            } finally { if (!retained) native.close(child) }
+        }
+        error("Unpinned mutable installer ancestor")
+    }
+
+    private inner class Pin(val handle: WindowsInstallNative.Handle, val witness: WindowsInstallNative.Handle? = null) {
         private var references = 1
         @Synchronized fun retain(): Pin { check(references > 0); references++; return this }
-        @Synchronized fun close() { check(references > 0); if (--references == 0) native.close(handle) }
+        @Synchronized fun close() {
+            check(references > 0)
+            if (--references == 0) {
+                try { witness?.let(native::close) } finally { native.close(handle) }
+            }
+        }
     }
 
     private inner class Directory(val path: String, val pins: List<Pin>) : DesktopInstallJobBackend.Directory {
@@ -115,7 +155,12 @@ internal class DesktopWindowsInstallJobBackend(
         @Synchronized override fun readBounded(maxBytes: Int): ByteArray {
             check(!closed); require(maxBytes in 0..1_048_576)
             val info = native.inspect(handle)
-            WindowsInstallTrust.verify(info, if (cancel) WindowsInstallTrust.Kind.CANCEL else WindowsInstallTrust.Kind.STATUS)
+            // Admission verified one link before constructing this retained handle.
+            // POSIX receipt replacement unlinks the old object while readers retain
+            // it. Only that read-only status capability may observe zero links;
+            // new opens, writers, cancellation and multiple links stay forbidden.
+            val policyInfo = if (!cancel && !writable && info.links == 0) info.copy(links = 1) else info
+            WindowsInstallTrust.verify(policyInfo, if (cancel) WindowsInstallTrust.Kind.CANCEL else WindowsInstallTrust.Kind.STATUS)
             require(info.size <= maxBytes && (!cancel || info.size == 1L)) { "Installer file exceeds bound" }
             val bytes = native.read(handle, maxBytes + 1)
             require(bytes.size <= maxBytes && native.inspect(handle).size <= maxBytes) { "Installer file grew beyond bound" }
@@ -170,7 +215,10 @@ internal object WindowsInstallTrust {
     }
     private fun validClientSid(sid: String) = Regex("S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+").matches(sid)
 
-    fun verify(info: WindowsInstallInfo, kind: Kind, expectedClient: String? = null) {
+    fun verify(info: WindowsInstallInfo, kind: Kind, expectedClient: String? = null,
+        ancestorPinnedNonEmpty: Boolean = false,
+    ) {
+        require(!ancestorPinnedNonEmpty || kind == Kind.ANCESTOR)
         require(info.disk && info.attributes and 0x400 == 0 && info.reparseTag == 0) { "Reparse/device path rejected" }
         require(info.owner in trusted || kind == Kind.ANCESTOR && info.owner == TRUSTED_INSTALLER) { "Untrusted installer owner" }
         require(info.directory == (kind == Kind.ANCESTOR || kind == Kind.DIRECTORY)) { "Unexpected installer object type" }
@@ -180,10 +228,14 @@ internal object WindowsInstallTrust {
         for (ace in acl) {
             require(ace.type == 0 || ace.type == 1) { "Unsupported installer ACE" }
             if (ace.flags and INHERIT_ONLY != 0 || ace.type == 1 || ace.sid in trusted) continue
-            val allowed = READ_MASK or when (kind) { Kind.ANCESTOR -> CHILD_CREATION; Kind.CANCEL -> WRITE_DATA; else -> 0 }
+            // FILE_WRITE_ATTRIBUTES can set a reparse point. Allow ancestor attribute/EA writes
+            // only after a retained non-delete-sharing child proves this directory cannot empty.
+            // Caller must also verify child/parent canonical linkage and re-inspect the parent.
+            val harmlessAncestor = CHILD_CREATION or if (ancestorPinnedNonEmpty) 0x110 else 0
+            val allowed = READ_MASK or when (kind) { Kind.ANCESTOR -> harmlessAncestor; Kind.CANCEL -> WRITE_DATA; else -> 0 }
             require(ace.mask and allowed.inv() == 0) { "Unsupported installer access mask" }
             val dangerous = ace.mask and MUTATION
-            if (kind == Kind.ANCESTOR && dangerous and CHILD_CREATION.inv() == 0) continue
+            if (kind == Kind.ANCESTOR && dangerous and harmlessAncestor.inv() == 0) continue
             if (kind == Kind.CANCEL && dangerous == WRITE_DATA && ace.mask and CLIENT_MASK.inv() == 0 && validClientSid(ace.sid)) {
                 writers += ace.sid
                 continue
@@ -208,5 +260,9 @@ internal interface WindowsInstallNative {
     fun rename(handle: Handle, directory: Handle, name: String)
     fun delete(handle: Handle)
     fun close(handle: Handle)
-    companion object { const val INSPECT = 0; const val READ = 1; const val READ_WRITE = 2; const val DELETE = 3 }
+    companion object {
+        const val INSPECT = 0; const val READ = 1; const val READ_WRITE = 2; const val DELETE = 3
+        /** Existing immutable input only: deny write/delete sharing for the retained handle lifetime. */
+        const val PINNED_READ = 4
+    }
 }

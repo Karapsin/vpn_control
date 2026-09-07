@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.ControlCode
 
 internal fun desktopGuiSourceAction(openingId: String, owner: String?, revision: Long,
@@ -8,7 +8,7 @@ internal fun desktopGuiSourceAction(openingId: String, owner: String?, revision:
     require(command.operation in setOf(com.kardinal.vpncontrol.model.ControlOperationId.SOURCE_SET,
         com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_DELETE))
     return frontendSettingsRequest(openingId, owner, revision, command.arguments,
-        command.operation.wireName + ":" + ControlProtocolCodec.encodeValues(command.arguments)).copy(command = command)
+        command.operation.wireName + ":" + ControlDocumentCodec.encodeValues(command.arguments)).copy(command = command)
 }
 
 internal fun desktopGuiLocationAction(openingId: String, owner: String?, revision: Long,
@@ -23,7 +23,7 @@ internal fun desktopGuiLocationAction(openingId: String, owner: String?, revisio
 /** Frontend feedback retains a stable code only, never controller response text or private inputs. */
 internal fun desktopGuiCommandFailure(response: DesktopCliResponse): ControlCode? {
     if (response.success) return null
-    val encoded = runCatching { ControlProtocolCodec.decodeResult(response.message) }.getOrNull()
+    val encoded = runCatching { ControlDocumentCodec.decodeResult(response.message) }.getOrNull()
     val code = encoded?.code ?: ControlCode.entries.firstOrNull { it.wireName == response.message }
     return code?.takeUnless { it.exitCode == 0 } ?: ControlCode.RUNTIME_FAILED
 }

@@ -12,6 +12,33 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AndroidConnectionControlTest {
+    @Test fun findBestGrantKeepsForegroundCapabilityDuringPlanning() = runTest {
+        val f = Fixture(AndroidCommandJobs(backgroundScope))
+        f.foreground = false
+        f.prepared = false
+        val prepared = async {
+            f.connection.prepareFindBest(
+                request(ControlOperationId.FIND_BEST).copy(interactive = true),
+                "find-best", f.state.value, { true })
+        }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("find-best"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        f.foreground = true
+        f.prepared = true
+        f.interactions.resolve(token, session, ControlCode.OK)
+        assertEquals(ControlCode.OK, prepared.await())
+        // The protected Activity closes when its capability disappears. Search
+        // probes must not lose the foreground needed for their first VPN start.
+        assertTrue(f.interactions.isActive(token))
+        assertEquals(session, f.interactions.attach(token, "owner", session))
+        assertNull(f.interactions.attach(token, "owner", null))
+        f.connection.finishFindBestInteraction("different-operation")
+        assertTrue(f.interactions.isActive(token))
+        f.connection.finishFindBestInteraction("find-best")
+        assertFalse(f.interactions.isActive(token))
+    }
+
     @Test fun cancellationControlPlaneIsBoundedAndDuplicateDoesNotConsumeAnotherSlot() = runTest {
         val f = Fixture(AndroidCommandJobs(backgroundScope))
         val requests = (0 until 32).map { operationRequest(ControlOperationId.OPERATIONS_CANCEL, "cancel-$it", "missing-$it") }

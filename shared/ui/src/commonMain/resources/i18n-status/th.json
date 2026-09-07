@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "กู้คืนตำแหน่ง {connectionLabel:0} ก่อนหน้าไม่สำเร็จ: {1} หยุด {connectionLabel:0} ไม่สำเร็จ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "บันทึกกฎการกำหนดเส้นทางแล้ว รีสตาร์ท {connectionLabel:0} เพื่อใช้งาน",
     "ROUTING_RULES_SAVE_FAILED": "การดำเนินการล้มเหลว",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "ไม่ทราบผลของการเปลี่ยนแปลงการกำหนดเส้นทาง ลองอีกครั้งด้วยข้อมูลเดิม",
+    "ROUTING_RULES_STALE_DRAFT": "การตั้งค่าการกำหนดเส้นทางเปลี่ยนไปแล้ว เปิดตัวแก้ไขอีกครั้งก่อนบันทึก",
     "DIAGNOSTICS_EXPORT_OPENED": "เปิดการส่งออกข้อมูลวินิจฉัยแล้ว",
     "APPS_LOAD_FAILED": "โหลดแอปไม่สำเร็จ",
     "SUBSCRIPTION_RECEIVED": "ได้รับการสมัครสมาชิกแล้ว ตรวจสอบและบันทึกในแท็บโปรไฟล์",

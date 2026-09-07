@@ -23,6 +23,10 @@ internal class AndroidApplicationOwner(context: Context) {
     val installedAppsCatalog = InstalledAppsCatalog(appContext)
     val commands = AndroidCommandJobs()
     val controlTransfers = AndroidControlTransfers()
+    val controlDocuments by lazy {
+        AndroidControlDocuments(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id,
+            { AndroidControlTransferSpool.create(appContext.cacheDir.toPath()) })
+    }
     // Manifest keeps this application/provider/VPN service in one process. The only
     // Libbox.newService call is AndroidVpnService.startVpn, which obtains owner.storage
     // before constructing a native handle. First owner construction therefore proves
@@ -30,6 +34,7 @@ internal class AndroidApplicationOwner(context: Context) {
     val runtimeObserver = AndroidRuntimeObserver(initiallyStopped = true)
     val preparedConnections = AndroidPreparedConnections()
     val runtimeCommands = AndroidRuntimeCommands()
+    val retainedRuntimeServices = AndroidRetainedRuntimeServices()
     val foreground = AndroidForegroundState(appContext as android.app.Application)
     val interactions = AndroidControlInteractions(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id)
     val connectionControl = AndroidConnectionControl(
@@ -61,8 +66,11 @@ internal class AndroidApplicationOwner(context: Context) {
         off = offControl,
         connection = connectionControl,
         updates = { updateActions.control },
-        updateInspection = { updateActions.control.inspection { updateState.value } },
+        updateInspection = { updateActions.control.inspection { updateState.value } + updateActions.installationInspection() },
         updateInstall = { updateInstall },
+        refresh = { subscriptionRefresh },
+        benchmark = { locationBenchmark },
+        findBest = { findBestControl },
         importKey = { content, epoch, revision -> storage.commitControlSshKey(content, epoch, revision,
             runtimeKnown = runtimeObserver::hasAuthoritativeConfiguration) },
         subscription = storage::commitControlSubscription,
@@ -80,6 +88,10 @@ internal class AndroidApplicationOwner(context: Context) {
             } }, runtimeObserver::pendingRestart),
         routing = { operation, arguments, epoch, revision -> storage.commitControlRouting(operation, arguments, epoch, revision,
             runtimeObserver::hasAuthoritativeConfiguration, installedAppsCatalog::load) },
+        routingImport = { rules, epoch, revision -> storage.commitPreparedControlRouting(rules, epoch, revision,
+            runtimeObserver::hasAuthoritativeConfiguration) },
+        routingDispatcher = kotlinx.coroutines.Dispatchers.IO,
+        retainedResults = AndroidRetainedControlResults { AndroidControlTransferSpool.create(appContext.cacheDir.toPath()) },
         setSource = { arguments, epoch, revision -> storage.commitControlSource(arguments, epoch, revision) {
             when (runtimeObserver.state.value.knowledge) {
                 AndroidRuntimeKnowledge.STOPPED -> false
@@ -88,6 +100,56 @@ internal class AndroidApplicationOwner(context: Context) {
             }
         } },
     )
+    private val locationBenchmark by lazy { AndroidLocationBenchmarkControl(
+        com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id, storage::configurationSnapshot,
+        orchestrator::stageLocationBenchmark, storage::commitControlBenchmark, runtimeObserver::pendingRestart,
+    ) }
+
+    private val findBestControl by lazy { AndroidFindBestControl(
+        com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id, storage::configurationSnapshot,
+        runtimeObserver::pendingRestart, connectionControl::prepareFindBest,
+        { state -> AndroidFindBestRuntime.open(runtimeObserver, vpnManager, retainedRuntimeServices) {
+            foreground.ready() && (state.appMode != com.kardinal.vpncontrol.model.AppMode.VPN ||
+                android.net.VpnService.prepare(appContext) == null)
+        } }, orchestrator::stageBestProfileAttemptPlan, orchestrator::verifySelectionCandidate,
+        orchestrator::verifyActiveSelection,
+        storage::commitControlBestSelection, connectionControl::cancelConsentWait,
+        connectionControl::finishFindBestInteraction,
+    ) }
+
+    fun findBestFromGui() { commands.launch {
+        val captured = storage.configurationSnapshot()
+        val result = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+            com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.FIND_BEST),
+            controllerId = captured.controllerId, ifRevision = captured.revision))
+        storage.updateStatus(if (result.code == com.kardinal.vpncontrol.model.ControlCode.CANCELLED)
+            com.kardinal.vpncontrol.model.BenchmarkStatusMessages.locationSearchCancelled()
+            else if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK)
+                com.kardinal.vpncontrol.model.BenchmarkStatusMessages.locationSearchFailed()
+            else com.kardinal.vpncontrol.ConnectionOrchestrationLogic.refreshSelectionStartedMessage(
+                captured.value.appMode, storage.configurationSnapshot().value.selectedProfileName))
+    } }
+
+    fun benchmarkLocation(target: AndroidRenderedLocationTarget) {
+        commands.launch {
+            val captured = storage.configurationSnapshot()
+            val ui = MainUiStateProjector.mergePersistedState(MainUiState(), captured.value)
+            val current = androidRenderedLocationTarget(ui, target.raw)
+            if (target.raw !in captured.value.currentLocations || current.scope != target.scope || current.sourceKey != target.sourceKey) {
+                storage.updateStatus(com.kardinal.vpncontrol.model.LocationStatusMessages.locationCheckFailed())
+                return@launch
+            }
+            val result = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(
+                java.util.UUID.randomUUID().toString(), com.kardinal.vpncontrol.model.ControlCommand(
+                    com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK,
+                    mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(
+                        com.kardinal.vpncontrol.data.AndroidLocationControl.identity(captured.controllerId, captured.value, target.raw)))),
+                controllerId = captured.controllerId, ifRevision = captured.revision))
+            if (!result.ok) storage.updateStatus(if (result.code == com.kardinal.vpncontrol.model.ControlCode.CANCELLED)
+                LocationStatusLogic.locationCheckCancelled() else com.kardinal.vpncontrol.model.LocationStatusMessages.locationCheckFailed())
+        }
+    }
+
     suspend fun importSshKey(content: String): com.kardinal.vpncontrol.model.ControlResult {
         val committed = storage.configurationSnapshot()
         return settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(
@@ -111,15 +173,19 @@ internal class AndroidApplicationOwner(context: Context) {
         committedSnapshot = storage::configurationSnapshot,
         pendingRestart = runtimeObserver::pendingRestart,
         settingsWrite = settingsControl::execute,
+        routingAdmission = settingsControl::admitRoutingImport,
+        routingDocumentAdmission = settingsControl::admitRoutingDocument,
+        inputSpool = { AndroidControlInputSpool(AndroidControlTransferSpool.create(appContext.cacheDir.toPath())) },
         operationIdForRequest = settingsControl::operationIdForRequest,
         statusSnapshot = runtimeObserver::controlStatus,
         credentialPresent = { state -> com.kardinal.vpncontrol.data.AndroidHomeSshCredentialStore(appContext)
             .hasPrivateKey(state.homeSshRouteSettings.credentialVersion) },
         updateSnapshot = { updateState.value },
-        updateInspection = { updateActions.control.inspection { updateState.value } },
+        updateInspection = { updateActions.control.inspection { updateState.value } + updateActions.installationInspection() },
         installedApps = installedAppsCatalog::load,
         diagnosticsExport = diagnosticsExporter::exportText,
     )
+    init { storage.observeConnectionLogs(controlReader::observeLogs) }
     private val mutableUpdateState = MutableStateFlow(AppUpdateState())
     val updateState = mutableUpdateState.asStateFlow()
     val updateActions = AndroidUpdateActionsService(
@@ -142,7 +208,8 @@ internal class AndroidApplicationOwner(context: Context) {
 
     fun dismissOrCancelUpdate() { commands.launch { updateCommand(com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DISMISS) } }
 
-    val updateInstall by lazy { AndroidUpdateInstallControl(updateActions.control, interactions, updateActions::pinInstallation) }
+    val updateInstall by lazy { AndroidUpdateInstallControl(updateActions.control, interactions,
+        recover = updateActions::recoverInstallation, pin = updateActions::pinInstallation) }
 
     fun installUpdate(launch: (android.content.Intent) -> Unit) {
         commands.launch {
@@ -173,6 +240,46 @@ internal class AndroidApplicationOwner(context: Context) {
             }
         }
     }
+
+    val subscriptionRefresh by lazy { AndroidSubscriptionRefreshControl(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id,
+        storage::configurationSnapshot, { _, _ -> error("CAPTURED_FETCH_REQUIRED") },
+        { loads, epoch, revision -> storage.commitControlRefresh(loads, epoch, revision) { runtimeObserver.state.value.knowledge } },
+        runtimeObserver::pendingRestart, { state, scheduled ->
+            if (scheduled) subscriptionRefreshScheduler.scheduleNext(state) else subscriptionRefreshScheduler.sync(state)
+        }, runtimeObserver::captureRuntime, AndroidRefreshSourceLoader(appContext, storage, runtimeObserver)::prepare) }
+
+    suspend fun refreshSubscriptions(target: String, continuation: AndroidRefreshContinuation? = null): com.kardinal.vpncontrol.model.ControlResult {
+        val committed = storage.configurationSnapshot()
+        return settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+            com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_REFRESH,
+                mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(target))),
+            controllerId = committed.controllerId, ifRevision = committed.revision), continuation)
+    }
+
+    fun refreshSubscriptionsFromGui(target: String) { commands.launch {
+        val result = refreshSubscriptions(target)
+        val refreshed = (result.data["refreshedCount"] as? com.kardinal.vpncontrol.model.ControlValue.IntegerValue)?.value?.toInt() ?: 0
+        val rows = (result.data["subscriptions"] as? com.kardinal.vpncontrol.model.ControlValue.ArrayValue)?.values.orEmpty()
+            .mapNotNull { (it as? com.kardinal.vpncontrol.model.ControlValue.ObjectValue)?.values }
+        val subscriptions = storage.snapshot().subscriptions
+        val failedNames = rows.filter { it["code"] != com.kardinal.vpncontrol.model.ControlValue.Text(com.kardinal.vpncontrol.model.ControlCode.OK.wireName) }
+            .mapNotNull { row -> subscriptions.firstOrNull { row["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(it.id) } }
+            .map { SubscriptionSourceLogic.sourceLabelFor(subscriptions, it.url) }
+        val summary = if (result.data["committed"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true))
+            SubscriptionRefreshResultLogic.genericSummary(refreshed, failedNames, rows.size) else result.code.wireName
+        repository.updateStatus(summary + if (result.warnings.isNotEmpty()) "\n" + result.warnings.joinToString(", ") else "")
+    } }
+
+    fun cancelActiveOperationFromGui() { commands.launch {
+        val target = settingsControl.activeFindBestOperationId() ?: settingsControl.activeRefreshOperationId() ?: settingsControl.activeBenchmarkOperationId()
+        if (target == null) { commands.cancelActive(); return@launch }
+        val committed = storage.configurationSnapshot()
+        val result = settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(java.util.UUID.randomUUID().toString(),
+            com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_CANCEL,
+                mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(target))),
+            controllerId = committed.controllerId, ifRevision = committed.revision))
+        if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK) repository.updateStatus(result.code.wireName)
+    } }
 
     private suspend fun updateCommand(operation: com.kardinal.vpncontrol.model.ControlOperationId): com.kardinal.vpncontrol.model.ControlResult {
         val committed = storage.configurationSnapshot()

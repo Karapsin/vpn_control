@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Namestitev zahteva interaktivno sejo.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Dovoljenje za namestitev je bilo zavrnjeno.",
+  "UPDATE_INSTALL_CANCELLED": "Namestitev je preklicana.",
+  "UPDATE_INSTALL_CONFIRMATION": "Čakanje na potrditev namestitve.",
+  "UPDATE_INSTALL_COMPLETED": "Posodobitev je nameščena.",
+  "UPDATE_INSTALL_UNKNOWN": "Izid namestitve ni znan.",
   "APP_TITLE": "Upravljanje VPN",
   "TAB_MAIN": "Glavno",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktivna lokacija: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktivna lokacija: ni na voljo",
+  "CONNECTION_RESTART_PENDING": "Znova zaženite povezavo, da uveljavite shranjene spremembe.",
+  "CONNECTION_RESTART_UNKNOWN": "Ni znano, ali je potreben ponovni zagon."
 }

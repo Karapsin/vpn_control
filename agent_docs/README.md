@@ -49,7 +49,9 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `smoke-android.md` | Android instrumentation commands and manual protocol smoke checklist. |
 | `macos-release.md` | macOS signing and notarization setup. |
 | `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
-| `work-in-progress.md` | Optional template for intentional multi-bucket dirty work. |
+| `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
+| `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |
+| `parity-native-history.md` | Historical native parity runs and artifact evidence; consult work-in-progress for current gates. |
 
 User-facing install and configuration instructions stay in `../README.md` and `../docs/`.
 

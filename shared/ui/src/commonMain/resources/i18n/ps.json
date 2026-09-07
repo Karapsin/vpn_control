@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "نصب یوې متقابلې ناستې ته اړتیا لري.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "د نصب اجازه رد شوه.",
+  "UPDATE_INSTALL_CANCELLED": "لګول لغوه شول.",
+  "UPDATE_INSTALL_CONFIRMATION": "د لګولو تایید ته انتظار کېږي.",
+  "UPDATE_INSTALL_COMPLETED": "اوسمهالول ولګول شول.",
+  "UPDATE_INSTALL_UNKNOWN": "د لګولو پایله معلومه نه ده.",
   "APP_TITLE": "د VPN کنټرول",
   "TAB_MAIN": "اصلي",
   "TAB_PROFILE": "پروفایل",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "فعاله موقعیت: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "فعاله موقعیت: شتون نه لري",
+  "CONNECTION_RESTART_PENDING": "د خوندي شویو بدلونونو د پلي کولو لپاره اتصال بیا پیل کړئ.",
+  "CONNECTION_RESTART_UNKNOWN": "معلومه نه ده چې بیا پیل ته اړتیا شته که نه."
 }

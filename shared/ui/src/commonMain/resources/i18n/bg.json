@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Инсталирането изисква интерактивна сесия.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Разрешението за инсталиране е отказано.",
+  "UPDATE_INSTALL_CANCELLED": "Инсталирането е отменено.",
+  "UPDATE_INSTALL_CONFIRMATION": "Изчаква се потвърждение за инсталиране.",
+  "UPDATE_INSTALL_COMPLETED": "Актуализацията е инсталирана.",
+  "UPDATE_INSTALL_UNKNOWN": "Резултатът от инсталирането е неизвестен.",
   "APP_TITLE": "VPN управление",
   "TAB_MAIN": "Основно",
   "TAB_PROFILE": "Профил",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Активна локация: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Активна локация: недостъпна",
+  "CONNECTION_RESTART_PENDING": "Рестартирайте връзката, за да приложите запазените промени.",
+  "CONNECTION_RESTART_UNKNOWN": "Не е известно дали е необходимо рестартиране."
 }

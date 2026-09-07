@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Неуспешно възстановяване на предишната локация на {connectionLabel:0}: {1}. Неуспешно спиране на {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Правилата за маршрутизиране са запазени. Рестартирайте {connectionLabel:0}, за да се приложат",
     "ROUTING_RULES_SAVE_FAILED": "Неуспешно запазване на правилата за маршрутизиране",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Резултатът от промяната на маршрутизирането е неизвестен. Опитайте отново със същите данни.",
+    "ROUTING_RULES_STALE_DRAFT": "Настройките за маршрутизиране са променени. Отворете редактора отново, преди да запазите.",
     "DIAGNOSTICS_EXPORT_OPENED": "Експортът на диагностика е отворен",
     "APPS_LOAD_FAILED": "Неуспешно зареждане на приложенията",
     "SUBSCRIPTION_RECEIVED": "Абонаментът е получен. Прегледайте го и го запазете в раздела Профил.",

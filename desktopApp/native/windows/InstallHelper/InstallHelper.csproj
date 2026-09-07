@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>vpn-control-install-helper</AssemblyName>
+    <RootNamespace>VpnControl.InstallHelper</RootNamespace>
+    <StartupObject>VpnInstallHelper</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\src\main\resources\windows-install-native.cs" Link="windows-install-native.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-install-helper.cs" Link="windows-install-helper.cs" />
+  </ItemGroup>
+</Project>

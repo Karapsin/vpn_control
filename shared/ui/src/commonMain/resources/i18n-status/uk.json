@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Не вдалося відновити попередню локацію {connectionLabel:0}: {1}. Не вдалося зупинити {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Правила маршрутизації збережено. Перезапустіть {connectionLabel:0}, щоб застосувати зміни",
     "ROUTING_RULES_SAVE_FAILED": "Не вдалося зберегти правила маршрутизації",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Результат зміни маршрутизації невідомий. Повторіть із тими самими даними.",
+    "ROUTING_RULES_STALE_DRAFT": "Налаштування маршрутизації змінилися. Перед збереженням знову відкрийте редактор.",
     "DIAGNOSTICS_EXPORT_OPENED": "Експорт діагностики відкрито",
     "APPS_LOAD_FAILED": "Не вдалося завантажити застосунки",
     "SUBSCRIPTION_RECEIVED": "Підписку отримано. Перегляньте й збережіть її на вкладці «Профіль».",

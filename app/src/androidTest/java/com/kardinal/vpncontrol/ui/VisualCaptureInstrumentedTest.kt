@@ -652,6 +652,11 @@ private fun androidVisualState(sceneId: String): MainUiState {
         "update-ready" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.READY))
         "update-up-to-date" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.UP_TO_DATE))
         "update-installing" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.INSTALLING))
+        "update-install-session-preparing" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.COMMITTING))
+        "update-install-session-confirmation" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.HANDED_OFF))
+        "update-install-session-installed" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.INSTALLED))
+        "update-install-session-failed" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.FAILED))
+        "update-install-session-unknown" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.UNKNOWN))
         "update-unsupported" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.UNSUPPORTED))
         "update-failed" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.FAILED))
         "stress-narrow-long-german" -> state.copy(appLanguage = AppLanguage.GERMAN)
@@ -660,6 +665,11 @@ private fun androidVisualState(sceneId: String): MainUiState {
     }
     return state
 }
+
+private fun androidVisualInstallSession(phase: com.kardinal.vpncontrol.AppInstallSessionPhase): AppUpdateState =
+    androidVisualUpdate(AppUpdatePhase.INSTALLING).copy(installSession = com.kardinal.vpncontrol.AppInstallSessionStatus(
+        "ad32b8c9-621a-4a7b-b75e-ab4d58f8cac2", phase, "2.3.4",
+        phase == com.kardinal.vpncontrol.AppInstallSessionPhase.HANDED_OFF))
 
 private fun androidVisualUpdate(phase: AppUpdatePhase): AppUpdateState = AppUpdateState(
     showDialog = true,

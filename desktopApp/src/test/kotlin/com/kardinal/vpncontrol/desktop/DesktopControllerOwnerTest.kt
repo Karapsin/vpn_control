@@ -12,6 +12,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class DesktopControllerOwnerTest {
+    @Test fun windowsOwnerBindsResourceScopeWithoutCreatingARecordOrLaunchingNativeWork() {
+        val directory = Files.createTempDirectory("vpn-owner-resource-scope")
+        val store = DesktopStateStore(directory)
+        val runtime = DesktopProxyRuntimeManager(runtimeConfigStore = store, baseDir = store.runtimeDirectory(),
+            directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(store.validationDirectory()))
+        val owner = DesktopControllerOwner(DesktopAppServiceFactory.createForTesting(store,
+            runtimeManager = runtime, controlPlatform = com.kardinal.vpncontrol.model.ControlPlatform.WINDOWS))
+        try {
+            assertEquals("CONFLICT", kotlin.test.assertFails {
+                runtime.bindRuntimeResourceScopeProvider(DesktopWindowsRuntimeResourceScopeProvider { null })
+            }.message)
+            kotlin.test.assertFalse(Files.exists(directory.resolve("runtime-resource-scope.json")))
+            kotlin.test.assertFalse(runtime.isRunning())
+        } finally { owner.close(); directory.toFile().deleteRecursively() }
+    }
+
     @Test
     fun processOwnerHandlesModernCliBeforeAnyGuiIsComposedAndSerializesStartup() = runBlocking {
         val directory = Files.createTempDirectory("vpn-control-process-owner")

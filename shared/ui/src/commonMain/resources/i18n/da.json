@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Installation kræver en interaktiv session.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Tilladelse til installation blev nægtet.",
+  "UPDATE_INSTALL_CANCELLED": "Installationen blev annulleret.",
+  "UPDATE_INSTALL_CONFIRMATION": "Venter på bekræftelse af installationen.",
+  "UPDATE_INSTALL_COMPLETED": "Opdateringen er installeret.",
+  "UPDATE_INSTALL_UNKNOWN": "Resultatet af installationen er ukendt.",
   "APP_TITLE": "VPN-kontrol",
   "TAB_MAIN": "Hovedside",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktiv placering: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktiv placering: utilgængelig",
+  "CONNECTION_RESTART_PENDING": "Genstart forbindelsen for at anvende de gemte ændringer.",
+  "CONNECTION_RESTART_UNKNOWN": "Det vides ikke, om genstart er nødvendig."
 }

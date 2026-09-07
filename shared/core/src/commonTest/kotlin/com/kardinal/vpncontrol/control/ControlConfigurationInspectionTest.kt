@@ -6,6 +6,16 @@ import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class ControlConfigurationInspectionTest {
+    @Test fun structuredRoutingShowMatchesExportDocumentWithoutTextRoundtrip() {
+        for (rules in listOf(RoutingRules(), RoutingRules(ignoreRules = true, blockQuicUdp443 = true,
+            proxyPackages = listOf("pkg.one", "pkg.two"), directDomainSuffixes = listOf("東京.test", "quote\".test", "line\nbreak")))) {
+            val shown = ControlConfigurationInspection.read(MainUiState(routingRules = rules),
+                ControlCommand(ControlOperationId.ROUTING_SHOW), 0).getOrThrow()
+            val legacy = ControlDocumentCodec.decodeValues(RoutingRulesTransfer.export(rules, "1970-01-01T00:00:00Z").content)
+            assertEquals(ControlValue.ObjectValue(legacy), shown["routing"])
+        }
+    }
+
     @Test fun exportsUseGuiTransferFormatsAndRejectDeviceSideDestinationArguments() {
         val locations = listOf("socks://user:SECRET@127.0.0.1:1080")
         val state = MainUiState(currentLocations = locations)

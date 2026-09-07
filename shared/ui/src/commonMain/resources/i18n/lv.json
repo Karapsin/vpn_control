@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Instalēšanai nepieciešama interaktīva sesija.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Instalēšanas atļauja tika liegta.",
+  "UPDATE_INSTALL_CANCELLED": "Instalēšana atcelta.",
+  "UPDATE_INSTALL_CONFIRMATION": "Gaida instalēšanas apstiprinājumu.",
+  "UPDATE_INSTALL_COMPLETED": "Atjauninājums ir instalēts.",
+  "UPDATE_INSTALL_UNKNOWN": "Instalēšanas rezultāts nav zināms.",
   "APP_TITLE": "VPN pārvaldība",
   "TAB_MAIN": "Galvenā",
   "TAB_PROFILE": "Profils",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktīvā atrašanās vieta: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktīvā atrašanās vieta: nav pieejama",
+  "CONNECTION_RESTART_PENDING": "Restartējiet savienojumu, lai lietotu saglabātās izmaiņas.",
+  "CONNECTION_RESTART_UNKNOWN": "Nav zināms, vai ir nepieciešama restartēšana."
 }

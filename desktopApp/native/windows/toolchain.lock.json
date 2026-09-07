@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "sdkVersion": "10.0.400",
+  "targetFramework": "net10.0-windows",
+  "runtimeFrameworkVersion": "10.0.11",
+  "runtimeIdentifier": "win-x64",
+  "sdkArchive": {
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.400/dotnet-sdk-10.0.400-win-x64.zip",
+    "sha512": "9b8b88590e4da131bfd0da7aa089d0fc04d5418d5f8607ec13d55dc5a17b4399afd54d496c12657fa05c6c6546dc5eab930f26ac6c50f2d3a7712c0fb378c366"
+  },
+  "releaseManifestUrl": "https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json",
+  "releaseManifestSha256": "5e3f4d08e6be9724ee3407b10ca19e33b6e895d74b6f122651b8bcac22b54fdb",
+  "visualStudioBuildTools": {
+    "version": "17.14.39",
+    "installationVersion": "17.14.37614.0",
+    "bootstrapperUrl": "https://download.visualstudio.microsoft.com/download/pr/fa619120-9c0e-47e6-bfe0-3ee96fb671b2/236367b68ba9a51708263ab10a1c85546cc4a8eca78b365168811d19c4fb2f29/vs_BuildTools.exe",
+    "sha256": "236367b68ba9a51708263ab10a1c85546cc4a8eca78b365168811d19c4fb2f29",
+    "releaseHistoryUrl": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/release-history"
+  }
+}

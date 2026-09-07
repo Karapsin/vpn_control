@@ -43,9 +43,10 @@ internal class DesktopFindBestService(
         activeVerificationPort: Int?,
     ) -> Result<Unit>,
     private val verifyCandidate: DesktopCandidateVerifierFn,
-    private val commitState: (locations: List<DesktopLocationRecord>, state: MainUiState) -> Unit,
+    private val commitState: (locations: List<DesktopLocationRecord>, state: MainUiState) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
     private val evaluateProfiles: DesktopProfileEvaluator,
+    private val captureRuntimeRestore: () -> (suspend () -> Result<Unit>),
 ) {
     suspend fun findBestLocation(refreshSubscriptionsFirst: Boolean = true): Result<Unit> {
         val preconditionError = MainCommandLogic.refreshPreconditionError(stateProvider())
@@ -54,8 +55,68 @@ internal class DesktopFindBestService(
             return Result.failure(IllegalStateException(preconditionError))
         }
 
+        var unresolvedRuntime = false
+        var runtimeMayHaveChanged = false
+        var runtimeCommitted = false
+        var capturedRestore: (suspend () -> Result<Unit>)? = null
+        var restoration: Result<Unit>? = null
+        suspend fun restoreOnce(): Result<Unit> {
+            if (!runtimeMayHaveChanged || runtimeCommitted || unresolvedRuntime) return Result.success(Unit)
+            restoration?.let { return it }
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    requireNotNull(capturedRestore).invoke()
+                } catch (failure: Exception) {
+                    Result.failure<Unit>(failure)
+                }
+            }
+            restoration = result
+            return result
+        }
+        suspend fun reconcileFailure(failure: Throwable): Throwable {
+            if (failure.message == "OUTCOME_UNKNOWN") {
+                unresolvedRuntime = true
+                desktopControlReportPendingOutcome()
+                return failure
+            }
+            val restoreFailure = restoreOnce().exceptionOrNull() ?: return failure
+            if (restoreFailure.message == "OUTCOME_UNKNOWN") {
+                unresolvedRuntime = true
+                desktopControlReportPendingOutcome()
+                return restoreFailure
+            }
+            return IllegalStateException("ROLLBACK_FAILED")
+        }
+        return try {
+            // Capture before refresh: staged selection is never a runtime recovery target.
+            capturedRestore = captureRuntimeRestore()
+            val result = findBestAdmitted(
+                refreshSubscriptionsFirst,
+                restoreRuntime = { restoreOnce() },
+                onRuntimeMutation = { runtimeMayHaveChanged = true },
+                onRuntimeCommitted = { runtimeCommitted = true },
+            )
+            result.exceptionOrNull()?.let { Result.failure(reconcileFailure(it)) } ?: result
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            val failure = reconcileFailure(cancelled)
+            if (failure === cancelled) throw cancelled
+            Result.failure(failure)
+        } catch (failure: Exception) {
+            Result.failure(reconcileFailure(failure))
+        } finally {
+            updateState { it.copy(isBusy = unresolvedRuntime, isRefreshing = false) }
+        }
+    }
+
+    private suspend fun findBestAdmitted(
+        refreshSubscriptionsFirst: Boolean,
+        restoreRuntime: suspend () -> Result<Unit>,
+        onRuntimeMutation: () -> Unit,
+        onRuntimeCommitted: () -> Unit,
+    ): Result<Unit> {
         if (refreshSubscriptionsFirst && stateProvider().profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
             val refreshTargets = MainCommandLogic.currentSubscriptionSearchTargets(stateProvider())
+            onRuntimeMutation()
             val refreshResult = refreshSubscriptions(
                 refreshTargets,
                 SubscriptionRefreshResultLogic.refreshStartMessage(refreshTargets.size),
@@ -65,7 +126,8 @@ internal class DesktopFindBestService(
             }
         }
 
-        val profiles = visibleLocationsProvider().mapNotNull { location ->
+        val observedLocations = visibleLocationsProvider().toList()
+        val profiles = observedLocations.mapNotNull { location ->
             runCatching { LocationConfigs.decodeStoredLocation(location.rawLink) }.getOrNull()
         }
         if (profiles.isEmpty()) {
@@ -81,10 +143,6 @@ internal class DesktopFindBestService(
         }
 
         val state = stateProvider()
-        val previousLocations = locationsProvider()
-        val previousLocation = previousLocations.firstOrNull { it.matchesSelectedLocation(state) }
-        val previousBenchmarkSummary = state.lastBenchmarkSummary
-        val wasRunning = state.isVpnRunning
         val validationSettings = state.validationSettings.normalized()
         val benchmarkUrls = BenchmarkUrls(
             test = validationSettings.testUrl,
@@ -113,7 +171,7 @@ internal class DesktopFindBestService(
 
         updateLocationBenchmarks(
             detailsByRawKey = attemptPlan.locationBenchmarkDetails,
-            winningRawKey = null,
+            winningLocation = null,
         )
 
         if (attemptPlan.orderedAttempts.isEmpty()) {
@@ -159,6 +217,7 @@ internal class DesktopFindBestService(
                     benchmarkUrls,
                     desktopValidationSettings,
                 ).getOrElse { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
                     BenchmarkSearchLogic.failedActiveVerificationBenchmark(
                         candidate = candidate,
                         reason = error.message ?: "candidate_verification_failed",
@@ -174,7 +233,7 @@ internal class DesktopFindBestService(
                 detailsByRawKey = precheck.completed.associate { result ->
                     normalizedProfileKey(result.benchmark.profile) to result.benchmark.detail
                 },
-                winningRawKey = null,
+                winningLocation = null,
             )
             logBenchmarkDetails(precheck.completed.map { it.benchmark })
 
@@ -188,8 +247,13 @@ internal class DesktopFindBestService(
             for (winner in verifiedCandidates) {
                 val candidate = winner.attempt
                 val candidateRawKey = normalizedProfileKey(candidate.profile)
-                val candidateLocation = locationsProvider().firstOrNull {
+                val observedLocation = observedLocations.firstOrNull {
                     it.normalizedStorageKey() == candidateRawKey
+                }
+                val candidateLocation = observedLocation?.let { observed ->
+                    locationsProvider().firstOrNull {
+                        it.sourceUrl == observed.sourceUrl && it.rawLink == observed.rawLink
+                    }
                 }
                 if (candidateLocation == null) {
                     lastFailureMessage = BenchmarkStatusMessages.bestLocationNotMapped()
@@ -210,8 +274,16 @@ internal class DesktopFindBestService(
                     selectedBenchmark.profile.remarks,
                     selectedBenchmark.detail.toCompactBenchmarkLabel(),
                 )
+                onRuntimeMutation()
                 val startResult = startConnection(candidateLocation, summary, null)
                 if (startResult.isFailure) {
+                    val failure = requireNotNull(startResult.exceptionOrNull())
+                    if (failure.message == "OUTCOME_UNKNOWN") return startResult
+                    if (failure is kotlinx.coroutines.CancellationException || failure.message == "CANCELLED") {
+                        val restored = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restoreRuntime() }
+                        if (restored.isFailure) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+                        return startResult
+                    }
                     val benchmark = BenchmarkSearchLogic.failedActiveVerificationBenchmark(
                         candidate = candidate,
                         reason = startResult.exceptionOrNull()?.message ?: "start_failed",
@@ -219,17 +291,18 @@ internal class DesktopFindBestService(
                     )
                     updateLocationBenchmarks(
                         detailsByRawKey = mapOf(candidateRawKey to benchmark.detail),
-                        winningRawKey = null,
+                        winningLocation = null,
                     )
                     logBenchmarkDetails(listOf(benchmark))
                     lastFailureMessage = benchmark.detail
                     continue
                 }
 
+                onRuntimeCommitted()
                 candidateBenchmarks[candidateRawKey] = selectedBenchmark
                 updateLocationBenchmarks(
                     detailsByRawKey = mapOf(candidateRawKey to selectedBenchmark.detail),
-                    winningRawKey = candidateRawKey,
+                    winningLocation = candidateLocation,
                 )
                 commitState(
                     locationsProvider(),
@@ -243,36 +316,30 @@ internal class DesktopFindBestService(
                             selectedBenchmark.profile.remarks,
                         ),
                     ),
-                )
+                ).getOrThrow()
                 return Result.success(Unit)
             }
             currentIndex += window.size.coerceAtLeast(1)
         }
 
         val finalMessage = lastFailureMessage ?: BenchmarkStatusMessages.noSuitableLocationFound()
-        if (wasRunning && previousLocation != null) {
-            val restoreResult = startConnection(previousLocation, previousBenchmarkSummary, null)
-            updateState {
-                it.copy(isBusy = false, isRefreshing = false).withStatus(
-                    if (restoreResult.isSuccess) {
-                        ConnectionStatusMessages.previousConnectionRestoredWithReason(state.appMode, finalMessage)
-                    } else {
-                        restoreResult.exceptionOrNull()?.message ?: finalMessage
-                    },
-                )
-            }
-        } else {
-            commitState(
-                previousLocations,
-                state.copy(isBusy = false, isRefreshing = false, isVpnRunning = false).withStatus(finalMessage),
+        val restoreResult = restoreRuntime()
+        updateState {
+            it.copy(isBusy = false, isRefreshing = false).withStatus(
+                if (restoreResult.isFailure) {
+                    if (it.isVpnRunning) ConnectionStatusMessages.connectionStartFailed(state.appMode)
+                    else ConnectionStatusMessages.previousConnectionRestoreFailedStopped(state.appMode, finalMessage)
+                } else if (it.isVpnRunning) ConnectionStatusMessages.previousConnectionRestoredWithReason(state.appMode, finalMessage)
+                else finalMessage,
             )
         }
+        if (restoreResult.isFailure) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
         return Result.failure(IllegalStateException(finalMessage))
     }
 
     private fun updateLocationBenchmarks(
         detailsByRawKey: Map<String, String>,
-        winningRawKey: String?,
+        winningLocation: DesktopLocationRecord?,
     ) {
         if (detailsByRawKey.isEmpty()) return
         val normalizedDetails = detailsByRawKey.mapKeys { (rawKey, _) ->
@@ -280,18 +347,18 @@ internal class DesktopFindBestService(
         }
         val updatedLocations = locationsProvider().map { location ->
             val normalized = location.normalizedStorageKey()
-            val detail = normalizedDetails[normalized] ?: return@map location
+            val detail = normalizedDetails[normalized]
             location.copy(
-                benchmarkDetail = detail.toCompactBenchmarkLabel(),
-                isValid = benchmarkDetailIndicatesSelectable(detail, location.isValid),
-                isSelected = if (winningRawKey != null) {
-                    normalized == winningRawKey
+                benchmarkDetail = detail?.toCompactBenchmarkLabel() ?: location.benchmarkDetail,
+                isValid = detail?.let { benchmarkDetailIndicatesSelectable(it, location.isValid) } ?: location.isValid,
+                isSelected = if (winningLocation != null) {
+                    location.sourceUrl == winningLocation.sourceUrl && location.rawLink == winningLocation.rawLink
                 } else {
                     location.isSelected
                 },
             )
         }
-        commitState(updatedLocations, stateProvider())
+        commitState(updatedLocations, stateProvider()).getOrThrow()
     }
 
     private fun normalizedProfileKey(profile: ProxyProfile): String =

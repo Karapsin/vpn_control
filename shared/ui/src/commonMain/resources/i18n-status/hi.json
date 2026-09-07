@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "पिछला {connectionLabel:0} स्थान बहाल करने में विफल: {1}। {connectionLabel:0} को बंद करने में विफल: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "रूटिंग नियम सहेजे गए। लागू करने के लिए {connectionLabel:0} को फिर से शुरू करें",
     "ROUTING_RULES_SAVE_FAILED": "कार्रवाई विफल हुई",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "रूटिंग बदलाव का परिणाम अज्ञात है। उसी इनपुट के साथ फिर से प्रयास करें।",
+    "ROUTING_RULES_STALE_DRAFT": "रूटिंग सेटिंग बदल गई हैं। सहेजने से पहले संपादक फिर से खोलें।",
     "DIAGNOSTICS_EXPORT_OPENED": "स्थिति अपडेट हुई",
     "APPS_LOAD_FAILED": "कार्रवाई विफल हुई",
     "SUBSCRIPTION_RECEIVED": "सदस्यता अपडेट हुई",

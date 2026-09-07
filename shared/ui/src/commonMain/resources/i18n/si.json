@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ස්ථාපනය සඳහා අන්තර්ක්‍රියාකාරී සැසියක් අවශ්‍ය වේ.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ස්ථාපනය කිරීමට අවසරය ප්‍රතික්ෂේප විය.",
+  "UPDATE_INSTALL_CANCELLED": "ස්ථාපනය අවලංගු කරන ලදී.",
+  "UPDATE_INSTALL_CONFIRMATION": "ස්ථාපනය තහවුරු කරන තෙක් රැඳී සිටී.",
+  "UPDATE_INSTALL_COMPLETED": "යාවත්කාලීනය ස්ථාපනය කරන ලදී.",
+  "UPDATE_INSTALL_UNKNOWN": "ස්ථාපනයේ ප්‍රතිඵලය නොදනී.",
   "APP_TITLE": "VPN පාලනය",
   "TAB_MAIN": "ප්‍රධාන",
   "TAB_PROFILE": "පැතිකඩ",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "සක්‍රිය ස්ථානය: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "සක්‍රිය ස්ථානය: ලබාගත නොහැක",
+  "CONNECTION_RESTART_PENDING": "සුරැකි වෙනස්කම් යෙදීමට සම්බන්ධතාව නැවත ආරම්භ කරන්න.",
+  "CONNECTION_RESTART_UNKNOWN": "නැවත ආරම්භ කිරීම අවශ්‍යදැයි නොදනී."
 }

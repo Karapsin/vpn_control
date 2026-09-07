@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Барқарор кардани макони пешинаи {connectionLabel:0} ноком шуд: {1}. Қатъ кардани {connectionLabel:0} ноком шуд: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Қоидаҳои масиргузорӣ захира шуданд. Барои татбиқ {connectionLabel:0}-ро аз нав оғоз кунед",
     "ROUTING_RULES_SAVE_FAILED": "Захираи қоидаҳои масир ноком шуд",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Натиҷаи тағйири масир номаълум аст. Бо ҳамон маълумот дубора кӯшиш кунед.",
+    "ROUTING_RULES_STALE_DRAFT": "Танзимоти масир тағйир ёфтанд. Пеш аз захира муҳаррирро аз нав кушоед.",
     "DIAGNOSTICS_EXPORT_OPENED": "Содироти ташхис кушода шуд",
     "APPS_LOAD_FAILED": "Боркунии барномаҳо ноком шуд",
     "SUBSCRIPTION_RECEIVED": "Обуна қабул шуд. Онро дар ҷадвали Профил санҷида захира кунед.",

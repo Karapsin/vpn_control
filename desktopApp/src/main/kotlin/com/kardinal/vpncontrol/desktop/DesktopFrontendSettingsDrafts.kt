@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
 import java.util.UUID
 import java.security.MessageDigest
@@ -45,7 +45,7 @@ internal data class DesktopDnsDraft(
 }
 
 internal fun frontendSettingsRequest(openingId: String, controllerId: String?, revision: Long,
-    values: Map<String, ControlValue>, inputIdentity: String = ControlProtocolCodec.encodeValues(values)): ControlRequest {
+    values: Map<String, ControlValue>, inputIdentity: String = ControlDocumentCodec.encodeValues(values)): ControlRequest {
         val digest = MessageDigest.getInstance("SHA-256")
         for (value in listOf(openingId, controllerId.orEmpty(), revision.toString(), inputIdentity)) {
             val bytes = value.toByteArray(Charsets.UTF_8)
@@ -54,7 +54,7 @@ internal fun frontendSettingsRequest(openingId: String, controllerId: String?, r
         }
         return ControlRequest("settings-" + digest.digest().joinToString("") { "%02x".format(it) },
         ControlCommand(ControlOperationId.SETTINGS_APPLY,
-            mapOf("input" to ControlValue.Text(ControlProtocolCodec.encodeValues(values)))),
+            mapOf("input" to ControlValue.Text(ControlDocumentCodec.encodeValues(values)))),
         controllerId = controllerId, ifRevision = revision)
 }
 
@@ -154,7 +154,7 @@ internal data class DesktopSettingsDraft(
         }
     }
     fun request(): Result<ControlRequest> = values().map { frontendSettingsRequest(openingId, controllerId, revision, it,
-        ControlProtocolCodec.encodeValues(fields.mapValues { (_, value) -> ControlValue.Text(value) })) }
+        ControlDocumentCodec.encodeValues(fields.mapValues { (_, value) -> ControlValue.Text(value) })) }
     override fun toString() = "DesktopSettingsDraft(group=$group, revision=$revision, input=<redacted>)"
 
     companion object {

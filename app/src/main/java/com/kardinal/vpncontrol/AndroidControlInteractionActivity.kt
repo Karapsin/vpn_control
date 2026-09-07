@@ -85,7 +85,11 @@ class AndroidControlInteractionActivity : ComponentActivity() {
                                 check(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && hasWindowFocus() &&
                                     !getSystemService(KeyguardManager::class.java).isDeviceLocked && owner.foreground.ready())
                                 check(packageManager.canRequestPackageInstalls())
-                                startActivity(intent)
+                                @Suppress("DEPRECATION")
+                                val sender = intent.getParcelableExtra<android.content.IntentSender>(
+                                    AndroidPackageInstallSessions.INSTALL_CONFIRMATION)
+                                if (sender != null) startIntentSender(sender, null, 0, 0, 0)
+                                else startActivity(intent)
                             }
                         } finally { installDispatching = false }
                     }

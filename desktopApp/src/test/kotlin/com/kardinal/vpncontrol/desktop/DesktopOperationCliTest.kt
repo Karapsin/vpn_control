@@ -1,6 +1,9 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.model.ControlCode
+import com.kardinal.vpncontrol.model.ControlResult
 import java.nio.file.Files
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +34,8 @@ class DesktopOperationCliTest {
                 assertTrue(submission.request.asynchronous)
                 assertTrue(requests.add(submission.request.requestId))
                 assertEquals(submission, DesktopCliProtocol.decodeCommand(DesktopCliProtocol.encodeCommand(submission)).getOrThrow())
-                DesktopCliResponse.success("accepted")
+                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner",
+                    submission.request.requestId, ControlCode.ACCEPTED, 0, operationId = "operation", final = false)))
             }))
         }
         for (arguments in listOf(arrayOf("--async", "status"), arrayOf("--async", "--json", "settings", "show"),
@@ -80,29 +84,37 @@ class DesktopOperationCliTest {
         try {
             fun invoke(vararg arguments: String): Pair<Int?, String> {
                 val output = mutableListOf<String>()
-                val code = DesktopCli.handleArgs(arrayOf("operations", *arguments), output::add,
+                val code = DesktopCli.handleArgs(arrayOf("--json", "operations", *arguments), output::add,
                     requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
                     startHeadlessController = { error("Must reuse owner") })
                 return code to output.joinToString("\n")
             }
-            assertEquals(0 to "[]", invoke("list"))
+            fun data(response: String) = Json.parseToJsonElement(response).jsonObject.getValue("data").jsonObject
+            val empty = invoke("list")
+            assertEquals(0, empty.first)
+            assertTrue(data(empty.second).getValue("operations").jsonArray.isEmpty())
             val action = async(Dispatchers.IO) {
                 DesktopActivationServer.requestCliCommand(DesktopCliCommand.LocationBenchmark("private-input"), endpoint)
             }
             kotlinx.coroutines.withTimeout(5_000) { started.await() }
             val running = invoke("list")
             assertEquals(0, running.first)
-            val operation = Json.parseToJsonElement(running.second).jsonArray.single().jsonObject
+            val operation = data(running.second).getValue("operations").jsonArray.single().jsonObject
             val id = operation.getValue("id").jsonPrimitive.content
             assertEquals(DesktopControlEndpoint.read(endpoint).controllerId, operation.getValue("controllerId").jsonPrimitive.content)
             assertEquals("running", operation.getValue("phase").jsonPrimitive.content)
             assertEquals(0, invoke("status", id).first)
-            assertEquals(1 to "NOT_FOUND", invoke("status", "missing"))
+            val missing = invoke("status", "missing")
+            assertEquals(1, missing.first)
+            assertEquals(ControlCode.NOT_FOUND, ControlProtocolCodec.decodeResult(missing.second).code)
             finish.complete(Unit)
             assertTrue(action.await().success)
             val completed = invoke("status", id)
             assertEquals(0, completed.first)
-            assertEquals("succeeded", Json.parseToJsonElement(completed.second).jsonObject.getValue("phase").jsonPrimitive.content)
+            val terminal = ControlProtocolCodec.decodeResult(completed.second)
+            assertEquals(ControlCode.OK, terminal.code)
+            assertTrue(terminal.final)
+            assertEquals(id, terminal.operationId)
             assertFalse(completed.second.contains("private"))
             assertEquals("0", Json.parseToJsonElement(completed.second).jsonObject.getValue("configurationRevision").jsonPrimitive.content)
             assertEquals(0, invoke("wait", id).first)
@@ -118,7 +130,7 @@ class DesktopOperationCliTest {
             assertEquals("false", accepted.getValue("final").jsonPrimitive.content)
             assertEquals(session.controllerId, accepted.getValue("controllerId").jsonPrimitive.content)
             kotlinx.coroutines.withTimeout(5_000) { updateStarted.await() }
-            val updateId = Json.parseToJsonElement(invoke("list").second).jsonArray.last().jsonObject.getValue("id").jsonPrimitive.content
+            val updateId = data(invoke("list").second).getValue("operations").jsonArray.last().jsonObject.getValue("id").jsonPrimitive.content
             assertEquals(updateId, accepted.getValue("operationId").jsonPrimitive.content)
             val retry = submitted.copy(request = submitted.request.copy(controllerId = session.controllerId))
             val repeated = DesktopActivationServer.requestCliCommand(retry, endpoint)
@@ -138,7 +150,10 @@ class DesktopOperationCliTest {
             val jsonList = invokeJson("list")
             assertEquals(0, jsonList.first)
             assertEquals(2, (jsonList.second.data["operations"] as com.kardinal.vpncontrol.model.ControlValue.ArrayValue).values.size)
-            assertEquals(0, invokeJson("status", updateId).first)
+            val pendingStatus = invokeJson("status", updateId)
+            assertEquals(0, pendingStatus.first)
+            assertEquals(com.kardinal.vpncontrol.model.ControlCode.ACCEPTED, pendingStatus.second.code)
+            assertFalse(pendingStatus.second.final)
             assertEquals(com.kardinal.vpncontrol.model.ControlCode.NOT_FOUND, invokeJson("status", "missing").second.code)
             val timedOut = invokeJson("wait", updateId, "--timeout-seconds", "1")
             assertEquals(2, timedOut.first)
@@ -151,6 +166,9 @@ class DesktopOperationCliTest {
             val jsonWait = invokeJson("wait", updateId)
             assertEquals(130, jsonWait.first)
             assertEquals(com.kardinal.vpncontrol.model.ControlCode.CANCELLED, jsonWait.second.code)
+            val retainedStatus = invokeJson("status", updateId)
+            assertEquals(130, retainedStatus.first)
+            assertEquals(jsonWait.second.copy(requestId = retainedStatus.second.requestId), retainedStatus.second)
         } finally {
             finish.complete(Unit)
             server.close()

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ထည့်သွင်းရန် အပြန်အလှန်တုံ့ပြန်နိုင်သော စက်ရှင် လိုအပ်သည်။",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ထည့်သွင်းခွင့်ကို ငြင်းပယ်ထားသည်။",
+  "UPDATE_INSTALL_CANCELLED": "ထည့်သွင်းမှုကို ပယ်ဖျက်လိုက်ပါပြီ။",
+  "UPDATE_INSTALL_CONFIRMATION": "ထည့်သွင်းမှု အတည်ပြုချက်ကို စောင့်နေသည်။",
+  "UPDATE_INSTALL_COMPLETED": "အပ်ဒိတ်ကို ထည့်သွင်းပြီးပါပြီ။",
+  "UPDATE_INSTALL_UNKNOWN": "ထည့်သွင်းမှုရလဒ်ကို မသိရပါ။",
   "APP_TITLE": "VPN ထိန်းချုပ်မှု",
   "TAB_MAIN": "ပင်မ",
   "TAB_PROFILE": "ပရိုဖိုင်",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "အသုံးပြုနေသော တည်နေရာ: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "အသုံးပြုနေသော တည်နေရာ: မရရှိနိုင်ပါ",
+  "CONNECTION_RESTART_PENDING": "သိမ်းဆည်းထားသော ပြောင်းလဲမှုများကို အသုံးပြုရန် ချိတ်ဆက်မှုကို ပြန်စတင်ပါ။",
+  "CONNECTION_RESTART_UNKNOWN": "ပြန်စတင်ရန် လိုအပ်ခြင်းရှိမရှိ မသိရသေးပါ။"
 }

@@ -1,0 +1,43 @@
+// Fixed NativeAOT entrypoint. Runtime configuration and resources arrive only on the authenticated pipe.
+using System;
+using System.Globalization;
+[assembly:System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+public static class VpnRuntimeBrokerEntry {
+ public sealed class Invocation {
+  public readonly string PipeName,OwnerSid,RuntimeSha256;
+  public readonly uint OwnerProcessId;
+  public readonly long OwnerCreationFileTime;
+  internal Invocation(string pipe,uint pid,long created,string sid,string digest) {
+   PipeName=pipe;OwnerProcessId=pid;OwnerCreationFileTime=created;OwnerSid=sid;RuntimeSha256=digest;
+  }
+  public override string ToString() { return "Native broker invocation (<redacted>)"; }
+ }
+ public static Invocation Parse(string[] args) {
+  if(args==null||args.Length!=5) throw new ArgumentException("INVALID_ARGUMENT");
+  foreach(string argument in args) if(argument==null||argument.IndexOf('\0')>=0) throw new ArgumentException("INVALID_ARGUMENT");
+  const string prefix="vpn-control-vpn-";Guid id;
+  if(!args[0].StartsWith(prefix,StringComparison.Ordinal)||
+    !Guid.TryParseExact(args[0].Substring(prefix.Length),"D",out id)||prefix+id.ToString("D")!=args[0])
+   throw new ArgumentException("INVALID_ARGUMENT");
+  uint pid;long created;
+  if(!UInt32.TryParse(args[1],NumberStyles.None,CultureInfo.InvariantCulture,out pid)||pid==0||pid.ToString(CultureInfo.InvariantCulture)!=args[1]||
+    !Int64.TryParse(args[2],NumberStyles.None,CultureInfo.InvariantCulture,out created)||created<=0||created.ToString(CultureInfo.InvariantCulture)!=args[2])
+   throw new ArgumentException("INVALID_ARGUMENT");
+  VpnScopedStorage.OwnerIdentity owner;
+  try { owner=new VpnScopedStorage.OwnerIdentity(pid,created,args[3]); }
+  catch(System.IO.IOException) { throw new ArgumentException("INVALID_ARGUMENT"); }
+  if(args[4].Length!=64) throw new ArgumentException("INVALID_ARGUMENT");
+  foreach(char digit in args[4]) if(!((digit>='0'&&digit<='9')||(digit>='a'&&digit<='f'))) throw new ArgumentException("INVALID_ARGUMENT");
+  return new Invocation(args[0],pid,created,owner.Sid,args[4]);
+ }
+ public static int Main(string[] args) {
+  try {
+   Invocation invocation=Parse(args);
+   VpnRuntimeBroker.Run(invocation.PipeName,invocation.OwnerProcessId,invocation.OwnerCreationFileTime,
+    invocation.OwnerSid,invocation.RuntimeSha256);
+   return 0;
+  } catch(OutOfMemoryException) { Console.Error.WriteLine("RESOURCE_EXHAUSTED");return 1; }
+  catch(ArgumentException) { Console.Error.WriteLine("INVALID_ARGUMENT");return 1; }
+  catch(Exception) { Console.Error.WriteLine("RUNTIME_FAILED");return 1; }
+ }
+}

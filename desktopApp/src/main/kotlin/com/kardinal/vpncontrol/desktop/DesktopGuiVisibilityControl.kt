@@ -56,11 +56,13 @@ internal class DesktopGuiVisibilityControl(
             if (code == ControlCode.OK) {
                 val pinned = requireNotNull(frontend)
                 val command = DesktopCliCommand.ControlSubmit(input.copy(controllerId = pinned,
-                    command = ControlCommand(input.command.operation, mapOf("owner" to ControlValue.Text(ownerId)))), 3)
+                    command = ControlCommand(input.command.operation, mapOf("owner" to ControlValue.Text(ownerId)))),
+                    DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS / 1000 + 3)
                 val answer = withContext(Dispatchers.IO) { request(command, DesktopFrontendInstance.endpoint(directory)) }
                 val decoded = runCatching { ControlProtocolCodec.decodeResult(answer.message) }.getOrNull()
                 code = when {
                     registration() != pinned -> ControlCode.CONFLICT
+                    answer.isDesktopAppNotRunning -> ControlCode.UNAVAILABLE
                     decoded == null -> ControlCode.entries.firstOrNull { it.wireName == answer.message && it.exitCode == answer.exitCode }
                         ?: ControlCode.INCOMPATIBLE_PROTOCOL
                     decoded.controllerId != pinned -> ControlCode.CONFLICT
@@ -88,6 +90,7 @@ internal fun desktopFrontendLaunchCommand(ownerId: String, directory: Path,
     currentCommand: String? = ProcessHandle.current().info().command().orElse(null),
     packagedLauncher: String? = System.getProperty("jpackage.app-path"),
     classPath: String = System.getProperty("java.class.path"),
+    osName: String = System.getProperty("os.name"),
 ): List<String>? {
     val ownerCommand = DesktopHeadlessController.launchCommand(currentCommand, packagedLauncher, classPath) ?: return null
     // The builder's final argument selects owner mode. Only the known JVM-option slot
@@ -95,7 +98,19 @@ internal fun desktopFrontendLaunchCommand(ownerId: String, directory: Path,
     val launcher = ownerCommand.dropLast(1)
     val graphicalLauncher = if (ownerCommand.size == 6 && ownerCommand[1] == "-Djava.awt.headless=true")
         listOf(launcher.first()) + launcher.drop(2) else launcher
-    return graphicalLauncher + listOf(DESKTOP_FRONTEND_OWNER_ARGUMENT, ownerId, "--state-dir", directory.toString())
+    val arguments = listOf(DESKTOP_FRONTEND_OWNER_ARGUMENT, ownerId, "--state-dir", directory.toString())
+    val executable = graphicalLauncher.singleOrNull()
+    val bundleSuffix = "/Contents/MacOS/vpn-control"
+    if (desktopTrayPlatform(osName) == DesktopTrayPlatform.MacOs && executable != null &&
+        executable.endsWith(bundleSuffix)) {
+        val bundle = executable.removeSuffix(bundleSuffix)
+        if (bundle.endsWith(".app") && Path.of(bundle).isAbsolute) {
+            // Launch Services supplies the logged-in desktop session even when the owner
+            // originated in SSH. -n creates this workspace's authenticated frontend.
+            return listOf("/usr/bin/open", "-n", "-a", bundle, "--args") + arguments
+        }
+    }
+    return graphicalLauncher + arguments
 }
 
 private fun launchDesktopFrontend(directory: Path, ownerId: String): ControlCode {
@@ -103,7 +118,7 @@ private fun launchDesktopFrontend(directory: Path, ownerId: String): ControlCode
     if (!isDesktopDisplayAvailable(isHeadless = false)) return ControlCode.UNAVAILABLE
     val command = desktopFrontendLaunchCommand(ownerId, directory) ?: return ControlCode.UNAVAILABLE
     return runCatching {
-        ProcessBuilder(command).redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        desktopAppChildProcess(command).redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD).start()
         ControlCode.OK
     }.getOrDefault(ControlCode.UNAVAILABLE)

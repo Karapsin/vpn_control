@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nepavyko atkurti ankstesnės {connectionLabel:0} vietos: {1}. Nepavyko sustabdyti {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Maršruto parinkimo taisyklės išsaugotos. Kad jos būtų pritaikytos, paleiskite {connectionLabel:0} iš naujo",
     "ROUTING_RULES_SAVE_FAILED": "Nepavyko išsaugoti maršruto parinkimo taisyklių",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Maršruto parinkimo pakeitimo rezultatas nežinomas. Bandykite dar kartą su tais pačiais duomenimis.",
+    "ROUTING_RULES_STALE_DRAFT": "Maršruto parinkimo nuostatos pasikeitė. Prieš išsaugodami iš naujo atverkite rengyklę.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostikos eksportas atidarytas",
     "APPS_LOAD_FAILED": "Nepavyko įkelti programų",
     "SUBSCRIPTION_RECEIVED": "Prenumerata gauta. Peržiūrėkite ir išsaugokite ją skirtuke „Profilis“.",

@@ -72,4 +72,26 @@ class DesktopCliJsonTest {
             ControlResult("owner", "wrong-request", ControlCode.OK, 3))))
         assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL, ControlProtocolCodec.decodeResult(mismatch.message).code)
     }
+
+    @Test fun explicitOwnerPreservesLocalUnknownOutcomeWithoutAcceptingOwnerlessDomainResults() {
+        val request = ControlRequest("request", ControlCommand(ControlOperationId.ROUTING_IMPORT), controllerId = "owner")
+        for (code in listOf(ControlCode.OUTCOME_UNKNOWN, ControlCode.TIMEOUT, ControlCode.UNAVAILABLE,
+            ControlCode.PERMISSION_DENIED, ControlCode.INCOMPATIBLE_PROTOCOL)) {
+            val failure = desktopCliJsonFailure(code, request.requestId, "known-operation")
+            assertEquals(failure, desktopCliJsonResponse(request, failure))
+        }
+        for (code in listOf(ControlCode.OK, ControlCode.INVALID_ARGUMENT, ControlCode.PERSISTENCE_FAILED)) {
+            val result = ControlResult(null, request.requestId, code, 0, warnings = listOf("OWNER_METADATA_UNAVAILABLE"))
+            val response = DesktopCliResponse(result.ok, ControlProtocolCodec.encodeResult(result), result.exitCode)
+            assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL,
+                ControlProtocolCodec.decodeResult(desktopCliJsonResponse(request, response).message).code)
+        }
+        val local = ControlProtocolCodec.decodeResult(desktopCliJsonFailure(ControlCode.OUTCOME_UNKNOWN, request.requestId).message)
+        for (forged in listOf(local.copy(configurationRevision = 7), local.copy(message = "private details"),
+            local.copy(data = mapOf("extra" to com.kardinal.vpncontrol.model.ControlValue.Text("private"))))) {
+            val response = DesktopCliResponse(forged.ok, ControlProtocolCodec.encodeResult(forged), forged.exitCode)
+            assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL,
+                ControlProtocolCodec.decodeResult(desktopCliJsonResponse(request, response).message).code)
+        }
+    }
 }

@@ -69,6 +69,7 @@ fun StatusCard(
     activeProfileLabel: String,
     extraDetails: List<String> = emptyList(),
     modifier: Modifier = Modifier,
+    connectionConfiguration: ConnectionConfigurationPresentation? = null,
 ) {
     val strings = LocalAppStrings.current
     Card(
@@ -93,6 +94,9 @@ fun StatusCard(
                     color = Color(0xFFD3E3EE),
                 )
                 Text(strings.format(UiText.SERVER, state.selectedProfileServer), color = Color(0xFFD3E3EE))
+            }
+            connectionConfigurationDetails(connectionConfiguration).forEach { detail ->
+                Text(connectionConfigurationText(detail, strings), color = Color(0xFFD3E3EE))
             }
             extraDetails.forEach { detail ->
                 if (detail.isNotBlank()) {

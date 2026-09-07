@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Falha ao restaurar a localização anterior de {connectionLabel:0}: {1}. Falha ao parar {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Regras de encaminhamento guardadas. Reinicie {connectionLabel:0} para aplicar",
     "ROUTING_RULES_SAVE_FAILED": "Não foi possível salvar regras de roteamento",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "O resultado da alteração de roteamento é desconhecido. Tente novamente com os mesmos dados.",
+    "ROUTING_RULES_STALE_DRAFT": "As configurações de roteamento mudaram. Reabra o editor antes de salvar.",
     "DIAGNOSTICS_EXPORT_OPENED": "Exportação de diagnóstico aberta",
     "APPS_LOAD_FAILED": "Não foi possível carregar apps",
     "SUBSCRIPTION_RECEIVED": "Assinatura recebida. Revise e salve na aba Perfil.",

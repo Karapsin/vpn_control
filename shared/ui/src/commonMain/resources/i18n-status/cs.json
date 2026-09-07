@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Předchozí lokalitu pro {connectionLabel:0} se nepodařilo obnovit: {1}. Nepodařilo se zastavit {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Pravidla směrování byla uložena. Restartujte {connectionLabel:0}, aby se změny projevily",
     "ROUTING_RULES_SAVE_FAILED": "Nepodařilo se uložit pravidla směrování",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Výsledek změny směrování není znám. Zkuste to znovu se stejnými údaji.",
+    "ROUTING_RULES_STALE_DRAFT": "Nastavení směrování se změnilo. Před uložením znovu otevřete editor.",
     "DIAGNOSTICS_EXPORT_OPENED": "Export diagnostiky otevřen",
     "APPS_LOAD_FAILED": "Nepodařilo se načíst aplikace",
     "SUBSCRIPTION_RECEIVED": "Předplatné přijato. Zkontrolujte ho a uložte na kartě Profil.",

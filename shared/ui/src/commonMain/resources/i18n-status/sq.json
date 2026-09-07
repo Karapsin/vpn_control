@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nuk u arrit të rikthehej vendndodhja e mëparshme e {connectionLabel:0}: {1}. Nuk u arrit të ndalohej {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Rregullat e rutimit u ruajtën. Rinisni {connectionLabel:0} për t'i zbatuar",
     "ROUTING_RULES_SAVE_FAILED": "Dështoi ruajtja e rregullave të rutimit",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Rezultati i ndryshimit të rutimit nuk dihet. Provo përsëri me të njëjtat të dhëna.",
+    "ROUTING_RULES_STALE_DRAFT": "Cilësimet e rutimit kanë ndryshuar. Rihap redaktuesin përpara se të ruash.",
     "DIAGNOSTICS_EXPORT_OPENED": "Eksportimi i diagnostikës u hap",
     "APPS_LOAD_FAILED": "Dështoi ngarkimi i aplikacioneve",
     "SUBSCRIPTION_RECEIVED": "Abonimi u mor. Rishikoje dhe ruaje në skedën Profili.",

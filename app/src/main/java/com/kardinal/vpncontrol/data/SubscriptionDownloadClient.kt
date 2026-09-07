@@ -17,11 +17,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 class SubscriptionDownloadClient(
     private val userAgent: String,
     private val context: Context? = null,
     private val stateProvider: (suspend () -> PersistedState)? = null,
+    private val callFactory: (OkHttpClient, Request) -> okhttp3.Call = { client, request -> client.newCall(request) },
 ) : SubscriptionContentFetcher {
     override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
         return fetch(url, timeoutSeconds = 20, subscriptionHwid = subscriptionHwid)
@@ -75,7 +79,7 @@ class SubscriptionDownloadClient(
         }
     }
 
-    private fun execute(
+    private suspend fun execute(
         url: String,
         timeoutSeconds: Int,
         subscriptionHwid: String,
@@ -95,22 +99,23 @@ class SubscriptionDownloadClient(
         if (proxyPort != null) {
             clientBuilder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyPort)))
         }
-        clientBuilder
-            .build()
-            .newCall(request)
-            .execute()
-            .use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("Subscription fetch failed: HTTP ${response.code}")
+        return suspendCancellableCoroutine { continuation ->
+            val call = callFactory(clientBuilder.build(), request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, error: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(error)
                 }
-                return FetchedSubscriptionContent(
-                    body = response.body?.string().orEmpty(),
-                    contentType = response.header("Content-Type"),
-                    headers = response.headers.names().associateWith { name ->
-                        response.header(name).orEmpty()
-                    },
-                )
-            }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    val result = runCatching { response.use {
+                        if (!it.isSuccessful) throw IOException("Subscription fetch failed: HTTP ${it.code}")
+                        FetchedSubscriptionContent(it.body?.string().orEmpty(), it.header("Content-Type"),
+                            it.headers.names().associateWith { name -> it.header(name).orEmpty() })
+                    } }
+                    if (continuation.isActive) result.fold(continuation::resume, continuation::resumeWithException)
+                }
+            })
+        }
     }
 }
 
@@ -119,7 +124,7 @@ private class AndroidHomeSshBootstrapProxy(
 ) {
     suspend fun <T> useProxy(
         options: HomeSshRouteRuntimeOptions,
-        block: (Int) -> T,
+        block: suspend (Int) -> T,
     ): T = withContext(Dispatchers.IO) {
         val port = java.net.ServerSocket(0).use { it.localPort }
         val configFile = java.io.File.createTempFile("home-ssh-bootstrap-", ".json", context.cacheDir)

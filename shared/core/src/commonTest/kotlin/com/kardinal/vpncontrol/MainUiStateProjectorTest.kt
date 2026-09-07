@@ -15,6 +15,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class MainUiStateProjectorTest {
+    @Test fun committedProjectionDoesNotMaterializeEditorTextAndGuiKeepsDraftBehavior() {
+        val persisted = PersistedState(routingRules = RoutingRules(directDomainSuffixes = listOf("one.test", "東京.test")))
+        val gui = MainUiStateProjector.mergePersistedState(MainUiState(), persisted)
+        val control = MainUiStateProjector.committedState(persisted)
+        assertEquals("", gui.routingDirectDomainsDraft)
+        assertEquals(listOf("one.test", "東京.test"), gui.routingDirectDomainSuffixesDraft)
+        assertEquals("", control.routingDirectDomainsDraft)
+        assertEquals(gui.copy(routingDirectDomainsDraft = "", homeSshHostKeysDraft = ""), control)
+    }
+
     @Test
     fun mergePersistedStateProjectsSharedWorkspaceFields() {
         val subscription = SubscriptionSource(
@@ -93,7 +103,7 @@ class MainUiStateProjectorTest {
         assertEquals(true, projected.routingRules.ignoreRules)
         assertEquals(true, projected.routingIgnoreRulesDraft)
         assertEquals(setOf("app.one"), projected.routingProxyPackagesDraft)
-        assertEquals("example.com", projected.routingDirectDomainsDraft)
+        assertEquals(listOf("example.com"), projected.routingDirectDomainSuffixesDraft)
         assertEquals("Netherlands", projected.selectedProfileName)
         assertEquals("nl.example.com", projected.selectedProfileServer)
         assertEquals("vless://selected", projected.selectedProfileRawLink)

@@ -16,6 +16,39 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AndroidSettingsControlTest {
+    @Test fun largeRoutingImportCommitsOnceAndRetainsExactResultForRetry() = runTest {
+        var committed = ControlCommitted("owner", 0, PersistedState())
+        var writes = 0
+        val control = AndroidSettingsControl("owner", backgroundScope, { committed },
+            { _, _, _ -> error("Not a settings write") }, {}, { false },
+            routing = { operation, arguments, owner, revision ->
+                check(owner == committed.controllerId && revision == committed.revision)
+                val rules = com.kardinal.vpncontrol.data.AndroidRoutingControl.plan(committed.value,
+                    operation, arguments, emptyList())
+                committed = committed.copy(revision = committed.revision + 1,
+                    value = committed.value.copy(routingRules = rules))
+                writes++
+                AndroidSettingsCommit(committed, false)
+            })
+        val domains = (0 until 70_000).map { "domain-$it.example.test" }
+        val document = com.kardinal.vpncontrol.data.RoutingRulesTransfer.export(
+            RoutingRules(directDomainSuffixes = domains)).content
+        val request = ControlRequest("large-routing", ControlCommand(ControlOperationId.ROUTING_IMPORT,
+            mapOf("input" to ControlValue.Text(document))), controllerId = "owner", ifRevision = 0)
+        val result = control.execute(request)
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(domains, committed.value.routingRules.directDomainSuffixes)
+        assertEquals(1L, result.configurationRevision)
+        assertTrue(ControlDocumentCodec.encodeResult(result).toByteArray().size > 1_048_576)
+        assertEquals(result, control.execute(request))
+        assertEquals(1, writes)
+        val reader = AndroidControlReader("owner", { committed.value }, settingsWrite = control::execute)
+        val retained = ControlDocumentCodec.decodeResult(reader.executeDocument(
+            ControlDocumentCodec.encodeRequest(request).toByteArray(), "transfer").toString(Charsets.UTF_8))
+        assertEquals(result, retained)
+        assertEquals(1, writes)
+    }
+
     @Test fun keyImportSharesOwnerGuardsAndDeduplicationWithoutReturningKeyMaterial() = runTest {
         var committed = ControlCommitted("owner", 0, PersistedState())
         var imports = 0

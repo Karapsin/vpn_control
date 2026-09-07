@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "मागील {connectionLabel:0} स्थान पुनर्संचयित करता आले नाही: {1}. {connectionLabel:0} थांबवता आले नाही: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "रूटिंग नियम जतन झाले. लागू करण्यासाठी {connectionLabel:0} पुन्हा सुरू करा",
     "ROUTING_RULES_SAVE_FAILED": "routing नियम जतन करण्यात अयशस्वी",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "राउटिंग बदलाचा परिणाम अज्ञात आहे. त्याच माहितीसह पुन्हा प्रयत्न करा.",
+    "ROUTING_RULES_STALE_DRAFT": "राउटिंग सेटिंग्ज बदलल्या आहेत. जतन करण्यापूर्वी संपादक पुन्हा उघडा.",
     "DIAGNOSTICS_EXPORT_OPENED": "निदान निर्यात उघडली",
     "APPS_LOAD_FAILED": "अॅप्स लोड करण्यात अयशस्वी",
     "SUBSCRIPTION_RECEIVED": "सदस्यता मिळाली. Profile टॅबवर तपासा आणि जतन करा.",

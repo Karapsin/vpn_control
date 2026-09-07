@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Không thể khôi phục vị trí {connectionLabel:0} trước đó: {1}. Không thể dừng {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Đã lưu quy tắc định tuyến. Khởi động lại {connectionLabel:0} để áp dụng",
     "ROUTING_RULES_SAVE_FAILED": "Không thể lưu quy tắc định tuyến",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Chưa rõ kết quả thay đổi định tuyến. Hãy thử lại với cùng dữ liệu đầu vào.",
+    "ROUTING_RULES_STALE_DRAFT": "Cài đặt định tuyến đã thay đổi. Hãy mở lại trình chỉnh sửa trước khi lưu.",
     "DIAGNOSTICS_EXPORT_OPENED": "Đã mở bản xuất chẩn đoán",
     "APPS_LOAD_FAILED": "Không thể tải ứng dụng",
     "SUBSCRIPTION_RECEIVED": "Đã nhận đăng ký. Xem lại và lưu trong tab Hồ sơ.",

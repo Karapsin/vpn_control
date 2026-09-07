@@ -14,6 +14,196 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopConnectionLifecycleServiceTest {
+    @Test fun capturedDisconnectedRestoreStopsLaterCandidateInsteadOfFailingOrApplyingSelection() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        val restore = service.captureRuntimeRestore()
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val location = desktopLifecycleLocation(0)
+        assertTrue(service.startConnection(state, listOf(location), location, null, { state }, {},
+            commitState = { _, next -> state = next; Result.success(Unit) },
+            updateState = { state = it(state) }).isSuccess)
+        assertTrue(restore().isSuccess)
+        assertFalse(runtime.running)
+        kotlin.test.assertNull(service.activeConnection)
+        assertTrue(restore().isSuccess)
+        assertEquals(1, runtime.startedProfiles.size)
+    }
+
+    @Test fun uncapturedRunningIdentityIsNotTreatedAsAnOriginallyDisconnectedRuntime() = runTest {
+        val runtime = FakeDesktopRuntimeController(running = true, mode = AppMode.PROXY_ONLY)
+        val service = DesktopConnectionLifecycleService(runtime)
+        assertEquals("ROLLBACK_FAILED", service.captureRuntimeRestore()().exceptionOrNull()?.message)
+        assertTrue(runtime.running)
+    }
+
+    @Test fun confirmedNativeStopWithResourceFailureClearsActiveIdentityAndPreservesFailure() = runTest {
+        for (appExit in listOf(false, true)) {
+            val failure = DesktopRuntimeResourcePublicationFailure(listOf(DesktopRuntimeResourceWarning(
+                com.kardinal.vpncontrol.model.ControlCode.PERSISTENCE_FAILED,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", DesktopRuntimeResourceDisposition.PENDING_PUBLICATION)))
+            val runtime = FakeDesktopRuntimeController(stopResult = Result.failure(failure))
+            val service = DesktopConnectionLifecycleService(runtime) { 900L }
+            var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+            var resume = false
+            val locations = listOf(desktopLifecycleLocation(0))
+            val commit: (List<DesktopLocationRecord>, MainUiState) -> Result<Unit> = { _, next ->
+                state = next; Result.success(Unit)
+            }
+            assertTrue(service.startConnection(state, locations, locations.single(), null, { state }, { resume = it },
+                commitState = commit, updateState = { state = it(state) }).isSuccess)
+            val result = if (appExit) service.stopRuntimeForAppExit(state, locations, { state }, { resume = it },
+                commitState = commit, updateState = { state = it(state) })
+            else service.stopConnection(state, locations, null, { state }, { resume = it },
+                commitState = commit, updateState = { state = it(state) })
+            kotlin.test.assertSame(failure, result.exceptionOrNull())
+            assertFalse(runtime.running)
+            assertFalse(state.isVpnRunning, "A stopped native process must not remain active in the GUI")
+            kotlin.test.assertNull(service.activeConnection)
+            assertFalse(state.isBusy)
+            assertEquals(900L, state.sessionStoppedAtEpochMillis)
+            assertEquals(appExit, resume)
+        }
+    }
+
+    @Test fun rejectedPreparationPreservesActiveRuntimeTelemetryAndPendingSettings() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        var resume = false
+        val first = desktopLifecycleLocation(0)
+        val second = first.copy(index = 1, rawLink = "socks://127.0.0.2:1080#Pending", name = "Pending")
+        suspend fun start(location: DesktopLocationRecord) = service.startConnection(state, listOf(first, second),
+            location, null, { state }, { resume = it },
+            commitState = { _, next -> state = next; Result.success(Unit) }, updateState = { state = it(state) })
+        assertTrue(start(first).isSuccess)
+        val active = service.activeConnection
+        val startedAt = state.sessionStartedAtEpochMillis
+        runtime.startResult = Result.failure(DesktopWindowsRuntimeFailure("CANCELLED"))
+        state = state.copy(appMode = AppMode.VPN)
+        assertEquals("CANCELLED", start(second).exceptionOrNull()?.message)
+        assertTrue(runtime.running)
+        assertTrue(state.isVpnRunning)
+        assertFalse(state.isBusy)
+        assertTrue(resume)
+        assertEquals(active, service.activeConnection)
+        assertEquals(startedAt, state.sessionStartedAtEpochMillis)
+        assertEquals(1, state.successfulStarts)
+        assertEquals(second.rawLink, state.selectedProfileRawLink)
+        assertEquals(AppMode.VPN, state.appMode)
+    }
+
+    @Test fun deniedFindBestCandidatePreservesActualAAndPendingBWithoutPersistingCandidateC() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        var resume = false
+        var commits = 0
+        val actual = desktopLifecycleLocation(0)
+        val pending = actual.copy(index = 1, rawLink = "socks://127.0.0.2:1080#PendingB", name = "PendingB")
+        val candidate = actual.copy(index = 2, rawLink = "socks://127.0.0.3:1080#CandidateC", name = "CandidateC")
+        val rows = listOf(actual, pending, candidate)
+        val commit: (List<DesktopLocationRecord>, MainUiState) -> Result<Unit> = { _, next ->
+            commits++; state = next; Result.success(Unit)
+        }
+        assertTrue(service.startConnection(state, rows, actual, null, { state }, { resume = it },
+            commit, { state = it(state) }).isSuccess)
+        val active = service.activeConnection
+        state = state.copy(selectedProfileRawLink = pending.rawLink, selectedProfileName = pending.name,
+            selectedProfileSourceUrl = pending.sourceUrl, appMode = AppMode.VPN)
+        commits = 0
+        runtime.startResult = Result.failure(DesktopWindowsRuntimeFailure("CANCELLED"))
+        val result = service.startConnection(state, rows, candidate, null, { state }, { resume = it },
+            commit, { state = it(state) }, commitSelectionOnSuccessOnly = true)
+        assertEquals("CANCELLED", result.exceptionOrNull()?.message)
+        assertEquals(pending.rawLink, state.selectedProfileRawLink)
+        assertEquals(0, commits, "Denied preparation must not persist the automatic candidate")
+        assertEquals(active, service.activeConnection)
+        assertTrue(runtime.running)
+        assertTrue(resume)
+        assertEquals(AppMode.VPN, state.appMode)
+        assertFalse(state.isBusy)
+    }
+
+    @Test fun successfulAutomaticCandidateCommitsItsSelectionOnlyAfterRuntimeStart() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        val pending = desktopLifecycleLocation(0)
+        val candidate = pending.copy(index = 1, rawLink = "socks://127.0.0.2:1080#Candidate", name = "Candidate")
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY, selectedProfileRawLink = pending.rawLink)
+        var commits = 0
+        val result = service.startConnection(state, listOf(pending, candidate), candidate, null, { state }, {},
+            commitState = { rows, next ->
+                assertTrue(runtime.running)
+                assertEquals(candidate.rawLink, rows.single { it.isSelected }.rawLink)
+                commits++; state = next; Result.success(Unit)
+            }, updateState = { state = it(state) }, commitSelectionOnSuccessOnly = true)
+        assertTrue(result.isSuccess)
+        assertEquals(1, commits)
+        assertEquals(candidate.rawLink, state.selectedProfileRawLink)
+        assertEquals(candidate.rawLink, service.activeConfiguration?.locationReference)
+    }
+
+    @Test fun failedAutomaticSelectionCommitRestoresActualAAndRetainsPendingBWithNewTelemetry() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        var now = 100L
+        val service = DesktopConnectionLifecycleService(runtime) { now }
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val actual = desktopLifecycleLocation(0)
+        val pending = actual.copy(index = 1, rawLink = "socks://127.0.0.2:1080#PendingB", name = "PendingB")
+        val candidate = actual.copy(index = 2, rawLink = "socks://127.0.0.3:1080#CandidateC", name = "CandidateC")
+        val rows = listOf(actual, pending, candidate)
+        assertTrue(service.startConnection(state, rows, actual, null, { state }, {},
+            { _, next -> state = next; Result.success(Unit) }, { state = it(state) }).isSuccess)
+        val original = kotlin.test.assertNotNull(service.activeConnection)
+        state = state.copy(selectedProfileRawLink = pending.rawLink, selectedProfileName = pending.name)
+        now = 200L
+        val failure = DesktopPersistenceException()
+        val result = service.startConnection(state, rows, candidate, null, { state }, {},
+            { _, _ -> Result.failure(failure) }, { state = it(state) }, commitSelectionOnSuccessOnly = true)
+        kotlin.test.assertSame(failure, result.exceptionOrNull())
+        assertEquals(pending.rawLink, state.selectedProfileRawLink)
+        assertEquals(original.configuration, service.activeConfiguration)
+        assertTrue(original.runtimeId != service.activeConnection?.runtimeId)
+        assertEquals(200L, state.sessionStartedAtEpochMillis)
+        assertEquals(1, state.successfulStarts)
+        assertTrue(runtime.running)
+        assertFalse(state.isBusy)
+    }
+
+    @Test fun recoveredPriorRuntimeGetsNewIdentityWithoutApplyingPendingSettings() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        var now = 100L
+        val service = DesktopConnectionLifecycleService(runtime) { now }
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        var resume = false
+        val first = desktopLifecycleLocation(0)
+        val second = first.copy(index = 1, rawLink = "socks://127.0.0.2:1080#Pending", name = "Pending")
+        suspend fun start(location: DesktopLocationRecord) = service.startConnection(state, listOf(first, second),
+            location, null, { state }, { resume = it },
+            commitState = { _, next -> state = next; Result.success(Unit) }, updateState = { state = it(state) })
+        assertTrue(start(first).isSuccess)
+        val original = kotlin.test.assertNotNull(service.activeConnection)
+        val recovered = runtime.startResult.getOrThrow().copy(processId = 42L)
+        runtime.startResult = Result.failure(DesktopRuntimeTransitionFailure(
+            com.kardinal.vpncontrol.model.ControlCode.RUNTIME_FAILED, recoveredSession = recovered))
+        state = state.copy(appMode = AppMode.VPN)
+        now = 200L
+        assertEquals("RUNTIME_FAILED", start(second).exceptionOrNull()?.message)
+        val actual = kotlin.test.assertNotNull(service.activeConnection)
+        assertTrue(actual.runtimeId != original.runtimeId, "Recovered A is a new child, so old telemetry identity must end")
+        assertEquals(200L, actual.startedAt)
+        assertEquals(200L, state.sessionStartedAtEpochMillis)
+        assertEquals(original.configuration, actual.configuration)
+        assertEquals(first, actual.location)
+        assertEquals(second.rawLink, state.selectedProfileRawLink)
+        assertEquals(AppMode.VPN, state.appMode)
+        assertTrue(state.isVpnRunning)
+        assertFalse(state.isBusy)
+        assertTrue(resume)
+        assertEquals(1, state.successfulStarts, "Failed B must not count as a successful user start")
+    }
+
     @Test
     fun capturedRuntimeRestoreDoesNotApplyPendingSelectionOrSettings() = runTest {
         val runtime = FakeDesktopRuntimeController()
@@ -251,7 +441,7 @@ private fun desktopLifecycleLocation(index: Int): DesktopLocationRecord {
 private class FakeDesktopRuntimeController(
     var running: Boolean = false,
     private var mode: AppMode? = null,
-    private val startResult: Result<DesktopRuntimeSession> = Result.success(
+    var startResult: Result<DesktopRuntimeSession> = Result.success(
         DesktopRuntimeSession(
             appMode = AppMode.PROXY_ONLY,
             listenPort = 1080,
@@ -284,7 +474,7 @@ private class FakeDesktopRuntimeController(
     }
 
     override suspend fun stop(): Result<Unit> {
-        if (stopResult.isSuccess) {
+        if (stopResult.isSuccess || stopResult.exceptionOrNull() is DesktopRuntimeResourcePublicationFailure) {
             running = false
             mode = null
         }

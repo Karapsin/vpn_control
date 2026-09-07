@@ -28,6 +28,7 @@ internal class DesktopOwnerFrontendLifecycle(
         return job
     }
     suspend fun resumeOnce() { initialization().await() }
+    fun requestResume() { initialization() }
     @Synchronized fun hasOwnedWork(): Boolean {
         expire()
         return frontend != null || initialization?.isCompleted == false

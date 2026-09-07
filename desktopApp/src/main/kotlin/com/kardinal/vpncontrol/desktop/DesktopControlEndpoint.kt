@@ -20,10 +20,12 @@ import java.util.UUID
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import kotlinx.serialization.json.*
 
-internal class DesktopControlEndpoint(val port: Int, val controllerId: String, val token: String) {
+internal class DesktopControlEndpoint(val port: Int, val controllerId: String, val token: String,
+    val documentTransfers: Boolean = false,
+    val linuxAuthorizationOwner: DesktopLinuxAuthorizationOwner? = null) {
     override fun toString(): String = "DesktopControlEndpoint(<redacted>)"
     fun publish(path: Path) {
-        Files.createDirectories(path.parent)
+        DesktopWorkspacePaths.createDirectories(path.parent)
         val temp = path.parent.resolve(".control-endpoint-${UUID.randomUUID()}.tmp")
         try {
             // Native Windows CREATE_NEW sets the token user's owner SID explicitly;
@@ -31,6 +33,8 @@ internal class DesktopControlEndpoint(val port: Int, val controllerId: String, v
             // All platforms verify private creation before writing the credential.
             DesktopPrivateExportWriter.write(temp.toString(), buildJsonObject {
                 put("schemaVersion", 1); put("port", port); put("controllerId", controllerId); put("token", token)
+                put("documentTransfers", documentTransfers)
+                linuxAuthorizationOwner?.let { put("linuxAuthorizationOwner", encodeLinuxAuthorizationOwner(it)) }
             }.toString().toByteArray(Charsets.UTF_8)).getOrThrow()
             verifyPermissions(temp)
             Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -38,7 +42,8 @@ internal class DesktopControlEndpoint(val port: Int, val controllerId: String, v
     }
     companion object {
         fun create(port: Int, controllerId: String = UUID.randomUUID().toString()) = DesktopControlEndpoint(port, controllerId,
-            Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) }))
+            Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) }), true,
+            currentLinuxAuthorizationOwner())
         fun read(path: Path): DesktopControlEndpoint {
             return try {
                 require(Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS).isRegularFile)
@@ -52,12 +57,14 @@ internal class DesktopControlEndpoint(val port: Int, val controllerId: String, v
                 val token = root.getValue("token").jsonPrimitive.content.also {
                     require(Base64.getUrlDecoder().decode(it).size == 32)
                 }
-                DesktopControlEndpoint(port, id, token)
+                val transfers = root["documentTransfers"]?.jsonPrimitive?.booleanOrNull
+                require(root["documentTransfers"] == null || transfers != null)
+                DesktopControlEndpoint(port, id, token, transfers == true, decodeLinuxAuthorizationOwner(root["linuxAuthorizationOwner"]))
             } catch (missing: java.nio.file.NoSuchFileException) { throw missing }
             catch (_: Exception) { throw DesktopControlProtocolException() }
         }
 
-        private fun verifyPermissions(path: Path) {
+        internal fun verifyPermissions(path: Path) {
             val owner = Files.getOwner(path, NOFOLLOW_LINKS)
             val currentUser = path.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
             require(owner == currentUser)
@@ -84,6 +91,8 @@ internal class DesktopControlProtocolException : java.io.IOException("INCOMPATIB
 
 /** UTF-8 byte length followed by one JSON string; DTO migration is independent. */
 internal object DesktopControlFrames {
+    fun fits(payload: String): Boolean = payload.length <= ControlProtocolCodec.MAX_FRAME_BYTES &&
+        JsonPrimitive(payload).toString().toByteArray(Charsets.UTF_8).size <= ControlProtocolCodec.MAX_FRAME_BYTES
     fun write(output: DataOutputStream, payload: String) {
         val bytes = JsonPrimitive(payload).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= ControlProtocolCodec.MAX_FRAME_BYTES)

@@ -1,6 +1,6 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.control.ControlProtocolException
 import com.kardinal.vpncontrol.control.ControlSession
 import com.kardinal.vpncontrol.control.ControlSnapshotCodec
@@ -68,7 +68,7 @@ internal class DesktopRemoteControlSession private constructor(
         val response = try { this.request(DesktopCliCommand.ControlSubmit(bound)) }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { return failure(request.requestId, ControlCode.OUTCOME_UNKNOWN) }
-        return ControlProtocolCodec.decodeResult(desktopCliJsonResponse(bound, response).message)
+        return ControlDocumentCodec.decodeResult(desktopCliJsonResponse(bound, response).message)
     }
 
     override suspend fun operation(id: String): ControlOperation? =
@@ -91,7 +91,7 @@ internal class DesktopRemoteControlSession private constructor(
                 ?: if (response.isDesktopAppNotRunning) ControlCode.UNAVAILABLE else ControlCode.INCOMPATIBLE_PROTOCOL
             throw ControlProtocolException(code)
         }
-        val result = ControlProtocolCodec.decodeResult(response.message)
+        val result = ControlDocumentCodec.decodeResult(response.message)
         if (closed.get()) throw ControlProtocolException(ControlCode.UNAVAILABLE)
         if (result.controllerId != epoch) throw ControlProtocolException(ControlCode.CONFLICT)
         if (result.requestId != id || !result.ok || !result.final ||
@@ -118,7 +118,7 @@ internal class DesktopRemoteControlSession private constructor(
             mapOf("id" to ControlValue.Text(id))), controllerId = epoch))
 
     private fun failure(id: String, code: ControlCode) =
-        ControlProtocolCodec.decodeResult(desktopCliJsonFailure(code, id).message)
+        ControlDocumentCodec.decodeResult(desktopCliJsonFailure(code, id).message)
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
@@ -148,7 +148,7 @@ internal class DesktopRemoteControlSession private constructor(
                     ?: if (response.isDesktopAppNotRunning) ControlCode.UNAVAILABLE else ControlCode.INCOMPATIBLE_PROTOCOL
                 throw ControlProtocolException(code)
             }
-            val snapshot = try { ControlSnapshotCodec.decode(response.message) }
+            val snapshot = try { ControlSnapshotCodec.decodeDocument(response.message) }
             catch (_: ControlProtocolException) { throw ControlProtocolException(ControlCode.INCOMPATIBLE_PROTOCOL) }
             if (epoch != null && snapshot.controllerId != epoch) throw ControlProtocolException(ControlCode.CONFLICT)
             Result.success(snapshot)

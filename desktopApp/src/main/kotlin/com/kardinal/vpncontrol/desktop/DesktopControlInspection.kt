@@ -50,7 +50,8 @@ internal object DesktopControlInspection {
                     ControlValue.Text(LocationConfigs.prettyStoredLocation(location.location.rawLink))))
             }
             ControlOperationId.SSH_KEY_STATUS -> success(mapOf("present" to ControlValue.BooleanValue(service.hasHomeSshPrivateKey())))
-            ControlOperationId.UPDATES_STATUS -> success(ControlProtocolCodec.decodeValues(service.controlUpdateStatus()))
+            ControlOperationId.UPDATES_STATUS -> runCatching { ControlProtocolCodec.decodeValues(service.controlUpdateStatus()) }
+                .fold({ success(it) }, { failure(ControlCode.PERSISTENCE_FAILED) })
             else -> failure(ControlCode.UNSUPPORTED)
         }
     }

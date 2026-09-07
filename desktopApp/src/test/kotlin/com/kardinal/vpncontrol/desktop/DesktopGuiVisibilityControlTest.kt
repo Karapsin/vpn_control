@@ -14,6 +14,14 @@ import kotlinx.coroutines.async
 import kotlin.test.*
 
 class DesktopGuiVisibilityControlTest {
+    @Test fun packagedMacFrontendUsesLaunchServicesToLeaveTheHeadlessOwnerSession() {
+        val launcher = "/Applications/東京 space/vpn-control.app/Contents/MacOS/vpn-control"
+        assertEquals(listOf("/usr/bin/open", "-n", "-a", "/Applications/東京 space/vpn-control.app", "--args",
+            "--frontend-owner", "owner", "--state-dir", "/tmp/space workspace"),
+            desktopFrontendLaunchCommand("owner", Path.of("/tmp/space workspace"),
+                currentCommand = launcher, packagedLauncher = launcher, classPath = "", osName = "Mac OS X"))
+    }
+
     private val owner = UUID.randomUUID().toString()
     private fun input(operation: ControlOperationId = ControlOperationId.GUI_SHOW) = ControlRequest(
         UUID.randomUUID().toString(), ControlCommand(operation), controllerId = owner)
@@ -69,6 +77,20 @@ class DesktopGuiVisibilityControlTest {
         } finally { executor.shutdownNow() }
     }
 
+    @Test fun coldPackagedFrontendCanFinishInitializationBeforeVisibilityAcknowledgement() {
+        val visibility = DesktopFrontendVisibility({ it() })
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val pending = executor.submit<ControlCode> { visibility.request(true, owner) }
+            // A real packaged macOS frontend exceeded the old two-second UI deadline.
+            assertFailsWith<java.util.concurrent.TimeoutException> { pending.get(2_200, TimeUnit.MILLISECONDS) }
+            visibility.ownerId = owner
+            visibility.available = { true }
+            visibility.install { ControlCode.OK }
+            assertEquals(ControlCode.OK, pending.get(3, TimeUnit.SECONDS))
+        } finally { executor.shutdownNow() }
+    }
+
     @Test fun hideDoesNotLaunchAndShowPinsRegistrationAndDeduplicates() = runTest {
         var frontend: String? = null
         var launches = 0
@@ -80,6 +102,7 @@ class DesktopGuiVisibilityControlTest {
             request = { command, _ ->
                 requests++
                 val request = (command as DesktopCliCommand.ControlSubmit).request
+                assertTrue(command.clientTimeoutSeconds * 1000 > DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS)
                 assertEquals(registrationId, request.controllerId)
                 assertEquals(mapOf("owner" to ControlValue.Text(owner)), request.command.arguments)
                 DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(registrationId,
@@ -124,6 +147,23 @@ class DesktopGuiVisibilityControlTest {
         assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL, decoded(malformed.execute(input())).code)
     }
 
+    @Test fun closedFrontendEndpointReportsUnavailableWithoutReplayingAgainstReplacement() = runTest {
+        var frontend = UUID.randomUUID().toString()
+        var calls = 0
+        val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(7, true) }, { frontend },
+            launch = { _, _ -> error("must not launch over a registered frontend") },
+            request = { _, _ -> calls++; DesktopCliResponse.notRunning() })
+        val show = input()
+        val first = decoded(control.execute(show))
+        assertEquals(ControlCode.UNAVAILABLE, first.code)
+        assertEquals(owner, first.controllerId)
+        assertEquals(show.requestId, first.requestId)
+        assertTrue(first.final)
+        frontend = UUID.randomUUID().toString()
+        assertEquals(first, decoded(control.execute(show)))
+        assertEquals(1, calls)
+    }
+
     @Test fun showStartupIsBoundedAndConcurrentPresentationRequestsAreBusy() = runTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -164,7 +204,10 @@ class DesktopGuiVisibilityControlTest {
                     request.requestId, ControlCode.OK, 0)))
             }, startHeadlessController = { error("existing owner") }))
             if (json) assertEquals(ControlCode.OK, ControlProtocolCodec.decodeResult(output.single()).code)
-            else assertEquals("OK", output.single())
+            else {
+                assertEquals("OK", output.single().lineSequence().first())
+                assertTrue(output.single().contains("Controller: $owner"))
+            }
         }
     }
 

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ਇੰਸਟਾਲੇਸ਼ਨ ਲਈ ਇੱਕ ਇੰਟਰਐਕਟਿਵ ਸੈਸ਼ਨ ਦੀ ਲੋੜ ਹੈ।",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ਇੰਸਟਾਲ ਕਰਨ ਦੀ ਇਜਾਜ਼ਤ ਅਸਵੀਕਾਰ ਕੀਤੀ ਗਈ।",
+  "UPDATE_INSTALL_CANCELLED": "ਸਥਾਪਨਾ ਰੱਦ ਕਰ ਦਿੱਤੀ ਗਈ।",
+  "UPDATE_INSTALL_CONFIRMATION": "ਸਥਾਪਨਾ ਦੀ ਪੁਸ਼ਟੀ ਦੀ ਉਡੀਕ ਹੈ।",
+  "UPDATE_INSTALL_COMPLETED": "ਅੱਪਡੇਟ ਸਥਾਪਤ ਹੋ ਗਿਆ।",
+  "UPDATE_INSTALL_UNKNOWN": "ਸਥਾਪਨਾ ਦਾ ਨਤੀਜਾ ਅਣਜਾਣ ਹੈ।",
   "APP_TITLE": "VPN ਨਿਯੰਤਰਣ",
   "TAB_MAIN": "ਮੁੱਖ",
   "TAB_PROFILE": "ਪ੍ਰੋਫਾਈਲ",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "ਸਰਗਰਮ ਟਿਕਾਣਾ: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "ਸਰਗਰਮ ਟਿਕਾਣਾ: ਉਪਲਬਧ ਨਹੀਂ",
+  "CONNECTION_RESTART_PENDING": "ਸੰਭਾਲੀਆਂ ਤਬਦੀਲੀਆਂ ਲਾਗੂ ਕਰਨ ਲਈ ਕਨੈਕਸ਼ਨ ਮੁੜ ਚਾਲੂ ਕਰੋ।",
+  "CONNECTION_RESTART_UNKNOWN": "ਇਹ ਪਤਾ ਨਹੀਂ ਹੈ ਕਿ ਮੁੜ ਚਾਲੂ ਕਰਨ ਦੀ ਲੋੜ ਹੈ ਜਾਂ ਨਹੀਂ।"
 }

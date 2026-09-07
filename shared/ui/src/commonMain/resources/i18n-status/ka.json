@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "{connectionLabel:0}-ის წინა ლოკაციის აღდგენა ვერ მოხერხდა: {1}. {connectionLabel:0}-ის შეჩერება ვერ მოხერხდა: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "მარშრუტიზაციის წესები შენახულია. გამოსაყენებლად გადატვირთეთ {connectionLabel:0}",
     "ROUTING_RULES_SAVE_FAILED": "მარშრუტიზაციის წესების შენახვა ვერ მოხერხდა",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "მარშრუტიზაციის ცვლილების შედეგი უცნობია. ხელახლა სცადეთ იმავე მონაცემებით.",
+    "ROUTING_RULES_STALE_DRAFT": "მარშრუტიზაციის პარამეტრები შეიცვალა. შენახვამდე ხელახლა გახსენით რედაქტორი.",
     "DIAGNOSTICS_EXPORT_OPENED": "დიაგნოსტიკის ექსპორტი გაიხსნა",
     "APPS_LOAD_FAILED": "აპების ჩატვირთვა ვერ მოხერხდა",
     "SUBSCRIPTION_RECEIVED": "გამოწერა მიღებულია. გადახედეთ და შეინახეთ პროფილის ჩანართში.",

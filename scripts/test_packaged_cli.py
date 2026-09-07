@@ -6,10 +6,12 @@ Only processes created here against new temporary workspaces are terminated.
 """
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -147,6 +149,89 @@ def streaming_and_qr_smoke(launcher, workspace, root, identity, invoke, environm
     require("PackagedQR" in json.dumps(read("locations", "list")["data"]), "QR import lost the location")
 
 
+def large_routing_fixture(count=56000):
+    suffix = ".".join(("a" * 60, "b" * 60, "c" * 60, "example", "test"))
+    rules = dict(ignore_rules=False, block_quic_udp_443=False, proxy_packages=[],
+                 direct_domain_suffixes=[f"d{index:05d}.{suffix}" for index in range(count)])
+    return rules, json.dumps(dict(type="vpn_control_routing_rules", version=7, rules=rules))
+
+
+def verify_routing_export(path, rules, reported_bytes):
+    content = path.read_bytes()
+    require(len(content) == reported_bytes, "Export byte count is incorrect")
+    require(json.loads(content)["rules"] == rules, "Export did not preserve routing rules")
+    if os.name != "nt":
+        require(stat.S_IMODE(path.stat().st_mode) == 0o600, "Export is not owner-private")
+    return hashlib.sha256(content).digest()
+
+
+def large_transfer_smoke(workspace, root, identity, invoke):
+    """Exercise the real public command and retained-result path, without starting VPN."""
+    before = envelope(invoke(workspace, "--json", "status"))
+    require(before["controllerId"] == identity and before["data"]["runtimeRunning"] is False,
+            "Large transfer must use the existing disconnected owner")
+    rules, content = large_routing_fixture()
+    source, destination = root / "large 東京 input.json", root / "large 東京 export.json"
+    source.write_text(content, encoding="utf-8")
+    require(source.stat().st_size > 10 * 1024 * 1024, "Large fixture is too small")
+    imported = envelope(invoke(workspace, "--json", "--controller-id", identity,
+        "--if-revision", str(before["configurationRevision"]), "routing", "import",
+        "--input", str(source), timeout=120))
+    revision = before["configurationRevision"] + 1
+    require(imported["controllerId"] == identity and imported["configurationRevision"] == revision
+            and imported["final"] is True, "Large import lost committed metadata")
+    require(bool(imported.get("operationId")), "Large import did not retain an operation identity")
+    retained = envelope(invoke(workspace, "--json", "--controller-id", identity,
+        "operations", "wait", imported["operationId"], timeout=120))
+    require(retained["data"] == imported["data"] and retained["configurationRevision"] == revision
+            and retained["controllerId"] == identity and retained["final"] is True,
+            "Retained large result changed content or metadata")
+    args = ("--json", "--controller-id", identity, "routing", "export", "--output", str(destination))
+    exported = envelope(invoke(workspace, *args, timeout=120))
+    require(exported["controllerId"] == identity and exported["configurationRevision"] == revision
+            and "content" not in exported["data"], "Export lost metadata or echoed private content")
+    digest = verify_routing_export(destination, rules, exported["data"]["bytes"])
+    envelope(invoke(workspace, *args, timeout=120), 1, "PERSISTENCE_FAILED")
+    require(hashlib.sha256(destination.read_bytes()).digest() == digest,
+            "Repeated export changed an existing destination")
+    after = envelope(invoke(workspace, "--json", "status"))
+    require(after["controllerId"] == identity and after["configurationRevision"] == revision
+            and after["data"]["runtimeRunning"] is False, "Large transfer changed runtime or owner")
+
+
+def implicit_owner_smoke(root, invoke):
+    """Exercise the packaged child launcher, not only an explicitly started serve."""
+    workspace = root / "implicit 東京 workspace"
+    identity = None
+    try:
+        saved = envelope(invoke(workspace, "--json", "settings", "set", "validation.batch-size", "9"))
+        identity = saved["controllerId"]
+        require(bool(identity) and saved["final"] is True and saved["configurationRevision"] == 1,
+                "Implicit owner did not durably complete its first command")
+        status = envelope(invoke(workspace, "--json", "status"))
+        require(status["controllerId"] == identity and status["data"]["runtimeRunning"] is False,
+                "Implicit owner changed identity or connected unexpectedly")
+        shown = envelope(invoke(workspace, "--json", "settings", "show", "validation.batch-size"))
+        require(shown["data"]["validation.batch-size"] == 9 and shown["configurationRevision"] == 1,
+                "Implicit owner lost the committed setting")
+    finally:
+        # This unique fixture directory was created only by our own launcher. Quit
+        # never bootstraps an owner, including when the first command failed.
+        guard = ("--controller-id", identity) if identity else ()
+        stopped = invoke(workspace, "--json", *guard, "quit")
+        if stopped.returncode == 2:
+            envelope(stopped, 2, "UNAVAILABLE")
+        else:
+            result = envelope(stopped)
+            require(result["final"] is True, "Implicit owner quit was not acknowledged")
+            if identity:
+                require(result["controllerId"] == identity, "Quit acknowledged a replacement owner")
+        deadline = time.monotonic() + 10
+        while (workspace / "activation.port").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        require(not (workspace / "activation.port").exists(), "Implicit owner did not release its endpoint")
+
+
 def smoke(launcher, expected_version):
     launcher = Path(launcher).resolve(strict=True)
     require(launcher.is_file(), "Launcher must be a file")
@@ -159,10 +244,10 @@ def smoke(launcher, expected_version):
         owners = []
         logs = []
 
-        def invoke(workspace, *args):
+        def invoke(workspace, *args, timeout=30):
             return subprocess.run([str(launcher), "--state-dir", str(workspace), *args],
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                                  encoding="utf-8", errors="strict", timeout=30, env=environment)
+                                  encoding="utf-8", errors="strict", timeout=timeout, env=environment)
 
         try:
             help_result = invoke(first, "--help")
@@ -225,8 +310,10 @@ def smoke(launcher, expected_version):
             require(terminal.get("code") in ("NOT_FOUND", "RUNTIME_FAILED"), "Missing manifest must fail")
             envelope(waited, 1, terminal["code"])
             require(terminal["final"] is True, "Operation wait returned before completion")
-            envelope(invoke(first, "--json", "operations", "status", operation_id))
+            envelope(invoke(first, "--json", "operations", "status", operation_id), 1, terminal["code"])
             streaming_and_qr_smoke(launcher, first, root, identities[0], invoke, environment)
+            large_transfer_smoke(first, root, identities[0], invoke)
+            implicit_owner_smoke(root, invoke)
             for workspace, owner in zip((first, second), owners):
                 status = envelope(invoke(workspace, "--json", "status"))
                 require(status["data"]["runtimeRunning"] is False and owner.poll() is None,

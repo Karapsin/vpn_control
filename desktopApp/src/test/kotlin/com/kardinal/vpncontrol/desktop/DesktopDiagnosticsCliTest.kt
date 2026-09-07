@@ -35,13 +35,13 @@ class DesktopDiagnosticsCliTest {
             }
             val stats = invoke("stats")
             assertEquals(0, stats.first)
-            assertTrue(stats.second.contains("\"successfulStarts\":3"))
-            assertTrue(stats.second.contains("\"elapsedMillis\":null"))
+            assertTrue(stats.second.contains("successfulStarts: 3"))
+            assertTrue(stats.second.contains("elapsedMillis: unknown"))
             assertFalse(stats.second.contains("rxBytes"))
             val logs = invoke("logs", "--limit", "1")
             assertEquals(0, logs.first)
             assertFalse(logs.second.contains("SECRET-TOKEN"))
-            assertEquals("", invoke("logs", "--limit", "0").second)
+            assertTrue(invoke("logs", "--limit", "0").second.contains("entries: []"))
             fun json(vararg args: String): com.kardinal.vpncontrol.model.ControlResult {
                 val result = invoke("--json", *args)
                 assertEquals(0, result.first, result.second)
@@ -51,7 +51,8 @@ class DesktopDiagnosticsCliTest {
                 }
             }
             val jsonStats = json("stats")
-            assertEquals(com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeValues(stats.second), jsonStats.data)
+            assertEquals(com.kardinal.vpncontrol.model.ControlValue.IntegerValue(3), jsonStats.data["successfulStarts"])
+            assertEquals(com.kardinal.vpncontrol.model.ControlValue.Null, jsonStats.data["elapsedMillis"])
             val jsonLogs = json("logs", "--limit", "1")
             assertFalse(jsonLogs.toString().contains("SECRET-TOKEN"))
             assertEquals(1, (jsonLogs.data.getValue("entries") as com.kardinal.vpncontrol.model.ControlValue.ArrayValue).values.size)

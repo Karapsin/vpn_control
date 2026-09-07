@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Не удалось восстановить предыдущее место {connectionLabel:0}: {1}. Не удалось остановить {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Уставъ путей сохраненъ. Перезапустите {connectionLabel:0}, дабы применить",
     "ROUTING_RULES_SAVE_FAILED": "Не удалось сохранить уставъ путей",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Исходъ перемѣны устава путей невѣдомъ. Повтори съ тѣми же данными.",
+    "ROUTING_RULES_STALE_DRAFT": "Уставъ путей перемѣнился. Предъ сохраненіемъ вновь отвори правку.",
     "DIAGNOSTICS_EXPORT_OPENED": "Изнесение диагностики открыто",
     "APPS_LOAD_FAILED": "Не удалось загрузить приложения",
     "SUBSCRIPTION_RECEIVED": "Грамота получена. Просмотрите и сохраните ее во вкладке личины.",

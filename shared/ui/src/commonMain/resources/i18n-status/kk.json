@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Алдыңғы {connectionLabel:0} орнын қалпына келтіру мүмкін болмады: {1}. {connectionLabel:0} тоқтатылмады: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Маршруттау ережелері сақталды. Қолдану үшін {connectionLabel:0} қайта іске қосыңыз",
     "ROUTING_RULES_SAVE_FAILED": "Маршруттау ережелерін сақтау мүмкін болмады",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Маршруттау өзгерісінің нәтижесі белгісіз. Сол деректермен қайталап көріңіз.",
+    "ROUTING_RULES_STALE_DRAFT": "Маршруттау параметрлері өзгерді. Сақтамас бұрын өңдегішті қайта ашыңыз.",
     "DIAGNOSTICS_EXPORT_OPENED": "Диагностика экспорты ашылды",
     "APPS_LOAD_FAILED": "Қолданбаларды жүктеу мүмкін болмады",
     "SUBSCRIPTION_RECEIVED": "Жазылым алынды. Оны Профиль қойындысында қарап шығып, сақтаңыз.",

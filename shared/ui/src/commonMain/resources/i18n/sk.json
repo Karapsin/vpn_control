@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Inštalácia vyžaduje interaktívnu reláciu.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Povolenie na inštaláciu bolo zamietnuté.",
+  "UPDATE_INSTALL_CANCELLED": "Inštalácia bola zrušená.",
+  "UPDATE_INSTALL_CONFIRMATION": "Čaká sa na potvrdenie inštalácie.",
+  "UPDATE_INSTALL_COMPLETED": "Aktualizácia bola nainštalovaná.",
+  "UPDATE_INSTALL_UNKNOWN": "Výsledok inštalácie nie je známy.",
   "APP_TITLE": "Správa VPN",
   "TAB_MAIN": "Hlavná",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktívna lokalita: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktívna lokalita: nedostupná",
+  "CONNECTION_RESTART_PENDING": "Reštartujte pripojenie, aby sa použili uložené zmeny.",
+  "CONNECTION_RESTART_UNKNOWN": "Nie je známe, či je potrebný reštart."
 }

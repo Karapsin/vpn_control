@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Installation requires an interactive session.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Permission to install was denied.",
+  "UPDATE_INSTALL_CANCELLED": "Installation cancelled.",
+  "UPDATE_INSTALL_CONFIRMATION": "Waiting for installation confirmation.",
+  "UPDATE_INSTALL_COMPLETED": "Update installed.",
+  "UPDATE_INSTALL_UNKNOWN": "Installation outcome is unknown.",
   "APP_TITLE": "VPN Control",
   "TAB_MAIN": "Main",
   "TAB_PROFILE": "Profile",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Active location: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Active location: unavailable",
+  "CONNECTION_RESTART_PENDING": "Restart the connection to apply saved changes.",
+  "CONNECTION_RESTART_UNKNOWN": "Whether a restart is required is unknown."
 }

@@ -4,21 +4,115 @@ import java.nio.file.Path
 import kotlin.test.*
 
 class DesktopWindowsInstallJobBackendTest {
-    @Test fun renamePacketUsesAbsoluteVolumePathAndByteLengthOnBothNativeLayouts() {
-        val directory = "\\\\?\\Volume{12345678-1234-1234-1234-123456789abc}\\Users\\東京 😀\\job"
-        val expected = (directory + "\\" + DesktopInstallJobNames.STATUS).toByteArray(Charsets.UTF_16LE)
+    @Test fun onlyPreviouslyVerifiedReadOnlyStatusHandleMayReadAnUnlinkedReceipt() {
+        val native = FakeNative()
+        val backend = DesktopWindowsInstallJobBackend(native)
+        backend.openRoot(backend.defaultRoot(), true).use { root -> root.createJob(JOB).use { job ->
+            val temp = "status-$JOB.tmp"
+            job.createFile(temp, DesktopInstallJobBackend.Purpose.STATUS_TEMP).use { it.writeExact("{}".toByteArray()) }
+            job.replaceFile(temp, "status.json")
+            val node = native.nodes.getValue("C:\\ProgramData\\vpn-control-install-jobs\\$JOB\\status.json")
+            job.openFile("status.json").use { retained ->
+                node.info = node.info.copy(links = 0)
+                assertContentEquals("{}".toByteArray(), retained.readBounded(2))
+                assertFailsWith<IllegalArgumentException> { job.openFile("status.json") }
+                for (unsafe in listOf(
+                    node.info.copy(links = 2), node.info.copy(owner = CLIENT), node.info.copy(dacl = null),
+                    node.info.copy(dacl = listOf(allow(CLIENT, 2))), node.info.copy(reparseTag = 42),
+                    node.info.copy(attributes = 0x400), node.info.copy(disk = false), node.info.copy(directory = true),
+                )) {
+                    node.info = unsafe
+                    assertFailsWith<IllegalArgumentException> { retained.readBounded(2) }
+                }
+            }
+            job.createFile(temp, DesktopInstallJobBackend.Purpose.STATUS_TEMP).use { writable ->
+                native.nodes.getValue("C:\\ProgramData\\vpn-control-install-jobs\\$JOB\\$temp").info = directory().copy(directory = false, links = 0)
+                assertFailsWith<IllegalArgumentException> { writable.readBounded(2) }
+                assertFailsWith<IllegalArgumentException> { writable.writeExact("{}".toByteArray()) }
+            }
+            job.createFile("cancel", DesktopInstallJobBackend.Purpose.CANCEL, CLIENT).use { cancel ->
+                cancel.writeExact(byteArrayOf(0))
+                job.openFile("cancel").use { readOnlyCancel ->
+                    native.nodes.getValue("C:\\ProgramData\\vpn-control-install-jobs\\$JOB\\cancel").info = directory().copy(directory = false, links = 0)
+                    assertFailsWith<IllegalArgumentException> { readOnlyCancel.readBounded(1) }
+                    assertFailsWith<IllegalArgumentException> { cancel.readBounded(1) }
+                }
+            }
+        } }
+        assertTrue(native.handles.all { it.closed })
+    }
+
+    @Test fun mutableProgramDataRetainsLinkedWitnessUntilLastReceiptHandleCloses() {
+        val native = FakeNative()
+        native.nodes.getValue("C:\\ProgramData").info = directory().copy(dacl = listOf(allow(CLIENT, 0x116)))
+        native.nodes["C:\\ProgramData\\witness"] = FakeNative.Node(directory())
+        val product = "C:\\ProgramData\\vpn-control-install-jobs"
+        native.nodes[product] = FakeNative.Node(directory())
+        native.nodes["$product\\$JOB"] = FakeNative.Node(directory())
+        native.nodes["$product\\$JOB\\status.json"] = FakeNative.Node(directory().copy(directory = false), "{}".toByteArray())
+        val backend = DesktopWindowsInstallJobBackend(native, witnessPaths())
+        val root = backend.openRoot(backend.defaultRoot(), false)
+        val job = root.openJob(JOB)
+        val status = job.openFile("status.json")
+        root.close(); job.close()
+        val witness = native.handles.single { it.path.endsWith("\\witness") }
+        assertFalse(witness.closed)
+        assertFalse(witness.shareDelete)
+        assertContentEquals("{}".toByteArray(), status.readBounded(2))
+        assertEquals(0, native.creates)
+        status.close()
+        assertTrue(native.handles.all { it.closed })
+    }
+
+    @Test fun mutableProductRootNeverUsesAncestorWitnessException() {
+        val native = FakeNative()
+        native.nodes["C:\\ProgramData\\vpn-control-install-jobs"] = FakeNative.Node(
+            directory().copy(dacl = listOf(allow(CLIENT, 0x116))))
+        val paths = object : WindowsAdmissionNative by JnaWindowsInstallAdmission() {
+            override fun children(path: String): List<String> = error("Strict product root must never seek a witness")
+        }
+        val backend = DesktopWindowsInstallJobBackend(native, paths)
+        assertFailsWith<IllegalArgumentException> { backend.openRoot(backend.defaultRoot(), false) }
+        assertTrue(native.handles.all { it.closed })
+    }
+
+    @Test fun missingUnlinkedReparseOrRacedWitnessCannotAuthorizeMutableAncestor() {
+        for (mode in listOf("missing", "unlinked", "reparse", "parent-race", "acl-race")) {
+            val native = FakeNative()
+            native.nodes.getValue("C:\\ProgramData").info = directory().copy(dacl = listOf(allow(CLIENT, 0x116)))
+            if (mode != "missing") native.nodes["C:\\ProgramData\\witness"] = FakeNative.Node(
+                directory().copy(reparseTag = if (mode == "reparse") 42 else 0))
+            val paths = witnessPaths { path ->
+                if (path.endsWith("\\witness")) {
+                    if (mode == "parent-race") native.nodes.getValue("C:\\ProgramData").info = directory().copy(reparseTag = 42)
+                    if (mode == "acl-race") native.nodes.getValue("C:\\ProgramData").info = directory().copy(dacl = listOf(allow(CLIENT, 0x10000)))
+                }
+                if (mode == "unlinked" && path.endsWith("\\witness")) "C:\\elsewhere\\witness" else path
+            }
+            val backend = DesktopWindowsInstallJobBackend(native, paths)
+            assertFails { backend.openRoot(backend.defaultRoot(), true) }
+            assertEquals(0, native.creates)
+            assertTrue(native.handles.all { it.closed })
+        }
+    }
+
+    private fun witnessPaths(transform: (String) -> String = { it }) = object : WindowsAdmissionNative by JnaWindowsInstallAdmission() {
+        override fun children(path: String) = listOf("witness")
+        override fun canonicalPath(handle: WindowsInstallNative.Handle) = "\\\\?\\" + transform((handle as FakeNative.Open).path)
+    }
+
+    @Test fun protectedReceiptRenamePreservesReadersWithPosixReplacementOnBothNativeLayouts() {
+        val expected = DesktopInstallJobNames.STATUS.toByteArray(Charsets.UTF_16LE)
         for (width in listOf(4, 8)) {
-            windowsInstallRenameInfo(directory, width).use { packet ->
+            windowsInstallStatusRenameInfo(width).use { packet ->
                 val root = if (width == 8) 8L else 4L
-                assertEquals(1, packet.getByte(0).toInt())
+                assertEquals(3, packet.getInt(0)) // REPLACE_IF_EXISTS | POSIX_SEMANTICS, never bypass access checks.
                 assertContentEquals(ByteArray(width), packet.getByteArray(root, width))
                 assertEquals(expected.size, packet.getInt(root + width))
                 assertContentEquals(expected, packet.getByteArray(root + width + 4, expected.size))
             }
         }
-        for (invalid in listOf("C:\\job", "job", directory + '\u0000', "\\\\server\\share\\job")) {
-            assertFailsWith<IllegalArgumentException> { windowsInstallRenameInfo(invalid, 8) }
-        }
+        assertFailsWith<IllegalArgumentException> { windowsInstallStatusRenameInfo(16) }
     }
     @Test fun exactTrustedInstallerOwnerIsAcceptedOnlyForStandardAncestorsWithoutRelaxingAcl() {
         val installer = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"

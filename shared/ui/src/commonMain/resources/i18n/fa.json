@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "نصب به یک نشست تعاملی نیاز دارد.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "مجوز نصب رد شد.",
+  "UPDATE_INSTALL_CANCELLED": "نصب لغو شد.",
+  "UPDATE_INSTALL_CONFIRMATION": "در انتظار تأیید نصب.",
+  "UPDATE_INSTALL_COMPLETED": "به‌روزرسانی نصب شد.",
+  "UPDATE_INSTALL_UNKNOWN": "نتیجهٔ نصب مشخص نیست.",
   "APP_TITLE": "کنترل VPN",
   "TAB_MAIN": "اصلی",
   "TAB_PROFILE": "نمایه",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "موقعیت فعال: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "موقعیت فعال: در دسترس نیست",
+  "CONNECTION_RESTART_PENDING": "برای اعمال تغییرات ذخیره‌شده، اتصال را دوباره راه‌اندازی کنید.",
+  "CONNECTION_RESTART_UNKNOWN": "مشخص نیست که راه‌اندازی مجدد لازم است یا نه."
 }

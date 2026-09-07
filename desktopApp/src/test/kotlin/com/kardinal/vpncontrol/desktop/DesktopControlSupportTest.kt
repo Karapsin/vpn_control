@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlOperationRegistry
 import com.kardinal.vpncontrol.model.ControlOperationId
 import com.kardinal.vpncontrol.model.ControlPlatform
 import com.kardinal.vpncontrol.model.ControlValue
@@ -18,10 +19,24 @@ class DesktopControlSupportTest {
                 .associateBy { (it.getValue("id") as ControlValue.Text).value }
             assertEquals(ControlOperationId.entries.map { it.wireName }.toSet(), operations.keys)
             for (id in ControlOperationId.entries) {
-                assertEquals(ControlValue.BooleanValue(id in DesktopControlSupport.jsonOperations),
+                assertEquals(ControlValue.BooleanValue(id in DesktopControlSupport.jsonOperations &&
+                    (id != ControlOperationId.UPDATES_INSTALL || platform in setOf(ControlPlatform.WINDOWS, ControlPlatform.LINUX, ControlPlatform.MACOS))),
                     operations.getValue(id.wireName)["supported"])
+                assertEquals(ControlValue.ArrayValue(if (id in DesktopControlSupport.jsonOperations)
+                    ControlOperationRegistry[id].arguments.flags.sorted().map(ControlValue::Text) else emptyList()),
+                    operations.getValue(id.wireName)["flags"])
             }
+            val installation = operations.getValue(ControlOperationId.UPDATES_INSTALL.wireName)
+            assertEquals(ControlValue.ArrayValue(when (platform) {
+                ControlPlatform.LINUX -> listOf("deb", "rpm", "arch-bundle")
+                ControlPlatform.WINDOWS -> listOf("msi")
+                ControlPlatform.MACOS -> listOf("dmg")
+                else -> emptyList()
+            }.map(ControlValue::Text)), installation["packageTypes"])
+            assertEquals(ControlValue.Null, installation["reasonCode"])
             assertEquals(ControlValue.BooleanValue(false), report["runtimeReadinessChecked"])
+            assertEquals(ControlValue.BooleanValue(true), report["humanUsesJsonAdapter"])
+            assertEquals(ControlValue.Text("UNSUPPORTED"), operations.getValue(ControlOperationId.ROUTING_APPS_LIST.wireName)["reasonCode"])
             assertEquals(ControlValue.BooleanValue(true), report["guiAttachDetach"])
             assertEquals(ControlValue.BooleanValue(true), report["publicRevisionGuards"])
             assertEquals(DesktopControlSupport.revisionGuardOperations.map { ControlValue.Text(it.wireName) },

@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Eelmise {connectionLabel:0} asukoha taastamine ebaõnnestus: {1}. Ei õnnestunud peatada {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Marsruutimisreeglid salvestati. Rakendamiseks taaskäivita {connectionLabel:0}",
     "ROUTING_RULES_SAVE_FAILED": "Marsruutimisreeglite salvestamine ebaõnnestus",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Marsruutimise muudatuse tulemus pole teada. Proovi uuesti samade andmetega.",
+    "ROUTING_RULES_STALE_DRAFT": "Marsruutimise seaded on muutunud. Ava redaktor enne salvestamist uuesti.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostika eksport avatud",
     "APPS_LOAD_FAILED": "Rakenduste laadimine ebaõnnestus",
     "SUBSCRIPTION_RECEIVED": "Tellimus vastu võetud. Vaata see vahekaardil Profiil üle ja salvesta.",

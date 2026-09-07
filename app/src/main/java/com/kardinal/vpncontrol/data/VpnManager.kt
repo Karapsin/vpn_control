@@ -23,6 +23,32 @@ class VpnManager(
     internal suspend fun startForControl(selection: ProfileSelection, eligible: () -> Boolean): Result<Unit> =
         startAndAwait(selection, true, 300_000L, eligible)
 
+    internal suspend fun startRetained(selection: ProfileSelection, session: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession,
+        expected: com.kardinal.vpncontrol.AndroidRuntimeObservation): Result<Unit> =
+        startAndAwait(selection, true, 300_000L, null, expected, session)
+
+    internal suspend fun restoreRetained(point: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint,
+        expected: com.kardinal.vpncontrol.AndroidRuntimeObservation, session: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession): Result<Unit> = runCatching {
+        val profile = LocationConfigs.decodeStoredLocation(point.configuration.locationReference)
+        val selection = ProfileSelection(profile, com.kardinal.vpncontrol.model.ProfileBenchmark(profile, "", "", null, null, 0.0, ""),
+            point.runtimeJson, point.configuration.sourceReference)
+        com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(selection, point.configuration)
+        startAndAwait(selection, true, 300_000L, null, expected, session).getOrThrow()
+    }
+
+    internal suspend fun restoreUnchangedRuntimeArtifacts(point: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val actual = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).runtimeObserver.captureRuntime()
+            check(actual != null && actual.observation == point.observation && actual.runtimeJson == point.runtimeJson &&
+                actual.configuration == point.configuration) { "RUNTIME_COMMAND_STALE" }
+            storage.runtimeConfigFile().writeText(point.runtimeJson)
+            storage.lastProfileFile().writeText(LocationConfigs.decodeStoredLocation(point.configuration.locationReference).rawLink)
+        }
+    }
+
+    internal suspend fun stopRetained(expected: com.kardinal.vpncontrol.AndroidRuntimeObservation,
+        session: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession): Result<Unit> = stopAndAwait(300_000L, expected, session)
+
     internal suspend fun restoreForControl(point: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint,
         stopped: com.kardinal.vpncontrol.AndroidRuntimeObservation, eligible: () -> Boolean): Result<Unit> = runCatching {
         val owner = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context)
@@ -35,7 +61,8 @@ class VpnManager(
     }
 
     private suspend fun startAndAwait(selection: ProfileSelection, rememberProfile: Boolean, timeoutMillis: Long,
-        eligible: (() -> Boolean)?, expectedObservation: com.kardinal.vpncontrol.AndroidRuntimeObservation? = null): Result<Unit> = withContext(Dispatchers.IO) {
+        eligible: (() -> Boolean)?, expectedObservation: com.kardinal.vpncontrol.AndroidRuntimeObservation? = null,
+        retained: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession? = null): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (eligible != null) withContext(Dispatchers.Main.immediate) { check(eligible()) { "INTERACTION_REQUIRED" } }
             val initialState = storage.snapshot()
@@ -61,7 +88,8 @@ class VpnManager(
                 putExtra(AndroidVpnService.EXTRA_COMMAND_ID, ticket.id)
             }
             try {
-                withContext(Dispatchers.Main.immediate) {
+                if (retained != null) retained.dispatch(com.kardinal.vpncontrol.AndroidRuntimeAction.START, ticket.id, preparedId)
+                else withContext(Dispatchers.Main.immediate) {
                     check(eligible == null || eligible()) { "INTERACTION_REQUIRED" }
                     context.startForegroundService(intent)
                 }
@@ -95,7 +123,8 @@ class VpnManager(
 
     internal suspend fun stopPinnedForControl(expected: com.kardinal.vpncontrol.AndroidRuntimeObservation): Result<Unit> = stopAndAwait(300_000L, expected)
 
-    private suspend fun stopAndAwait(timeoutMillis: Long, expected: com.kardinal.vpncontrol.AndroidRuntimeObservation? = null): Result<Unit> = withContext(Dispatchers.IO) {
+    private suspend fun stopAndAwait(timeoutMillis: Long, expected: com.kardinal.vpncontrol.AndroidRuntimeObservation? = null,
+        retained: com.kardinal.vpncontrol.AndroidRetainedRuntimeSession? = null): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val initialState = storage.snapshot()
             val commands = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).runtimeCommands
@@ -105,7 +134,8 @@ class VpnManager(
                 putExtra(AndroidVpnService.EXTRA_COMMAND_ID, ticket.id)
             }
             try {
-                context.startService(intent)
+                if (retained != null) retained.dispatch(com.kardinal.vpncontrol.AndroidRuntimeAction.STOP, ticket.id)
+                else context.startService(intent)
             } catch (error: Throwable) {
                 commands.discard(ticket)
                 throw VpnCommandException(

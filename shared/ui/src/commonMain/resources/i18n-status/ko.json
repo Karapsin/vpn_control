@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "이전 {connectionLabel:0} 위치를 복원하지 못했습니다: {1}. {connectionLabel:0}을(를) 중지하지 못했습니다: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "라우팅 규칙이 저장되었습니다. 적용하려면 {connectionLabel:0}을(를) 다시 시작하세요",
     "ROUTING_RULES_SAVE_FAILED": "작업에 실패했습니다",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "라우팅 변경 결과를 알 수 없습니다. 같은 입력으로 다시 시도하세요.",
+    "ROUTING_RULES_STALE_DRAFT": "라우팅 설정이 변경되었습니다. 저장하기 전에 편집기를 다시 여세요.",
     "DIAGNOSTICS_EXPORT_OPENED": "진단 내보내기를 열었습니다",
     "APPS_LOAD_FAILED": "앱 로드 실패",
     "SUBSCRIPTION_RECEIVED": "구독을 받았습니다. 프로필 탭에서 확인하고 저장하세요.",

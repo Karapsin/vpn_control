@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Edellisen {connectionLabel:0}-yhteyden sijainnin palautus epäonnistui: {1}. {connectionLabel:0}-yhteyden pysäytys epäonnistui: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Reitityssäännöt tallennettiin. Ota muutokset käyttöön käynnistämällä {connectionLabel:0}-yhteys uudelleen",
     "ROUTING_RULES_SAVE_FAILED": "Reitityssääntöjen tallennus epäonnistui",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Reititysmuutoksen tulos ei ole tiedossa. Yritä uudelleen samoilla tiedoilla.",
+    "ROUTING_RULES_STALE_DRAFT": "Reititysasetukset ovat muuttuneet. Avaa muokkain uudelleen ennen tallentamista.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostiikan vienti avattu",
     "APPS_LOAD_FAILED": "Sovellusten lataus epäonnistui",
     "SUBSCRIPTION_RECEIVED": "Tilaus vastaanotettu. Tarkista ja tallenna se Profiili-välilehdellä.",

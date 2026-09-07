@@ -77,6 +77,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -238,6 +242,8 @@ fun VpnControlApp(
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
     onRoutingDirectDomainsChange: (String) -> Unit,
+    onRoutingDirectDomainListChange: (List<String>) -> Unit,
+    onSaveRoutingRules: () -> Unit = {},
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
     onDeleteRuleSet: (String) -> Unit,
@@ -330,6 +336,8 @@ fun VpnControlApp(
             onSelectAllDirectApps = onSelectAllDirectApps,
             onClearAllDirectApps = onClearAllDirectApps,
             onDirectDomainsChange = onRoutingDirectDomainsChange,
+            onDirectDomainListChange = onRoutingDirectDomainListChange,
+            onSaveRoutingRules = onSaveRoutingRules,
             onShowAddRuleSetDialog = onShowAddRuleSetDialog,
             onEditRuleSet = onEditRuleSet,
             onDeleteRuleSet = onDeleteRuleSet,
@@ -537,80 +545,92 @@ fun VpnControlApp(
             textContentColor = Color.White,
             text = {
                 Column(
-                    modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier.heightIn(max = 620.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(appStrings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-enabled"),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text(appStrings.get(UiText.HOME_SSH_ENABLED))
-                        Switch(checked = state.homeSshEnabledDraft, onCheckedChange = onHomeSshEnabledChange)
+                        Text(appStrings.get(UiText.HOME_SSH_DESCRIPTION), color = Color(0xFFD3E3EE))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-enabled"),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(appStrings.get(UiText.HOME_SSH_ENABLED))
+                            Switch(checked = state.homeSshEnabledDraft, onCheckedChange = onHomeSshEnabledChange)
+                        }
+                        OutlinedTextField(
+                            value = state.homeSshHostDraft,
+                            onValueChange = onHomeSshHostChange,
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-host"),
+                            label = { Text(appStrings.get(UiText.HOME_SSH_HOST)) },
+                            placeholder = { Text("example.com") },
+                            singleLine = true,
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedTextField(
+                            value = state.homeSshPortDraft,
+                            onValueChange = onHomeSshPortChange,
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-port"),
+                            label = { Text(appStrings.get(UiText.HOME_SSH_PORT)) },
+                            placeholder = { Text("228") },
+                            singleLine = true,
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedTextField(
+                            value = state.homeSshUserDraft,
+                            onValueChange = onHomeSshUserChange,
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-user"),
+                            label = { Text(appStrings.get(UiText.HOME_SSH_USER)) },
+                            placeholder = { Text("kardinal") },
+                            singleLine = true,
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedTextField(
+                            value = state.homeSshHostKeysDraft,
+                            onValueChange = onHomeSshHostKeysChange,
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-host-keys"),
+                            label = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS)) },
+                            supportingText = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
+                            minLines = 2,
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedTextField(
+                            value = state.homeSshRelayPortDraft,
+                            onValueChange = onHomeSshRelayPortChange,
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-relay-port"),
+                            label = { Text(appStrings.get(UiText.HOME_SSH_RELAY_PORT)) },
+                            placeholder = { Text("10808") },
+                            singleLine = true,
+                            colors = routingTextFieldColors(),
+                        )
+                        OutlinedButton(
+                            onClick = onImportHomeSshPrivateKey,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ssh-key"),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9ED6FF)),
+                        ) {
+                            Text(appStrings.get(UiText.IMPORT_PRIVATE_KEY))
+                        }
+                        Text(
+                            appStrings.get(
+                                if (state.homeSshRouteSettings.credentialVersion > 0L) {
+                                    UiText.HOME_SSH_KEY_IMPORTED
+                                } else {
+                                    UiText.HOME_SSH_KEY_MISSING
+                                },
+                            ),
+                            color = Color(0xFFD3E3EE),
+                        )
                     }
-                    OutlinedTextField(
-                        value = state.homeSshHostDraft,
-                        onValueChange = onHomeSshHostChange,
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-host"),
-                        label = { Text(appStrings.get(UiText.HOME_SSH_HOST)) },
-                        placeholder = { Text("example.com") },
-                        singleLine = true,
-                        colors = routingTextFieldColors(),
-                    )
-                    OutlinedTextField(
-                        value = state.homeSshPortDraft,
-                        onValueChange = onHomeSshPortChange,
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-port"),
-                        label = { Text(appStrings.get(UiText.HOME_SSH_PORT)) },
-                        placeholder = { Text("228") },
-                        singleLine = true,
-                        colors = routingTextFieldColors(),
-                    )
-                    OutlinedTextField(
-                        value = state.homeSshUserDraft,
-                        onValueChange = onHomeSshUserChange,
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-user"),
-                        label = { Text(appStrings.get(UiText.HOME_SSH_USER)) },
-                        placeholder = { Text("kardinal") },
-                        singleLine = true,
-                        colors = routingTextFieldColors(),
-                    )
-                    OutlinedTextField(
-                        value = state.homeSshHostKeysDraft,
-                        onValueChange = onHomeSshHostKeysChange,
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-host-keys"),
-                        label = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS)) },
-                        supportingText = { Text(appStrings.get(UiText.HOME_SSH_HOST_KEYS_HELP)) },
-                        minLines = 2,
-                        colors = routingTextFieldColors(),
-                    )
-                    OutlinedTextField(
-                        value = state.homeSshRelayPortDraft,
-                        onValueChange = onHomeSshRelayPortChange,
-                        modifier = Modifier.fillMaxWidth().testTag("ssh-relay-port"),
-                        label = { Text(appStrings.get(UiText.HOME_SSH_RELAY_PORT)) },
-                        placeholder = { Text("10808") },
-                        singleLine = true,
-                        colors = routingTextFieldColors(),
-                    )
-                    OutlinedButton(
-                        onClick = onImportHomeSshPrivateKey,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ssh-key"),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF9ED6FF)),
-                    ) {
-                        Text(appStrings.get(UiText.IMPORT_PRIVATE_KEY))
+                    state.homeSshDraftFailure?.let { failure ->
+                        Text(
+                            text = appStrings.statusMessage(failure),
+                            color = Color(0xFFFFB4AB),
+                            modifier = Modifier.fillMaxWidth().testTag("ssh-draft-failure"),
+                        )
                     }
-                    Text(
-                        appStrings.get(
-                            if (state.homeSshRouteSettings.credentialVersion > 0L) {
-                                UiText.HOME_SSH_KEY_IMPORTED
-                            } else {
-                                UiText.HOME_SSH_KEY_MISSING
-                            },
-                        ),
-                        color = Color(0xFFD3E3EE),
-                    )
                 }
             },
             confirmButton = {
@@ -1119,6 +1139,8 @@ private fun HomeTabsScreen(
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onDirectDomainListChange: (List<String>) -> Unit,
+    onSaveRoutingRules: () -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
     onDeleteRuleSet: (String) -> Unit,
@@ -1152,6 +1174,7 @@ private fun HomeTabsScreen(
             when (state.currentScreen) {
                 AppScreen.MAIN -> SharedMainScreen(
                     state = state,
+                    connectionConfiguration = locationVisualState?.connectionConfiguration,
                     activeProfileLabel = activeProfileLabel(state, strings),
                     showSubscriptionMismatchWarning = selectedLocationOutsideCurrentSubscription(state),
                     onToggleVpn = onToggleVpn,
@@ -1220,6 +1243,8 @@ private fun HomeTabsScreen(
                     onSelectAllDirectApps = onSelectAllDirectApps,
                     onClearAllDirectApps = onClearAllDirectApps,
                     onDirectDomainsChange = onDirectDomainsChange,
+                    onDirectDomainListChange = onDirectDomainListChange,
+                    onSaveRoutingRules = onSaveRoutingRules,
                     onBlockQuicUdp443Change = onBlockQuicUdp443Change,
                     onShowAddRuleSetDialog = onShowAddRuleSetDialog,
                     onEditRuleSet = onEditRuleSet,
@@ -2586,6 +2611,8 @@ private fun RoutingRulesScreen(
     onSelectAllDirectApps: () -> Unit,
     onClearAllDirectApps: () -> Unit,
     onDirectDomainsChange: (String) -> Unit,
+    onDirectDomainListChange: (List<String>) -> Unit,
+    onSaveRoutingRules: () -> Unit,
     onBlockQuicUdp443Change: (Boolean) -> Unit,
     onShowAddRuleSetDialog: () -> Unit,
     onEditRuleSet: (String) -> Unit,
@@ -2608,6 +2635,17 @@ private fun RoutingRulesScreen(
     val visualExportTimestamp = LocalVisualExportTimestamp.current
     var exportQrContent by remember { mutableStateOf<ExportQrContent?>(null) }
     var exportQrError by remember { mutableStateOf<String?>(null) }
+    var exportFailure by remember { mutableStateOf(false) }
+    var preparingExport by remember { mutableStateOf(false) }
+    val exportScope = rememberCoroutineScope()
+    if (exportFailure) {
+        AlertDialog(
+            onDismissRequest = { exportFailure = false },
+            confirmButton = { TextButton(onClick = { exportFailure = false }) { Text(strings.get(UiText.CLOSE)) } },
+            title = { Text(strings.get(UiText.RULES_EXPORT_TITLE)) },
+            text = { Text(strings.statusMessage(com.kardinal.vpncontrol.model.RoutingStatusMessages.routingRulesExportFailed())) },
+        )
+    }
     exportQrContent?.let { qr ->
         ExportQrDialog(
             title = qr.title,
@@ -2638,49 +2676,73 @@ private fun RoutingRulesScreen(
         onSelectAllProxyApps = onSelectAllProxyApps,
         onClearAllProxyApps = onClearAllProxyApps,
         onDirectDomainsChange = onDirectDomainsChange,
+        onDirectDomainListChange = onDirectDomainListChange,
         onBlockQuicUdp443Change = onBlockQuicUdp443Change,
         controls = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ImportMenuButton(
-                    onQrClick = onScanQr,
-                    onClipboardClick = onImportFromClipboard,
-                    onFileClick = onImport,
-                    enabled = !state.isBusy,
-                    modifier = Modifier.weight(1f),
-                    visualId = "routing-import-menu",
-                )
-                ExportMenuButton(
-                    onQrClick = {
-                        val document = RoutingRulesTransfer.export(
-                            buildEditedRoutingRules(state),
-                            visualExportTimestamp,
-                        )
-                        val bytes = com.kardinal.vpncontrol.data.QrExportPolicy.byteCount(document.content)
-                        if (!com.kardinal.vpncontrol.data.QrExportPolicy.fits(document.content)) {
-                            exportQrError = strings.format(
-                                UiText.QR_TOO_LARGE_MESSAGE,
-                                strings.get(UiText.EXPORT_KIND_RULES),
-                                bytes,
-                            )
-                        } else {
-                            exportQrContent = ExportQrContent(strings.get(UiText.RULES_EXPORT_TITLE), document.content)
-                        }
-                    },
-                    onClipboardClick = {
-                        val document = RoutingRulesTransfer.export(
-                            buildEditedRoutingRules(state),
-                            visualExportTimestamp,
-                        )
-                        clipboard.setText(AnnotatedString(document.content))
-                    },
-                    onFileClick = onExport,
-                    enabled = !state.isBusy,
-                    modifier = Modifier.weight(1f),
-                    visualId = "routing-export-menu",
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ImportMenuButton(
+                        onQrClick = onScanQr,
+                        onClipboardClick = onImportFromClipboard,
+                        onFileClick = onImport,
+                        enabled = !state.isBusy,
+                        modifier = Modifier.weight(1f),
+                        visualId = "routing-import-menu",
+                    )
+                    ExportMenuButton(
+                        onQrClick = {
+                            preparingExport = true
+                            val rules = buildEditedRoutingRules(state)
+                            exportScope.launch {
+                                try {
+                                    val prepared = withContext(Dispatchers.Default) {
+                                        com.kardinal.vpncontrol.AndroidRoutingQrExport.prepare(rules, visualExportTimestamp)
+                                    }
+                                    if (prepared.payload == null) exportQrError = strings.format(UiText.QR_TOO_LARGE_MESSAGE,
+                                        strings.get(UiText.EXPORT_KIND_RULES), prepared.byteCount)
+                                    else exportQrContent = ExportQrContent(strings.get(UiText.RULES_EXPORT_TITLE), prepared.payload)
+                                } catch (_: OutOfMemoryError) { exportFailure = true }
+                                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                catch (_: Exception) { exportFailure = true }
+                                finally { preparingExport = false }
+                            }
+                        },
+                        onClipboardClick = {
+                            preparingExport = true
+                            val rules = buildEditedRoutingRules(state)
+                            exportScope.launch {
+                                try {
+                                    val document = withContext(Dispatchers.Default) { RoutingRulesTransfer.export(rules, visualExportTimestamp) }
+                                    clipboard.setText(AnnotatedString(document.content))
+                                } catch (_: OutOfMemoryError) { exportFailure = true }
+                                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                catch (_: Exception) { exportFailure = true }
+                                finally { preparingExport = false }
+                            }
+                        },
+                        onFileClick = onExport,
+                        enabled = !state.isBusy && !preparingExport,
+                        modifier = Modifier.weight(1f),
+                        visualId = "routing-export-menu",
+                    )
+                }
+                state.routingDraftFailure?.let { failure ->
+                    Text(
+                        text = strings.statusMessage(failure),
+                        color = Color(0xFFFFB4AB),
+                        modifier = Modifier.fillMaxWidth().testTag("routing-draft-failure"),
+                    )
+                    if (state.routingDraftRetryAvailable) {
+                        TextButton(
+                            onClick = onSaveRoutingRules,
+                            enabled = !state.isBusy,
+                            modifier = Modifier.fillMaxWidth().testTag("routing-save-retry"),
+                        ) { Text(strings.get(UiText.SAVE)) }
+                    }
+                }
             }
         },
     )

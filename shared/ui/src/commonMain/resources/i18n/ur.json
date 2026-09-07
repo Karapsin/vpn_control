@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "تنصیب کے لیے ایک تعاملی نشست درکار ہے۔",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "تنصیب کی اجازت مسترد کر دی گئی۔",
+  "UPDATE_INSTALL_CANCELLED": "تنصیب منسوخ کر دی گئی۔",
+  "UPDATE_INSTALL_CONFIRMATION": "تنصیب کی تصدیق کا انتظار ہے۔",
+  "UPDATE_INSTALL_COMPLETED": "اپ ڈیٹ نصب ہو گئی۔",
+  "UPDATE_INSTALL_UNKNOWN": "تنصیب کا نتیجہ معلوم نہیں ہے۔",
   "APP_TITLE": "VPN کنٹرول",
   "TAB_MAIN": "مرکزی",
   "TAB_PROFILE": "پروفائل",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "فعال مقام: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "فعال مقام: دستیاب نہیں",
+  "CONNECTION_RESTART_PENDING": "محفوظ کردہ تبدیلیاں لاگو کرنے کے لیے کنکشن دوبارہ شروع کریں۔",
+  "CONNECTION_RESTART_UNKNOWN": "یہ معلوم نہیں کہ دوبارہ شروع کرنا ضروری ہے یا نہیں۔"
 }

@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "以前の{connectionLabel:0}のロケーションの復元に失敗しました: {1}。{connectionLabel:0}の停止に失敗しました: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "ルーティングルールを保存しました。適用するには{connectionLabel:0}を再起動してください",
     "ROUTING_RULES_SAVE_FAILED": "操作に失敗しました",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "ルーティング変更の結果は不明です。同じ入力で再試行してください。",
+    "ROUTING_RULES_STALE_DRAFT": "ルーティング設定が変更されました。保存する前にエディターを開き直してください。",
     "DIAGNOSTICS_EXPORT_OPENED": "診断エクスポートを開きました",
     "APPS_LOAD_FAILED": "アプリを読み込めませんでした",
     "SUBSCRIPTION_RECEIVED": "サブスクリプションを受信しました。プロファイルタブで確認して保存してください。",

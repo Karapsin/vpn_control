@@ -11,7 +11,6 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
 import com.kardinal.vpncontrol.model.AppMode
@@ -53,13 +52,24 @@ import java.io.IOException
 import java.io.File
 import java.util.UUID
 
-private val Context.dataStore by preferencesDataStore(name = "vpn_control")
+private object AndroidPreferencesStore {
+    @Volatile private var instance: androidx.datastore.core.DataStore<Preferences>? = null
+    fun get(context: Context): androidx.datastore.core.DataStore<Preferences> = instance ?: synchronized(this) {
+        instance ?: androidx.datastore.core.DataStoreFactory.create(
+            serializer = AndroidPreferencesSerializer(context.applicationContext.cacheDir.toPath()),
+            produceFile = { File(context.applicationContext.filesDir, "datastore/vpn_control.preferences_pb") },
+        ).also { instance = it }
+    }
+}
+private val Context.dataStore get() = AndroidPreferencesStore.get(this)
 
 class ProfileStorage(
     private val context: Context,
     private val runtimeRunning: () -> Boolean? = { null },
 ) : RepositoryStateStore, SearchStateStore {
     private val configurationStore by lazy { AndroidConfigurationStore(context.dataStore, ::mapState) }
+    private val connectionLogPublication = AndroidConnectionLogPublication()
+    internal fun observeConnectionLogs(observer: (List<ConnectionLogEntry>) -> Unit) = connectionLogPublication.observe(observer)
     internal val committedConfiguration get() = configurationStore.state
     internal suspend fun configurationSnapshot() = configurationStore.snapshot()
 
@@ -80,6 +90,29 @@ class ProfileStorage(
             prefs[Keys.proxyPackages] = encodeList(rules.proxyPackages)
             prefs[Keys.bypassPackages] = ""
             prefs[Keys.directDomainSuffixes] = encodeList(rules.directDomainSuffixes)
+            prefs[Keys.ruleSets] = ""
+        }
+        return AndroidSettingsCommit(committed, schedulingChanged = false)
+    }
+
+    internal suspend fun commitPreparedControlRouting(
+        prepared: AndroidPreparedRouting,
+        expectedControllerId: String,
+        expectedRevision: Long?,
+        runtimeKnown: () -> Boolean,
+    ): AndroidSettingsCommit {
+        val committed = configurationStore.editProjected(expectedControllerId, expectedRevision) { prefs, prior ->
+            check(runtimeKnown()) { "RUNTIME_STATE_UNKNOWN" }
+            if (prepared.matches(prior.routingRules)) {
+                prepared.discard()
+                return@editProjected
+            }
+            val rules = prepared.consume { com.kardinal.vpncontrol.AndroidControlTransferSpool.create(context.cacheDir.toPath()) }
+            prefs[Keys.ignoreRules] = rules.ignoreRules
+            prefs[Keys.blockQuicUdp443] = rules.blockQuicUdp443
+            prefs[Keys.proxyPackages] = rules.proxyPackages
+            prefs[Keys.bypassPackages] = ""
+            prefs[Keys.directDomainSuffixes] = rules.directDomainSuffixes
             prefs[Keys.ruleSets] = ""
         }
         return AndroidSettingsCommit(committed, schedulingChanged = false)
@@ -340,15 +373,14 @@ class ProfileStorage(
         val connectionLog = stringPreferencesKey("connection_log")
     }
 
-    override val state: Flow<PersistedState> = context.dataStore.data
+    override val state: Flow<PersistedState> = configurationStore.state.map { it.value }
         .catch { exception ->
             if (exception is IOException) {
-                emit(emptyPreferences())
+                emit(mapState(emptyPreferences()))
             } else {
                 throw exception
             }
         }
-        .map(::mapState)
 
     override suspend fun ensureSubscriptionHwid(): String {
         var resolved = ""
@@ -734,7 +766,8 @@ class ProfileStorage(
                         selectedRelevantToCurrentList &&
                         selectedStored !in visibleLocations
                 if (selectedMissing) {
-                    clearStoredSelection(prefs)
+                    // Cache refresh cannot infer the actual runtime from pending selection.
+                    clearStoredSelection(prefs, deleteArtifacts = false, preserveRuntimeTelemetry = true)
                 }
                 result = LocationUpdateResult(selectedMissing = selectedMissing)
             }
@@ -744,6 +777,32 @@ class ProfileStorage(
             "Subscription cache updated: subscriptionId=$subscriptionId count=${normalized.size}",
         )
         return result
+    }
+
+    internal suspend fun commitControlRefresh(
+        loads: List<com.kardinal.vpncontrol.AndroidRefreshLoad>, epoch: String, revision: Long,
+        knowledge: () -> com.kardinal.vpncontrol.AndroidRuntimeKnowledge,
+    ): com.kardinal.vpncontrol.control.ControlCommitted<PersistedState> = configurationStore.edit(epoch, revision) { prefs ->
+        val before = mapState(prefs)
+        val updates = loads.associateBy { it.source.id }
+        check(loads.all { load -> before.subscriptions.any { it.id == load.source.id && it.url == load.source.url } }) { "CONFLICT" }
+        val subscriptions = before.subscriptions.map { old ->
+            val load = updates[old.id] ?: return@map old
+            if (load.locations != null) old.copy(cachedLocations = normalizeStoredLocations(load.locations),
+                lastRefreshedAtEpochMillis = System.currentTimeMillis(), lastRefreshStatus = "OK")
+            else old.copy(lastRefreshStatus = load.code.wireName)
+        }
+        prefs[Keys.subscriptions] = encodeSubscriptions(subscriptions)
+        val active = resolveActiveSubscriptionId(prefs, subscriptions)
+        val relevant = if (isAllSubscriptionsGroupActive(active, subscriptions)) subscriptions else subscriptions.filter { it.id == active }
+        if (before.profileSourceMode == ProfileSourceMode.SUBSCRIPTION && relevant.any { updates[it.id]?.locations != null }) {
+            val visible = mergedSubscriptionLocations(relevant)
+            prefs[Keys.locationBenchmarkDetails] = encodeStringMap(before.locationBenchmarkDetails.filterKeys { it in visible })
+            if (com.kardinal.vpncontrol.AndroidRefreshCommitPolicy.selectedMissing(before, subscriptions)) {
+                clearStoredSelection(prefs, deleteArtifacts = false,
+                    preserveRuntimeTelemetry = !com.kardinal.vpncontrol.AndroidRefreshCommitPolicy.deleteArtifacts(knowledge()))
+            }
+        }
     }
 
     override suspend fun updateSubscriptionRefreshStatus(
@@ -771,6 +830,22 @@ class ProfileStorage(
             )
         }
         DiagnosticsLogger.append(context, "Subscription refresh status updated: subscriptionId=$subscriptionId")
+    }
+
+    internal suspend fun commitControlBenchmark(raw: String, benchmark: com.kardinal.vpncontrol.model.ProfileBenchmark,
+        epoch: String, revision: Long,
+    ): com.kardinal.vpncontrol.control.ControlCommitted<PersistedState> = configurationStore.edit(epoch, revision) { prefs ->
+        val before = mapState(prefs)
+        check(raw in before.currentLocations) { "CONFLICT" }
+        check(LocationConfigs.normalizeStoredReference(raw) == LocationConfigs.encodeStoredLocation(benchmark.profile)) { "CONFLICT" }
+        val normalized = LocationConfigs.normalizeStoredReference(raw)
+        prefs[Keys.locationBenchmarkDetails] = encodeStringMap(before.locationBenchmarkDetails + (normalized to benchmark.detail))
+        if (before.latencyHistoryEnabled) {
+            val entry = LatencyHistoryEntry(java.util.UUID.randomUUID().toString(), benchmark.profile.remarks, benchmark.detail,
+                benchmark.primaryStatus, benchmark.secondaryStatus, benchmark.primaryTotal, benchmark.secondaryTotal, System.currentTimeMillis())
+            prefs[Keys.latencyHistory] = StatsCodec.encodeLatencyHistory((before.latencyHistory + entry).takeLast(MAX_LATENCY_HISTORY_ITEMS))
+        }
+        prefs[Keys.statusMessage] = com.kardinal.vpncontrol.model.LocationStatusMessages.locationChecked(benchmark.profile.remarks)
     }
 
     override suspend fun updateLocationBenchmarkDetails(details: Map<String, String>) {
@@ -830,6 +905,23 @@ class ProfileStorage(
         )
     }
 
+    /** Find Best owns the mutation lease; the expected revision is still checked inside DataStore. */
+    internal suspend fun commitControlBestSelection(selection: com.kardinal.vpncontrol.model.ProfileSelection,
+        epoch: String, revision: Long, prepared: com.kardinal.vpncontrol.AndroidFindBestPlan): com.kardinal.vpncontrol.control.ControlCommitted<PersistedState> =
+        configurationStore.edit(epoch, revision) { prefs ->
+            if (prepared.caches.isNotEmpty()) prefs[Keys.subscriptions] = encodeSubscriptions(prepared.subscriptions(mapState(prefs)))
+            prefs[Keys.locationBenchmarkDetails] = encodeStringMap(prepared.candidates.locationBenchmarkDetails)
+            AndroidSelectionCacheInvalidation.selected(prefs, present = true)
+            prefs[Keys.selectedProfileName] = selection.profile.remarks
+            prefs[Keys.selectedProfileServer] = selection.profile.server
+            prefs[Keys.selectedProfileRawLink] = selection.profile.rawLink
+            prefs[Keys.selectedProfileJson] = LocationConfigs.encodeStoredLocation(selection.profile)
+            prefs[Keys.selectedProfileSourceUrl] = selection.sourceUrl
+            prefs[Keys.lastBenchmarkSummary] = selection.benchmark.detail
+            prefs[Keys.runtimeConfigJson] = selection.runtimeConfigJson
+            prefs[Keys.managementProxyPort] = selection.managementProxyPort?.takeIf { it in 1..65535 } ?: 0
+        }
+
     override suspend fun updateSelection(
         profile: ProxyProfile,
         summary: String,
@@ -855,17 +947,19 @@ class ProfileStorage(
     }
 
     override suspend fun updateStatus(message: String) {
-        configurationStore.edit { prefs ->
-            prefs[Keys.statusMessage] = message
-            val updated = (
-                StatsCodec.decodeConnectionLog(prefs[Keys.connectionLog]) +
-                    ConnectionLogEntry(
-                        id = UUID.randomUUID().toString(),
-                        message = message,
-                        createdAtEpochMillis = System.currentTimeMillis(),
-                    )
-                ).takeLast(MAX_CONNECTION_LOG_ITEMS)
-            prefs[Keys.connectionLog] = StatsCodec.encodeConnectionLog(updated)
+        connectionLogPublication.commit {
+            configurationStore.edit { prefs ->
+                prefs[Keys.statusMessage] = message
+                val updated = (
+                    StatsCodec.decodeConnectionLog(prefs[Keys.connectionLog]) +
+                        ConnectionLogEntry(
+                            id = UUID.randomUUID().toString(),
+                            message = message,
+                            createdAtEpochMillis = System.currentTimeMillis(),
+                        )
+                    ).takeLast(MAX_CONNECTION_LOG_ITEMS)
+                prefs[Keys.connectionLog] = StatsCodec.encodeConnectionLog(updated)
+            }.value.connectionLog
         }
         DiagnosticsLogger.append(context, "Status: $message")
     }
@@ -1232,9 +1326,7 @@ class ProfileStorage(
                 ),
                 bypassPackages = emptyList(),
                 directDomainSuffixes = if (rawPreferences.containsKey(Keys.directDomainSuffixes)) {
-                    RoutingRules.parseDirectDomainSuffixes(
-                        encodeList(decodeList(preferences[Keys.directDomainSuffixes])),
-                    )
+                    AndroidPersistedDomainSuffixes.decode(preferences[Keys.directDomainSuffixes])
                 } else {
                     RoutingRules.DEFAULT_DIRECT_DOMAIN_SUFFIXES
                 },
@@ -1291,7 +1383,7 @@ class ProfileStorage(
             .toList()
     }
 
-    private fun encodeList(values: List<String>): String = values.joinToString(separator = "\n")
+    private fun encodeList(values: List<String>): String = AndroidStringListCodec.encode(values)
 
     private fun sanitizePackageNames(values: Iterable<String>): List<String> {
         return RoutingRules.normalizePackageNames(values)

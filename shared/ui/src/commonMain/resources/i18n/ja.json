@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "インストールには対話型セッションが必要です。",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "インストールの許可が拒否されました。",
+  "UPDATE_INSTALL_CANCELLED": "インストールがキャンセルされました。",
+  "UPDATE_INSTALL_CONFIRMATION": "インストールの確認を待っています。",
+  "UPDATE_INSTALL_COMPLETED": "更新がインストールされました。",
+  "UPDATE_INSTALL_UNKNOWN": "インストール結果は不明です。",
   "APP_TITLE": "VPN 制御",
   "TAB_MAIN": "メイン",
   "TAB_PROFILE": "プロファイル",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "有効なロケーション: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "有効なロケーション: 利用不可",
+  "CONNECTION_RESTART_PENDING": "保存した変更を適用するには、接続を再起動してください。",
+  "CONNECTION_RESTART_UNKNOWN": "再起動が必要かどうかは不明です。"
 }

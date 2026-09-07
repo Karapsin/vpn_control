@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 data class DesktopRuntimeSession(
@@ -31,6 +32,7 @@ data class DesktopRuntimeSession(
     val configJson: String,
     val logFile: Path,
     val processId: Long,
+    val resourceWarnings: List<DesktopRuntimeResourceWarning> = emptyList(),
 )
 
 internal const val WINDOWS_ROUTE_DNS_TOOLING_TIMEOUT_SECONDS = 15L
@@ -82,9 +84,27 @@ class DesktopProxyRuntimeManager(
     private val homeSshCredentialStore: DesktopHomeSshCredentialStore = DesktopHomeSshCredentialStore(
         baseDir.parent ?: baseDir,
     ),
+    private val windowsScopedRuntimeEnabled: Boolean = false,
 ) : DesktopRuntimeController {
+    internal constructor(runtimeConfigStore: RuntimeConfigStore, baseDir: Path,
+                         nativeOperations: DesktopRuntimeManagerNative) : this(runtimeConfigStore, baseDir) {
+        this.nativeOperations = nativeOperations
+    }
+
+    private var nativeOperations: DesktopRuntimeManagerNative? = null
+    private var resourceScopeProvider: DesktopWindowsRuntimeResourceScopeProvider? = null
+
+    @Synchronized internal fun bindRuntimeResourceScopeProvider(provider: DesktopWindowsRuntimeResourceScopeProvider) {
+        check(resourceScopeProvider == null || resourceScopeProvider === provider) { "CONFLICT" }
+        resourceScopeProvider = provider
+    }
+
+    @Synchronized internal fun requireRuntimeResourceScope(): DesktopWindowsRuntimeResourceScope =
+        resourceScopeProvider?.current() ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
+            stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+
     @Volatile
-    private var process: Process? = null
+    private var process: DesktopRuntimeProcess? = null
 
     @Volatile
     private var listenPort: Int? = null
@@ -104,6 +124,18 @@ class DesktopProxyRuntimeManager(
     @Volatile
     private var lastAttemptedConfigJson: String? = null
 
+    private val transition = DesktopRuntimeTransition(
+        runtimeConfigStore, ::prepareLaunch, ::awaitLaunch,
+        publish = { launch, child ->
+            process = child
+            listenPort = launch?.listenPort
+            managementProxyPort = launch?.managementPort
+            activeMode = launch?.appMode
+            if (launch != null) logFile = launch.logFile
+        },
+        retire = ::retireLaunch,
+    )
+
     override suspend fun start(
         profile: ProxyProfile,
         routingRules: RoutingRules,
@@ -111,138 +143,156 @@ class DesktopProxyRuntimeManager(
         appMode: AppMode,
         activeVerificationPort: Int?,
         homeSshRouteSettings: HomeSshRouteSettings,
-    ): Result<DesktopRuntimeSession> = withContext(Dispatchers.IO) {
-        runCatching {
-            stopActiveProcess()
-            runtimeConfigStore.clearRuntimeConfig()
+    ): Result<DesktopRuntimeSession> {
+        val caller = kotlinx.coroutines.currentCoroutineContext()
+        // Keep established recovery metadata available to lifecycle bookkeeping after cancellation.
+        return withContext(kotlinx.coroutines.NonCancellable) {
+            withContext(Dispatchers.IO) {
+                transition.start(caller) {
+                    buildLaunch(profile, routingRules, dnsSettings, appMode,
+                        activeVerificationPort, homeSshRouteSettings)
+                }
+            }
+        }
+    }
 
-            Files.createDirectories(baseDir)
-            val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: allocateListenPort()
-            val userProxyPort = when {
-                appMode != AppMode.PROXY_ONLY -> managementPort
-                profile.protocol == ProxyProtocol.CUSTOM -> managementPort
-                else -> allocateListenPort(excluding = managementPort)
-            }
-            val homeRoute = homeSshRouteSettings.takeIf { it.enabled }?.let { settings ->
-                HomeSshRouteRuntimeOptions(
-                    settings = settings,
-                    privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
-                        ?: error("SSH Routing private key is missing"),
-                ).validated()
-            }
-            val interfaceName = if (appMode == AppMode.VPN) {
-                DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
-            } else {
-                null
-            }
-            val configJson = if (profile.protocol == ProxyProtocol.CUSTOM) {
-                SingBoxCustomConfigTransformer.transform(
-                    rawConfig = profile.customConfigJson,
-                    managementProxyPort = managementPort,
-                    homeRoute = homeRoute,
-                    trustedDirectBypassRules = DesktopProxyConfigFactory.buildDirectProbeRouteRules(
-                        routing = directProbeRouting,
-                        outboundTag = SingBoxCustomConfigTransformer.TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG,
-                    ),
-                )
-            } else when (appMode) {
-                AppMode.PROXY_ONLY -> DesktopProxyConfigFactory.buildProxyOnlyConfig(
+    private fun buildLaunch(
+        profile: ProxyProfile,
+        routingRules: RoutingRules,
+        dnsSettings: DnsSettings,
+        appMode: AppMode,
+        activeVerificationPort: Int?,
+        homeSshRouteSettings: HomeSshRouteSettings,
+    ): DesktopRuntimeLaunch {
+        DesktopWorkspacePaths.createDirectories(baseDir)
+        val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: allocateListenPort()
+        val userProxyPort = when {
+            appMode != AppMode.PROXY_ONLY -> managementPort
+            profile.protocol == ProxyProtocol.CUSTOM -> managementPort
+            else -> allocateListenPort(excluding = managementPort)
+        }
+        val homeRoute = homeSshRouteSettings.takeIf { it.enabled }?.let { settings ->
+            HomeSshRouteRuntimeOptions(
+                settings = settings,
+                privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
+                    ?: error("SSH Routing private key is missing"),
+            ).validated()
+        }
+        val interfaceName = if (appMode == AppMode.VPN) {
+            DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
+        } else {
+            null
+        }
+        val configJson = if (profile.protocol == ProxyProtocol.CUSTOM) {
+            SingBoxCustomConfigTransformer.transform(
+                rawConfig = profile.customConfigJson,
+                managementProxyPort = managementPort,
+                homeRoute = homeRoute,
+                trustedDirectBypassRules = DesktopProxyConfigFactory.buildDirectProbeRouteRules(
+                    routing = directProbeRouting,
+                    outboundTag = SingBoxCustomConfigTransformer.TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG,
+                ),
+            )
+        } else when (appMode) {
+            AppMode.PROXY_ONLY -> DesktopProxyConfigFactory.buildProxyOnlyConfig(
+                profile = profile,
+                dns = dnsSettings,
+                routingRules = routingRules,
+                listenPort = userProxyPort,
+                managementProxyPort = managementPort,
+                homeRoute = homeRoute,
+            )
+            AppMode.VPN ->
+                DesktopProxyConfigFactory.buildVpnConfig(
                     profile = profile,
                     dns = dnsSettings,
                     routingRules = routingRules,
-                    listenPort = userProxyPort,
-                    managementProxyPort = managementPort,
+                    interfaceName = checkNotNull(interfaceName),
+                    directProbeRouting = directProbeRouting,
+                    activeVerificationPort = managementPort,
                     homeRoute = homeRoute,
                 )
-                AppMode.VPN ->
-                    DesktopProxyConfigFactory.buildVpnConfig(
-                        profile = profile,
-                        dns = dnsSettings,
-                        routingRules = routingRules,
-                        interfaceName = checkNotNull(interfaceName),
-                        directProbeRouting = directProbeRouting,
-                        activeVerificationPort = managementPort,
-                        homeRoute = homeRoute,
-                    )
-            }
-            val configPath = baseDir.resolve("runtime-sing-box-${appMode.name.lowercase()}.json")
-            val runtimeLogFile = baseDir.resolve("runtime-sing-box.log")
-            Files.writeString(configPath, configJson)
+        }
+        val directory = Files.createTempDirectory(baseDir, "candidate-")
+        val configPath = directory.resolve("config.json")
+        val runtimeLogFile = directory.resolve("runtime.log")
+        val launch = DesktopRuntimeLaunch(appMode, userProxyPort, managementPort, interfaceName,
+            configJson, configPath, runtimeLogFile, homeRoute?.privateKeyPath?.let(Path::of))
+        try {
+            Files.writeString(configPath, configJson, java.nio.file.StandardOpenOption.CREATE_NEW)
+            Files.createFile(runtimeLogFile)
             lastAttemptedConfigJson = configJson
-
-            val preflight = runPreflight(
-                appMode = appMode,
-                configPath = configPath,
-                listenPort = userProxyPort,
-                activeVerificationPort = managementPort,
+            val preflight = nativeOperations?.preflight(launch) ?: runPreflight(
+                appMode, configPath, userProxyPort, managementPort,
             )
             lastPreflightReport = preflight
-            if (!preflight.isReady) {
-                runtimeConfigStore.clearRuntimeConfig()
-                error(preflight.failureMessage())
-            }
-            val singBox = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())
-
-            val started = try {
-                Files.writeString(runtimeLogFile, "")
-                runtimeConfigStore.writeRuntimeConfig(configJson)
-                ProcessBuilder(singBox.path.toString(), "run", "-c", configPath.toString())
-                    .directory(baseDir.toFile())
-                    .redirectErrorStream(true)
-                    .redirectOutput(runtimeLogFile.toFile())
-                    .start()
-            } catch (error: IOException) {
-                runtimeConfigStore.clearRuntimeConfig()
-                throw IllegalStateException(
-                    "Failed to launch sing-box at ${singBox.path}. ${singBoxResolver.missingMessage()}",
-                    error,
-                )
-            }
-
-            process = started
-            listenPort = userProxyPort
-            managementProxyPort = managementPort
-            logFile = runtimeLogFile
-            activeMode = appMode
-
-            val startedSuccessfully = when (appMode) {
-                AppMode.PROXY_ONLY ->
-                    waitForPort(userProxyPort) &&
-                        (managementPort == userProxyPort || waitForPort(managementPort))
-                AppMode.VPN -> waitForVpnProcess() && waitForPort(managementPort)
-            }
-            if (!startedSuccessfully) {
-                val failureMessage = buildStartupFailureMessage(runtimeLogFile)
-                stopActiveProcess()
-                runtimeConfigStore.clearRuntimeConfig()
-                error(failureMessage)
-            }
-
-            DesktopRuntimeSession(
-                appMode = appMode,
-                listenPort = userProxyPort,
-                managementProxyPort = managementPort,
-                interfaceName = interfaceName,
-                configJson = configJson,
-                logFile = runtimeLogFile,
-                processId = started.pid(),
+            check(preflight.isReady) { preflight.failureMessage() }
+            if (scopedWindows(launch)) launch.captured = DesktopWindowsVpnConfigCapture.capture(
+                configJson, baseDir, launch.privateKeyPath,
             )
+            return launch
+        } catch (failure: Throwable) {
+            try { retireLaunch(launch) } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+            throw failure
         }
     }
 
-    override suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            stopActiveProcess()
-            runtimeConfigStore.clearRuntimeConfig()
+    private fun scopedWindows(launch: DesktopRuntimeLaunch) = windowsScopedRuntimeEnabled &&
+        launch.appMode == AppMode.VPN && currentRuntimeOs() == DesktopRuntimeOs.WINDOWS
+
+    private suspend fun prepareLaunch(launch: DesktopRuntimeLaunch,
+                                      caller: kotlin.coroutines.CoroutineContext): DesktopPreparedRuntimeProcess {
+        nativeOperations?.let { return it.prepare(launch) }
+        if (scopedWindows(launch)) {
+            val captured = checkNotNull(launch.captured)
+            return if (captured.mutableResources.isEmpty()) DesktopWindowsVpnBroker.prepareRetained(captured, launch.logFile) {
+                caller.ensureActive()
+            } else DesktopWindowsVpnBroker.prepareRetained(captured, launch.logFile, requireRuntimeResourceScope()) {
+                caller.ensureActive()
+            }
+        }
+        val executable = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())
+        return object : DesktopPreparedRuntimeProcess {
+            private var consumed = false
+            override fun commit(): DesktopRuntimeProcess {
+                check(!consumed) { "Prepared runtime has already been consumed" }
+                consumed = true
+                return DesktopLocalRuntimeProcess(ProcessBuilder(executable.path.toString(), "run", "-c", launch.configPath.toString())
+                    .directory(baseDir.toFile()).redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.appendTo(launch.logFile.toFile())).start())
+            }
+            override fun close() { consumed = true }
         }
     }
 
-    fun stopBlocking(): Result<Unit> = runCatching {
-        stopActiveProcess()
-        runBlocking {
-            runtimeConfigStore.clearRuntimeConfig()
+    private suspend fun awaitLaunch(child: DesktopRuntimeProcess, launch: DesktopRuntimeLaunch): Boolean = try {
+        nativeOperations?.awaitReady(child, launch) ?: when (launch.appMode) {
+            AppMode.PROXY_ONLY -> waitForPort(child, launch.listenPort) &&
+                (launch.managementPort == launch.listenPort || waitForPort(child, launch.managementPort))
+            AppMode.VPN -> waitForVpnProcess(child) && waitForPort(child, launch.managementPort)
         }
+    } catch (_: OutOfMemoryError) {
+        // This boundary already has the exact accepted child. Let the transition establish its
+        // exit and recover A; neither a resource failure nor a failed recovery may discard it.
+        // Other VM errors are not converted to ordinary application failures.
+        throw DesktopWindowsRuntimeFailure("RUNTIME_FAILED")
     }
+
+    private fun retireLaunch(launch: DesktopRuntimeLaunch) {
+        launch.captured?.close()
+        if (Files.exists(launch.logFile) && Files.size(launch.logFile) > 0)
+            Files.copy(launch.logFile, defaultLogFile(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.deleteIfExists(launch.configPath)
+        Files.deleteIfExists(launch.logFile)
+        Files.deleteIfExists(launch.configPath.parent) // Never recursively remove unexpected files.
+        if (logFile == launch.logFile) logFile = null
+    }
+
+    override suspend fun stop(): Result<Unit> = withContext(kotlinx.coroutines.NonCancellable) {
+        withContext(Dispatchers.IO) { transition.stop() }
+    }
+
+    fun stopBlocking(): Result<Unit> = runBlocking { stop() }
 
     override fun isRunning(): Boolean = process?.isAlive == true
 
@@ -278,9 +328,9 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private suspend fun waitForPort(port: Int): Boolean {
+    private suspend fun waitForPort(child: DesktopRuntimeProcess, port: Int): Boolean {
         repeat(20) {
-            if (process?.isAlive != true) {
+            if (child.isAlive != true) {
                 return false
             }
             try {
@@ -462,14 +512,14 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private suspend fun waitForVpnProcess(): Boolean {
+    private suspend fun waitForVpnProcess(child: DesktopRuntimeProcess): Boolean {
         repeat(10) {
-            if (process?.isAlive != true) {
+            if (child.isAlive != true) {
                 return false
             }
             delay(200)
         }
-        return process?.isAlive == true
+        return child.isAlive == true
     }
 
     private fun ensureDesktopVpnSupported() {
@@ -667,75 +717,7 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private fun buildStartupFailureMessage(runtimeLogFile: Path): String {
-        val tail = runCatching {
-            Files.readAllLines(runtimeLogFile)
-                .asReversed()
-                .firstOrNull { it.isNotBlank() }
-                .orEmpty()
-        }.getOrDefault("")
-        return if (tail.isBlank()) {
-            when (activeMode) {
-                AppMode.VPN -> "sing-box did not stay running for desktop VPN mode"
-                else -> "sing-box did not open the local proxy port"
-            }
-        } else {
-            "sing-box failed to start: $tail"
-        }
-    }
 
-    private fun stopActiveProcess() {
-        val active = process
-        if (active?.isAlive == true) {
-            active.destroy()
-            if (!active.waitFor(2, TimeUnit.SECONDS)) {
-                active.destroyForcibly()
-                active.waitFor(2, TimeUnit.SECONDS)
-            }
-        }
-        stopOrphanRuntimeProcesses(excludedPid = active?.pid())
-        process = null
-        listenPort = null
-        managementProxyPort = null
-        logFile = null
-        activeMode = null
-    }
-
-    private fun stopOrphanRuntimeProcesses(excludedPid: Long?) {
-        val runtimeConfigPaths = listOf(
-            baseDir.resolve("runtime-sing-box-vpn.json"),
-            baseDir.resolve("runtime-sing-box-proxy_only.json"),
-        ).map { it.toAbsolutePath().normalize().toString() }
-        val currentPid = ProcessHandle.current().pid()
-        ProcessHandle.allProcesses().forEach { handle ->
-            if (handle.pid() == currentPid || handle.pid() == excludedPid) return@forEach
-            val info = handle.info()
-            val command = info.command().orElse("")
-            val commandLine = info.commandLine().orElse("")
-            val arguments = info.arguments().orElse(emptyArray()).toList()
-            val commandName = command.substringAfterLast('/').substringAfterLast('\\')
-            val isSingBox = commandName.contains("sing-box", ignoreCase = true) ||
-                commandLine.contains("sing-box", ignoreCase = true)
-            val usesRuntimeConfig = runtimeConfigPaths.any { path ->
-                path in arguments || commandLine.contains(path)
-            }
-            if (isSingBox && usesRuntimeConfig) {
-                stopProcessHandle(handle)
-            }
-        }
-    }
-
-    private fun stopProcessHandle(handle: ProcessHandle) {
-        if (!handle.isAlive) return
-        handle.destroy()
-        val stopped = runCatching {
-            handle.onExit().get(2, TimeUnit.SECONDS)
-        }.isSuccess
-        if (!stopped && handle.isAlive) {
-            handle.destroyForcibly()
-            runCatching { handle.onExit().get(2, TimeUnit.SECONDS) }
-        }
-    }
 }
 
 internal fun linuxNetworkCapabilitiesAvailable(getcapOutput: String): Boolean {

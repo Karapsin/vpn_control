@@ -471,8 +471,11 @@ data class RoutingRules(
                 .sorted()
         }
 
-        fun parseDirectDomainSuffixes(input: String): List<String> {
-            return tokenize(input)
+        fun parseDirectDomainSuffixes(input: String): List<String> = parseDirectDomainSuffixes(listOf(input))
+
+        /** Array entries have the same token boundary as joining them with a newline. */
+        fun parseDirectDomainSuffixes(input: Iterable<String>): List<String> {
+            return input.asSequence().flatMap { tokenize(it).asSequence() }
                 .map { suffix ->
                     suffix
                         .removePrefix("*.")
@@ -482,6 +485,7 @@ data class RoutingRules(
                 }
                 .filter { it.isNotBlank() }
                 .distinct()
+                .toList()
         }
 
         private fun tokenize(input: String): List<String> {

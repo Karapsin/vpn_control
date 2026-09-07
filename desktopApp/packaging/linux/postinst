@@ -1,0 +1,23 @@
+#!/bin/sh
+# jpackage DEB post-install resource for APPLICATION_PACKAGE (JDK 17).
+set -e
+
+case "$1" in
+    configure)
+        # xdg-desktop-menu needs this writable system data directory even when
+        # no graphical desktop/session is installed. Keep generated registration
+        # and its failures intact; do not modify an existing directory's mode.
+        if [ ! -d /usr/share/desktop-directories ]; then
+            mkdir -m 0755 /usr/share/desktop-directories || [ -d /usr/share/desktop-directories ]
+        fi
+DESKTOP_COMMANDS_INSTALL
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nabigong ibalik ang dating lokasyon ng {connectionLabel:0}: {1}. Nabigong ihinto ang {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Na-save ang mga routing rule. I-restart ang {connectionLabel:0} para mailapat",
     "ROUTING_RULES_SAVE_FAILED": "Nabigong i-save ang routing rules",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Hindi alam ang resulta ng pagbabago sa routing. Subukan muli gamit ang parehong input.",
+    "ROUTING_RULES_STALE_DRAFT": "Nagbago ang mga setting ng routing. Buksan muli ang editor bago mag-save.",
     "DIAGNOSTICS_EXPORT_OPENED": "Binuksan ang diagnostics export",
     "APPS_LOAD_FAILED": "Nabigong i-load ang apps",
     "SUBSCRIPTION_RECEIVED": "Natanggap ang subscription. Suriin at i-save ito sa tab na Profil.",

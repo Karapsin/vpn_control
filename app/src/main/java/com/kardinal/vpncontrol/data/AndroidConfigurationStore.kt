@@ -3,7 +3,6 @@ package com.kardinal.vpncontrol.data
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.kardinal.vpncontrol.control.ControlCommitted
@@ -22,6 +21,9 @@ internal class AndroidConfigurationStore(
     private val decode: (Preferences) -> PersistedState,
     val controllerId: String = AndroidConfigurationEpoch.id,
 ) {
+    private val snapshotLock = Any()
+    private var cachedPreferences: Preferences? = null
+    private var cachedValue: PersistedState? = null
     val state = store.data.map(::committed)
 
     suspend fun snapshot(): ControlCommitted<PersistedState> = committed(store.data.first())
@@ -30,29 +32,40 @@ internal class AndroidConfigurationStore(
         expectedControllerId: String? = null,
         expectedRevision: Long? = null,
         transform: suspend (MutablePreferences) -> Unit,
+    ): ControlCommitted<PersistedState> = editProjected(expectedControllerId, expectedRevision) { preferences, _ -> transform(preferences) }
+
+    suspend fun editProjected(
+        expectedControllerId: String? = null,
+        expectedRevision: Long? = null,
+        transform: suspend (MutablePreferences, PersistedState) -> Unit,
     ): ControlCommitted<PersistedState> {
         require(expectedRevision == null || expectedControllerId != null) { "INVALID_ARGUMENT" }
-        val committedPreferences = store.edit { preferences ->
-            val prior = committed(preferences)
+        val committedPreferences = store.updateData { existing ->
+            val preferences = existing.toMutablePreferences()
+            // Only published immutable inputs may enter the identity cache.
+            val prior = committed(existing)
             check(expectedControllerId == null || expectedControllerId == controllerId) { "CONFLICT" }
             check(expectedRevision == null || expectedRevision == prior.revision) { "CONFLICT" }
             val before = ControlConfigurationIdentity.of(prior.value)
-            transform(preferences)
-            val changed = before != ControlConfigurationIdentity.of(decode(preferences))
+            transform(preferences, prior.value)
+            val changed = preferences != existing && before != ControlConfigurationIdentity.of(decode(preferences))
             check(!changed || prior.revision < Long.MAX_VALUE) { "CONFLICT" }
             preferences[EPOCH] = controllerId
             preferences[REVISION] = prior.revision + if (changed) 1 else 0
+            if (preferences == existing) existing else preferences.toPreferences()
         }
         return committed(committedPreferences)
     }
 
-    private fun committed(preferences: Preferences) = ControlCommitted(
-        controllerId,
-        if (preferences[EPOCH] == controllerId) (preferences[REVISION] ?: 0L).also {
-            check(it >= 0) { "INCOMPATIBLE_PROTOCOL" }
-        } else 0,
-        decode(preferences),
-    )
+    private fun committed(preferences: Preferences): ControlCommitted<PersistedState> = synchronized(snapshotLock) {
+        val value = if (cachedPreferences === preferences) requireNotNull(cachedValue) else {
+            decode(preferences).also { decoded -> cachedPreferences = preferences; cachedValue = decoded }
+        }
+        ControlCommitted(controllerId,
+            if (preferences[EPOCH] == controllerId) (preferences[REVISION] ?: 0L).also {
+                check(it >= 0) { "INCOMPATIBLE_PROTOCOL" }
+            } else 0, value)
+    }
 
     private companion object {
         val EPOCH = stringPreferencesKey("control_configuration_epoch")

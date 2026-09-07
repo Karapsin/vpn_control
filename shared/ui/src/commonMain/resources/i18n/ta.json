@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "நிறுவலுக்கு ஊடாடும் அமர்வு தேவை.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "நிறுவுவதற்கான அனுமதி மறுக்கப்பட்டது.",
+  "UPDATE_INSTALL_CANCELLED": "நிறுவல் ரத்துசெய்யப்பட்டது.",
+  "UPDATE_INSTALL_CONFIRMATION": "நிறுவல் உறுதிப்படுத்தலுக்காகக் காத்திருக்கிறது.",
+  "UPDATE_INSTALL_COMPLETED": "புதுப்பிப்பு நிறுவப்பட்டது.",
+  "UPDATE_INSTALL_UNKNOWN": "நிறுவல் முடிவு தெரியவில்லை.",
   "APP_TITLE": "VPN கட்டுப்பாடு",
   "TAB_MAIN": "முதன்மை",
   "TAB_PROFILE": "சுயவிவரம்",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "செயலில் உள்ள இடம்: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "செயலில் உள்ள இடம்: கிடைக்கவில்லை",
+  "CONNECTION_RESTART_PENDING": "சேமித்த மாற்றங்களைப் பயன்படுத்த இணைப்பை மீண்டும் தொடங்கவும்.",
+  "CONNECTION_RESTART_UNKNOWN": "மீண்டும் தொடங்க வேண்டுமா என்பது தெரியவில்லை."
 }

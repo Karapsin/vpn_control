@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nu s-a putut restaura locația anterioară pentru {connectionLabel:0}: {1}. Nu s-a putut opri {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Regulile de rutare au fost salvate. Repornește {connectionLabel:0} pentru a le aplica",
     "ROUTING_RULES_SAVE_FAILED": "Nu s-au putut salva regulile de rutare",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Rezultatul modificării rutării este necunoscut. Încercați din nou cu aceleași date.",
+    "ROUTING_RULES_STALE_DRAFT": "Setările de rutare s-au schimbat. Redeschideți editorul înainte de a salva.",
     "DIAGNOSTICS_EXPORT_OPENED": "Exportul diagnosticului a fost deschis",
     "APPS_LOAD_FAILED": "Nu s-au putut încărca aplicațiile",
     "SUBSCRIPTION_RECEIVED": "Abonament primit. Verifică-l și salvează-l în fila Profil.",

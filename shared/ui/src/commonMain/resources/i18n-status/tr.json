@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Önceki {connectionLabel:0} konumu geri yüklenemedi: {1}. {connectionLabel:0} durdurulamadı: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Yönlendirme kuralları kaydedildi. Uygulamak için {connectionLabel:0} yeniden başlatın",
     "ROUTING_RULES_SAVE_FAILED": "İşlem başarısız",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Yönlendirme değişikliğinin sonucu bilinmiyor. Aynı girdilerle yeniden deneyin.",
+    "ROUTING_RULES_STALE_DRAFT": "Yönlendirme ayarları değişti. Kaydetmeden önce düzenleyiciyi yeniden açın.",
     "DIAGNOSTICS_EXPORT_OPENED": "Tanılama dışa aktarımı açıldı",
     "APPS_LOAD_FAILED": "İşlem başarısız",
     "SUBSCRIPTION_RECEIVED": "Abonelik alındı. Profil sekmesinde gözden geçirip kaydedin.",

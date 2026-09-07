@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Kunne ikke gendanne den forrige {connectionLabel:0}-placering: {1}. Kunne ikke stoppe {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Ruteregler gemt. Genstart {connectionLabel:0} for at anvende dem",
     "ROUTING_RULES_SAVE_FAILED": "Kunne ikke gemme routingregler",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Resultatet af routingændringen er ukendt. Prøv igen med de samme oplysninger.",
+    "ROUTING_RULES_STALE_DRAFT": "Routingindstillingerne er ændret. Åbn editoren igen, før du gemmer.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostikeksport åbnet",
     "APPS_LOAD_FAILED": "Kunne ikke indlæse apps",
     "SUBSCRIPTION_RECEIVED": "Abonnement modtaget. Gennemgå og gem det på fanen Profil.",

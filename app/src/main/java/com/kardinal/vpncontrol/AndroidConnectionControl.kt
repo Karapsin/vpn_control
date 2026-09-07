@@ -19,8 +19,44 @@ internal class AndroidConnectionControl(
     private val pendingRestart: (PersistedState) -> Boolean?,
 ) {
     private val vpnTokens = ConcurrentHashMap<String, Boolean>()
+    private val findBestTokens = ConcurrentHashMap<String, String>()
     fun requiresVpnConsent(token: String): Boolean = vpnTokens[token] ?: true
     fun cancelConsentWait(operationId: String) = interactions.cancel(operationId)
+    fun finishFindBestInteraction(operationId: String) {
+        findBestTokens.remove(operationId)?.let { token ->
+            vpnTokens.remove(token)
+            interactions.finish(token)
+        }
+    }
+
+    suspend fun prepareFindBest(request: ControlRequest, id: String, state: PersistedState,
+        awaitingUser: (Boolean) -> Boolean): ControlCode {
+        if (observation().knowledge == AndroidRuntimeKnowledge.UNKNOWN) return ControlCode.UNAVAILABLE
+        // An already-running retained foreground service needs no new component launch.
+        fun eligible() = (observation().knowledge == AndroidRuntimeKnowledge.RUNNING || foregroundReady()) &&
+            (state.appMode != AppMode.VPN || vpnPrepared())
+        if (eligible()) return ControlCode.OK
+        if (!request.interactive) return ControlCode.INTERACTION_REQUIRED
+        val token = interactions.create(id, ControlOperationId.FIND_BEST)
+        vpnTokens[token] = state.appMode == AppMode.VPN
+        var retained = false
+        return try {
+            if (!awaitingUser(true)) return ControlCode.CANCELLED
+            val answer = interactions.await(token)
+            if (!awaitingUser(false)) ControlCode.CANCELLED
+            else if (answer != ControlCode.OK) answer
+            else if (eligible() && interactions.retainGrantedSearch(token)) {
+                // Planning and probes may take longer than the consent callback.
+                // Keep the exact foreground Activity through native dispatch and
+                // cleanup; the owner releases it even on cancellation or failure.
+                check(findBestTokens.putIfAbsent(id, token) == null)
+                retained = true
+                ControlCode.OK
+            } else ControlCode.INTERACTION_REQUIRED
+        } finally {
+            if (!retained) { vpnTokens.remove(token); interactions.finish(token) }
+        }
+    }
 
     fun preflight(request: ControlRequest, state: PersistedState): ControlCode? {
         val live = observation()

@@ -72,7 +72,10 @@ class DesktopRoutingRulesServiceTest {
 
         assertTrue(state.routingRules.ignoreRules)
         assertEquals(setOf("com.example.browser"), state.routingProxyPackagesDraft)
-        assertEquals("example.com", state.routingDirectDomainsDraft)
+        // Imported suffixes remain structured so restoring a large routing list
+        // does not eagerly create a second newline-delimited string for the GUI.
+        assertEquals("", state.routingDirectDomainsDraft)
+        assertEquals(listOf("example.com"), state.routingDirectDomainSuffixesDraft)
         assertEquals(listOf("example.com"), state.routingRules.directDomainSuffixes)
         assertEquals(RoutingStatusMessages.routingRulesImportedRestartRequired(AppMode.VPN), state.statusMessage)
     }

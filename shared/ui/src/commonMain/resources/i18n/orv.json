@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Для установленія нуженъ интерактивный сеансъ.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Въ разрѣшеніи на установленіе отказано.",
+  "UPDATE_INSTALL_CANCELLED": "Установленіе отмѣнено.",
+  "UPDATE_INSTALL_CONFIRMATION": "Ожидается подтвержденіе установленія.",
+  "UPDATE_INSTALL_COMPLETED": "Обновленіе установлено.",
+  "UPDATE_INSTALL_UNKNOWN": "Исходъ установленія невѣдомъ.",
   "APP_TITLE": "Управленіе тайною сѣтью",
   "TAB_MAIN": "Главная палата",
   "TAB_PROFILE": "Личина",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Дѣиствующее мѣсто: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Дѣиствующее мѣсто: недоступно",
+  "CONNECTION_RESTART_PENDING": "Возобновите соединеніе, дабы примѣнить сохранённыя измѣненія.",
+  "CONNECTION_RESTART_UNKNOWN": "Неизвѣстно, требуется ли возобновленіе соединенія."
 }

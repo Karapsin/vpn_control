@@ -9,6 +9,17 @@ import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class DesktopPrivateExportWriterTest {
+    @Test fun largeTextUsesTheSamePrivateNoOverwriteWriter() = fixture { dir ->
+        val target = dir.resolve("large 東京.json")
+        val text = "a".repeat(8191) + "東京😀".repeat(1_100_000)
+        DesktopPrivateExportWriter.writeText(target.toString(), text).getOrThrow()
+        assertEquals(text, Files.readString(target))
+        assertTrue(Files.size(target) > 10 * 1024 * 1024)
+        assertTrue(DesktopPrivateExportWriter.writeText(target.toString(), "replacement").isFailure)
+        assertEquals(text, Files.readString(target))
+        if (!Platform.isWindows()) assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(target))
+    }
+
     @Test fun windowsUnenforcedOrInheritedAclIsRejectedByPreWriteGate() {
         val owner = "S-1-5-21-1-2-3-1001"
         val info = WindowsInstallInfo(false, owner = owner, dacl = listOf(WindowsInstallAce(0, 0, 0x1f01ff, owner)))

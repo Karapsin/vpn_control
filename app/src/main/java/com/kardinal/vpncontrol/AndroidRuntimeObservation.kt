@@ -60,6 +60,7 @@ internal class AndroidRuntimeObserver(
     private val salt = ByteArray(32).also(SecureRandom()::nextBytes)
     private var activeHandle: Any? = null
     private var activeConfiguration: ControlRuntimeConfiguration? = null
+    private var activeLocationName: String? = null
     private var activeRuntimeJson: String? = null
     private var cleanupUncertain = false
     private val mutableState = MutableStateFlow(AndroidRuntimeObservation(
@@ -76,6 +77,13 @@ internal class AndroidRuntimeObserver(
         }
         activeHandle = handle
         activeConfiguration = prepared?.takeIf { it.mode == mode }
+        // Capture the display name from the actual prepared location once. Later
+        // refresh/selection changes must not relabel a still-running connection.
+        activeLocationName = activeConfiguration?.locationReference?.let { reference ->
+            try { com.kardinal.vpncontrol.data.LocationConfigs.decodeStoredLocation(reference).remarks.takeIf(String::isNotBlank) }
+            catch (_: Exception) { null }
+            catch (_: OutOfMemoryError) { null }
+        }
         activeRuntimeJson = actualRuntimeConfig
         mutableState.value = AndroidRuntimeObservation(
             knowledge = AndroidRuntimeKnowledge.RUNNING, runtimeId = idGenerator(),
@@ -86,6 +94,7 @@ internal class AndroidRuntimeObserver(
     @Synchronized fun resetCompleted(cleanupSucceeded: Boolean) {
         activeHandle = null
         activeConfiguration = null
+        activeLocationName = null
         activeRuntimeJson = null
         // Existing native cleanup forgets handles after a close exception. Do not claim off
         // or a single known runtime afterward; only a new process can remove that uncertainty.
@@ -111,20 +120,32 @@ internal class AndroidRuntimeObserver(
         AndroidRuntimeKnowledge.UNKNOWN -> null
         AndroidRuntimeKnowledge.STOPPED -> false
         AndroidRuntimeKnowledge.RUNNING -> activeConfiguration?.hasPendingChanges(
-            MainUiStateProjector.mergePersistedState(MainUiState(), committed),
+            MainUiStateProjector.committedState(committed),
         )
     }
 
     /** One monitor captures actual runtime identity, its prepared inputs and pending comparison. */
-    @Synchronized fun locationVisualState(committed: PersistedState): AndroidLocationVisualState = AndroidLocationVisualState(
-        activeConfiguration?.takeIf { mutableState.value.knowledge == AndroidRuntimeKnowledge.RUNNING }?.let {
-            androidLocationVisualKey(it.locationReference, it.sourceReference)
-        }, pendingRestart(committed),
-    )
+    @Synchronized fun locationVisualState(committed: PersistedState): AndroidLocationVisualState {
+        val knowledge = mutableState.value.knowledge
+        val active = activeConfiguration?.takeIf { knowledge == AndroidRuntimeKnowledge.RUNNING }
+        val pending = pendingRestart(committed)
+        return AndroidLocationVisualState(
+            active?.let { androidLocationVisualKey(it.locationReference, it.sourceReference) }, pending,
+            com.kardinal.vpncontrol.shared.ui.ConnectionConfigurationPresentation(
+                runtimeRunning = when (knowledge) {
+                    AndroidRuntimeKnowledge.UNKNOWN -> null
+                    AndroidRuntimeKnowledge.RUNNING -> true
+                    AndroidRuntimeKnowledge.STOPPED -> false
+                },
+                activeLocationName = activeLocationName.takeIf { knowledge == AndroidRuntimeKnowledge.RUNNING },
+                restartRequired = pending,
+            ),
+        )
+    }
 
     @Synchronized fun controlStatus(committed: PersistedState): AndroidControlStatus {
         val observed = mutableState.value
-        val selected = ControlRuntimeConfiguration.committed(MainUiStateProjector.mergePersistedState(MainUiState(), committed))
+        val selected = ControlRuntimeConfiguration.committed(MainUiStateProjector.committedState(committed))
         val pending = pendingRestart(committed)
         fun identity(configuration: ControlRuntimeConfiguration?): ControlValue {
             if (configuration == null || configuration.locationReference.isBlank()) return ControlValue.Null

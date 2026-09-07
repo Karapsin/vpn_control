@@ -11,12 +11,22 @@ object ControlConfigurationInspection {
     val operations = setOf(ControlOperationId.SUBSCRIPTIONS_LIST, ControlOperationId.SUBSCRIPTIONS_SHOW, ControlOperationId.ROUTING_SHOW,
         ControlOperationId.LOCATIONS_EXPORT, ControlOperationId.ROUTING_EXPORT)
 
-    fun read(state: MainUiState, command: ControlCommand, nowMillis: Long): Result<Map<String, ControlValue>> = runCatching {
+    fun read(state: MainUiState, command: ControlCommand, nowMillis: Long,
+        domainValues: (List<String>) -> List<ControlValue> = { it.map(ControlValue::Text) },
+    ): Result<Map<String, ControlValue>> = try {
+        Result.success(readValues(state, command, nowMillis, domainValues))
+    } catch (failure: Exception) {
+        Result.failure(failure)
+    }
+
+    private fun readValues(state: MainUiState, command: ControlCommand, nowMillis: Long,
+        domainValues: (List<String>) -> List<ControlValue>,
+    ): Map<String, ControlValue> {
         if (command.operation !in operations) throw ControlProtocolException(ControlCode.UNSUPPORTED)
         val expected = if (command.operation == ControlOperationId.SUBSCRIPTIONS_SHOW) setOf("id") else emptySet()
         if (command.arguments.keys != expected || command.arguments.values.any { it !is ControlValue.Text || it.value.isBlank() })
             throw ControlProtocolException(ControlCode.INVALID_ARGUMENT)
-        when (command.operation) {
+        return when (command.operation) {
             ControlOperationId.LOCATIONS_EXPORT -> {
                 if (state.currentLocations.isEmpty()) throw ControlProtocolException(ControlCode.NOT_FOUND)
                 mapOf("content" to ControlValue.Text(LocationConfigs.export(state.currentLocations,
@@ -34,8 +44,17 @@ object ControlConfigurationInspection {
                 mapOf("id" to ControlValue.Text(source.id), "name" to ControlValue.Text(source.customName),
                     "source" to ControlValue.Text(source.url), "cachedLocations" to ControlValue.IntegerValue(source.cachedLocations.size.toLong()))
             }
-            ControlOperationId.ROUTING_SHOW -> mapOf("routing" to ControlValue.ObjectValue(ControlProtocolCodec.decodeValues(
-                RoutingRulesTransfer.export(state.routingRules, Instant.fromEpochMilliseconds(nowMillis).toString()).content)))
+            ControlOperationId.ROUTING_SHOW -> mapOf("routing" to ControlValue.ObjectValue(linkedMapOf(
+                "type" to ControlValue.Text(RoutingRulesTransfer.FORMAT_TYPE),
+                "version" to ControlValue.IntegerValue(RoutingRulesTransfer.FORMAT_VERSION.toLong()),
+                "exported_at" to ControlValue.Text(Instant.fromEpochMilliseconds(nowMillis).toString()),
+                "rules" to ControlValue.ObjectValue(linkedMapOf(
+                    "ignore_rules" to ControlValue.BooleanValue(state.routingRules.ignoreRules),
+                    "block_quic_udp_443" to ControlValue.BooleanValue(state.routingRules.blockQuicUdp443),
+                    "proxy_packages" to ControlValue.ArrayValue(state.routingRules.proxyPackages.map(ControlValue::Text)),
+                    "direct_domain_suffixes" to ControlValue.ArrayValue(domainValues(state.routingRules.directDomainSuffixes)),
+                )),
+            )))
             else -> error("Unreachable operation")
         }
     }

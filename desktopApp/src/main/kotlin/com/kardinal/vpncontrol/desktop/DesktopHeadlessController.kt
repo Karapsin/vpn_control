@@ -19,7 +19,7 @@ internal object DesktopHeadlessController {
 
     fun handleArgs(
         args: Array<String>,
-        printLine: (String) -> Unit = ::println,
+        printLine: (String) -> Unit = { writeDesktopCliLine(System.err, it) },
     ): Int? {
         return when (modeForArgs(args)) {
             HeadlessControllerMode.TRANSIENT -> runController(printLine = printLine, persistent = false)
@@ -114,6 +114,7 @@ internal object DesktopHeadlessController {
         System.setProperty("java.awt.headless", "true")
         val lock = acquireLock()
         if (lock == null) {
+            if (persistent) return DesktopExistingService.await(printLine)
             printLine("VPN Control is already running.")
             return DesktopCliResponse.UNAVAILABLE_EXIT_CODE
         }
@@ -121,8 +122,9 @@ internal object DesktopHeadlessController {
             val service = serviceFactory()
             val owner = DesktopControllerOwner(service, controllerId)
             val session = owner.session
+            var transferWork: () -> Boolean = { false }
             val lifecycle = HeadlessLifecycle(clockMillis, persistent, { owner.exitRequested }) {
-                service.state.isVpnRunning || session.hasBackgroundWork() || owner.frontends.hasOwnedWork()
+                owner.keepAliveRequested || service.state.isVpnRunning || session.hasBackgroundWork() || owner.frontends.hasOwnedWork() || transferWork()
             }
             try {
                 val server = startServer(
@@ -138,6 +140,7 @@ internal object DesktopHeadlessController {
                     printLine("Failed to start VPN Control headless controller.")
                     return DesktopCliResponse.UNAVAILABLE_EXIT_CODE
                 }
+                if (server is DesktopActivationServer) transferWork = server::hasRetainedTransfers
                 server.use {
                     if (persistent) {
                         runBlocking { owner.resumePreviousConnection() }
@@ -179,8 +182,8 @@ internal object DesktopHeadlessController {
     }
 
     private fun startHeadlessProcess(command: List<String>, logFile: Path): Result<Process> = runCatching {
-        Files.createDirectories(logFile.parent)
-        ProcessBuilder(command)
+        DesktopWorkspacePaths.createDirectories(logFile.parent)
+        desktopAppChildProcess(command)
             .redirectErrorStream(true)
             .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
             .start()

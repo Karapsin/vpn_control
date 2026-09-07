@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ইনস্টলেশনের জন্য একটি ইন্টার‌্যাক্টিভ সেশন প্রয়োজন।",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ইনস্টল করার অনুমতি প্রত্যাখ্যান করা হয়েছে।",
+  "UPDATE_INSTALL_CANCELLED": "ইনস্টলেশন বাতিল হয়েছে।",
+  "UPDATE_INSTALL_CONFIRMATION": "ইনস্টলেশনের নিশ্চিতকরণের অপেক্ষায়।",
+  "UPDATE_INSTALL_COMPLETED": "আপডেট ইনস্টল হয়েছে।",
+  "UPDATE_INSTALL_UNKNOWN": "ইনস্টলেশনের ফলাফল অজানা।",
   "APP_TITLE": "VPN নিয়ন্ত্রণ",
   "TAB_MAIN": "মূল",
   "TAB_PROFILE": "প্রোফাইল",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "সক্রিয় অবস্থান: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "সক্রিয় অবস্থান: অনুপলব্ধ",
+  "CONNECTION_RESTART_PENDING": "সংরক্ষিত পরিবর্তন প্রয়োগ করতে সংযোগ পুনরায় চালু করুন।",
+  "CONNECTION_RESTART_UNKNOWN": "পুনরায় চালু করা প্রয়োজন কি না জানা নেই।"
 }

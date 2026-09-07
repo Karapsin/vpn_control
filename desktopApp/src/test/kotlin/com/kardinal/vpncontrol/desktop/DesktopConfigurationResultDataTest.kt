@@ -8,6 +8,29 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
 class DesktopConfigurationResultDataTest {
+    @Test fun largeRoutingCommitRetainsItsResultForRetryAndSnapshot() = runTest {
+        val directory = Files.createTempDirectory("routing-large-result")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        val owner = DesktopControllerOwner(service, scope = backgroundScope)
+        try {
+            val domains = (0 until 70_000).map { "domain-$it.example.test" }
+            val raw = RoutingRulesTransfer.export(RoutingRules(directDomainSuffixes = domains)).content
+            assertTrue(raw.toByteArray(Charsets.UTF_8).size > ControlProtocolCodec.MAX_FRAME_BYTES)
+            val request = ControlRequest("routing-large-result", ControlCommand(ControlOperationId.ROUTING_IMPORT,
+                mapOf("input" to ControlValue.Text(raw))), controllerId = owner.controllerId, ifRevision = 0)
+            val result = owner.submit(request)
+            assertEquals(ControlCode.OK, result.code)
+            assertEquals(1L, result.configurationRevision)
+            assertEquals(domains, service.state.routingRules.directDomainSuffixes)
+            assertEquals(ControlValue.ArrayValue(domains.map(ControlValue::Text)), result.data["direct-domains"])
+            assertEquals(result, owner.submit(request))
+            assertEquals(1L, service.configurationRevision)
+            val snapshotReply = owner.execute(DesktopCliCommand.ControlSnapshotRead(owner.controllerId))
+            val snapshot = com.kardinal.vpncontrol.control.ControlSnapshotCodec.decodeDocument(snapshotReply.message)
+            assertTrue(snapshot.operations.any { it.result == result })
+        } finally { owner.close(); directory.toFile().deleteRecursively() }
+    }
+
     @Test fun committedRoutingResultCannotBeReplacedByALaterWriter() = runTest {
         val directory = Files.createTempDirectory("routing-own-result")
         val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))

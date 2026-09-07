@@ -34,6 +34,7 @@ internal class AndroidLocationActionsService(
     private val appendLatencyHistory: suspend (LatencyHistoryEntry) -> Unit,
     private val launchMutation: (suspend () -> Unit) -> Unit = launchTrackedBusyOperation,
     private val guarded: AndroidGuiLocationActions? = null,
+    private val ownerBenchmark: ((AndroidRenderedLocationTarget) -> Unit)? = null,
 ) {
     fun editLocation(target: AndroidRenderedLocationTarget) { guarded?.openTarget(target) }
     fun selectLocation(target: AndroidRenderedLocationTarget) { guarded?.select(target) }
@@ -330,6 +331,7 @@ internal class AndroidLocationActionsService(
     }
 
     private fun benchmarkLocationStored(rawLink: String) {
+        ownerBenchmark?.let { it(androidRenderedLocationTarget(stateProvider(), rawLink)); return }
         launchTrackedBusyOperation {
             setBusy(true)
             setRefreshing(true)

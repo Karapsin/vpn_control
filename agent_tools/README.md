@@ -4,7 +4,7 @@ This directory contains the repository-local MCP workflow server and its documen
 
 ## Automatic MCP Setup
 
-The tracked project configuration in `.codex/config.toml` starts `agent_tools/mcp_server.sh` for trusted checkouts. The launcher:
+Run `python3 agent_tools/configure_codex.py` once in a new checkout before opening its Codex session. The tracked `agent_tools/codex-config.toml.in` template generates ignored `.codex/config.toml`, deriving absolute launcher and working-directory paths from the checkout. Existing local settings are preserved; `--replace` makes a private ignored backup before regeneration. Rerun after moving the checkout. The generated configuration starts `agent_tools/mcp_server.sh` for trusted checkouts. The launcher:
 
 1. Locates Python 3.
 2. Creates the ignored `.agent_venv/` environment when needed.

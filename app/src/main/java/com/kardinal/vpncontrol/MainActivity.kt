@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
     }
     private var visualStateOverride by mutableStateOf<AndroidVisualCaptureFrame?>(null)
     private var visualStateRevision by mutableIntStateOf(0)
-    private var pendingRoutingRulesExport: String? = null
     private var pendingLocationsExport: String? = null
     private var pendingVpnPermissionAction: (() -> Unit)? = null
     private var pendingQrImportMode: QrImportMode = QrImportMode.LOCATION
@@ -61,39 +60,34 @@ class MainActivity : ComponentActivity() {
     private val exportRoutingRulesLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        val content = pendingRoutingRulesExport
-        pendingRoutingRulesExport = null
-        if (uri == null || content == null) {
+        if (uri == null) {
+            viewModel.cancelRoutingRulesExport()
             viewModel.postStatus(RoutingStatusMessages.routingRulesExportCanceled())
             return@registerForActivityResult
         }
 
-        runCatching {
-            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-                writer.write(content)
-            } ?: error("Could not open export destination")
-        }.onSuccess {
-            viewModel.postStatus("Routing rules exported")
-        }.onFailure { error ->
-            viewModel.postStatus(error.message ?: RoutingStatusMessages.routingRulesExportFailed())
-        }
+        val resolver = applicationContext.contentResolver
+        viewModel.writeRoutingRulesExport(
+            { resolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)
+                ?: throw java.io.IOException("Export destination unavailable") },
+            { android.provider.DocumentsContract.deleteDocument(resolver, uri) },
+        )
     }
     private val importRoutingRulesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) {
+            viewModel.cancelImportRoutingRules()
             viewModel.postStatus("Routing rules import canceled")
             return@registerForActivityResult
         }
 
-        runCatching {
-            contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                reader.readText()
-            } ?: error("Could not open selected rules file")
-        }.onSuccess { raw ->
-            viewModel.importRoutingRules(raw)
-        }.onFailure { error ->
-            viewModel.postStatus(error.message ?: RoutingStatusMessages.routingRulesImportFailed())
+        val resolver = applicationContext.contentResolver
+        viewModel.importRoutingRulesReader {
+            val source = resolver.openInputStream(uri) ?: throw java.io.IOException("Routing input unavailable")
+            java.io.InputStreamReader(source, Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT))
         }
     }
     private val exportLocationsLauncher = registerForActivityResult(
@@ -156,7 +150,7 @@ class MainActivity : ComponentActivity() {
     private val importHomeSshPrivateKeyLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri == null) return@registerForActivityResult
+        if (uri == null) { viewModel.cancelHomeSshKeyPicker(); return@registerForActivityResult }
         runCatching {
             contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: error("Could not open selected SSH private key")
@@ -227,7 +221,9 @@ class MainActivity : ComponentActivity() {
                 onHomeSshHostKeysChange = viewModel::setHomeSshHostKeysDraft,
                 onHomeSshRelayPortChange = viewModel::setHomeSshRelayPortDraft,
                 onImportHomeSshPrivateKey = {
-                    importHomeSshPrivateKeyLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
+                    viewModel.beginHomeSshKeyPicker {
+                        importHomeSshPrivateKeyLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
+                    }
                 },
                 onSaveHomeSshRoute = viewModel::saveHomeSshRoute,
                 onDismissHomeSshRestart = viewModel::dismissHomeSshRestartDialog,
@@ -309,6 +305,8 @@ class MainActivity : ComponentActivity() {
                 onSelectAllDirectApps = viewModel::selectAllVisibleDirectApps,
                 onClearAllDirectApps = viewModel::clearAllVisibleDirectApps,
                 onRoutingDirectDomainsChange = viewModel::onRoutingDirectDomainsDraftChanged,
+                onRoutingDirectDomainListChange = viewModel::onRoutingDirectDomainSuffixesDraftChanged,
+                onSaveRoutingRules = viewModel::saveRoutingRules,
                 onShowAddRuleSetDialog = viewModel::showAddRuleSetDialog,
                 onEditRuleSet = viewModel::editRuleSet,
                 onDeleteRuleSet = viewModel::deleteRuleSet,
@@ -321,14 +319,14 @@ class MainActivity : ComponentActivity() {
                 onRuleSetUpdateHoursChange = viewModel::onRuleSetUpdateHoursDraftChanged,
                 onSaveRuleSet = viewModel::saveRuleSet,
                 onExportRoutingRules = {
-                    val document = viewModel.buildRoutingRulesExport()
-                    pendingRoutingRulesExport = document.content
-                    exportRoutingRulesLauncher.launch(document.fileName)
+                    viewModel.prepareRoutingRulesExport(exportRoutingRulesLauncher::launch)
                 },
-                onScanRoutingRulesQr = { launchQrScanner(QrImportMode.ROUTING_RULES) },
+                onScanRoutingRulesQr = { viewModel.beginImportRoutingRules { launchQrScanner(QrImportMode.ROUTING_RULES) } },
                 onImportRoutingRulesFromClipboard = { importClipboardAs(ImportPreference.ROUTING_RULES) },
                 onImportRoutingRules = {
-                    importRoutingRulesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    viewModel.beginImportRoutingRules {
+                        importRoutingRulesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }
                 },
                 onToggleVpn = {
                     if (state.value.appMode == AppMode.VPN) {
@@ -447,6 +445,7 @@ class MainActivity : ComponentActivity() {
     private fun handleQrImportResult(rawContents: String) {
         val contents = rawContents.trim()
         if (contents.isBlank()) {
+            if (pendingQrImportMode == QrImportMode.ROUTING_RULES) viewModel.cancelImportRoutingRules()
             viewModel.postStatus("QR scan canceled")
             return
         }

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Орнату үшін интерактивті сеанс қажет.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Орнатуға рұқсат берілмеді.",
+  "UPDATE_INSTALL_CANCELLED": "Орнату тоқтатылды.",
+  "UPDATE_INSTALL_CONFIRMATION": "Орнатуды растау күтілуде.",
+  "UPDATE_INSTALL_COMPLETED": "Жаңарту орнатылды.",
+  "UPDATE_INSTALL_UNKNOWN": "Орнату нәтижесі белгісіз.",
   "APP_TITLE": "VPN басқару",
   "TAB_MAIN": "Негізгі",
   "TAB_PROFILE": "Профиль",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Белсенді орын: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Белсенді орын: қолжетімсіз",
+  "CONNECTION_RESTART_PENDING": "Сақталған өзгерістерді қолдану үшін қосылымды қайта іске қосыңыз.",
+  "CONNECTION_RESTART_UNKNOWN": "Қайта іске қосу қажет пе, белгісіз."
 }

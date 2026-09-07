@@ -5,6 +5,39 @@ import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class DesktopOwnerExitGateTest {
+    @Test fun terminalFailureRevokesOnlyItsOwnUnflushedInstallExitPermit() {
+        val gate = DesktopOwnerExitGate()
+        val job = "00000000-0000-0000-0000-000000000001"
+        val identity = DesktopInstallCorrelation("owner", "install", "operation")
+        gate.requestInstallExitAfterResponse(identity, job)
+        gate.revokeInstallExit(identity, job)
+        val request = ControlRequest("install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner")
+        val result = ControlResult("owner", "install", ControlCode.ACCEPTED, 0, final = false, operationId = "operation",
+            data = mapOf("jobId" to ControlValue.Text(job), "handoffReady" to ControlValue.BooleanValue(true)))
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(request), DesktopCliResponse.success(ControlProtocolCodec.encodeResult(result)))
+        assertFalse(gate.exitRequested)
+    }
+
+    @Test fun installerExitRequiresExactReadyJobAndOperationAcknowledgement() {
+        val gate = DesktopOwnerExitGate()
+        val job = "00000000-0000-0000-0000-000000000001"
+        val correlation = DesktopInstallCorrelation("owner", "install", "operation")
+        val request = ControlRequest("install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner")
+        val result = ControlResult("owner", "install", ControlCode.ACCEPTED, 0, final = false, operationId = "operation",
+            data = mapOf("jobId" to ControlValue.Text(job), "handoffReady" to ControlValue.BooleanValue(true)))
+        fun flush(result: ControlResult) = gate.responseFlushed(DesktopCliCommand.ControlSubmit(request),
+            DesktopCliResponse.success(ControlProtocolCodec.encodeResult(result)))
+        flush(result)
+        assertFalse(gate.exitRequested)
+        gate.requestInstallExitAfterResponse(correlation, job)
+        flush(result.copy(operationId = "unrelated"))
+        flush(result.copy(data = result.data + ("handoffReady" to ControlValue.BooleanValue(false))))
+        flush(result.copy(data = result.data + ("jobId" to ControlValue.Text("other"))))
+        assertFalse(gate.exitRequested)
+        flush(result)
+        assertTrue(gate.exitRequested)
+    }
+
     @Test fun authenticatedServerReleasesExitGateOnlyAfterWritingSuccessfulQuitEnvelope() {
         val directory = java.nio.file.Files.createTempDirectory("owner-exit-response")
         val endpoint = directory.resolve("activation.port")

@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Failed to restore the previous {connectionLabel:0} location: {1}. Failed to stop {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Routing rules saved. Restart {connectionLabel:0} to apply",
     "ROUTING_RULES_SAVE_FAILED": "Failed to save routing rules",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "The routing change outcome is unknown. Retry with the same input.",
+    "ROUTING_RULES_STALE_DRAFT": "Routing settings changed. Reopen the editor before saving.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostics export opened",
     "APPS_LOAD_FAILED": "Failed to load apps",
     "SUBSCRIPTION_RECEIVED": "Subscription received. Review and save it on the Profile tab.",

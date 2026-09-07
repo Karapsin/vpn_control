@@ -28,11 +28,14 @@ internal class DesktopActivationServer private constructor(
     private val clients: MutableSet<Socket>,
     private val portFile: Path,
     private val endpoint: DesktopControlEndpoint,
+    private val documents: DesktopControlDocuments,
 ) : AutoCloseable {
+    fun hasRetainedTransfers(): Boolean = documents.hasWork()
     override fun close() {
         runCatching { listener.close() }
         clients.forEach { runCatching { it.close() } }
         workers.shutdown()
+        runCatching { documents.close() }
         runCatching { acceptor.join(250) }
         runCatching {
             if (DesktopControlEndpoint.read(portFile).controllerId == endpoint.controllerId) Files.deleteIfExists(portFile)
@@ -60,6 +63,7 @@ internal class DesktopActivationServer private constructor(
             return try {
                 server.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
                 val endpoint = DesktopControlEndpoint.create(server.localPort, controllerId)
+                val documents = DesktopControlDocuments(controllerId)
                 endpoint.publish(portFile)
                 val mutation = ReentrantLock()
                 val acceptor = thread(name = "vpn-control-activation", isDaemon = true) {
@@ -82,7 +86,16 @@ internal class DesktopActivationServer private constructor(
                                             return@use
                                         }
                                         DesktopControlFrames.write(output, "AUTHENTICATED")
-                                        val command = DesktopControlFrames.read(input)
+                                        val first = DesktopControlFrames.read(input)
+                                        val context = documents.readContext(first)
+                                        val incoming = if (context != null) DesktopControlFrames.read(input) else first
+                                        val transferResponse = documents.handle(incoming)
+                                        if (transferResponse != null) {
+                                            DesktopControlFrames.write(output, transferResponse)
+                                            documents.responseFlushed(incoming)
+                                            return@use
+                                        }
+                                        val command = documents.consume(incoming, context?.first)
                                         val response = if (command == "show") {
                                             when (onShowWindow()) {
                                                 DesktopActivationShowResult.SHOWN -> "ok"
@@ -90,8 +103,9 @@ internal class DesktopActivationServer private constructor(
                                                 DesktopActivationShowResult.UNAVAILABLE -> "unavailable"
                                             }
                                         } else {
-                                            val result = DesktopCliProtocol.decodeCommand(command).fold(
+                                            val result = DesktopCliProtocol.decodeCommandDocument(command).fold(
                                                 onSuccess = { decoded ->
+                                                    require(context == null || context.second == documentKind(decoded))
                                                     if (decoded.bypassesMutationAdmission) {
                                                         commandInvoked = true
                                                         admittedCommand = decoded
@@ -108,11 +122,22 @@ internal class DesktopActivationServer private constructor(
                                             )
                                             DesktopCliProtocol.encodeResponse(result)
                                         }
-                                        DesktopControlFrames.write(output, response)
                                         val completedCommand = admittedCommand
                                         val completedResponse = admittedResponse
-                                        if (completedCommand != null && completedResponse != null)
-                                            onCliResponseFlushed(completedCommand, completedResponse)
+                                        val flushed = {
+                                            if (completedCommand != null && completedResponse != null)
+                                                onCliResponseFlushed(completedCommand, completedResponse)
+                                        }
+                                        if (DesktopControlFrames.fits(response)) {
+                                            DesktopControlFrames.write(output, response)
+                                            flushed()
+                                        } else if (context == null) {
+                                            DesktopControlFrames.write(output, DesktopCliProtocol.encodeResponse(
+                                                DesktopCliResponse.failure("INCOMPATIBLE_PROTOCOL", 2)))
+                                        } else {
+                                            DesktopControlFrames.write(output, documents.publish(response, documentKind(completedCommand),
+                                                context.first, flushed))
+                                        }
                                     }
                                 } catch (_: Exception) {
                                     // Invalid/disconnected clients cannot kill the accept loop or leak payloads.
@@ -130,7 +155,7 @@ internal class DesktopActivationServer private constructor(
                         }
                     }
                 }
-                DesktopActivationServer(server, acceptor, workers, clients, portFile, endpoint)
+                DesktopActivationServer(server, acceptor, workers, clients, portFile, endpoint, documents)
             } catch (_: Exception) {
                 runCatching { server.close() }
                 workers.shutdown()
@@ -138,8 +163,34 @@ internal class DesktopActivationServer private constructor(
             }
         }
 
-        private fun request(payload: String, portFile: Path, responseTimeout: Long, payloadForController: ((String) -> String)? = null): String {
-            val endpoint = DesktopControlEndpoint.read(portFile)
+        private fun request(payload: String, portFile: Path, responseTimeout: Long, documentKind: String? = null,
+            payloadForController: ((String) -> String)? = null): String =
+            request(payload, DesktopControlEndpoint.read(portFile), responseTimeout, documentKind, payloadForController)
+
+        private fun request(payload: String, endpoint: DesktopControlEndpoint, responseTimeout: Long, documentKind: String? = null,
+            payloadForController: ((String) -> String)? = null): String {
+            val bound = payloadForController?.invoke(endpoint.controllerId) ?: payload
+            fun exchange(value: String) = exchange(endpoint, value, responseTimeout)
+            if (documentKind == null) return exchange(bound)
+            if (!endpoint.documentTransfers) {
+                if (!DesktopControlFrames.fits(bound)) throw DesktopControlProtocolException()
+                return exchange(bound)
+            }
+            val context = java.util.UUID.randomUUID().toString()
+            var discard: (() -> Unit)? = null
+            try {
+                val outgoing = if (DesktopControlFrames.fits(bound)) bound else {
+                    val upload = DesktopControlDocuments.upload(endpoint.controllerId, bound, context, ::exchange)
+                    discard = upload.second
+                    upload.first
+                }
+                val response = exchange(endpoint, outgoing, responseTimeout,
+                    DesktopControlDocuments.context(endpoint.controllerId, context, documentKind))
+                return DesktopControlDocuments.download(endpoint.controllerId, response, documentKind, context, ::exchange)
+            } finally { discard?.let { runCatching(it) } }
+        }
+
+        private fun exchange(endpoint: DesktopControlEndpoint, payload: String, responseTimeout: Long, context: String? = null): String {
             return Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), endpoint.port), 500)
                 socket.soTimeout = 3000
@@ -147,7 +198,8 @@ internal class DesktopActivationServer private constructor(
                 val output = DataOutputStream(socket.getOutputStream())
                 DesktopControlFrames.write(output, endpoint.token)
                 if (DesktopControlFrames.read(input) != "AUTHENTICATED") return@use "PERMISSION_DENIED"
-                DesktopControlFrames.write(output, payloadForController?.invoke(endpoint.controllerId) ?: payload)
+                if (context != null) DesktopControlFrames.write(output, context)
+                DesktopControlFrames.write(output, payload)
                 DesktopControlFrames.read(DataInputStream(DesktopControlResponseInputStream(
                     input, responseTimeout, { socket.soTimeout = it })))
             }
@@ -161,11 +213,18 @@ internal class DesktopActivationServer private constructor(
             }
         }.getOrDefault(DesktopActivationShowResult.UNAVAILABLE)
 
-        fun requestCliCommand(command: DesktopCliCommand, portFile: Path = defaultPortFile): DesktopCliResponse = try {
-            val timeoutMillis = if (command is DesktopCliCommand.ControlFrontendLease || command is DesktopCliCommand.ControlFrontendIdentityRead) 3_000L
+        fun requestCliCommand(command: DesktopCliCommand, portFile: Path = defaultPortFile): DesktopCliResponse =
+            requestCliCommandUsing(command, null) { DesktopControlEndpoint.read(portFile) }
+
+        internal fun requestCliCommandAtEndpoint(command: DesktopCliCommand, endpoint: DesktopControlEndpoint,
+            responseTimeoutMillis: Long): DesktopCliResponse = requestCliCommandUsing(command, responseTimeoutMillis) { endpoint }
+
+        private fun requestCliCommandUsing(command: DesktopCliCommand, responseTimeoutMillis: Long?,
+            endpoint: () -> DesktopControlEndpoint): DesktopCliResponse = try {
+            val timeoutMillis = responseTimeoutMillis ?: if (command is DesktopCliCommand.ControlFrontendLease || command is DesktopCliCommand.ControlFrontendIdentityRead) 3_000L
                 else if (command is DesktopCliCommand.ControlSnapshotRead || command is DesktopCliCommand.ControlPresentationRead) 10_000L
                 else (command as? DesktopCliCommand.ControlSubmit)?.clientTimeoutSeconds?.times(1000) ?: 600_000L
-            val response = request(DesktopCliProtocol.encodeCommand(command), portFile, timeoutMillis) { controllerId ->
+            val response = request("", endpoint(), timeoutMillis, documentKind(command)) { controllerId ->
                 val bound = when {
                     command is DesktopCliCommand.ControlSubmit && command.request.controllerId == null ->
                         command.copy(request = command.request.copy(controllerId = controllerId))
@@ -175,7 +234,7 @@ internal class DesktopActivationServer private constructor(
                         command.copy(controllerId = controllerId)
                     else -> command
                 }
-                DesktopCliProtocol.encodeCommand(bound)
+                DesktopCliProtocol.encodeCommandDocument(bound)
             }
             if (response == "PERMISSION_DENIED") DesktopCliResponse.failure(response)
             else DesktopCliProtocol.decodeResponse(response)
@@ -189,6 +248,12 @@ internal class DesktopActivationServer private constructor(
             DesktopCliResponse.failure("INCOMPATIBLE_PROTOCOL", 2)
         } catch (_: Exception) {
             DesktopCliResponse.failure("OUTCOME_UNKNOWN", 2)
+        }
+
+        private fun documentKind(command: DesktopCliCommand?): String = when (command) {
+            is DesktopCliCommand.ControlSnapshotRead -> "snapshot"
+            is DesktopCliCommand.ControlPresentationRead -> "presentation"
+            else -> "response"
         }
     }
 }

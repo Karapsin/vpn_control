@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Αποτυχία αποκατάστασης της προηγούμενης τοποθεσίας για {connectionLabel:0}: {1}. Αποτυχία διακοπής {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν. Επανεκκινήστε το {connectionLabel:0} για να εφαρμοστούν",
     "ROUTING_RULES_SAVE_FAILED": "Η ενέργεια απέτυχε",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Το αποτέλεσμα της αλλαγής δρομολόγησης είναι άγνωστο. Δοκιμάστε ξανά με τα ίδια δεδομένα.",
+    "ROUTING_RULES_STALE_DRAFT": "Οι ρυθμίσεις δρομολόγησης άλλαξαν. Ανοίξτε ξανά τον επεξεργαστή πριν αποθηκεύσετε.",
     "DIAGNOSTICS_EXPORT_OPENED": "Η κατάσταση ενημερώθηκε",
     "APPS_LOAD_FAILED": "Η ενέργεια απέτυχε",
     "SUBSCRIPTION_RECEIVED": "Η συνδρομή ενημερώθηκε",

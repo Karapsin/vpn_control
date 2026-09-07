@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "முந்தைய {connectionLabel:0} இருப்பிடத்தை மீட்டமைக்க முடியவில்லை: {1}. {connectionLabel:0}-ஐ நிறுத்த முடியவில்லை: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "வழிச்செலுத்தல் விதிகள் சேமிக்கப்பட்டன. பயன்படுத்த {connectionLabel:0}-ஐ மறுதொடக்கம் செய்யவும்",
     "ROUTING_RULES_SAVE_FAILED": "வழிச்செலுத்தல் விதிகளைச் சேமிக்க முடியவில்லை",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "வழித்தட மாற்றத்தின் முடிவு தெரியவில்லை. அதே உள்ளீட்டுடன் மீண்டும் முயலவும்.",
+    "ROUTING_RULES_STALE_DRAFT": "வழித்தட அமைப்புகள் மாறிவிட்டன. சேமிக்கும் முன் திருத்தியை மீண்டும் திறக்கவும்.",
     "DIAGNOSTICS_EXPORT_OPENED": "பிழையறிதல் ஏற்றுமதி திறக்கப்பட்டது",
     "APPS_LOAD_FAILED": "செயலிகளை ஏற்ற முடியவில்லை",
     "SUBSCRIPTION_RECEIVED": "சந்தா பெறப்பட்டது. சுயவிவரம் தாவலில் அதை மதிப்பாய்வு செய்து சேமிக்கவும்.",

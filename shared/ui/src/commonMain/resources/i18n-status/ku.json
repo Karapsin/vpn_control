@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Vegerandina cihê berê yê {connectionLabel:0} bi ser neket: {1}. Rawestandina {connectionLabel:0} bi ser neket: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Rêzikên rêwandinê hatin tomarkirin. Ji bo sepandinê {connectionLabel:0} ji nû ve bidin destpêkirin",
     "ROUTING_RULES_SAVE_FAILED": "Tomarkirina rêzikên rêkirinê bi ser neket",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Encama guhertina rêkirinê ne diyar e. Bi heman daneyan dîsa biceribînin.",
+    "ROUTING_RULES_STALE_DRAFT": "Mîhengên rêkirinê guherîne. Berî tomarkirinê edîtorê dîsa vekin.",
     "DIAGNOSTICS_EXPORT_OPENED": "Derxistina diagnostîkê hate vekirin",
     "APPS_LOAD_FAILED": "Barkirina sepanan bi ser neket",
     "SUBSCRIPTION_RECEIVED": "Abonetî hat stendin. Li taba Profîlê binêre û wê tomar bike.",

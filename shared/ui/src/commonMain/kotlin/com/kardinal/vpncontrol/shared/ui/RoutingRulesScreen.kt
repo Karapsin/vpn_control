@@ -3,6 +3,8 @@ package com.kardinal.vpncontrol.shared.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +71,10 @@ import androidx.compose.ui.unit.sp
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.InstalledApp
+import com.kardinal.vpncontrol.DirectDomainDrafts
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.kardinal.vpncontrol.model.RoutingRules
 
 @Composable
@@ -83,8 +89,10 @@ fun RoutingRulesScreen(
     modifier: Modifier = Modifier,
     showAppAssignments: Boolean = true,
     controls: @Composable () -> Unit = {},
+    onDirectDomainListChange: ((List<String>) -> Unit)? = null,
 ) {
     val strings = LocalAppStrings.current
+    val summary = routingSummaryPresentation(state, showAppAssignments, strings)
     val query = state.routingAppSearch.trim().lowercase()
     val filteredApps = if (showAppAssignments) {
         state.installedApps
@@ -112,177 +120,167 @@ fun RoutingRulesScreen(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
         ),
     ) { padding ->
-        LazyColumn(
+        // Only a few bounded cards live here. Keeping their compositions active
+        // releases prior large snapshots when the canonical draft changes.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("routing-list")
                 .padding(padding)
-                .padding(start = 20.dp, top = 18.dp, end = 20.dp),
+                .padding(start = 20.dp, top = 18.dp, end = 20.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 0.dp),
         ) {
-            item {
-                controls()
-            }
-            item {
-                ScreenHeaderCard(
-                    title = strings.get(UiText.ROUTING_RULES_TITLE),
-                    description = if (!showAppAssignments) {
-                        strings.get(UiText.ROUTING_DESCRIPTION_DESKTOP)
-                    } else if (state.appMode == AppMode.VPN) {
-                        strings.get(UiText.ROUTING_DESCRIPTION_VPN)
-                    } else {
-                        strings.get(UiText.ROUTING_DESCRIPTION_PROXY)
-                    },
-                    modifier = if (showAppAssignments) Modifier else Modifier.testTag("desktop-routing-note"),
-                )
-            }
-            item {
-                CompactSummaryCard(state, showAppAssignments)
-            }
+            Column { controls() }
+            ScreenHeaderCard(
+                title = strings.get(UiText.ROUTING_RULES_TITLE),
+                description = if (!showAppAssignments) {
+                    strings.get(UiText.ROUTING_DESCRIPTION_DESKTOP)
+                } else if (state.appMode == AppMode.VPN) {
+                    strings.get(UiText.ROUTING_DESCRIPTION_VPN)
+                } else {
+                    strings.get(UiText.ROUTING_DESCRIPTION_PROXY)
+                },
+                modifier = if (showAppAssignments) Modifier else Modifier.testTag("desktop-routing-note"),
+            )
+            CompactSummaryCard(summary, showAppAssignments)
             if (state.appMode == AppMode.PROXY_ONLY && showAppAssignments) {
-                item {
-                    ProxyOnlyRulesNoteCard()
-                }
+                ProxyOnlyRulesNoteCard()
             }
-            item {
-                DirectDomainTagCloud(
-                    value = state.routingDirectDomainsDraft,
-                    onValueChange = onDirectDomainsChange,
-                )
-            }
+            DirectDomainTagCloud(
+                value = state.routingDirectDomainsDraft,
+                domainValues = state.routingDirectDomainSuffixesDraft,
+                onValueChange = onDirectDomainsChange,
+                onListChange = onDirectDomainListChange,
+            )
             if (showAppAssignments && state.appMode == AppMode.VPN) {
-                item {
-                    QuicCompatibilityCard(
-                        enabled = state.routingBlockQuicUdp443Draft,
-                        onEnabledChange = onBlockQuicUdp443Change,
-                    )
-                }
+                QuicCompatibilityCard(
+                    enabled = state.routingBlockQuicUdp443Draft,
+                    onEnabledChange = onBlockQuicUdp443Change,
+                )
             }
             if (showAppAssignments) {
-                item {
-                    Card(
-                        modifier = Modifier.testTag("proxy-app-list"),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+                Card(
+                    modifier = Modifier.testTag("proxy-app-list"),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x24141F2D)),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Column(
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(strings.get(UiText.APP_ASSIGNMENTS), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                strings.format(UiText.SELECTED_COUNT, state.routingProxyPackagesDraft.size),
+                                color = Color(0xFFD3E3EE),
+                                fontSize = 12.sp,
+                            )
+                        }
+                        Text(
+                            text = if (state.appMode == AppMode.VPN) {
+                                strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_VPN)
+                            } else {
+                                strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_PROXY)
+                            },
+                            color = Color(0xFFD3E3EE),
+                            fontSize = 12.sp,
+                        )
+                        OutlinedTextField(
+                            value = state.routingAppSearch,
+                            onValueChange = onAppSearchChange,
+                            modifier = Modifier.fillMaxWidth().testTag("app-search"),
+                            label = { Text(strings.get(UiText.SEARCH_APPS_OR_PACKAGES)) },
+                            singleLine = true,
+                            colors = routingTextFieldColors(),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = onSelectAllProxyApps,
+                                enabled = !state.installedAppsLoading && filteredApps.isNotEmpty(),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                                colors = darkOutlinedButtonColors(),
+                            ) {
+                                Text(strings.get(UiText.SELECT_ALL))
+                            }
+                            OutlinedButton(
+                                onClick = onClearAllProxyApps,
+                                enabled = !state.installedAppsLoading && state.routingProxyPackagesDraft.isNotEmpty(),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
+                                colors = darkOutlinedButtonColors(),
+                            ) {
+                                Text(strings.get(UiText.CLEAR_ALL))
+                            }
+                        }
+                        Text(
+                            text = strings.get(UiText.APP_ASSIGNMENTS_HELP),
+                            color = Color(0xFFD3E3EE),
+                            fontSize = 12.sp,
+                        )
+                        Text(
+                            strings.format(UiText.SHOWN_COUNT, filteredApps.size),
+                            color = Color(0xFFD3E3EE),
+                            fontSize = 12.sp,
+                        )
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                .height(220.dp),
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(strings.get(UiText.APP_ASSIGNMENTS), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(
-                                    strings.format(UiText.SELECTED_COUNT, state.routingProxyPackagesDraft.size),
-                                    color = Color(0xFFD3E3EE),
-                                    fontSize = 12.sp,
-                                )
-                            }
-                            Text(
-                                text = if (state.appMode == AppMode.VPN) {
-                                    strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_VPN)
-                                } else {
-                                    strings.get(UiText.APP_ASSIGNMENTS_DESCRIPTION_PROXY)
-                                },
-                                color = Color(0xFFD3E3EE),
-                                fontSize = 12.sp,
-                            )
-                            OutlinedTextField(
-                                value = state.routingAppSearch,
-                                onValueChange = onAppSearchChange,
-                                modifier = Modifier.fillMaxWidth().testTag("app-search"),
-                                label = { Text(strings.get(UiText.SEARCH_APPS_OR_PACKAGES)) },
-                                singleLine = true,
-                                colors = routingTextFieldColors(),
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                OutlinedButton(
-                                    onClick = onSelectAllProxyApps,
-                                    enabled = !state.installedAppsLoading && filteredApps.isNotEmpty(),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                                    colors = darkOutlinedButtonColors(),
-                                ) {
-                                    Text(strings.get(UiText.SELECT_ALL))
-                                }
-                                OutlinedButton(
-                                    onClick = onClearAllProxyApps,
-                                    enabled = !state.installedAppsLoading && state.routingProxyPackagesDraft.isNotEmpty(),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF9ED6FF)),
-                                    colors = darkOutlinedButtonColors(),
-                                ) {
-                                    Text(strings.get(UiText.CLEAR_ALL))
-                                }
-                            }
-                            Text(
-                                text = strings.get(UiText.APP_ASSIGNMENTS_HELP),
-                                color = Color(0xFFD3E3EE),
-                                fontSize = 12.sp,
-                            )
-                            Text(
-                                strings.format(UiText.SHOWN_COUNT, filteredApps.size),
-                                color = Color(0xFFD3E3EE),
-                                fontSize = 12.sp,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(220.dp),
-                            ) {
-                                when {
-                                    state.installedAppsLoading -> {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            CircularProgressIndicator(color = Color.White)
-                                        }
+                            when {
+                                state.installedAppsLoading -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(color = Color.White)
                                     }
+                                }
 
-                                    filteredApps.isEmpty() -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(18.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = if (state.installedAppsLoaded) {
-                                                    strings.get(UiText.NO_APPS_MATCH)
-                                                } else {
-                                                    strings.get(UiText.APPS_NOT_LOADED)
-                                                },
-                                                color = Color(0xFFD3E3EE),
+                                filteredApps.isEmpty() -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(18.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = if (state.installedAppsLoaded) {
+                                                strings.get(UiText.NO_APPS_MATCH)
+                                            } else {
+                                                strings.get(UiText.APPS_NOT_LOADED)
+                                            },
+                                            color = Color(0xFFD3E3EE),
+                                        )
+                                    }
+                                }
+
+                                else -> {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        itemsIndexed(filteredApps, key = { _, app -> app.packageName }) { index, app ->
+                                            AppAssignmentRow(
+                                                app = app,
+                                                isProxy = app.packageName in state.routingProxyPackagesDraft,
+                                                onToggleProxy = { onToggleProxyApp(app.packageName) },
+                                                visualIndex = index,
                                             )
-                                        }
-                                    }
-
-                                    else -> {
-                                        LazyColumn(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentPadding = PaddingValues(vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                                        ) {
-                                            itemsIndexed(filteredApps, key = { _, app -> app.packageName }) { index, app ->
-                                                AppAssignmentRow(
-                                                    app = app,
-                                                    isProxy = app.packageName in state.routingProxyPackagesDraft,
-                                                    onToggleProxy = { onToggleProxyApp(app.packageName) },
-                                                    visualIndex = index,
-                                                )
-                                            }
                                         }
                                     }
                                 }
@@ -355,7 +353,7 @@ private fun QuicCompatibilityCard(
 
 @Composable
 private fun CompactSummaryCard(
-    state: MainUiState,
+    summary: RoutingSummaryPresentation,
     showAppAssignments: Boolean,
 ) {
     val strings = LocalAppStrings.current
@@ -373,7 +371,7 @@ private fun CompactSummaryCard(
             Text(strings.get(UiText.CURRENT_RULES), color = Color(0xFF9ED6FF), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             if (showAppAssignments) {
                 Text(
-                    strings.format(UiText.VPN_APPS_ASSIGNED, state.routingProxyPackagesDraft.size),
+                    strings.format(UiText.VPN_APPS_ASSIGNED, summary.proxyAppCount),
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
@@ -382,23 +380,19 @@ private fun CompactSummaryCard(
             Text(
                 strings.format(
                     UiText.DOMAIN_RULE_COUNTS,
-                    RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft).size,
+                    summary.directDomainCount,
                 ),
                 color = Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
             Text(
-                ignoreRulesDescription(state, showAppAssignments, strings),
-                color = if (state.routingIgnoreRulesDraft) Color(0xFFFFE0A3) else Color(0xFFD3E3EE),
+                summary.ignoreRulesDescription,
+                color = if (summary.ignoreRules) Color(0xFFFFE0A3) else Color(0xFFD3E3EE),
                 fontSize = 13.sp,
             )
-            if (state.isVpnRunning) {
+            if (summary.restartDescription != null) {
                 Text(
-                    text = if (state.appMode == AppMode.VPN) {
-                        strings.get(UiText.RESTART_VPN_AFTER_RULES)
-                    } else {
-                        strings.get(UiText.RESTART_PROXY_AFTER_RULES)
-                    },
+                    text = summary.restartDescription,
                     color = Color(0xFFFFE0A3),
                     fontSize = 12.sp,
                 )
@@ -440,12 +434,18 @@ private fun ProxyOnlyRulesNoteCard() {
 @Composable
 private fun DirectDomainTagCloud(
     value: String,
+    domainValues: List<String>?,
     onValueChange: (String) -> Unit,
+    onListChange: ((List<String>) -> Unit)?,
 ) {
     val strings = LocalAppStrings.current
-    val domains = remember(value) {
-        RoutingRules.parseDirectDomainSuffixes(value).sortedForDirectDomainCloud()
+    val domains = remember(value, routingDomainCacheKey(domainValues)) {
+        domainValues ?: RoutingRules.parseDirectDomainSuffixes(value)
     }
+    val ordered by produceState<RoutingDomainOrder?>(null, routingDomainCacheKey(domains)) {
+        this.value = RoutingDomainOrder(domains, withContext(Dispatchers.Default) { DirectDomainDrafts.orderedIndices(domains) })
+    }
+    val order = ordered?.takeIf { it.domains === domains }?.indices
     var input by remember { mutableStateOf("") }
     var isAdding by remember { mutableStateOf(false) }
     val inputFocusRequester = remember { FocusRequester() }
@@ -457,7 +457,9 @@ private fun DirectDomainTagCloud(
     }
 
     fun emitDomains(nextDomains: List<String>) {
-        onValueChange(nextDomains.sortedForDirectDomainCloud().joinToString(separator = "\n"))
+        if (nextDomains === domains) return
+        if (onListChange != null) onListChange(nextDomains)
+        else onValueChange(DirectDomainDrafts.orderedIndices(nextDomains).joinToString("\n") { nextDomains[it] })
     }
 
     fun commitInput() {
@@ -466,7 +468,7 @@ private fun DirectDomainTagCloud(
             isAdding = false
             return
         }
-        emitDomains(domains + normalized)
+        emitDomains(DirectDomainDrafts.add(domains, input))
         input = ""
         isAdding = false
     }
@@ -483,15 +485,28 @@ private fun DirectDomainTagCloud(
         ) {
             Text(strings.get(UiText.BYPASS_DOMAINS), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text(strings.get(UiText.BYPASS_DOMAINS_DESCRIPTION), color = Color(0xFFD3E3EE), fontSize = 12.sp)
+            val sorted = order
+            if (sorted == null) {
+                CircularProgressIndicator(Modifier.size(24.dp))
+            } else if (sorted.size > 64) {
+                // Bound composition, not the document. Every domain remains scrollable/editable.
+                LazyColumn(Modifier.fillMaxWidth().height(288.dp).testTag("direct-domain-list"),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(sorted.size) { position ->
+                        val index = sorted[position]
+                        DirectDomainChip(domains[index], onRemove = { emitDomains(DirectDomainDrafts.remove(domains, index)) })
+                    }
+                }
+            }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                domains.forEach { domain ->
+                if (sorted != null && sorted.size <= 64) sorted.forEach { index ->
                     DirectDomainChip(
-                        domain = domain,
-                        onRemove = { emitDomains(domains.filterNot { it == domain }) },
+                        domain = domains[index],
+                        onRemove = { emitDomains(DirectDomainDrafts.remove(domains, index)) },
                     )
                 }
                 if (isAdding) {
@@ -626,18 +641,6 @@ private fun DirectDomainInputChip(
             }
         },
     )
-}
-
-private fun List<String>.sortedForDirectDomainCloud(): List<String> {
-    return distinct()
-        .sortedWith(
-            compareByDescending<String> { it.isSingleLabelDomainSuffix() }
-                .thenBy { it },
-        )
-}
-
-private fun String.isSingleLabelDomainSuffix(): Boolean {
-    return trim('.').isNotBlank() && '.' !in trim('.')
 }
 
 @Composable

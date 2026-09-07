@@ -7,6 +7,150 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidControlReaderTest {
+    @Test fun configurationReadUsesCapturedOwnerRuntimeKnowledgeForEnvelopeWarnings() = runTest {
+        var observations = 0
+        val state = PersistedState()
+        val reader = AndroidControlReader("owner", { state }, committedSnapshot = {
+            com.kardinal.vpncontrol.control.ControlCommitted("owner", 5, state)
+        }, statusSnapshot = {
+            observations++
+            AndroidControlStatus(mapOf("runtimeObservation" to ControlValue.Text("running")), false, true)
+        })
+        val result = reader.read(request(ControlOperationId.SETTINGS_SHOW))
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(5L, result.configurationRevision)
+        assertEquals(1, observations)
+        assertFalse(result.warnings.contains("ACTIVE_RUNTIME_IDENTITY_UNAVAILABLE"))
+        assertFalse(result.warnings.contains("PENDING_RESTART_STATE_UNAVAILABLE"))
+        assertFalse(result.data.containsKey("runtimeObservation"))
+    }
+
+    @Test fun unknownCapturedStatusDoesNotBorrowASeparatePendingOrTelemetryObservation() = runTest {
+        val reader = AndroidControlReader("owner", { PersistedState() }, pendingRestart = { false },
+            statusSnapshot = { AndroidControlStatus(mapOf("runtimeObservation" to ControlValue.Text("unknown")), null, false) })
+        val result = reader.read(request(ControlOperationId.SETTINGS_SHOW))
+        assertTrue(result.warnings.contains("ACTIVE_RUNTIME_IDENTITY_UNAVAILABLE"))
+        assertTrue(result.warnings.contains("PENDING_RESTART_STATE_UNAVAILABLE"))
+        val statsReader = AndroidControlReader("owner", { PersistedState() },
+            statusSnapshot = { AndroidControlStatus(emptyMap(), false, true) },
+            runtimeObservation = { AndroidRuntimeObservation() })
+        assertTrue(statsReader.read(request(ControlOperationId.STATS)).warnings.contains("ACTIVE_RUNTIME_IDENTITY_UNAVAILABLE"))
+    }
+
+    @Test fun routingShowKeepsPersistedDomainValuesLazyInsteadOfRetainingEveryDecodedString() = runTest {
+        val domains = com.kardinal.vpncontrol.data.AndroidPersistedDomainSuffixes.decode("one.test\ntwo.test")
+        val reader = AndroidControlReader("owner", { PersistedState(routingRules = RoutingRules(directDomainSuffixes = domains)) })
+        val result = reader.read(request(ControlOperationId.ROUTING_SHOW))
+        assertEquals(ControlCode.OK, result.code)
+        val routing = (result.data.getValue("routing") as ControlValue.ObjectValue).values
+        val rules = (routing.getValue("rules") as ControlValue.ObjectValue).values
+        val values = (rules.getValue("direct_domain_suffixes") as ControlValue.ArrayValue).values
+        assertEquals(listOf(ControlValue.Text("one.test"), ControlValue.Text("two.test")), values)
+        assertNotSame("Inspection must not retain a decoded Text object for every persisted domain", values[0], values[0])
+    }
+
+    @Test fun publishedLogRolloverBetweenReadsIsExplicitAndNeverRollsBackToAnOlderSnapshot() = runTest {
+        val reader = AndroidControlReader("owner", { PersistedState() })
+        val initial = reader.read(request(ControlOperationId.LOGS, mapOf("limit" to ControlValue.Text("0"))))
+        var history = emptyList<ConnectionLogEntry>()
+        repeat(601) { index ->
+            history = (history + ConnectionLogEntry(index.toString(), "same", 1)).takeLast(200)
+            reader.observeLogs(history)
+        }
+        val result = reader.read(request(ControlOperationId.LOGS, mapOf("after" to initial.data.getValue("nextCursor"),
+            "limit" to ControlValue.Text("200"))))
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(ControlValue.BooleanValue(true), result.data["gap"])
+        val rows = (result.data["entries"] as ControlValue.ArrayValue).values
+        assertEquals(200, rows.size)
+        assertEquals(200, rows.map { (it as ControlValue.ObjectValue).values["id"] }.distinct().size)
+    }
+
+    @Test fun logsUseOwnerCursorsAndKeepIdenticalEventsDistinct() = runTest {
+        var state = PersistedState()
+        val reader = AndroidControlReader("owner", { state })
+        suspend fun logs(after: ControlValue? = null, limit: String = "100") = reader.read(request(ControlOperationId.LOGS,
+            mapOf("limit" to ControlValue.Text(limit)) + after?.let { mapOf("after" to it) }.orEmpty()))
+        val tail = logs(limit = "0").data["nextCursor"]
+        assertNotNull(tail)
+        state = state.copy(connectionLog = listOf(ConnectionLogEntry("one", "same", 1), ConnectionLogEntry("two", "same", 1)))
+        val first = logs(tail, "1")
+        assertEquals(ControlCode.OK, first.code)
+        assertEquals(ControlValue.BooleanValue(false), first.data["gap"])
+        val second = logs(first.data["nextCursor"], "1")
+        assertNotEquals(first.data["nextCursor"], second.data["nextCursor"])
+        assertEquals(1, (second.data["entries"] as ControlValue.ArrayValue).values.size)
+        assertEquals(0, (logs(second.data["nextCursor"]).data["entries"] as ControlValue.ArrayValue).values.size)
+        assertEquals(ControlCode.INVALID_ARGUMENT, logs(ControlValue.Text("foreign-owner-0")).code)
+        assertEquals(ControlCode.INVALID_ARGUMENT, logs(ControlValue.Null).code)
+        val replacement = AndroidControlReader("replacement", { state })
+        assertEquals(ControlCode.INVALID_ARGUMENT, replacement.read(request(ControlOperationId.LOGS,
+            mapOf("after" to second.data.getValue("nextCursor")))).code)
+    }
+
+    @Test fun streamResourceFailureIsNotReportedAsMalformedInput() = runTest {
+        var effects = 0
+        val reader = AndroidControlReader("owner", { effects++; PersistedState() })
+        for (failure in listOf(OutOfMemoryError("PRIVATE_ALLOCATION"), java.io.IOException("PRIVATE_STORAGE_PATH"))) {
+            val input = object : java.io.InputStream() {
+                override fun read(): Int = throw failure
+            }
+            val error = try {
+                reader.executeDocument(input, "transfer")
+                throw AssertionError("Expected resource failure")
+            } catch (error: AndroidControlDocumentResourceFailure) {
+                error
+            }
+            assertEquals("UNAVAILABLE", error.message)
+            assertNull(error.cause)
+            assertEquals(0, effects)
+        }
+        val malformed = ControlProtocolCodec.decodeResult(reader.executeDocument(byteArrayOf(0xff.toByte()), "transfer")
+            .toString(Charsets.UTF_8))
+        assertEquals(ControlCode.INVALID_ARGUMENT, malformed.code)
+        assertEquals(0, effects)
+    }
+
+    @Test fun logicalDocumentsKeepLargeCommittedOutputAndRequestIdentity() = runTest {
+        val payload = "東京\\\"\n".repeat(1_600_000)
+        val reader = AndroidControlReader("owner", { PersistedState() }, settingsWrite = { request ->
+            assertEquals(ControlValue.Text(payload), request.command.arguments["input"])
+            ControlResult(controllerId = "owner", requestId = request.requestId, code = ControlCode.OK,
+                configurationRevision = 7, data = mapOf("content" to ControlValue.Text(payload)))
+        })
+        val request = ControlRequest("large-android", ControlCommand(ControlOperationId.LOCATIONS_IMPORT,
+            mapOf("input" to ControlValue.Text(payload))), controllerId = "owner")
+        val bytes = com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeRequest(request).toByteArray(Charsets.UTF_8)
+        val response = reader.executeDocument(bytes, "transfer")
+        assertTrue(response.size > 10 * 1024 * 1024)
+        val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(response.toString(Charsets.UTF_8))
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(request.requestId, result.requestId)
+        assertEquals("owner", result.controllerId)
+        assertEquals(7L, result.configurationRevision)
+        assertEquals(ControlValue.Text(payload), result.data["content"])
+        // The legacy bounded entry point is still explicitly bounded until provider negotiation.
+        assertEquals(ControlCode.INVALID_ARGUMENT,
+            ControlProtocolCodec.decodeResult(reader.execute(bytes, "transfer").toString(Charsets.UTF_8)).code)
+    }
+
+    @Test fun largeReadOutputAndMalformedLargeInputDoNotLoseCorrelationOrLeakContent() = runTest {
+        val payload = "PRIVATE_DOCUMENT_東京".repeat(100_000)
+        val reader = AndroidControlReader("owner", { PersistedState() }, diagnosticsExport = { payload })
+        val request = request(ControlOperationId.DIAGNOSTICS_EXPORT)
+        val bytes = ControlProtocolCodec.encodeRequest(request).toByteArray(Charsets.UTF_8)
+        val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
+            reader.executeDocument(bytes, "transfer").toString(Charsets.UTF_8))
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(request.requestId, result.requestId)
+        assertEquals(ControlValue.Text(payload), result.data["content"])
+        val invalid = reader.executeDocument(("{\"private\":\"" + payload).toByteArray(Charsets.UTF_8), "transfer")
+            .toString(Charsets.UTF_8)
+        assertFalse(invalid.contains("PRIVATE_DOCUMENT"))
+        assertEquals("transfer", ControlProtocolCodec.decodeResult(invalid).requestId)
+        assertEquals(ControlCode.INVALID_ARGUMENT, ControlProtocolCodec.decodeResult(invalid).code)
+    }
+
     @Test fun diagnosticsExportUsesCapturedConfigurationAndRejectsClientPathBeforeExporter() = runTest {
         var calls = 0
         val reader = AndroidControlReader("owner", { error("Legacy snapshot must not be used") },

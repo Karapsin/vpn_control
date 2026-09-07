@@ -92,6 +92,7 @@ internal class DesktopConnectionActionsService(
         location: DesktopLocationRecord,
         benchmarkSummary: String? = null,
         activeVerificationPort: Int? = null,
+        commitSelectionOnSuccessOnly: Boolean = false,
     ): Result<Unit> {
         return connectionLifecycle.startConnection(
             state = stateProvider(),
@@ -103,6 +104,7 @@ internal class DesktopConnectionActionsService(
             commitState = commitState,
             updateState = updateState,
             activeVerificationPort = activeVerificationPort,
+            commitSelectionOnSuccessOnly = commitSelectionOnSuccessOnly,
         )
     }
 

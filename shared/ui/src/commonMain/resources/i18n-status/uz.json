@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Oldingi {connectionLabel:0} joylashuvini tiklab boʻlmadi: {1}. {connectionLabel:0}ni toʻxtatib boʻlmadi: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Marshrutlash qoidalari saqlandi. Qoʻllash uchun {connectionLabel:0}ni qayta ishga tushiring",
     "ROUTING_RULES_SAVE_FAILED": "Yoʻnaltirish qoidalarini saqlab boʻlmadi",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Yoʻnaltirish oʻzgarishining natijasi nomaʼlum. Xuddi shu maʼlumotlar bilan qayta urinib koʻring.",
+    "ROUTING_RULES_STALE_DRAFT": "Yoʻnaltirish sozlamalari oʻzgardi. Saqlashdan oldin tahrirlagichni qayta oching.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostika eksporti ochildi",
     "APPS_LOAD_FAILED": "Ilovalarni yuklab boʻlmadi",
     "SUBSCRIPTION_RECEIVED": "Obuna olindi. Uni Profil varagʻida koʻrib chiqing va saqlang.",

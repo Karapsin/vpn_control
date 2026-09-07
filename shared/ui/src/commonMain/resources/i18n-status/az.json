@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Əvvəlki {connectionLabel:0} məkanını bərpa etmək mümkün olmadı: {1}. {connectionLabel:0} dayandırmaq mümkün olmadı: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Marşrutlaşdırma qaydaları saxlanıldı. Tətbiq etmək üçün {connectionLabel:0} bağlantısını yenidən başladın",
     "ROUTING_RULES_SAVE_FAILED": "Yönləndirmə qaydalarını saxlamaq alınmadı",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Yönləndirmə dəyişikliyinin nəticəsi məlum deyil. Eyni məlumatlarla yenidən cəhd edin.",
+    "ROUTING_RULES_STALE_DRAFT": "Yönləndirmə parametrləri dəyişib. Saxlamazdan əvvəl redaktoru yenidən açın.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diaqnostika ixracı açıldı",
     "APPS_LOAD_FAILED": "Tətbiqləri yükləmək alınmadı",
     "SUBSCRIPTION_RECEIVED": "Abunəlik alındı. Profil tabında nəzərdən keçirib saxlayın.",

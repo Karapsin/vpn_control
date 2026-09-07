@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Nem sikerült visszaállítani az előző {connectionLabel:0}-helyet: {1}. Nem sikerült leállítani: {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Útválasztási szabályok mentve. Az alkalmazáshoz indítsa újra: {connectionLabel:0}",
     "ROUTING_RULES_SAVE_FAILED": "Nem sikerült menteni az útválasztási szabályokat",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Az útválasztási módosítás eredménye ismeretlen. Próbálja újra ugyanazokkal az adatokkal.",
+    "ROUTING_RULES_STALE_DRAFT": "Az útválasztási beállítások megváltoztak. Mentés előtt nyissa meg újra a szerkesztőt.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnosztikai export megnyitva",
     "APPS_LOAD_FAILED": "Nem sikerült betölteni az alkalmazásokat",
     "SUBSCRIPTION_RECEIVED": "Előfizetés érkezett. Ellenőrizd és mentsd a Profil lapon.",

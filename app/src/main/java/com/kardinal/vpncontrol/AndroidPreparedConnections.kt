@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.control.ControlRuntimeConfiguration
 import com.kardinal.vpncontrol.model.ProfileSelection
+import com.kardinal.vpncontrol.model.PersistedState
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
 import java.util.UUID
@@ -20,6 +21,14 @@ internal class AndroidPreparedConnections(
     }
     private val preparations = mutableListOf<Prepared>()
     private val dispatched = linkedMapOf<String, Prepared>()
+
+    fun remember(selection: ProfileSelection, state: PersistedState) {
+        // Generated SSH configurations use the exact captured credential version,
+        // just like other runtime inputs. Uncaptured legacy JSON remains unknown.
+        if (selection.profile.rawLink.isBlank()) return
+        remember(selection, ControlRuntimeConfiguration(selection.profile.rawLink, selection.sourceUrl,
+            state.appMode, state.routingRules, state.dnsSettings, state.homeSshRouteSettings))
+    }
 
     @Synchronized fun remember(selection: ProfileSelection, configuration: ControlRuntimeConfiguration) {
         prune()

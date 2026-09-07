@@ -102,7 +102,7 @@ class DesktopStateStore(
 
     fun writeWorkspace(workspace: DesktopWorkspace): Result<Unit> {
         return runCatching {
-            Files.createDirectories(baseDir)
+            DesktopWorkspacePaths.createDirectories(baseDir)
             writeWorkspaceAtomically(
                 json.encodeToString(JsonObject.serializer(), encodeWorkspace(workspace)),
             )
@@ -169,7 +169,7 @@ class DesktopStateStore(
 
     private fun logWorkspaceWriteError(error: Throwable) {
         runCatching {
-            Files.createDirectories(baseDir)
+            DesktopWorkspacePaths.createDirectories(baseDir)
             Files.writeString(
                 workspaceWriteErrorFile,
                 buildString {
@@ -199,7 +199,7 @@ class DesktopStateStore(
 
     override suspend fun writeRuntimeConfig(configJson: String) {
         try {
-            Files.createDirectories(baseDir)
+            DesktopWorkspacePaths.createDirectories(baseDir)
             writeWorkspaceFile(runtimeConfigFile, configJson)
         } catch (_: IOException) {
             throw DesktopPersistenceException()

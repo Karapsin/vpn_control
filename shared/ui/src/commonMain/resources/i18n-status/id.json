@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Gagal memulihkan lokasi {connectionLabel:0} sebelumnya: {1}. Gagal menghentikan {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Aturan perutean disimpan. Mulai ulang {connectionLabel:0} untuk menerapkannya",
     "ROUTING_RULES_SAVE_FAILED": "Gagal menyimpan aturan perutean",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Hasil perubahan perutean tidak diketahui. Coba lagi dengan masukan yang sama.",
+    "ROUTING_RULES_STALE_DRAFT": "Pengaturan perutean berubah. Buka kembali editor sebelum menyimpan.",
     "DIAGNOSTICS_EXPORT_OPENED": "Ekspor diagnostik dibuka",
     "APPS_LOAD_FAILED": "Gagal memuat aplikasi",
     "SUBSCRIPTION_RECEIVED": "Langganan diterima. Tinjau dan simpan di tab Profil.",

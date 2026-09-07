@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "پچھلی {connectionLabel:0} لوکیشن بحال کرنے میں ناکامی: {1}۔ {connectionLabel:0} کو بند کرنے میں ناکامی: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "روٹنگ رولز محفوظ ہو گئے۔ لاگو کرنے کے لیے {connectionLabel:0} دوبارہ شروع کریں",
     "ROUTING_RULES_SAVE_FAILED": "روٹنگ قواعد محفوظ کرنے میں ناکامی",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "روٹنگ کی تبدیلی کا نتیجہ نامعلوم ہے۔ انہی معلومات کے ساتھ دوبارہ کوشش کریں۔",
+    "ROUTING_RULES_STALE_DRAFT": "روٹنگ کی ترتیبات بدل گئی ہیں۔ محفوظ کرنے سے پہلے ایڈیٹر دوبارہ کھولیں۔",
     "DIAGNOSTICS_EXPORT_OPENED": "تشخیصی ایکسپورٹ کھل گیا",
     "APPS_LOAD_FAILED": "ایپس لوڈ کرنے میں ناکامی",
     "SUBSCRIPTION_RECEIVED": "سبسکرپشن موصول ہوئی۔ پروفائل ٹیب پر اس کا جائزہ لے کر محفوظ کریں۔",

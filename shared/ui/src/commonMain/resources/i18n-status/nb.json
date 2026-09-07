@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Klarte ikke å gjenopprette forrige {connectionLabel:0}-lokasjon: {1}. Klarte ikke å stoppe {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Rutingregler lagret. Start {connectionLabel:0} på nytt for å ta dem i bruk",
     "ROUTING_RULES_SAVE_FAILED": "Kunne ikke lagre rutingregler",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Resultatet av rutingsendringen er ukjent. Prøv igjen med de samme opplysningene.",
+    "ROUTING_RULES_STALE_DRAFT": "Rutingsinnstillingene er endret. Åpne redigeringsvinduet på nytt før du lagrer.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnostikkeksport åpnet",
     "APPS_LOAD_FAILED": "Kunne ikke laste apper",
     "SUBSCRIPTION_RECEIVED": "Abonnement mottatt. Se gjennom og lagre det på Profil-fanen.",

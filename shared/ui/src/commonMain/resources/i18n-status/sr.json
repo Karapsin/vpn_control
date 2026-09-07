@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Враћање претходне локације за {connectionLabel:0} није успело: {1}. Заустављање {connectionLabel:0} није успело: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Правила рутирања су сачувана. Поново покрените {connectionLabel:0} да би се применила",
     "ROUTING_RULES_SAVE_FAILED": "Чување правила рутирања није успело",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Исход промене усмеравања није познат. Покушајте поново са истим подацима.",
+    "ROUTING_RULES_STALE_DRAFT": "Подешавања усмеравања су промењена. Поново отворите уређивач пре чувања.",
     "DIAGNOSTICS_EXPORT_OPENED": "Извоз дијагностике је отворен",
     "APPS_LOAD_FAILED": "Учитавање апликација није успело",
     "SUBSCRIPTION_RECEIVED": "Претплата је примљена. Прегледајте је и сачувајте на картици Профил.",

@@ -5,6 +5,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidRoutingControlTest {
+    @Test fun resourceFailureIsNotRelabeledAsMalformedInput() {
+        val failure = OutOfMemoryError("private content must not be copied into validation errors")
+        val actual = runCatching {
+            AndroidRoutingControl.plan(PersistedState(), ControlOperationId.ROUTING_IMPORT,
+                values("input" to "{}"), emptyList(), importRules = { throw failure })
+        }.exceptionOrNull()
+        assertSame(failure, actual)
+        val malformed = runCatching {
+            AndroidRoutingControl.plan(PersistedState(), ControlOperationId.ROUTING_IMPORT,
+                values("input" to "{}"), emptyList(), importRules = { error("private malformed payload") })
+        }.exceptionOrNull()
+        assertEquals("INVALID_ARGUMENT", malformed?.message)
+        assertNull(malformed?.cause)
+    }
     private val apps = listOf(InstalledApp("app.browser", "Browser", false), InstalledApp("app.mail", "Mail", false))
     private fun values(vararg entries: Pair<String, String>) = entries.associate { it.first to ControlValue.Text(it.second) }
 

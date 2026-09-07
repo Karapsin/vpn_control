@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Impossible de restaurer l'emplacement {connectionLabel:0} précédent : {1}. Impossible d'arrêter {connectionLabel:0} : {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Règles de routage enregistrées. Redémarrez {connectionLabel:0} pour les appliquer",
     "ROUTING_RULES_SAVE_FAILED": "Impossible d'enregistrer les règles de routage",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Le résultat de la modification du routage est inconnu. Réessayez avec les mêmes données.",
+    "ROUTING_RULES_STALE_DRAFT": "Les paramètres de routage ont changé. Rouvrez l’éditeur avant d’enregistrer.",
     "DIAGNOSTICS_EXPORT_OPENED": "Export de diagnostic ouvert",
     "APPS_LOAD_FAILED": "Impossible de charger les applications",
     "SUBSCRIPTION_RECEIVED": "Abonnement reçu. Vérifiez-le et enregistrez-le dans l'onglet Profil.",

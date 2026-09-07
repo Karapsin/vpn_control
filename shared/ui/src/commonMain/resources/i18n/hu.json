@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "A telepítéshez interaktív munkamenet szükséges.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "A telepítési engedély megtagadva.",
+  "UPDATE_INSTALL_CANCELLED": "A telepítés megszakítva.",
+  "UPDATE_INSTALL_CONFIRMATION": "Várakozás a telepítés megerősítésére.",
+  "UPDATE_INSTALL_COMPLETED": "A frissítés telepítve.",
+  "UPDATE_INSTALL_UNKNOWN": "A telepítés eredménye ismeretlen.",
   "APP_TITLE": "VPN vezérlés",
   "TAB_MAIN": "Főoldal",
   "TAB_PROFILE": "Profil",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Aktív hely: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Aktív hely: nem érhető el",
+  "CONNECTION_RESTART_PENDING": "A mentett módosítások alkalmazásához indítsa újra a kapcsolatot.",
+  "CONNECTION_RESTART_UNKNOWN": "Nem ismert, hogy szükséges-e az újraindítás."
 }

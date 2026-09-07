@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Vorheriger {connectionLabel:0}-Standort konnte nicht wiederhergestellt werden: {1}. {connectionLabel:0} konnte nicht gestoppt werden: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Routing-Regeln gespeichert. Starten Sie {connectionLabel:0} neu, um sie anzuwenden",
     "ROUTING_RULES_SAVE_FAILED": "Routing-Regeln konnten nicht gespeichert werden",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "Das Ergebnis der Routingänderung ist unbekannt. Versuchen Sie es mit denselben Eingaben erneut.",
+    "ROUTING_RULES_STALE_DRAFT": "Die Routingeinstellungen haben sich geändert. Öffnen Sie den Editor vor dem Speichern erneut.",
     "DIAGNOSTICS_EXPORT_OPENED": "Diagnoseexport geöffnet",
     "APPS_LOAD_FAILED": "Apps konnten nicht geladen werden",
     "SUBSCRIPTION_RECEIVED": "Abo empfangen. Prüfen und speichern Sie es im Tab Profil.",

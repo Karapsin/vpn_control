@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "Инсталација захтева интерактивну сесију.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "Дозвола за инсталацију је одбијена.",
+  "UPDATE_INSTALL_CANCELLED": "Инсталација је отказана.",
+  "UPDATE_INSTALL_CONFIRMATION": "Чека се потврда инсталације.",
+  "UPDATE_INSTALL_COMPLETED": "Ажурирање је инсталирано.",
+  "UPDATE_INSTALL_UNKNOWN": "Исход инсталације није познат.",
   "APP_TITLE": "VPN контрола",
   "TAB_MAIN": "Главно",
   "TAB_PROFILE": "Профил",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "Активна локација: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "Активна локација: недоступна",
+  "CONNECTION_RESTART_PENDING": "Поново покрените везу да примените сачуване измене.",
+  "CONNECTION_RESTART_UNKNOWN": "Није познато да ли је потребно поновно покретање."
 }

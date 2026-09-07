@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ການຕິດຕັ້ງຕ້ອງການເຊດຊັນແບບໂຕ້ຕອບ.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ການອະນຸຍາດໃຫ້ຕິດຕັ້ງຖືກປະຕິເສດ.",
+  "UPDATE_INSTALL_CANCELLED": "ຍົກເລີກການຕິດຕັ້ງແລ້ວ.",
+  "UPDATE_INSTALL_CONFIRMATION": "ກຳລັງລໍຖ້າການຢືນຢັນການຕິດຕັ້ງ.",
+  "UPDATE_INSTALL_COMPLETED": "ຕິດຕັ້ງການອັບເດດແລ້ວ.",
+  "UPDATE_INSTALL_UNKNOWN": "ບໍ່ຮູ້ຜົນຂອງການຕິດຕັ້ງ.",
   "APP_TITLE": "ການຄວບຄຸມ VPN",
   "TAB_MAIN": "ຫຼັກ",
   "TAB_PROFILE": "ໂປຣໄຟລ໌",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "ສະຖານທີ່ທີ່ໃຊ້ງານ: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "ສະຖານທີ່ທີ່ໃຊ້ງານ: ບໍ່ພ້ອມໃຊ້ງານ",
+  "CONNECTION_RESTART_PENDING": "ເລີ່ມການເຊື່ອມຕໍ່ໃໝ່ເພື່ອນຳໃຊ້ການປ່ຽນແປງທີ່ບັນທຶກໄວ້.",
+  "CONNECTION_RESTART_UNKNOWN": "ຍັງບໍ່ຮູ້ວ່າຈຳເປັນຕ້ອງເລີ່ມໃໝ່ຫຼືບໍ່."
 }

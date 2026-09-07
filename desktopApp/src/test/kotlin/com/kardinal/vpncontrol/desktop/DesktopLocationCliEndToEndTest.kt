@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
-import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.*
+import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -8,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertIs
 
 class DesktopLocationCliEndToEndTest {
     @Test
@@ -17,9 +19,10 @@ class DesktopLocationCliEndToEndTest {
         val service = DesktopAppServiceFactory.createForTesting(store = store,
             initialWorkspace = DesktopWorkspace(PersistedState(), emptyList()))
         val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
         val server = assertNotNull(DesktopActivationServer.start(
             onShowWindow = { DesktopActivationShowResult.HEADLESS },
-            onCliCommand = { runBlocking { service.executeCliCommand(it) } }, portFile = endpoint,
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
             fun invoke(vararg args: String): Pair<Int?, String> {
@@ -61,17 +64,23 @@ class DesktopLocationCliEndToEndTest {
             assertEquals(beforeInvalidImport, service.desktopLocations)
             assertFalse(service.state.isVpnRunning)
             assertFalse(service.shouldResumeConnectionOnLaunch())
-        } finally { server.close(); directory.toFile().deleteRecursively() }
+        } finally { server.close(); owner.close(); directory.toFile().deleteRecursively() }
     }
 
     @Test
     fun stdinIsConsumedAtClientAndReadFailuresNeverReachController() {
         var captured: DesktopCliCommand? = null
         val result = DesktopCli.handleArgs(arrayOf("locations", "add", "--input", "-"), printLine = {},
-            requestCommand = { captured = it; DesktopCliResponse.success("saved") },
+            requestCommand = {
+                captured = it
+                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner",
+                    assertIs<DesktopCliCommand.ControlSubmit>(it).request.requestId, ControlCode.OK, 1)))
+            },
             readInput = { path -> assertEquals("-", path); Result.success("socks://127.0.0.1:1080#Local") })
         assertEquals(0, result)
-        assertEquals(DesktopCliCommand.LocationSave("socks://127.0.0.1:1080#Local"), captured)
+        val command = assertIs<DesktopCliCommand.ControlSubmit>(captured).request.command
+        assertEquals(ControlOperationId.LOCATIONS_ADD, command.operation)
+        assertEquals(ControlValue.Text("socks://127.0.0.1:1080#Local"), command.arguments["input"])
         assertEquals(1, DesktopCli.handleArgs(arrayOf("locations", "add", "--input", "missing"), printLine = {},
             requestCommand = { error("Unreadable input must fail before transport") },
             readInput = { Result.failure(java.io.IOException("private path")) }))

@@ -71,7 +71,8 @@ object MainDraftLogic {
             blockQuicUdp443 = state.routingBlockQuicUdp443Draft,
             proxyPackages = proxyPackages,
             bypassPackages = emptyList(),
-            directDomainSuffixes = RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
+            directDomainSuffixes = state.routingDirectDomainSuffixesDraft
+                ?: RoutingRules.parseDirectDomainSuffixes(state.routingDirectDomainsDraft),
             ruleSets = emptyList(),
         )
     }
@@ -117,12 +118,14 @@ object MainDraftLogic {
 
     fun applyImportedRoutingRules(state: MainUiState, rules: RoutingRules): MainUiState {
         return state.copy(
+            routingDraftGeneration = state.routingDraftGeneration + 1,
             routingRules = rules,
             routingIgnoreRulesDraft = rules.ignoreRules,
             routingBlockQuicUdp443Draft = rules.blockQuicUdp443,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
-            routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
+            routingDirectDomainsDraft = "",
+            routingDirectDomainSuffixesDraft = rules.directDomainSuffixes,
             routingRuleSetsDraft = emptyList(),
             showRuleSetDialog = false,
             editingRuleSetId = "",

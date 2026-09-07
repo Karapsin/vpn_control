@@ -28,32 +28,61 @@ internal class AndroidUpdateControl(
     private class Transfer(val result: CompletableDeferred<AndroidUpdateOutcome> = CompletableDeferred()) { val job = CompletableDeferred<Job>() }
     private var active: Transfer? = null
     private var cancelling = false
-    internal data class Installation(val file: File, val checked: AndroidUpdateCheck)
+    internal data class Installation(val file: File, val checked: AndroidUpdateCheck,
+        val priorPhase: AppUpdatePhase, val priorReceiptId: String?)
     private var installation: Installation? = null
+    private var recoveredInstallation: Any? = null
+    @Synchronized fun reserveRecoveredInstallation(): Any? =
+        if (busy()) null else Any().also { recoveredInstallation = it }
+    @Synchronized fun finishRecoveredInstallation(ticket: Any, handedOff: Boolean) {
+        if (recoveredInstallation !== ticket) return
+        update { state ->
+            if (state.installSession != null) state.copy(phase = installationPhase(state.installSession), message = "")
+            else state
+        }
+        recoveredInstallation = null
+    }
+    @Synchronized fun installSessionChanged(status: AppInstallSessionStatus?) {
+        update { it.copy(installSession = status,
+            phase = if (status != null && (it.phase == AppUpdatePhase.INSTALLING || recoveredInstallation != null ||
+                    installation?.let { ticket -> status.receiptId != ticket.priorReceiptId } == true))
+                installationPhase(status) else it.phase) }
+    }
     @Synchronized fun reserveInstallation(): Installation? {
         if (busy()) return null
         val file = preparedFile ?: return null
         val selected = checked?.takeIf { it.asset != null } ?: return null
-        return Installation(file, selected).also { installation = it }
+        return Installation(file, selected, published.phase, published.installSession?.receiptId).also { installation = it }
     }
     @Synchronized fun finishInstallation(ticket: Installation, handedOff: Boolean) {
         if (installation !== ticket) return
-        if (handedOff) update { it.copy(phase = AppUpdatePhase.INSTALLING, message = "") }
+        update { state ->
+            val session = state.installSession
+            state.copy(phase = if (handedOff || session != null && session.receiptId != ticket.priorReceiptId)
+                installationPhase(session) else ticket.priorPhase, message = "")
+        }
         installation = null
+    }
+    private fun installationPhase(status: AppInstallSessionStatus?) = when (status?.phase) {
+        AppInstallSessionPhase.FAILED -> AppUpdatePhase.FAILED
+        AppInstallSessionPhase.INSTALLED, AppInstallSessionPhase.CANCELLED, AppInstallSessionPhase.UNKNOWN -> AppUpdatePhase.IDLE
+        else -> AppUpdatePhase.INSTALLING
     }
     internal class Cancellation internal constructor(internal val job: Deferred<Job>?, internal val dismiss: Boolean)
     private var cancellation: Cancellation? = null
     private var generation = 0L
     private var published = AppUpdateState(currentVersion = currentVersion)
+    private var verificationFailure: AndroidUpdateVerificationReason? = null
     @Volatile private var checked: AndroidUpdateCheck? = null
     @Volatile var preparedFile: File? = null
         private set
     fun checkedStatus(): AndroidUpdateCheck? = checked
-    @Synchronized fun busy(): Boolean = active != null || cancelling || installation != null
+    @Synchronized fun busy(): Boolean = active != null || cancelling || installation != null || recoveredInstallation != null
     @Synchronized fun generation(): Long = generation
-    @Synchronized fun inspection(state: () -> AppUpdateState) = AndroidControlUpdateInspection.read(state(), checked)
+    @Synchronized fun inspection(state: () -> AppUpdateState) = AndroidControlUpdateInspection.read(state(), checked) +
+        (verificationFailure?.let { mapOf("verificationFailure" to ControlValue.Text(it.name)) } ?: emptyMap())
     @Synchronized private fun update(transform: (AppUpdateState) -> AppUpdateState) = emit { transform(it).also { next -> published = next } }
-    @Synchronized private fun outcome(code: ControlCode) = AndroidUpdateOutcome(code, AndroidControlUpdateInspection.read(published, checked))
+    @Synchronized private fun outcome(code: ControlCode) = AndroidUpdateOutcome(code, inspection { published })
     fun progress(downloaded: Long, total: Long) = update { it.copy(downloadedBytes = downloaded, totalBytes = total) }
 
     suspend fun execute(operation: ControlOperationId, expectedGeneration: Long? = null): AndroidUpdateOutcome = when (operation) {
@@ -74,7 +103,8 @@ internal class AndroidUpdateControl(
     private suspend fun checkOutcome(expectedGeneration: Long?): AndroidUpdateOutcome = runOwned(expectedGeneration) {
         synchronized(this) {
             checked = null; preparedFile = null
-            update { AppUpdateState(showDialog = it.showDialog, currentVersion = currentVersion, phase = AppUpdatePhase.CHECKING) }
+            update { AppUpdateState(showDialog = it.showDialog, currentVersion = currentVersion,
+                phase = AppUpdatePhase.CHECKING, installSession = it.installSession) }
         }
         val manifest = fetch()
         currentCoroutineContext().ensureActive()
@@ -112,6 +142,7 @@ internal class AndroidUpdateControl(
         val transfer = synchronized(this) {
             if (expectedGeneration != null && expectedGeneration != generation) return outcome(ControlCode.CANCELLED)
             if (busy()) return outcome(ControlCode.BUSY)
+            verificationFailure = null
             Transfer().also { active = it }
         }
         val job = try { launch {
@@ -121,6 +152,9 @@ internal class AndroidUpdateControl(
                 val cancelled = error is CancellationException || !currentCoroutineContext().isActive
                 withContext(NonCancellable) { cleanup() }
                 preparedFile = null
+                synchronized(this@AndroidUpdateControl) {
+                    verificationFailure = if (cancelled) null else (error as? AndroidUpdateVerificationFailure)?.reason
+                }
                 update { it.copy(phase = if (cancelled) AppUpdatePhase.IDLE else AppUpdatePhase.FAILED,
                     message = if (cancelled) "" else "UPDATE_FAILED", preparedAsset = null) }
                 transfer.result.complete(outcome(if (cancelled) ControlCode.CANCELLED else ControlCode.RUNTIME_FAILED))
@@ -148,7 +182,7 @@ internal class AndroidUpdateControl(
     /** Prevents a new transfer until the cancelled worker and cleanup actually finish. */
     suspend fun cancel(dismiss: Boolean = false): Result<Unit> = cancelOutcome(dismiss).asResult()
     @Synchronized fun reserveCancellation(dismiss: Boolean = false): Cancellation? {
-        if (cancelling || installation != null) return null
+        if (cancelling || installation != null || recoveredInstallation != null) return null
         cancelling = true
         generation++
         return Cancellation(active?.job, dismiss).also { cancellation = it }
@@ -166,7 +200,8 @@ internal class AndroidUpdateControl(
                 job?.join()
                 cleanup()
                 preparedFile = null
-                if (ticket.dismiss) synchronized(this@AndroidUpdateControl) { checked = null; update { AppUpdateState(currentVersion = currentVersion) } }
+                if (ticket.dismiss) synchronized(this@AndroidUpdateControl) { checked = null
+                    update { AppUpdateState(currentVersion = currentVersion, installSession = it.installSession) } }
                 else update { it.copy(phase = AppUpdatePhase.IDLE, preparedAsset = null, message = "") }
             }
             outcome(ControlCode.OK)

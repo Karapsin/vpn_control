@@ -1,30 +1,15 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.control.ControlTransferSpool
-import com.sun.jna.Platform
-import com.sun.jna.platform.win32.Advapi32
-import com.sun.jna.platform.win32.Advapi32Util
-import com.sun.jna.platform.win32.Kernel32
-import com.sun.jna.platform.win32.WinNT
 import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
-import java.nio.file.Files
-import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption.READ
-import java.nio.file.StandardOpenOption.WRITE
-import java.nio.file.attribute.AclFileAttributeView
-import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
-import java.util.UUID
 
 /** One retained private file: payload buffers and metadata stay bounded regardless of upload size. */
 internal class DesktopControlTransferSpool private constructor(
-    private val directory: Path,
-    private val payload: Path,
-    private val channel: FileChannel,
+    private val file: DesktopControlTransferFile,
 ) : ControlTransferSpool {
+    private val channel get() = file.channel
     private val digest = MessageDigest.getInstance("SHA-256")
     private var size = 0L
     private var erased = false
@@ -35,7 +20,7 @@ internal class DesktopControlTransferSpool private constructor(
         channel.position(size)
         val buffer = ByteBuffer.wrap(bytes)
         while (buffer.hasRemaining()) check(channel.write(buffer) > 0)
-        channel.force(false)
+        file.force()
         digest.update(bytes)
         size += bytes.size
     }
@@ -62,9 +47,7 @@ internal class DesktopControlTransferSpool private constructor(
         var failure: Exception? = null
         try { channel.close() }
         catch (error: Exception) { failure = failure ?: error }
-        try { Files.deleteIfExists(payload) }
-        catch (error: Exception) { failure = failure ?: error }
-        try { Files.deleteIfExists(directory) }
+        try { file.erase() }
         catch (error: Exception) { failure = failure ?: error }
         failure?.let { throw it }
         size = 0
@@ -77,40 +60,7 @@ internal class DesktopControlTransferSpool private constructor(
         private const val CHUNK_BYTES = 65536
 
         fun create(parent: Path = Path.of(System.getProperty("java.io.tmpdir"))): DesktopControlTransferSpool {
-            val resolved = parent.toRealPath()
-            val directory = if (Platform.isWindows()) {
-                val token = WinNT.HANDLEByReference()
-                check(Advapi32.INSTANCE.OpenProcessToken(Kernel32.INSTANCE.GetCurrentProcess(), WinNT.TOKEN_QUERY, token))
-                val sid = try { Advapi32Util.getTokenAccount(token.value).sidString }
-                finally { Kernel32.INSTANCE.CloseHandle(token.value) }
-                resolved.resolve("vpn-control-transfer-${UUID.randomUUID()}").also {
-                    JnaWindowsInstallNative().createDirectory(it.toString(), "O:${sid}G:${sid}D:P(A;;FA;;;$sid)", false)
-                }
-            } else Files.createTempDirectory(resolved, "vpn-control-transfer-",
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
-            try {
-                require(Files.readAttributes(directory, BasicFileAttributes::class.java, NOFOLLOW_LINKS).isDirectory)
-                if (Platform.isWindows()) {
-                    val owner = Files.getOwner(directory, NOFOLLOW_LINKS)
-                    require(owner == directory.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name")))
-                    val acl = requireNotNull(Files.getFileAttributeView(directory, AclFileAttributeView::class.java, NOFOLLOW_LINKS))
-                    require(isPrivateControlAcl(owner, acl.acl))
-                } else {
-                    require(Files.getPosixFilePermissions(directory, NOFOLLOW_LINKS) == PosixFilePermissions.fromString("rwx------"))
-                    if (Platform.isMac()) DesktopMacInstallJobAcl.requireAbsent(directory)
-                }
-                val payload = directory.resolve("payload")
-                // Create empty with the native private ACL policy first. Only the invoking
-                // account can replace children in this verified private directory. Open once
-                // without following links, then use the retained descriptor for every byte.
-                DesktopPrivateExportWriter.write(payload.toString(), byteArrayOf()).getOrThrow()
-                val channel = FileChannel.open(payload, READ, WRITE, NOFOLLOW_LINKS)
-                return DesktopControlTransferSpool(directory, payload, channel)
-            } catch (error: Exception) {
-                runCatching { Files.deleteIfExists(directory.resolve("payload")) }
-                runCatching { Files.deleteIfExists(directory) }
-                throw error
-            }
+            return DesktopControlTransferSpool(DesktopControlTransferParent.create(parent))
         }
     }
 }

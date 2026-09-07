@@ -247,6 +247,8 @@
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "د {connectionLabel:0} پخواني ځای بېرته راوګرځول ناکام شول: {1}. د {connectionLabel:0} درول ناکام شول: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "د روټینګ اصول خوندي شول. د پلي کېدو لپاره {connectionLabel:0} بیا پیل کړئ",
     "ROUTING_RULES_SAVE_FAILED": "د روټنګ قاعدو خوندي کول ناکام شول",
+    "ROUTING_RULES_OUTCOME_UNKNOWN": "د روټنګ د بدلون پایله نامعلومه ده. له هماغو معلوماتو سره بیا هڅه وکړئ.",
+    "ROUTING_RULES_STALE_DRAFT": "د روټنګ تنظیمات بدل شوي دي. له خوندي کولو مخکې سمونګر بیا پرانیزئ.",
     "DIAGNOSTICS_EXPORT_OPENED": "د تشخیصي معلوماتو صادرول پرانیستل شول",
     "APPS_LOAD_FAILED": "د اپونو بارول ناکام شول",
     "SUBSCRIPTION_RECEIVED": "ګډون ترلاسه شو. د پروفایل په ټب کې یې وګورئ او خوندي یې کړئ.",

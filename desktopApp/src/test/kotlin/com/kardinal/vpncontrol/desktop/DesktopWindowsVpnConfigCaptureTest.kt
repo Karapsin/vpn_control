@@ -1,0 +1,272 @@
+package com.kardinal.vpncontrol.desktop
+
+import com.kardinal.vpncontrol.model.*
+import java.nio.file.Path
+import java.nio.file.Files
+import java.util.Base64
+import java.util.concurrent.TimeUnit
+import org.junit.Assume.assumeTrue
+import kotlinx.serialization.json.*
+import kotlin.test.*
+
+class DesktopWindowsVpnConfigCaptureTest {
+    @Test fun resourceAdmissionFailureIsNotReportedAsInvalidConfiguration() {
+        for ((cause, code) in listOf(
+            IllegalArgumentException("Unsupported installer access mask") to "PERMISSION_DENIED",
+            java.nio.file.AccessDeniedException("private-path") to "PERMISSION_DENIED",
+            SecurityException("private-path") to "PERMISSION_DENIED",
+            WindowsInstallNativeFailure(5) to "PERMISSION_DENIED",
+            WindowsInstallNativeFailure(112) to "RESOURCE_EXHAUSTED",
+            OutOfMemoryError("private-path") to "RESOURCE_EXHAUSTED",
+            java.io.IOException("private-path") to "UNAVAILABLE",
+            IllegalStateException("CONFLICT") to "CONFLICT",
+        )) {
+            val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+                DesktopWindowsVpnConfigCapture.capture(
+                    """{"route":{"rule_set":[{"type":"local","path":"fixture.json"}]}}""", Path.of("fixture"),
+                    captureResource = { _, _ -> throw cause },
+                )
+            }
+            assertEquals(code, failure.code)
+            assertEquals(DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, failure.stage)
+            assertFalse(failure.toString().contains("private-path"))
+        }
+    }
+    @Test fun actualGeneratedDefaultWindowsVpnDnsPathIsNotTreatedAsPrivilegedFile() {
+        val profile = ProxyProfile(protocol = ProxyProtocol.SOCKS, remarks = "fixture", server = "127.0.0.1", serverPort = 1080,
+            network = "tcp", flow = "", security = "", sni = "", fingerprint = "", publicKey = "", shortId = "", path = "",
+            hostHeader = "", serviceName = "", headerType = "", rawLink = "socks://127.0.0.1:1080")
+        val config = DesktopProxyConfigFactory.buildVpnConfig(profile, DnsSettings(), RoutingRules(ignoreRules = true), osName = "Windows 11")
+        val captured = DesktopWindowsVpnConfigCapture.prepare(config)
+        assertEquals("/dns-query", Json.parseToJsonElement(captured).jsonObject["dns"]!!.jsonObject["servers"]!!.jsonArray[1].jsonObject["path"]!!.jsonPrimitive.content)
+        assertEquals(Json.parseToJsonElement(config), Json.parseToJsonElement(captured))
+    }
+    @Test fun wsUrlPathAndRemoteRuleCacheAreAllowedOnlyAtTheirExactContexts() {
+        val input = """{"outbounds":[{"type":"vless","transport":{"type":"ws","path":"/websocket"}}],"experimental":{"cache_file":{"enabled":true}}}"""
+        val output = Json.parseToJsonElement(DesktopWindowsVpnConfigCapture.prepare(input)).jsonObject
+        assertEquals("/websocket", output["outbounds"]!!.jsonArray[0].jsonObject["transport"]!!.jsonObject["path"]!!.jsonPrimitive.content)
+        assertEquals("cache.db", output["experimental"]!!.jsonObject["cache_file"]!!.jsonObject["path"]!!.jsonPrimitive.content)
+        assertFalse(input.contains("cache.db"))
+    }
+    @Test fun onlyExactManagedSshFieldIsCapturedInlineWithoutMutatingCallerConfig() {
+        val managed = Path.of("managed-key")
+        val input = """{"outbounds":[{"type":"ssh","private_key_path":"managed-key"}]}"""
+        var reads = 0
+        val output = DesktopWindowsVpnConfigCapture.prepare(input, managed) { path ->
+            reads++; assertEquals(managed, path); "-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n-----END OPENSSH PRIVATE KEY-----"
+        }
+        val ssh = Json.parseToJsonElement(output).jsonObject["outbounds"]!!.jsonArray.single().jsonObject
+        assertEquals(1, reads)
+        assertFalse("private_key_path" in ssh)
+        assertTrue(ssh["private_key"]!!.jsonPrimitive.content.startsWith("-----BEGIN OPENSSH"))
+        assertTrue(input.contains("private_key_path"))
+    }
+    @Test fun filesystemPathsDirectoriesAndUnauthorizedKeysFailBeforeReading() {
+        val forbidden = listOf(
+            """{"log":{"output":"outside.log"}}""",
+            """{"dns":{"servers":[{"type":"hosts","path":"outside"}]}}""",
+            """{"outbounds":[{"type":"ssh","private_key_path":"foreign-key"}]}""",
+            """{"experimental":{"cache_file":{"enabled":true,"path":"outside"}}}""",
+            """{"inbounds":[{"type":"hysteria2","masquerade":{"type":"file","directory":"outside"}}]}""",
+            """{"inbounds":[{"type":"hysteria2","masquerade":"file:///outside"}]}""",
+            """{"services":[{"type":"derp","mesh_psk_file":"outside"}]}""",
+            """{"inbounds":[{"tls":{"acme":{"data_directory":"outside"}}}]}""",
+            """{"endpoints":[{"type":"tailscale","state_directory":"outside"}]}""")
+        for (config in forbidden) assertFailsWith<IllegalArgumentException>(config) {
+            DesktopWindowsVpnConfigCapture.prepare(config, Path.of("managed-key")) { error("Unauthorized read") }
+        }
+    }
+
+    @Test fun customNetworkPathsRemainNetworkValuesAndCapturedFilesAreImmutablePrivateInputs() {
+        val directory = Files.createTempDirectory("vpn-captured-resource-")
+        val source = directory.resolve("fixture-漢.json")
+        val bytes = "{\"version\":3,\"rules\":[]}\n".toByteArray()
+        Files.write(source, bytes)
+        val input = buildJsonObject {
+            put("outbounds", buildJsonArray { add(buildJsonObject {
+                put("type", "vless"); put("tcp_multi_path", true)
+                put("transport", buildJsonObject { put("type", "httpupgrade"); put("path", "//opaque/path?value=1") })
+            }) })
+            put("route", buildJsonObject { put("rule_set", buildJsonArray { add(buildJsonObject {
+                put("type", "local"); put("path", source.fileName.toString())
+            }) }) })
+        }.toString()
+        try {
+            val captured = DesktopWindowsVpnConfigCapture.capture(input, directory)
+            assertFalse(captured.toString().contains("fixture"))
+            val resource = captured.withSnapshot { config, resources ->
+                assertEquals(1, resources.size)
+                assertFalse(config.contains(source.fileName.toString()))
+                assertTrue(config.contains("//opaque/path?value=1"))
+                assertTrue(config.contains(resources.single().reference))
+                assertEquals(".json", resources.single().extension)
+                resources.single()
+            }
+            Files.writeString(source, "changed after capture")
+            captured.withSnapshot { _, _ -> assertContentEquals(bytes, resource.read(0, bytes.size)) }
+            captured.withSnapshot { _, _ ->
+                captured.close()
+                assertContentEquals(bytes, resource.read(0, bytes.size), "An in-flight transfer retains its capture")
+            }
+            assertFailsWith<IllegalStateException> { captured.withSnapshot { _, _ -> } }
+            assertFailsWith<IllegalStateException> { resource.read(0, bytes.size) }
+            assertEquals(listOf(source), Files.list(directory).use { it.toList() })
+            assertTrue(input.contains(source.fileName.toString()))
+        } finally {
+            Files.delete(source); Files.delete(directory)
+        }
+    }
+
+    @Test fun persistentCacheStaysOpaqueAndRequiresWorkspaceScopeBeforeAuthorization() {
+        val directory = Files.createTempDirectory("vpn-captured-cache-")
+        try {
+            val input = """{"experimental":{"cache_file":{"enabled":true,"cache_id":"fixture","store_fakeip":true,"store_rdrc":true,"rdrc_timeout":"24h"}}}"""
+            val resource = DesktopWindowsRuntimeResource("00000000-0000-0000-0000-000000000041",
+                DesktopWindowsRuntimeResourceKind.CACHE, DesktopWindowsResourceDestination("C:\\private-fixture\\cache.db", "0".repeat(24)))
+            val captured = DesktopWindowsVpnConfigCapture.capture(input, directory, admitMutableResource = { path, kind ->
+                assertEquals(directory.resolve("cache.db"), path)
+                assertEquals(DesktopWindowsRuntimeResourceKind.CACHE, kind)
+                resource
+            })
+            captured.use {
+                assertEquals(listOf(resource), captured.mutableResources)
+                captured.withSnapshot { config, readonly ->
+                    assertTrue(readonly.isEmpty(), "A mutable cache was frozen as a read-only input before A stopped")
+                    val cache = Json.parseToJsonElement(config).jsonObject["experimental"]!!.jsonObject["cache_file"]!!.jsonObject
+                    assertEquals(resource.reference, cache["path"]!!.jsonPrimitive.content)
+                    assertEquals("fixture", cache["cache_id"]!!.jsonPrimitive.content)
+                    assertTrue(cache["store_fakeip"]!!.jsonPrimitive.boolean)
+                    assertTrue(cache["store_rdrc"]!!.jsonPrimitive.boolean)
+                    assertEquals("24h", cache["rdrc_timeout"]!!.jsonPrimitive.content)
+                    assertFalse(config.contains("private-fixture"))
+                }
+                var progress = false
+                val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+                    DesktopWindowsVpnBroker.prepareRetained(captured, directory.resolve("runtime.log")) { progress = true }
+                }
+                assertEquals("UNAVAILABLE", failure.code)
+                assertEquals(DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, failure.stage)
+                assertFalse(progress, "Unbound mutable resources reached native authorization")
+            }
+        } finally { Files.delete(directory) }
+    }
+
+    @Test fun disabledCacheAndNetworkUrlDoNotAdmitMutableFilesystemResources() {
+        val input = """{"experimental":{"cache_file":{"enabled":false,"path":"private-unused-cache","cache_id":"same"}},"dns":{"servers":[{"type":"https","path":"/dns-query"}]}}"""
+        DesktopWindowsVpnConfigCapture.capture(input, Path.of("unused"), admitMutableResource = { _, _ -> error("Unused cache admission") }).use { captured ->
+            assertTrue(captured.mutableResources.isEmpty())
+            captured.withSnapshot { config, _ ->
+                assertFalse(config.contains("private-unused-cache"))
+                assertTrue(config.contains("/dns-query"))
+                assertFalse(Json.parseToJsonElement(config).jsonObject["experimental"]!!.jsonObject["cache_file"]!!.jsonObject["enabled"]!!.jsonPrimitive.boolean)
+            }
+        }
+    }
+    @Test fun managedKeyReadIsBoundedAndDoesNotFollowLeafSymlink() {
+        val directory = Files.createTempDirectory("vpn-capture-key-")
+        try {
+            val key = directory.resolve("key")
+            Files.writeString(key, "fixture-key")
+            fun input(path: Path) = buildJsonObject { put("outbounds", buildJsonArray {
+                add(buildJsonObject { put("type", "ssh"); put("private_key_path", path.toString()) })
+            }) }.toString()
+            assertTrue(DesktopWindowsVpnConfigCapture.prepare(input(key), key).contains("fixture-key"))
+            Files.writeString(key, "x".repeat(512 * 1024 + 1))
+            assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnConfigCapture.prepare(input(key), key) }
+            val link = directory.resolve("link")
+            if (runCatching { Files.createSymbolicLink(link, key) }.isSuccess)
+                assertFails { DesktopWindowsVpnConfigCapture.prepare(input(link), link) }
+        } finally {
+            Files.list(directory).use { it.toList() }.forEach(Files::delete)
+            Files.delete(directory)
+        }
+    }
+
+    @Test fun nativeCsharpCompilerAndAuthoritativePolicyAgreeWithoutLaunchingAChild() {
+        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
+        val source = Files.createTempFile("vpn-broker-policy-", ".cs")
+        try {
+            javaClass.getResourceAsStream("/windows-vpn-broker.cs")!!.use {
+                Files.copy(it, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            val script = """
+                ${'$'}ErrorActionPreference='Stop'
+                ${'$'}ProgressPreference='SilentlyContinue'
+                Add-Type -TypeDefinition ([IO.File]::ReadAllText(${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE)) -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
+                ${'$'}rows=[Console]::In.ReadToEnd()|ConvertFrom-Json
+                foreach(${'$'}row in ${'$'}rows) {
+                    ${'$'}accepted=${'$'}false
+                    try { ${'$'}result=[VpnRuntimeBroker]::NormalizeConfiguration(${'$'}row.config,'C:\protected-fixture'); ${'$'}accepted=${'$'}true } catch {}
+                    if(${'$'}accepted -ne ${'$'}row.accept) { throw 'Authoritative config policy mismatch' }
+                    if(${'$'}row.cache -and ((${'$'}result|ConvertFrom-Json).experimental.cache_file.path -ne 'C:\protected-fixture\cache.db')) { throw 'Cache path was not confined' }
+                }
+                [Console]::Write('POLICY_OK')
+            """.trimIndent()
+            val rows = buildJsonArray {
+                fun row(config: String, accept: Boolean, cache: Boolean = false) {
+                    add(buildJsonObject { put("config", config); put("accept", accept); put("cache", cache) })
+                }
+                row("""{"dns":{"servers":[{"type":"https","path":"/dns-query"}]}}""", true)
+                row("""{"outbounds":[{"transport":{"type":"ws","path":"/ws"}}]}""", true)
+                row("""{"outbounds":[{"tcp_multi_path":true,"transport":{"type":"httpupgrade","path":"//opaque/path?value=1"}}]}""", true)
+                row("""{"experimental":{"cache_file":{"enabled":true,"path":"cache.db"}}}""", true, true)
+                row("""{"dns":{"servers":[{"type":"hosts","path":"C:\\foreign"}]}}""", false)
+                row("""{"experimental":{"cache_file":{"enabled":true,"path":"C:\\foreign"}}}""", false)
+                row("""{"tls":{"acme":{"data_directory":"C:\\foreign"}}}""", false)
+                row("""{"endpoints":[{"type":"tailscale","state_directory":"C:\\foreign"}]}""", false)
+                row("""{"outbounds":[{"type":"ssh","private_key_path":"C:\\foreign"}]}""", false)
+                row("""{"inbounds":[{"type":"hysteria2","masquerade":{"type":"file","directory":"C:\\foreign"}}]}""", false)
+                row("""{"inbounds":[{"type":"hysteria2","masquerade":"file:///C:/foreign"}]}""", false)
+                row("""{"services":[{"type":"derp","mesh_psk_file":"C:\\foreign"}]}""", false)
+            }
+            val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))).redirectErrorStream(true)
+                .also { it.environment()["VPN_CONTROL_BROKER_POLICY_SOURCE"] = source.toString() }.start()
+            process.outputStream.use { it.write(rows.toString().encodeToByteArray()) }
+            if (!process.waitFor(30, TimeUnit.SECONDS)) { process.destroyForcibly(); fail("Native config compiler timeout") }
+            val diagnostics = process.inputStream.use { it.readNBytes(8193).decodeToString().take(8192) }
+            assertEquals(0, process.exitValue(), diagnostics)
+            assertTrue(diagnostics.endsWith("POLICY_OK"), diagnostics)
+        } finally { Files.delete(source) }
+    }
+
+    @Test fun nativeRetainedPrivilegedDirectoryCannotBeRenamedWhilePinned() {
+        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
+        assumeTrue(System.getenv("VPN_CONTROL_TEST_WINDOWS_PRIVILEGED_PIN") == "1")
+        val source = Files.createTempFile("vpn-broker-pin-", ".cs")
+        try {
+            javaClass.getResourceAsStream("/windows-vpn-broker.cs")!!.use {
+                Files.copy(it, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            val script = """
+                ${'$'}ErrorActionPreference='Stop'
+                ${'$'}ProgressPreference='SilentlyContinue'
+                ${'$'}wrapper=' public static class PinProbe { public static System.IDisposable Hold(string path) { return (System.IDisposable)typeof(VpnRuntimeBroker).GetMethod("Pin",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,new object[]{path,true,new System.Collections.Generic.List<Microsoft.Win32.SafeHandles.SafeFileHandle>()}); } }'
+                Add-Type -TypeDefinition ([IO.File]::ReadAllText(${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE)+${'$'}wrapper) -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
+                ${'$'}stage=Join-Path ${'$'}env:ProgramData ('vpn-broker-pin-'+[Guid]::NewGuid().ToString('D'))
+                ${'$'}acl=New-Object Security.AccessControl.DirectorySecurity
+                ${'$'}acl.SetAccessRuleProtection(${'$'}true,${'$'}false)
+                ${'$'}acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+                foreach(${'$'}sid in @('S-1-5-18','S-1-5-32-544')) { ${'$'}acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier(${'$'}sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))) }
+                [IO.Directory]::CreateDirectory(${'$'}stage,${'$'}acl)|Out-Null
+                ${'$'}handle=${'$'}null; ${'$'}moved=${'$'}false
+                try {
+                    ${'$'}handle=[PinProbe]::Hold(${'$'}stage)
+                    try { [IO.Directory]::Move(${'$'}stage,${'$'}stage+'-moved'); ${'$'}moved=${'$'}true } catch [IO.IOException] {}
+                    if(${'$'}moved) { throw 'Retained directory was replaced' }
+                    [Console]::Write('PIN_OK')
+                } finally {
+                    if(${'$'}handle) { ${'$'}handle.Dispose() }
+                    if(${'$'}moved) { [IO.Directory]::Delete(${'$'}stage+'-moved') } else { [IO.Directory]::Delete(${'$'}stage) }
+                }
+            """.trimIndent()
+            val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))).redirectErrorStream(true)
+                .also { it.environment()["VPN_CONTROL_BROKER_POLICY_SOURCE"] = source.toString() }.start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) { process.destroyForcibly(); fail("Native pin regression timeout") }
+            val diagnostics = process.inputStream.use { it.readNBytes(8193).decodeToString().take(8192) }
+            assertEquals(0, process.exitValue(), diagnostics)
+            assertTrue(diagnostics.endsWith("PIN_OK"), diagnostics)
+        } finally { Files.delete(source) }
+    }
+}

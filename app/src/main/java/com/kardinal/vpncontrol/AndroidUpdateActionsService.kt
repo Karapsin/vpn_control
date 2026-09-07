@@ -1,10 +1,8 @@
 package com.kardinal.vpncontrol
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -16,6 +14,19 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+
+/** A returned operation error cannot replace an authoritative installer receipt's meaning. */
+internal fun androidInstallFailureFeedback(state: AppUpdateState,
+    code: com.kardinal.vpncontrol.model.ControlCode, receiptId: String?): AppUpdateState {
+    val receipt = state.installSession
+    val receiptExplains = receiptId != null && receipt?.receiptId == receiptId &&
+        receipt.phase in setOf(AppInstallSessionPhase.INSTALLED,
+        AppInstallSessionPhase.CANCELLED, AppInstallSessionPhase.UNKNOWN)
+    val uncertainOrCancelled = code in setOf(com.kardinal.vpncontrol.model.ControlCode.CANCELLED,
+        com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN)
+    return state.copy(showDialog = true, phase = if (receiptExplains || uncertainOrCancelled) AppUpdatePhase.IDLE else AppUpdatePhase.FAILED,
+        message = if (receiptExplains) "" else code.wireName)
+}
 
 internal class AndroidUpdateActionsService(
     private val context: Context,
@@ -37,44 +48,24 @@ internal class AndroidUpdateActionsService(
         cleanup = { withContext(Dispatchers.IO) { cleanupPartialDownloads() } },
         cancelNetwork = { activeCall.get()?.cancel() }, emit = ::updateAppState)
 
+    init { AndroidPackageInstallSessions.get(context).observe(control::installSessionChanged) }
+
     fun showDialog() { updateAppState { it.copy(showDialog = true) } }
 
     fun showInstallResult(result: com.kardinal.vpncontrol.model.ControlResult) {
         if (result.final && result.code != com.kardinal.vpncontrol.model.ControlCode.OK)
-            updateAppState { it.copy(showDialog = true, phase = AppUpdatePhase.FAILED, message = result.code.wireName) }
+            updateAppState { androidInstallFailureFeedback(it, result.code,
+                (result.data["installReceiptId"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value) }
     }
+
+    fun recoverInstallation() = AndroidPackageInstallSessions.get(context).recover()
+    fun installationInspection() = AndroidPackageInstallSessions.get(context).inspection()
 
     suspend fun pinInstallation(ticket: AndroidUpdateControl.Installation): AndroidUpdateInstallControl.Pinned = withContext(Dispatchers.IO) {
         val asset = requireNotNull(ticket.checked.asset)
-        val directory = File(context.filesDir, "control-installs").apply { check(isDirectory || mkdirs()) }
-        // Handed-off files must outlive this owner and must not be evicted while the installer reads.
-        // Bound persistent retention without deleting another installer's input.
-        check(directory.listFiles()?.size?.let { it < 8 } == true) { "INSTALL_RETENTION_FULL" }
-        val target = File(directory, "${java.util.UUID.randomUUID()}.apk")
-        try {
-            require(ticket.file.isFile && ticket.file.length() == asset.sizeBytes)
-            ticket.file.copyTo(target, overwrite = false)
-            require(target.length() == asset.sizeBytes)
-            verifyApk(target, asset, ticket.checked.manifest.buildNumber)
-            check(target.setReadOnly())
-        } catch (error: Exception) { target.delete(); throw error }
-        object : AndroidUpdateInstallControl.Pinned {
-            override val version = asset.displayVersion
-            override suspend fun verify() = withContext(Dispatchers.IO) {
-                require(target.isFile && target.length() == asset.sizeBytes)
-                verifyApk(target, asset, ticket.checked.manifest.buildNumber)
-            }
-            override fun dispatch(launcher: (Intent) -> Unit) {
-                check(context.packageManager.canRequestPackageInstalls())
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
-                launcher(Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                    data = uri
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    putExtra(Intent.EXTRA_RETURN_RESULT, false)
-                })
-            }
-            override fun release(handedOff: Boolean) { if (!handedOff) target.delete() }
-        }
+        require(ticket.file.isFile && ticket.file.length() == asset.sizeBytes)
+        verifyApk(ticket.file, asset, ticket.checked.manifest.buildNumber)
+        AndroidPackageInstallSessions.get(context).stage(ticket.file, asset, ticket.checked.manifest.buildNumber)
     }
 
     private suspend fun fetchText(url: String): String = withContext(Dispatchers.IO) {
@@ -132,30 +123,28 @@ internal class AndroidUpdateActionsService(
     }
 
     private fun verifyApk(file: File, asset: UpdateAsset, manifestBuildNumber: Int) {
-        require(file.sha256() == asset.sha256) { "Downloaded update checksum does not match" }
-        val archive = packageArchiveInfo(file)
-            ?: error("Downloaded file is not a valid APK")
-        require(archive.packageName == context.packageName) { "Downloaded APK has the wrong application ID" }
-        require(archive.longVersionCode == manifestBuildNumber.toLong()) {
-            "Downloaded APK version does not match the release manifest"
-        }
-        require(archive.longVersionCode > currentBuildNumber.toLong()) { "Downloaded APK is not newer" }
-        val installed = installedPackageInfo()
+        val checksum = androidUpdateVerificationRead(AndroidUpdateVerificationReason.ARTIFACT_READ_FAILED) { file.sha256() }
+        requireAndroidUpdateVerification(checksum == asset.sha256, AndroidUpdateVerificationReason.CHECKSUM_MISMATCH)
+        val archive = androidUpdateVerificationRead(AndroidUpdateVerificationReason.ARCHIVE_READ_FAILED) { packageArchiveInfo(file) }
+            ?: throw AndroidUpdateVerificationFailure(AndroidUpdateVerificationReason.ARCHIVE_METADATA_UNAVAILABLE)
+        verifyAndroidUpdatePackageIdentity(archive.packageName, archive.longVersionCode, archive.versionName,
+            context.packageName, manifestBuildNumber, asset.displayVersion, currentBuildNumber)
+        val installed = androidUpdateVerificationRead(AndroidUpdateVerificationReason.INSTALLED_METADATA_UNAVAILABLE) { installedPackageInfo() }
         val installedSigners = installed.signingInfo?.apkContentsSigners.orEmpty().map { it.toByteArray().sha256() }.toSet()
         val archiveSigners = archive.signingInfo?.apkContentsSigners.orEmpty().map { it.toByteArray().sha256() }.toSet()
-        require(installedSigners.isNotEmpty() && installedSigners == archiveSigners) {
-            "Downloaded APK is not signed with the installed app key"
-        }
+        requireAndroidUpdateVerification(installedSigners.isNotEmpty(), AndroidUpdateVerificationReason.INSTALLED_SIGNERS_UNAVAILABLE)
+        requireAndroidUpdateVerification(archiveSigners.isNotEmpty(), AndroidUpdateVerificationReason.ARCHIVE_SIGNERS_UNAVAILABLE)
+        requireAndroidUpdateVerification(installedSigners == archiveSigners, AndroidUpdateVerificationReason.SIGNER_MISMATCH)
     }
 
     @Suppress("DEPRECATION")
     private fun packageArchiveInfo(file: File) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         context.packageManager.getPackageArchiveInfo(
             file.absolutePath,
-            PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
+            PackageManager.PackageInfoFlags.of(androidArchiveSigningFlags(Build.VERSION.SDK_INT).toLong()),
         )
     } else {
-        context.packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+        context.packageManager.getPackageArchiveInfo(file.absolutePath, androidArchiveSigningFlags(Build.VERSION.SDK_INT))
     }
 
     @Suppress("DEPRECATION")

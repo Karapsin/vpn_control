@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "स्थापनेसाठी परस्परसंवादी सत्र आवश्यक आहे.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "स्थापनेची परवानगी नाकारली गेली.",
+  "UPDATE_INSTALL_CANCELLED": "स्थापना रद्द केली.",
+  "UPDATE_INSTALL_CONFIRMATION": "स्थापनेच्या पुष्टीकरणाची प्रतीक्षा आहे.",
+  "UPDATE_INSTALL_COMPLETED": "अद्यतन स्थापित झाले.",
+  "UPDATE_INSTALL_UNKNOWN": "स्थापनेचा परिणाम अज्ञात आहे.",
   "APP_TITLE": "VPN नियंत्रण",
   "TAB_MAIN": "मुख्य",
   "TAB_PROFILE": "प्रोफाइल",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "सक्रिय स्थान: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "सक्रिय स्थान: अनुपलब्ध",
+  "CONNECTION_RESTART_PENDING": "जतन केलेले बदल लागू करण्यासाठी कनेक्शन पुन्हा सुरू करा.",
+  "CONNECTION_RESTART_UNKNOWN": "पुन्हा सुरू करणे आवश्यक आहे का हे माहीत नाही."
 }

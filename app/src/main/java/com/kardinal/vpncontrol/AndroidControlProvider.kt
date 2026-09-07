@@ -33,6 +33,9 @@ class AndroidControlProvider : ContentProvider() {
     }
     private val authority get() = requireNotNull(context).packageName + ".control"
     private val owner get() = AndroidApplicationOwner.get(requireNotNull(context))
+    private val documents by lazy {
+        AndroidControlDocumentProvider(requireNotNull(context), { owner }, callbackHandler, openDescriptors)
+    }
 
     override fun onCreate(): Boolean = true
 
@@ -54,6 +57,7 @@ class AndroidControlProvider : ContentProvider() {
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         val uid = authorize()
         require(extras == null || extras.isEmpty) { "INVALID_ARGUMENT" }
+        documents.call(uid, method, arg)?.let { return it }
         return when (method) {
             "create" -> {
                 require(arg == null) { "INVALID_ARGUMENT" }
@@ -84,6 +88,8 @@ class AndroidControlProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val uid = authorize()
+        if (uri.toString().startsWith("content://$authority/document-uploads/"))
+            return documents.openUpload(uid, uri.toString(), authority, mode)
         val (kind, id) = AndroidControlAccess.parseUri(uri.toString(), authority)
         val writing = kind == "requests" && mode == "w"
         require(writing || kind == "results" && mode == "r") { "INVALID_ARGUMENT" }
@@ -158,7 +164,9 @@ class AndroidControlProvider : ContentProvider() {
 
     override fun getType(uri: Uri): String {
         authorize()
-        AndroidControlAccess.parseUri(uri.toString(), authority)
+        if (uri.toString().startsWith("content://$authority/document-uploads/"))
+            AndroidControlAccess.parseDocumentUpload(uri.toString(), authority)
+        else AndroidControlAccess.parseUri(uri.toString(), authority)
         return "application/json"
     }
 

@@ -13,7 +13,7 @@ object ControlRoutingLogic {
         val draft = when (key) {
             "ignore-rules" -> base.copy(routingIgnoreRulesDraft = value.toBooleanStrict())
             "block-quic-udp443" -> base.copy(routingBlockQuicUdp443Draft = value.toBooleanStrict())
-            "direct-domains" -> base.copy(routingDirectDomainsDraft = domainText(value))
+            "direct-domains" -> base.copy(routingDirectDomainsDraft = domainText(value), routingDirectDomainSuffixesDraft = null)
             else -> throw IllegalArgumentException("INVALID_ARGUMENT")
         }
         draft.copy(routingRules = MainDraftLogic.buildEditedRoutingRules(draft))

@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "ინსტალაცია მოითხოვს ინტერაქტიულ სესიას.",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "ინსტალაციის ნებართვა უარყოფილია.",
+  "UPDATE_INSTALL_CANCELLED": "ინსტალაცია გაუქმდა.",
+  "UPDATE_INSTALL_CONFIRMATION": "ინსტალაციის დადასტურების მოლოდინი.",
+  "UPDATE_INSTALL_COMPLETED": "განახლება დაინსტალირდა.",
+  "UPDATE_INSTALL_UNKNOWN": "ინსტალაციის შედეგი უცნობია.",
   "APP_TITLE": "VPN-ის მართვა",
   "TAB_MAIN": "მთავარი",
   "TAB_PROFILE": "პროფილი",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "აქტიური მდებარეობა: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "აქტიური მდებარეობა: მიუწვდომელია",
+  "CONNECTION_RESTART_PENDING": "შენახული ცვლილებების გამოსაყენებლად კავშირი ხელახლა ჩართეთ.",
+  "CONNECTION_RESTART_UNKNOWN": "უცნობია, საჭიროა თუ არა ხელახლა ჩართვა."
 }

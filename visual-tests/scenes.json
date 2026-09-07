@@ -96,6 +96,11 @@
     {"id":"update-ready","platforms":["android","linux","windows","macos"],"required_elements":["update-install","update-release-notes","update-close"]},
     {"id":"update-up-to-date","platforms":["android","linux","windows","macos"],"required_elements":["update-message","update-close"]},
     {"id":"update-installing","platforms":["android","linux","windows","macos"],"required_elements":["update-progress","update-cancel"]},
+    {"id":"update-install-session-preparing","platforms":["android"],"required_elements":["update-install-session","update-close"]},
+    {"id":"update-install-session-confirmation","platforms":["android"],"required_elements":["update-install-session","update-install","update-close"]},
+    {"id":"update-install-session-installed","platforms":["android"],"required_elements":["update-install-session","update-close"]},
+    {"id":"update-install-session-failed","platforms":["android"],"required_elements":["update-install-session","update-close"]},
+    {"id":"update-install-session-unknown","platforms":["android"],"required_elements":["update-install-session","update-close"]},
     {"id":"update-unsupported","platforms":["android","linux","windows","macos"],"required_elements":["update-message","update-retry","update-close"]},
     {"id":"update-failed","platforms":["android","linux","windows","macos"],"required_elements":["update-message","update-retry","update-close"]},
 

@@ -77,6 +77,12 @@ data class MainUiState(
     val routingProxyPackagesDraft: Set<String> = emptySet(),
     val routingBypassPackagesDraft: Set<String> = emptySet(),
     val routingDirectDomainsDraft: String = "",
+    val routingDirectDomainSuffixesDraft: List<String>? = null,
+    // Ephemeral guarded-save feedback; never persisted with routing settings.
+    val routingDraftFailure: String? = null,
+    val routingDraftRetryAvailable: Boolean = false,
+    // UI-only replacement generation: equal contents can refer to a new committed backing store.
+    val routingDraftGeneration: Long = 0,
     val routingRuleSetsDraft: List<RoutingRuleSet> = emptyList(),
     val routingAppSearch: String = "",
     val installedApps: List<InstalledApp> = emptyList(),
@@ -112,6 +118,8 @@ data class MainUiState(
     val showHomeSshRouteDialog: Boolean = false,
     val showHomeSshRestartDialog: Boolean = false,
     val homeSshRestartPending: Boolean = false,
+    /** Ephemeral editor feedback containing only sanitized typed status messages. */
+    val homeSshDraftFailure: String? = null,
     val showUiSettingsDialog: Boolean = false,
     val showAppModeDialog: Boolean = false,
     val showRefreshPolicyDialog: Boolean = false,
@@ -140,9 +148,14 @@ data class MainUiState(
 )
 
 object MainUiStateProjector {
+    /** Controller reads need committed fields, not potentially large editable text copies. */
+    fun committedState(persisted: PersistedState): MainUiState =
+        mergePersistedState(MainUiState(), persisted, materializeEditorText = false)
+
     fun mergePersistedState(
         current: MainUiState,
         persisted: PersistedState,
+        materializeEditorText: Boolean = true,
     ): MainUiState {
         return current.copy(
             appLanguage = persisted.appLanguage,
@@ -233,7 +246,7 @@ object MainUiStateProjector {
             } else {
                 persisted.homeSshRouteSettings.user
             },
-            homeSshHostKeysDraft = if (current.showHomeSshRouteDialog) {
+            homeSshHostKeysDraft = if (!materializeEditorText || current.showHomeSshRouteDialog) {
                 current.homeSshHostKeysDraft
             } else {
                 persisted.homeSshRouteSettings.hostKeys.joinToString("\n")
@@ -259,11 +272,10 @@ object MainUiStateProjector {
             } else {
                 persisted.routingRules.proxyPackages.toSet()
             },
-            routingDirectDomainsDraft = if (current.currentScreen == AppScreen.ROUTING_RULES) {
-                current.routingDirectDomainsDraft
-            } else {
-                persisted.routingRules.directDomainSuffixes.joinToString(separator = "\n")
-            },
+            routingDirectDomainsDraft = if (current.currentScreen == AppScreen.ROUTING_RULES)
+                current.routingDirectDomainsDraft else "",
+            routingDirectDomainSuffixesDraft = if (current.currentScreen == AppScreen.ROUTING_RULES)
+                current.routingDirectDomainSuffixesDraft else persisted.routingRules.directDomainSuffixes,
             routingRuleSetsDraft = emptyList(),
             selectedProfileName = persisted.selectedProfileName,
             selectedProfileServer = persisted.selectedProfileServer,
@@ -336,7 +348,8 @@ object MainUiStateTransitions {
             routingBlockQuicUdp443Draft = rules.blockQuicUdp443,
             routingProxyPackagesDraft = rules.proxyPackages.toSet(),
             routingBypassPackagesDraft = emptySet(),
-            routingDirectDomainsDraft = rules.directDomainSuffixes.joinToString(separator = "\n"),
+            routingDirectDomainsDraft = "",
+            routingDirectDomainSuffixesDraft = rules.directDomainSuffixes,
             routingRuleSetsDraft = emptyList(),
             routingAppSearch = "",
             showRuleSetDialog = false,

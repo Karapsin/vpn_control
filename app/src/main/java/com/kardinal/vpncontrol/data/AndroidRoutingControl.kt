@@ -25,15 +25,16 @@ internal object AndroidRoutingControl {
         return apps.filter { query.isEmpty() || it.label.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true) }
     }
 
-    fun plan(state: PersistedState, operation: ControlOperationId, values: Map<String, ControlValue>, apps: List<InstalledApp>): RoutingRules {
+    fun plan(state: PersistedState, operation: ControlOperationId, values: Map<String, ControlValue>, apps: List<InstalledApp>,
+        importRules: (String) -> RoutingRules = RoutingRulesTransfer::import): RoutingRules {
         arguments(operation, values)
         fun text(key: String) = (values.getValue(key) as ControlValue.Text).value
         val rules = state.routingRules
         if (operation == ControlOperationId.ROUTING_SET) return ControlRoutingLogic.set(
             MainUiState(routingRules = rules), text("key"), text("value")).getOrElse { error("INVALID_ARGUMENT") }.routingRules
-        if (operation == ControlOperationId.ROUTING_IMPORT) return runCatching {
-            MainDraftLogic.sanitizeRoutingRules(RoutingRulesTransfer.import(text("input")))
-        }.getOrElse { error("INVALID_ARGUMENT") }
+        if (operation == ControlOperationId.ROUTING_IMPORT) return try {
+            MainDraftLogic.sanitizeRoutingRules(importRules(text("input")))
+        } catch (_: Exception) { error("INVALID_ARGUMENT") }
         val known = apps.map { it.packageName }.toSet()
         val selected = rules.proxyPackages.toSet()
         val updated = when (operation) {
@@ -67,7 +68,9 @@ internal object AndroidRoutingControl {
         val rules = state.routingRules
         val all = mapOf("ignore-rules" to ControlValue.BooleanValue(rules.ignoreRules),
             "block-quic-udp443" to ControlValue.BooleanValue(rules.blockQuicUdp443),
-            "direct-domains" to ControlValue.ArrayValue(rules.directDomainSuffixes.map { ControlValue.Text(it) }),
+            "direct-domains" to ControlValue.ArrayValue(
+                (rules.directDomainSuffixes as? AndroidPersistedDomainSuffixes)?.controlValues()
+                    ?: rules.directDomainSuffixes.map { ControlValue.Text(it) }),
             "proxyPackages" to ControlValue.ArrayValue(rules.proxyPackages.map { ControlValue.Text(it) }))
         return when {
             operation == ControlOperationId.ROUTING_SET -> all.filterKeys { it == (values["key"] as? ControlValue.Text)?.value }

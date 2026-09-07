@@ -56,6 +56,17 @@ enum class AppUpdatePhase {
     FAILED,
 }
 
+enum class AppInstallSessionPhase {
+    PREPARING, STAGED, COMMITTING, AWAITING_CONFIRMATION, HANDED_OFF, INSTALLED, FAILED, UNKNOWN, CANCELLED,
+}
+
+data class AppInstallSessionStatus(
+    val receiptId: String,
+    val phase: AppInstallSessionPhase,
+    val version: String,
+    val resumable: Boolean,
+)
+
 data class AppUpdateState(
     val showDialog: Boolean = false,
     val phase: AppUpdatePhase = AppUpdatePhase.IDLE,
@@ -66,6 +77,7 @@ data class AppUpdateState(
     val totalBytes: Long = 0L,
     val message: String = "",
     val preparedAsset: UpdateAsset? = null,
+    val installSession: AppInstallSessionStatus? = null,
 ) {
     val progress: Float?
         get() = totalBytes.takeIf { it > 0L }?.let { total ->

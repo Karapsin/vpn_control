@@ -41,10 +41,15 @@ internal class DesktopUpdateService(
     private val manifestUrl: String = AppUpdateLogic.LATEST_MANIFEST_URL,
     private val trustUrl: (String) -> Boolean = AppUpdateLogic::isTrustedGithubUrl,
     private val workspaceDirectory: Path = DesktopWorkspacePaths.root(),
+    private val linuxInstallerFactory: (Path) -> DesktopLinuxInstallAdapter = { DesktopLinuxInstaller(it) },
+    private val macInstallerFactory: (Path) -> DesktopMacInstallAdapter = { DesktopMacInstaller(it) },
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
     private var checkedUpdate: DesktopUpdateCheck? = null
+    private val windowsInstaller by lazy { DesktopWindowsInstaller(workspaceDirectory) }
+    private val linuxInstaller by lazy { linuxInstallerFactory(workspaceDirectory) }
+    private val macInstaller by lazy { macInstallerFactory(workspaceDirectory) }
     private val operationMutex = kotlinx.coroutines.sync.Mutex()
     private val httpClient by lazy {
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20))
@@ -60,6 +65,103 @@ internal class DesktopUpdateService(
     }
 
     fun checkedStatus(): DesktopUpdateCheck? = checkedUpdate
+
+    /** Owner handoff seam: authorization/readiness precede the caller's runtime stop and acknowledged exit. */
+    suspend fun prepareVerifiedInstaller(correlation: DesktopInstallCorrelation,
+        frontend: DesktopFrontendProcessIdentity? = null): Result<DesktopPreparedInstall> =
+        withContext(Dispatchers.IO) {
+            exclusive {
+                val packageFile = preparedPackage
+                    ?: return@exclusive Result.failure(IllegalStateException("NOT_FOUND"))
+                val asset = stateProvider().appUpdate.preparedAsset
+                    ?: return@exclusive Result.failure(IllegalStateException("NOT_FOUND"))
+                val supported = when (asset.platform) {
+                    UpdatePlatform.WINDOWS -> osName.startsWith("Windows", true) && asset.packageType == UpdatePackageType.MSI
+                    UpdatePlatform.LINUX -> osName.startsWith("Linux", true) && asset.packageType in setOf(
+                        UpdatePackageType.DEB, UpdatePackageType.RPM, UpdatePackageType.ARCH_BUNDLE)
+                    UpdatePlatform.MACOS -> osName.startsWith("Mac", true) && asset.packageType == UpdatePackageType.DMG
+                    else -> false
+                }
+                if (!supported) return@exclusive Result.failure(IllegalStateException("UNSUPPORTED"))
+                val launcher = if (asset.platform == UpdatePlatform.WINDOWS) preferredLauncher()
+                    ?: return@exclusive Result.failure(IllegalStateException("UNAVAILABLE")) else null
+                val verified = runCatching {
+                    !Files.isSymbolicLink(packageFile) && Files.isRegularFile(packageFile) &&
+                        Files.size(packageFile) == asset.sizeBytes && packageFile.sha256() == asset.sha256
+                }.getOrDefault(false)
+                if (!verified) return@exclusive Result.failure(IllegalStateException("INVALID_ARGUMENT"))
+                updateAppState { it.copy(phase = AppUpdatePhase.INSTALLING, message = "", installSession = null) }
+                val cancelled = { updateAppState { it.copy(phase = AppUpdatePhase.READY) } }
+                val result = try {
+                    when (asset.platform) {
+                        UpdatePlatform.WINDOWS -> windowsInstaller.prepare(packageFile, asset,
+                            requireNotNull(launcher), correlation, frontend, cancelled)
+                        UpdatePlatform.LINUX -> linuxInstaller.prepare(packageFile, asset, correlation, frontend, cancelled)
+                        UpdatePlatform.MACOS -> macInstaller.prepare(packageFile, asset, correlation, frontend, cancelled)
+                        else -> Result.failure(IllegalStateException("UNSUPPORTED"))
+                    }
+                } catch (failure: CancellationException) {
+                    // An uncertain live worker is carried by DesktopInstallPreparationFailure,
+                    // never an ordinary cancelled coroutine with no retained worker identity.
+                    updateAppState { it.copy(phase = AppUpdatePhase.READY) }
+                    throw failure
+                }
+                result.also { result ->
+                    if (result.isFailure && result.exceptionOrNull() !is DesktopInstallPreparationFailure) {
+                        updateAppState { it.copy(phase = AppUpdatePhase.READY) }
+                    }
+                }
+            }
+        }
+
+    private val installInputCleanup by lazy { DesktopInstallInputCleanup(::readInstallCorrelations, ::releaseInstallInputs) }
+
+    private fun readInstallCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> = when {
+        osName.startsWith("Windows", true) -> windowsInstaller.recoverCorrelations()
+        osName.startsWith("Linux", true) -> linuxInstaller.recoverCorrelations()
+        osName.startsWith("Mac", true) -> macInstaller.recoverCorrelations()
+        else -> Result.success(emptyList())
+    }
+
+    /** Separate owner maintenance; the read/status path remains free of cleanup effects. */
+    suspend fun reconcileTerminalInstallInputs(ownerId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!operationMutex.tryLock()) return@withContext Result.success(Unit)
+        try {
+            installInputCleanup.reconcile(ownerId)
+        } finally { operationMutex.unlock() }
+    }
+
+    /** Read-only previous-owner correlation; journal failures must block new installation admission. */
+    fun recoverInstallCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> =
+        readInstallCorrelations().map(installInputCleanup::decorate).onSuccess { recovered ->
+            val current = stateProvider().appUpdate
+            val projected = DesktopRecoveredInstallPresentation.project(current, recovered)
+            if (projected != current) updateAppState {
+                DesktopRecoveredInstallPresentation.project(it, recovered)
+            }
+        }
+
+    private fun releaseInstallInputs(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {
+        when {
+            osName.startsWith("Windows", true) -> windowsInstaller.releaseCompleted(correlation, receipt).getOrThrow()
+            osName.startsWith("Linux", true) -> linuxInstaller.releaseCompleted(correlation, receipt).getOrThrow()
+            osName.startsWith("Mac", true) -> macInstaller.releaseCompleted(correlation, receipt).getOrThrow()
+            else -> error("UNSUPPORTED")
+        }
+    }
+
+    fun settleVerifiedInstall(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {
+        releaseInstallInputs(correlation, receipt).getOrThrow()
+        if (receipt.phase == DesktopInstallJobPhase.SUCCEEDED) {
+            checkedUpdate = null
+            preparedPackage = null
+            updateAppState { AppUpdateState(currentVersion = buildInfo.displayVersion) }
+        } else {
+            // FAILED may include partial external effects. Preserve its actual failure code;
+            // retry readiness is not a claim that cancellation or rollback succeeded.
+            updateAppState { it.copy(phase = AppUpdatePhase.READY, message = receipt.code.wireName) }
+        }
+    }
 
     /** Manifest-only operation: no package download, installer, or runtime effect. */
     suspend fun check(): Result<DesktopUpdateCheck> = exclusive { checkInternal() }
@@ -445,6 +547,7 @@ internal class DesktopUpdateService(
 
     private fun preferredLauncher(): String? {
         val normalized = osName.lowercase(Locale.ROOT)
+        if ("windows" in normalized) return currentCommand?.let { desktopWindowsUpdateLauncher(it) }
         if ("linux" in normalized) {
             listOf(Path.of("/usr/local/bin/vpn-control"), Path.of("/usr/bin/vpn-control"))
                 .firstOrNull { Files.isExecutable(it) }

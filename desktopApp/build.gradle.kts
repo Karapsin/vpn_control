@@ -98,6 +98,87 @@ tasks.named("processResources") {
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {
+    if (hostOs.isLinux && targetFormat == TargetFormat.Deb) {
+        // Compose 1.7.3 appends its own resource directory after freeArgs.
+        // Package the prepared image explicitly, then inspect the emitted hook.
+        val debResources = project.file("packaging/linux")
+        val debPackager = rootProject.file("scripts/package_linux_deb.py")
+        val preparedImage = tasks.named<AbstractJPackageTask>("createDistributable")
+        dependsOn(preparedImage)
+        appImage.set(preparedImage.flatMap { image ->
+            image.destinationDir.map { directory -> directory.dir(image.packageName.get()) }
+        })
+        inputs.dir(debResources)
+        inputs.file(debPackager)
+        val packageTask = this
+        actions.clear()
+        doLast {
+            val command = mutableListOf(
+                "python3", debPackager.absolutePath,
+                "--java-home", packageTask.javaHome.get(),
+                "--app-image", packageTask.appImage.get().asFile.absolutePath,
+                "--destination", packageTask.destinationDir.get().asFile.absolutePath,
+                "--resources", debResources.absolutePath,
+                "--name", packageTask.packageName.get(),
+                "--package-name", packageTask.linuxPackageName.getOrElse(packageTask.packageName.get()),
+                "--version", packageTask.packageVersion.get(),
+            )
+            fun value(option: String, value: String?) {
+                if (!value.isNullOrEmpty()) command.addAll(listOf(option, value))
+            }
+            value("--vendor", packageTask.packageVendor.orNull)
+            value("--description", packageTask.packageDescription.orNull)
+            value("--copyright", packageTask.packageCopyright.orNull)
+            value("--license-file", packageTask.licenseFile.orNull?.asFile?.absolutePath)
+            value("--icon", packageTask.iconFile.orNull?.asFile?.absolutePath)
+            value("--maintainer", packageTask.linuxDebMaintainer.orNull)
+            value("--category", packageTask.linuxAppCategory.orNull)
+            value("--menu-group", packageTask.linuxMenuGroup.orNull)
+            value("--install-dir", packageTask.installationPath.orNull)
+            value("--release", packageTask.linuxAppRelease.orNull)
+            if (packageTask.linuxShortcut.orNull == true) command.add("--shortcut")
+            project.exec { commandLine(command) }
+        }
+    }
+    if (hostOs.isLinux && targetFormat == TargetFormat.Rpm) {
+        // Preserve desktop registration through old-package removal, including
+        // upgrades from published RPMs with unconditional uninstall scripts.
+        val rpmPackager = rootProject.file("scripts/package_linux_rpm.py")
+        val preparedImage = tasks.named<AbstractJPackageTask>("createDistributable")
+        dependsOn(preparedImage)
+        appImage.set(preparedImage.flatMap { image ->
+            image.destinationDir.map { directory -> directory.dir(image.packageName.get()) }
+        })
+        inputs.files(rpmPackager, rootProject.file("scripts/package_linux_deb.py"))
+        val packageTask = this
+        actions.clear()
+        doLast {
+            val command = mutableListOf(
+                "python3", rpmPackager.absolutePath,
+                "--java-home", packageTask.javaHome.get(),
+                "--app-image", packageTask.appImage.get().asFile.absolutePath,
+                "--destination", packageTask.destinationDir.get().asFile.absolutePath,
+                "--name", packageTask.packageName.get(),
+                "--package-name", packageTask.linuxPackageName.getOrElse(packageTask.packageName.get()),
+                "--version", packageTask.packageVersion.get(),
+            )
+            fun value(option: String, value: String?) {
+                if (!value.isNullOrEmpty()) command.addAll(listOf(option, value))
+            }
+            value("--vendor", packageTask.packageVendor.orNull)
+            value("--description", packageTask.packageDescription.orNull)
+            value("--copyright", packageTask.packageCopyright.orNull)
+            value("--license-file", packageTask.licenseFile.orNull?.asFile?.absolutePath)
+            value("--icon", packageTask.iconFile.orNull?.asFile?.absolutePath)
+            value("--license-type", packageTask.linuxRpmLicenseType.orNull)
+            value("--category", packageTask.linuxAppCategory.orNull)
+            value("--menu-group", packageTask.linuxMenuGroup.orNull)
+            value("--install-dir", packageTask.installationPath.orNull)
+            value("--release", packageTask.linuxAppRelease.orNull)
+            if (packageTask.linuxShortcut.orNull == true) command.add("--shortcut")
+            project.exec { commandLine(command) }
+        }
+    }
     if (hostOs.isWindows && targetFormat in setOf(TargetFormat.Exe, TargetFormat.Msi)) {
         // Installer tasks otherwise build a fresh image, bypassing --add-launcher and
         // the UTF-8 manifest post-processing attached to createDistributable below.

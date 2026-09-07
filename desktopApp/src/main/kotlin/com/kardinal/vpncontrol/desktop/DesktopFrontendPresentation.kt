@@ -42,7 +42,7 @@ internal data class DesktopFrontendPresentation(
             val runtimeValues = section("runtime")
             runtimeValues.keysExactly("runtimeRunning", "selectedLocationId", "activeLocationId", "configuredMode", "activeMode",
                 "runtimeId", "runtimeStartedAt", "restartRequired")
-            val runtime = ControlSnapshotCodec.decode(ControlProtocolCodec.encodeValues(runtimeValues + mapOf(
+            val runtime = ControlSnapshotCodec.decodeDocument(ControlDocumentCodec.encodeValues(runtimeValues + mapOf(
                 "schemaVersion" to ControlValue.IntegerValue(CONTROL_SCHEMA_VERSION.toLong()),
                 "controllerId" to ControlValue.Text(snapshot.controllerId),
                 "configurationRevision" to ControlValue.IntegerValue(snapshot.configurationRevision),

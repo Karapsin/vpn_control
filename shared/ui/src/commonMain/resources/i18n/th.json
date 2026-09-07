@@ -1,4 +1,10 @@
 {
+  "UPDATE_INSTALL_INTERACTION_REQUIRED": "การติดตั้งต้องใช้เซสชันแบบโต้ตอบ",
+  "UPDATE_INSTALL_PERMISSION_DENIED": "สิทธิ์ในการติดตั้งถูกปฏิเสธ",
+  "UPDATE_INSTALL_CANCELLED": "ยกเลิกการติดตั้งแล้ว",
+  "UPDATE_INSTALL_CONFIRMATION": "กำลังรอการยืนยันการติดตั้ง",
+  "UPDATE_INSTALL_COMPLETED": "ติดตั้งการอัปเดตแล้ว",
+  "UPDATE_INSTALL_UNKNOWN": "ไม่ทราบผลการติดตั้ง",
   "APP_TITLE": "ควบคุม VPN",
   "TAB_MAIN": "หลัก",
   "TAB_PROFILE": "โปรไฟล์",
@@ -276,5 +282,9 @@
   "HOME_SSH_RESTART_DESCRIPTION": "The new SSH Routing settings are saved. Restart the active connection now to apply them.",
   "RESTART_NOW": "Restart Now",
   "RESTART_LATER": "Later",
-  "HOME_SSH_PENDING": "restart pending"
+  "HOME_SSH_PENDING": "restart pending",
+  "ACTIVE_CONNECTION_LOCATION": "ตำแหน่งที่ใช้งาน: {0}",
+  "ACTIVE_CONNECTION_UNKNOWN": "ตำแหน่งที่ใช้งาน: ไม่พร้อมใช้งาน",
+  "CONNECTION_RESTART_PENDING": "เริ่มการเชื่อมต่อใหม่เพื่อใช้การเปลี่ยนแปลงที่บันทึกไว้",
+  "CONNECTION_RESTART_UNKNOWN": "ไม่ทราบว่าจำเป็นต้องเริ่มใหม่หรือไม่"
 }

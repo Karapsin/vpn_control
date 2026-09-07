@@ -78,8 +78,9 @@ class DesktopControlInspectionTest {
             val rows = (locations.data.getValue("locations") as ControlValue.ArrayValue).values
             assertEquals(2, rows.size)
             assertEquals(ControlValue.IntegerValue(2), (rows[1] as ControlValue.ObjectValue).values["index"])
-            assertEquals(ControlValue.Text(invoke("locations", "show", "2").second),
+            assertEquals(ControlValue.Text(com.kardinal.vpncontrol.data.LocationConfigs.prettyStoredLocation(records[1].rawLink)),
                 json("locations", "show", "2").data["configuration"])
+            assertTrue(invoke("locations", "show", "2").second.contains("configuration:"))
             json("locations", "show", "Same", code = ControlCode.AMBIGUOUS_LOCATION)
             json("locations", "show", "missing", code = ControlCode.NOT_FOUND)
             assertFalse(ControlProtocolCodec.encodeResult(json("subscriptions", "list")).contains("synthetic-secret"))
@@ -87,12 +88,15 @@ class DesktopControlInspectionTest {
             json("subscriptions", "show", "missing", code = ControlCode.NOT_FOUND)
             val routing = (json("routing", "show").data.getValue("routing") as ControlValue.ObjectValue).values
             // Both use the v7 export representation; independent reads have distinct export timestamps.
-            assertEquals(ControlProtocolCodec.decodeValues(invoke("routing", "show").second) - "exported_at",
+            assertTrue(invoke("routing", "show").second.contains("routing:"))
+            assertEquals(ControlProtocolCodec.decodeValues(
+                com.kardinal.vpncontrol.data.RoutingRulesTransfer.export(service.state.routingRules).content) - "exported_at",
                 routing - "exported_at")
             assertEquals(service.state.routingRules,
                 com.kardinal.vpncontrol.data.RoutingRulesTransfer.import(ControlProtocolCodec.encodeValues(routing)))
             assertEquals(mapOf("present" to ControlValue.BooleanValue(false)), json("ssh", "key", "status").data)
-            assertEquals(ControlProtocolCodec.decodeValues(invoke("updates", "status").second), json("updates", "status").data)
+            assertEquals(ControlProtocolCodec.decodeValues(service.controlUpdateStatus()), json("updates", "status").data)
+            assertTrue(invoke("updates", "status").second.startsWith("OK\n"))
             val malformed = owner.session.execute(DesktopCliCommand.ControlSubmit(ControlRequest("malformed",
                 ControlCommand(ControlOperationId.LOCATIONS_SHOW, mapOf("selector" to ControlValue.IntegerValue(1))),
                 controllerId = owner.controllerId)))

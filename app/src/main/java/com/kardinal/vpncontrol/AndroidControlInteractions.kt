@@ -16,14 +16,14 @@ internal class AndroidControlInteractions(
 ) {
     private data class Entry(val operationId: String, val action: ControlOperationId, val expires: Long,
         val completion: CompletableDeferred<ControlCode> = CompletableDeferred(), var session: String? = null,
-        var consentLaunched: Boolean = false)
+        var consentLaunched: Boolean = false, var retainedForSearch: Boolean = false)
     private val entries = mutableMapOf<String, Entry>()
     private val mutableGeneration = MutableStateFlow(0L)
     val generation = mutableGeneration.asStateFlow()
 
     @Synchronized fun create(operationId: String, action: ControlOperationId): String {
         prune()
-        require(action in setOf(ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.UPDATES_INSTALL))
+        require(action in setOf(ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.FIND_BEST, ControlOperationId.UPDATES_INSTALL))
         check(entries.size < 32) { "BUSY" }
         return UUID.randomUUID().toString().also {
             entries[it] = Entry(operationId, action, clock() + retentionMillis)
@@ -39,7 +39,12 @@ internal class AndroidControlInteractions(
     @Synchronized fun attach(token: String, epoch: String, restoredSession: String?): String? {
         prune()
         if (epoch != ownerId) return null
-        val entry = entries[token]?.takeUnless { it.completion.isCompleted } ?: return null
+        val entry = entries[token] ?: return null
+        if (entry.completion.isCompleted) {
+            // Only the already-attached Activity may recreate a granted search
+            // surface. A new launch cannot reuse a consumed consent capability.
+            return entry.session?.takeIf { entry.retainedForSearch && restoredSession == it }
+        }
         if (entry.session != null) return entry.session.takeIf { restoredSession == it }
         if (restoredSession != null) return null
         return UUID.randomUUID().toString().also { entry.session = it }
@@ -83,6 +88,18 @@ internal class AndroidControlInteractions(
         return withTimeoutOrNull(retentionMillis) { deferred.await() } ?: ControlCode.INTERACTION_REQUIRED
     }
 
+    /** Keep the granted foreground surface until this admitted search releases it. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Synchronized fun retainGrantedSearch(token: String): Boolean {
+        prune()
+        val entry = entries[token] ?: return false
+        if (entry.action != ControlOperationId.FIND_BEST || !entry.completion.isCompleted ||
+            entry.completion.getCompleted() != ControlCode.OK || entry.session == null) return false
+        entry.retainedForSearch = true
+        changed()
+        return true
+    }
+
     @Synchronized fun isActive(token: String): Boolean { prune(); return entries.containsKey(token) }
     /** Owner cancellation wakes a pending wait; it cannot replace a resolved OS answer. */
     @Synchronized fun cancel(operationId: String) {
@@ -92,7 +109,7 @@ internal class AndroidControlInteractions(
     @Synchronized fun finish(token: String) { entries.remove(token); changed() }
     private fun changed() { mutableGeneration.value++ }
     private fun prune() {
-        val expired = entries.filterValues { it.expires <= clock() }.keys.toList()
+        val expired = entries.filterValues { !it.retainedForSearch && it.expires <= clock() }.keys.toList()
         expired.forEach { entries.remove(it)?.completion?.complete(ControlCode.INTERACTION_REQUIRED) }
         if (expired.isNotEmpty()) changed()
     }

@@ -3,7 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.AppUpdateState
 import com.kardinal.vpncontrol.control.ControlSession
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
 import kotlinx.coroutines.flow.StateFlow
 import java.util.UUID
@@ -36,7 +36,7 @@ internal class DesktopFrontendClient(
             else -> return DesktopCliResponse.failure("UNSUPPORTED")
         }
         val result = read(operation, args)
-        return DesktopCliResponse(result.ok, ControlProtocolCodec.encodeResult(result), result.exitCode)
+        return DesktopCliResponse(result.ok, ControlDocumentCodec.encodeResult(result), result.exitCode)
     }
 }
 
