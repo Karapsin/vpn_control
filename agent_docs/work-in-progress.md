@@ -1415,3 +1415,23 @@ matching controller/request/job and target2.1.4. Guest evidence is
 /tmp/vpn-public-install-evidence-chlwdo60 and fixture-201b/public-recovery-pty-result.json.
 Replacement owner5769 remains alive/off; no runtime interrupted. This source201b
 scenario is distinct from Ubuntu2315 fresh-dependency installation evidence.
+
+The user expanded completion to native launch of every applicable test entrypoint,
+with explicit platform skips and checkpoint pushes. Inventory at
+/tmp/vpn-parity-native-test-launcher-inventory-8840.json enumerates32 script
+launchers and routine references; a reference is not execution evidence. Linux
+and Windows workers own native quick-suite and Gradle runs; the coordinator owns
+Mac runs and the package/device-dependent coverage audit.
+
+Checkpoint8840bcbfe6e7cbff7e544b3bec076dd6a2d5ee38 rolled development version2.1.4
+and passed managed prepush, then was pushed. Native harness runs had passed on
+Mac3.14, Arch Python and Windows3.13, but CI Python3.12 exposed a recursive
+Path.resolve call inside the mocked Path.stat callback. No production logic
+changed. The callback now compares a precomputed canonical path. A fast regression
+explicitly makes resolve call stat, reproducing the bug even on newer Python.
+Root verified new-test/old-callback RED on3.14 and full10 GREEN on3.11; native
+Linux/Windows3.12 and full quick-tier runs are required before the next push.
+Evidence: /tmp/vpn-harness-resolve-regression-red.log,
+/tmp/vpn-parity-8840-macos-python311-red.log, and
+/tmp/vpn-parity-8840-{fast,windows}-failed.log. The prior fixes did not establish
+Python-version parity; do not classify8840 CI as successful.

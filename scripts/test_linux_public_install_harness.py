@@ -84,11 +84,19 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
 
             def public_temp_ancestor(path, *args, **kwargs):
                 info = root_owned(path, *args, **kwargs)
-                if path.resolve() == public_ancestor:
+                # Do not resolve here: Python 3.12's resolve implementation
+                # consults Path.stat, which is the mocked method calling us.
+                if path == public_ancestor:
                     return os.stat_result((info.st_mode | 0o022, info.st_ino, info.st_dev, info.st_nlink,
                                            info.st_uid, info.st_gid, info.st_size, info.st_atime,
                                            info.st_mtime, info.st_ctime))
                 return info
+
+            original_resolve = Path.resolve
+
+            def resolve_via_stat(path, *args, **kwargs):
+                path.stat()
+                return original_resolve(path, *args, **kwargs)
 
             original_open = open
 
@@ -103,7 +111,11 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                 with mock.patch("test_linux_public_install.os.uname", **common), \
                      mock.patch("test_linux_public_install.os.getuid", return_value=1000, create=True), \
                      mock.patch("builtins.open", open_tty):
-                    with mock.patch("test_linux_public_install.Path.stat", public_temp_ancestor):
+                    # Reproduce Python 3.12's resolve-to-stat interaction. The
+                    # legacy callback recursed here; the fixed comparison must
+                    # reach the real public-ancestor rejection.
+                    with mock.patch("test_linux_public_install.Path.stat", public_temp_ancestor), \
+                         mock.patch("test_linux_public_install.Path.resolve", resolve_via_stat):
                         with self.assertRaisesRegex(RuntimeError, "ancestry"):
                             run(launcher, "1.0.5", True, same_source_recovery=True)
                     with mock.patch("test_linux_public_install.subprocess.run") as command, \
