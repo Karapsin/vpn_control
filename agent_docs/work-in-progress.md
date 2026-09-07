@@ -16,6 +16,38 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
+Checkpoint14 `96f35f2e4de49e078ea598939258a5361192323b` is pushed to
+`origin/dev`, canonical2.1.5 with five Unreleased notes. Its managed prepush passed;
+receipt `/tmp/vpn-parity-checkpoint14-prepush.json`. At the 2026-09-08 01:52 MSK
+exact-SHA observation, all five required workflows passed; the managed push/CI
+operation is terminal successful. The Android observer-lifetime and
+macOS mount cleanup corrections below are committed in this checkpoint.
+
+The current root-owned script slice preserves safe result correlation metadata
+when public packaged CLI smoke gets an unexpected JSON exit. Previously empty
+stderr hid the failure code and operation identity. Two causal regressions fail
+before the correction and all18 harness tests pass on host and native Arch;
+logs `/tmp/vpn-cli-envelope-diagnostics-{red,green}.log` and receipt
+`/tmp/vpn-cli-envelope-arch-green.json`. Diagnostics omit document/message payloads
+and bound malformed output. The existing routine harness includes both tests.
+
+API35 task5590 is reidentified as `vpn-control-cli-task-api35`, ARM64, actual
+192MiB heap growth limit (not the API29 48MiB fixture). It now runs the clean
+nondebuggable2.2.14 APK below. Current immutable desktop CLI built from clean96f
+has manifest SHA `a14bdfa526c35cec734fe2b03ed4293d3eb9d2412db1d587cccaeba9042d54e6`;
+its authorized ADB capabilities/status/operations passed. Full routing read and
+same-process GUI mutation/recovery verification remain in progress.
+
+The macOS authorized job below needs timestamp reconciliation before attributing
+missing commit to a defect: the owner authorization deadline is180seconds, while
+credential preparation may have exceeded it. No manual commit, replay or process
+termination is authorized by that observation. The platform worker owns public
+cancellation/reconciliation and a new deliberate attempt only after terminal
+reconciliation. Low guest disk capacity is a separate large-import confounder;
+restore capacity using only disposable, unneeded task artifacts before reproducing.
+
+Earlier checkpoint13 evidence (superseded only where stated above):
+
 Checkpoint13 `bbb4175ba4ed5e5a34cef442a0cc166ecb799ec3` is pushed to
 `origin/dev`, canonical2.1.5. Managed prepush passed1619 selected/1562 executed/
 57 explicit skips with zero failures. All required exact-SHA workflows are terminal: Fast Checks, Android, Linux
@@ -40,7 +72,7 @@ The fresh machine install job `79677cc5-2c13-4eb7-8894-19a5f2de9d99` passed real
 Aqua authorization but remains protected seq1 AUTHORIZED without handoffReady;
 no owner exit/replacement is proven. All active job inputs/processes are preserved.
 
-The next dirty slice is the minimal Android DataStore observer-lifetime fix in
+Checkpoint14 includes the minimal Android DataStore observer-lifetime fix in
 `AndroidConfigurationStore.kt` plus four lifecycle regressions. It excludes all
 earlier scratch projection/cache experiments and diagnostic native/GC/heap code.
 Clean minified, nondebuggable fixture2.2.14 APK SHA
@@ -53,8 +85,12 @@ two reviewed files. Integrated configuration/serializer/memory/reader tests
 pass54/54 with zero skips, plus Android compilation, log
 `/tmp/vpn-android-resubscription-integrated-green.log`. API35 remains.
 
-Native quick launcher inventory now maps28/39 current scripts to Arch guest
-receipts. The additional batches cover114 tests plus two standalone checks,
+Native launcher inventory now maps37/40 current scripts to scoped native
+receipts (including current CI native macOS gate7, ENOSPC3, DMG smoke and
+Linux/Windows extracted-package plus Arch bundle checks).
+Inventory `/tmp/vpn-parity-native-launcher-inventory-96f-current.json` retains
+old evidence separately when a script changes; the current diagnostic smoke
+script still needs full native execution. Earlier Arch batches map28 scripts. The additional batches cover114 tests plus two standalone checks,
 and6 Gradle graph tests plus actual minimal JDK17 jpackage and Arch hygiene.
 All passed without skips. Receipts:
 `/tmp/vpn-native-quick-more-23d-arch-evidence.json` and
@@ -408,8 +444,8 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and scratch | App Gradle/CI remain root | Scratch2.2.13 native chain passed | Owned5584 API29;5580/5582 protected | Add/remove/cold56008 exact; causal collector RED/GREEN | Clean integration review, diagnostic-free verification, API35/lifecycle/visuals |
-| F/E-Windows | windows (Astra) | Transfer-parent correction/tests, broker/helper/MSI | Factory/Main/autostart/ActivationServer/common update remain root | Exact23d elevated public serve failed | Owned real x64 guest2314 | Two causal ACL regressions RED; narrow trusted-owner fix validating | Corrected ordinary/elevated package smoke, VPN/MSI binding |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/tests and scratch | App Gradle/CI remain root | Clean2.2.14; current96f CLI frozen | Owned5584 API29 and5590 API35;5580/5582 protected | API29 add/remove/cold56008 exact; integrated54 GREEN | API35 public streams/documents, lifecycle/visuals |
+| F/E-Windows | windows (Astra) | Native install C#/PowerShell process classification and focused test; broker/helper/MSI | Factory/Main/autostart/ActivationServer/common update remain root | Corrected ordinary/elevated image smoke passed | Owned real x64 guest2314 | Kernel classification causal regression and exact process identity | Successful MSI replacement, scoped VPN production binding |
 | E-Linux | root (previous worker inactive) | Linux native evidence and remaining execution | Common update/build remain root | Ubuntu2318 and Arch2317 same-source recovery passed | Fedora2316 evidence review pending; preserve unrelated VMs | Native quick launchers passed; full inventory audit pending | Remaining traffic, rollback and final-package coverage |
 | E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | User-local recovery passed; machine outcome unknown and preserved | Fresh fixture, machine authorization/recovery, visuals |
 | E-Fixture | mac_fixture_terra (Terra medium) | Fresh machine fixture and guest native execution; fixture scripts | Lifecycle/docs/version and shared UI remain root | Frozen23d base17/target18; helper resource verified | Exclusive macOS15.7.7 ARM64 guest192.168.64.3 | Machine base static/disconnected public smoke passed | New private TLS, public installation and authoritative recovery; old unknown jobs preserved |

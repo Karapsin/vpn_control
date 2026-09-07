@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Allow trusted Windows ancestor owner-rights ACLs during elevated CLI workspace startup.
 - Release superseded Android configuration snapshots between DataStore observations.
 - Retry busy macOS package-test detach and preserve volumes that remain mounted.
+- Preserve bounded CLI failure correlation in packaged smoke diagnostics.
 
 ## 2.1.5 - 2026-09-08
 

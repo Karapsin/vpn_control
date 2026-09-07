@@ -24,8 +24,25 @@ def require(condition, message):
 
 
 def envelope(result, expected_exit=0, expected_code="OK"):
-    require(result.returncode == expected_exit,
-            f"CLI exit {result.returncode}, expected {expected_exit}; stderr={result.stderr!r}")
+    if result.returncode != expected_exit:
+        # JSON failures normally have empty stderr. Retain correlation metadata
+        # without exposing documents, credentials, message arguments or raw output.
+        metadata = {}
+        if len(result.stdout) <= 64 * 1024:
+            try:
+                document = json.loads(result.stdout)
+                if isinstance(document, dict):
+                    for key in ("schemaVersion", "controllerId", "requestId", "operationId", "code",
+                                "final", "configurationRevision", "restartRequired"):
+                        value = document.get(key)
+                        if isinstance(value, (str, int, bool)):
+                            metadata[key] = value[:256] if isinstance(value, str) else value
+            except (ValueError, RecursionError):
+                pass
+        raise AssertionError(
+            f"CLI exit {result.returncode}, expected {expected_exit}; "
+            f"stdoutMetadata={json.dumps(metadata)}; stdoutCharacters={len(result.stdout)}; "
+            f"stderr={result.stderr[:4096]!r}")
     require(not result.stderr.strip(), f"Unexpected CLI stderr: {result.stderr!r}")
     data = json.loads(result.stdout)
     require(isinstance(data, dict) and data.get("schemaVersion") == 1, "Invalid result envelope")

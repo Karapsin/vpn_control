@@ -15,6 +15,29 @@ from test_packaged_cli import (envelope, stream_records, verify_stream_records, 
 
 
 class StaticLaunchFailureTest(unittest.TestCase):
+    def test_unexpected_json_exit_preserves_failure_identity_without_payload(self):
+        response = dict(schemaVersion=1, controllerId="fixture-owner", requestId="fixture-request",
+                        operationId="fixture-operation", code="OUTCOME_UNKNOWN", final=False,
+                        configurationRevision=7, message="PRIVATE_MESSAGE",
+                        data={"content": "PRIVATE_DOCUMENT"})
+        result = subprocess.CompletedProcess([], 2, json.dumps(response), "")
+        with self.assertRaises(AssertionError) as failure:
+            envelope(result)
+        message = str(failure.exception)
+        for expected in ("OUTCOME_UNKNOWN", "fixture-owner", "fixture-request", "fixture-operation"):
+            self.assertIn(expected, message)
+        self.assertNotIn("PRIVATE", message)
+
+    def test_unexpected_exit_diagnostics_are_bounded_for_malformed_output(self):
+        result = subprocess.CompletedProcess([], 2, "PRIVATE_DOCUMENT" * 10000, "failure " * 10000)
+        with self.assertRaises(AssertionError) as failure:
+            envelope(result)
+        message = str(failure.exception)
+        self.assertIn("CLI exit 2", message)
+        self.assertIn("stdout", message)
+        self.assertNotIn("PRIVATE_DOCUMENT", message)
+        self.assertLess(len(message), 6000)
+
     def test_serve_failure_preserves_exit_and_bounded_owner_output(self):
         def invoke(arguments, **kwargs):
             if "--help" in arguments:
