@@ -4,7 +4,8 @@ import com.kardinal.vpncontrol.control.ControlTransferSpool
 
 /** Persisted newline-separated list representation; no change to on-disk syntax. */
 internal object AndroidStringListCodec {
-    fun encode(values: List<String>): String = encode(values.size, values::get, {})
+    fun encode(values: List<String>, spoolFactory: (() -> ControlTransferSpool)? = null): String =
+        encode(values.size, values::get, {}, spoolFactory)
 
     /** Only a caller-owned copy may be consumed. Repository/model collections never enter here. */
     fun encodeOwned(values: Array<String?>, spoolFactory: (() -> ControlTransferSpool)? = null): String =

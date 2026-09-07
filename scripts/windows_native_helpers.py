@@ -10,11 +10,14 @@ import hashlib
 import json
 import struct
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
 PRODUCT_NAMES = {"vpn-control-install-helper.exe", "vpn-control-vpn-broker.exe"}
 TEST_MARKERS = ("test", "probe")
+IMPORT_POLICY = Path(__file__).resolve().parent.parent / "desktopApp/native/windows/import-policy.json"
+SYSTEM32_DEPENDENT_LOAD_FLAGS = 0x800
 
 
 def sha256(path: Path) -> str:
@@ -35,23 +38,33 @@ def validate_guest_destination(candidate: Path, expected_leaf: str) -> Path:
     return resolved
 
 
-def _rva_offset(data: bytes, pe_offset: int, rva: int) -> int:
+def _rva_offset(data: bytes, pe_offset: int, rva: int, length: int = 1) -> int:
     sections = struct.unpack_from("<H", data, pe_offset + 6)[0]
     optional_size = struct.unpack_from("<H", data, pe_offset + 20)[0]
     section = pe_offset + 24 + optional_size
+    matches = []
     for index in range(sections):
         offset = section + index * 40
         virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from("<IIII", data, offset + 8)
-        if virtual_address <= rva < virtual_address + max(virtual_size, raw_size):
-            return raw_offset + rva - virtual_address
-    raise ValueError("PE RVA is outside every section")
+        delta = rva - virtual_address
+        if 0 <= delta and length > 0 and delta + length <= min(raw_size, max(virtual_size, raw_size)):
+            candidate = raw_offset + delta
+            if candidate + length <= len(data):
+                matches.append(candidate)
+    if len(matches) != 1:
+        raise ValueError("PE RVA does not identify one complete file-backed section range")
+    return matches[0]
 
 
-def _ascii_at(data: bytes, offset: int) -> str:
+def _ascii_at(data: bytes, pe_offset: int, rva: int) -> str:
+    offset = _rva_offset(data, pe_offset, rva)
     end = data.find(b"\0", offset)
-    if end < offset:
-        raise ValueError("PE import name is unterminated")
-    return data[offset:end].decode("ascii", "strict").lower()
+    if end < offset or _rva_offset(data, pe_offset, rva, end - offset + 1) != offset:
+        raise ValueError("PE import name is unterminated within its section")
+    value = data[offset:end].decode("ascii", "strict").lower()
+    if not value.endswith(".dll") or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-_." for character in value):
+        raise ValueError("PE import name is not a DLL leaf")
+    return value
 
 
 def _imports(data: bytes, pe_offset: int, directory_index: int, delay: bool = False) -> list[str]:
@@ -61,18 +74,21 @@ def _imports(data: bytes, pe_offset: int, directory_index: int, delay: bool = Fa
         return []
     if not rva or not size:
         raise ValueError("PE import directory is incomplete")
-    offset = _rva_offset(data, pe_offset, rva)
+    offset = _rva_offset(data, pe_offset, rva, size)
+    end = offset + size
     imports: list[str] = []
     descriptor_size = 32 if delay else 20
     while True:
-        if offset + descriptor_size > len(data):
+        if offset + descriptor_size > end:
             raise ValueError("PE import directory is truncated")
         if not any(data[offset:offset + descriptor_size]):
             return sorted(set(imports))
+        if delay and struct.unpack_from("<I", data, offset)[0] != 1:
+            raise ValueError("PE delay import descriptor must use relative addresses")
         name_rva = struct.unpack_from("<I", data, offset + (4 if delay else 12))[0]
         if not name_rva:
             raise ValueError("PE import descriptor has no DLL name")
-        imports.append(_ascii_at(data, _rva_offset(data, pe_offset, name_rva)))
+        imports.append(_ascii_at(data, pe_offset, name_rva))
         offset += descriptor_size
 
 
@@ -87,13 +103,28 @@ def pe_metadata(path: Path, allowed_imports: set[str] | None = None) -> dict[str
     if machine != 0x8664:
         raise ValueError(f"{path}: expected AMD64 PE, got machine {machine:#x}")
     optional = pe_offset + 24
-    if optional + optional_size > len(data) or struct.unpack_from("<H", data, optional)[0] != 0x20B:
+    if optional_size < 240 or optional + optional_size > len(data) or struct.unpack_from("<H", data, optional)[0] != 0x20B:
         raise ValueError(f"{path}: expected PE32+ optional header")
+    if not 1 <= sections <= 96 or optional + optional_size + sections * 40 > len(data):
+        raise ValueError(f"{path}: expected a complete PE section table")
+    directory_count = struct.unpack_from("<I", data, optional + 108)[0]
+    if directory_count < 15 or 112 + directory_count * 8 > optional_size:
+        raise ValueError(f"{path}: expected complete PE data directories")
     # IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR is entry 14 in the PE32+ data directory.
     directories = optional + 112
     clr_rva, clr_size = struct.unpack_from("<II", data, directories + 14 * 8)
     if clr_rva or clr_size:
         raise ValueError(f"{path}: CLR header present; NativeAOT output required")
+    load_rva, load_size = struct.unpack_from("<II", data, directories + 10 * 8)
+    dependent_flags = None
+    if load_rva and load_size >= 80:
+        load_offset = _rva_offset(data, pe_offset, load_rva, load_size)
+        structure_size = struct.unpack_from("<I", data, load_offset)[0]
+        if not 80 <= structure_size <= load_size:
+            raise ValueError(f"{path}: incomplete PE load configuration")
+        dependent_flags = struct.unpack_from("<H", data, load_offset + 78)[0]
+    if dependent_flags != SYSTEM32_DEPENDENT_LOAD_FLAGS:
+        raise ValueError(f"{path}: emitted PE must restrict dependent loads to System32 (0x800)")
     imports = _imports(data, pe_offset, 1)
     delay_imports = _imports(data, pe_offset, 13, delay=True)
     observed = set(imports + delay_imports)
@@ -105,7 +136,82 @@ def pe_metadata(path: Path, allowed_imports: set[str] | None = None) -> dict[str
     forbidden = [needle.decode("ascii") for needle in (b"mscoree.dll", b"coreclr.dll", b"hostfxr.dll") if needle in lower]
     if forbidden:
         raise ValueError(f"{path}: forbidden CLR import/name: {', '.join(forbidden)}")
-    return {"machine": "AMD64", "sections": sections, "clrHeader": False, "imports": imports, "delayImports": delay_imports}
+    return {"machine": "AMD64", "sections": sections, "clrHeader": False, "imports": imports,
+            "delayImports": delay_imports, "dependentLoadFlags": dependent_flags}
+
+
+def import_policy(name: str) -> dict[str, object]:
+    root = json.loads(IMPORT_POLICY.read_text(encoding="utf-8"))
+    if root.get("schemaVersion") != 1 or name not in root.get("roles", {}):
+        raise ValueError(f"no reviewed loader policy for product: {name}")
+    policy = root["roles"][name]
+    if (policy.get("dependentLoadFlags") != SYSTEM32_DEPENDENT_LOAD_FLAGS or
+            policy.get("minimumWindowsBuild", 0) < 14393):
+        raise ValueError("reviewed loader policy must require System32 dependent loading")
+    for kind in ("imports", "delayImports"):
+        names = policy.get(kind)
+        if (not isinstance(names, list) or len(names) != len(set(names)) or any(
+                not isinstance(value, str) or not value.endswith(".dll") or any(
+                    character not in "abcdefghijklmnopqrstuvwxyz0123456789-_." for character in value)
+                for value in names)):
+            raise ValueError("reviewed loader policy requires exact lowercase DLL names")
+    return policy
+
+
+def _manifest_tree(data: bytes):
+    text = data.decode("utf-8-sig", "strict")
+    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+        raise ValueError("loader manifest declarations are not permitted")
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as error:
+        raise ValueError("loader manifest is not valid XML") from error
+
+    def canonical(element):
+        return (element.tag, tuple(sorted(element.attrib.items())), (element.text or "").strip(),
+                tuple(canonical(child) for child in element), (element.tail or "").strip())
+    return canonical(root)
+
+
+def manifest_metadata(path: Path, expected: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
+    rva, size = struct.unpack_from("<II", data, pe_offset + 24 + 112 + 2 * 8)
+    if not rva or size < 16:
+        raise ValueError("embedded loader manifest resource is required")
+    base = _rva_offset(data, pe_offset, rva, size)
+
+    def resource_offset(relative, length):
+        if relative < 0 or length < 1 or relative + length > size:
+            raise ValueError("loader manifest resource directory is truncated")
+        return base + relative
+
+    def entries(relative):
+        offset = resource_offset(relative, 16)
+        names, identifiers = struct.unpack_from("<HH", data, offset + 12)
+        count = names + identifiers
+        resource_offset(relative, 16 + count * 8)
+        return [struct.unpack_from("<II", data, offset + 16 + index * 8) for index in range(count)]
+
+    def directory(relative, identifier):
+        matches = [target for name, target in entries(relative) if name == identifier]
+        if len(matches) != 1 or not matches[0] & 0x80000000:
+            raise ValueError("one exact embedded loader manifest resource is required")
+        return matches[0] & 0x7FFFFFFF
+
+    language_entries = entries(directory(directory(0, 24), 1))
+    if len(language_entries) != 1 or language_entries[0][0] & 0x80000000 or language_entries[0][1] & 0x80000000:
+        raise ValueError("loader manifest must have one unambiguous language resource")
+    offset = resource_offset(language_entries[0][1], 16)
+    manifest_rva, manifest_size, _, reserved = struct.unpack_from("<IIII", data, offset)
+    if reserved:
+        raise ValueError("loader manifest resource has reserved flags")
+    manifest_offset = _rva_offset(data, pe_offset, manifest_rva, manifest_size)
+    manifest_bytes = data[manifest_offset:manifest_offset + manifest_size]
+    if _manifest_tree(manifest_bytes) != _manifest_tree(expected.read_bytes()):
+        raise ValueError("embedded loader manifest differs from the reviewed application manifest")
+    return {"manifestResourceId": 1, "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "manifestSourceSha256": sha256(expected)}
 
 
 def source_manifest(paths: list[Path]) -> dict[str, object]:
@@ -120,13 +226,23 @@ def source_manifest(paths: list[Path]) -> dict[str, object]:
     return {"schemaVersion": 1, "inputs": records, "fingerprint": fingerprint}
 
 
-def validate_output(output: Path, manifest: Path, allowed_imports: set[str]) -> dict[str, object]:
+def validate_output(output: Path, manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
     if output.name not in PRODUCT_NAMES or any(marker in output.name.lower() for marker in TEST_MARKERS):
         raise ValueError(f"product output name rejected: {output.name}")
-    if not allowed_imports:
-        raise ValueError("an explicit import allowlist is required")
-    metadata = pe_metadata(output, allowed_imports)
-    result = {"schemaVersion": 1, "artifacts": [{"name": output.name, "sha256": sha256(output), "sizeBytes": output.stat().st_size, **metadata}]}
+    policy = import_policy(output.name)
+    reviewed_imports = set(policy["imports"] + policy["delayImports"])
+    if allowed_imports is not None and not allowed_imports.issubset(reviewed_imports):
+        raise ValueError("caller imports are outside the reviewed loader policy")
+    metadata = pe_metadata(output, reviewed_imports if allowed_imports is None else allowed_imports)
+    if set(metadata["imports"]) - set(policy["imports"]) or set(metadata["delayImports"]) - set(policy["delayImports"]):
+        raise ValueError("PE import kind is outside the reviewed loader policy")
+    expected_manifest = (IMPORT_POLICY.parent / policy["manifest"]).resolve()
+    if not expected_manifest.is_relative_to(IMPORT_POLICY.parent):
+        raise ValueError("reviewed loader manifest path is outside the native helper sources")
+    metadata.update(manifest_metadata(output, expected_manifest))
+    result = {"schemaVersion": 1, "policySha256": sha256(IMPORT_POLICY), "artifacts": [
+        {"name": output.name, "sha256": sha256(output), "sizeBytes": output.stat().st_size,
+         "minimumWindowsBuild": policy["minimumWindowsBuild"], "operations": policy["operations"], **metadata}]}
     manifest.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
@@ -147,7 +263,7 @@ def main() -> int:
     verify = sub.add_parser("verify-product")
     verify.add_argument("--output", type=Path, required=True)
     verify.add_argument("--manifest", type=Path, required=True)
-    verify.add_argument("--allowed-import", action="append", required=True)
+    verify.add_argument("--allowed-import", action="append", help="Further restrict the reviewed product import policy")
     destination = sub.add_parser("validate-destination")
     destination.add_argument("--expected-leaf", required=True)
     destination.add_argument("candidate", type=Path)
@@ -157,7 +273,8 @@ def main() -> int:
             record = source_manifest(args.inputs)
             args.output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         elif args.command == "verify-product":
-            record = validate_output(args.output, args.manifest, {name.lower() for name in args.allowed_import})
+            allowed = None if args.allowed_import is None else {name.lower() for name in args.allowed_import}
+            record = validate_output(args.output, args.manifest, allowed)
         else:
             record = {"destination": str(validate_guest_destination(args.candidate, args.expected_leaf))}
     except (OSError, ValueError, json.JSONDecodeError) as error:

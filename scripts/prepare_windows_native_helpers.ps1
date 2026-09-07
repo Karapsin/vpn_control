@@ -17,7 +17,9 @@ $required = @(
     (Join-Path $native 'global.json'),
     (Join-Path $native 'Directory.Build.props'),
     (Join-Path $native 'toolchain.lock.json'),
+    (Join-Path $native 'import-policy.json'),
     $project,
+    (Join-Path $native 'InstallHelper\loader.manifest'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-native.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper.cs')
 )
@@ -34,8 +36,6 @@ $inventory = Join-Path $output 'native-helper-sources.json'
 & $Python $inventoryTool sources --output $inventory $required
 if ($LASTEXITCODE -ne 0) { throw 'Native helper source inventory failed' }
 if ($ValidateOnly) { return }
-if ($null -eq $AllowedImport -or $AllowedImport.Count -eq 0) { throw 'An explicit NativeAOT import allowlist is required' }
-
 $publish = Join-Path $output 'publish'
 & $Dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TreatWarningsAsErrors=true -p:ILLinkTreatWarningsAsErrors=true -p:IlcTreatWarningsAsErrors=true -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'Native helper publish failed' }

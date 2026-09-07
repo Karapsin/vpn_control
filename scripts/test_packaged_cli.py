@@ -232,6 +232,12 @@ def implicit_owner_smoke(root, invoke):
         require(not (workspace / "activation.port").exists(), "Implicit owner did not release its endpoint")
 
 
+def launch_diagnostics(result):
+    # Static discovery has no user document payload; retain bounded launcher
+    # evidence so native failures can be diagnosed from the ordinary CI log.
+    return f"exit={result.returncode}; stdout={repr(result.stdout)[:4096]}; stderr={repr(result.stderr)[:4096]}"
+
+
 def smoke(launcher, expected_version):
     launcher = Path(launcher).resolve(strict=True)
     require(launcher.is_file(), "Launcher must be a file")
@@ -252,10 +258,10 @@ def smoke(launcher, expected_version):
         try:
             help_result = invoke(first, "--help")
             require(help_result.returncode == 0 and "Usage:" in help_result.stdout and
-                    not help_result.stderr.strip(), "Help must exit 0 and use stdout")
+                    not help_result.stderr.strip(), "Help must exit 0 and use stdout: " + launch_diagnostics(help_result))
             version = invoke(first, "--version")
             require(version.returncode == 0 and expected_version in version.stdout and
-                    not version.stderr.strip(), "Version must report the packaged product on stdout")
+                    not version.stderr.strip(), "Version must report the packaged product on stdout: " + launch_diagnostics(version))
             envelope(invoke(first, "--json", "capabilities"))
             envelope(invoke(first, "--json", "settings", "show", "--typo"), 1, "INVALID_ARGUMENT")
             envelope(invoke(first, "--json", "status"), 2, "UNAVAILABLE")

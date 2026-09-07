@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import tempfile
@@ -73,6 +74,26 @@ def installed_debian_packages():
             if len(fields := line.split("\t")) == 3 and fields[1].startswith("ii")}
 
 
+def require_package_managed_launcher(launcher):
+    """Reject a copied fixture image before it can be counted as an update recovery."""
+    checks = (
+        (["dpkg-query", "--search", str(launcher)], r"(?m)^vpn-control(?::[^\s:]+)?:\s"),
+        (["rpm", "--query", "--file", "--queryformat", "%{NAME}\\n", str(launcher)], r"\Avpn-control\n?\Z"),
+        (["pacman", "--query", "--owns", "--quiet", str(launcher)], r"\Avpn-control\n?\Z"),
+    )
+    unavailable = 0
+    for command, expected in checks:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+        except FileNotFoundError:
+            unavailable += 1
+            continue
+        if result.returncode == 0 and re.search(expected, result.stdout):
+            return
+    require(unavailable != len(checks), "No supported Linux package ownership query is available")
+    raise RuntimeError("Same-source recovery requires the base launcher to be owned by vpn-control package metadata")
+
+
 def launch_fixture_owner(launcher, workspace, log, environment):
     # Keep the owner's lifetime independent of the native-prompt driver's
     # controlling session. The CLI still registers its exact-owner tty agent.
@@ -100,6 +121,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
                 "Same-source recovery requires the property-built immutable source fixture")
         require(image_identity(launcher.parent.parent, fixture["version"]) ==
                 {key: fixture[key] for key in ("codeFingerprint", "mainJar", "mainJarSha256")}, "Installed base image differs from source fixture")
+        require_package_managed_launcher(launcher)
     before_packages = None
     if fresh_deb_dependencies:
         before_packages = installed_debian_packages()

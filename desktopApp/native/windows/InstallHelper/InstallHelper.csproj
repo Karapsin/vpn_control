@@ -3,6 +3,7 @@
     <AssemblyName>vpn-control-install-helper</AssemblyName>
     <RootNamespace>VpnControl.InstallHelper</RootNamespace>
     <StartupObject>VpnInstallHelper</StartupObject>
+    <ApplicationManifest>loader.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\..\src\main\resources\windows-install-native.cs" Link="windows-install-native.cs" />

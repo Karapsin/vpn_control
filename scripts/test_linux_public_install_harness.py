@@ -1,4 +1,5 @@
 import json
+import io
 import os
 import re
 from pathlib import Path
@@ -6,10 +7,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
+from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_identity, version_build
 from prepare_linux_public_install_image import prepare
-from test_linux_public_install import launch_fixture_owner, run, timed_update_command, verify_recovered_install
+from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
+                                       timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
@@ -43,6 +47,71 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                 verify_recovered_install(accepted, receipt, {**recovered, **change})
         with self.assertRaises(RuntimeError):
             verify_recovered_install(accepted, {**receipt, "phase": "INSTALLING"}, recovered)
+
+    def test_same_source_recovery_rejects_an_unmanaged_copied_launcher_before_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "opt/vpn-control"
+            app = image / "lib/app"
+            app.mkdir(parents=True)
+            launcher = image / "bin/vpn-control"
+            launcher.parent.mkdir()
+            # The old harness reached Popen (and this inert ELF fails exec) before
+            # it checked package ownership. The fixed harness must reject first.
+            launcher.write_bytes(b"\x7fELFfixture-not-executed")
+            launcher.chmod(0o755)
+            main = app / "desktopApp-fixture.jar"
+            with zipfile.ZipFile(main, "w") as jar:
+                jar.writestr(MAIN_CLASS, b"fixture-main")
+                jar.writestr(VERSION_RESOURCE, "displayVersion=1.0.5\nbuildNumber=" + str(version_build("1.0.5")) + "\n")
+            (app / "vpn-control.cfg").write_text("[Application]\napp.classpath=$APPDIR/" + main.name +
+                                                   "\napp.mainclass=" + MAIN_CLASS.removesuffix(".class").replace("/", ".") + "\n")
+            identity = image_identity(image, "1.0.5")
+            (image / "TEST-ONLY-INSTALL-FIXTURE.json").write_text(json.dumps({
+                "testOnly": True, "productionTrustChanged": False, "sameSourceBuild": True,
+                "sourceFingerprint": "0" * 64, "version": "1.0.5", **identity,
+            }))
+            original_stat = Path.stat
+
+            def root_owned(path, *args, **kwargs):
+                info = original_stat(path, *args, **kwargs)
+                return os.stat_result((info.st_mode, info.st_ino, info.st_dev, info.st_nlink, 0, info.st_gid,
+                                       info.st_size, info.st_atime, info.st_mtime, info.st_ctime))
+
+            original_open = open
+
+            def open_tty(path, *args, **kwargs):
+                return io.BytesIO() if path == "/dev/tty" else original_open(path, *args, **kwargs)
+
+            with mock.patch("test_linux_public_install.subprocess.run") as command, \
+                 mock.patch("test_linux_public_install.os.uname", return_value=type("Unix", (), {"sysname": "Linux"})()), \
+                 mock.patch("test_linux_public_install.os.getuid", return_value=1000), \
+                 mock.patch("test_linux_public_install.Path.stat", root_owned), \
+                 mock.patch("builtins.open", open_tty):
+                command.side_effect = [
+                    subprocess.CompletedProcess(["dpkg-query"], 1, "", "not owned"),
+                    FileNotFoundError(), FileNotFoundError(),
+                ]
+                with self.assertRaisesRegex(RuntimeError, "owned by vpn-control package metadata"):
+                    run(launcher, "1.0.5", True, same_source_recovery=True)
+            self.assertEqual(["dpkg-query", "--search", str(launcher.resolve())], command.call_args_list[0].args[0])
+
+    def test_same_source_recovery_accepts_debian_owned_launcher(self):
+        launcher = Path("/opt/vpn-control/bin/vpn-control")
+        with mock.patch("test_linux_public_install.subprocess.run") as command:
+            command.return_value = subprocess.CompletedProcess(["dpkg-query"], 0,
+                                                               "vpn-control: " + str(launcher) + "\n", "")
+            require_package_managed_launcher(launcher)
+
+    def test_same_source_recovery_uses_the_native_owner_query_after_another_manager_misses(self):
+        launcher = Path("/opt/vpn-control/bin/vpn-control")
+        with mock.patch("test_linux_public_install.subprocess.run") as command:
+            command.side_effect = [
+                subprocess.CompletedProcess(["dpkg-query"], 1, "", "not owned"),
+                subprocess.CompletedProcess(["rpm"], 0, "vpn-control\n", ""),
+            ]
+            require_package_managed_launcher(launcher)
+        self.assertEqual(["rpm", "--query", "--file", "--queryformat", "%{NAME}\\n", str(launcher)],
+                         command.call_args_list[1].args[0])
 
     @unittest.skipUnless(os.name == "posix", "POSIX shell return-dispatch execution")
     def test_original_user_relaunch_preserves_headless_or_gui_return_intent(self):

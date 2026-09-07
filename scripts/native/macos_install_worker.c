@@ -659,6 +659,7 @@ static struct generation captured_watcher(int input, const struct request *reque
 static void coordinator(struct request *request, int input) {
     uid_t authority = request->machine ? 0 : request->owner.uid;
     require(geteuid() == authority && getuid() == authority, "PRIVILEGES_REQUIRED");
+    require(install_watcher_group() == 0, "UNAVAILABLE");
     require(generation_alive(&request->owner, request->launcher), "CONFLICT");
     if (request->frontend.pid) require(generation_alive(&request->frontend, request->launcher), "CONFLICT");
     char watcher_image[PATH_MAX]; struct generation original_watcher = captured_watcher(input, request, watcher_image);

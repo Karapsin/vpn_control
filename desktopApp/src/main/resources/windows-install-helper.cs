@@ -4,7 +4,12 @@ using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
+
+// Applies to the linked application P/Invokes, including the lazily resolved shell32 call.
+// The native linker separately restricts imports that run before managed Main.
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 
 public static class VpnInstallHelper {
     const string ValidateOnly = "validate-only";

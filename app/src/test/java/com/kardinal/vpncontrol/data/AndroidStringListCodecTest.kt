@@ -9,14 +9,20 @@ import org.junit.Test
 
 class AndroidStringListCodecTest {
     @Test fun ownedPersistedListFitsAlongsideRetainedState() {
-        val classpath = listOf(AndroidStringListMemoryProbe::class.java, AndroidStringListCodec::class.java, kotlin.Unit::class.java)
-            .map { File(it.protectionDomain.codeSource.location.toURI()).path }.distinct().joinToString(File.pathSeparator)
-        val process = ProcessBuilder(File(System.getProperty("java.home"), "bin/java").path, "-Xmx48m", "-cp", classpath,
-            AndroidStringListMemoryProbe::class.java.name).redirectErrorStream(true).start()
+        val classpath = requireNotNull(System.getProperty("vpnControl.test.runtimeClasspath"))
+        val directory = java.nio.file.Files.createTempDirectory("owned-list-memory-").toFile()
+        // SerialGC makes the 48MiB child deterministic. With the full Android test runtime,
+        // default G1 can fail while allocating retained input before reaching the codec.
+        val process = ProcessBuilder(File(System.getProperty("java.home"), "bin/java").path, "-Xmx48m", "-XX:+UseSerialGC", "-cp", classpath,
+            "-Djava.library.path=${System.getProperty("java.library.path")}", AndroidStringListMemoryProbe::class.java.name, directory.path)
+            .redirectErrorStream(true).start()
         try {
             assertTrue(process.waitFor(30, TimeUnit.SECONDS))
             assertEquals(process.inputStream.bufferedReader().readText(), 0, process.exitValue())
-        } finally { if (process.isAlive) process.destroyForcibly() }
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+            directory.deleteRecursively()
+        }
     }
     @Test fun encodingPreservesLegacySeparatorsAndEveryUtf16Unit() {
         val units = buildString { for (code in 0..65535) append(code.toChar()) }
@@ -60,6 +66,7 @@ class AndroidStringListCodecTest {
 
 object AndroidStringListMemoryProbe {
     @JvmStatic fun main(args: Array<String>) {
+        val directory = File(requireNotNull(args.firstOrNull()))
         val suffix = "a".repeat(62) + "." + "b".repeat(62) + "." + "c".repeat(62) + ".example.test"
         // The production import owns these slots and releases them while encoding.
         // The earlier non-consuming List probe reproduced the old retention peak;
@@ -68,7 +75,7 @@ object AndroidStringListMemoryProbe {
         val first = requireNotNull(values.first())
         val last = requireNotNull(values.last())
         val retainedRequest = "x".repeat(7 * 1024 * 1024)
-        val encoded = AndroidStringListCodec.encodeOwned(values)
+        val encoded = AndroidStringListCodec.encodeOwned(values) { AndroidControlTransferSpool.create(directory.toPath()) }
         check(encoded.startsWith(first) && encoded.endsWith(last))
         check(encoded.count { it == '\n' } == values.size - 1)
         check(values.all { it == null })

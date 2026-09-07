@@ -11,30 +11,45 @@ from windows_native_helpers import fixture_transfer_target, validate_guest_desti
 
 
 TOOL = Path(__file__).with_name("windows_native_helpers.py")
+MANIFEST = Path(__file__).parents[1] / "desktopApp/native/windows/InstallHelper/loader.manifest"
 
 
-def pe(machine=0x8664, clr=False, marker=b""):
-    body = bytearray(0x200)
+def pe(machine=0x8664, clr=False, marker=b"", dependent_flags=0x800, manifest=None):
+    body = bytearray(0x1000)
     body[:2] = b"MZ"
     body[0x3C:0x40] = (0x80).to_bytes(4, "little")
     body[0x80:0x84] = b"PE\0\0"
     body[0x84:0x86] = machine.to_bytes(2, "little")
+    body[0x86:0x88] = (1).to_bytes(2, "little")
     body[0x94:0x96] = (0xF0).to_bytes(2, "little")
     body[0x98:0x9A] = (0x20B).to_bytes(2, "little")
+    body[0x98 + 108:0x98 + 112] = (16).to_bytes(4, "little")
+    section = 0x80 + 24 + 0xF0
+    body[section:section + 8] = b".rdata\0\0"
+    body[section + 8:section + 24] = ((0xE00).to_bytes(4, "little") +
+        (0x1000).to_bytes(4, "little") + (0xE00).to_bytes(4, "little") + (0x200).to_bytes(4, "little"))
+    if dependent_flags is not None:
+        directory = 0x98 + 112 + 10 * 8
+        body[directory:directory + 8] = (0x1200).to_bytes(4, "little") + (0x140).to_bytes(4, "little")
+        body[0x400:0x404] = (0x140).to_bytes(4, "little")
+        body[0x400 + 78:0x400 + 80] = dependent_flags.to_bytes(2, "little")
+    manifest = MANIFEST.read_bytes() if manifest is None else manifest
+    resource_directory = 0x98 + 112 + 2 * 8
+    body[resource_directory:resource_directory + 8] = ((0x1400).to_bytes(4, "little") +
+        (0x80 + len(manifest)).to_bytes(4, "little"))
+    for directory, identifier, target in ((0x600, 24, 0x80000020), (0x620, 1, 0x80000040), (0x640, 1033, 0x60)):
+        body[directory + 14:directory + 16] = (1).to_bytes(2, "little")
+        body[directory + 16:directory + 24] = identifier.to_bytes(4, "little") + target.to_bytes(4, "little")
+    body[0x660:0x668] = (0x1480).to_bytes(4, "little") + len(manifest).to_bytes(4, "little")
+    body[0x680:0x680 + len(manifest)] = manifest
     if clr:
         body[0x98 + 112 + 14 * 8:0x98 + 112 + 14 * 8 + 8] = b"\x01\0\0\0\x08\0\0\0"
     return bytes(body) + marker
 
 
-def import_pe(dll):
-    body = bytearray(0x600)
-    body[:2] = b"MZ"; body[0x3C:0x40] = (0x80).to_bytes(4, "little")
-    body[0x80:0x84] = b"PE\0\0"; body[0x84:0x86] = (0x8664).to_bytes(2, "little"); body[0x86:0x88] = (1).to_bytes(2, "little")
-    body[0x94:0x96] = (0xF0).to_bytes(2, "little"); body[0x98:0x9A] = (0x20B).to_bytes(2, "little")
+def import_pe(dll, dependent_flags=0x800):
+    body = bytearray(pe(dependent_flags=dependent_flags))
     body[0x98 + 112 + 8:0x98 + 112 + 16] = (0x1000).to_bytes(4, "little") + (40).to_bytes(4, "little")
-    section = 0x80 + 24 + 0xF0
-    body[section:section + 8] = b".rdata\0\0"
-    body[section + 8:section + 24] = (0x400).to_bytes(4, "little") + (0x1000).to_bytes(4, "little") + (0x400).to_bytes(4, "little") + (0x200).to_bytes(4, "little")
     body[0x200 + 12:0x200 + 16] = (0x1030).to_bytes(4, "little")
     body[0x230:0x230 + len(dll) + 1] = dll.encode("ascii") + b"\0"
     return bytes(body)
@@ -89,6 +104,35 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(accepted.returncode, 0, accepted.stderr)
             rejected = self.run_tool("verify-product", "--output", output, "--manifest", root / "m.json", "--allowed-import", "advapi32.dll")
             self.assertNotEqual(rejected.returncode, 0)
+
+    def test_native_aot_without_system32_dependent_load_flags_is_rejected(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output = root / "vpn-control-install-helper.exe"
+            for flags in (None, 0, 0x1000, 0x1800):
+                with self.subTest(flags=flags):
+                    output.write_bytes(import_pe("kernel32.dll", dependent_flags=flags))
+                    result = self.run_tool("verify-product", "--output", output, "--manifest", root / "m.json",
+                                           "--allowed-import", "kernel32.dll")
+                    self.assertNotEqual(0, result.returncode, "Unhardened PE was accepted: " + result.stdout)
+
+    def test_caller_allowlist_cannot_approve_a_companion_dependency(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output = root / "vpn-control-install-helper.exe"
+            output.write_bytes(import_pe("vpn-user-plugin.dll"))
+            result = self.run_tool("verify-product", "--output", output, "--manifest", root / "m.json",
+                                   "--allowed-import", "vpn-user-plugin.dll")
+            self.assertNotEqual(0, result.returncode, "Caller expanded the reviewed policy: " + result.stdout)
+
+    def test_unreviewed_embedded_manifest_cannot_be_certified(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output = root / "vpn-control-install-helper.exe"
+            changed = MANIFEST.read_bytes().replace(b'level="asInvoker"', b'level="requireAdministrator"')
+            output.write_bytes(pe(manifest=changed))
+            result = self.run_tool("verify-product", "--output", output, "--manifest", root / "m.json")
+            self.assertNotEqual(0, result.returncode, "Unreviewed execution manifest was accepted: " + result.stdout)
 
     def test_fixed_installer_helper_has_only_the_nonmutating_probe(self):
         source = (Path(__file__).parents[1] / "desktopApp/src/main/resources/windows-install-helper.cs").read_text(encoding="utf-8")

@@ -65,7 +65,20 @@ class MacInstallGateTest(unittest.TestCase):
         worker = Path(__file__).resolve().parent / "native/macos_install_worker.c"
         source = cls.root / "gate-probe.c"
         source.write_text("#define main packaged_worker_main\n#include " + json.dumps(str(worker)) + "\n#undef main\n" + r'''
+static void report_coordinator_group(const char *message) {
+    (void)message;
+    printf("%ld %ld %ld %ld %ld\n", (long)getpid(), (long)getpgrp(),
+        (long)getsid(0), (long)getuid(), (long)geteuid());
+}
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "coordinator-group")) {
+        struct request request = {0};
+        request.owner.uid = getuid();
+        // A missing owner stops the real coordinator before any storage/install
+        // action; the failure hook observes its process identity at that boundary.
+        failure_handler = report_coordinator_group;
+        coordinator(&request, -1); return 3;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--state-dir")) {
         printf("%s:%s\n", argv[2], argc == 4 ? argv[3] : "gui");
         return 0;
@@ -122,6 +135,16 @@ int main(int argc, char **argv) {
     @classmethod
     def tearDownClass(cls):
         cls.fixture.cleanup()
+
+    def test_coordinator_leaves_owner_group_before_preparation_without_changing_authority(self):
+        result = subprocess.run([str(self.probe), "coordinator-group"], capture_output=True,
+                                text=True, timeout=10)
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual("CONFLICT\n", result.stderr)
+        pid, group, session, uid, effective = map(int, result.stdout.split())
+        self.assertEqual(pid, group, "Installer coordinator remains in the exiting owner's process group")
+        self.assertNotEqual(os.getpgrp(), group)
+        self.assertEqual((os.getsid(0), os.getuid(), os.geteuid()), (session, uid, effective))
 
     def test_preparation_allows_pending_inspection_but_excludes_other_workers_and_replacement(self):
         jobs = self.root / "jobs"

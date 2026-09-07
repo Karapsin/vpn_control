@@ -1383,7 +1383,9 @@ class ProfileStorage(
             .toList()
     }
 
-    private fun encodeList(values: List<String>): String = AndroidStringListCodec.encode(values)
+    private fun encodeList(values: List<String>): String = AndroidStringListCodec.encode(values) {
+        com.kardinal.vpncontrol.AndroidControlTransferSpool.create(context.cacheDir.toPath())
+    }
 
     private fun sanitizePackageNames(values: Iterable<String>): List<String> {
         return RoutingRules.normalizePackageNames(values)

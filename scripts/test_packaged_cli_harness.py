@@ -10,7 +10,24 @@ import unittest
 from unittest import mock
 
 from test_packaged_cli import (envelope, stream_records, verify_stream_records, interrupt_stream,
-                               large_routing_fixture, verify_routing_export, implicit_owner_smoke)
+                               large_routing_fixture, verify_routing_export, implicit_owner_smoke, smoke)
+
+
+class StaticLaunchFailureTest(unittest.TestCase):
+    def test_help_failure_preserves_bounded_launcher_diagnostics(self):
+        result = subprocess.CompletedProcess([], 137, "unexpected stdout", "launch failed " + "x" * 10000)
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            launcher.touch()
+            with mock.patch("test_packaged_cli.subprocess.run", return_value=result) as run:
+                with self.assertRaises(AssertionError) as failure:
+                    smoke(launcher, "2.1.3")
+        message = str(failure.exception)
+        self.assertIn("exit=137", message)
+        self.assertIn("unexpected stdout", message)
+        self.assertIn("launch failed", message)
+        self.assertLess(len(message), 9000)
+        self.assertEqual(1, run.call_count)
 
 
 class ImplicitOwnerTest(unittest.TestCase):

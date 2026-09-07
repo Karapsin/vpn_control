@@ -3,8 +3,8 @@
 
 #include <unistd.h>
 
-/* Preserve the original user's session while giving the return watcher its
- * own process group before the owner may acknowledge installer readiness. */
+/* Preserve session and authority while giving each installer child its own
+ * process group before the owner may acknowledge readiness and exit. */
 static int install_watcher_group(void) {
     if (getpgrp() == getpid()) return 0;
     return setpgid(0, 0);

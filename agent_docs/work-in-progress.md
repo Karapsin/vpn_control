@@ -16,14 +16,15 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. Three reviewed checkpoints
+Startup on 2026-09-07 fetched origin successfully. Four reviewed checkpoints
 have now been pushed to `origin/dev`; current HEAD is
-`3e6337200dc9902eec89911b47af2e46e256f402`. Canonical version remains **2.1.3**.
+`201b2d44fb33f861b51f691a602f79e0e960588a`. Canonical version remains **2.1.3**.
 The latest managed prepush passed, but exact-SHA delivery is not yet verified:
 Fast Checks, Android Release APK and macOS Desktop Package passed; Windows
-packaging cannot discover its init-script verification task; Linux packaging passed.
+EXE/MSI construction passed but extracted-console help failed; Linux packaging passed.
 Advisory VPN Integration compiled the corrected JNI code but failed one Android
-48MiB subprocess test; its child error was not printed and the cause is unproven.
+48MiB subprocess test. Fuller diagnostics prove OOM in the non-spooled encoder;
+a causal GUI storage regression now reproduces that reachable path.
 
 All inherited dirty product buckets were preserved and included in checkpoint
 c44ebc5472502942dbea06c4fe0917e671ea97b2, followed by two CI repair commits.
@@ -1307,3 +1308,77 @@ late plugin registration (additional causal RED before the deferred lookup fix).
 No SDK, packager, installer or runtime was executed. Agent-tool suite30 passed
 without skips in the managed Python environment. Host Gradle/metadata/prepush
 remain serialized before the next push.
+
+
+## Current Checkpoint And Native Progress (201b)
+
+Checkpoint201b2d44fb33f861b51f691a602f79e0e960588a passed managed prepush and
+was pushed. Fast Checks, Android, Linux and macOS package workflows passed.
+Windows now builds both EXE/MSI, then fails the extracted console launcher help
+smoke; actual launcher output was missing from the assertion. The existing quick
+harness now checks bounded diagnostics (causal RED then13 GREEN), preserving the
+native assertion. Logs: /tmp/vpn-parity-packaged-cli-diagnostics-{red,green}.log.
+No Windows launcher product fix is claimed until actual output is captured.
+
+The advisory Android failure now identifies Arrays.copyOfRange in asciiString.
+ProfileStorage.updateRoutingRules still used the non-spooled encoder for GUI saves.
+An actual48MiB ProfileStorage regression reproduced it before the fix; the common
+encodeList now uses a private spool while preserving immutable caller lists and
+persisted newline syntax. Focused GUI/codec4 and the full Android unit suite plus both Android compilation checks passed.
+The standalone memory probe now exercises the explicit-spool production path;
+small/raw equivalence tests remain. SerialGC calibrates host input allocation;
+it does not change the48MiB heap or replace required ART evidence. Causal record:
+/tmp/vpn-parity-profile-storage-routing-memory-red.xml and matching green directory.
+
+On API29/48MiB AVD5582, immutable3e nondebuggable base2.1.13 cold-opened the
+retained56,002-domain dataset, then passed full public CLI readback, private
+12,207,944-byte export, no-overwrite preservation, observed terminal no-op import,
+and cold GUI reopen. Same logical digest was retained throughout. The fixture
+CLI child must remove inherited DYLD_INSERT_LIBRARIES and include SDK adb in PATH;
+AppleSharpener injection caused the earlier unavailable result. No global host
+environment changed. Evidence: emulator-5582-cli-3e-base13-full-routing-summary.json,
+export-summary and noop-final-summary under vpn-android-native-parity-sy7slbvg.
+This source predates the new GUI-save spool fix; it does not certify that fix.
+
+Mac201b fixture source fingerprint43ab188116812f9ee5dd5485125d2374d1b527f5da4af5f711a1b448ac32588f
+built both DMGs inside the ARM64 guest. Base13 SHA d78bf723b3ac5c29968e1371797858a5335e87e6cc3ae52c098b26d6f1e144e3;
+target14 SHA cd3cf292097562dd5b506e44fca633b869332460743895f4fe5c3ff62a0e0e5c.
+The base is installed at /Users/admin/Applications/parity-201b/vpn-control.app;
+owner71049f96-dac4-4de5-9355-c03f289fb2fb initially ran off in its private workspace.
+Download c6ce4120-1fa9-4e1e-84b8-311db8a2f769 completed after its wait timeout.
+First install job16d07beb-db54-4af1-89f6-1f8c24781762 failed PERSISTENCE_FAILED
+before handoff with only133MiB disk free and an incomplete202MiB staged app.
+Exact errno was not recorded. Removing only completed fixture build intermediates
+freed1.8GB; the retry passed preparation, supporting disk pressure as the cause.
+Failure stage, mount, receipt and package evidence remain preserved.
+
+Retry job37065ac7-75bf-4718-ad01-7cbe31e741e1 reached handoffReady and owner exit0,
+but its coordinator disappeared while the original-user watcher23204 survived.
+Receipt remains WAITING_FOR_EXIT/sequence2: installation is unknown, never replayed.
+The real coordinator inherited the launchd owner's process group. A quick native
+regression observed actual coordinator identity before any storage effect: RED
+PID23283/group23279. Giving the coordinator its own group preserves UID/session;
+all7 native gate cases passed in0.423s. Evidence is under
+/tmp/vpn-parity-mac-coordinator-group-{red,green}.log and the green manifest.
+This test runs in the existing macOS package workflow. Full fixed-package
+replacement/recovery is pending. Guest-only TLS23042/51000 remains assigned;
+older owners and the uncertain retry are preserved.
+
+Linux Ubuntu2315 authenticated the public install and produced SUCCEEDED/OK,
+installing target2.1.4 and acquiring xdg-utils plus desktop-directory prerequisites.
+The strict image check then rejected an obsolete unowned base JAR left by the
+manually copied fixture. This is fresh-dependency/authorization evidence only,
+not exact same-source recovery. A new package-managed base scenario uses2318;
+Fedora2316 and Arch2317 remain separately assigned. The harness now rejects
+unmanaged bases before attempting same-source recovery, trying each available
+package manager. Causal RED used the old real harness, which attempted to execute
+the inert unmanaged launcher; the fixed harness rejects before launch. Linux
+harness10 and fixture16 tests passed; /tmp/vpn-linux-unmanaged-base-guard-red.log. Exact201b Linux artifacts
+remain under /tmp/vpn-control-201b-ci-linux-34138680894.
+
+Windows validate-only NativeAOT v4 emitted System32-only dependent-load flags,
+matched the reviewed embedded asInvoker manifest and exact11-import policy,
+and passed9 quick tests. Its full-lifetime x64 observer captured24 System32 DLL
+loads and confirmed child exit; inert companion cases remain in progress.
+Evidence lives under /tmp/vpn-windows-finish.WhKUbn. Privileged product roles,
+production broker binding, and packaged native integration remain incomplete.
