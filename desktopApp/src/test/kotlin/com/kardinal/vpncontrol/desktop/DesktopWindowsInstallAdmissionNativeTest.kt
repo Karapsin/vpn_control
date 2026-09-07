@@ -11,12 +11,28 @@ class DesktopWindowsInstallAdmissionNativeTest {
     @Test fun defaultProgramDataAllowsMissingGateForBothPackagedLauncherNamesWithoutWrites() {
         assumeTrue(Platform.isWindows())
         val root = Files.createTempDirectory("admission-legacy-東京")
+        val launchers = listOf("vpn-control.exe", "vpn-control-cli.exe").map(root::resolve)
         try {
-            for (name in listOf("vpn-control.exe", "vpn-control-cli.exe")) {
-                DesktopWindowsInstallAdmission.enter(root.resolve(name)).close()
+            for (launcher in launchers) {
+                // Admission now retains the actual executable even before a gate exists.
+                // A missing fixture file must fail closed, not bypass that physical pin.
+                assertEquals(2, assertFailsWith<WindowsInstallNativeFailure> {
+                    DesktopWindowsInstallAdmission.enter(launcher).close()
+                }.code)
+                val bytes = "inert native admission fixture".toByteArray()
+                Files.write(launcher, bytes, StandardOpenOption.CREATE_NEW)
+                val modified = Files.getLastModifiedTime(launcher)
+                DesktopWindowsInstallAdmission.enter(launcher).use {
+                    assertContentEquals(bytes, Files.readAllBytes(launcher))
+                }
+                assertEquals(modified, Files.getLastModifiedTime(launcher))
+                assertContentEquals(bytes, Files.readAllBytes(launcher))
             }
-            assertEquals(0L, Files.list(root).use { it.count() })
-        } finally { Files.delete(root) }
+            assertEquals(launchers.toSet(), Files.list(root).use { it.toList().toSet() })
+        } finally {
+            launchers.forEach(Files::deleteIfExists)
+            Files.delete(root)
+        }
     }
 
     @Test fun exactNativeUnicodeIdentityIsStableAcrossCaseAliasesAndRepeatedCalls() {

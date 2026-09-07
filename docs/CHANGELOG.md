@@ -9,6 +9,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Close cancelled update responses and make native installer regression fixtures portable and resilient to observation loss.
 - Add native-tested Windows launcher diagnostics and reliable Arch update fixtures.
 - Keep ordinary Windows startup independent of installer trust while fencing replacement, and add native launcher, update and persistence regressions.
+- Exercise Windows startup admission with real native launcher fixtures and require complete native desktop regression coverage.
+- Validate both Android routing response shapes so native persistence checks cannot mistake missing fields for empty data.
 
 ## 2.1.4 - 2026-09-07
 

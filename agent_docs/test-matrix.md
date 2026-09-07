@@ -280,3 +280,21 @@ second attempt with BUSY. A no-fault control exercises successful publication.
 These are component persistence tests; they do not replace a full machine install
 or resolve an existing uncertain job. Routine hygiene launches them with explicit
 skips outside an assigned macOS fixture.
+
+For Windows admission changes, the native coverage inventory includes both
+`DesktopWindowsInstallAdmissionTest` and `DesktopWindowsInstallAdmissionNativeTest`,
+as well as the native source/process/worker tests. Before a parity checkpoint,
+run the complete `:desktopApp:test` suite in the assigned Windows VM from the
+actual checkpoint source, record all skips, and retain its XML results. A focused
+selection is useful during iteration but did miss an unchanged fixture that
+supplied nonexistent launcher files after physical admission began pinning them.
+The fixture must represent real files; do not weaken missing-file rejection to
+make an obsolete test setup pass.
+
+Native Android domain readback uses `android_routing_evidence.routing_domain_evidence`
+from `scripts/android_routing_evidence.py`. Mutation results use `data.direct-domains`;
+inspection results use `data.routing.rules.direct_domain_suffixes`. The routine
+four-test harness covers both shapes, explicit empty data, malformed/ambiguous
+results, and duplicate-domain order. Never default an absent field to an empty
+list when making a persistence claim. Controller epoch replacement may reset the
+reported revision to zero; compare actual committed payload and owner identity.

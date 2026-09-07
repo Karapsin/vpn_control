@@ -64,6 +64,8 @@ on:
       - "scripts/test_prepare_linux_install_vm.py"
       - "scripts/prepare_linux_public_install_image.py"
       - "scripts/test_android_update_fixture.py"
+      - "scripts/android_routing_evidence.py"
+      - "scripts/test_android_routing_evidence.py"
       - "scripts/test_android_install_visual_inventory.py"
       - "scripts/prepare_desktop_update_fixture.py"
       - "scripts/test_desktop_update_fixture.py"

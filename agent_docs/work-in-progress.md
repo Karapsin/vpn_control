@@ -16,10 +16,24 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. Nine reviewed checkpoints
-have been pushed to `origin/dev`; latest pushed SHA is
-`28c42598dd063357ea598ba06e3c0bf49ea53659`. Canonical version is **2.1.4**.
-Its managed prepush passed. Exact-SHA Fast Checks, Android Release APK, Linux
+Startup on 2026-09-07 fetched origin successfully. Ten reviewed checkpoints
+have been pushed to `origin/dev`; latest SHA is
+`fa76a4c1d209a33c2e489ec423c834366f84aa10`. Canonical version is **2.1.4**
+with four Unreleased bullets at that checkpoint. Managed prepush passed (1614
+selected, 1557 executed, 57 platform skips, no failures). Its focused actual
+Windows run passed22/22 with no skips. Exact-SHA Fast Checks, Android and macOS
+passed, including the new native macOS persistence check; Windows failed in a
+previously unselected native fixture, before packaged launcher checks. Linux was
+still running at this observation. The failed test supplied nonexistent launcher
+paths, now correctly rejected by physical pinning. Causal CI evidence:
+`/tmp/vpn-fa76-windows-ci-failed.log`, run34157391679. The corrected fixture
+asserts missing-file rejection, then supplies real inert files and checks unchanged
+bytes/mtime plus no extra entries. The next push requires the full actual-source
+Windows desktop suite, not the earlier focused22 selection. Full parity remains
+incomplete and the previous packaged-launcher failure is not yet cleared by CI.
+
+Earlier checkpoint `28c42598dd063357ea598ba06e3c0bf49ea53659` had a different
+Windows startup failure. Its managed prepush passed. Exact-SHA Fast Checks, Android Release APK, Linux
 Desktop Package and macOS Desktop Package passed; advisory VPN Integration also
 passed. Windows Desktop Package built EXE/MSI but extracted-console `--help`
 exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34151739039).
@@ -41,8 +55,15 @@ readiness probes cover both launchers, and the exclusive gate spans replacement.
 The actual Windows JUnit run passed admission14/process4/captured-worker2 and
 coordinator alias behavior; its native mutation test caught a Java-to-PowerShell
 quote transport bug. That test now captures its C# bytes as Base64, with a frozen
-native rerun pending before checkpoint approval. Actual MSI replacement and
-protected-process enumeration remain separate unverified native gates.
+native rerun passed22/22 before checkpoint approval. Its archive is
+`/tmp/vpn-windows-finish.WhKUbn/windows-admission-scope-v3-native-evidence.zip`,
+SHA `295143fa3df8f680d763b6930273c2e9dfc9849af1df683fffc4efcb5d7ed50d`.
+An actual elevated inventory probe subsequently found a separate installer blocker:
+Registry and Memory Compression return native process-image error31 and keep the
+readiness check BUSY despite no application copy. Evidence:
+`/tmp/vpn-windows-finish.WhKUbn/coordinator-inventory-v1-result.json`.
+A correction must prove kernel/minimal process identity; names, PIDs and error31
+are not an exclusion policy. Actual MSI replacement remains unverified.
 
 The Arch distro JDK's minimal native launcher emits a child abort despite its
 parent exiting zero. An isolated launcher built with the same-patch Temurin JDK
@@ -356,6 +377,17 @@ The integrated37-test Android selection passes, including corruption, mutable
 capture, failed cleanup ownership, serializer and resource boundaries. Fresh
 API29/API35 APK10/11 verification remains open; historical first-import/cold-read
 evidence alone never certified consecutive edits.
+
+Android scratch 2.2.4 minified/nondebuggable seed acceptance and independent cold
+readback both contain56000 identical domains. Root inspected the complete JSON
+and corrected a false failure claim caused by reading the mutation field from an
+inspection envelope. Evidence `/tmp/5584-gesture-seed-root-verified.json`, newline
+SHA `8e1700935e0f02a2d2a25d854d29296462ac7ce15166b06a7d10dad6e9bfdd2a`.
+The reusable evidence helper has four routine tests; the field-only fallback
+reproduced zero instead of three before correction (`/tmp/vpn-routing-evidence-red.log`),
+then the new reader passed (`/tmp/vpn-routing-evidence-green.log`). This was a
+harness defect, not evidence of failed DataStore persistence. Android product
+candidates remain scratch-only pending external GUI add/remove/cold proof.
 
 ## Implemented But Awaiting Current Native Evidence
 
