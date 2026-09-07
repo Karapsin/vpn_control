@@ -56,6 +56,18 @@ busy/update state. Full frontend-independent action state and typed ControlSessi
 admission are still being migrated; do not mistake this lifetime extraction for
 complete Android CLI ownership.
 
+Android configuration observation is owned by `data/AndroidConfigurationStore.kt`.
+A permanent DataStore `data` collector can retain its initial Preferences snapshot
+in the suspended collector even after newer values are published. For large routing
+documents, that extra retained String can prevent the next edit on a 48 MiB heap.
+The configuration flow uses one-shot subscriptions for distinct snapshots, releasing
+the upstream collector before publishing each value. Keep observation of writes from
+other storage facades and replay across subscription gaps; a private cache alone
+cannot replace that observation. `AndroidConfigurationStoreTest` checks collector
+release, equal snapshots, subscription-gap writes and source failures in routine
+Android unit tests. Per `TEST-001`, retain the native consecutive add/remove and
+independent cold-read scenario: a successful first import does not cover this lifetime.
+
 ## Desktop Owns Desktop IO And Runtime Side Effects
 
 Desktop owns file persistence, tray/single-instance lifecycle, autostart, process management, and Linux/Windows VPN runtime setup:

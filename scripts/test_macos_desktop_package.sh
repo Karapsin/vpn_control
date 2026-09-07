@@ -39,10 +39,24 @@ for dmg in "${dmg_files[@]}"; do
   mount_dir="$(mktemp -d)"
   attached=false
   cleanup() {
+    # Do not repeat cleanup through EXIT if explicit cleanup itself fails.
+    trap - EXIT
     if [[ "$attached" == true ]]; then
-      hdiutil detach "$mount_dir" -quiet || true
+      for attempt in 1 2 3 4 5; do
+        if hdiutil detach "$mount_dir" -quiet; then
+          attached=false
+          break
+        fi
+        if (( attempt < 5 )); then sleep 1; fi
+      done
+      if [[ "$attached" == true ]]; then
+        echo "DMG could not be detached; mounted fixture preserved at $mount_dir" >&2
+        return 1
+      fi
     fi
-    rm -rf "$mount_dir"
+    # Only remove the empty mountpoint after confirmed detach. Never recurse
+    # into a volume that the OS may still have mounted.
+    rmdir "$mount_dir"
   }
   trap cleanup EXIT
 
@@ -98,7 +112,6 @@ for dmg in "${dmg_files[@]}"; do
   python3 "$repo_root/scripts/test_packaged_cli.py" \
     --launcher "$app_path/Contents/MacOS/$executable_name" --expected-version "$expected_version"
 
-  echo "[vpn-control] macOS DMG smoke passed: $bundle_name $version"
   cleanup
-  trap - EXIT
+  echo "[vpn-control] macOS DMG smoke passed: $bundle_name $version"
 done

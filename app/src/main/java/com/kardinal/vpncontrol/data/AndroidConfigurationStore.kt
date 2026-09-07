@@ -9,7 +9,7 @@ import com.kardinal.vpncontrol.control.ControlCommitted
 import com.kardinal.vpncontrol.control.ControlConfigurationIdentity
 import com.kardinal.vpncontrol.model.PersistedState
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
 import java.util.UUID
 
 /** One process epoch shared even by legacy callers constructing their own ProfileStorage facade. */
@@ -24,7 +24,22 @@ internal class AndroidConfigurationStore(
     private val snapshotLock = Any()
     private var cachedPreferences: Preferences? = null
     private var cachedValue: PersistedState? = null
-    val state = store.data.map(::committed)
+    /**
+     * A waiting DataStore collector keeps its own initial preference snapshot. Reopen it
+     * after every distinct value so a long-lived UI observer never retains a superseded
+     * routing document beside the current snapshot.
+     */
+    val state = flow {
+        var observed: Preferences? = null
+        while (true) {
+            // first() completes and cancels its source collector before returning next.
+            val next = store.data.first { candidate -> candidate != observed }
+            // Do not spill the prior DataStore snapshot across publication of the new one.
+            observed = null
+            emit(committed(next))
+            observed = next
+        }
+    }
 
     suspend fun snapshot(): ControlCommitted<PersistedState> = committed(store.data.first())
 

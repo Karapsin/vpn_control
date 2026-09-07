@@ -1,6 +1,8 @@
 package com.kardinal.vpncontrol.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -8,12 +10,22 @@ import androidx.datastore.preferences.core.edit
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -26,6 +38,86 @@ class AndroidConfigurationStoreTest {
     private val status = stringPreferencesKey("status_message")
     private val running = booleanPreferencesKey("is_vpn_running")
     private val keyVersion = longPreferencesKey("home_ssh_credential_version")
+
+    @Test fun stateResubscriptionReleasesSupersededSourceBeforePublishingExternalUpdate() = runBlocking {
+        val initial = androidx.datastore.preferences.core.emptyPreferences()
+        val source = TrackingDataStore(initial)
+        val owner = wrapper(source)
+        val emissions = mutableListOf<com.kardinal.vpncontrol.control.ControlCommitted<PersistedState>>()
+        val observer = launch { owner.state.take(3).toList(emissions) }
+        waitUntil { emissions.size == 1 && source.activeCollectors == 1 }
+        val initialToken = System.identityHashCode(initial)
+        // This is the retention boundary: old map(::committed) keeps this collector and
+        // its initial snapshot alive forever; first() must finish it before the next one.
+        waitUntil { source.completedInitialTokens.any { it == initialToken } }
+        val initialCompletions = source.completedInitialTokens.count { it == initialToken }
+
+        val firstExternal = initial.toMutablePreferences().also { it[status] = "first" }.toPreferences()
+        source.publish(firstExternal)
+        waitUntil {
+            emissions.size == 2 && source.activeCollectors == 1 &&
+                source.completedInitialTokens.count { it == initialToken } > initialCompletions
+        }
+
+        val secondExternal = firstExternal.toMutablePreferences().also { it[status] = "second" }.toPreferences()
+        val firstExternalToken = System.identityHashCode(firstExternal)
+        val firstExternalCompletions = source.completedInitialTokens.count { it == firstExternalToken }
+        source.publish(secondExternal)
+        waitUntil {
+            emissions.size == 3 &&
+                source.completedInitialTokens.count { it == firstExternalToken } > firstExternalCompletions
+        }
+        observer.join()
+        assertEquals(listOf("", "first", "second"), emissions.map { it.value.statusMessage })
+        waitUntil { source.activeCollectors == 0 }
+    }
+
+    @Test fun stateResubscriptionSkipsStructurallyEqualCopiedSnapshot() = runBlocking {
+        val initial = androidx.datastore.preferences.core.emptyPreferences()
+        val source = TrackingDataStore(initial)
+        val emissions = mutableListOf<com.kardinal.vpncontrol.control.ControlCommitted<PersistedState>>()
+        val observer = launch { wrapper(source).state.take(2).toList(emissions) }
+        waitUntil { emissions.size == 1 && source.completedInitialTokens.isNotEmpty() }
+
+        // No negative timing assertion: the following distinct value must be the second output.
+        source.publish(initial.toMutablePreferences().toPreferences())
+        source.publish(initial.toMutablePreferences().also { it[status] = "distinct" }.toPreferences())
+        observer.join()
+        assertEquals(listOf("", "distinct"), emissions.map { it.value.statusMessage })
+        waitUntil { source.activeCollectors == 0 }
+    }
+
+    @Test fun stateResubscriptionObservesAnUpdatePublishedBetweenSourceCollectors() = runBlocking {
+        val initial = androidx.datastore.preferences.core.emptyPreferences()
+        lateinit var source: TrackingDataStore
+        source = TrackingDataStore(initial) { completed ->
+            if (completed == System.identityHashCode(initial)) {
+                source.publish(initial.toMutablePreferences().also { it[status] = "gap" }.toPreferences())
+            }
+        }
+        val values = wrapper(source).state.take(2).toList().map { it.value.statusMessage }
+        assertEquals(listOf("", "gap"), values)
+        waitUntil { source.activeCollectors == 0 }
+    }
+
+    @Test fun stateResubscriptionPropagatesSourceFailureAndCancelsCollector() = runBlocking {
+        val initial = androidx.datastore.preferences.core.emptyPreferences()
+        var collectorFinished = false
+        val failing = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> = flow {
+                try {
+                    emit(initial)
+                    throw IOException("synthetic source failure")
+                } finally {
+                    collectorFinished = true
+                }
+            }
+            override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = error("unused")
+        }
+        val failure = runCatching { wrapper(failing).state.take(2).toList() }.exceptionOrNull()
+        assertEquals("synthetic source failure", failure?.message)
+        assertTrue(collectorFinished)
+    }
 
     @Test fun projectedNoOpReusesCommittedStateAndChecksRevisionBeforeTransform() = fixture(production = true) { dataStore ->
         val owner = wrapper(dataStore)
@@ -186,4 +278,38 @@ class AndroidConfigurationStoreTest {
             scope.cancel()
         }
     }
+    private suspend fun waitUntil(predicate: () -> Boolean) = withTimeout(1_000) {
+        while (!predicate()) delay(5)
+    }
+
+    private class TrackingDataStore(
+        initial: Preferences,
+        private val onCollectorCompleted: ((Int) -> Unit)? = null,
+    ) : DataStore<Preferences> {
+        private val values = MutableSharedFlow<Preferences>(replay = 1, extraBufferCapacity = 4).also { it.tryEmit(initial) }
+        val completedInitialTokens = mutableListOf<Int>()
+        var activeCollectors = 0
+            private set
+
+        override val data: Flow<Preferences> = flow {
+            activeCollectors++
+            var initialToken: Int? = null
+            try {
+                values.collect { value ->
+                    if (initialToken == null) initialToken = System.identityHashCode(value)
+                    emit(value)
+                }
+            } finally {
+                initialToken?.let { token ->
+                    completedInitialTokens += token
+                    onCollectorCompleted?.invoke(token)
+                }
+                activeCollectors--
+            }
+        }
+
+        fun publish(value: Preferences) { check(values.tryEmit(value)) }
+        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = error("unused")
+    }
+
 }

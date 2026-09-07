@@ -16,6 +16,54 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
+Checkpoint13 `bbb4175ba4ed5e5a34cef442a0cc166ecb799ec3` is pushed to
+`origin/dev`, canonical2.1.5. Managed prepush passed1619 selected/1562 executed/
+57 explicit skips with zero failures. All required exact-SHA workflows are terminal: Fast Checks, Android, Linux
+and Windows succeeded. macOS built and passed public smoke, then failed DMG
+cleanup after detach failed. Log `/tmp/vpn-bbb-macos-ci-failed.log`. Corrected immutable Windows2.1.5 native
+image passes29 focused tests (transfer10/installer13/cancellation6), no skips.
+Ordinary/elevated public smoke both passed against that exact image. Root
+verified archive `current23d-corrected-v1-native-evidence.zip` under the Windows
+evidence directory, SHA
+`10a0e9dd10b4bc793c32cc2ecf28e6c3cd763405b41465f12be09c4bba9cc914`,
+including all three XMLs and four product/test overlay hashes.
+
+Root also owns the macOS cleanup correction in `test_macos_desktop_package.sh`,
+new `test_macos_package_cleanup.py`, and routine release-hygiene wiring. Before
+fix, controlled detach failures reproduced unsafe mounted-tree removal (2 failed
+of3 tests), `/tmp/vpn-macos-cleanup-red.log`. Fixed3/3 passed on host, Arch guest
+and macOS guest. Cleanup retries detach five times, preserves a persistently
+mounted volume, and removes only an empty mountpoint; success prints afterward.
+Real base/target fixture DMGs both detached on an independent large-routing
+import smoke failure (exit2); that separate public-path failure is under diagnosis.
+The fresh machine install job `79677cc5-2c13-4eb7-8894-19a5f2de9d99` passed real
+Aqua authorization but remains protected seq1 AUTHORIZED without handoffReady;
+no owner exit/replacement is proven. All active job inputs/processes are preserved.
+
+The next dirty slice is the minimal Android DataStore observer-lifetime fix in
+`AndroidConfigurationStore.kt` plus four lifecycle regressions. It excludes all
+earlier scratch projection/cache experiments and diagnostic native/GC/heap code.
+Clean minified, nondebuggable fixture2.2.14 APK SHA
+`a6af10616e64dfa69cb17b6bd12c1d539da4c4f45653ca8e26a894e594c8ff84`
+passes the same-process API29/48MiB visible add/remove and independent cold
+readback chain:56008→56009→56008→cold56008, exact original newline digest
+`0ef2ce70d306e71d44a899d52a56a375022cb194cc534fab005934fb83bdaaa7`.
+Root inspected `/tmp/5584-clean214-*.ndjson` summaries before copying only the
+two reviewed files. Integrated configuration/serializer/memory/reader tests
+pass54/54 with zero skips, plus Android compilation, log
+`/tmp/vpn-android-resubscription-integrated-green.log`. API35 remains.
+
+Native quick launcher inventory now maps28/39 current scripts to Arch guest
+receipts. The additional batches cover114 tests plus two standalone checks,
+and6 Gradle graph tests plus actual minimal JDK17 jpackage and Arch hygiene.
+All passed without skips. Receipts:
+`/tmp/vpn-native-quick-more-23d-arch-evidence.json` and
+`/tmp/vpn-native-graphs-23d-arch-evidence.json`; inventory
+`/tmp/vpn-parity-native-launcher-inventory-23d-current.json`. Unmapped entries
+need platform package/installer evidence, not platform-skipped invocations.
+
+Earlier checkpoint12 observation (retained evidence, superseded above):
+
 Checkpoint12 `23d1ef8407c6e23ddfde0aa5e85168f8f4a14351` is pushed, canonical2.1.5.
 Managed prepush passed1616 selected/1559 executed/57 skips, zero failures. Its
 ordinary x64 Windows image passes public disconnected CLI smoke and the full

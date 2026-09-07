@@ -8,6 +8,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Run generated-source fixture rejection without requiring Windows symlink privileges.
 - Close cancelled update manifest responses before joining blocked body readers.
 - Allow trusted Windows ancestor owner-rights ACLs during elevated CLI workspace startup.
+- Release superseded Android configuration snapshots between DataStore observations.
+- Retry busy macOS package-test detach and preserve volumes that remain mounted.
 
 ## 2.1.5 - 2026-09-08
 
