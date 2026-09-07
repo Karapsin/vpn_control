@@ -12,8 +12,9 @@ import zipfile
 from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
-    verify_sources, version_build, require_install_ready,
+    verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
 )
+from test_fixture_environment import symlink_probe_available
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
@@ -154,16 +155,22 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Generated"):
                 source_entries(repository)
 
-    def test_rejects_external_symlink_and_generated_tracked_source(self):
+    def test_rejects_generated_tracked_source(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            repository, _ = self.source(root)
+            (repository / ".gitignore").write_text("")
+            with self.assertRaisesRegex(ValueError, "Generated"):
+                source_entries(repository)
+
+    def test_rejects_external_symlink_when_supported(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            if not symlink_probe_available(root):
+                self.skipTest("ordinary user cannot create fixture symlinks")
             repository, runtime = self.source(root)
             (repository / "escape").symlink_to(runtime)
             with self.assertRaisesRegex(ValueError, "escapes"):
-                source_entries(repository)
-            (repository / "escape").unlink()
-            (repository / ".gitignore").write_text("")
-            with self.assertRaisesRegex(ValueError, "Generated"):
                 source_entries(repository)
 
     def test_excluded_gitlink_records_pin_and_empty_uninitialized_checkout(self):
@@ -280,6 +287,10 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
                 receipt = native_build(output, True, runner)
             self.assertEqual(2, len(calls))
+            # Default fixture builds retain their generated trees for diagnosis;
+            # this was the storage accumulation that the explicit opt-in fixes.
+            self.assertTrue((output / "build-base").is_dir())
+            self.assertTrue((output / "build-target").is_dir())
             for _, checkout in calls:
                 self.assertEqual("vpnControlVersion=2.1.3\n", (checkout / "gradle.properties").read_text())
             self.assertEqual("vpnControlVersion=2.1.3\n", (repository / "gradle.properties").read_text())
@@ -343,8 +354,79 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             _, runner = self.fake_gradle(changed_target=True)
             with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
                 with self.assertRaisesRegex(ValueError, "executable content differ"):
-                    native_build(output, True, runner)
+                    native_build(output, True, runner, discard_completed_builds=True)
+            # The completed base may be reclaimed, but a target rejected by the
+            # same-source comparison remains available for diagnosis.
+            self.assertFalse((output / "build-base").exists())
+            self.assertTrue((output / "build-target").is_dir())
             self.assertFalse((output / "fixture-receipt.json").exists())
+
+    def test_opt_in_discards_only_completed_generated_build_trees_after_verified_capture(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, _ = self.prepared(root)
+            _, runner = self.fake_gradle()
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                receipt = native_build(output, True, runner, discard_completed_builds=True)
+            self.assertFalse((output / "build-base").exists())
+            self.assertFalse((output / "build-target").exists())
+            for label, record in zip(("base", "target"), receipt["builds"]):
+                evidence = json.loads((output / ("completed-" + label + ".json")).read_text())
+                self.assertEqual({"schemaVersion": 1, "record": record}, evidence)
+                self.assertTrue((output / record["image"]).is_dir())
+            self.assertTrue((output / "source").is_dir())
+            self.assertTrue((output / "packages/base").is_dir())
+            self.assertTrue((output / "packages/target").is_dir())
+
+    def test_opt_in_retains_failed_target_build_tree_and_never_writes_a_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, _ = self.prepared(root)
+            _, successful = self.fake_gradle()
+
+            def fail_target(command, **kwargs):
+                result = successful(command, **kwargs)
+                if any(value == "-PvpnControlVersion=2.1.3" for value in command):
+                    return subprocess.CompletedProcess(command, 1)
+                return result
+
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                with self.assertRaisesRegex(ValueError, "Native build failed"):
+                    native_build(output, True, fail_target, discard_completed_builds=True)
+            self.assertFalse((output / "build-base").exists())
+            self.assertTrue((output / "build-target").is_dir())
+            self.assertTrue((output / "completed-base.json").is_file())
+            self.assertFalse((output / "completed-target.json").exists())
+            self.assertFalse((output / "fixture-receipt.json").exists())
+
+    def test_cleanup_path_defense_rejects_noncanonical_stage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, plan = self.prepared(root)
+            plan["stages"][0]["directory"] = "source"
+            (output / "build-plan.json").unlink()
+            (output / "build-plan.json").write_text(json.dumps(plan))
+            calls, runner = self.fake_gradle()
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                with self.assertRaisesRegex(ValueError, "Unexpected generated stage directory"):
+                    native_build(output, True, runner, discard_completed_builds=True)
+            self.assertEqual([], calls)
+            self.assertTrue((output / "source").is_dir())
+
+    def test_cleanup_path_defense_rejects_stage_symlink_when_supported(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, plan = self.prepared(root)
+            protected = output / "source"
+            checkout = output / "build-base"
+            try:
+                checkout.symlink_to(protected, target_is_directory=True)
+            except (NotImplementedError, OSError) as error:
+                self.skipTest("ordinary user cannot create directory symlinks: " + str(error))
+            with self.assertRaisesRegex(ValueError, "non-symlink"):
+                discard_completed_stage_directory(output.resolve(), plan["stages"][0])
+            self.assertTrue(protected.is_dir())
+            self.assertTrue(checkout.is_symlink())
 
     def test_frozen_source_tampering_or_architecture_mismatch_never_builds(self):
         for wrong_arch in (True, False):

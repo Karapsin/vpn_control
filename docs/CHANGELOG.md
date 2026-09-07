@@ -5,12 +5,20 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Run generated-source fixture rejection without requiring Windows symlink privileges.
+
+## 2.1.5 - 2026-09-08
+
 - Prevent recursive installer test fixtures on Python 3.12 and cover filesystem resolution differences.
 - Close cancelled update responses and make native installer regression fixtures portable and resilient to observation loss.
 - Add native-tested Windows launcher diagnostics and reliable Arch update fixtures.
 - Keep ordinary Windows startup independent of installer trust while fencing replacement, and add native launcher, update and persistence regressions.
 - Exercise Windows startup admission with real native launcher fixtures and require complete native desktop regression coverage.
 - Validate both Android routing response shapes so native persistence checks cannot mistake missing fields for empty data.
+- Preserve bounded packaged owner startup diagnostics when native CLI readiness fails.
+- Accept current-owner Windows workspace ACLs without broadening installer or private export trust.
+- Build disposable update fixtures with safe portable archive extraction and optional completed-build cleanup.
+- Keep archive rejection tests active when ordinary Windows users cannot create symlinks.
 
 ## 2.1.4 - 2026-09-07
 

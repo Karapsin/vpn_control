@@ -15,6 +15,35 @@ from test_packaged_cli import (envelope, stream_records, verify_stream_records, 
 
 
 class StaticLaunchFailureTest(unittest.TestCase):
+    def test_serve_failure_preserves_exit_and_bounded_owner_output(self):
+        def invoke(arguments, **kwargs):
+            if "--help" in arguments:
+                return subprocess.CompletedProcess(arguments, 0, "Usage:", "")
+            if "--version" in arguments:
+                return subprocess.CompletedProcess(arguments, 0, "2.1.4", "")
+            code, status = (1, "INVALID_ARGUMENT") if "--typo" in arguments else (
+                (2, "UNAVAILABLE") if "status" in arguments else (0, "OK"))
+            return subprocess.CompletedProcess(arguments, code, json.dumps({
+                "schemaVersion": 1, "code": status, "ok": code == 0}), "")
+
+        def start(arguments, **kwargs):
+            kwargs["stderr"].write(b"owner bootstrap failed " + b"x" * 10000)
+            kwargs["stderr"].flush()
+            return mock.Mock(poll=mock.Mock(return_value=2))
+
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            launcher.touch()
+            with mock.patch("test_packaged_cli.subprocess.run", side_effect=invoke), \
+                    mock.patch("test_packaged_cli.subprocess.Popen", side_effect=start):
+                with self.assertRaises(AssertionError) as failure:
+                    smoke(launcher, "2.1.4")
+        message = str(failure.exception)
+        self.assertIn("Serve did not become ready", message)
+        self.assertIn("exit=2", message)
+        self.assertIn("owner bootstrap failed", message)
+        self.assertLess(len(message), 9000)
+
     def test_windows_failure_collects_admission_evidence_without_replacing_failure(self):
         result = subprocess.CompletedProcess([], 2, "", "UNAVAILABLE\n")
         with tempfile.TemporaryDirectory() as directory:

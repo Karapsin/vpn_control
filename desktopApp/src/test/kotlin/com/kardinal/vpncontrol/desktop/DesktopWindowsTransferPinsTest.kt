@@ -3,6 +3,45 @@ package com.kardinal.vpncontrol.desktop
 import kotlin.test.*
 
 class DesktopWindowsTransferPinsTest {
+    @Test fun currentOwnerRightsOnPythonWorkspaceAncestorsKeepPublicationPins() {
+        // CPython 3.12.10 creates private temporary directories with OWNER RIGHTS;
+        // the workspace inherits that ACE instead of an explicit current-user SID.
+        for (flags in listOf(0x3, 0x13)) {
+            val info = directory(SID).copy(dacl = listOf(
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-5-18"),
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-5-32-544"),
+                WindowsInstallAce(0, flags, 0x1f01ff, "S-1-3-4"),
+            ))
+            val native = Fake().also { it.hostile = info }
+            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native)
+            val child = pins.createDirectory()
+            assertEquals(1, native.creates)
+            assertTrue(native.opened.all { !it.shareDelete && !it.closed })
+            assertFails { native.replace("C:\\Users\\東京") }
+            pins.deleteDirectory()
+            assertEquals(listOf(child), native.deleted)
+            pins.close()
+            assertTrue(native.opened.all { it.closed })
+            assertFails { WindowsInstallTrust.verify(info, WindowsInstallTrust.Kind.ANCESTOR) }
+        }
+    }
+
+    @Test fun ownerRightsCannotAuthorizeForeignOwnersOrPrivatePayloads() {
+        val ownerRights = WindowsInstallAce(0, 3, 0x1f01ff, "S-1-3-4")
+        for (owner in listOf("S-1-5-21-9-8-7-6", "S-1-5-18", "S-1-5-32-544")) {
+            val native = Fake().also { it.hostile = directory(owner).copy(dacl = listOf(ownerRights)) }
+            assertFails { DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native) }
+            assertEquals(0, native.creates)
+            assertTrue(native.opened.all { it.closed })
+        }
+        assertFails { DesktopWindowsTransferPins.verify(directory(SID).copy(dacl = listOf(ownerRights)), SID, private = true) }
+        for (principal in listOf("S-1-3-0", "S-1-3-4-1", "S-1-1-0")) {
+            assertFails { DesktopWindowsTransferPins.verify(directory(SID).copy(dacl = listOf(ownerRights.copy(sid = principal))), SID) }
+        }
+        assertFails { DesktopWindowsTransferPins.verify(directory(SID).copy(dacl = listOf(
+            ownerRights, WindowsInstallAce(0, 0, 0x2, "S-1-1-0"))), SID, private = true) }
+    }
+
     @Test fun exactWindowsServicingPrincipalIsTrustedOnlyForTransferAncestors() {
         val installer = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
         val info = directory(installer)

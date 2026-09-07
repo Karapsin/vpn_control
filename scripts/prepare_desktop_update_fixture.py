@@ -341,7 +341,97 @@ def arch_fixture_package(checkout, image, runtime, output, version, architecture
     return package_asset(target, "linux", architecture, version)
 
 
-def native_build(directory, confirmed, run_command=None):
+STAGE_DIRECTORIES = {"base": "build-base", "target": "build-target"}
+
+
+def generated_stage_directory(directory, stage, require_existing=False):
+    """Return only the fixed, fixture-root-generated checkout for a stage."""
+    label = stage.get("label")
+    expected = STAGE_DIRECTORIES.get(label)
+    require(expected is not None and stage.get("directory") == expected,
+            "Unexpected generated stage directory")
+    path = directory / expected
+    require(path.parent == directory and not path.is_symlink(),
+            "Generated stage directory must be a direct non-symlink fixture child")
+    if require_existing:
+        require(path.is_dir() and path.resolve(strict=True).parent == directory,
+                "Generated stage directory escaped the fixture")
+    return path
+
+
+def completion_evidence_path(directory, stage):
+    label = stage.get("label")
+    require(label in STAGE_DIRECTORIES, "Unknown completed fixture stage")
+    path = directory / ("completed-" + label + ".json")
+    require(path.parent == directory and not path.is_symlink() and not path.exists(),
+            "Completion evidence already exists or is unsafe")
+    return path
+
+
+def write_durable_completion_evidence(path, record):
+    """Persist and reread evidence before a completed checkout can be discarded."""
+    encoded = (json.dumps({"schemaVersion": 1, "record": record}, sort_keys=True,
+                          indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            require(written > 0, "Completion evidence write made no progress")
+            offset += written
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    # Directory fsync makes the new entry durable on POSIX fixtures. Windows
+    # does not permit opening directory descriptors this way.
+    if os.name == "posix":
+        descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    require(json.loads(path.read_text(encoding="utf-8")) == {"schemaVersion": 1, "record": record},
+            "Completion evidence could not be reread")
+
+
+def verify_captured_stage(directory, plan, record):
+    """Recheck exported immutable inputs; this is the cleanup admission gate."""
+    stage = {key: record[key] for key in ("label", "directory", "version", "buildNumber")}
+    generated_stage_directory(directory, stage)
+    packages = directory / "packages"
+    require(packages.parent == directory and packages.is_dir() and not packages.is_symlink() and
+            packages.resolve(strict=True).parent == directory, "Fixture packages root escaped the fixture")
+    output = packages / stage["label"]
+    require(output.parent == packages and output.is_dir() and not output.is_symlink() and
+            output.resolve(strict=True).parent == packages.resolve(strict=True),
+            "Captured stage output escaped the fixture")
+    image = directory / record["image"]
+    require(image.parent == output and image.is_dir() and not image.is_symlink() and
+            image.resolve(strict=True).parent == output.resolve(strict=True), "Captured image escaped the fixture")
+    identity = image_identity(image, stage["version"])
+    require(all(record[key] == identity[key] for key in identity), "Captured image identity changed")
+    for asset in record["assets"]:
+        package = output / asset["fileName"]
+        require(package.parent == output and package_asset(package, asset["platform"], asset["architecture"],
+                                                           asset["displayVersion"]) == asset,
+                "Captured fixture package changed")
+        require(not package.stat().st_mode & 0o222, "Captured fixture package must remain read-only")
+    marker = (image if plan["platform"] == "linux" else output) / "TEST-ONLY-INSTALL-FIXTURE.json"
+    marker_data = json.loads(marker.read_text(encoding="utf-8"))
+    require(marker_data == {"testOnly": True, "productionTrustChanged": False, "sameSourceBuild": True,
+                            "version": stage["version"], **identity,
+                            "sourceFingerprint": record["sourceFingerprint"]},
+            "Captured fixture marker changed")
+
+
+def discard_completed_stage_directory(directory, stage):
+    """Remove only a verified fixed-name generated checkout, never fixture inputs."""
+    checkout = generated_stage_directory(directory, stage, require_existing=True)
+    shutil.rmtree(checkout)
+    require(not checkout.exists() and not checkout.is_symlink(), "Completed generated checkout was not removed")
+
+
+def native_build(directory, confirmed, run_command=None, discard_completed_builds=False):
     import platform as host_platform
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
     directory = directory.resolve(strict=True)
@@ -355,6 +445,11 @@ def native_build(directory, confirmed, run_command=None):
     runtime = directory / plan["runtime"]["file"]
     require(runtime_identity(runtime, plan["platform"], plan["architecture"]) ==
             {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}, "Frozen runtime mismatch")
+    require([stage.get("label") for stage in plan["stages"]] == ["base", "target"],
+            "Fixture must contain exactly the base and target stages")
+    for stage in plan["stages"]:
+        checkout = generated_stage_directory(directory, stage)
+        require(not checkout.exists() and not checkout.is_symlink(), "Fixture generated stage already exists")
     run_command = run_command or subprocess.run
     if plan["platform"] == "linux":
         require_jdk17()
@@ -363,7 +458,7 @@ def native_build(directory, confirmed, run_command=None):
     built = []
     for stage in plan["stages"]:
         verify_sources(directory / "source", snapshot["files"])
-        checkout = directory / stage["directory"]
+        checkout = generated_stage_directory(directory, stage)
         copy_sources(directory / "source", checkout, snapshot["files"])
         os_tag = {"linux": "linux", "windows": "windows", "macos": "darwin"}[plan["platform"]]
         arch_tag = {"x86_64": "amd64", "arm64": "arm64"}[plan["architecture"]]
@@ -413,7 +508,17 @@ def native_build(directory, confirmed, run_command=None):
                    "sameSourceBuild": True, "version": stage["version"], **identity,
                    "sourceFingerprint": snapshot["sourceFingerprint"]})
         built.append(record)
+        if discard_completed_builds:
+            verify_captured_stage(directory, plan, record)
+            write_durable_completion_evidence(completion_evidence_path(directory, stage), record)
+            # The base build is now recoverable from its verified exported image,
+            # packages, and durable evidence. Keep target until the same-source
+            # code-fingerprint comparison below has succeeded.
+            if stage["label"] == "base":
+                discard_completed_stage_directory(directory, stage)
     require(built[0]["codeFingerprint"] == built[1]["codeFingerprint"], "Base and target executable content differ beyond version metadata")
+    if discard_completed_builds:
+        discard_completed_stage_directory(directory, plan["stages"][1])
     manifest = {"schemaVersion": 1, "buildNumber": built[1]["buildNumber"], "releaseTag": RELEASE,
                 "releaseNotesUrl": "https://github.com/Karapsin/vpn_control/releases/tag/" + RELEASE,
                 "assets": built[1]["assets"]}
@@ -543,6 +648,8 @@ def main():
     build_parser = commands.add_parser("build")
     build_parser.add_argument("--directory", type=Path, required=True)
     build_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
+    build_parser.add_argument("--discard-completed-builds", action="store_true",
+                              help="discard only verified build-base/build-target trees after capture")
     serve_parser = commands.add_parser("serve")
     serve_parser.add_argument("--directory", type=Path, required=True)
     serve_parser.add_argument("--certificate", type=Path, required=True)
@@ -557,7 +664,8 @@ def main():
         extract_readonly_archive(args.archive, args.output)
         result = {"extracted": str(args.output)}
     elif args.action == "build":
-        result = native_build(args.directory, args.confirm_owned_disposable_guest)
+        result = native_build(args.directory, args.confirm_owned_disposable_guest, None,
+                              args.discard_completed_builds)
     else:
         serve(args.directory, args.certificate, args.private_key, args.ready_file, args.confirm_owned_disposable_guest)
         return

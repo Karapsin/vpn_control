@@ -16,6 +16,97 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
+Latest checkpoint observation (supersedes the earlier checkpoint details below):
+`bcd9a3be2b04e5617ee2df5782b2ed2c90220b39` was pushed after managed prepush
+and the full actual-source Windows desktop run:878 selected,823 executed,
+55 explicit skips, zero failures. Native evidence archive
+`/tmp/vpn-windows-finish.WhKUbn/fa76-full-desktop-v2-native-evidence.zip`, SHA
+`ddf62754a0d5dd9582e2b4f539354f2e41a0ed7f6e917b5df7aa81da2af147cb`,
+contains the fa76 source plus exactly the corrected native admission fixture.
+Root inspected the archived XML skip entries: 22 Windows-specific opt-in cases
+remain unexecuted in that run (protected receipts2, user files8, VPN admission1,
+VPN broker9, configuration capture1, resource-journal registry1). The other33
+skips cover non-Windows/platform-dependent cases. The 823 executed tests cannot
+certify these native opt-ins. The current script-launcher inventory contains39
+entries at `/tmp/vpn-parity-native-test-launcher-inventory-bcd9-current.json`;
+its hashes predate the current fixture edits and it is an inventory, not proof
+of execution. Refresh it and map each applicable launcher to native receipts
+before the final audit.
+All four non-Windows required workflows passed for bcd9. Windows34159586468
+built MSI/EXE and passed static launch checks, then failed public `serve` readiness.
+The old static admission and obsolete fixture failures are cleared; full package
+parity is not. Log `/tmp/vpn-bcd9-windows-ci-failed.log`. The harness discarded
+owner output on failure. A causal fast regression reproduced missing exit/output
+(`/tmp/vpn-serve-diagnostics-red.log`); the diagnostic correction passes all16
+harness tests (`/tmp/vpn-serve-diagnostics-green.log`) and is already wired through
+routine hygiene. The actual x64 packaged public path plus a scratch catch-only
+trace identifies `WindowsInstallTrust.verify` access-mask rejection during
+`DesktopControlEndpoint.publish`, through transfer-parent pinning. Direct Java
+stage probes passed but did not cover full public startup. Evidence:
+`/tmp/vpn-windows-finish.WhKUbn/bcd9-server-trace-v1-reader-status.json`.
+The actual Python3.12 workspace grants FullControl through OWNER RIGHTS
+(`S-1-3-4`) while its owner is the exact ordinary user. The transfer validator
+misclassifies that owner-relative ACE as a foreign writer. Before any fix,
+`DesktopWindowsTransferPinsTest.currentOwnerRightsOnPythonWorkspaceAncestorsKeepPublicationPins`
+reproduced the identical access-mask rejection:8 selected,1 failed.
+Evidence: `/tmp/vpn-windows-owner-rights-red.log` and matching `.xml`.
+The proposed correction is limited to ancestor ACEs whose inspected owner equals
+the current SID; private payload admission and installer trust remain unchanged.
+The same regression plus installer backend tests now pass21/21 with zero skips,
+and an independent read-only review accepted the transfer-only scope. GREEN log:
+`/tmp/vpn-windows-owner-rights-green.log`; XML is in the matching `-xml` directory.
+The native x64 full-suite/app-image task `vpn-parity-bcd9-owner-rights-v1` uses
+source fingerprint `1ec3ff304c77310c7f4a10540f5a9773e9ff8596bc3c623a2c801d75b45d097d`,
+bcd9 plus the two reviewed transfer files and no
+diagnostic catch. Its package remains2.1.4; final delivered-package evidence must
+account for the subsequent canonical metadata roll to2.1.5. Native results remain
+pending at this observation. Ten Unreleased bullets rolled into2.1.5 after the
+final fixture capability correction; no release publication is authorized.
+
+Android local-routing candidates remain scratch-only. Retention review found both
+the cached projection and GUI draft holding the superseded domain source. The
+candidate rebases both onto the newly encoded immutable value, with guarded draft
+identity and generation ordered before list equality. Focused regressions passed,
+but consecutive native GUI edits still fail. Scratch diagnostic APK2.2.8 SHA
+`8acd946ede06177c2b2b9f6473d594f39b1487e62795ba5765d82bb1941eb357`
+on task5584/API29/48MiB narrows the failed removal to `prepared.encode-domains`:
+ART cannot allocate the approximately 11.98MB final persisted Java String.
+The new addition succeeded; the removal is terminal failed and was never replayed.
+Warm and independent cold public reads retain exactly 56,004 domains, digest
+`36acbb289fa1bb847769a6d53ce83a27b731f1ff7de6dc4e2f63421838abacdb`.
+Evidence: `/tmp/5584-fix228-evidence.txt` and the referenced warm/cold summaries.
+This is diagnostic evidence, not fixed acceptance. The earlier CLI failure used
+invalid `--device` syntax; correct `--serial` and raw provider reads work.
+The Android owner is accounting for redundant retained payloads before changing
+lifetime or representation; the old/new DataStore string overlap is unavoidable.
+
+Host archival of old macOS fixture packages exhausted disk during concurrent
+scratch-build growth. All four complete redundant host copies were deleted only
+after rechecking their guest originals' hashes; no guest original was deleted.
+The manifest and removal receipt remain under
+`/tmp/vpn-parity-mac-archived-packages-bcd9a3be`. Five packages were subsequently
+streamed directly to Arch task storage, with matching hashes and mode-600 manifest
+under `/tmp/vpn-parity-mac-archived-packages-bcd9a3be-arch`. Only four unserved
+base/old guest DMGs were removed after reference checks; their recovery mapping is
+`GUEST-REMOVED-RECOVERY.tsv`. The fifth workspace target, unknown installer jobs,
+live fixture inputs and their evidence remain intact. Guest free space was about
+1.9GiB after cleanup. Opt-in removal of verified completed fixture build trees is
+under review. Native Python3.9 exposed unsupported `extractall(filter=...)`;
+the portable replacement now validates the complete symlink graph, including
+case aliases and traversal, before extraction. Causal casefold RED is preserved
+under `/tmp/vpn-fixture-casefold-red.XoWC5U`. Review also rejected a non-causal
+test shim, which was removed. Windows native execution found ordinary-user
+WinError1314 in the positive symlink case; that case now uses a real capability
+probe, with unexpected errors failing. Negative archive validation is never gated.
+The final fixture union passes34/34 locally, on Mac3.9 and on Arch3.14. A second
+native ordinary-user failure exposed an older test combining physical symlinks
+with generated-source rejection. These are now separate: generated-source
+rejection always executes; only physical symlink cases use the capability probe.
+Ordinary Windows and privileged positive-symlink verification remain pending at
+this observation. The final test-only split has one new Unreleased bullet under
+canonical2.1.5. Final four-file hashes are in the worker handoff; no fixture build
+or installation has been started from the reviewed pruning implementation yet.
+
 Startup on 2026-09-07 fetched origin successfully. Ten reviewed checkpoints
 have been pushed to `origin/dev`; latest SHA is
 `fa76a4c1d209a33c2e489ec423c834366f84aa10`. Canonical version is **2.1.4**
@@ -191,10 +282,11 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and owned scratch instrumentation | App Gradle/CI remain root | Frozen04f APK15/16; diagnostic17 retained | Preserve AVD5582 native failure; separate5584 API29;5580 protected | 48MiB rendered remove commits in scratch2.2.1 but returned-state allocation OOM persists | ART reproducer, API35 lifecycle, visuals |
-| F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/common update remain root | NativeAOT validate-only proof; privileged production roles pending | Real x64 guest2314; ARM2299 historical only | Python3.12 native quick tier GREEN; packaged static admission diagnosis active | Native launch inventory, fixed privileged roles, VPN/MSI production binding |
-| E-Linux | linux_terra (Terra medium) | Read-only Linux/Mac review; native Arch execution transferred to root | Common update behavior/build remain root | Checkpoint2408 plus reviewed fixture overlay; prior failures preserved | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Cancellation and private fixture fixes committed; Arch-only fixture checks GREEN | Arch public update/recovery passed; remaining traffic and rollback |
-| E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | Public user-local replacement and exact next-owner recovery GREEN | Handoff/recovery, machine authorization, current visual/package acceptance |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and existing scratch | App Gradle/CI remain root | Diagnostic2.2.8 and exact warm/cold evidence retained | Preserve5582; owned5584 API29;5580 protected | Second GUI edit fails final String allocation at48MiB; no persistence/replay | Retention accounting and causal fix, then API35/lifecycle/visuals |
+| F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/ActivationServer/common update remain root | bcd9 app-image public-path trace; privileged roles pending | Real x64 guest2314; ARM2299 historical only | Public serve rejects transfer-parent ACL; exact cause under review | Packaged fix, kernel-process proof integration, VPN/MSI binding |
+| E-Linux | root (previous worker inactive) | Linux native evidence and remaining execution | Common update/build remain root | Ubuntu2318 and Arch2317 same-source recovery passed | Fedora2316 evidence review pending; preserve unrelated VMs | Native quick launchers passed; full inventory audit pending | Remaining traffic, rollback and final-package coverage |
+| E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | User-local recovery passed; machine outcome unknown and preserved | Fresh fixture, machine authorization/recovery, visuals |
+| E-Fixture | mac_fixture_terra (Terra medium) | prepare_desktop_update_fixture.py, fixture_environment.py and their two test files | Lifecycle/docs/version remain root | Completed-stage cleanup and Python3.9 archive compatibility | Same Mac guest for exclusive fixture checks; Arch task storage | Portable tests passed; archive graph safety correction under review | Final hashes/native Windows tests, then fresh space-bounded fixture |
 
 Only one host Gradle invocation at a time. No source edits during artifact freeze.
 Native artifacts are immutable and require source fingerprints and byte hashes.

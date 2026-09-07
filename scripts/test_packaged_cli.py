@@ -295,7 +295,12 @@ def smoke(launcher, expected_version):
                 deadline = time.monotonic() + 30
                 while owner.poll() is None and not (workspace / "activation.port").exists() and time.monotonic() < deadline:
                     time.sleep(0.05)
-                require(owner.poll() is None and (workspace / "activation.port").exists(), "Serve did not become ready")
+                if owner.poll() is not None or not (workspace / "activation.port").exists():
+                    log.flush()
+                    with Path(log.name).open("rb") as output:
+                        content = output.read(8192)
+                    raise AssertionError(f"Serve did not become ready: exit={owner.poll()}; "
+                                         f"output={content.decode('utf-8', errors='replace')!r}")
                 status = envelope(invoke(workspace, "--json", "status"))
                 require(status["data"]["runtimeRunning"] is False, "Fresh owner unexpectedly connected")
                 require(bool(status["controllerId"]), "Owner identity is missing")
