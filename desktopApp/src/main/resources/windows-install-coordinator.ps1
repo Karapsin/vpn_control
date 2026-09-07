@@ -1,6 +1,7 @@
 # Elevated fixed coordinator: protected gate/receipts and process inspection only. Never executes an MSI.
 $owner = $null; $worker = $null; $frontend = $null
 $gate = $null; $cancel = $null
+$replacement = $null
 $reserved = $false; $exclusive = $false; $pending = $false
 $terminal = $false; $installing = $false
 $script:sequence = -1L
@@ -63,6 +64,7 @@ try {
             $frontend.StartedAtEpochMillis -ne $request['frontendStartedAtEpochMillis'] -or $frontend.Image -ine $request['launcher']) { throw 'CONFLICT' }
     }
     $installation = Pin-Directory ([IO.Path]::GetDirectoryName($request['launcher'])) $owner.Principal
+    $replacement = [VpnInstallNative+ExecutableReplacementSet]::new($installation,$owner.Principal)
     $installationId = [VpnInstallNative]::InstallationId($installation)
     $machine = [IO.Path]::Combine([VpnInstallNative]::ProgramData(),'vpn-control-install-jobs')
     # Pin existing ancestry before creating any privileged child; native CREATE_NEW never follows leaves.
@@ -104,14 +106,14 @@ try {
         Start-Sleep -Milliseconds 100
     }
     # Legacy/nonparticipating copies are not killed. Any uninspectable process fails closed.
-    foreach ($process in [Diagnostics.Process]::GetProcesses()) {
+    while ($true) {
+        if ((Is-Cancelled) -or $worker.Exited) { Publish-Receipt 'CANCELLED' 'CANCELLED'; $terminal=$true; return }
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'BUSY' }
         try {
-            if ($process.Id -in @(0,4,$PID,$worker.Pid)) { continue }
-            try { $image = [VpnInstallNative]::ProcessImage([uint32]$process.Id) }
-            catch { if ($process.HasExited) { continue }; throw 'BUSY' }
-            if ([IO.Path]::GetDirectoryName($image) -ieq [IO.Path]::GetDirectoryName($request['launcher']) -and
-                [IO.Path]::GetFileName($image) -in @('vpn-control.exe','vpn-control-cli.exe')) { throw 'BUSY' }
-        } finally { $process.Dispose() }
+            Assert-NoInstallationCopies ([Diagnostics.Process]::GetProcesses()) $request['launcher'] @(0,4,$PID,$worker.Pid) $replacement
+            if ($replacement.TryReady()) { break }
+        } catch { if ($_.Exception.Message -cne 'BUSY') { throw } }
+        Start-Sleep -Milliseconds 100
     }
     $installing=$true
     Publish-Receipt 'INSTALLING'
@@ -144,5 +146,6 @@ try {
     if ($worker) { $worker.Dispose() }
     if ($frontend) { $frontend.Dispose() }
     if ($owner) { $owner.Dispose() }
+    if ($replacement) { $replacement.Dispose() }
     Close-Pins
 }

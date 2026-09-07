@@ -5,14 +5,13 @@ import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 
-/** Normal-process read-only participation in a pre-existing protected installer gate. */
+/** Physical process pins participate even before the first protected installer gate exists. */
 internal object DesktopWindowsInstallAdmission {
     fun enter(launcher: Path, native: WindowsAdmissionNative = JnaWindowsInstallAdmission(),
         allowPendingControl: Boolean = false, onPendingControl: () -> Unit = {}): AutoCloseable {
         val executable = DesktopWindowsInstallJobBackend.canonical(launcher.toString())
         require(executable.substringAfterLast('\\').lowercase(java.util.Locale.ROOT) in
             setOf("vpn-control.exe", "vpn-control-cli.exe")) { "Unapproved launcher" }
-        val parent = executable.substringBeforeLast('\\').let { if (it.length == 2) "$it\\" else it }
         val sid = native.currentSid()
         val handles = mutableListOf<WindowsInstallNative.Handle>()
         var gate: WindowsInstallNative.Handle? = null
@@ -20,14 +19,70 @@ internal object DesktopWindowsInstallAdmission {
         fun release() {
             var failure: Throwable? = null
             if (locked) {
-                runCatching { native.unlockShared(requireNotNull(gate)) }.onFailure { failure = it }
-                locked = false
+                runCatching { native.unlockShared(requireNotNull(gate)); locked = false }.onFailure { failure = it }
             }
-            handles.asReversed().forEach { handle -> runCatching { native.close(handle) }.onFailure { failure = failure ?: it } }
-            handles.clear()
+            for (index in handles.indices.reversed()) {
+                val handle = handles[index]
+                runCatching {
+                    native.close(handle)
+                    handles.removeAt(index)
+                    if (handle === gate) locked = false
+                }.onFailure { failure = failure ?: it }
+            }
             failure?.let { throw it }
         }
-        fun missing(): AutoCloseable { release(); return AutoCloseable { } }
+        fun retainedLease() = object : AutoCloseable {
+            @Synchronized override fun close() = release()
+        }
+        fun physicalInfo(handle: WindowsInstallNative.Handle, directory: Boolean): WindowsInstallInfo {
+            require(native.persistentAcl(handle)) { "Untrusted installation volume" }
+            return native.inspect(handle).also { info ->
+                require(info.disk && info.directory == directory && info.attributes and 0x400 == 0 && info.reparseTag == 0) {
+                    "Reparse/device path rejected"
+                }
+                require(directory || info.links == 1) { "Hard-linked process image rejected" }
+            }
+        }
+        fun physicalAncestry(): List<WindowsInstallNative.Handle> {
+            val result = mutableListOf<WindowsInstallNative.Handle>()
+            var prefix = executable.substring(0, 3)
+            val paths = mutableListOf(prefix)
+            for (component in executable.substring(3).split('\\')) {
+                prefix = prefix.trimEnd('\\') + "\\" + component
+                paths += prefix
+            }
+            var previous: WindowsInstallNative.Handle? = null
+            var previousCanonical: String? = null
+            for ((index, path) in paths.withIndex()) {
+                // INSPECT includes READ_DATA and denies write/delete sharing. Each retained
+                // linked child also prevents its parent becoming an empty reparse target.
+                val handle = native.openDirectory(path)
+                handles += handle
+                physicalInfo(handle, directory = index != paths.lastIndex)
+                val canonical = native.canonicalPath(handle)
+                previous?.let { actualParent ->
+                    require(canonical.substringBeforeLast('\\') == previousCanonical) { "Unlinked process ancestry" }
+                    physicalInfo(actualParent, directory = true)
+                    require(native.canonicalPath(actualParent).trimEnd('\\') == previousCanonical) { "Changed process ancestry" }
+                }
+                result += handle
+                previous = handle
+                previousCanonical = canonical.trimEnd('\\')
+            }
+            return result
+        }
+        fun installerApplicationTrust(application: List<WindowsInstallNative.Handle>) {
+            for ((index, handle) in application.withIndex()) {
+                val info = native.inspect(handle)
+                val trustedCurrent = "S-1-5-32-544"
+                val policy = info.copy(owner = if (info.owner == sid) trustedCurrent else info.owner,
+                    dacl = info.dacl?.map { if (it.sid == sid) it.copy(sid = trustedCurrent) else it })
+                val directory = index != application.lastIndex
+                WindowsInstallTrust.verify(policy,
+                    if (directory) WindowsInstallTrust.Kind.ANCESTOR else WindowsInstallTrust.Kind.STATUS,
+                    ancestorPinnedNonEmpty = directory)
+            }
+        }
         fun pinNonEmptyWitness(path: String, parent: WindowsInstallNative.Handle) {
             val canonicalParent = native.canonicalPath(parent).trimEnd('\\')
             for (name in native.children(path)) {
@@ -85,19 +140,22 @@ internal object DesktopWindowsInstallAdmission {
             return last
         }
         try {
-            val application = ancestry(parent, true)
-            val id = installationId(native.invariantUppercase(native.canonicalPath(application)))
+            val application = physicalAncestry()
+            val id = installationId(native.invariantUppercase(native.canonicalPath(application[application.lastIndex - 1])))
             val programData = DesktopWindowsInstallJobBackend.canonical(native.programData())
             ancestry(programData, false)
             val product = "$programData\\vpn-control-install-jobs"
             try { pin(product, false, finalProductRoot = true) }
-            catch (error: WindowsInstallNativeFailure) { if (error.code == 2) return missing(); throw error }
+            catch (error: WindowsInstallNativeFailure) { if (error.code == 2) return retainedLease(); throw error }
             gate = try { native.openGate("$product\\gate-$id") }
-            catch (error: WindowsInstallNativeFailure) { if (error.code == 2) return missing(); throw error }
+            catch (error: WindowsInstallNativeFailure) { if (error.code == 2) return retainedLease(); throw error }
             val retainedGate = requireNotNull(gate)
             handles += retainedGate
             require(native.persistentAcl(retainedGate)) { "Untrusted installation volume" }
             WindowsInstallTrust.verify(native.inspect(retainedGate), WindowsInstallTrust.Kind.STATUS)
+            // Ordinary execution does not confer installer authority. Existing protected
+            // installation state still requires the full application trust policy.
+            installerApplicationTrust(application)
             check(native.lockShared(retainedGate)) { "BUSY" }
             locked = true
             val info = native.inspect(retainedGate)
@@ -110,10 +168,7 @@ internal object DesktopWindowsInstallAdmission {
             // They cannot enter once the installer holds the exclusive replacement lock.
             check(bytes[8] == 0.toByte() || allowPendingControl) { "BUSY" }
             if (bytes[8] == 1.toByte()) onPendingControl()
-            return object : AutoCloseable {
-                private var closed = false
-                @Synchronized override fun close() { if (!closed) { closed = true; release() } }
-            }
+            return retainedLease()
         } catch (error: Throwable) { runCatching { release() }; throw error }
     }
 

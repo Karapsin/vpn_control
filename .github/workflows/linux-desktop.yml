@@ -26,6 +26,8 @@ on:
       - "scripts/test_linux_desktop_package.sh"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
+      - "scripts/test_jpackage_launcher.py"
+      - "scripts/test_jpackage_launcher_harness.py"
       - "scripts/package_arch_desktop_update.sh"
       - "scripts/install_arch_desktop_update.sh"
       - "scripts/test_arch_desktop_update.sh"
@@ -50,6 +52,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Verify native JDK launcher before packaging
+        run: python3 scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

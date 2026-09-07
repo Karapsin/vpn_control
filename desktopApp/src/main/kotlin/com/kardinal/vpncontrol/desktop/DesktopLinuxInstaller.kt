@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.UpdateAsset
+import com.kardinal.vpncontrol.model.ControlCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -151,7 +152,7 @@ internal class DesktopLinuxInstaller(private val stateDirectory: Path,
                 try { receiptReader() }
                 catch (missing: NoSuchFileException) {
                     check(coordinator.isAlive) {
-                        if (coordinator.exitValue() in setOf(126, 127)) "CANCELLED" else "UNAVAILABLE"
+                        linuxAuthorizationExitCode(coordinator.exitValue()).name
                     }
                     check(System.nanoTime() < authorizationDeadline) { "OUTCOME_UNKNOWN" }
                     delay(50)
@@ -310,3 +311,5 @@ internal fun linuxInstallPublishRecord(target: Path, bytes: ByteArray) {
         FileChannel.open(target.parent, StandardOpenOption.READ).use { it.force(true) }
     } finally { Files.deleteIfExists(temporary) }
 }
+
+internal fun linuxAuthorizationExitCode(exit: Int): ControlCode = if (exit == 126) ControlCode.CANCELLED else ControlCode.UNAVAILABLE

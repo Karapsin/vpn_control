@@ -46,7 +46,10 @@ python3 scripts/test_android_update_fixture.py
 python3 scripts/test_android_install_visual_inventory.py
 python3 scripts/test_desktop_update_fixture.py
 python3 scripts/test_fixture_environment.py
+python3 scripts/test_jpackage_launcher_harness.py
+python3 scripts/test_arch_public_update.py
 python3 scripts/test_macos_install_gate.py
+python3 scripts/test_macos_install_enospc.py
 python3 scripts/test_windows_native_helpers.py
 python3 scripts/test_windows_launcher_utf8.py
 python3 scripts/test_user_facing_terminology.py

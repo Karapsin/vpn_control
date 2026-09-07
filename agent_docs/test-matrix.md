@@ -256,3 +256,27 @@ original failure even if the additional diagnostic fails.
 the desktop update-fixture and Linux VM preparation suites. These checks cover
 effective JDK selection, canonical QEMU arguments, and read-only source extraction;
 they do not replace package installation and receipt recovery in disposable guests.
+
+`scripts/test_jpackage_launcher_harness.py` runs in release hygiene on every host.
+The actual Linux-only `scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"` runs
+after JDK setup and before the Linux package build. It builds a minimal native
+launcher with no application inputs and requires exact stdout, empty stderr and
+exit zero. This catches the observed Arch JDK child abort even when its parent
+exits zero; the same-patch Temurin comparison passed. Retain installed-package
+checks as well: a clean minimal launcher does not establish application behavior.
+
+`scripts/test_arch_public_update.py` exercises real bundle and JAR contents in
+routine hygiene. The native public installer driver accepts `--arch-source-fixture`
+with `--require-same-source-recovery` for bundle-installed Arch bases. It verifies
+the installed tree against the immutable base archive before owner startup;
+DEB/RPM scenarios still require package-manager ownership. Keep harness source
+hashes distinct from the immutable package fingerprint when testing older packages.
+
+The opt-in `scripts/test_macos_install_enospc.py` runs in the macOS package job
+using its assigned temporary fixture directory. It injects ENOSPC after a partial
+write through the production worker's receipt and package-capture paths, requires
+the original PREPARING receipt to survive, and verifies real admission rejects a
+second attempt with BUSY. A no-fault control exercises successful publication.
+These are component persistence tests; they do not replace a full machine install
+or resolve an existing uncertain job. Routine hygiene launches them with explicit
+skips outside an assigned macOS fixture.

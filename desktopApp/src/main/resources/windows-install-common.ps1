@@ -82,6 +82,21 @@ function Write-PrivateRecord([string]$Path, [string]$Principal, [string]$Json) {
     [VpnInstallNative]::PublishPrivateRecord($Path, $Principal, [Text.UTF8Encoding]::new($false,$true).GetBytes($Json))
 }
 
+# Internal callable seam; worker command lines cannot supply these readers.
+function Assert-NoInstallationCopies($Processes, [string]$Launcher, [uint32[]]$Excluded, $Installation,
+    [scriptblock]$ReadImage = { param($Id) [VpnInstallNative]::ProcessImage([uint32]$Id) },
+    [scriptblock]$SameImage = { param($Image, $Captured) $Captured.ContainsImage($Image) }) {
+    foreach ($process in $Processes) {
+        try {
+            if ($process.Id -in $Excluded) { continue }
+            try { $image = & $ReadImage $process.Id; $same = & $SameImage $image $Installation }
+            catch { if ($process.HasExited) { continue }; throw 'BUSY' }
+            if ($same -isnot [bool]) { throw 'BUSY' }
+            if ($same) { throw 'BUSY' }
+        } finally { $process.Dispose() }
+    }
+}
+
 function Read-ProtectedReceipt([string]$Job, [string]$JobId) {
     if (-not $script:protectedJob) {
         $null = Pin-Directory $Job $null

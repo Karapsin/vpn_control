@@ -9,6 +9,15 @@ from prepare_linux_install_vm import BASE, IMAGE, SHA256, capture_base_image, gu
 
 
 class LinuxInstallVmPlanTest(unittest.TestCase):
+    def test_arch_bootstrap_activates_socket_authentication_without_changing_helper_permissions(self):
+        config = guest_configuration("arch", "client-public", "host-public", "private-fixture")
+        # The pinned Arch polkit package intentionally ships helper-1 as 0755.
+        # Installing its socket dependency after boot does not start it. Without
+        # this activation the real terminal agent falls back to the setuid path
+        # and rejects authentication before any installer can run.
+        self.assertIn(["systemctl", "start", "polkit-agent-helper.socket"], config["runcmd"])
+        self.assertFalse(any("chmod" in command for command in config["runcmd"]))
+
     def test_distro_bootstrap_preserves_locked_user_and_absent_desktop_dependency(self):
         for distro in ("ubuntu", "fedora", "arch"):
             config = guest_configuration(distro, "client-public", "host-public", "private-test-fixture")

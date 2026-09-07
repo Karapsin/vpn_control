@@ -16,14 +16,104 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. Eight reviewed checkpoints
+Startup on 2026-09-07 fetched origin successfully. Nine reviewed checkpoints
 have been pushed to `origin/dev`; latest pushed SHA is
-`2408a6022169da18e3ff8aa46436333f2edc4df6`. Canonical version is **2.1.4**.
+`28c42598dd063357ea598ba06e3c0bf49ea53659`. Canonical version is **2.1.4**.
 Its managed prepush passed. Exact-SHA Fast Checks, Android Release APK, Linux
 Desktop Package and macOS Desktop Package passed; advisory VPN Integration also
 passed. Windows Desktop Package built EXE/MSI but extracted-console `--help`
-exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34148444261).
-This remains an unresolved delivery gate, with native admission diagnosis active.
+exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34151739039).
+The exact packaged diagnostic identifies the runner's D: root owner as
+NETWORK SERVICE, rejected by installer ancestry validation during ordinary
+startup. The causal quick regression now fails with `Untrusted installer owner`
+at the same validation point; an existing-protected-gate case passes. Evidence:
+`/tmp/vpn-windows-runner-owner-causal-red.log` and
+`/tmp/vpn-parity-28c-windows-ci-admission.json`. No installer trust expansion is
+approved. This remains an unresolved delivery gate pending a reviewed separation
+of ordinary startup and privileged installation checks.
+The ordinary-startup slice now retains physical executable/ancestor pins before
+the first gate and defers installer trust checks until a protected gate exists.
+Its four causal regressions failed before the change; admission14 and process4
+tests then passed with no skips (`/tmp/vpn-windows-ordinary-admission-green.log`).
+Native x64 sharing/alias experiments verified the required gate transition,
+including case, 8.3 and alternate drive aliases. Coordinator fencing is now integrated: actual file identities match aliases,
+readiness probes cover both launchers, and the exclusive gate spans replacement.
+The actual Windows JUnit run passed admission14/process4/captured-worker2 and
+coordinator alias behavior; its native mutation test caught a Java-to-PowerShell
+quote transport bug. That test now captures its C# bytes as Base64, with a frozen
+native rerun pending before checkpoint approval. Actual MSI replacement and
+protected-process enumeration remain separate unverified native gates.
+
+The Arch distro JDK's minimal native launcher emits a child abort despite its
+parent exiting zero. An isolated launcher built with the same-patch Temurin JDK
+passes. The quick regression and Linux pre-package probe are now wired into
+routine checks; fresh 28c Temurin base/target packages pass direct bundle
+replacement and static public launch checks. The subsequent public update and
+next-owner receipt recovery also passed, as recorded below.
+The new root-owned Arch verifier compares the complete installed tree to its
+hash-verified base archive, including launcher/runtime/JAR bytes, and checks the
+source-pair identity. Ten real-file regressions pass locally. The public driver
+accepts `--arch-source-fixture` only with same-source recovery; DEB/RPM paths
+retain package-manager ownership checks. The harness is separate from package inputs.
+The complete harness subsequently passed natively (Arch verifier10, launcher6,
+public harness12), and the actual frozen base2.1.3 tree was accepted. The first
+public update reached authorization but returned terminal CANCELLED without a
+handoff: the pinned Arch polkit package uses a socket helper, whose unit was
+inactive after cloud-init installation. Package integrity was clean and helper
+mode0755 was intentional. A causal provisioning regression failed before adding
+explicit socket activation; all11 VM preparation tests then passed. Logs:
+`/tmp/vpn-arch-polkit-socket-red.log` and `-green.log`. The assigned guest socket
+is now active without chmod or package changes. Original operation
+`ccaf10ba-4136-4a88-96c2-b94214d5f253` and evidence
+`/tmp/vpn-public-install-evidence-uazhxmg9` are preserved. This remains failure
+evidence, not successful replacement. The fixture TLS server is PID11640,
+port33925, under `fixture-28c-temurin/tls-public-sq4ow432` in guest2317;
+revalidate before reuse. Root currently owns guest execution.
+After confirming the first operation was terminal, a deliberate new request
+completed actual public Arch replacement from 2.1.3 to 2.1.4. Job
+`d812ab86-d318-4828-bc59-00a58e346dad` has protected sequence4 SUCCEEDED/OK;
+operation `ee59b917-ac7d-4a49-8205-46e47536a39c` recovered under new owner
+`d5750a69-d6cc-4321-a2ca-9a9d9f1893af` with original request/controller identity.
+Public update status reports installed=true and cleanupCode=OK; runtime remains
+OFF. Evidence: `/tmp/vpn-arch28c-public-recovery-evidence.json`, source fingerprint
+`6c96efd29fcd6b124bad05d6169e4e68c96f8bac03fa4beb4681d02136909494`.
+This is installed-package same-source update/recovery evidence, not traffic or
+rollback coverage. Guest-only TLS inputs and the private test credential remain
+owned by root pending exact fixture cleanup; no host trust was modified.
+The resulting authorization-error audit also found pkexec127 misreported as user
+cancellation. The quick regression failed with expected UNAVAILABLE / actual
+CANCELLED before the mapping fix; 126 still means cancellation. Logs:
+`/tmp/vpn-linux-authorization-exit-red.log` and `-green.log`. The focused union
+selected28 tests, executed25, skipped3 native-platform cases and had no failures.
+Native Windows checks remain necessary for its skipped cases.
+Current provisioning tests also passed11/11 on Arch Linux7.2.2 x86_64/Python3.14.7
+(`/tmp/vpn-arch-provisioning-native-current.log`). macOS15.7.7 ARM64/Python3.9.6
+executed provisioning11, Arch verifier10 and launcher harness6, with zero skips
+or failures (`/tmp/vpn-mac-current-python-native.log`). Each record contains
+actual source hashes and a dedicated guest scratch directory. Latest aggregate
+hygiene passed (`/tmp/vpn-parity-checkpoint10-hygiene-latest.log`); this is focused
+validation and does not replace the final managed prepush receipt.
+
+Eight old macOS fixture DMGs were archived with per-file hash verification and
+then removed only after confirming none were open. Guest free space rose from
+337 MB to 1.46 GB. Archive SHA256:
+`d1bb4907a697b8c1a9bb333793eceaacc25b8b466487e86768534fd4562d884c`;
+cleanup receipt: `/tmp/vpn-mac-old-dmg-cleanup-receipt.json`. The uncertain
+machine install job `2c8b216a-f967-4aaf-bd5c-07d0c163cc64` still has its protected
+PREPARING receipt and inputs preserved; it was not replayed.
+Current-source macOS gate/component tests passed 7/7 with no skips in the assigned
+guest, including actual launchd owner exit and watcher survival. Source hashes:
+`/tmp/vpn-mac-current-gate-source.json`; output:
+`/tmp/vpn-mac-current-gate-run.log`. This is component evidence, not proof of
+machine-wide package replacement or recovery.
+The new ENOSPC component regression also passed3/3 in that guest: actual production
+write calls fail after8 bytes during receipt publication or package capture;
+PREPARING survives and real gate admission rejects another attempt with BUSY.
+The no-fault control publishes SUCCEEDED. Evidence:
+`/tmp/vpn-mac-enospc-native-current.json` (worker SHA
+`39424e76eecb0cfa3188e22ff2dbf003ff2f8883e9df226d0cadba62c2e37e4d`).
+This characterizes existing correct failure behavior; no product fix or fake
+RED claim is involved. It now runs in the native macOS CI job and routine hygiene.
 
 Native launch coverage now includes the complete quick tier on macOS Python 3.11,
 Ubuntu Python 3.12.3, and Windows x64 Python 3.12.10. Windows selected 184 tests,
@@ -80,9 +170,9 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and owned scratch instrumentation | App Gradle/CI remain root | Frozen04f APK15/16; diagnostic17 retained | Preserve AVD5582 native failure; separate5584 API29;5580 protected | Host probes GREEN but second native OOM unresolved | ART reproducer, API35 lifecycle, visuals |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and owned scratch instrumentation | App Gradle/CI remain root | Frozen04f APK15/16; diagnostic17 retained | Preserve AVD5582 native failure; separate5584 API29;5580 protected | 48MiB rendered remove commits in scratch2.2.1 but returned-state allocation OOM persists | ART reproducer, API35 lifecycle, visuals |
 | F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/common update remain root | NativeAOT validate-only proof; privileged production roles pending | Real x64 guest2314; ARM2299 historical only | Python3.12 native quick tier GREEN; packaged static admission diagnosis active | Native launch inventory, fixed privileged roles, VPN/MSI production binding |
-| E-Linux | linux_terra (Terra medium) | Native Arch fixture execution; fixture source corrections transferred to root | Common update behavior/build remain root | Checkpoint2408 plus reviewed fixture overlay; prior failures preserved | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Cancellation and private fixture fixes committed; Arch-only fixture checks GREEN | Build immutable Arch package pair, public install/recovery |
+| E-Linux | linux_terra (Terra medium) | Read-only Linux/Mac review; native Arch execution transferred to root | Common update behavior/build remain root | Checkpoint2408 plus reviewed fixture overlay; prior failures preserved | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Cancellation and private fixture fixes committed; Arch-only fixture checks GREEN | Arch public update/recovery passed; remaining traffic and rollback |
 | E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | Public user-local replacement and exact next-owner recovery GREEN | Handoff/recovery, machine authorization, current visual/package acceptance |
 
 Only one host Gradle invocation at a time. No source edits during artifact freeze.

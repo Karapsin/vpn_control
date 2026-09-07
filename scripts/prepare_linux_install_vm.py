@@ -63,7 +63,10 @@ def guest_configuration(distribution, client_public, host_public, host_private):
         # this never changes the production installer's package transaction.
         "package_update": True, "package_upgrade": distribution == "arch", "packages": packages,
         "runcmd": [["systemctl", "enable", "--now", "ssh" if distribution == "ubuntu" else "sshd"],
-                   ["systemctl", "enable", "--now", "polkit"]],
+                   ["systemctl", "enable", "--now", "polkit"]] +
+                  # The pinned Arch package uses a socket-activated helper,
+                  # installed after sockets.target already started at boot.
+                  ([["systemctl", "start", "polkit-agent-helper.socket"]] if distribution == "arch" else []),
     }
 
 

@@ -19,6 +19,7 @@ on:
       - "scripts/prepare_macos_install_worker.sh"
       - "scripts/native/macos_install_worker.c"
       - "scripts/test_macos_install_gate.py"
+      - "scripts/test_macos_install_enospc.py"
       - "scripts/setup_macos_signing.sh"
       - "scripts/check_release_hygiene.sh"
       - "scripts/version_metadata.py"
@@ -43,11 +44,12 @@ jobs:
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
 
-      - name: Check native installer admission locks
+      - name: Check native installer admission and persistence
         run: |
           gate_fixture_dir="$(mktemp -d /private/tmp/vpn-parity-gate-ci.XXXXXX)"
           trap 'rmdir "$gate_fixture_dir"' EXIT
           VPN_CONTROL_MAC_INSTALL_GATE_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_gate.py
+          VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_enospc.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

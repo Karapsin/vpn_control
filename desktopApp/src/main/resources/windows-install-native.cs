@@ -145,6 +145,103 @@ public static class VpnInstallNative {
         if (file.IsInvalid) { file.Dispose(); throw new Win32Exception(Marshal.GetLastWin32Error()); }
         return file;
     }
+    // The coordinator borrows a strictly admitted directory. Metadata handles retain
+    // exact sibling identities but share writes/deletion so they do not obstruct MSI.
+    public sealed class ExecutableReplacementSet : IDisposable {
+        readonly SafeFileHandle directory;
+        readonly string directoryPath, directoryIdentity, principal;
+        readonly string[] paths = new string[2], identities = new string[2];
+        readonly List<SafeFileHandle> captured = new List<SafeFileHandle>();
+        readonly List<SafeFileHandle> readiness = new List<SafeFileHandle>();
+        bool disposed;
+        public ExecutableReplacementSet(SafeFileHandle installation, string inputPrincipal) {
+            directory=installation; principal=inputPrincipal;
+            Inspect(directory,true,false,principal);
+            directoryPath=FinalPath(directory).TrimEnd('\\');
+            directoryIdentity=ObjectIdentity(directory,true);
+            try {
+                string[] names={"vpn-control.exe","vpn-control-cli.exe"};
+                for (int index=0;index<names.Length;index++) {
+                    paths[index]=directoryPath+"\\"+names[index];
+                    SafeFileHandle file=OpenImageMetadata(paths[index]); captured.Add(file);
+                    Inspect(file,false,false,principal);
+                    if (!String.Equals(Path.GetDirectoryName(FinalPath(file)),directoryPath,StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("CONFLICT");
+                    identities[index]=ObjectIdentity(file,false);
+                }
+            } catch { try { Dispose(); } catch { } throw; }
+        }
+        public bool ContainsImage(string path) {
+            if (disposed) throw new ObjectDisposedException("ExecutableReplacementSet");
+            // Compare native object IDs, including aliases whose basename is an 8.3 name.
+            // An unavailable image is unknown to the caller, never evidence of absence.
+            using (SafeFileHandle image=OpenImageMetadata(path)) {
+                string identity=ObjectIdentity(image,false);
+                return String.Equals(identity,identities[0],StringComparison.Ordinal) ||
+                    String.Equals(identity,identities[1],StringComparison.Ordinal);
+            }
+        }
+        // Caller holds the protected gate's exclusive byte 0 throughout this call
+        // and subsequent replacement. Both probes close before MSI, because a
+        // retained WRITE handle would itself prevent normal publication/replacement.
+        public bool TryReady() {
+            if (disposed) throw new ObjectDisposedException("ExecutableReplacementSet");
+            CloseExact(readiness);
+            if (ObjectIdentity(directory,true)!=directoryIdentity || FinalPath(directory).TrimEnd('\\')!=directoryPath)
+                throw new IOException("CONFLICT");
+            try {
+                for (int index=0;index<paths.Length;index++) {
+                    SafeFileHandle file=CreateFileW(paths[index],0x40020080,7,IntPtr.Zero,3,0x00200000,IntPtr.Zero);
+                    if (file.IsInvalid) {
+                        int code=Marshal.GetLastWin32Error(); file.Dispose();
+                        // Mapped executable sections can report ACCESS_DENIED; neither
+                        // it nor sharing/lock contention establishes replacement readiness.
+                        if (code==5 || code==32 || code==33) return false;
+                        throw new Win32Exception(code);
+                    }
+                    readiness.Add(file);
+                    Inspect(file,false,false,principal);
+                    if (ObjectIdentity(file,false)!=identities[index] ||
+                        !String.Equals(Path.GetDirectoryName(FinalPath(file)),directoryPath,StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("CONFLICT");
+                }
+                return true;
+            } finally { CloseExact(readiness); }
+        }
+        public void Dispose() {
+            Exception failure=null;
+            try { CloseExact(readiness); } catch (Exception error) { failure=error; }
+            try { CloseExact(captured); } catch (Exception error) { if (failure==null) failure=error; }
+            disposed=readiness.Count==0 && captured.Count==0;
+            if (failure!=null) throw failure;
+        }
+        static void CloseExact(List<SafeFileHandle> handles) {
+            Exception failure=null;
+            for (int index=handles.Count-1;index>=0;index--) {
+                SafeFileHandle handle=handles[index];
+                if (!CloseHandle(handle.DangerousGetHandle())) {
+                    if (failure==null) failure=new Win32Exception(Marshal.GetLastWin32Error());
+                    continue; // Keep failed native ownership available for explicit retry.
+                }
+                handle.SetHandleAsInvalid(); handle.Dispose(); handles.RemoveAt(index);
+            }
+            if (failure!=null) throw failure;
+        }
+    }
+    static SafeFileHandle OpenImageMetadata(string path) {
+        SafeFileHandle file=CreateFileW(path,ReadControl|ReadAttributes,7,IntPtr.Zero,3,0x00200000,IntPtr.Zero);
+        if (file.IsInvalid) { int code=Marshal.GetLastWin32Error(); file.Dispose(); throw new Win32Exception(code); }
+        return file;
+    }
+    static string ObjectIdentity(SafeFileHandle file,bool directory) {
+        byte[] attributes=new byte[8], identity=new byte[24];
+        if (GetFileType(file)!=1 || !GetFileInformationByHandleEx(file,9,attributes,8) ||
+            !GetFileInformationByHandleEx(file,18,identity,24)) throw new IOException("Native image identity unavailable");
+        uint flags=BitConverter.ToUInt32(attributes,0);
+        if ((flags&0x400)!=0 || BitConverter.ToUInt32(attributes,4)!=0 || ((flags&0x10)!=0)!=directory)
+            throw new IOException("Native image identity rejected");
+        return BitConverter.ToString(identity);
+    }
     public static SafeFileHandle OpenReceipt(string path) {
         // Protected status is atomically replaced; a retained reader keeps its old
         // object. Private input/package reads above must continue denying deletion.

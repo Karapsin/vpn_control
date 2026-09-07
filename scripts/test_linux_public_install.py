@@ -20,6 +20,7 @@ import time
 import uuid
 
 from prepare_desktop_update_fixture import image_identity
+from arch_public_update import verify_arch_bundle_base
 
 
 def timed_update_command(action, seconds):
@@ -144,14 +145,20 @@ def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=No
         select.select([terminal_fd], [], [], wait)
 
 
-def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False):
+def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
+        arch_source_fixture=None):
     require(confirmed and os.uname().sysname == "Linux" and os.getuid() != 0,
             "Explicit owned-disposable-VM confirmation and non-root Linux user required")
     with open("/dev/tty", "rb"):
         pass
-    launcher = launcher.resolve(strict=True)
-    marker = launcher.parent.parent / "TEST-ONLY-INSTALL-FIXTURE.json"
-    fixture = json.loads(marker.read_text())
+    if arch_source_fixture is not None:
+        require(same_source_recovery and not fresh_deb_dependencies,
+                "Arch fixture requires same-source recovery without DEB dependency checks")
+        fixture = verify_arch_bundle_base(launcher, arch_source_fixture)
+    else:
+        launcher = launcher.resolve(strict=True)
+        marker = launcher.parent.parent / "TEST-ONLY-INSTALL-FIXTURE.json"
+        fixture = json.loads(marker.read_text())
     require(fixture.get("testOnly") is True and fixture.get("productionTrustChanged") is False,
             "Requires the marked metadata-only cloned app image, installed root-owned in the VM")
     require(launcher.read_bytes()[:4] == b"\x7fELF", "Requires the native packaged launcher")
@@ -163,7 +170,8 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
                 "Same-source recovery requires the property-built immutable source fixture")
         require(image_identity(launcher.parent.parent, fixture["version"]) ==
                 {key: fixture[key] for key in ("codeFingerprint", "mainJar", "mainJarSha256")}, "Installed base image differs from source fixture")
-        require_package_managed_launcher(launcher)
+        if arch_source_fixture is None:
+            require_package_managed_launcher(launcher)
     before_packages = None
     if fresh_deb_dependencies:
         before_packages = installed_debian_packages()
@@ -281,6 +289,8 @@ if __name__ == "__main__":
     parser.add_argument("--confirm-owned-disposable-vm", action="store_true")
     parser.add_argument("--require-same-source-recovery", action="store_true")
     parser.add_argument("--require-fresh-deb-dependencies", action="store_true")
+    parser.add_argument("--arch-source-fixture", type=Path,
+                        help="Verify an Arch bundle-installed base against this immutable source-pair fixture")
     args = parser.parse_args()
     run(args.launcher, args.expected_target_version, args.confirm_owned_disposable_vm,
-        args.require_same_source_recovery, args.require_fresh_deb_dependencies)
+        args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture)

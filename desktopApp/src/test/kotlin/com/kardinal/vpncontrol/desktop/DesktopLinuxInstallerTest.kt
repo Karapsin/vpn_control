@@ -12,6 +12,11 @@ import java.nio.channels.Channels
 import kotlin.test.*
 
 class DesktopLinuxInstallerTest {
+    @Test fun pkexecDismissalAndUnavailableExitRemainDistinct() {
+        assertEquals(ControlCode.CANCELLED, linuxAuthorizationExitCode(126))
+        assertEquals(ControlCode.UNAVAILABLE, linuxAuthorizationExitCode(127))
+    }
+
     @Test fun unavailableAuthorizationUsesCanonicalInteractionRequiredCode() {
         for ((uid, available) in listOf(0L to true, 1000L to false)) {
             val failure = assertFails { requireLinuxInstallAuthorization(uid, available) }
