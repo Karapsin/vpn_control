@@ -44,6 +44,7 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             verify_recovered_install(accepted, {**receipt, "phase": "INSTALLING"}, recovered)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX shell return-dispatch execution")
     def test_original_user_relaunch_preserves_headless_or_gui_return_intent(self):
         repository = Path(__file__).resolve().parent.parent
         watcher = (repository / "desktopApp/src/main/resources/linux-install-user.sh").read_text()

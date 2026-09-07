@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -22,6 +23,12 @@ exit 0
 '''
 
 
+def posix_shell():
+    if os.name == "nt":
+        raise unittest.SkipTest("postinst hook execution requires a POSIX shell")
+    return "/bin/sh"
+
+
 class LinuxPackagePostinstTest(unittest.TestCase):
     def test_deb_task_tracks_and_passes_resource_directory(self):
         build = (REPO / "desktopApp/build.gradle.kts").read_text()
@@ -33,6 +40,7 @@ class LinuxPackagePostinstTest(unittest.TestCase):
         self.assertEqual(1, RESOURCE.read_text().count("DESKTOP_COMMANDS_INSTALL"))
 
     def run_hook(self, *, desktop=False, action="configure", registration_exit=0, race_directory=False):
+        shell = posix_shell()
         with tempfile.TemporaryDirectory(prefix="vpn-postinst-") as temp:
             root = Path(temp)
             menu = root / "usr/share/desktop-directories"
@@ -58,7 +66,7 @@ mkdir() {{ command mkdir -m 0750 '{menu}'; command mkdir "$@"; }}
                 hook = hook.replace("set -e\n", "set -e\n" + shim, 1)
             script = root / "postinst"
             script.write_text(hook)
-            result = subprocess.run(["/bin/sh", str(script), action], capture_output=True, text=True,
+            result = subprocess.run([shell, str(script), action], capture_output=True, text=True,
                                     env={"PATH": os.environ["PATH"]}, timeout=10)
             return result, marker.exists(), menu.stat().st_mode & 0o777 if menu.exists() else None
 
@@ -92,6 +100,13 @@ mkdir() {{ command mkdir -m 0750 '{menu}'; command mkdir "$@"; }}
 
     def test_unknown_action_fails(self):
         self.assertNotEqual(0, self.run_hook(action="unexpected")[0].returncode)
+
+    def test_windows_skips_only_posix_hook_execution(self):
+        # This executes the real runner. The former implementation proceeded
+        # to subprocess creation; the current eligibility guard stops first.
+        with patch.object(os, "name", "nt"):
+            with self.assertRaises(unittest.SkipTest):
+                self.run_hook()
 
 
 if __name__ == "__main__":

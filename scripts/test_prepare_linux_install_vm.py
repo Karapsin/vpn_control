@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import hashlib
 import tempfile
@@ -46,7 +47,11 @@ class LinuxInstallVmPlanTest(unittest.TestCase):
             selected.assert_called_once_with("fedora")
             self.assertEqual("fedora.qcow2", image.name)
             self.assertEqual(digest, actual)
-            self.assertEqual(0o400, image.stat().st_mode & 0o777)
+            mode = image.stat().st_mode & 0o777
+            self.assertTrue(mode & 0o400)
+            self.assertFalse(mode & 0o222)
+            if os.name == "posix":
+                self.assertEqual(0o400, mode)
 
     def test_existing_clean_cloud_image_is_copied_and_reverified_without_changing_input(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -61,7 +66,11 @@ class LinuxInstallVmPlanTest(unittest.TestCase):
             self.assertEqual(digest, actual)
             self.assertEqual(source.read_bytes(), image.read_bytes())
             self.assertNotEqual(source.stat().st_ino, image.stat().st_ino)
-            self.assertEqual(0o400, image.stat().st_mode & 0o777)
+            mode = image.stat().st_mode & 0o777
+            self.assertTrue(mode & 0o400)
+            self.assertFalse(mode & 0o222)
+            if os.name == "posix":
+                self.assertEqual(0o400, mode)
 
     def test_changed_or_installed_task_disk_cannot_be_used_as_clean_image(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -93,14 +102,15 @@ class LinuxInstallVmPlanTest(unittest.TestCase):
 
     def test_only_localhost_user_network_and_task_disks(self):
         directory = Path("/tmp/vpn-install-test")
-        command = qemu_command(directory, "/usr/bin/qemu-system-x86_64", Path("/opt/qemu/code.fd"), 2307)
+        firmware = Path("/opt/qemu/code.fd")
+        command = qemu_command(directory, "/usr/bin/qemu-system-x86_64", firmware, 2307)
         self.assertIn("user,id=network,hostfwd=tcp:127.0.0.1:2307-:22", command)
         self.assertNotIn("-virtfs", command)
         self.assertNotIn("-fsdev", command)
         self.assertFalse(any("tap," in value or "bridge," in value for value in command))
         drives = [command[index + 1] for index, value in enumerate(command) if value == "-drive"]
         self.assertEqual(4, len(drives))
-        self.assertTrue(all(str(directory) in value or "readonly=on,file=/opt/qemu/code.fd" in value for value in drives))
+        self.assertTrue(all(str(directory) in value or "readonly=on,file=" + str(firmware) in value for value in drives))
 
     def test_unsafe_key_value_paths_and_ports_rejected(self):
         for path, port in (("/tmp/task,other=bad", 2307), ("/tmp/task\nnext", 2307), ("/tmp/task", 22)):

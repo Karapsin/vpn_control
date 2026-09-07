@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -239,6 +240,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "confirmation"):
             native_build(Path("/never-read"), False)
 
+    @unittest.skipUnless(os.name == "posix", "Physical Linux tar fixture requires POSIX file modes")
     def test_two_property_builds_capture_equal_code_and_original_source(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

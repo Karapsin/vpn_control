@@ -78,7 +78,7 @@ class LinuxRpmPackageTest(unittest.TestCase):
                                       'vpn-control', 'vpn-control', '2.1.4',
                                       {'license_type': 'MIT', 'vendor': 'Kardinal', 'release': '1'}, True)
         self.assertEqual(1, arguments.count('--resource-dir'))
-        self.assertEqual('/prepared image', arguments[arguments.index('--app-image') + 1])
+        self.assertEqual(str(Path('/prepared image')), arguments[arguments.index('--app-image') + 1])
         self.assertEqual('rpm', arguments[arguments.index('--type') + 1])
         self.assertEqual('MIT', arguments[arguments.index('--linux-rpm-license-type') + 1])
         self.assertNotIn('--input', arguments)
@@ -121,7 +121,7 @@ class LinuxRpmPackageTest(unittest.TestCase):
             previous.write_bytes(b'previous verified package')
 
             def run(command, **kwargs):
-                if command[0].endswith('/jpackage'):
+                if Path(command[0]).name == 'jpackage':
                     output = Path(command[command.index('--dest') + 1])
                     (output / previous.name).write_bytes(b'new package with bad scripts')
                     return subprocess.CompletedProcess(command, 0)

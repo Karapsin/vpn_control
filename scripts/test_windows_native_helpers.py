@@ -79,7 +79,7 @@ class WindowsNativeHelpersTest(unittest.TestCase):
         self.assertEqual(legacy_target / "transfer" / fixture, Path("/guests/old-native/transfer/native-aot-config-v2.zip"))
         with self.assertRaisesRegex(ValueError, "destination identity"):
             fixture_transfer_target(legacy_target, expected, fixture)
-        self.assertEqual(fixture_transfer_target(Path("/guests/fresh-msi"), expected, fixture), Path("/guests/fresh-msi/transfer/native-aot-config-v2.zip"))
+        self.assertEqual(fixture_transfer_target(Path("/guests/fresh-msi"), expected, fixture), Path("/guests/fresh-msi/transfer/native-aot-config-v2.zip").resolve())
 
     def test_import_allowlist_is_enforced(self):
         with tempfile.TemporaryDirectory() as scratch:

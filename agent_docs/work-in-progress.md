@@ -1210,3 +1210,27 @@ serializer20 plus cold48MiB pipeline1 passed with zero skips/failures. Evidence:
 /tmp/vpn-parity-android-proto-review-green-evidence. These are host regressions;
 new-reader API29/API35 packaged acceptance remains pending. Source is held for
 final metadata, managed prepush and checkpoint delivery.
+
+
+Checkpoint c44ebc5472502942dbea06c4fe0917e671ea97b2 was pushed to origin/dev
+with version2.1.3 after managed prepush passed: model30/core228/UI47,
+desktop868 (56 explicit native skips), Android430, instrumented compilation,
+hygiene/localization/agent/visual tooling. Local Codex config remains present
+and ignored; portable template/generator are tracked. Full parity is unfinished.
+Exact-SHA CI exposed fixture/workflow setup defects: Windows POSIX-shell tests
+were invoked from native Python; Linux early hygiene attempted a cold Gradle
+download before setup; Fast/Android invoked sdkmanager absent from PATH.
+Corrections keep portable tests active, move real SDK-free Gradle configuration
+after the build tier, and resolve pinned native tools from configured SDK roots.
+Fast regressions/evidence: /tmp/vpn-parity-hygiene-build-tier-{red,green}.log;
+/tmp/vpn-parity-prepare-android-native-tools-causal-red.log and
+/tmp/vpn-parity-prepare-android-native-tools-green.log. Windows test review also
+corrects path separators, resolved drive roots, and POSIX-only mode assumptions.
+These are CI portability fixes, not new native product acceptance. A new exact
+SHA must pass every required workflow before checkpoint delivery is verified.
+
+CI repair source held: focused postinst8/public7/DEB6/RPM8(one native skip)/
+VM preparation10/native-helper6/desktop fixture16 all passed. Actual former
+postinst process-launch failure is retained in /tmp/vpn-postinst-windows-legacy-red.txt;
+the permanent regression calls the current runner and verifies early Windows
+eligibility handling. Agent tool suite30 and fake SDK resolution5 also passed.

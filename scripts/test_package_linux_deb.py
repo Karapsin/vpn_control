@@ -60,8 +60,8 @@ class LinuxDebPackageTest(unittest.TestCase):
                                     {'vendor': 'Kardinal', 'description': 'Desktop VPN Control client',
                                      'maintainer': 'kardinal', 'category': 'Network', 'menu_group': 'Network', 'release': '1'})
         self.assertEqual(1, command.count('--resource-dir'))
-        self.assertEqual('/resources', command[command.index('--resource-dir') + 1])
-        self.assertEqual('/prepared image', command[command.index('--app-image') + 1])
+        self.assertEqual(str(Path('/resources')), command[command.index('--resource-dir') + 1])
+        self.assertEqual(str(Path('/prepared image')), command[command.index('--app-image') + 1])
         self.assertNotIn('--input', command)
         self.assertEqual('2.1.4', command[command.index('--app-version') + 1])
         self.assertEqual('kardinal', command[command.index('--linux-deb-maintainer') + 1])
@@ -97,7 +97,7 @@ class LinuxDebPackageTest(unittest.TestCase):
             previous.write_bytes(b'previous generated package')
 
             def run(command, **kwargs):
-                if command[0].endswith('/jpackage'):
+                if Path(command[0]).name == 'jpackage':
                     output = Path(command[command.index('--dest') + 1])
                     (output / previous.name).write_bytes(b'new package with broken hook')
                     return subprocess.CompletedProcess(command, 0)

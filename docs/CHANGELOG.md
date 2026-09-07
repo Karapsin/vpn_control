@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Route Android Find Best through the shared owner with guarded selection commits, cancellation, and consent handling.
 - Harden shared CLI streams, large routing persistence and platform installer recovery with native failure regressions.
 - Preserve Preferences wire compatibility and verify typed CLI output contracts.
+- Make package regression checks portable and resolve Android native tools from the configured SDK.
 
 ## 2.1.3 - 2026-09-06
 

@@ -41,10 +41,10 @@ python3 scripts/test_package_linux_deb.py
 python3 scripts/test_package_linux_rpm.py
 python3 scripts/test_linux_public_install_harness.py
 python3 scripts/test_prepare_linux_install_vm.py
+python3 scripts/test_prepare_android_native_tools.py
 python3 scripts/test_android_update_fixture.py
 python3 scripts/test_android_install_visual_inventory.py
 python3 scripts/test_desktop_update_fixture.py
-python3 scripts/test_desktop_sdk_independence.py
 python3 scripts/test_macos_install_gate.py
 python3 scripts/test_windows_native_helpers.py
 python3 scripts/test_windows_launcher_utf8.py

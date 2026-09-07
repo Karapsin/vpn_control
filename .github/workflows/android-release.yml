@@ -16,6 +16,8 @@ on:
       - "gradle.properties"
       - "gradlew"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/prepare_android_native_tools.sh"
+      - "scripts/test_prepare_android_native_tools.py"
       - "scripts/version_metadata.py"
       - "scripts/check_release_metadata.py"
 
@@ -41,7 +43,7 @@ jobs:
           java-version: "17"
 
       - name: Install pinned Android native build tools
-        run: sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
+        run: bash scripts/prepare_android_native_tools.sh
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

@@ -28,7 +28,7 @@ Use the smallest tier that gives meaningful coverage for the touched boundary.
 | --- | --- | --- |
 | Minimum local | Documentation-only changes, one-file pure logic changes, or early iteration before a larger check | `git diff --check` plus the mapped check set from Quick Mapping |
 | Expanded boundary | A patch crosses shared/platform, status/localization, runtime/config, or packaging boundaries | Run every mapped command for the touched rows and adjacent owner tests named in Common Combined Checks |
-| Full fast guardrails | Before pushing broad behavior, localization, runtime, agent lifecycle, or release workflow changes | `git diff --check`, release/docs hygiene, agent tool tests, theme/visual comparator checks, localization/status checks, and the Gradle command from CI Shortcut |
+| Full fast guardrails | Before pushing broad behavior, localization, runtime, agent lifecycle, or release workflow changes | `git diff --check`, release/docs hygiene, agent tool tests, theme/visual comparator checks, localization/status checks, the Gradle command from CI Shortcut, then `python3 scripts/test_desktop_sdk_independence.py` |
 | Manual or risky | Real VPN interruption, emulator/device VPN permission, tray/window-manager behavior, Windows UAC, VM packaging, reboot/autostart | Run only when the touched area requires it; get approval before interrupting VPN and report the closest automated coverage |
 
 If a mapped check cannot run because the environment lacks an Android SDK, emulator, VM, network access, or platform host, run the closest non-risky local check and report the missing prerequisite explicitly.
@@ -237,3 +237,8 @@ Manual checks are still needed for:
 - Live subscription/provider behavior.
 
 When a manual check is skipped, state the reason and name the closest automated coverage that ran.
+
+The desktop SDK-independence check configures a real Gradle graph. Run it after
+JDK/Gradle setup and the ordinary build tier (managed prepush and Fast Checks),
+not in dependency-free release hygiene. Its copied project deliberately omits
+local SDK settings while reusing the prepared Gradle dependency cache.

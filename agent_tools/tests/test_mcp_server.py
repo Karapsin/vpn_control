@@ -31,6 +31,23 @@ def command_result(*, stdout: str = "", stderr: str = "", ok: bool = True) -> di
 
 
 class McpSurfaceTest(unittest.TestCase):
+    def test_android_native_tool_setup_uses_sdk_resolver(self) -> None:
+        for name in ("android-release.yml", "fast-checks.yml"):
+            workflow = (mcp_server.REPO_ROOT / ".github/workflows" / name).read_text()
+            self.assertIn("run: bash scripts/prepare_android_native_tools.sh", workflow)
+            self.assertNotIn("run: sdkmanager ", workflow)
+
+    def test_sdk_graph_check_runs_after_build_setup_not_in_hygiene(self) -> None:
+        script = "scripts/test_desktop_sdk_independence.py"
+        hygiene = (mcp_server.REPO_ROOT / "scripts/check_release_hygiene.sh").read_text()
+        self.assertNotIn(script, hygiene, "Hygiene must not bootstrap Gradle before toolchain setup")
+        commands = mcp_server.PREPUSH_COMMANDS
+        graph = next(i for i, command in enumerate(commands) if script in command)
+        build = next(i for i, command in enumerate(commands) if ":desktopApp:test" in command)
+        self.assertGreater(graph, build)
+        workflow = (mcp_server.REPO_ROOT / ".github/workflows/fast-checks.yml").read_text()
+        self.assertGreater(workflow.index("python " + script), workflow.index("- name: Run fast unit tests"))
+
     def test_unbounded_internal_command_output_is_not_truncated(self) -> None:
         expected = "x" * (mcp_server.MAX_OUTPUT_CHARS + 100)
 
