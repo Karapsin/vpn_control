@@ -9,6 +9,7 @@ NoCloud: https://docs.cloud-init.io/en/latest/reference/datasources/nocloud.html
 QEMU: https://www.qemu.org/docs/master/system/invocation.html
 """
 import argparse
+from fixture_environment import validate_qemu_argv
 import hashlib
 import json
 import os
@@ -155,6 +156,7 @@ def prepare(directory, port, image_source=None, distribution="ubuntu"):
             raise RuntimeError("Missing installed QEMU x86 UEFI firmware")
     # Noble amd64 supports the default BIOS boot shown by the official cloud-init QEMU guide.
     command = qemu_command(directory, binaries["qemu-system-x86_64"], firmware, port, "kvm" if linux else "tcg")
+    validate_qemu_argv(command)
     directory.mkdir(mode=0o700)
     os.umask(0o077)
 

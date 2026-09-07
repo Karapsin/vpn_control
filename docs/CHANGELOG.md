@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Prevent recursive installer test fixtures on Python 3.12 and cover filesystem resolution differences.
 - Close cancelled update responses and make native installer regression fixtures portable and resilient to observation loss.
+- Add native-tested Windows launcher diagnostics and reliable Arch update fixtures.
 
 ## 2.1.4 - 2026-09-07
 

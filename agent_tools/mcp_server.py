@@ -142,6 +142,7 @@ PREPUSH_COMMANDS = [
     ],
     [sys.executable, "scripts/test_desktop_sdk_independence.py"],
     [sys.executable, "scripts/test_windows_packaging_graph.py"],
+    [sys.executable, "scripts/test_windows_install_admission_diagnostic.py"],
 ]
 
 SENSITIVE_PARTS = {

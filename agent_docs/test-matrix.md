@@ -243,3 +243,16 @@ The desktop SDK-independence check configures a real Gradle graph. Run it after
 JDK/Gradle setup and the ordinary build tier (managed prepush and Fast Checks),
 not in dependency-free release hygiene. Its copied project deliberately omits
 local SDK settings while reusing the prepared Gradle dependency cache.
+
+The Windows admission diagnostic behavior suite compiles and executes Java17
+stubs, so `scripts/test_windows_install_admission_diagnostic.py` runs after JDK
+setup in Fast Checks and Windows packaging, and in managed prepush. It is not
+part of dependency-free hygiene. Native Windows reruns must also exercise Unicode
+arguments/classpaths and exact packaged JARs; host stub results do not establish
+Windows ACL or launcher admission behavior. The public package smoke retains its
+original failure even if the additional diagnostic fails.
+
+`scripts/test_fixture_environment.py` belongs in routine release hygiene alongside
+the desktop update-fixture and Linux VM preparation suites. These checks cover
+effective JDK selection, canonical QEMU arguments, and read-only source extraction;
+they do not replace package installation and receipt recovery in disposable guests.

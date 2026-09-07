@@ -238,6 +238,22 @@ def launch_diagnostics(result):
     return f"exit={result.returncode}; stdout={repr(result.stdout)[:4096]}; stderr={repr(result.stderr)[:4096]}"
 
 
+def require_static_launch(condition, message, launcher, environment):
+    if condition:
+        return
+    if sys.platform == "win32":
+        try:
+            from windows_install_admission_diagnostic import diagnose
+            java_home = environment.get("JAVA_HOME")
+            if not java_home:
+                raise RuntimeError("JDK 17 is required for admission diagnostics")
+            report = diagnose(launcher, java_home)
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+            report = {"schemaVersion": 1, "diagnostic": "unavailable", "failureClass": type(error).__name__}
+        print("[vpn-control] Windows admission diagnostic: " + json.dumps(report, sort_keys=True), file=sys.stderr)
+    raise AssertionError(message)
+
+
 def smoke(launcher, expected_version):
     launcher = Path(launcher).resolve(strict=True)
     require(launcher.is_file(), "Launcher must be a file")
@@ -257,11 +273,13 @@ def smoke(launcher, expected_version):
 
         try:
             help_result = invoke(first, "--help")
-            require(help_result.returncode == 0 and "Usage:" in help_result.stdout and
-                    not help_result.stderr.strip(), "Help must exit 0 and use stdout: " + launch_diagnostics(help_result))
+            require_static_launch(help_result.returncode == 0 and "Usage:" in help_result.stdout and
+                    not help_result.stderr.strip(), "Help must exit 0 and use stdout: " + launch_diagnostics(help_result),
+                    launcher, environment)
             version = invoke(first, "--version")
-            require(version.returncode == 0 and expected_version in version.stdout and
-                    not version.stderr.strip(), "Version must report the packaged product on stdout: " + launch_diagnostics(version))
+            require_static_launch(version.returncode == 0 and expected_version in version.stdout and
+                    not version.stderr.strip(), "Version must report the packaged product on stdout: " + launch_diagnostics(version),
+                    launcher, environment)
             envelope(invoke(first, "--json", "capabilities"))
             envelope(invoke(first, "--json", "settings", "show", "--typo"), 1, "INVALID_ARGUMENT")
             envelope(invoke(first, "--json", "status"), 2, "UNAVAILABLE")

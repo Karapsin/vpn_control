@@ -19,6 +19,8 @@ import subprocess
 import tarfile
 import zipfile
 
+from fixture_environment import extract_readonly_archive, require_jdk17
+
 
 MANIFEST_PATH = "/Karapsin/vpn_control/releases/latest/download/update-manifest.json"
 RELEASE = "disposable-desktop-fixture"
@@ -200,10 +202,12 @@ def runtime_identity(runtime, platform, architecture):
     return {"sha256": file_hash(runtime), "sizeBytes": runtime.stat().st_size}
 
 
-def prepare(repository, output, base_version, target_version, runtime, platform, architecture):
+def prepare(repository, output, base_version, target_version, runtime, platform, architecture, package_family="default"):
     repository = repository.resolve(strict=True)
     output = output.absolute()
     require(platform in PLATFORMS, "Unsupported desktop platform")
+    require(package_family in ("default", "arch"), "Unsupported fixture package family")
+    require(package_family != "arch" or platform == "linux", "Arch family requires Linux platform")
     require(version_build(target_version) > version_build(base_version), "Target must be newer than the base")
     require(not output.exists() and not output.is_symlink() and output.parent.is_dir(), "Use a new output directory")
     require(not output.is_relative_to(repository), "Keep generated fixture output outside the source repository")
@@ -233,9 +237,9 @@ def prepare(repository, output, base_version, target_version, runtime, platform,
                        "preparation": [["bash", "./scripts/prepare_macos_install_worker.sh"]] if platform == "macos" else [],
                        "command": [("gradlew.bat" if platform == "windows" else "./gradlew"), "--no-daemon",
                                    "-PvpnControlVersion=" + version, ":desktopApp:createDistributable",
-                                   *[":desktopApp:" + task for task in PLATFORMS[platform]["tasks"]]]})
+                                   *[":desktopApp:" + task for task in ([] if package_family == "arch" else PLATFORMS[platform]["tasks"])]]})
     plan = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False,
-            "sourceFingerprint": snapshot["sourceFingerprint"], "platform": platform, "architecture": architecture,
+            "sourceFingerprint": snapshot["sourceFingerprint"], "platform": platform, "packageFamily": package_family, "architecture": architecture,
             "runtime": {"file": saved_runtime.name, **captured_runtime}, "stages": stages}
     write_json(output / "build-plan.json", plan)
     # The source copy is a content-addressed input; builders make writable copies.
@@ -352,6 +356,8 @@ def native_build(directory, confirmed, run_command=None):
     require(runtime_identity(runtime, plan["platform"], plan["architecture"]) ==
             {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}, "Frozen runtime mismatch")
     run_command = run_command or subprocess.run
+    if plan["platform"] == "linux":
+        require_jdk17()
     product = directory / "packages"
     product.mkdir(mode=0o700)  # Never resume by rebuilding a partially used fixture.
     built = []
@@ -387,7 +393,7 @@ def native_build(directory, confirmed, run_command=None):
         exported_image = stage_output / image.name
         shutil.copytree(image, exported_image, symlinks=True)
         assets = []
-        for extension in PLATFORMS[plan["platform"]]["extension"]:
+        for extension in (() if plan.get("packageFamily") == "arch" else PLATFORMS[plan["platform"]]["extension"]):
             candidates = list(root.glob("**/*." + extension))
             require(len(candidates) == 1, "Expected exactly one native " + extension + " package")
             source = candidates[0]
@@ -530,6 +536,10 @@ def main():
     prepare_parser.add_argument("--runtime", type=Path, required=True)
     prepare_parser.add_argument("--platform", choices=PLATFORMS, required=True)
     prepare_parser.add_argument("--architecture", choices=("x86_64", "arm64"), required=True)
+    prepare_parser.add_argument("--package-family", choices=("default", "arch"), default="default")
+    extract_parser = commands.add_parser("extract")
+    extract_parser.add_argument("--archive", type=Path, required=True)
+    extract_parser.add_argument("--output", type=Path, required=True)
     build_parser = commands.add_parser("build")
     build_parser.add_argument("--directory", type=Path, required=True)
     build_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
@@ -542,7 +552,10 @@ def main():
     args = parser.parse_args()
     if args.action == "prepare":
         result = prepare(args.repository, args.output, args.base_version, args.target_version,
-                         args.runtime, args.platform, args.architecture)
+                         args.runtime, args.platform, args.architecture, args.package_family)
+    elif args.action == "extract":
+        extract_readonly_archive(args.archive, args.output)
+        result = {"extracted": str(args.output)}
     elif args.action == "build":
         result = native_build(args.directory, args.confirm_owned_disposable_guest)
     else:

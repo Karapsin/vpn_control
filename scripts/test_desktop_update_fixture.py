@@ -17,6 +17,13 @@ from prepare_desktop_update_fixture import (
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    def setUp(self):
+        # These tests create inert images with a fake Gradle executor. JVM
+        # selection is exercised separately without starting a host build.
+        jdk_patch = patch("prepare_desktop_update_fixture.require_jdk17")
+        self.jdk_check = jdk_patch.start()
+        self.addCleanup(jdk_patch.stop)
+
     def test_public_ready_phase_admits_only_expected_downloaded_update(self):
         # Public installed-DMG status observed during the native coordinator run.
         status = {"ok": True, "final": True, "data": {
@@ -29,6 +36,17 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             require_install_ready(status, "2.1.17")
         with self.assertRaises(ValueError):
             require_install_ready({**status, "ok": False}, "2.1.16")
+
+    def test_wrong_jvm_fails_before_creating_build_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _, _, output, _ = self.prepared(Path(temporary))
+            calls, runner = self.fake_gradle()
+            self.jdk_check.side_effect = ValueError("Native fixture build requires JDK 17")
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                with self.assertRaisesRegex(ValueError, "JDK 17"):
+                    native_build(output, True, runner)
+            self.assertFalse((output / "packages").exists())
+            self.assertEqual([], calls)
 
     def source(self, root):
         repository = root / "repo"
@@ -357,6 +375,55 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                                          ("GET", path + "?anything", "github.com")):
                 self.assertIsNone(select_resource(method, target, host, manifest))
             self.assertEqual("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", asset["sha256"])
+
+
+class ArchFixturePlanTest(unittest.TestCase):
+    def test_explicit_arch_plan_omits_deb_rpm_while_default_retains_them(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper = DesktopUpdateFixtureTest()
+            repository, runtime = helper.source(root)
+            default = prepare(repository, root / "default", "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            arch = prepare(repository, root / "arch", "2.1.2", "2.1.3", runtime, "linux", "x86_64", "arch")
+            default_tasks = default["stages"][0]["command"]
+            arch_tasks = arch["stages"][0]["command"]
+            self.assertIn(":desktopApp:packageDeb", default_tasks, "former plan reaches unsupported Arch DEB task")
+            self.assertIn(":desktopApp:packageRpm", default_tasks)
+            self.assertNotIn(":desktopApp:packageDeb", arch_tasks)
+            self.assertNotIn(":desktopApp:packageRpm", arch_tasks)
+            self.assertEqual("arch", arch["packageFamily"])
+            self.assertEqual("default", default["packageFamily"])
+
+
+class ArchFixtureEmissionTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "physical arch bundle modes require POSIX")
+    def test_arch_family_emits_only_arch_bundle(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            helper = DesktopUpdateFixtureTest()
+            root=Path(temporary); repository, runtime=helper.source(root)
+            output=root/"fixture"; prepare(repository, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64", "arch")
+            calls, runner=helper.fake_gradle()
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.require_jdk17") as jdk_check:
+                receipt=native_build(output, True, runner)
+            jdk_check.assert_called_once_with()
+            self.assertTrue(all(":desktopApp:packageDeb" not in c[0] and ":desktopApp:packageRpm" not in c[0] for c in calls))
+            self.assertEqual({"arch-bundle"}, {a["packageType"] for a in receipt["manifest"]["assets"]})
+
+
+class FixtureArchiveExtractionTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "readonly archive permissions require POSIX")
+    def test_delayed_extraction_handles_real_readonly_directory(self):
+        from fixture_environment import extract_readonly_archive
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source=root/"source"; source.mkdir(); (source/"child").write_text("ok")
+            (source/"child").chmod(0o400)
+            source.chmod(0o500)
+            archive=root/"fixture.tar.gz"; subprocess.run(["tar", "-C", str(root), "-czf", str(archive), "source"], check=True)
+            output=root/"out"; extract_readonly_archive(archive, output)
+            self.assertEqual("ok", (output/"source/child").read_text())
+            self.assertEqual(0o500, (output/"source").stat().st_mode & 0o777)
+            self.assertEqual(0o400, (output/"source/child").stat().st_mode & 0o777)
 
 
 if __name__ == "__main__":

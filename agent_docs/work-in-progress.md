@@ -16,13 +16,13 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. Seven reviewed checkpoints
+Startup on 2026-09-07 fetched origin successfully. Eight reviewed checkpoints
 have been pushed to `origin/dev`; latest pushed SHA is
-`87f0e67e142892c3cc54303c3aed66fafa88fe94`. Canonical version is **2.1.4**.
+`2408a6022169da18e3ff8aa46436333f2edc4df6`. Canonical version is **2.1.4**.
 Its managed prepush passed. Exact-SHA Fast Checks, Android Release APK, Linux
 Desktop Package and macOS Desktop Package passed; advisory VPN Integration also
 passed. Windows Desktop Package built EXE/MSI but extracted-console `--help`
-exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34144757827).
+exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34148444261).
 This remains an unresolved delivery gate, with native admission diagnosis active.
 
 Native launch coverage now includes the complete quick tier on macOS Python 3.11,
@@ -41,8 +41,21 @@ and are frozen for broader validation.
 Android API29 native GUI add succeeded on the frozen 04f base15 APK, but the next
 remove returned resource exhaustion and unknown outcome; unchanged full readback
 was preserved and the mutation was not replayed. A separate API29 emulator is
-being prepared for causal ART/Compose instrumentation. Host model probes alone
-have not reproduced that second native failure.
+being used for causal ART/Compose instrumentation. A short-domain 56,002-item
+scratch GUI owner-save test passed, but it was not pressure-equivalent to the
+original 11.8 MB long-domain input. Exact-input owner-save acceptance remains
+required; the short-input and host-only probes did not reproduce the failure.
+
+Long-domain scratch runs exhausted ART at persisted decoding and then document
+parsing. A subsequent fixture audit found an artificial second `ProfileStorage`
+facade/cache retaining another roughly 11.7MiB projection alongside the GUI owner.
+Those scratch OOMs are therefore confounded and do not establish production causes.
+The original 5582 production failure remains authoritative and unresolved. The
+fixture must seed separately, cold restart, avoid a test-owned storage cache, and
+rerun the unfixed source before evaluating primitive-table or local-admission
+prototypes. All prototypes remain scratch-only. Required acceptance still includes
+complete add/remove persistence, export and independent cold readback at the same
+48MiB growth limit; the short-input GREEN is not a substitute.
 
 All inherited dirty product buckets were preserved and included in checkpoint
 c44ebc5472502942dbea06c4fe0917e671ea97b2, followed by two CI repair commits.
@@ -69,7 +82,7 @@ commit, push, bump versions or spawn further agents.
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
 | C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and owned scratch instrumentation | App Gradle/CI remain root | Frozen04f APK15/16; diagnostic17 retained | Preserve AVD5582 native failure; separate5584 API29;5580 protected | Host probes GREEN but second native OOM unresolved | ART reproducer, API35 lifecycle, visuals |
 | F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/common update remain root | NativeAOT validate-only proof; privileged production roles pending | Real x64 guest2314; ARM2299 historical only | Python3.12 native quick tier GREEN; packaged static admission diagnosis active | Native launch inventory, fixed privileged roles, VPN/MSI production binding |
-| E-Linux | linux_terra (Terra medium) | Linux installers/harnesses; explicitly assigned manifest cancellation in DesktopUpdateService and focused tests | Other common update behavior/build remain root | Frozen201b installer fixtures; native test snapshot based8840 plus harness fix | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Private fixture focused native tests GREEN; body cancellation RED | Causal cancellation fix, routine PTY observer regression, Arch/native evidence |
+| E-Linux | linux_terra (Terra medium) | Native Arch fixture execution; fixture source corrections transferred to root | Common update behavior/build remain root | Checkpoint2408 plus reviewed fixture overlay; prior failures preserved | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Cancellation and private fixture fixes committed; Arch-only fixture checks GREEN | Build immutable Arch package pair, public install/recovery |
 | E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | Public user-local replacement and exact next-owner recovery GREEN | Handoff/recovery, machine authorization, current visual/package acceptance |
 
 Only one host Gradle invocation at a time. No source edits during artifact freeze.
@@ -77,7 +90,7 @@ Native artifacts are immutable and require source fingerprints and byte hashes.
 
 ## Implemented And Locally Tested
 
-Native Linux follow-up fixes are frozen for checkpoint validation. Manifest
+Native Linux follow-up fixes were validated and pushed in checkpoint eight. Manifest
 fetching uses an asynchronous request with explicit response-body ownership so
 cancellation remains prompt during headers/body stalls, and a completed body is
 closed even if cancellation wins before the get handoff. Cleanup cancels the
@@ -86,11 +99,54 @@ pre-lease ownership RED are retained; the latter is
 `/tmp/vpn-linux312-lease-preownership-red.log` (SHA256
 `37160cec7bb7369e0178d8980b7645a68a8c790bb05751a6d1afa5ee32c2ccc0`).
 Final native focused cancellation tests passed on Ubuntu/JDK17. Private fixture
-directories use explicit POSIX permissions only where supported; native Windows
-verification of the cross-platform classes remains pending. The routine PTY
+directories use explicit POSIX permissions only where supported; the two changed
+Windows fixture classes passed 25 native tests with no skips as an ordinary user.
+The complete native Windows desktop/model/core/UI selection then passed 1,121
+executed tests, with 55 explicit native/foreign-platform skips out of 1,176 selected.
+The coordinator verified all 267 XML suites in the evidence archive
+`/tmp/vpn-windows-finish.WhKUbn/native-checkpoint8-full-suite-evidence.zip`
+(SHA256 `fb2dfcd09c4a97dbf54cc38a3d84215c0864991637ea417c33cde1c5afaa38a4`).
+This component-suite evidence does not resolve the packaged CI admission failure.
+The routine PTY
 observer tests cover buffered final output, EIO and a live-process timeout; the
 actual native PTY driver imports the tested helper and never restarts an installer
-on observation loss. These are focused results, not a final prepush receipt.
+on observation loss. Checkpoint eight also has a successful managed prepush receipt;
+the current follow-up edits require a new receipt before another push.
+
+The current diagnostic follow-up collects bounded native admission evidence from
+the exact packaged Windows JARs when static launcher checks fail, while preserving
+the original failure. Its public harness tests were verified 2 RED then 15 GREEN
+(`/tmp/vpn-parity-admission-wiring-red.log` and corresponding `-green.log`).
+The JVM diagnostic tests run after JDK setup in Fast Checks, Windows packaging and
+managed prepush. The final native Windows diagnostic/fixture union passed 59
+selected tests: 56 executed, three explicit POSIX skips, no failures. The
+coordinator matched all ten script hashes in
+`/tmp/vpn-windows-finish.WhKUbn/windows-diagnostic-quick-v5-decoded-result.json`
+to the working tree. The diagnostic also reads the real 57-JAR package and
+preserves the SYSTEM-account trust rejection. No admission trust-policy
+relaxation has been accepted; the actual CI launcher cause remains unresolved.
+
+Arch fixture failures exposed Java26 selection, an invalid QEMU serial argument,
+read-only archive extraction, and unsupported DEB tasks on Arch. Fixture checks
+now validate the effective `JAVA_HOME`, use the tested canonical QEMU command,
+preserve file/directory modes during deferred extraction, and emit only the Arch
+bundle for an explicit Arch plan. The reviewed fixture union passed 29 tests and
+the VM preparation suite passed 10; `test_fixture_environment.py` is in routine
+hygiene. Native package results and their remaining failures are recorded below.
+
+The new Arch-only pair then built successfully in guest2317 from checkpoint2408
+plus the reviewed fixture overlay (source fingerprint
+`84a7f78eb285495af76902e045f6f809794e8786776661815787d6ffee017e94`).
+The installed base reports version2.1.3, but direct launcher help/version/status
+also emit `pure virtual method called` on stderr; public static smoke therefore
+remains failed. This anomaly is under native JVM/library investigation. Native
+Python3.14.7 passed the 3 environment and 10 VM preparation tests; the 21-test
+desktop fixture suite initially encountered missing `git`. After the package
+transaction completed, all 21 fixture tests passed natively too. A minimal
+HelloMain JAR packaged with the same Arch JDK17.0.20.1 reproduces the child abort;
+the captured core shows `Logger::log` called by the jpackage library's `dcon`
+destructor. This excludes product JARs as the cause. A same-version CI-toolchain
+comparison is pending; no runtime upgrade or application workaround is accepted.
 
 Latest native macOS coordinator-fix fixture: source fingerprint
 `9ad1fef6a9af37819c5b2243cbd8148757fb1b646c8e8efb3607d81c415b7112`,
@@ -103,9 +159,19 @@ Replacement owner `6480fb01-5a19-4386-8498-2ac4778637d1` recovered the exact
 original operation/controller/request. Public update status reports installed=true
 and cleanupCode=OK; runtime remains off. Target image/version2.1.16 verified.
 Evidence: `vpn-parity-macos-coordinator-fix-c0820y0h/local-evidence/native-success.json`
-under the host temporary root, copied from the owned macOS guest. Machine-owned
-installation, authorization, GUI return and live traffic remain unverified for this
-bundle. Older uncertain 201b installation evidence and watcher remain preserved.
+under the host temporary root, copied from the owned macOS guest.
+Machine-owned authorization denial then passed with native Cancel, public exit130
+and exact operation `8b2f68c2-bbe9-42ae-91bd-fc36d11bd4b8`; the base15 image and
+off runtime were preserved. The base was a root-owned APFS clone of the verified
+DMG-exported image, not an independent DMG installation.
+An explicit authorized retry encountered guest ENOSPC. Its client eventually
+returned exit2, OUTCOME_UNKNOWN/final=false with original operation
+`c141681b-3ae7-4386-8219-f82b12b5b10a` and job
+`2c8b216a-f967-4aaf-bd5c-07d0c163cc64`. The protected receipt was last observed at
+sequence0 PREPARING; installed remains unknown. No installer replay or forced
+termination was performed. Exact failure evidence is retained in the same fixture's
+`machine-evidence` directory. Successful machine replacement, GUI return and live
+traffic remain unverified. Older uncertain 201b evidence remains preserved too.
 
 A scratch native preflight initially expected `ready_to_install`, but the public
 phase is `ready`; it aborted before invoking installation. The shared fixture

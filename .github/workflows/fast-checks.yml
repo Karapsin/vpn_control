@@ -67,8 +67,12 @@ on:
       - "scripts/test_android_install_visual_inventory.py"
       - "scripts/prepare_desktop_update_fixture.py"
       - "scripts/test_desktop_update_fixture.py"
+      - "scripts/fixture_environment.py"
+      - "scripts/test_fixture_environment.py"
       - "scripts/test_desktop_sdk_independence.py"
       - "scripts/test_windows_packaging_graph.py"
+      - "scripts/windows_install_admission_diagnostic.py"
+      - "scripts/test_windows_install_admission_diagnostic.py"
       - "scripts/test_windows_packaging_graph.init.gradle"
       - "scripts/test_macos_install_gate.py"
       - "scripts/native/macos_install_worker.c"
@@ -146,6 +150,9 @@ jobs:
 
       - name: Install pinned Android native build tools
         run: bash scripts/prepare_android_native_tools.sh
+
+      - name: Verify Windows admission diagnostic behavior
+        run: python scripts/test_windows_install_admission_diagnostic.py
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

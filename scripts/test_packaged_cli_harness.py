@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fast checks for strict packaged CLI output verification (not native evidence)."""
 import json
+import io
 import os
 import subprocess
 from pathlib import Path
@@ -14,6 +15,37 @@ from test_packaged_cli import (envelope, stream_records, verify_stream_records, 
 
 
 class StaticLaunchFailureTest(unittest.TestCase):
+    def test_windows_failure_collects_admission_evidence_without_replacing_failure(self):
+        result = subprocess.CompletedProcess([], 2, "", "UNAVAILABLE\n")
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            launcher.touch()
+            with mock.patch("test_packaged_cli.subprocess.run", return_value=result), \
+                    mock.patch("test_packaged_cli.sys.platform", "win32"), \
+                    mock.patch.dict(os.environ, {"JAVA_HOME": directory}), \
+                    mock.patch("windows_install_admission_diagnostic.diagnose", return_value={
+                        "schemaVersion": 1, "admission": "rejected", "failure": {"nativeCode": 5}
+                    }) as diagnose, mock.patch("test_packaged_cli.sys.stderr", new_callable=io.StringIO) as errors:
+                with self.assertRaisesRegex(AssertionError, "Help must exit 0.*exit=2"):
+                    smoke(launcher, "2.1.4")
+                diagnose.assert_called_once_with(launcher.resolve(), directory)
+                self.assertIn('"nativeCode": 5', errors.getvalue())
+
+    def test_diagnostic_failure_keeps_original_launcher_evidence(self):
+        result = subprocess.CompletedProcess([], 2, "", "UNAVAILABLE\n")
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            launcher.touch()
+            with mock.patch("test_packaged_cli.subprocess.run", return_value=result), \
+                    mock.patch("test_packaged_cli.sys.platform", "win32"), \
+                    mock.patch.dict(os.environ, {"JAVA_HOME": directory}), \
+                    mock.patch("windows_install_admission_diagnostic.diagnose", side_effect=RuntimeError("private detail")), \
+                    mock.patch("test_packaged_cli.sys.stderr", new_callable=io.StringIO) as errors:
+                with self.assertRaisesRegex(AssertionError, "Help must exit 0.*UNAVAILABLE"):
+                    smoke(launcher, "2.1.4")
+                self.assertIn("RuntimeError", errors.getvalue())
+                self.assertNotIn("private detail", errors.getvalue())
+
     def test_help_failure_preserves_bounded_launcher_diagnostics(self):
         result = subprocess.CompletedProcess([], 137, "unexpected stdout", "launch failed " + "x" * 10000)
         with tempfile.TemporaryDirectory() as directory:
