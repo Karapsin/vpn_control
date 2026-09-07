@@ -12,11 +12,24 @@ import zipfile
 from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
-    verify_sources, version_build,
+    verify_sources, version_build, require_install_ready,
 )
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    def test_public_ready_phase_admits_only_expected_downloaded_update(self):
+        # Public installed-DMG status observed during the native coordinator run.
+        status = {"ok": True, "final": True, "data": {
+            "phase": "ready", "availableVersion": "2.1.16"}}
+        require_install_ready(status, "2.1.16")
+        for phase in ("downloading", "installing", "failed", "ready_to_install"):
+            with self.subTest(phase=phase), self.assertRaises(ValueError):
+                require_install_ready({**status, "data": {**status["data"], "phase": phase}}, "2.1.16")
+        with self.assertRaises(ValueError):
+            require_install_ready(status, "2.1.17")
+        with self.assertRaises(ValueError):
+            require_install_ready({**status, "ok": False}, "2.1.16")
+
     def source(self, root):
         repository = root / "repo"
         repository.mkdir()

@@ -7,10 +7,12 @@ Run from a controlling TTY as the ordinary VM user; enter polkit credentials at
 the native prompt. No credentials are accepted as arguments or written to logs.
 """
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
 import re
+import select
 import stat
 import subprocess
 import tempfile
@@ -100,6 +102,46 @@ def launch_fixture_owner(launcher, workspace, log, environment):
     return subprocess.Popen([str(launcher), "--state-dir", str(workspace), "serve"],
                             stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=environment,
                             start_new_session=True)
+
+
+def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=None):
+    """Observe a single already-started terminal process without replaying it.
+
+    Linux reports EIO when the final PTY slave closes.  Preserve that as an
+    unknown observation outcome; callers must inspect durable receipts rather
+    than retrying the action they were observing.
+    """
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
+    observation_lost = False
+
+    def drain():
+        nonlocal observation_lost
+        while select.select([terminal_fd], [], [], 0)[0]:
+            try:
+                data = os.read(terminal_fd, 4096)
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                observation_lost = True
+                return
+            if not data:
+                return
+            on_output(data)
+
+    while True:
+        # Read before checking poll so a child that has just exited cannot lose
+        # terminal bytes that were already buffered by the PTY master.
+        drain()
+        exit_code = process.poll()
+        if exit_code is not None:
+            drain()
+            return {"exit": exit_code, "observationLost": observation_lost, "timedOut": False}
+        if observation_lost:
+            return {"exit": None, "observationLost": True, "timedOut": False}
+        if deadline is not None and time.monotonic() >= deadline:
+            return {"exit": None, "observationLost": False, "timedOut": True}
+        wait = 0.25 if deadline is None else min(0.25, max(0.0, deadline - time.monotonic()))
+        select.select([terminal_fd], [], [], wait)
 
 
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False):

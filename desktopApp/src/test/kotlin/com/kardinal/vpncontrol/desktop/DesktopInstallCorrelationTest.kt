@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.model.ControlCode
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.*
 
 class DesktopInstallCorrelationTest {
@@ -171,8 +172,8 @@ class DesktopInstallCorrelationTest {
     }
 
     @Test fun separateWorkspacesCannotRecoverEachOthersBindingsEvenWhenCopied() = fixture { workspace ->
-        val first = Files.createDirectory(workspace.resolve("one"))
-        val second = Files.createDirectory(workspace.resolve("two"))
+        val first = privateDirectory(workspace, "one")
+        val second = privateDirectory(workspace, "two")
         val identity = DesktopInstallCorrelation("controller", "request", "operation")
         DesktopInstallCorrelationJournal(first).record(identity, JOB)
         var reads = 0
@@ -213,6 +214,12 @@ class DesktopInstallCorrelationTest {
         val workspace = Files.createTempDirectory("install-correlation-東京")
         try { action(workspace) }
         finally { Files.walk(workspace).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
+    }
+
+    private fun privateDirectory(parent: Path, name: String): Path = if ("posix" in parent.fileSystem.supportedFileAttributeViews()) {
+        Files.createDirectory(parent.resolve(name), PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+    } else {
+        Files.createDirectory(parent.resolve(name))
     }
 
     companion object {

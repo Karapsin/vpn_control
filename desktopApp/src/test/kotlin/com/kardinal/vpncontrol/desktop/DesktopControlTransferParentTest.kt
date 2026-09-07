@@ -9,6 +9,10 @@ import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class DesktopControlTransferParentTest {
+    private fun privateDirectory(parent: Path, name: String): Path = Files.createDirectory(
+        parent.resolve(name), PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")),
+    )
+
     private fun fixture(block: (Path) -> Unit) {
         assumeFalse(Platform.isWindows())
         val root = Files.createTempDirectory("spool-ancestry-東京")
@@ -34,7 +38,7 @@ class DesktopControlTransferParentTest {
     @Test fun trustedStickyTemporaryAncestorKeepsDefaultTempSemantics() = fixture { root ->
         val shared = Files.createDirectory(root.resolve("sticky"))
         Files.setAttribute(shared, "unix:mode", 0x3ff) // 01777, owned by the effective user.
-        val parent = Files.createDirectory(shared.resolve("owned"))
+        val parent = privateDirectory(shared, "owned")
         val spool = DesktopControlTransferSpool.create(parent)
         spool.append("東京".toByteArray())
         assertContentEquals("東京".toByteArray(), spool.read(0, 6))
@@ -55,12 +59,12 @@ class DesktopControlTransferParentTest {
     }
 
     @Test fun replacedParentCannotRedirectCleanupToAnotherPrivateFile() = fixture { root ->
-        val parent = Files.createDirectory(root.resolve("parent"))
+        val parent = privateDirectory(root, "parent")
         val spool = DesktopControlTransferSpool.create(parent)
         spool.append(byteArrayOf(1, 2, 3))
         val name = Files.list(parent).use { it.findFirst().orElseThrow().fileName }
         val moved = Files.move(parent, root.resolve("original"))
-        Files.createDirectory(parent)
+        privateDirectory(root, "parent")
         val decoy = Files.createDirectory(parent.resolve(name))
         val marker = Files.writeString(decoy.resolve("payload"), "must remain")
         spool.erase()

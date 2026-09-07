@@ -16,15 +16,33 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. Four reviewed checkpoints
-have now been pushed to `origin/dev`; current HEAD is
-`201b2d44fb33f861b51f691a602f79e0e960588a`. Canonical version remains **2.1.3**.
-The latest managed prepush passed, but exact-SHA delivery is not yet verified:
-Fast Checks, Android Release APK and macOS Desktop Package passed; Windows
-EXE/MSI construction passed but extracted-console help failed; Linux packaging passed.
-Advisory VPN Integration compiled the corrected JNI code but failed one Android
-48MiB subprocess test. Fuller diagnostics prove OOM in the non-spooled encoder;
-a causal GUI storage regression now reproduces that reachable path.
+Startup on 2026-09-07 fetched origin successfully. Seven reviewed checkpoints
+have been pushed to `origin/dev`; latest pushed SHA is
+`87f0e67e142892c3cc54303c3aed66fafa88fe94`. Canonical version is **2.1.4**.
+Its managed prepush passed. Exact-SHA Fast Checks, Android Release APK, Linux
+Desktop Package and macOS Desktop Package passed; advisory VPN Integration also
+passed. Windows Desktop Package built EXE/MSI but extracted-console `--help`
+exited 2 with empty stdout and `UNAVAILABLE` on stderr (run 34144757827).
+This remains an unresolved delivery gate, with native admission diagnosis active.
+
+Native launch coverage now includes the complete quick tier on macOS Python 3.11,
+Ubuntu Python 3.12.3, and Windows x64 Python 3.12.10. Windows selected 184 tests,
+executed 159, and explicitly skipped 25 foreign-platform cases; all 26 Python
+commands and the Git Bash aggregate passed. These results do not certify the
+artifact/device-dependent launchers still awaiting their native fixtures.
+The Python stat-callback recursion regression was verified RED before the fix,
+then GREEN under the affected interpreter versions before checkpoint seven.
+
+Broad native Linux Gradle testing exposed six desktop failures: five private
+fixture-directory permission errors under umask 0002 and a distinct stalled HTTP
+body cancellation failure. Test-only 0700 fixture corrections passed the focused
+native selection; cancellation and PTY-observer regressions/fixes passed focused native checks
+and are frozen for broader validation.
+Android API29 native GUI add succeeded on the frozen 04f base15 APK, but the next
+remove returned resource exhaustion and unknown outcome; unchanged full readback
+was preserved and the mutation was not replayed. A separate API29 emulator is
+being prepared for causal ART/Compose instrumentation. Host model probes alone
+have not reproduced that second native failure.
 
 All inherited dirty product buckets were preserved and included in checkpoint
 c44ebc5472502942dbea06c4fe0917e671ea97b2, followed by two CI repair commits.
@@ -49,15 +67,57 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/history/tests | App Gradle/CI remain root; routing UI/feedback and rendered test assigned | Immutable3e APK13/14; source fingerprint recorded below | AVD5582 API29/48MiB;5590 API35 |Compatible reader host tests GREEN; current API29 native cold reopen pending | Current ART consecutive edits, actions/install lifecycle, visuals |
-| F | windows | VPN broker/resources/manager and focused tests | Factory/Main/autostart/common update remain root | NativeAOT helper migration; production disabled | ARM guest2299; later native x86 handoff | Windows desktop CI GREEN; init-script discovery regression RED, fix in progress | Strict pins, mutable resource binding/recovery, production/native packages |
-| E-Windows/Linux | linux_terra (Terra medium) | MSI worker/receipt/user identity and Linux installers/harnesses | Common update service/build integration stays root | Immutable aee288a7 MSI9/10 | Fresh x86 guest2314; old2310 unknown owner preserved | Defender blocked bootstrap; fixed NativeAOT helper in progress | Replacement/recovery, user-token modes; final Linux package reruns |
-| E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Final-source package and machine authorization | macOS15.7.7 ARM64 disposable guest | Source101268 GUI detach/crash252/252 traffic; older local install proof | Machine update/recovery and cleanup; current visual/package acceptance |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/tests and owned scratch instrumentation | App Gradle/CI remain root | Frozen04f APK15/16; diagnostic17 retained | Preserve AVD5582 native failure; separate5584 API29;5580 protected | Host probes GREEN but second native OOM unresolved | ART reproducer, API35 lifecycle, visuals |
+| F/E-Windows | windows (Astra) | Windows broker/native helper/policy/tests, MSI and launcher diagnosis | Factory/Main/autostart/common update remain root | NativeAOT validate-only proof; privileged production roles pending | Real x64 guest2314; ARM2299 historical only | Python3.12 native quick tier GREEN; packaged static admission diagnosis active | Native launch inventory, fixed privileged roles, VPN/MSI production binding |
+| E-Linux | linux_terra (Terra medium) | Linux installers/harnesses; explicitly assigned manifest cancellation in DesktopUpdateService and focused tests | Other common update behavior/build remain root | Frozen201b installer fixtures; native test snapshot based8840 plus harness fix | Ubuntu2318; Fedora2316 read-only pending evidence review; Arch2317 | Private fixture focused native tests GREEN; body cancellation RED | Causal cancellation fix, routine PTY observer regression, Arch/native evidence |
+| E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Frozen coordinator-fix base15/target16 DMGs hash-verified | macOS15.7.7 ARM64 guest192.168.64.3 | Public user-local replacement and exact next-owner recovery GREEN | Handoff/recovery, machine authorization, current visual/package acceptance |
 
 Only one host Gradle invocation at a time. No source edits during artifact freeze.
 Native artifacts are immutable and require source fingerprints and byte hashes.
 
 ## Implemented And Locally Tested
+
+Native Linux follow-up fixes are frozen for checkpoint validation. Manifest
+fetching uses an asynchronous request with explicit response-body ownership so
+cancellation remains prompt during headers/body stalls, and a completed body is
+closed even if cancellation wins before the get handoff. Cleanup cancels the
+request even when body close fails. Original native stalled-body RED and the
+pre-lease ownership RED are retained; the latter is
+`/tmp/vpn-linux312-lease-preownership-red.log` (SHA256
+`37160cec7bb7369e0178d8980b7645a68a8c790bb05751a6d1afa5ee32c2ccc0`).
+Final native focused cancellation tests passed on Ubuntu/JDK17. Private fixture
+directories use explicit POSIX permissions only where supported; native Windows
+verification of the cross-platform classes remains pending. The routine PTY
+observer tests cover buffered final output, EIO and a live-process timeout; the
+actual native PTY driver imports the tested helper and never restarts an installer
+on observation loss. These are focused results, not a final prepush receipt.
+
+Latest native macOS coordinator-fix fixture: source fingerprint
+`9ad1fef6a9af37819c5b2243cbd8148757fb1b646c8e8efb3607d81c415b7112`,
+base15/target16 actual ARM64 DMGs with common code fingerprint
+`029ba03e0530f3c90a4ca0bc3306680bb11e464e9351ef5ca9b987f40640f2cc`.
+Public check/download/install succeeded from the DMG-installed user-local base.
+Job `edb0b54b-35f9-4d69-b819-d6cf356d2a69`, operation
+`ebd22a18-b3da-4fca-94e7-e02bb3a4d9ab` received native SUCCEEDED/OK sequence4.
+Replacement owner `6480fb01-5a19-4386-8498-2ac4778637d1` recovered the exact
+original operation/controller/request. Public update status reports installed=true
+and cleanupCode=OK; runtime remains off. Target image/version2.1.16 verified.
+Evidence: `vpn-parity-macos-coordinator-fix-c0820y0h/local-evidence/native-success.json`
+under the host temporary root, copied from the owned macOS guest. Machine-owned
+installation, authorization, GUI return and live traffic remain unverified for this
+bundle. Older uncertain 201b installation evidence and watcher remain preserved.
+
+A scratch native preflight initially expected `ready_to_install`, but the public
+phase is `ready`; it aborted before invoking installation. The shared fixture
+`require_install_ready` helper now replaces that inline assumption. Its routine
+`test_desktop_update_fixture.py` regression failed on the old literal and passed
+after correction (17 tests); the native harness imported the same tested helper.
+Host RED/GREEN logs: `/tmp/vpn-mac-ready-phase-{red,green}.log`.
+The installed target also passed `test_packaged_cli.py` through its real public
+launcher; `packaged-cli.log` records the disconnected smoke success. The DMG
+wrapper also passed natively with unchanged test scripts and a disposable
+version16 metadata projection, leaving canonical source metadata unchanged.
+
 
 Historical opening focused baseline completed 2026-09-07 (Gradle session 63042, 46 seconds); later source-specific evidence below supersedes it:
 

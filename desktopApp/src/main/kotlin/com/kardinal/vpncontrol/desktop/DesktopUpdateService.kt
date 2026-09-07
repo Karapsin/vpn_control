@@ -19,7 +19,10 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -29,6 +32,40 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class DesktopUpdateCheck(val updateAvailable: Boolean, val asset: UpdateAsset?, val releaseNotesUrl: String)
+
+/** Owns a manifest response body even when coroutine cancellation wins the get() handoff race. */
+internal class DesktopUpdateResponseLease(private val response: CompletableFuture<HttpResponse<InputStream>>) : AutoCloseable {
+    private val body = AtomicReference<InputStream?>()
+    private val closed = AtomicBoolean(false)
+
+    init {
+        response.whenComplete { completed, _ ->
+            completed?.body()?.let { input ->
+                val retained = body.compareAndSet(null, input)
+                if (!retained && body.get() !== input) input.close()
+                if (closed.get()) input.close()
+            }
+        }
+    }
+
+    fun acquire(completed: HttpResponse<InputStream>): InputStream {
+        val input = body.get() ?: completed.body().also { body.compareAndSet(null, it) }
+        if (closed.get()) {
+            input.close()
+            throw CancellationException("Update request cancelled")
+        }
+        return input
+    }
+
+    override fun close() {
+        closed.set(true)
+        try {
+            body.getAndSet(null)?.close()
+        } finally {
+            response.cancel(true)
+        }
+    }
+}
 
 internal class DesktopUpdateService(
     private val stateProvider: () -> MainUiState,
@@ -362,8 +399,17 @@ internal class DesktopUpdateService(
     }
 
     private suspend fun fetchText(url: String): String = withTimeoutOrNull(300_000) {
-        runInterruptible(Dispatchers.IO) {
-            openResponse(url, "application/json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val response = httpClient.sendAsync(updateRequest(url, "application/json"), HttpResponse.BodyHandlers.ofInputStream())
+        DesktopUpdateResponseLease(response).use { lease ->
+            runInterruptible(Dispatchers.IO) {
+                val received = response.get()
+                val input = lease.acquire(received)
+                if (received.statusCode() !in 200..299) {
+                    input.close()
+                    error("Update request failed: HTTP ${received.statusCode()}")
+                }
+                input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            }
         }
     } ?: error("Update network deadline exceeded")
 
@@ -514,9 +560,7 @@ internal class DesktopUpdateService(
     }
 
     private fun openResponse(url: String, accept: String): InputStream {
-        val request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMinutes(5))
-            .header("Accept", accept).header("User-Agent", "VPNControlDesktop/${buildInfo.displayVersion}").GET().build()
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
+        val response = httpClient.send(updateRequest(url, accept), HttpResponse.BodyHandlers.ofInputStream())
         val code = response.statusCode()
         if (code !in 200..299) {
             response.body().close()
@@ -524,6 +568,10 @@ internal class DesktopUpdateService(
         }
         return response.body()
     }
+
+    private fun updateRequest(url: String, accept: String): HttpRequest = HttpRequest.newBuilder(URI.create(url))
+        .timeout(Duration.ofMinutes(5)).header("Accept", accept)
+        .header("User-Agent", "VPNControlDesktop/${buildInfo.displayVersion}").GET().build()
 
     private fun Path.sha256(): String {
         val digest = MessageDigest.getInstance("SHA-256")

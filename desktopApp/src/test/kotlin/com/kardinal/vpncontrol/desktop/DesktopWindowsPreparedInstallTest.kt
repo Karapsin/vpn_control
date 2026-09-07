@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.model.ControlCode
 import com.kardinal.vpncontrol.model.ControlValue
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.*
 
 class DesktopWindowsPreparedInstallTest {
@@ -56,7 +57,7 @@ class DesktopWindowsPreparedInstallTest {
 
     @Test fun unpublishedTemporaryReceiptAfterWorkerExitCannotAdmitReplacementOrStopTheOwner() = runBlocking {
         val root = Files.createTempDirectory("windows-unpublished-receipt-")
-        val workspace = Files.createDirectory(root.resolve("workspace"))
+        val workspace = privateDirectory(root, "workspace")
         val jobDirectory = Files.createDirectory(root.resolve("job"))
         val temporary = jobDirectory.resolve("status-00000000-0000-0000-0000-000000000002.tmp")
         val bytes = """{"version":1,"jobId":"$job","sequence":0,"phase":"PREPARING","code":"OK"}""".encodeToByteArray()
@@ -115,6 +116,14 @@ class DesktopWindowsPreparedInstallTest {
             Files.walk(root).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
         }
     }
+
+    private fun privateDirectory(parent: java.nio.file.Path, name: String): java.nio.file.Path =
+        if ("posix" in parent.fileSystem.supportedFileAttributeViews()) {
+            Files.createDirectory(parent.resolve(name),
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+        } else {
+            Files.createDirectory(parent.resolve(name))
+        }
 
     @Test fun delayedWorkerExitAllowsCancellationRetryWithoutSyntheticProtectedReceipt() = runBlocking {
         var alive = true

@@ -1,5 +1,6 @@
 import json
 import io
+import errno
 import os
 import re
 from pathlib import Path
@@ -14,10 +15,34 @@ import zipfile
 from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_identity, version_build
 from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
-                                       timed_update_command, verify_recovered_install)
+                                       observe_terminal_process, timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_terminal_observer_drains_final_output_then_records_known_exit_after_pty_eio(self):
+        class Process:
+            polls = 0
+            def poll(self):
+                self.polls += 1
+                return 7
+
+        process = Process()
+        output = bytearray()
+        with mock.patch("test_linux_public_install.select.select", side_effect=[([19], [], []), ([19], [], []), ([], [], [])]), \
+             mock.patch("test_linux_public_install.os.read", side_effect=[b"final receipt\n", OSError(errno.EIO, "PTY closed")]):
+            result = observe_terminal_process(process, 19, output.extend)
+        self.assertEqual(b"final receipt\n", bytes(output))
+        self.assertEqual({"exit": 7, "observationLost": True, "timedOut": False}, result)
+        self.assertEqual(1, process.polls, "Observer must not replay the action after EIO")
+
+    def test_terminal_observer_returns_unknown_for_still_live_timeout_without_waiting(self):
+        class LiveProcess:
+            def poll(self): return None
+
+        with mock.patch("test_linux_public_install.select.select", return_value=([], [], [])):
+            result = observe_terminal_process(LiveProcess(), 19, lambda data: self.fail(data), timeout_seconds=0)
+        self.assertEqual({"exit": None, "observationLost": False, "timedOut": True}, result)
+
     @unittest.skipUnless(os.name == "posix", "POSIX controlling-session lifecycle")
     def test_fixture_owner_has_independent_session_before_terminal_driver_exits(self):
         with tempfile.TemporaryDirectory(prefix="vpn-fixture-session-") as temporary:

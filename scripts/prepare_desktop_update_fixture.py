@@ -31,6 +31,15 @@ PLATFORMS = {
 }
 
 
+def require_install_ready(status, target_version):
+    """Admit an explicit fixture install only after public status confirms readiness."""
+    data = status.get("data", {})
+    require(status.get("ok") is True and status.get("final") is True
+            and data.get("phase") == "ready"
+            and data.get("availableVersion") == target_version,
+            "Public update status is not ready for the expected fixture version")
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)

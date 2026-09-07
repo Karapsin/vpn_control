@@ -11,6 +11,12 @@ import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class DesktopExportPublicationTest {
+    private fun privateDirectory(parent: Path, name: String): Path = Files.createDirectory(
+        parent.resolve(name), java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+            java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"),
+        ),
+    )
+
     @Test fun windowsRenameUsesNoReplaceNullRootAndExactUnicodeLeafForBothAbis() {
         val leaf = "published 東京 😀.json"
         val expected = leaf.toByteArray(Charsets.UTF_16LE)
@@ -109,14 +115,14 @@ class DesktopExportPublicationTest {
     @Test fun failedExportCleanupCannotFollowReplacedParentToUnrelatedPayload() {
         assumeFalse(Platform.isWindows()) // Native no-delete ancestry handles prevent this rename on Windows.
         fixture { root ->
-            val parent = Files.createDirectory(root.resolve("parent"))
+            val parent = privateDirectory(root, "parent")
             val moved = root.resolve("retained-parent")
             var decoy: Path? = null
             val result = DesktopPrivateExportWriter.writeChunks(parent.resolve("output.json").toString()) { emit ->
                 emit(byteArrayOf(1, 2), 2)
                 val privateName = Files.list(parent).use { it.findFirst().orElseThrow().fileName }
                 Files.move(parent, moved)
-                Files.createDirectory(parent)
+                privateDirectory(root, "parent")
                 val replacement = Files.createDirectory(parent.resolve(privateName))
                 decoy = Files.writeString(replacement.resolve("payload"), "unrelated")
                 throw IOException("synthetic interruption after rename")
