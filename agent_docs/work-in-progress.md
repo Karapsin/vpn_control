@@ -16,20 +16,22 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
-Startup on 2026-09-07 fetched origin successfully. `dev` and `origin/dev` remain
-`60f8db884588047bea6eb1f108aea3d4c2ade07d`, ahead/behind zero. Canonical working-tree
-version is **2.1.3**, with one existing Unreleased note. No current-batch commit or
-push exists, and no final prepush receipt covers current contents.
+Startup on 2026-09-07 fetched origin successfully. Three reviewed checkpoints
+have now been pushed to `origin/dev`; current HEAD is
+`3e6337200dc9902eec89911b47af2e46e256f402`. Canonical version remains **2.1.3**.
+The latest managed prepush passed, but exact-SHA delivery is not yet verified:
+Fast Checks, Android Release APK and macOS Desktop Package passed; Windows
+packaging cannot discover its init-script verification task; Linux packaging passed.
+Advisory VPN Integration compiled the corrected JNI code but failed one Android
+48MiB subprocess test; its child error was not printed and the cause is unproven.
 
-All 359 inherited dirty entries were preserved: 178 modified, 181 untracked.
-Buckets: Android 84, desktop 158, shared 90, scripts 16, agent docs 4, plus the
-macOS workflow, agent-tool test, root README, changelog, version, visual inventory,
-and `.codex/config.toml`. Product buckets belong to this parity batch.
+All inherited dirty product buckets were preserved and included in checkpoint
+c44ebc5472502942dbea06c4fe0917e671ea97b2, followed by two CI repair commits.
 The user approved removing machine-specific Codex configuration from Git.
-The local `.codex/config.toml` is preserved and ignored; tracked template
-`agent_tools/codex-config.toml.in` plus `configure_codex.py` derives its paths.
-Its index deletion and portable generator are explicitly included in this batch.
-The generated MCP handshake and all28 agent-tool tests passed.
+Local `.codex/config.toml` is preserved and ignored; tracked portable template
+`agent_tools/codex-config.toml.in` and `configure_codex.py` derive its paths.
+The generated MCP handshake and all30 agent-tool tests passed. Locally excluded
+`agent_docs/.Rhistory` remains preserved. Full native parity is unfinished.
 
 Historical contradictory summaries and detailed native evidence are preserved in
 [parity-native-history.md](parity-native-history.md) and
@@ -46,8 +48,8 @@ commit, push, bump versions or spawn further agents.
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B/shared | root | CLI/common integration, desktop Find Best, macOS, build/CI/docs | Shared declarations, version/delivery | Current-source platform reruns | Host Gradle serialized; macOS guest192.168.64.3 | FindBest14 + operation/CLI7 GREEN | Finish native cancellation/recovery and final parity audit |
-| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/history/tests | App Gradle/CI remain root; routing UI/feedback and rendered test assigned | Immutable64d APK11/12; next reader snapshot pending | AVD5582 API29/48MiB;5590 API35 |Cold protobuf allocation RED; compatible reader under review | Current ART consecutive edits, actions/install lifecycle, visuals |
-| F | windows | VPN broker/resources/manager and focused tests | Factory/Main/autostart/common update remain root | NativeAOT helper migration; production disabled | ARM guest2299; later native x86 handoff | Host resource53 selected/44 executed GREEN; nativev19 pending | Strict pins, mutable resource binding/recovery, production/native packages |
+| C/D/G-Android | android_terra (Terra medium) | Android actions/install/storage/JNI/history/tests | App Gradle/CI remain root; routing UI/feedback and rendered test assigned | Immutable3e APK13/14; source fingerprint recorded below | AVD5582 API29/48MiB;5590 API35 |Compatible reader host tests GREEN; current API29 native cold reopen pending | Current ART consecutive edits, actions/install lifecycle, visuals |
+| F | windows | VPN broker/resources/manager and focused tests | Factory/Main/autostart/common update remain root | NativeAOT helper migration; production disabled | ARM guest2299; later native x86 handoff | Windows desktop CI GREEN; init-script discovery regression RED, fix in progress | Strict pins, mutable resource binding/recovery, production/native packages |
 | E-Windows/Linux | linux_terra (Terra medium) | MSI worker/receipt/user identity and Linux installers/harnesses | Common update service/build integration stays root | Immutable aee288a7 MSI9/10 | Fresh x86 guest2314; old2310 unknown owner preserved | Defender blocked bootstrap; fixed NativeAOT helper in progress | Replacement/recovery, user-token modes; final Linux package reruns |
 | E-Mac/H | root | macOS worker/cleanup, GUI/localization/visuals | Shared UI/scenes/catalogs remain root | Final-source package and machine authorization | macOS15.7.7 ARM64 disposable guest | Source101268 GUI detach/crash252/252 traffic; older local install proof | Machine update/recovery and cleanup; current visual/package acceptance |
 
@@ -1274,3 +1276,34 @@ cancellation failure. Exact evidence:
 /tmp/vpn-windows-finish.WhKUbn/arm-v20-mac-fixtures-update-cancellation-result.json.
 Cancellation deadlines/behavior are unchanged; readiness assertion diagnostics
 now distinguish a request that never reached the stalled HTTP fixture.
+
+
+Current 3e Android test-only APK pair built successfully with source fingerprint
+1ce2fb9ed8d53d51e2c916fe622e02e5a89962591878405e4b5417188abb7253:
+base2.1.13 SHA669998183b6c1ebdcbfc3cb1e59d8e5a2368c95fa2515630111992866e43b1c8;
+target2.1.14 SHA59dbf131e610a926cd5d37bf5dbdc72b26f544518f8a2c09af623e33e32ccfe3.
+Manifest: temporary `vpn-parity-android-gccbound-freeze-dvhr4f4k/android-diagnostic/artifacts.json`.
+Both are nondebuggable with the same compatible local fixture signer, not a claim
+about the stable-release signer. Native installation/reader acceptance is pending.
+
+Windows v20 SYSTEM endpoint probe diagnosed user-principal lookup failure for the
+JVM-reported machine account, while private file publication succeeded. This is
+separate from ordinary-user Windows CI, whose desktop tests now pass. Evidence:
+/tmp/vpn-windows-finish.WhKUbn/arm-v20-endpoint-probe-result.json.
+
+
+The Windows init-script failure is reproduced by a small real Gradle fixture
+with configuration on demand, before changing task registration (causal RED:
+/tmp/vpn-parity-windows-packaging-graph-red.log). Registering the desktop verifier before project evaluation instead of
+projectsEvaluated makes it discoverable during task selection; task lookup and
+output checks remain deferred until execution. The regression also covers image dependencies, deferred output
+reads, and rejecting an image that bypasses the prepared application. It runs
+after Gradle setup in Fast Checks and managed prepush, without packaging or SDKs.
+Android failure logging now retains full subprocess assertion details; no memory
+limit or fixture size is relaxed. The advisory heap-test cause remains unproven.
+
+Final packaging graph selection: five cases passed in1.780seconds, including
+late plugin registration (additional causal RED before the deferred lookup fix).
+No SDK, packager, installer or runtime was executed. Agent-tool suite30 passed
+without skips in the managed Python environment. Host Gradle/metadata/prepush
+remain serialized before the next push.

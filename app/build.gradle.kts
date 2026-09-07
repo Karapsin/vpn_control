@@ -205,6 +205,10 @@ val buildNativeStringHost by tasks.registering(Exec::class) {
 }
 
 tasks.withType<Test>().configureEach {
+    testLogging {
+        events(org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED)
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
     dependsOn(buildNativeStringHost)
     doFirst {
         systemProperty("vpnControl.test.runtimeClasspath", classpath.asPath)

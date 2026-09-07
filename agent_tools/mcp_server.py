@@ -141,6 +141,7 @@ PREPUSH_COMMANDS = [
         ":app:compileDebugAndroidTestKotlin",
     ],
     [sys.executable, "scripts/test_desktop_sdk_independence.py"],
+    [sys.executable, "scripts/test_windows_packaging_graph.py"],
 ]
 
 SENSITIVE_PARTS = {

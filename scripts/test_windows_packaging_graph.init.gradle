@@ -1,23 +1,27 @@
 // Fast configuration regression: no jpackage execution, installation, or runtime startup.
-gradle.projectsEvaluated {
-    def desktop = gradle.rootProject.project(':desktopApp')
-    def app = desktop.tasks.getByName('createDistributable')
-    def installers = ['packageExe', 'packageMsi'].collect { name ->
-        def installer = desktop.tasks.getByName(name)
+// projectsEvaluated is too late for task selection with configuration on demand.
+gradle.beforeProject { desktop ->
+    if (desktop.path != ':desktopApp') return
+    def installerNames = ['packageExe', 'packageMsi']
+    // Plugins may register packaging tasks in their own afterEvaluate callbacks.
+    desktop.tasks.configureEach { installer ->
+        if (!installerNames.contains(installer.name)) return
         // Output providers may be read only after their producer has completed.
         installer.doFirst {
+            def app = desktop.tasks.getByName('createDistributable')
             def expected = new File(app.destinationDir.get().asFile, app.packageName.get()).canonicalFile
             if (!installer.appImage.isPresent() || installer.appImage.get().asFile.canonicalFile != expected) {
-                throw new GradleException("${name} must consume the patched createDistributable app image")
+                throw new GradleException("${installer.name} must consume the patched createDistributable app image")
             }
         }
-        installer
     }
     desktop.tasks.register('verifyWindowsPackageInputs') {
         group = 'verification'
         description = 'Verify EXE/MSI consume the same patched dual-launcher app image.'
         doLast {
-            installers.each { installer ->
+            def app = desktop.tasks.getByName('createDistributable')
+            installerNames.each { name ->
+                def installer = desktop.tasks.getByName(name)
                 def dependsOnImage = installer.dependsOn.any { dependency ->
                     dependency == app || dependency == 'createDistributable' ||
                         dependency instanceof org.gradle.api.tasks.TaskProvider && dependency.name == app.name

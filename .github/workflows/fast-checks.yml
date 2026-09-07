@@ -68,6 +68,8 @@ on:
       - "scripts/prepare_desktop_update_fixture.py"
       - "scripts/test_desktop_update_fixture.py"
       - "scripts/test_desktop_sdk_independence.py"
+      - "scripts/test_windows_packaging_graph.py"
+      - "scripts/test_windows_packaging_graph.init.gradle"
       - "scripts/test_macos_install_gate.py"
       - "scripts/native/macos_install_worker.c"
       - "scripts/test_user_facing_terminology.py"
@@ -159,3 +161,6 @@ jobs:
 
       - name: Verify desktop build without Android SDK
         run: python scripts/test_desktop_sdk_independence.py
+
+      - name: Verify Windows packaging task graph
+        run: python scripts/test_windows_packaging_graph.py
