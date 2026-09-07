@@ -45,10 +45,11 @@ jstring vpn_control_construct_string(JNIEnv *env, jobject reader, jint count, jb
     const jlong byte_count = (jlong)count * (ascii ? 1 : 2);
     jlong offset = 0;
     while (offset < byte_count) {
-        jint length = (jint)((byte_count - offset) < STRING_CHUNK ? byte_count - offset : STRING_CHUNK);
-        jbyteArray chunk = (jbyteArray)(*env)->CallObjectMethod(env, reader, read, offset, length);
+        const size_t remaining = (size_t)(byte_count - offset);
+        const size_t length = remaining < STRING_CHUNK ? remaining : STRING_CHUNK;
+        jbyteArray chunk = (jbyteArray)(*env)->CallObjectMethod(env, reader, read, offset, (jint)length);
         if ((*env)->ExceptionCheck(env)) goto done;
-        if (chunk == NULL || (*env)->GetArrayLength(env, chunk) != length) {
+        if (chunk == NULL || (*env)->GetArrayLength(env, chunk) != (jsize)length) {
             if (chunk != NULL) (*env)->DeleteLocalRef(env, chunk);
             throw_new(env, "java/io/IOException", "Private string input length changed");
             goto done;
@@ -60,18 +61,18 @@ jstring vpn_control_construct_string(JNIEnv *env, jobject reader, jint count, jb
         }
         int valid = 1;
         if (ascii) {
-            for (jint index = 0; index < length; index++) {
+            for (size_t index = 0; index < length; index++) {
                 const uint8_t unit = (uint8_t)bytes[index];
                 if (unit > 127) { valid = 0; break; }
                 units[(size_t)offset + (size_t)index] = unit;
             }
         } else {
-            for (jint index = 0; index < length; index += 2) {
+            for (size_t index = 0; index < length; index += 2) {
                 units[(size_t)(offset / 2) + (size_t)(index / 2)] =
                     (jchar)(((uint16_t)(uint8_t)bytes[index] << 8) | (uint8_t)bytes[index + 1]);
             }
         }
-        memset(bytes, 0, (size_t)length);
+        memset(bytes, 0, length);
         (*env)->ReleaseByteArrayElements(env, chunk, bytes, 0);
         (*env)->DeleteLocalRef(env, chunk);
         if ((*env)->ExceptionCheck(env)) goto done;
@@ -79,7 +80,7 @@ jstring vpn_control_construct_string(JNIEnv *env, jobject reader, jint count, jb
             throw_new(env, "java/io/IOException", "Private string ASCII input is invalid");
             goto done;
         }
-        offset += length;
+        offset += (jlong)length;
     }
     /* NewString preserves every UTF16 code unit, including NUL and lone surrogates. */
     result = (*env)->NewString(env, units, count);

@@ -36,6 +36,8 @@ class McpSurfaceTest(unittest.TestCase):
             workflow = (mcp_server.REPO_ROOT / ".github/workflows" / name).read_text()
             self.assertIn("run: bash scripts/prepare_android_native_tools.sh", workflow)
             self.assertNotIn("run: sdkmanager ", workflow)
+        integration = (mcp_server.REPO_ROOT / ".github/workflows/vpn-integration.yml").read_text()
+        self.assertEqual(2, integration.count("run: bash scripts/prepare_android_native_tools.sh"))
 
     def test_sdk_graph_check_runs_after_build_setup_not_in_hygiene(self) -> None:
         script = "scripts/test_desktop_sdk_independence.py"

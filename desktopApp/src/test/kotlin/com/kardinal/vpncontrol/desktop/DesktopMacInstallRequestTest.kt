@@ -1,8 +1,14 @@
 package com.kardinal.vpncontrol.desktop
 
 import kotlin.test.*
+import org.junit.Assume.assumeTrue
 
 class DesktopMacInstallRequestTest {
+    @BeforeTest fun requiresCanonicalPosixWirePaths() {
+        // The macOS wire record requires literal POSIX paths and validates them with the default provider.
+        assumeTrue("macOS wire paths require a POSIX default file-system provider", java.io.File.separatorChar == '/')
+    }
+
     @Test fun boundedDataOnlyRecordPreservesNativeGenerationAndExplicitAuthority() {
         val request = request()
         val fields = request.encode().decodeToString().split('\n')

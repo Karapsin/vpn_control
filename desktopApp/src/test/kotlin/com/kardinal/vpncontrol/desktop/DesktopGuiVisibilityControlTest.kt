@@ -15,10 +15,13 @@ import kotlin.test.*
 
 class DesktopGuiVisibilityControlTest {
     @Test fun packagedMacFrontendUsesLaunchServicesToLeaveTheHeadlessOwnerSession() {
-        val launcher = "/Applications/東京 space/vpn-control.app/Contents/MacOS/vpn-control"
-        assertEquals(listOf("/usr/bin/open", "-n", "-a", "/Applications/東京 space/vpn-control.app", "--args",
-            "--frontend-owner", "owner", "--state-dir", "/tmp/space workspace"),
-            desktopFrontendLaunchCommand("owner", Path.of("/tmp/space workspace"),
+        // The command builder checks host-provider absolute paths even with an injected macOS name.
+        val bundle = desktopMacTestPath("/Applications/東京 space/vpn-control.app").toString().replace('\\', '/')
+        val launcher = "$bundle/Contents/MacOS/vpn-control"
+        val directory = desktopMacTestPath("/tmp/space workspace")
+        assertEquals(listOf("/usr/bin/open", "-n", "-a", bundle, "--args",
+            "--frontend-owner", "owner", "--state-dir", directory.toString()),
+            desktopFrontendLaunchCommand("owner", directory,
                 currentCommand = launcher, packagedLauncher = launcher, classPath = "", osName = "Mac OS X"))
     }
 

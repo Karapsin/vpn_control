@@ -1,11 +1,10 @@
 package com.kardinal.vpncontrol.desktop
 
-import java.nio.file.Path
 import kotlin.test.*
 
 class DesktopMacReceiptAuthorityTest {
     private val local = DesktopMacReceiptAuthority(DesktopMacInstallAuthority.USER_LOCAL, 501,
-        Path.of("/Users/test/Library/Application Support/vpn-control-install-jobs"))
+        desktopMacTestPath("/Users/test/Library/Application Support/vpn-control-install-jobs"))
     @Test fun localReceiptsRequireExplicitOwnerAndPrivateFinalPermissions() {
         local.verify(info(), false, false, 80)
         local.verify(info(mode = 0x8180), false, true, 80)

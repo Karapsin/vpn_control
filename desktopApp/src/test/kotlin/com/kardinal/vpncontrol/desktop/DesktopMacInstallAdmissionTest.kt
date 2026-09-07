@@ -15,10 +15,10 @@ class DesktopMacInstallAdmissionTest {
     @Test fun nativeAdminGroupWritableAncestorAndDenyOnlyHomeAreAccepted() {
         val fake = Fake().apply {
             adminGid = 123 // Deliberately not the default macOS gid.
-            metadata["/Applications"] = info(mode = 0x41fd, gid = 123)
-            metadata["/Users/test"] = info(uid = 501, acl = MacAdmissionAcl.DENY_ONLY)
+            metadata[desktopMacTestPath("/Applications").toString()] = info(mode = 0x41fd, gid = 123)
+            metadata[desktopMacTestPath("/Users/test").toString()] = info(uid = 501, acl = MacAdmissionAcl.DENY_ONLY)
         }
-        val roots = ROOTS + MacAdmissionRoot(Path.of("/Users/test/Library/Application Support/vpn-control-install-jobs"), 501)
+        val roots = ROOTS + MacAdmissionRoot(desktopMacTestPath("/Users/test/Library/Application Support/vpn-control-install-jobs"), 501)
         fake.metadata[roots.last().path.toString()] = info(uid = 501)
         fake.missing = true
         DesktopMacInstallAdmission.enter(LAUNCHER, fake, roots = roots).close()
@@ -26,9 +26,9 @@ class DesktopMacInstallAdmissionTest {
     }
     @Test fun adminAndAclExceptionsNeverApplyToUntrustedGroupOwnerOrFinalAuthority() {
         for ((path, metadata) in listOf(
-            "/Applications" to info(mode = 0x41fd, gid = 124),
-            "/Applications" to info(uid = 501, mode = 0x41fd, gid = 123),
-            "/Applications" to info(mode = 0x41ff, gid = 123),
+            desktopMacTestPath("/Applications").toString() to info(mode = 0x41fd, gid = 124),
+            desktopMacTestPath("/Applications").toString() to info(uid = 501, mode = 0x41fd, gid = 123),
+            desktopMacTestPath("/Applications").toString() to info(mode = 0x41ff, gid = 123),
             ROOTS.single().path.toString() to info(mode = 0x41fd, gid = 123),
             ROOTS.single().path.toString() to info(acl = MacAdmissionAcl.DENY_ONLY),
             LAUNCHER.toString() to info(mode = 0x81ed, acl = MacAdmissionAcl.DENY_ONLY))) {
@@ -36,7 +36,7 @@ class DesktopMacInstallAdmissionTest {
             assertFails { DesktopMacInstallAdmission.enter(LAUNCHER, fake, roots = ROOTS) }
             assertEquals(fake.paths.size, fake.closed.size)
         }
-        val unknownGroup = Fake().apply { metadata["/Applications"] = info(mode = 0x41fd, gid = 123) }
+        val unknownGroup = Fake().apply { metadata[desktopMacTestPath("/Applications").toString()] = info(mode = 0x41fd, gid = 123) }
         assertFails { DesktopMacInstallAdmission.enter(LAUNCHER, unknownGroup, roots = ROOTS) }
     }
     @Test fun stickyDirectoryExceptionNeverAcceptsWritableExecutable() {
@@ -73,7 +73,7 @@ class DesktopMacInstallAdmissionTest {
         DesktopMacInstallAdmission.enter(LAUNCHER, fake, roots = ROOTS, allowPendingControl = true,
             onPendingControl = { error("No pending gate") }).close()
         assertEquals(listOf(LAUNCHER.toString()), fake.lockedPaths)
-        assertFails { DesktopMacInstallAdmission.enter(Path.of("/Applications/vpn-control.app/Contents/MacOS/other"), Fake(), roots = ROOTS) }
+        assertFails { DesktopMacInstallAdmission.enter(desktopMacTestPath("/Applications/vpn-control.app/Contents/MacOS/other"), Fake(), roots = ROOTS) }
     }
     internal class Fake : MacInstallAdmissionNative {
         val paths = mutableMapOf<Int, String>()
@@ -92,18 +92,19 @@ class DesktopMacInstallAdmissionTest {
         override fun adminGroupId() = adminGid
         override fun currentUid() = 501L
         override fun currentExecutable() = LAUNCHER.toString()
-        override fun homeDirectory() = Path.of("/Users/test")
-        override fun openRoot() = add("/")
+        override fun homeDirectory() = desktopMacTestPath("/Users/test")
+        override fun openRoot() = add(desktopMacTestPath("/").toString())
         override fun openChild(parent: Int, name: String, directory: Boolean, optional: Boolean): Int? {
             if (missing && name.startsWith("gate-")) return null
-            return add(paths.getValue(parent).trimEnd('/') + "/" + name)
+            return add(Path.of(paths.getValue(parent)).resolve(name).toString())
         }
         private fun add(path: String): Int = (paths.size + 1).also { paths[it] = path }
         override fun inspect(fd: Int): MacAdmissionInfo {
             val path = paths.getValue(fd)
             metadata[path]?.let { return it }
-            val gate = path.substringAfterLast('/').startsWith("gate-")
-            val file = path.endsWith("/vpn-control") || gate
+            val name = Path.of(path).fileName?.toString().orEmpty()
+            val gate = name.startsWith("gate-")
+            val file = name == "vpn-control" || gate
             return MacAdmissionInfo(if (gate) gateUid else 0, if (gate) gateMode else if (file) executableMode else 0x41ed,
                 if (gate) gateLinks else 1, if (gate) bytes.size.toLong() else 0, 1, fd.toLong())
         }
@@ -115,7 +116,7 @@ class DesktopMacInstallAdmissionTest {
     companion object {
         private fun info(uid: Long = 0, mode: Int = 0x41ed, gid: Long = 0, acl: MacAdmissionAcl = MacAdmissionAcl.EMPTY) =
             MacAdmissionInfo(uid, mode, 1, 0, 1, 1, gid, acl)
-        val LAUNCHER: Path = Path.of("/Applications/vpn-control.app/Contents/MacOS/vpn-control")
-        internal val ROOTS = listOf(MacAdmissionRoot(Path.of("/Library/Application Support/vpn-control-install-jobs"), 0))
+        val LAUNCHER: Path = desktopMacTestPath("/Applications/vpn-control.app/Contents/MacOS/vpn-control")
+        internal val ROOTS = listOf(MacAdmissionRoot(desktopMacTestPath("/Library/Application Support/vpn-control-install-jobs"), 0))
     }
 }

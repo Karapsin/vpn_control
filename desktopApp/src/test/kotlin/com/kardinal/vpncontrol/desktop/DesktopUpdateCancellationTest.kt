@@ -97,7 +97,9 @@ class DesktopUpdateCancellationTest {
             val action = owner.launch { service.check() }
             var stoppedPromptly = false
             try {
-                assertTrue(started.await(5, TimeUnit.SECONDS))
+                assertTrue(started.await(5, TimeUnit.SECONDS),
+                    "Manifest request did not reach the stalled ${if (sendHeaders) "body" else "headers"}; " +
+                        "actionCompleted=${action.isCompleted}, updatePhase=${state.appUpdate.phase}")
                 action.cancel()
                 stoppedPromptly = withTimeoutOrNull(2_000) { action.join(); true } ?: false
             } finally {

@@ -204,6 +204,7 @@ tasks.withType<AbstractJPackageTask>().configureEach {
 }
 
 tasks.withType<Test>().configureEach {
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     doFirst {
         systemProperty("vpnControl.test.mainClasspath", sourceSets.main.get().runtimeClasspath.asPath)
     }

@@ -55,6 +55,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Install pinned Android native build tools
+        run: bash scripts/prepare_android_native_tools.sh
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -237,6 +240,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Install pinned Android native build tools
+        run: bash scripts/prepare_android_native_tools.sh
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

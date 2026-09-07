@@ -9,6 +9,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden shared CLI streams, large routing persistence and platform installer recovery with native failure regressions.
 - Preserve Preferences wire compatibility and verify typed CLI output contracts.
 - Make package regression checks portable and resolve Android native tools from the configured SDK.
+- Keep native string chunk sizes bounded for GCC and prepare native tools in integration checks.
+- Keep macOS admission fixtures portable across desktop test hosts and report complete test failures.
+- Preserve POSIX installer wire tests and clarify asynchronous test readiness failures.
 
 ## 2.1.3 - 2026-09-06
 

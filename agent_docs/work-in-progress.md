@@ -1234,3 +1234,43 @@ VM preparation10/native-helper6/desktop fixture16 all passed. Actual former
 postinst process-launch failure is retained in /tmp/vpn-postinst-windows-legacy-red.txt;
 the permanent regression calls the current runner and verifies early Windows
 eligibility handling. Agent tool suite30 and fake SDK resolution5 also passed.
+
+
+Follow-up aff10582e54bdcea17244fb2ef790828653b452c was pushed after prepush
+passed. Android Release APK34134527902 succeeded. Fast Checks reached the
+real optimized host JNI build and exposed a GCC13 signed-length range warning
+as an error. The native chunk now retains an unsigned bounded size (at most
+65536), casting only at JNI calls; compiler warnings remain errors. Existing
+quick host JNI build/tests are the regression gate: CI RED in
+/tmp/vpn-parity-aff-fast-ci-failed.log; local Clang JNI8 and cold48MiB pipeline1
+GREEN in /tmp/vpn-parity-native-string-gcc-range-green-evidence. No new APK
+from this corrected C source is yet certified. Integration workflow native
+build prerequisites now use the same SDK resolver (wiring RED/GREEN logs in
+/tmp/vpn-parity-integration-native-setup-{red,green}.log).
+
+
+Windows package CI34134527882 exposed Mac-specific test paths that were not
+absolute under the Windows filesystem provider. Test-only paths now use native
+absolute roots with the same injected Darwin metadata; no tests are skipped
+and no production admission behavior changed. Focused Mac/lifecycle/cancellation
+union31 passed locally (/tmp/vpn-parity-windows-mac-fixtures-green-evidence).
+Desktop test failures now print full exception details. One Windows cancellation
+assertion needs native follow-up: historical v19 could not run it because of an
+incompatible shared UI constructor, so current desktop/shared/tests were frozen
+as v20 (component-manifest-v20.json, source fingerprint
+a3e924018d0fe76209851431bcb8aaddcc2b2b59895a4fe5175f9d4ae066b881).
+The older dependency failure is not product cancellation evidence. Guest2308
+authentication is resolved, but no GCC is installed there; the GCC-specific
+compiler result must come from CI, without provisioning or host runtime effects.
+
+
+Windows v20 component run31 executed/0skips: both cancellation tests passed;
+2 MacInstallRequest failures confirmed a strict POSIX-wire/default-provider
+constraint. Those2 tests now retain original POSIX fixtures and skip explicitly
+on Windows; all other portable Mac policy tests remain enabled. A separate
+authenticated frontend null-registration failure under SYSTEM is under review
+as a component environment/classpath boundary, not attributed to the CI
+cancellation failure. Exact evidence:
+/tmp/vpn-windows-finish.WhKUbn/arm-v20-mac-fixtures-update-cancellation-result.json.
+Cancellation deadlines/behavior are unchanged; readiness assertion diagnostics
+now distinguish a request that never reached the stalled HTTP fixture.
