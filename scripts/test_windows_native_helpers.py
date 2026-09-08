@@ -85,6 +85,69 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(json.loads((root / "m.json").read_text())["artifacts"][0]["clrHeader"])
 
+    def test_stages_verified_helper_into_the_prepared_application(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output = root / "vpn-control-install-helper.exe"
+            output.write_bytes(pe())
+            manifest = root / "native-helpers.json"
+            self.assertEqual(self.run_tool("verify-product", "--output", output,
+                                           "--manifest", manifest).returncode, 0)
+            image = root / "prepared application"
+            (image / "app").mkdir(parents=True)
+            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+                                   "--app-image", image)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            staged = image / "app/native/windows-amd64"
+            self.assertEqual((staged / output.name).read_bytes(), output.read_bytes())
+            self.assertEqual(json.loads((staged / manifest.name).read_text()), json.loads(manifest.read_text()))
+            inspected = self.run_tool("inspect-image", "--app-image", image)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+
+    def test_rejects_changed_helper_or_manifest_before_staging(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output = root / "vpn-control-install-helper.exe"
+            output.write_bytes(pe())
+            manifest = root / "native-helpers.json"
+            self.assertEqual(self.run_tool("verify-product", "--output", output,
+                                           "--manifest", manifest).returncode, 0)
+            image = root / "image"
+            (image / "app").mkdir(parents=True)
+            original_manifest = manifest.read_bytes()
+            output.write_bytes(pe(marker=b"changed"))
+            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+                                   "--app-image", image)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("manifest disagrees", result.stderr)
+            self.assertFalse((image / "app/native/windows-amd64").exists())
+            output.write_bytes(pe())
+            record = json.loads(original_manifest)
+            record["artifacts"][0]["operations"] = ["arbitrary-command"]
+            manifest.write_text(json.dumps(record))
+            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+                                   "--app-image", image)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("manifest disagrees", result.stderr)
+            self.assertFalse((image / "app/native/windows-amd64").exists())
+
+    def test_inspection_rejects_missing_and_modified_packaged_helpers(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            image = root / "image"
+            native = image / "app/native/windows-amd64"
+            native.mkdir(parents=True)
+            result = self.run_tool("inspect-image", "--app-image", image)
+            self.assertNotEqual(result.returncode, 0)
+            output = native / "vpn-control-install-helper.exe"
+            output.write_bytes(pe())
+            self.assertEqual(self.run_tool("verify-product", "--output", output,
+                                           "--manifest", native / "native-helpers.json").returncode, 0)
+            output.write_bytes(pe(marker=b"replaced-after-package"))
+            result = self.run_tool("inspect-image", "--app-image", image)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("manifest disagrees", result.stderr)
+
     def test_fixture_target_guard_rejects_the_legacy_sibling(self):
         expected = "fresh-msi"
         legacy_target = Path("/guests/old-native")

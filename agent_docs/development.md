@@ -13,7 +13,7 @@ Source files that should be edited and committed:
 - Status localization catalogs under `shared/ui/src/commonMain/resources/i18n-status/`.
 - Language manifest at `shared/model/src/commonMain/resources/languages.json`.
 - Public documentation under `README.md` and `docs/`.
-- Agent documentation and tooling under `AGENTS.md`, `agent_docs/`, `agent_tools/`, and `.codex/config.toml`.
+- Agent documentation and tooling under `AGENTS.md`, `agent_docs/`, and `agent_tools/`.
 - Scripts under `scripts/`.
 
 Generated or local files that should not be committed:
@@ -22,6 +22,7 @@ Generated or local files that should not be committed:
 - `dist/`
 - `.runtime/`
 - downloaded or extracted `sing-box` runtime binaries
+- generated local MCP configuration `.codex/config.toml` (derive it with `agent_tools/configure_codex.py`)
 - agent-only environments and indexes under `.agent_venv/` and `.rag_index/`
 - Gradle caches and IDE state
 

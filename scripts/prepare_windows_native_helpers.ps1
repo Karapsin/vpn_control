@@ -21,6 +21,7 @@ $required = @(
     $project,
     (Join-Path $native 'InstallHelper\loader.manifest'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-native.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-protocol.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper.cs')
 )
 foreach ($path in $required) {

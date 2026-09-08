@@ -302,3 +302,20 @@ four-test harness covers both shapes, explicit empty data, malformed/ambiguous
 results, and duplicate-domain order. Never default an absent field to an empty
 list when making a persistence claim. Controller epoch replacement may reset the
 reported revision to zero; compare actual committed payload and owner identity.
+
+## Cancellation And Native Fixture Regressions
+
+`DesktopUpdateCancellationTest` is part of ordinary `:desktopApp:test` and the
+applicable package/integration CI selections. Besides real stalled HTTP, its
+`cancelledManifestBodyIOExceptionRemainsCancellation` regression forces socket-close
+IOException after caller cancellation without network timing; TEST-001 evidence is
+in the current WIP ledger. Keep ordinary HTTP failure reporting covered as well.
+
+Release hygiene executes `test_macos_aqua_authorization_correlation.py` directly:
+actual process parsing, unmatched/ambiguous prompt rejection, successful public
+receipt envelopes and unknown installed state. The observer never sends credentials
+or treats a click/process observation as authoritative authorization.
+
+`test_windows_native_helpers.py` also exercises verified app-image staging and
+inspection, including byte/policy mismatch rejection. Passing these data-only tests
+does not certify the NativeAOT role execution, packaged wiring or MSI replacement.

@@ -18,6 +18,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -31,6 +33,50 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DesktopUpdateCancellationTest {
+    @Test
+    fun cancelledManifestBodyIOExceptionRemainsCancellation() = runBlocking {
+        val reading = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        val input = object : InputStream() {
+            override fun read(): Int {
+                reading.countDown()
+                while (closed.count != 0L) {
+                    try { closed.await() } catch (_: InterruptedException) { /* Socket close releases the read. */ }
+                }
+                throw IOException("synthetic socket closed during cancellation")
+            }
+            override fun close() { closed.countDown() }
+        }
+        val response = object : HttpResponse<InputStream> {
+            override fun statusCode() = 200
+            override fun request(): HttpRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1/manifest")).GET().build()
+            override fun previousResponse(): Optional<HttpResponse<InputStream>> = Optional.empty()
+            override fun headers(): HttpHeaders = HttpHeaders.of(emptyMap()) { _, _ -> true }
+            override fun body(): InputStream = input
+            override fun sslSession() = Optional.empty<javax.net.ssl.SSLSession>()
+            override fun uri(): URI = URI.create("http://127.0.0.1/manifest")
+            override fun version(): HttpClient.Version = HttpClient.Version.HTTP_1_1
+        }
+        val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val outcome = CompletableDeferred<Throwable>()
+        val action = owner.launch {
+            try { readDesktopUpdateManifest(CompletableFuture.completedFuture(response)) }
+            catch (failure: Throwable) { outcome.complete(failure) }
+        }
+        try {
+            assertTrue(reading.await(5, TimeUnit.SECONDS), "Manifest reader never started")
+            action.cancel()
+            assertTrue(withTimeoutOrNull(2_000) { action.join(); true } ?: false)
+            val failure = outcome.await()
+            assertTrue(failure is CancellationException,
+                "Cancelled manifest reported ${failure.javaClass.name} after closing the body")
+        } finally {
+            input.close()
+            action.join()
+            owner.cancel()
+        }
+    }
+
     @Test
     fun cancellationClosesManifestBodyBeforeWaitingForItsReader() = runBlocking {
         val reading = CountDownLatch(1)

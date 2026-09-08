@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="..\..\..\src\main\resources\windows-install-native.cs" Link="windows-install-native.cs" />
     <Compile Include="..\..\..\src\main\resources\windows-install-helper.cs" Link="windows-install-helper.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-install-helper-protocol.cs" Link="windows-install-helper-protocol.cs" />
   </ItemGroup>
 </Project>

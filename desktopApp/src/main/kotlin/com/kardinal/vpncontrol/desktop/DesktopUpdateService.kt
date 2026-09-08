@@ -35,24 +35,34 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class DesktopUpdateCheck(val updateAvailable: Boolean, val asset: UpdateAsset?, val releaseNotesUrl: String)
 
-internal suspend fun readDesktopUpdateManifest(response: CompletableFuture<HttpResponse<InputStream>>): String =
-    coroutineScope {
-        val lease = DesktopUpdateResponseLease(response)
-        val reader = async(Dispatchers.IO) {
-            runInterruptible {
-                val received = response.get()
-                val input = lease.acquire(received)
-                if (received.statusCode() !in 200..299) {
-                    input.close()
-                    error("Update request failed: HTTP ${received.statusCode()}")
+internal suspend fun readDesktopUpdateManifest(response: CompletableFuture<HttpResponse<InputStream>>): String {
+    val caller = currentCoroutineContext()
+    return try {
+        coroutineScope {
+            val lease = DesktopUpdateResponseLease(response)
+            val reader = async(Dispatchers.IO) {
+                runInterruptible {
+                    val received = response.get()
+                    val input = lease.acquire(received)
+                    if (received.statusCode() !in 200..299) {
+                        input.close()
+                        error("Update request failed: HTTP ${received.statusCode()}")
+                    }
+                    input.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 }
-                input.bufferedReader(Charsets.UTF_8).use { it.readText() }
             }
+            // Cancelling await releases the response before the scope joins its
+            // blocking reader. Interrupting an InputStream alone may not unblock it.
+            try { reader.await() } finally { lease.close() }
         }
-        // Cancelling await releases the response before the scope joins its
-        // blocking reader. Interrupting an InputStream alone may not unblock it.
-        try { reader.await() } finally { lease.close() }
+    } catch (failure: Exception) {
+        // Closing the socket can make the child throw IOException after caller cancellation.
+        // coroutineScope prefers that child failure over CancellationException; retain the
+        // caller's cancellation identity instead of publishing an update-check failure.
+        caller.ensureActive()
+        throw failure
     }
+}
 
 /** Owns a manifest response body even when coroutine cancellation wins the get() handoff race. */
 internal class DesktopUpdateResponseLease(private val response: CompletableFuture<HttpResponse<InputStream>>) : AutoCloseable {

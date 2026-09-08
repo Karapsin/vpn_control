@@ -52,6 +52,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
 | `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |
 | `parity-native-history.md` | Historical native parity runs and artifact evidence; consult work-in-progress for current gates. |
+| `parity-checkpoint-history.md` | Preserved intermediate checkpoint ledger through 2026-09-08; superseded by the current work-in-progress ledger. |
 
 User-facing install and configuration instructions stay in `../README.md` and `../docs/`.
 

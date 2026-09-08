@@ -8,8 +8,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import struct
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -226,7 +229,9 @@ def source_manifest(paths: list[Path]) -> dict[str, object]:
     return {"schemaVersion": 1, "inputs": records, "fingerprint": fingerprint}
 
 
-def validate_output(output: Path, manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
+def artifact_manifest(output: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
+    if output.is_symlink() or not output.is_file():
+        raise ValueError("native helper must be a regular file")
     if output.name not in PRODUCT_NAMES or any(marker in output.name.lower() for marker in TEST_MARKERS):
         raise ValueError(f"product output name rejected: {output.name}")
     policy = import_policy(output.name)
@@ -240,11 +245,65 @@ def validate_output(output: Path, manifest: Path, allowed_imports: set[str] | No
     if not expected_manifest.is_relative_to(IMPORT_POLICY.parent):
         raise ValueError("reviewed loader manifest path is outside the native helper sources")
     metadata.update(manifest_metadata(output, expected_manifest))
-    result = {"schemaVersion": 1, "policySha256": sha256(IMPORT_POLICY), "artifacts": [
+    return {"schemaVersion": 1, "policySha256": sha256(IMPORT_POLICY), "artifacts": [
         {"name": output.name, "sha256": sha256(output), "sizeBytes": output.stat().st_size,
          "minimumWindowsBuild": policy["minimumWindowsBuild"], "operations": policy["operations"], **metadata}]}
+
+
+def validate_output(output: Path, manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
+    result = artifact_manifest(output, allowed_imports)
     manifest.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
+
+
+def verified_product(output: Path, manifest: Path) -> dict[str, object]:
+    if manifest.is_symlink() or not manifest.is_file():
+        raise ValueError("native helper manifest must be a regular file")
+    record = json.loads(manifest.read_text(encoding="utf-8"))
+    if record != artifact_manifest(output):
+        raise ValueError("native helper manifest disagrees with captured bytes or reviewed policy")
+    return record
+
+
+def image_native_directory(image: Path) -> Path:
+    for directory in (image, image / "app"):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError("native helpers require a prepared regular application directory")
+    return image / "app" / "native" / "windows-amd64"
+
+
+def inspect_image(image: Path) -> dict[str, object]:
+    directory = image_native_directory(image)
+    for parent in (directory.parent, directory):
+        if parent.is_symlink() or not parent.is_dir():
+            raise ValueError("prepared application native helpers are missing or redirected")
+    return verified_product(directory / "vpn-control-install-helper.exe", directory / "native-helpers.json")
+
+
+def stage_product(output: Path, manifest: Path, image: Path) -> dict[str, object]:
+    record = verified_product(output, manifest)
+    directory = image_native_directory(image)
+    if directory.parent.is_symlink():
+        raise ValueError("prepared application native directory is redirected")
+    directory.parent.mkdir(exist_ok=True)
+    if directory.exists() or directory.is_symlink():
+        if inspect_image(image) != record:
+            raise ValueError("prepared application already contains different native helpers")
+        return record
+    temporary = Path(tempfile.mkdtemp(prefix=".windows-amd64-", dir=directory.parent))
+    try:
+        with output.open("rb") as source, (temporary / output.name).open("xb") as target:
+            shutil.copyfileobj(source, target, 1024 * 1024)
+        (temporary / "native-helpers.json").write_text(
+            json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        # Check the bytes actually captured, not just the earlier source observation.
+        if artifact_manifest(temporary / output.name) != record:
+            raise ValueError("native helper changed during application staging")
+        os.rename(temporary, directory)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return inspect_image(image)
 
 
 def fixture_transfer_target(candidate: Path, expected_leaf: str, fixture_name: str) -> Path:
@@ -264,6 +323,12 @@ def main() -> int:
     verify.add_argument("--output", type=Path, required=True)
     verify.add_argument("--manifest", type=Path, required=True)
     verify.add_argument("--allowed-import", action="append", help="Further restrict the reviewed product import policy")
+    stage = sub.add_parser("stage-product")
+    stage.add_argument("--output", type=Path, required=True)
+    stage.add_argument("--manifest", type=Path, required=True)
+    stage.add_argument("--app-image", type=Path, required=True)
+    inspect = sub.add_parser("inspect-image")
+    inspect.add_argument("--app-image", type=Path, required=True)
     destination = sub.add_parser("validate-destination")
     destination.add_argument("--expected-leaf", required=True)
     destination.add_argument("candidate", type=Path)
@@ -275,6 +340,10 @@ def main() -> int:
         elif args.command == "verify-product":
             allowed = None if args.allowed_import is None else {name.lower() for name in args.allowed_import}
             record = validate_output(args.output, args.manifest, allowed)
+        elif args.command == "stage-product":
+            record = stage_product(args.output, args.manifest, args.app_image)
+        elif args.command == "inspect-image":
+            record = inspect_image(args.app_image)
         else:
             record = {"destination": str(validate_guest_destination(args.candidate, args.expected_leaf))}
     except (OSError, ValueError, json.JSONDecodeError) as error:

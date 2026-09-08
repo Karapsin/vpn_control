@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Retry busy macOS package-test detach and preserve volumes that remain mounted.
 - Preserve bounded CLI failure correlation in packaged smoke diagnostics.
 - Validate Arch update fixture paths early and identify verified Windows kernel processes during install admission.
+- Preserve cancelled update outcomes and validate fixed installer metadata, helper staging, and native authorization fixtures.
 
 ## 2.1.5 - 2026-09-08
 
