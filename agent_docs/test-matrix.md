@@ -89,6 +89,18 @@ The `VPN Integration` workflow has two profiles. `core` runs fast deterministic 
 
 `TEST-001` in `contracts.md` applies to every distinct failure type found in VM, emulator, native/package, manual, visual, and integration testing. Add the quick reproducer to the relevant routine suite above before fixing the implementation. Kotlin regressions belong in the ordinary shared/desktop/Android unit-test tasks; constrained-heap regressions must run without a device or privileged runtime. New standalone script regressions must be wired into routine hygiene/pre-push and applicable CI, not left as optional commands. Record failing/passing evidence and the suite mapping alongside the native finding. Keep native verification for OS behavior that a host regression cannot faithfully reproduce; a skipped native test is not early regression coverage. Reproducible infrastructure failures require fixture, script, or workflow-contract regressions too.
 
+`DesktopCliStreamPipeTest` runs in ordinary desktop tests. It closes real child
+stdout/stderr readers while log history remains empty, and also verifies healthy
+pipes and regular files keep following. Keep the native ADB/package scenarios;
+a throwing printer mock cannot reproduce closure during a suppressed empty poll.
+
+`test_macos_packaging_jdk_preflight.py` runs in release hygiene. It checks actual
+JVM property parsing, selected-launcher arguments, known Homebrew packaging
+rejection, Java major and native architecture. `test_desktop_update_fixture.py`
+verifies rejection precedes build-directory creation and native build execution.
+Compose's own packaging vendor check remains enabled; passing this focused
+preflight is not blanket approval of other JDK distributions.
+
 `scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
 regression catches Windows path backslashes being interpreted as Python escapes
 before a VM is needed. The reusable `native_python_request` builder supplies paths

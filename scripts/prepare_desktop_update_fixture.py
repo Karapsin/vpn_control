@@ -20,6 +20,7 @@ import tarfile
 import zipfile
 
 from fixture_environment import extract_readonly_archive, require_jdk17
+from macos_packaging_jdk_preflight import preflight as require_macos_packaging_jdk
 
 
 MANIFEST_PATH = "/Karapsin/vpn_control/releases/latest/download/update-manifest.json"
@@ -466,6 +467,13 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
     run_command = run_command or subprocess.run
     if plan["platform"] == "linux":
         require_jdk17()
+    elif plan["platform"] == "macos":
+        java_home = os.environ.get("JAVA_HOME")
+        if not java_home:
+            selected_java = shutil.which("java")
+            require(selected_java is not None, "Select a macOS packaging JDK with JAVA_HOME or PATH")
+            java_home = Path(selected_java).resolve().parent.parent
+        require_macos_packaging_jdk(Path(java_home), plan["architecture"])
     product = directory / "packages"
     product.mkdir(mode=0o700)  # Never resume by rebuilding a partially used fixture.
     built = []

@@ -65,6 +65,27 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertFalse((output / "packages").exists())
             self.assertEqual([], calls)
 
+    def test_rejected_macos_packaging_jdk_fails_before_creating_build_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _, _, output, _ = self.prepared(Path(temporary))
+            plan_path = output / "build-plan.json"
+            plan = json.loads(plan_path.read_text())
+            plan["platform"] = "macos"
+            plan_path.write_text(json.dumps(plan))
+            identity = {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}
+            def must_not_build(*args, **kwargs):
+                self.fail("Rejected packaging JDK reached native build")
+            with patch("platform.system", return_value="Darwin"), patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.runtime_identity", return_value=identity), \
+                    patch.dict(os.environ, {"JAVA_HOME": temporary}), \
+                    patch("prepare_desktop_update_fixture.require_macos_packaging_jdk", create=True,
+                          side_effect=ValueError("Homebrew JDK is rejected")) as check:
+                with self.assertRaisesRegex(ValueError, "Homebrew JDK"):
+                    native_build(output, True, must_not_build)
+                check.assert_called_once_with(Path(temporary), "x86_64")
+            self.assertFalse((output / "packages").exists())
+            self.assertFalse((output / "build-base").exists())
+
     def source(self, root):
         repository = root / "repo"
         repository.mkdir()

@@ -22,14 +22,16 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Latest pushed source is `93141b14727dab495d09e5dc0182ff9af120c2f7`
-  (checkpoint25, version2.1.7, one Unreleased note). Its final managed prepush
-  passed all15 commands; all five required exact-SHA workflows succeeded and
-  managed session86858 exited0. Receipt: `checkpoint25/commit-result.json`.
-  This is the latest fully CI-verified checkpoint; native parity remains incomplete.
-  Current uncommitted scope adds the API35 fixture guards, export characterizations
-  and an authenticated frontend-exit handshake for CLI-started installation.
-  Root owns these coherent changes and the next metadata/prepush/checkpoint gate.
+- Latest pushed source is `30bb0c0beced8eaf991de0047ad2f1c64ee39295`
+  (checkpoint26, version2.1.7, two Unreleased notes). All15 managed prepush
+  commands and all five required exact-SHA workflows succeeded; managed session30020
+  exited0. Receipt: `checkpoint26/commit-result.json`. This checkpoint includes
+  the API35 fixture guards, export characterizations and authenticated frontend-exit
+  handshake for CLI-started installation. Native parity remains incomplete.
+  Current checkpoint27 scope fixes idle stream consumer closure and adds early
+  macOS fixture checks for packaging JDK and installed launcher ownership. Root
+  owns the metadata/prepush/checkpoint gate; native installer work continues on
+  frozen packages independently.
   Previous source `564f2dccc82d763cf98d4f4fb96b7926402cd90d`
   (checkpoint24, version2.1.6) also passed its final managed
   pre-push receipt passed all15 commands. All five required workflows succeeded
@@ -539,6 +541,83 @@ inputs and correlation records until authoritative reconciliation.
 - `.codex/config.toml` is generated, local and ignored. The tracked template and
   `agent_tools/configure_codex.py` derive absolute paths; preserve local settings.
 
+
+### Checkpoint26 Follow-up Evidence
+
+- Android streams on both API29 and API35 reject owner replacement with a final
+  `CONFLICT` and exit1, preserving the new owner identity. This is an epoch guard,
+  not a transport-loss result. Closing the actual JSON stdout reader after the first
+  status record exits130 on both APIs without a signal or owner cancellation.
+  Empty `logs --follow --limit 0` instead remains alive after eight seconds: no
+  subsequent write occurs, so `PrintStream.checkError()` cannot detect the closed
+  pipe. The two test clients were recorded then terminated; both owners remain OFF.
+  Evidence and causal regression proposal: `checkpoint25/android-streams-20260909/`.
+  A throwing-output mock does not cover this failure; retain a real child/pipe test.
+  `DesktopCliStreamPipeTest` now reproduces both channels against actual child pipes:
+  two failures before the fix (`checkpoint26/idle-pipe-red2.log`). The POSIX output
+  health check requests POLLOUT but treats only ERR/HUP/NVAL as closed, adding no
+  log records. A private JNA structure initially hid reflection failure; public JVM
+  visibility corrected it. The final host selection passes17 tests without skips,
+  including open pipes and regular files remaining live. Evidence:
+  `checkpoint26/idle-pipe-green17/`. Both APIs then passed real JSON and human
+  reader-close cases through the frozen updated JVM launcher, exiting130 without
+  signals and preserving the same OFF owners. Evidence:
+  `checkpoint26/android-stream-output-health-frozen/`. This proves the macOS CLI
+  adapter with Android provider reads. Windows now uses a zero-byte write only on
+  a confirmed byte-type pipe; message pipes and failed type queries receive no
+  probe. Only ERROR_NO_DATA/ERROR_BROKEN_PIPE terminate observation. Actual Windows
+  anonymous-pipe probes establish success before closure and error232 afterward.
+  The initial native implementation passed6 tests, including real stdout/stderr
+  closures and healthy pipes/files; the additional byte-type guard passes the
+  host18-test selection, with its frozen native7 rerun pending at this checkpoint
+  freeze. Evidence: `checkpoint27/windows-output-pipe/`,
+  `checkpoint27/windows-stream-health-native/`, and `idle-pipe-byte-guard.log`.
+  Windows evidence is AMD64 JVM execution on ARM64 Windows11, under SYSTEM with
+  inert fake provider reads; it is not installed-package or true x86_64 proof.
+- The checkpoint25 Windows MSI was reconstructed read-only, with no installation
+  actions. Both emitted helpers passed actual AMD64 PE/import policy inspection,
+  including runtime hash binding; inert entry fences returned their expected codes.
+  Evidence: `checkpoint25/windows/ci-artifact/native-validation-receipt.json`.
+  This is ARM64 guest/x64-emulation component evidence, not native x86_64, UAC,
+  production factory, TUN or successful MSI replacement proof.
+- The macOS guest has insufficient space for a fresh source/build/package pair.
+  Its only verified redundant source-transfer archives total284MiB, less than the
+  measured shortfall. No live installer inputs, processes, runtimes or workspaces
+  were removed. Evaluate building immutable DMGs on the host and transferring only
+  packages; host installation/VPN/autostart remains prohibited.
+  The two redundant archives were subsequently reverified and removed within this
+  exact scope, raising guest free space to1,519,776KiB. A package-only fixture projects
+  a650,282KiB low-water mark above the512MiB reserve. The first host build stopped
+  at Compose's existing checkRuntime because Homebrew JDK is unsupported for
+  packaging. That guard remains enabled. A550-entry hash-matched copy of the
+  guest's ARM64 Temurin17.0.20.1 JDK is now used locally without installation or
+  registration. The fresh build completed (session41307 exit0), preserving failure
+  inputs. Receipt: `checkpoint26/temurin17-host-copy/receipt.json`.
+  The exact30bb pair uses base2.2.1/code16820 and target2.2.2/code16840, arm64,
+  strict/deep ad-hoc signatures and identical logical code fingerprint
+  `38e3436cf3659adcde3ccffcb6ff9bf438d532a09dcbe0895018e018c67f7921`.
+  DMG hashes are `a5a24c55da69f33169408f45191e09c612c860979e9a888a2381253c39e58609`
+  and `79be4c26dffcc863d8a1660c42ee07718dc5a431a3c520cc8cc3599027a1d6b7`.
+  Package receipt: `checkpoint26/macos-host-fixture-source-temurin/macos-host-fixture-source/fixture-receipt.json`.
+  This is host-built package evidence; successful guest replacement is still open.
+  A native-builder admission regression failed before wiring the packaging-JDK
+  preflight (`checkpoint26/macos-jdk-admission-red.log`); the integrated Python
+  selection then passed34 tests. The portable preflight suite is in release hygiene,
+  with actual Homebrew rejection and Temurin acceptance retained separately.
+  Fresh base copy preserved the host builder's uid503, correctly rejected by
+  product admission for guest uid501. The fixture owner launcher now checks each
+  pinned path's UID before launching. The actual foreign-owner rejection and an
+  exact-old-source causal unit failure are retained; the current suite passes9
+  tests on host and Windows. Only the fresh verified base tree was normalized to
+  root ownership, preserving file hashes/modes and strict/deep signature. New
+  owner8121 became ready; no older r3/unknown job was altered. Evidence:
+  `checkpoint26/macos-auto-handoff/`, `checkpoint27/owner-admission-causal/` and
+  `checkpoint27/macos-owner-launch9/`. All43 focused fixture tests pass. The6-test
+  JDK preflight also passes native Windows with exact current input hashes.
+  Removing only the verified redundant fresh base DMG recovered space after
+  install; revised budget includes both downloaded and protected target copies
+  and projects714,788KiB free at peak, above the512MiB reserve.
+
 ## Ownership And Build Coordination
 
 One writer per file; root owns lifecycle tools, scope, version, documentation,
@@ -551,11 +630,12 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Shared integration, docs and delivery | Shared models/UI, owner/factory/Main, build/version/CI | Checkpoint25 pushed; all five exact-SHA CI GREEN | Export class9 selected/8 executed/1 skip GREEN on host | Emitted broker PE review and next coherent checkpoint |
-| C/D-Android | android_terra, Terra medium | API29/5584 and API35/5590; TLS lifecycle harness/test pair; DesktopExportPublicationTest | Root owns writer implementation, source freeze/build and integration | Immutable source0fc APK pair2.2.19/2.3.0 | API29 target/cold readback GREEN; API35 harness21 GREEN; export diagnosis open | API35 target receipt and Windows export fixture correction after native RED |
-| F/E-Windows | windows, Astra | Exclusive Windows native execution and ignored scratch | Tracked broker/package/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation; exact checkpoint25 CI artifact | Local toolchain catalog rejected for pin mismatch; packaged artifact inspection assigned | Emitted helper/native evidence and export-test native RED/GREEN |
+| B/G/H | root | Shared integration, docs and delivery | All tracked files frozen for checkpoint27 | Checkpoint26 exact-SHA CI GREEN | Stream host18 GREEN; fixture43 GREEN; native Windows rerun pending | Managed prepush, checkpoint push and exact-SHA CI |
+| C/D-Android | android_terra, Terra medium | Read-only review; owned API29/5584 and API35/5590 | Root owns all tracked integration | Immutable source0fc APK pair2.2.19/2.3.0 | Both target replacements, API29 safe export and corrected idle closure GREEN | Remaining Android acceptance after freeze |
+| F/E-Windows | windows, Astra | Exclusive Windows native execution and ignored scratch | Tracked broker/package/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation; exact checkpoint25 CI artifact | Emitted PE/import and inert entry checks GREEN | Limited-user packaged-owner UAC prepare/abort and loopback runtime |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest checkpoint24 native installer scenarios | Root owns tracked source/build | Exact564f2dcc pair; old worker3343/job preserved | r2 delayed cancellation GREEN; r3 grant preflight/traffic GREEN | Successful replacement, receipt, recovery and cleanup |
+| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest native installer | Root owns tracked source and host builds | Exact26 pair2.2.1/2.2.2 verified; older jobs preserved | Fresh normalized base and owner/frontend ready; guarded A setup | Automatic frontend exit, replacement, receipt and recovery |
+
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
 built successfully in an independent frozen source directory; unrelated source edits may

@@ -34,13 +34,14 @@ class MacosFixtureOwnerLaunchTest(unittest.TestCase):
     def test_main_launches_only_after_exact_aqua_preflight(self):
         calls = [
             SimpleNamespace(stdout="admin\n501\n", returncode=0),
+            SimpleNamespace(stdout="0\n0\n0\n0\n", returncode=0),
             SimpleNamespace(returncode=0),
         ]
         with mock.patch.object(subject.subprocess, "run", side_effect=calls) as run, \
              mock.patch.object(sys, "argv", ["owner", "launch", "--guest", "admin@guest", "--uid", "501", "--user", "admin", "--launcher", "/Applications/fresh/vpn-control.app/Contents/MacOS/vpn-control", "--workspace", "/Users/admin/work space", "--java-tool-options=-Dhttps.proxyPort=61234"]):
             self.assertEqual(subject.main(), 0)
-        self.assertEqual(run.call_count, 2)
-        parsed = shlex.split(run.call_args_list[1].args[0][-1])
+        self.assertEqual(run.call_count, 3)
+        parsed = shlex.split(run.call_args_list[2].args[0][-1])
         self.assertEqual(parsed, ["sudo", "-n", "launchctl", "asuser", "501", "sudo", "-n", "-u", "admin", "/usr/bin/env", "JAVA_TOOL_OPTIONS=-Dhttps.proxyPort=61234", "/Applications/fresh/vpn-control.app/Contents/MacOS/vpn-control", "--state-dir", "/Users/admin/work space", "serve"])
 
     def test_main_rejects_console_mismatch_before_owner_launch(self):
@@ -49,6 +50,30 @@ class MacosFixtureOwnerLaunchTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 subject.main()
         self.assertEqual(run.call_count, 1)
+
+    def test_main_rejects_foreign_packaged_launcher_before_owner_launch(self):
+        calls = [
+            SimpleNamespace(stdout="admin\n501\n", returncode=0),
+            SimpleNamespace(stdout="0\n0\n0\n503\n", returncode=0),
+        ]
+        with mock.patch.object(subject.subprocess, "run", side_effect=calls) as run, \
+             mock.patch.object(sys, "argv", ["owner", "launch", "--guest", "admin@guest", "--uid", "501", "--user", "admin", "--launcher", "/Applications/fresh/vpn-control.app/Contents/MacOS/vpn-control", "--workspace", "/Users/admin/work"]):
+            with self.assertRaisesRegex(ValueError, "not admitted"):
+                subject.main()
+        self.assertEqual(run.call_count, 2)
+
+    def test_admission_preflight_requires_exact_product_path_and_admitted_owners(self):
+        command = subject.admission_owner_command("admin@192.168.64.3", "501",
+                                                   "/Applications/fresh/vpn-control.app/Contents/MacOS/vpn-control")
+        self.assertEqual(command[:5], ["ssh", "-o", "BatchMode=yes", "--", "admin@192.168.64.3"])
+        self.assertEqual(command[-1].count("/usr/bin/stat -f '%u'"), 4)
+        subject.require_admission_owners("501", ["0", "501", "0", "501"])
+        for owners in (["0", "0", "0", "503"], ["0", "0"], ["0", "0", "0", "-1"]):
+            with self.subTest(owners=owners):
+                with self.assertRaises(ValueError):
+                    subject.require_admission_owners("501", owners)
+        with self.assertRaises(ValueError):
+            subject.admission_owner_command("admin@guest", "501", "/Applications/fresh/../other.app/Contents/MacOS/vpn-control")
 
     def test_builds_explicit_aqua_asuser_owner_command(self):
         command = subject.owner_command("admin@192.168.64.3", "501", "admin",

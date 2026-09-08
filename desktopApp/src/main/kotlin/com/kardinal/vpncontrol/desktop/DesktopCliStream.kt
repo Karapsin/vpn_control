@@ -80,7 +80,8 @@ internal object DesktopCliStream {
                 }
                 previous = result
                 if (publish) emit(result.copy(final = false, warnings = warnings))
-                if (if (invocation.client.json) System.out.checkError() else System.err.checkError()) return 130
+                if ((if (invocation.client.json) System.out.checkError() else System.err.checkError()) ||
+                    DesktopCliOutputHealth.isClosed(invocation.client.json)) return 130
                 pause()
             }
         } catch (_: InterruptedException) {
