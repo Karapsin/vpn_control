@@ -374,3 +374,15 @@ loss of reverse mappings and preserve unrelated route/proxy ownership through
 setup, cleanup failure and retry. Native callers must additionally reidentify the
 owned AVD and check mappings before any setup-time adbd restart. Public product
 commands always run with verified UID2000.
+
+`test_android_fixture_trust.py` uses the development host's OpenSSL executable to
+verify legacy Android CA subject-hash naming with an ephemeral certificate and
+checks the namespace command separator without mounting anything. The fixture
+helper never installs host trust. Windows byte-bound native policy/loader inputs
+have explicit LF Git attributes; `test_windows_native_helpers.py` exercises a real
+`core.autocrlf=true` checkout and verifies exact bytes, in addition to producer and
+Kotlin fixture agreement.
+
+`DesktopMacAuthorizationLifetimeTest` and `DesktopMacUpdateServiceTest` cover late exact rejection, receipt-authority conflicts,
+retryable cleanup and owner-only maintenance. These are ordinary desktop tests;
+retain packaged late-denial verification separately, including active traffic.

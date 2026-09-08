@@ -92,6 +92,29 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(data["inputs"][0]["path"], str(source.resolve()))
             self.assertEqual(len(data["fingerprint"]), 64)
 
+    def test_windows_checkout_preserves_byte_bound_producer_inputs(self):
+        repository = Path(__file__).parents[1]
+        inputs = ["desktopApp/native/windows/import-policy.json",
+                  "desktopApp/native/windows/InstallHelper/loader.manifest",
+                  "desktopApp/native/windows/VpnBroker/loader.manifest"]
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            for name in [".gitattributes", *inputs]:
+                destination = root / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((repository / name).read_bytes())
+            def git(*args):
+                result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+            git("init", "--quiet")
+            git("-c", "core.autocrlf=false", "add", ".")
+            checkout = root / "checkout"
+            checkout.mkdir()
+            git("-c", "core.autocrlf=true", "checkout-index", "--all", "--prefix=" + str(checkout) + "/")
+            for name in inputs:
+                with self.subTest(path=name):
+                    self.assertEqual((repository / name).read_bytes(), (checkout / name).read_bytes())
+
     def test_kotlin_broker_admission_fixture_matches_current_producer(self):
         resources = Path(__file__).parents[1] / "desktopApp/src/test/resources"
         expected = json.loads((resources / "windows-vpn-helper-producer-fixture.json").read_text(encoding="utf-8"))

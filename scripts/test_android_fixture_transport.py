@@ -1,6 +1,11 @@
 import unittest
 
-from android_fixture_transport import cleanup_fixture_transport, establish_fixture_transport, fixture_proxy
+from android_fixture_transport import (
+    cleanup_fixture_transport,
+    establish_fixture_transport,
+    fixture_proxy,
+    parse_reverse_inventory,
+)
 
 
 class FakeAdb:
@@ -55,6 +60,31 @@ class FakeAdb:
 
 
 class AndroidFixtureTransportTest(unittest.TestCase):
+    def test_reverse_inventory_accepts_blank_and_captured_serial_prefixed_record(self):
+        self.assertEqual({}, parse_reverse_inventory("\n \t\n"))
+        self.assertEqual({45384: 61408}, parse_reverse_inventory("tcp:45384 tcp:61408\n"))
+        self.assertEqual(
+            {45385: 61409},
+            parse_reverse_inventory("host-20 tcp:45385 tcp:61409\n\n"),
+        )
+
+    def test_reverse_inventory_rejects_malformed_or_foreign_records(self):
+        malformed = (
+            "tcp:45385\n",
+            "host-20 tcp:45385 tcp:61409 extra\n",
+            "localabstract:fixture tcp:45385\n",
+            "host-20 localabstract:fixture tcp:61409\n",
+            "tcp:0 tcp:61409\n",
+            "tcp:45385 tcp:not-a-port\n",
+        )
+        for raw in malformed:
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                parse_reverse_inventory(raw)
+
+    def test_reverse_inventory_rejects_duplicate_device_route(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            parse_reverse_inventory("tcp:45385 tcp:61409\nhost-20 tcp:45385 tcp:61410\n")
+
     def test_restart_preserves_proxy_but_recreates_fixture_reverse_after_public_identity(self):
         adb = FakeAdb()
         adb.reverse_mappings.clear()

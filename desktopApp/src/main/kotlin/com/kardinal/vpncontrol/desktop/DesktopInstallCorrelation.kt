@@ -78,16 +78,27 @@ internal class DesktopInstallCorrelationJournal(
         require(code in NOT_STARTED_CODES)
         val binding = requireNotNull(records().singleOrNull { it.correlation == correlation })
         require(binding.jobId == jobId)
-        try {
-            readReceipt(binding)
-            error("Protected installation already exists")
-        } catch (failure: Exception) { if (!missingReceipt(failure)) throw failure }
+        requireReceiptAbsent(binding)
         val marker = dispositionPath(binding)
         if (Files.exists(marker, NOFOLLOW_LINKS)) {
             require(requireNotStarted(binding) == code) { ControlCode.CONFLICT.name }
             return
         }
         DesktopPrivateExportWriter.write(marker.toString(), encode(binding, notStarted = true, code = code)).getOrThrow()
+    }
+
+    /** Read-only preflight for owner maintenance; publication independently repeats this check. */
+    @Synchronized fun requireReceiptAbsent(correlation: DesktopInstallCorrelation, jobId: String) {
+        val binding = requireNotNull(records().singleOrNull { it.correlation == correlation })
+        require(binding.jobId == jobId)
+        requireReceiptAbsent(binding)
+    }
+
+    private fun requireReceiptAbsent(binding: DesktopInstallCorrelationRecord) {
+        try {
+            readReceipt(binding)
+            error("Protected installation already exists")
+        } catch (failure: Exception) { if (!missingReceipt(failure)) throw failure }
     }
 
     /** Corrupt, copied, insecure, or over-capacity journals fail closed before consulting any receipt. */

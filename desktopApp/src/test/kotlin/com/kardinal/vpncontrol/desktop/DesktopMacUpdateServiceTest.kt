@@ -17,6 +17,9 @@ class DesktopMacUpdateServiceTest {
         var prepares = 0
         var recoveries = 0
         var released = 0
+        val maintainedOwners = mutableListOf<String>()
+        var lateResult: Result<Unit> = Result.success(Unit)
+        var confirmLate = false
         var received: DesktopInstallCorrelation? = null
         var attached: DesktopFrontendProcessIdentity? = null
         var cancelled: (() -> Unit)? = null
@@ -36,6 +39,11 @@ class DesktopMacUpdateServiceTest {
         }
         override fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> {
             recoveries++; return Result.success(emptyList())
+        }
+        override fun reconcileLateAuthorization(ownerId: String): Result<Unit> {
+            maintainedOwners += ownerId
+            if (confirmLate && lateResult.isSuccess) cancelled?.invoke()
+            return lateResult
         }
         override fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> {
             released++; assertEquals(identity, correlation); assertEquals(job, receipt.jobId); return Result.success(Unit)
@@ -60,6 +68,23 @@ class DesktopMacUpdateServiceTest {
         assertTrue(state().isVpnRunning)
         service.settleVerifiedInstall(identity, DesktopInstallJobReceipt(job, 5, DesktopInstallJobPhase.SUCCEEDED, ControlCode.OK)).getOrThrow()
         assertEquals(1, adapter.released); assertNull(state().appUpdate.preparedAsset)
+    } }
+
+    @Test fun lateAuthorizationRunsOnlyInOwnerMaintenanceAndPreservesLiveRuntime() = runBlocking { fixture { service, state, adapter, _ ->
+        adapter.outcome = Result.failure(DesktopInstallPreparationFailure(adapter.prepared, IllegalStateException("OUTCOME_UNKNOWN")))
+        assertIs<DesktopInstallPreparationFailure>(service.prepareVerifiedInstaller(identity).exceptionOrNull())
+        adapter.confirmLate = true
+        service.recoverInstallCorrelations().getOrThrow()
+        assertTrue(adapter.maintainedOwners.isEmpty())
+        assertEquals(AppUpdatePhase.INSTALLING, state().appUpdate.phase)
+        adapter.lateResult = Result.failure(IllegalStateException("PERSISTENCE_FAILED"))
+        assertEquals("PERSISTENCE_FAILED", service.reconcileTerminalInstallInputs("owner").exceptionOrNull()?.message)
+        assertEquals(AppUpdatePhase.INSTALLING, state().appUpdate.phase)
+        adapter.lateResult = Result.success(Unit)
+        service.reconcileTerminalInstallInputs("owner").getOrThrow()
+        assertEquals(listOf("owner", "owner"), adapter.maintainedOwners)
+        assertEquals(AppUpdatePhase.READY, state().appUpdate.phase)
+        assertTrue(state().isVpnRunning)
     } }
 
     @Test fun changedDmgNeverLaunchesAdapter() = runBlocking { fixture { service, state, adapter, directory ->

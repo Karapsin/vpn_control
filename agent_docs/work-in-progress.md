@@ -22,14 +22,52 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Checkpoint22 is pushed as `0fc15314f9c8c7c0e05df248bb603dbf6a93ab8c`;
-  all five required exact-SHA workflows succeeded, with all15 managed prepush
-  commands passing. Checkpoint23 continues Windows packaged broker admission and
-  native installer fixtures. Root owns component integration, shared launch/project
-  wiring, fixture command construction, documentation and delivery. Windows owns
-  ignored coupled-launch/fence drafts; android_terra owns
-  `android_fixture_transport.py` and its test. mac_fixture_terra exclusively operates
-  the fresh Tart Aqua-denial installation. Host Gradle remains root-scheduled.
+- Latest pushed source is `01c13de6ed60782a7937b1c24053ce0f267ba99f`.
+  Checkpoint23 first push `749bdc38…` exposed Windows path serialization in the
+  macOS observer; the correction passed seven tests in the Windows guest and CI.
+  The next Windows CI step exposed CRLF conversion of byte-bound producer inputs.
+  Current dirty checkpoint24 fixes those inputs with explicit LF Git attributes:
+  causal real-Git checkout RED, then21 producer tests GREEN on host and Windows
+  ARM64/x64-emulation. All three retained checkout SHA values match their inputs.
+  Exact-SHA delivery is not yet successful; checkpoint22 `0fc15314…` remains the
+  last fully verified checkpoint. Root owns delivery/common integration/host builds;
+  workers have exclusive platform execution and bounded source assignments.
+- The macOS native denial was sent after the initial180-second wait had expired.
+  Its old owner lost the authorization process reply, leaving installed unknown;
+  preserve exact watcher3343/job and do not replay. Current code retains a single
+  bounded authorization reader for same-owner maintenance. Exact rejection plus
+  absent protected receipt permits watcher stop, retryable close, journal settlement
+  and callback; status reads remain free of these effects. Actual lifetime RED
+  (37tests/1 failure), owner-maintenance-hook RED (47/1), and Result propagation RED
+  preceded the fix; the final47-test selection now passes. New packaged native
+  late-denial proof and not-started input cleanup remain open.
+- API35 now also independently redisplayed the hidden confirmation for the same
+  receipt `ba527cc4-aa45-48e0-b4d7-d302cf5d7aed`/session236137221 after owner loss,
+  then cancelled with installed=false. Recovery operation `083505a3-598d-43fb-b97d-b52188628692`;
+  cleanup restored proxy`:0`, empty reverse inventory, removed temporary trust,
+  UID2000/OFF and base2.2.19. Receipt is under local
+  `checkpoint23/android-installer-api35/`. Both APIs have cancellation evidence,
+  not successful target replacement evidence.
+- Android reusable fixture checks cover serial-prefixed/blank reverse records
+  (14tests), legacy OpenSSL CA subject-hash naming and explicit nsenter command
+  separation (3tests). API29 success attempt check75efafe9… failed before download
+  or session and used the modern CA hash; generated-certificate RED/GREEN covers
+  that naming mismatch. Retry da7cc4d4… used the old hash and a fresh post-bind app
+  fork but still failed its check, so naming alone did not restore Android trust.
+  Both setups reached known failure and were cleaned without target installation.
+  Manual reverse-parser and nsenter repairs preceded their reusable regressions.
+  Further setup diagnosis is held before any third check. The private harness's
+  chmod glob removed a fixture directory's search mode; the exact created directory
+  was verified/restored0700. Its transcript still contains only closed/rejected.
+  Directory-mode and blank-output preflight integration regressions remain open;
+  current transport parser already accepts blank inventory.
+- Windows native Python launch verified the Android transport14 and trust3 tests
+  with no skips/failures using verified portable Git/OpenSSL and process-only PATH.
+  Source hashes match current helpers. The first trust launch contained a backspace
+  from an embedded Windows path literal; corrected separate-argv execution passed.
+  Its causal reusable launcher regression remains owed; preserve RED and corrected
+  request/exit evidence under local `checkpoint23/windows/android-fixture-tools/`.
+  No host/guest system trust or persistent PATH settings changed.
 - API35 benchmark-only acceptance completed on nondebuggable2.2.19: finite secondary
   timing1268.948834ms; synthetic candidate removed, original source/entries/settings/
   key presence and56000-domain digest verified. Earlier lost selection remains
@@ -51,7 +89,7 @@ inputs and correlation records until authoritative reconciliation.
   causal RED and27/27 fixture GREEN are recorded under checkpoint23. Native retry
   must use that builder; changing product authorization semantics is unnecessary.
 
-- Current checkpoint21 is pushed as `be1e94f0a5c4616381acbd8685bdedc034d034e4`;
+- Historical checkpoint21 is pushed as `be1e94f0a5c4616381acbd8685bdedc034d034e4`;
   all five required exact-SHA workflows succeeded. Managed receipt:
   `.runtime/parity-evidence/checkpoint21/ci-result.json`. Earlier checkpoint20/21
   entries below describe historical iterations, not current delivery status.

@@ -195,6 +195,10 @@ internal class DesktopUpdateService(
     suspend fun reconcileTerminalInstallInputs(ownerId: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!operationMutex.tryLock()) return@withContext Result.success(Unit)
         try {
+            if (osName.startsWith("Mac", true)) {
+                val reconciled = macInstaller.reconcileLateAuthorization(ownerId)
+                if (reconciled.isFailure) return@withContext reconciled
+            }
             installInputCleanup.reconcile(ownerId)
         } finally { operationMutex.unlock() }
     }

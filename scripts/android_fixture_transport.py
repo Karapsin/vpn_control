@@ -11,6 +11,38 @@ def fixture_proxy(device_port: int) -> str:
     return f"127.0.0.1:{_tcp_port(device_port, 'device')}"
 
 
+def _reverse_tcp_port(token: str) -> int:
+    if not token.startswith("tcp:"):
+        raise ValueError("Fixture reverse endpoint must be TCP")
+    value = token.removeprefix("tcp:")
+    if not value or not value.isascii() or not value.isdecimal():
+        raise ValueError("Fixture reverse TCP port must be decimal")
+    return _tcp_port(int(value), "reverse")
+
+
+def parse_reverse_inventory(raw: str) -> dict[int, int]:
+    """Parse `adb reverse --list` output without accepting ambiguous routes."""
+    if not isinstance(raw, str):
+        raise ValueError("Fixture reverse inventory must be text")
+    routes: dict[int, int] = {}
+    for line in raw.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        # A selected transport can prepend its serial to the normal two endpoints.
+        if len(fields) == 2:
+            device, host = fields
+        elif len(fields) == 3 and fields[0] and not fields[0].startswith("tcp:"):
+            _, device, host = fields
+        else:
+            raise ValueError("Malformed fixture reverse inventory record")
+        device_port = _reverse_tcp_port(device)
+        if device_port in routes:
+            raise ValueError("Duplicate fixture reverse target route")
+        routes[device_port] = _reverse_tcp_port(host)
+    return routes
+
+
 def establish_fixture_transport(adb, device_port: int, host_port: int) -> None:
     """Create a fixture route without clearing or replacing another route."""
     device_port = _tcp_port(device_port, "device")

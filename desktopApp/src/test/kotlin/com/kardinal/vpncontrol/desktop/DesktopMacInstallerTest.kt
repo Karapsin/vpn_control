@@ -40,4 +40,22 @@ class DesktopMacInstallerTest {
         assertEquals("OUTCOME_UNKNOWN", external.cancel().exceptionOrNull()?.message)
         assertEquals(2, delegated)
     }
+
+    @Test fun closeFailureLeavesPreparedCancellationRetryable() {
+        var closes = 0
+        val delegate = object : DesktopPreparedInstall {
+            override val jobId = "05dc777a-9bb2-4a73-8d20-b42f45f64a32"
+            override suspend fun commit() = Result.success(Unit)
+            override fun cancel() = Result.success(Unit)
+            override fun close() {
+                closes++
+                if (closes == 1) error("close failed")
+            }
+        }
+        val prepared = DesktopMacUnstartedCancellation(delegate, { true }, {}, {})
+
+        assertFails { prepared.close() }
+        prepared.close()
+        assertEquals(2, closes)
+    }
 }

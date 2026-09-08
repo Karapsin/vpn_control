@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bind Windows broker packages to the bundled runtime and guard Android fixture source inspection.
 - Validate packaged Windows VPN helper admission and harden native update fixture recovery checks.
 - Keep macOS authorization process-path checks portable across Windows test hosts.
+- Recover late macOS authorization rejection and preserve portable native fixture inputs.
 
 ## 2.1.6 - 2026-09-08
 

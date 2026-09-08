@@ -23,6 +23,31 @@ class DesktopInstallCorrelationTest {
         assertFails { reopened.markNotStarted(identity, JOB, ControlCode.OUTCOME_UNKNOWN) }
     }
 
+    @Test fun absencePreflightDoesNotPublishAndCannotAuthorizeAfterReceiptAppears() = fixture { workspace ->
+        val identity = DesktopInstallCorrelation("controller", "request", "operation")
+        var receiptExists = false
+        var inaccessible = false
+        val journal = DesktopInstallCorrelationJournal(workspace) { job ->
+            if (inaccessible) throw WindowsInstallNativeFailure(5)
+            if (!receiptExists) throw WindowsInstallNativeFailure(2)
+            DesktopInstallJobReceipt(job, 3, DesktopInstallJobPhase.INSTALLING, ControlCode.OK)
+        }
+        journal.record(identity, JOB)
+        val before = Files.list(workspace).use { it.toList().associateWith(Files::readString) }
+        journal.requireReceiptAbsent(identity, JOB)
+        assertEquals(before, Files.list(workspace).use { it.toList().associateWith(Files::readString) })
+        assertFalse(journal.recover(identity).notStarted)
+        assertFails { journal.requireReceiptAbsent(identity.copy(requestId = "foreign"), JOB) }
+        assertFails { journal.requireReceiptAbsent(identity, "foreign-job") }
+        inaccessible = true
+        assertFails { journal.requireReceiptAbsent(identity, JOB) }
+        inaccessible = false
+        receiptExists = true
+        assertFails { journal.requireReceiptAbsent(identity, JOB) }
+        assertFails { journal.markNotStarted(identity, JOB) }
+        assertFalse(journal.recover(identity).notStarted)
+    }
+
     @Test fun receiptAuthoritySurvivesRestartAndNeverFallsBackFromMachineFailure() = fixture { workspace ->
         val identity = DesktopInstallCorrelation("controller", "request", "operation")
         val journal = DesktopInstallCorrelationJournal(workspace)

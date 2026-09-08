@@ -1,1 +1,6 @@
 visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# These reviewed inputs are hashed byte-for-byte into native helper manifests.
+/desktopApp/native/windows/import-policy.json text eol=lf
+/desktopApp/native/windows/InstallHelper/loader.manifest text eol=lf
+/desktopApp/native/windows/VpnBroker/loader.manifest text eol=lf

@@ -22,6 +22,7 @@ internal interface DesktopMacInstallAdapter {
     suspend fun prepare(packageFile: Path, asset: UpdateAsset, correlation: DesktopInstallCorrelation,
         frontend: DesktopFrontendProcessIdentity? = null, onCancellationConfirmed: () -> Unit = {}): Result<DesktopPreparedInstall>
     fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>>
+    fun reconcileLateAuthorization(ownerId: String): Result<Unit> = Result.success(Unit)
     fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit>
 }
 
@@ -33,8 +34,13 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
         authority(binding.receiptAuthority).store().open(binding.jobId).use { it.read() }
     })
     private var pending: DesktopPreparedInstall? = null
+    private var lateAuthorization: DesktopMacLateAuthorization? = null
 
     override fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> = runCatching { correlations.recoverAll() }
+    override fun reconcileLateAuthorization(ownerId: String): Result<Unit> = synchronized(this) {
+        val observer = lateAuthorization ?: return@synchronized Result.success(Unit)
+        observer.reconcile(ownerId).also { if (observer.isCompleted()) lateAuthorization = null }
+    }
     override fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {
         require(receipt.phase.terminal)
         val recovered = correlations.recoverAll().single { it.binding?.correlation == correlation }
@@ -60,7 +66,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
         var watcher: Process? = null
         var coordinator: Process? = null
         var coordinatorAttempted = false
-        var authorizationReplyRead = false
+        var authorizationCollector: DesktopMacAuthorizationCollector? = null
         var authorizationRejected: ControlCode? = null
         var reader: DesktopInstallJobStore.Reader? = null
         try {
@@ -126,10 +132,8 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
                 authorizationFailure = {
                     val process = coordinator
                     if (kind == DesktopMacInstallAuthority.MACHINE && process != null &&
-                        !process.isAlive && !authorizationReplyRead) {
-                        authorizationReplyRead = true
-                        authorizationRejected = DesktopMacAuthorizationReply.notStartedCode(job,
-                            process.exitValue(), process.inputStream.use { it.readNBytes(257) })
+                        !process.isAlive) {
+                        authorizationRejected = authorizationCollector?.poll()
                     }
                     authorizationRejected?.let { IllegalStateException(it.name) }
                 })
@@ -165,10 +169,31 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
             check(ready.toByteArray().contentEquals(expected)) { "CONFLICT" }
             macInstallPublishRecord(input.resolve("watcher"), expected)
             coordinatorAttempted = true
-            coordinator = ProcessBuilder(DesktopMacWorkerLaunch.coordinator(worker, kind, job, owner.pid))
+            val startedCoordinator = ProcessBuilder(DesktopMacWorkerLaunch.coordinator(worker, kind, job, owner.pid))
                 .redirectError(ProcessBuilder.Redirect.DISCARD).start()
-            coordinator.outputStream.close()
-            receiptPrepared.awaitAuthorization().getOrThrow()
+            coordinator = startedCoordinator
+            startedCoordinator.outputStream.close()
+            val collector = DesktopMacAuthorizationCollector(job, startedCoordinator)
+            authorizationCollector = collector
+            val authorizationLifetime = DesktopMacAuthorizationLifetime(receiptPrepared::awaitAuthorization, collector)
+            if (kind == DesktopMacInstallAuthority.MACHINE) {
+                lateAuthorization = DesktopMacLateAuthorization(
+                    ownerId = correlation.controllerId,
+                    lifetime = authorizationLifetime,
+                    requireReceiptAbsent = { correlations.requireReceiptAbsent(correlation, job) },
+                    stopWatcher = {
+                        watcher?.let { active ->
+                            if (active.isAlive) active.destroy()
+                            !active.isAlive || active.waitFor(5, TimeUnit.SECONDS)
+                        } ?: false
+                    },
+                    closePrepared = prepared::close,
+                    markNotStarted = { code -> correlations.markNotStarted(correlation, job, code) },
+                    onCancellationConfirmed = { pending = null; onCancellationConfirmed() },
+                )
+            }
+            authorizationLifetime.awaitInitial().getOrThrow()
+            lateAuthorization = null
             check(watcher.isAlive) { "CONFLICT" }
             Result.success(prepared)
         } catch (cancelled: CancellationException) {
@@ -191,6 +216,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
                     correlations.markNotStarted(correlation, active.jobId, code)
                     active.close()
                     pending = null
+                    lateAuthorization = null
                     reported = IllegalStateException(code.name)
                 }.onFailure { reported = IllegalStateException("OUTCOME_UNKNOWN", it) }
             }
@@ -228,5 +254,5 @@ internal class DesktopMacUnstartedCancellation(private val delegate: DesktopPrep
         if (canProveNotStarted()) { recordNotStarted(); cancelled = true; onCancellationConfirmed() }
         else { delegate.cancel().getOrThrow(); cancelled = true }
     }
-    override fun close() { if (!closed) { closed = true; delegate.close() } }
+    override fun close() { if (!closed) { delegate.close(); closed = true } }
 }
