@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Stop idle CLI log followers when their output closes and preflight macOS fixture installations.
 - Cancel desktop searches with explicit recovery results and close captured frontends on quit.
 - Keep benchmark waiter-disconnect regression aligned with explicit operation cancellation.
+- Make Windows observer smoke checks accept interpreter aliases only when they identify the same file.
 
 ## 2.1.7 - 2026-09-08
 

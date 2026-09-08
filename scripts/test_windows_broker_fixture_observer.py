@@ -13,6 +13,13 @@ import unittest
 import windows_broker_fixture_observer as observer
 
 
+def assert_self_image(test, reported_image, launched_image):
+    # Python can be launched through a hardlink alias. This self-observation
+    # smoke checks file identity; captured broker path admission stays strict.
+    test.assertTrue(os.path.samefile(reported_image, launched_image),
+                    f"Reported image {reported_image!r}, launched image {launched_image!r}")
+
+
 class Pin:
     def __init__(self, pid, creation, digest, elevated=0):
         self.record = {"pid": pid, "creationFileTime": creation, "image": f"C:\\fixture\\{pid}.exe",
@@ -84,6 +91,23 @@ class NativeFixture:
 
 
 class WindowsBrokerFixtureObserverTest(unittest.TestCase):
+    def test_self_image_smoke_accepts_hardlinked_interpreter_alias(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "python.exe"
+            alias = Path(temporary) / "python3.exe"
+            image.write_bytes(b"inert interpreter fixture")
+            os.link(image, alias)
+            assert_self_image(self, str(image), str(alias))
+
+    def test_self_image_smoke_rejects_different_file_with_identical_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "python.exe"
+            other = Path(temporary) / "python3.exe"
+            image.write_bytes(b"inert interpreter fixture")
+            other.write_bytes(image.read_bytes())
+            with self.assertRaises(AssertionError):
+                assert_self_image(self, str(image), str(other))
+
     def test_ready_consumer_preserves_auxiliary_child_and_selects_exact_runtime(self):
         native = NativeFixture()
         result = observer.observe_ready(native.request(), native)
@@ -193,7 +217,7 @@ class WindowsBrokerFixtureObserverTest(unittest.TestCase):
         with native.open_process(os.getpid(), 0x101410) as process:
             details = process.describe()
             self.assertGreater(details["creationFileTime"], 0)
-            self.assertTrue(observer.same_path(details["image"], sys.executable))
+            assert_self_image(self, details["image"], sys.executable)
             self.assertTrue(details["token"]["sid"].startswith("S-1-"))
             self.assertEqual(258, process.wait())
             self.assertTrue(process.modules())

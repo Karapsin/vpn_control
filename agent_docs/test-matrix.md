@@ -117,6 +117,10 @@ retained process handle's generation and exit signal are checked before an image
 query that can fail after exit. Unavailable observations remain unknown. Two
 additional Windows-native cases inspect the current process and an inert child;
 these must execute on Windows and are explicit skips on other hosts.
+The self-image smoke compares filesystem identity so a Python executable hardlink
+alias does not fail on path spelling. Two portable cases use real files to accept
+the same inode and reject identical bytes in a different file. This changes only
+the smoke assertion; captured broker admission continues to require its exact path.
 
 `scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
 regression catches Windows path backslashes being interpreted as Python escapes

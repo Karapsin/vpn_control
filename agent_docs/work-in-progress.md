@@ -22,6 +22,18 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint28 is pushed as `d8b900a41a864ba4fe00cf3d7ae99e222a37eb2e`
+  (version2.1.7, five Unreleased notes). All15 final prepush commands passed.
+  Exact-SHA Windows CI run34290663586 failed the native observer self-image smoke:
+  its process image path did not match `sys.executable` textually. The failure
+  log is `checkpoint28/windows-ci-failed.log`; the checkpoint is not CI-verified.
+  A quick real-hardlink regression reproduces the overstrict smoke assertion on
+  every host (`checkpoint29/observer-alias-red.log`, one failure among18 tests).
+  The smoke now checks file identity, rejects separate files with identical bytes,
+  and preserves queried/launch paths on mismatch. Captured broker admission path
+  matching is unchanged. Portable GREEN18 selects16 executed/two native skips;
+  current Windows interpreter-alias execution and corrected exact-SHA CI remain
+  required. The JVM fixture ancestry preflight remains a separate next-slice gate.
 - Checkpoint27 is pushed as `88752578cbb9ec89c00d7158004c64f7d336aeb5`
   (version2.1.7, three Unreleased notes). All15 managed prepush commands passed;
   all five required exact-SHA workflows succeeded and managed session29131 exited0
@@ -692,11 +704,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Search cancellation tests/policy, shared integration, docs and delivery | CLI support/runner; host Gradle; metadata/commits | Checkpoint27 all five exact-SHA workflows GREEN | Stream host18/native Windows7 and fixture43 GREEN; public search cancellation RED | Focused cancellation GREEN, integrated checkpoint28 |
-| C/D-Android | android_terra, Terra medium | SSH fixture preparation; owned API29/5584 and API35/5590 | No tracked edits currently; coordinate guest fixture with Mac owner | API29 target2.3.0 nondebuggable/OFF/no key; 46 relevant source files match frozen APK | Read-only preflight GREEN; task SSH fixture topology under validation | Live actual-A/pending-key-B restart/recovery |
-| F/E-Windows | windows, Astra | Exclusive Windows native execution and ignored scratch | Tracked broker/package/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation; exact checkpoint25 CI artifact | Emitted PE/import and inert entry checks GREEN | Limited-user packaged-owner UAC prepare/abort and loopback runtime |
+| B/G/H | root | Shared integration, observer CI correction, JVM launcher preflight, docs and delivery | Host Gradle; metadata/commits; shared protocol | Checkpoint28 pushed; Windows smoke CI failed | Search/quit focused58 and host/Mac/Windows component24 GREEN | Corrected observer native18, checkpoint29 and exact-SHA CI |
+| C/D-Android | android_terra, Terra medium | SSH fixture and live recovery; owned API29/5584 and API35/5590 | No tracked edits; isolated Mac task ports59022–25 | API29 target2.3.0 nondebuggable; task key residue; OFF after cleanup | Restart admission alone is not authentication/recovery proof | Establish A traffic, then isolated Find Best B failure and captured-A traffic recovery |
+| F/E-Windows | windows, Astra | Exclusive Windows VM; broker OUTPUT slice after CI correction | No factory/Main/manager/autostart/shared edits; root owns observer smoke | ARM64 Windows guest/x64 emulation; exact25 CI native helpers | UAC prepare-abort/listener lifecycle GREEN; TUN not yet run | Current observer native18, narrow TUN traffic, OUTPUT causal regression |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Normal-quit frontend helper, owner gate/controller, frontend instance, Main and their tests | AppService only paired quit helper; root owns install helpers/protocol models/builds | Exact26 replacement/traffic GREEN; target frontend8582 preserved | Compiled public close RED; implementation in progress | Correlated normal-quit close, focused tests, new packaged native rerun |
+| E-Mac | mac_fixture_terra, Terra medium | Exact28 CI DMG fresh normal-QUIT installed scenario | Tracked implementation returned to root; guest UI exclusive | Exact26 replacement/traffic GREEN; old8582 preserved | Native component24 GREEN; exact28 artifact pending | Fresh installed owner/frontend automatic quit; coordinate isolated Android SSH ports |
 
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
