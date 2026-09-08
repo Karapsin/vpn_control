@@ -10,6 +10,69 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class DesktopWindowsVpnConfigCaptureTest {
+    @Test fun failedInitialResourceCopyRetainsItsPartiallyWrittenSpool() {
+        val directory = Files.createTempDirectory("vpn-capture-cleanup-")
+        val source = directory.resolve("rule.json")
+        Files.writeString(source, "fixture")
+        var erases = 0
+        val spool = object : com.kardinal.vpncontrol.control.ControlTransferSpool {
+            override fun append(bytes: ByteArray) { throw java.io.IOException("private partial spool") }
+            override fun read(offset: Long, length: Int): ByteArray = error("unused")
+            override fun sha256() = "0".repeat(64)
+            override fun erase() { if (++erases == 1) throw java.io.IOException("private cleanup path") }
+        }
+        try {
+            val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+                DesktopWindowsCapturedResource.capture(source, directory) { spool }
+            }
+            assertEquals("UNAVAILABLE", failure.code)
+            assertEquals(1, erases)
+            assertNotNull(failure.retainedAdmission).close()
+            assertEquals(2, erases)
+            assertFalse(failure.toString().contains("private"))
+        } finally { Files.delete(source); Files.delete(directory) }
+    }
+
+    @Test fun resourceAdmissionRetainsItsOwnUnfinishedCleanup() {
+        var closes = 0
+        val admission = AutoCloseable { if (++closes == 1) throw java.io.IOException("private fixture path") }
+        val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+            DesktopWindowsVpnConfigCapture.capture(
+                """{"route":{"rule_set":[{"type":"local","path":"first.json"}]}}""", Path.of("fixture"),
+                captureResource = { _, _ -> throw DesktopWindowsRuntimeFailure("PERMISSION_DENIED", retainedAdmission = admission) },
+            )
+        }
+        assertEquals("PERMISSION_DENIED", failure.code)
+        assertEquals(1, closes)
+        assertNotNull(failure.retainedAdmission).close()
+        assertEquals(2, closes)
+        assertFalse(failure.toString().contains("private fixture path"))
+    }
+
+    @Test fun rejectedConfigurationRetainsFailedPrivateSpoolCleanupForOwnerRetry() {
+        var erases = 0
+        val spool = object : com.kardinal.vpncontrol.control.ControlTransferSpool {
+            override fun append(bytes: ByteArray) = error("unused")
+            override fun read(offset: Long, length: Int): ByteArray = error("unused")
+            override fun sha256() = "0".repeat(64)
+            override fun erase() { if (++erases == 1) throw java.io.IOException("private fixture path") }
+        }
+        val resource = DesktopWindowsCapturedResource("fixture", ".json", 0, "0".repeat(64), spool)
+        val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+            DesktopWindowsVpnConfigCapture.capture(
+                """{"route":{"rule_set":[{"type":"local","path":"first.json"}]},"log":{"output":"second.log"}}""",
+                Path.of("fixture"), captureResource = { _, _ -> resource },
+            )
+        }
+        assertEquals("UNSUPPORTED", failure.code)
+        assertEquals(1, erases)
+        val retained = assertNotNull(failure.retainedAdmission)
+        retained.close()
+        retained.close()
+        assertEquals(2, erases)
+        assertFalse(failure.toString().contains("private fixture path"))
+    }
+
     private val nativeBrokerModules = listOf(
         "windows-vpn-broker.cs", "windows-vpn-user-files.cs", "windows-vpn-cache-resources.cs",
     )

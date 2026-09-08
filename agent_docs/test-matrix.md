@@ -89,6 +89,30 @@ The `VPN Integration` workflow has two profiles. `core` runs fast deterministic 
 
 `TEST-001` in `contracts.md` applies to every distinct failure type found in VM, emulator, native/package, manual, visual, and integration testing. Add the quick reproducer to the relevant routine suite above before fixing the implementation. Kotlin regressions belong in the ordinary shared/desktop/Android unit-test tasks; constrained-heap regressions must run without a device or privileged runtime. New standalone script regressions must be wired into routine hygiene/pre-push and applicable CI, not left as optional commands. Record failing/passing evidence and the suite mapping alongside the native finding. Keep native verification for OS behavior that a host regression cannot faithfully reproduce; a skipped native test is not early regression coverage. Reproducible infrastructure failures require fixture, script, or workflow-contract regressions too.
 
+`scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
+regression catches Windows path backslashes being interpreted as Python escapes
+before a VM is needed. The reusable `native_python_request` builder supplies paths
+through argv, changes only the child PATH, preserves test failure exits/evidence,
+and rejects empty suites. Native fixture drivers use it with a verified interpreter
+and tool directories in their owned guest; it does not provision tools or establish
+their provenance. Keep the native Windows launch as a separate acceptance check.
+
+`scripts/test_android_no_update_tls_preflight.py` also runs in release hygiene.
+It exercises the actual disposable-fixture driver: exact APK/OFF baseline,
+Android legacy CA filename, staging-only relabeling, failed setup rollback,
+changed-zygote cleanup retention, and nonzero cleanup failures with evidence.
+These tests do not establish Android trust or installation behavior; retain the
+nondebuggable API29/API35 native scenarios. Relabel only newly created, validated
+staging entries to the captured certificate-store context; never change system
+certificate files, SELinux policy/enforcement, or host trust.
+
+`scripts/test_macos_fixture_owner_launch.py` runs in release hygiene. The actual
+launcher checks the active console identity and GUI bootstrap session before an
+ordinary-user owner is launched through `launchctl asuser`; failed preflight must
+not start an owner. Remote macOS paths use POSIX semantics on every host. Retain
+the native headless `INTERACTION_REQUIRED` scenario separately from Aqua prompt
+and delayed-cancellation acceptance.
+
 ## Common Combined Checks
 
 Localization patch:

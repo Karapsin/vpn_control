@@ -16,10 +16,8 @@ import java.nio.ByteOrder
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPOutputStream
 
 /** Actual Windows-only scoped child transport. Public standard-token readiness remains separately gated. */
 internal object DesktopWindowsVpnBroker {
@@ -78,33 +76,34 @@ internal object DesktopWindowsVpnBroker {
         }
     }
 
+    private fun admissionFailure(failure: Throwable, retained: AutoCloseable? = null): DesktopWindowsRuntimeFailure {
+        val original = (failure as? DesktopWindowsAdmissionCleanupFailure)?.originalFailure ?: failure
+        val nativeFailure = original as? DesktopWindowsRuntimeFailure
+        val leases = listOfNotNull(retained, (failure as? DesktopWindowsAdmissionCleanupFailure)?.retained,
+            nativeFailure?.retainedAdmission).distinct().toMutableList()
+        val pending = if (leases.isEmpty()) null else object : AutoCloseable {
+            @Synchronized override fun close() {
+                var rejected: Throwable? = null
+                for (index in leases.indices.reversed()) {
+                    try { leases[index].close(); leases.removeAt(index) }
+                    catch (error: Throwable) { rejected = rejected ?: error }
+                }
+                rejected?.let { throw it }
+            }
+        }
+        return DesktopWindowsRuntimeFailure(nativeFailure?.code ?: when (original) {
+            is IllegalArgumentException, is SecurityException -> "PERMISSION_DENIED"
+            is WindowsInstallNativeFailure -> if (original.code == 5) "PERMISSION_DENIED" else "UNAVAILABLE"
+            is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
+            is kotlinx.coroutines.CancellationException -> "CANCELLED"
+            else -> "UNAVAILABLE"
+        }, nativeFailure?.unresolvedRuntime,
+            nativeFailure?.stage ?: DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, pending)
+    }
+
     /** Ordinary-owner admission surrounds authorization and the helper's preparation acknowledgment. */
     internal fun withNativeOwnerAdmission(native: WindowsAdmissionNative,
                                          prepare: (String) -> DesktopPreparedRuntimeProcess): DesktopPreparedRuntimeProcess {
-        fun admissionFailure(failure: Throwable, retained: AutoCloseable? = null): DesktopWindowsRuntimeFailure {
-            val original = (failure as? DesktopWindowsAdmissionCleanupFailure)?.originalFailure ?: failure
-            val nativeFailure = original as? DesktopWindowsRuntimeFailure
-            val leases = listOfNotNull(retained, (failure as? DesktopWindowsAdmissionCleanupFailure)?.retained,
-                nativeFailure?.retainedAdmission).distinct().toMutableList()
-            val pending = if (leases.isEmpty()) null else object : AutoCloseable {
-                @Synchronized override fun close() {
-                    var rejected: Throwable? = null
-                    for (index in leases.indices.reversed()) {
-                        try { leases[index].close(); leases.removeAt(index) }
-                        catch (error: Throwable) { rejected = rejected ?: error }
-                    }
-                    rejected?.let { throw it }
-                }
-            }
-            return DesktopWindowsRuntimeFailure(nativeFailure?.code ?: when (original) {
-                is IllegalArgumentException, is SecurityException -> "PERMISSION_DENIED"
-                is WindowsInstallNativeFailure -> if (original.code == 5) "PERMISSION_DENIED" else "UNAVAILABLE"
-                is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
-                is kotlinx.coroutines.CancellationException -> "CANCELLED"
-                else -> "UNAVAILABLE"
-            }, nativeFailure?.unresolvedRuntime,
-                nativeFailure?.stage ?: DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, pending)
-        }
         val sid: String
         val pins: AutoCloseable
         try {
@@ -137,10 +136,10 @@ internal object DesktopWindowsVpnBroker {
             if (scopeProvider == null) throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
                 stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
         }
-        check(System.getProperty("os.name").startsWith("Windows", true))
-        val architecture = System.getProperty("os.arch").lowercase()
-        check(architecture in setOf("amd64", "x86_64")) { "UNSUPPORTED" }
-        // Never elevate VPN_CONTROL_SING_BOX, PATH, or the user-writable extraction cache.
+        check(com.sun.jna.Platform.isWindows())
+        check(Native.POINTER_SIZE == 8) { "UNSUPPORTED" }
+        // The retained native owner image and runtime PE establish architecture; JVM properties
+        // and an extraction cache cannot select either the executable or its elevated authority.
         val runtime = requireNotNull(javaClass.getResourceAsStream("/bin/windows-amd64/sing-box.exe")) {
             "UNAVAILABLE"
         }.use { it.readNBytes(192 * 1024 * 1024 + 1) }
@@ -148,75 +147,82 @@ internal object DesktopWindowsVpnBroker {
         requireAmd64Executable(runtime)
         require(config.isNotEmpty()) { "INVALID_ARGUMENT" }
         val digest = MessageDigest.getInstance("SHA-256").digest(runtime).joinToString("") { "%02x".format(it) }
-        return withNativeOwnerAdmission(JnaWindowsInstallAdmission()) { ownerSid ->
-        val api = Native.load("kernel32", Api::class.java)
-        val creation = Memory(8).use { created -> Memory(24).use { rest ->
-            check(api.GetProcessTimes(Kernel32.INSTANCE.GetCurrentProcess(), created, rest, rest.share(8), rest.share(16)))
-            created.getLong(0)
-        } }
-        val scope = if (mutableResources.isEmpty()) null else scopeProvider?.current()
-            ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
-        val resourceJob = scope?.let {
-            DesktopWindowsRuntimeResourceJob(UUID.randomUUID().toString(), it,
-                mutableResources.map { resource -> DesktopWindowsRuntimeResourceEntry(resource.id, resource.kind) },
-                DesktopWindowsRuntimeResourceNativeOwner(ProcessHandle.current().pid(), creation, ownerSid))
-        }
-        // Durable correlation precedes UAC and every native input. A failed admission never
-        // touches actual A and leaves the unresolved journal available for authoritative recovery.
-        val reconciliation = resourceJob?.let {
-            DesktopWindowsRuntimeResourceReconciliation.retain(it, scopeProvider?.journals())
-        }
-        val name = "vpn-control-vpn-${UUID.randomUUID()}"
-        val capturedCommand = command(name, ProcessHandle.current().pid(), creation,
-            ownerSid, digest)
-        val executable = Memory(65536).use { buffer ->
-            val length = api.GetSystemDirectoryW(buffer, 32768)
-            check(length in 1 until 32768)
-            String(CharArray(length) { buffer.getShort(it.toLong() * 2).toInt().toChar() }) +
-                "\\WindowsPowerShell\\v1.0\\powershell.exe"
-        }
-        val launch = ShellAPI.SHELLEXECUTEINFO().also {
-            it.fMask = 0x40
-            it.lpVerb = "runas"
-            it.lpFile = executable
-            it.lpParameters = commandParameters(executable, capturedCommand)
-            it.nShow = 0
-        }
-        val ownedJob = DesktopWindowsNativeJob.create()
-        try {
-            onProgress(DesktopWindowsRuntimePreparationStage.AUTHORIZATION)
-            if (!Shell32.INSTANCE.ShellExecuteEx(launch)) throw launchFailure(Kernel32.INSTANCE.GetLastError())
-        } catch (failure: Throwable) { ownedJob.close(); throw failure }
-        val broker = launch.hProcess ?: run {
-            // No channel input was sent, so no child could be admitted to this empty job.
-            ownedJob.close()
-            throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.AUTHORIZATION)
-        }
-        val channel = NativeChannel(api, name, broker, ownedJob)
-        val retained = DesktopWindowsScopedRuntimeProcess(channel, logFile, resources = reconciliation)
-        var stage = DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION
-        try {
-            onProgress(stage)
-            val pipe = channel.connect()
-            stage = DesktopWindowsRuntimePreparationStage.PEER_IDENTITY
-            onProgress(stage)
-            val brokerPid = Kernel32.INSTANCE.GetProcessId(broker)
-            val server = IntByReference()
-            check(api.GetNamedPipeServerProcessId(pipe, server) && server.value == brokerPid) { "PERMISSION_DENIED" }
-            stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS
-            onProgress(stage)
-            channel.initialize(runtime, config, resources, resourceJob, mutableResources) {
-                stage = DesktopWindowsRuntimePreparationStage.CHILD_CREATED
-                onProgress(stage)
+        return withNativeOwnerAdmission(JnaWindowsInstallAdmission()) { _ ->
+            val helper = try { DesktopWindowsVpnHelperAdmission.retain(digest, runtime.size.toLong()) }
+                catch (failure: Throwable) { throw admissionFailure(failure) }
+            var transferred = false
+            var ownedChannel: DesktopWindowsVpnHelperChannel? = null
+            var preparationFailure: Throwable? = null
+            try {
+                val api = Native.load("kernel32", Api::class.java)
+                val scope = if (mutableResources.isEmpty()) null else scopeProvider?.current()
+                    ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+                val resourceJob = scope?.let {
+                    DesktopWindowsRuntimeResourceJob(UUID.randomUUID().toString(), it,
+                        mutableResources.map { resource -> DesktopWindowsRuntimeResourceEntry(resource.id, resource.kind) }, helper.owner)
+                }
+                // Durable correlation precedes UAC and every native input. Its immutable native
+                // owner tuple is exactly the tuple retained by the packaged helper admission.
+                val reconciliation = resourceJob?.let {
+                    DesktopWindowsRuntimeResourceReconciliation.retain(it, scopeProvider?.journals())
+                }
+                val name = "vpn-control-vpn-${UUID.randomUUID()}"
+                val launch = ShellAPI.SHELLEXECUTEINFO().also {
+                    it.fMask = 0x40
+                    it.lpVerb = "runas"
+                    it.lpFile = helper.executable
+                    it.lpParameters = helper.parameters(name)
+                    it.nShow = 0
+                }
+                // Both channels and every candidate/runtime owner are allocated before UAC.
+                // The native channel creates its empty job inside the covered callback.
+                val nativeChannel = NativeChannel(api, name)
+                val channel = DesktopWindowsVpnHelperChannel(nativeChannel, helper)
+                ownedChannel = channel
+                var stage = DesktopWindowsRuntimePreparationStage.AUTHORIZATION
+                desktopWindowsPrepareFixedHelper(channel, logFile, reconciliation,
+                    stage = { stage }, authorizeAndPrepare = {
+                        nativeChannel.createJob()
+                        onProgress(stage)
+                        // The callback captures its output even when returning from JNA throws.
+                        // Cleanup owns that retained object, never a process rediscovered by PID.
+                        val accepted = desktopWindowsRetainAuthorizedHelper(
+                            authorize = { Shell32.INSTANCE.ShellExecuteEx(launch) },
+                            capturedProcess = { launch.hProcess }, retain = nativeChannel::adoptBroker)
+                        val process = launch.hProcess
+                        if (!accepted) throw launchFailure(Kernel32.INSTANCE.GetLastError())
+                        val broker = process ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
+                            stage = DesktopWindowsRuntimePreparationStage.AUTHORIZATION)
+                        stage = DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION
+                        onProgress(stage)
+                        val pipe = nativeChannel.connect()
+                        stage = DesktopWindowsRuntimePreparationStage.PEER_IDENTITY
+                        onProgress(stage)
+                        val brokerPid = Kernel32.INSTANCE.GetProcessId(broker)
+                        val server = IntByReference()
+                        check(api.GetNamedPipeServerProcessId(pipe, server) && server.value == brokerPid) { "PERMISSION_DENIED" }
+                        helper.verifyStartedProcess(broker)
+                        stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS
+                        onProgress(stage)
+                        nativeChannel.initialize(runtime, config, resources, resourceJob, mutableResources) {
+                            stage = DesktopWindowsRuntimePreparationStage.CHILD_CREATED
+                            onProgress(stage)
+                        }
+                        stage = DesktopWindowsRuntimePreparationStage.READY
+                        onProgress(stage)
+                    }).also { transferred = true }
+            } catch (failure: Throwable) {
+                preparationFailure = failure
+                if (failure is DesktopWindowsRuntimeFailure &&
+                    (failure.unresolvedRuntime != null || failure.retainedAdmission != null)) transferred = true
+                throw failure
+            } finally {
+                if (!transferred) {
+                    val pending = ownedChannel ?: helper
+                    try { pending.close() }
+                    catch (cleanup: Throwable) { throw admissionFailure(preparationFailure ?: cleanup, pending) }
+                }
             }
-            stage = DesktopWindowsRuntimePreparationStage.READY
-            onProgress(stage)
-            DesktopPreparedWindowsRuntimeProcess(channel, logFile, reconciliation)
-        } catch (failure: Throwable) {
-            throw desktopWindowsPreparationFailure(failure, stage,
-                abort = channel::abort, close = channel::close, unresolved = { retained },
-            )
-        }
         }
     }
 
@@ -270,41 +276,14 @@ internal object DesktopWindowsVpnBroker {
         writeFrame(hash, 0, hash.size)
     }
 
-    internal fun command(name: String, pid: Long, creation: Long, sid: String, digest: String): String {
-        require(name.matches(Regex("vpn-control-vpn-[a-f0-9-]{36}")))
-        require(pid in 1..0xffffffffL && creation > 0 && sid.matches(Regex("S-1-[0-9-]+")) && digest.matches(Regex("[a-f0-9]{64}")))
-        try {
-            val compressed = ByteArrayOutputStream().also { output -> GZIPOutputStream(output).use { gzip ->
-                for (resource in listOf("/windows-vpn-broker.cs", "/windows-vpn-user-files.cs", "/windows-vpn-cache-resources.cs")) {
-                    requireNotNull(javaClass.getResourceAsStream(resource)).use { it.copyTo(gzip, 65536) }
-                    gzip.write('\n'.code)
-                }
-            } }.toByteArray()
-            return """
-            ${'$'}ErrorActionPreference='Stop'
-            ${'$'}m=New-Object IO.MemoryStream(,[Convert]::FromBase64String('${Base64.getEncoder().encodeToString(compressed)}'))
-            ${'$'}g=New-Object IO.Compression.GZipStream(${'$'}m,[IO.Compression.CompressionMode]::Decompress)
-            ${'$'}r=New-Object IO.StreamReader(${'$'}g)
-            Add-Type -TypeDefinition ${'$'}r.ReadToEnd() -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
-            [VpnRuntimeBroker]::Run('$name',$pid,[long]$creation,'$sid','$digest')
-            """.trimIndent()
-        } catch (_: OutOfMemoryError) {
-            throw DesktopWindowsRuntimeFailure("RESOURCE_EXHAUSTED", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
-        }
-    }
+    internal fun command(name: String, pid: Long, creation: Long, sid: String, digest: String): String =
+        DesktopWindowsVpnHelperAdmission.arguments(name, DesktopWindowsRuntimeResourceNativeOwner(pid, creation, sid), digest)
 
     internal fun commandParameters(executable: String, capturedCommand: String): String {
-        // This operand contains only fixed ASCII code/base64 and validated opaque peer identities.
-        // Runtime configuration, user paths and credentials travel solely over the authenticated pipe.
         require(executable.isNotEmpty() && '\u0000' !in executable && capturedCommand.all { it.code in 1..127 })
-        val parameters = listOf("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-            "-Command", capturedCommand).joinToString(" ", transform = ::windowsInstallArgument)
-        // Count the actual UTF-16 CreateProcess command, including executable quoting and its NUL.
-        // The native argv limit bounds captured helper code; it never limits the logical document.
-        if (windowsInstallArgument(executable).length.toLong() + parameters.length + 2 > 32767) {
+        if (windowsInstallArgument(executable).length.toLong() + capturedCommand.length + 2 > 32767)
             throw DesktopWindowsRuntimeFailure("RESOURCE_EXHAUSTED", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
-        }
-        return parameters
+        return capturedCommand
     }
 
     private fun connect(api: Api, name: String, broker: WinNT.HANDLE): WinNT.HANDLE {
@@ -320,15 +299,19 @@ internal object DesktopWindowsVpnBroker {
         throw IOException("TIMEOUT")
     }
 
-    private class NativeChannel(private val api: Api, private val pipeName: String,
-        private val broker: WinNT.HANDLE, private val ownedJob: DesktopWindowsNativeJob) : DesktopWindowsPreparedRuntimeChannel {
+    private class NativeChannel(private val api: Api, private val pipeName: String) : DesktopWindowsPreparedRuntimeChannel {
+        private var broker: WinNT.HANDLE? = null
+        private var ownedJob: DesktopWindowsNativeJob? = null
+        private val job: DesktopWindowsNativeJob get() = checkNotNull(ownedJob)
+        fun createJob() { check(ownedJob == null); ownedJob = DesktopWindowsNativeJob.create() }
+        fun adoptBroker(process: WinNT.HANDLE) { check(broker == null); broker = process }
         override var childPid: Long = 0; private set
         private var pipe: WinNT.HANDLE? = null
         private var pending = DesktopWindowsRuntimeStatus(true)
         private var closed = false
         private var pipeClosed = false
         private var committed = false
-        fun connect(): WinNT.HANDLE = connect(api, pipeName, broker).also { pipe = it }
+        fun connect(): WinNT.HANDLE = connect(api, pipeName, checkNotNull(broker)).also { pipe = it }
         fun initialize(runtime: ByteArray, configuration: String, resources: List<DesktopWindowsCapturedResource>,
                        resourceJob: DesktopWindowsRuntimeResourceJob?,
                        mutableResources: List<DesktopWindowsRuntimeResource>, childCreated: () -> Unit) {
@@ -341,7 +324,7 @@ internal object DesktopWindowsVpnBroker {
             // candidates use opcode 5, which requires the authenticated resource envelope.
             mutableProtocol = preparation != null
             write(integer(if (preparation == null) 4 else 5))
-            write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(ownedJob.handleValue).array())
+            write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(job.handleValue).array())
             if (preparation != null) {
                 write(integer(preparation.size))
                 write(preparation)
@@ -389,7 +372,8 @@ internal object DesktopWindowsVpnBroker {
             committed = true
         }
         @Synchronized override fun abort(): Boolean {
-            // Cancellation can arrive before the helper finishes compiling its fixed source.
+            if (broker == null) return ownedJob?.isEmpty() != false // No peer input/job duplication occurred.
+            // Cancellation can arrive before the fixed helper finishes native admission.
             // Open and immediately close its pipe when ready; no input is sent before peer admission.
             if (pipe == null && !closed) {
                 val candidate = api.CreateFileW(WString("\\\\.\\pipe\\$pipeName"),
@@ -397,18 +381,18 @@ internal object DesktopWindowsVpnBroker {
                 if (candidate != WinBase.INVALID_HANDLE_VALUE) pipe = candidate
             }
             closePipe()
-            ownedJob.terminate()
+            job.terminate()
             // Waiting for the exact helper also prevents a later suspended child appearing after
             // an initially empty job was observed. Never depend on elevation-token process rights.
-            return Kernel32.INSTANCE.WaitForSingleObject(broker, 10000) == 0 && ownedJob.isEmpty()
+            return Kernel32.INSTANCE.WaitForSingleObject(broker, 10000) == 0 && job.isEmpty()
         }
         @Synchronized override fun status(): DesktopWindowsRuntimeStatus {
             if (!pending.running) return pending.also { pending = it.copy(log = byteArrayOf()) }
             return exchange(0)
         }
         @Synchronized override fun stop(force: Boolean) { pending = exchange(if (force) 2 else 1) }
-        override fun childExited() = closed ||
-            (Kernel32.INSTANCE.WaitForSingleObject(broker, 0) == 0 && ownedJob.isEmpty())
+        override fun childExited() = closed || if (broker == null) ownedJob?.isEmpty() != false else
+            (Kernel32.INSTANCE.WaitForSingleObject(broker, 0) == 0 && job.isEmpty())
         private fun exchange(command: Int): DesktopWindowsRuntimeStatus {
             check(!closed)
             write(byteArrayOf(command.toByte()))
@@ -467,17 +451,17 @@ internal object DesktopWindowsVpnBroker {
         }
         @Synchronized override fun close() {
             if (closed) return
-            check(Kernel32.INSTANCE.WaitForSingleObject(broker, 10000) == 0 && ownedJob.isEmpty()) { "OUTCOME_UNKNOWN" }
+            val process = broker
+            check((process == null || Kernel32.INSTANCE.WaitForSingleObject(process, 10000) == 0) &&
+                ownedJob?.isEmpty() != false) { "OUTCOME_UNKNOWN" }
             closePipe()
-            ownedJob.close()
-            check(Kernel32.INSTANCE.CloseHandle(broker)) { "OUTCOME_UNKNOWN" }
+            ownedJob?.close()
+            if (process != null) check(Kernel32.INSTANCE.CloseHandle(process)) { "OUTCOME_UNKNOWN" }
             closed = true
         }
     }
     private const val MAX_RESOURCE_PREPARATION_BYTES = 8 * 1024 * 1024
     private interface Api : StdCallLibrary {
-        fun GetSystemDirectoryW(output: Pointer, capacity: Int): Int
-        fun GetProcessTimes(process: WinNT.HANDLE, creation: Pointer, exit: Pointer, kernel: Pointer, user: Pointer): Boolean
         fun CreateFileW(path: WString, access: Int, share: Int, security: Pointer?, disposition: Int, flags: Int,
             template: WinNT.HANDLE?): WinNT.HANDLE
         fun GetNamedPipeServerProcessId(pipe: WinNT.HANDLE, pid: IntByReference): Boolean

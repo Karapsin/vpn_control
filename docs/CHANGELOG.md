@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Retain partially copied Windows runtime inputs for cleanup retry and require an active GUI session for macOS installer fixtures.
+
+## 2.1.7 - 2026-09-08
+
 - Add Windows native broker packaging and cache handoff validation, with earlier Android instrumentation checks.
 - Verify controller credential ownership using native account identities and keep Windows broker compiler fixtures complete.
 - Keep Windows private-file ownership regressions compatible with live spool writer locks.
@@ -13,6 +17,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate packaged Windows VPN helper admission and harden native update fixture recovery checks.
 - Keep macOS authorization process-path checks portable across Windows test hosts.
 - Recover late macOS authorization rejection and preserve portable native fixture inputs.
+- Retain packaged Windows VPN helper ownership through authorization and cleanup, and validate native fixture launch inputs.
+- Preserve failed Windows configuration input cleanup for retry and verify Android fixture trust before update probes.
 
 ## 2.1.6 - 2026-09-08
 

@@ -531,6 +531,22 @@ public static class VpnInstallNative {
 
     // Protected output and system ancestry match WindowsInstallTrust's bounded ACL policy.
     // An optional input principal authorizes only that user's private input tree, never output storage.
+    // Read-only proof over caller-retained non-delete-sharing objects. This method
+    // opens/closes nothing, so a rejected witness remains owned by its coordinator.
+    public static void InspectLinkedAncestor(SafeFileHandle parent, SafeFileHandle child, string inputPrincipal) {
+        byte[] attributes=new byte[8], standard=new byte[24];
+        if (GetFileType(child)!=1 || !GetFileInformationByHandleEx(child,9,attributes,8) ||
+            !GetFileInformationByHandleEx(child,1,standard,24)) throw new IOException("Installer witness unavailable");
+        uint flags=BitConverter.ToUInt32(attributes,0);
+        if ((flags&0x400)!=0 || BitConverter.ToUInt32(attributes,4)!=0 ||
+            ((flags&0x10)==0 && BitConverter.ToUInt32(standard,16)!=1)) throw new IOException("Installer witness rejected");
+        string actual=FinalPath(parent).TrimEnd('\\');
+        if (!String.Equals(Path.GetDirectoryName(FinalPath(child)).TrimEnd('\\'),actual,StringComparison.Ordinal))
+            throw new IOException("Unlinked installer witness");
+        InspectCore(parent,true,true,inputPrincipal,true);
+        if (!String.Equals(FinalPath(parent).TrimEnd('\\'),actual,StringComparison.Ordinal))
+            throw new IOException("Changed installer witness parent");
+    }
     public static void Inspect(SafeFileHandle file, bool directory, bool ancestor, string inputPrincipal) {
         InspectCore(file,directory,ancestor,inputPrincipal,false);
     }

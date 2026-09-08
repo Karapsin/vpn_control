@@ -28,6 +28,7 @@ internal object DesktopWindowsVpnConfigCapture {
                 val path = Path.of(requested).let { if (it.isAbsolute) it else baseDirectory.resolve(it) }
                 val resource = try { captureResource(path, baseDirectory) }
                 catch (failure: Throwable) {
+                    if (failure is DesktopWindowsRuntimeFailure) throw failure
                     // Filesystem admission and private-spool policy run after JSON validation.
                     // Their require/check failures do not make the user's document malformed.
                     val code = when (failure) {
@@ -49,6 +50,7 @@ internal object DesktopWindowsVpnConfigCapture {
                 val path = Path.of(requested).let { if (it.isAbsolute) it else baseDirectory.resolve(it) }
                 val resource = try { admitMutableResource(path, kind) }
                 catch (failure: Throwable) {
+                    if (failure is DesktopWindowsRuntimeFailure) throw failure
                     val code = when (failure) {
                         is DesktopWindowsRuntimeFailure -> failure.code
                         is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
@@ -67,9 +69,22 @@ internal object DesktopWindowsVpnConfigCapture {
             })
             return DesktopWindowsCapturedConfiguration(captured, resources.toList(), mutable.toList())
         } catch (failure: Throwable) {
-            resources.forEach { resource ->
-                try { resource.close() } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+            val nativeFailure = failure as? DesktopWindowsRuntimeFailure
+            val pending = (resources + listOfNotNull(nativeFailure?.retainedAdmission))
+                .distinct().toMutableList()
+            val cleanup = object : AutoCloseable {
+                @Synchronized override fun close() {
+                    var rejected: Exception? = null
+                    for (index in pending.indices.reversed()) {
+                        try { pending[index].close(); pending.removeAt(index) }
+                        catch (error: Exception) { rejected = rejected ?: error }
+                    }
+                    rejected?.let { throw it }
+                }
             }
+            // The transition owner can retry private-input disposal even when JSON validation
+            // failed before returning a candidate. Never lose a failed spool behind a new error.
+            val retained = if (runCatching { cleanup.close() }.isFailure) cleanup else null
             val code = when (failure) {
                 is DesktopWindowsRuntimeFailure -> failure.code
                 is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
@@ -77,7 +92,8 @@ internal object DesktopWindowsVpnConfigCapture {
                 is IllegalArgumentException -> if (failure.message == "UNSUPPORTED") "UNSUPPORTED" else "INVALID_ARGUMENT"
                 else -> if (failure.message == "CONFLICT") "CONFLICT" else "UNAVAILABLE"
             }
-            throw DesktopWindowsRuntimeFailure(code, stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+            throw DesktopWindowsRuntimeFailure(code, unresolvedRuntime = nativeFailure?.unresolvedRuntime,
+                stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, retainedAdmission = retained)
         }
     }
 

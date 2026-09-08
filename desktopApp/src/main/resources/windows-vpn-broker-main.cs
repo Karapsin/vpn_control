@@ -31,8 +31,17 @@ public static class VpnRuntimeBrokerEntry {
   return new Invocation(args[0],pid,created,owner.Sid,args[4]);
  }
  public static int Main(string[] args) {
-  return Execute(args,invocation=>VpnRuntimeBroker.Run(invocation.PipeName,invocation.OwnerProcessId,
-   invocation.OwnerCreationFileTime,invocation.OwnerSid,invocation.RuntimeSha256));
+  return Execute(args,invocation=>RunAdmitted(invocation,null,admitted=>VpnRuntimeBroker.Run(admitted.PipeName,
+   admitted.OwnerProcessId,admitted.OwnerCreationFileTime,admitted.OwnerSid,admitted.RuntimeSha256)));
+ }
+ // Production Main supplies no adapter: the fixed native implementation captures the original
+ // process/image/gate itself. The same-assembly fixture can inject only that typed native boundary.
+ internal static void RunAdmitted(Invocation invocation,VpnPackagedBrokerAdmission.Native native,Action<Invocation> run) {
+  using(var admission=native==null ? VpnPackagedBrokerAdmission.Retain(invocation.OwnerProcessId,
+   invocation.OwnerCreationFileTime,invocation.OwnerSid) : VpnPackagedBrokerAdmission.Retain(invocation.OwnerProcessId,
+   invocation.OwnerCreationFileTime,invocation.OwnerSid,native)) {
+   run(invocation);
+  }
  }
  sealed class AuthorityFailure : Exception {
   internal readonly string Code;

@@ -12,6 +12,8 @@
     <Compile Include="..\..\..\src\main\resources\windows-vpn-user-files.cs" Link="windows-vpn-user-files.cs" />
     <Compile Include="..\..\..\src\main\resources\windows-vpn-cache-resources.cs" Link="windows-vpn-cache-resources.cs" />
     <Compile Include="..\..\..\src\main\resources\windows-vpn-config.cs" Link="windows-vpn-config.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-install-native.cs" Link="windows-install-native.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-helper-admission.cs" Link="windows-vpn-helper-admission.cs" />
     <Compile Include="$(VpnBrokerRuntimeAuthoritySource)" Link="VpnBrokerRuntimeAuthority.g.cs" />
   </ItemGroup>
   <Target Name="RequireBundledRuntimeAuthority" BeforeTargets="CoreCompile">

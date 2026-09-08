@@ -17,7 +17,7 @@ class DesktopWindowsBrokerEntrypointTest {
     private fun probe(mode: String) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val root = Files.createTempDirectory("vpn-broker-entry-")
-        val names = listOf("windows-vpn-broker-main.cs", "windows-vpn-broker.cs", "windows-vpn-user-files.cs",
+        val names = listOf("windows-install-native.cs", "windows-vpn-helper-admission.cs", "windows-vpn-broker-main.cs", "windows-vpn-broker.cs", "windows-vpn-user-files.cs",
             "windows-vpn-cache-resources.cs", "windows-vpn-broker-entry-probe.cs")
         names.forEach { name ->
             requireNotNull(javaClass.getResourceAsStream("/$name")).use { input ->
@@ -29,7 +29,7 @@ class DesktopWindowsBrokerEntrypointTest {
         val script = """
             ${'$'}ErrorActionPreference='Stop'; ${'$'}ProgressPreference='SilentlyContinue'
             ${'$'}root=${'$'}env:VPN_CONTROL_BROKER_ENTRY_FIXTURE
-            ${'$'}names=@('windows-vpn-broker-main.cs','windows-vpn-broker.cs','windows-vpn-user-files.cs','windows-vpn-cache-resources.cs','windows-vpn-broker-entry-probe.cs','authority.cs')
+            ${'$'}names=@('windows-install-native.cs','windows-vpn-helper-admission.cs','windows-vpn-broker-main.cs','windows-vpn-broker.cs','windows-vpn-user-files.cs','windows-vpn-cache-resources.cs','windows-vpn-broker-entry-probe.cs','authority.cs')
             ${'$'}sources=${'$'}names | ForEach-Object { Join-Path ${'$'}root ${'$'}_ }
             ${'$'}parameters=New-Object CodeDom.Compiler.CompilerParameters
             ${'$'}parameters.GenerateInMemory=${'$'}true

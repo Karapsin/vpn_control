@@ -4,7 +4,6 @@ import org.junit.Assume.assumeTrue
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
-import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -116,40 +115,40 @@ class DesktopWindowsVpnBrokerTest {
         assertEquals("PERMISSION_DENIED", DesktopWindowsVpnBroker.launchFailure(5).code)
         assertEquals("UNAVAILABLE", DesktopWindowsVpnBroker.launchFailure(2).code)
     }
-    @Test fun capturedCommandIsBoundedAndContainsOnlyNonsecretPeerIdentity() {
-        val command = DesktopWindowsVpnBroker.command("vpn-control-vpn-00000000-0000-0000-0000-000000000041",
-            123, 456, "S-1-5-21-1-2-3-1001", "a".repeat(64))
-        assertTrue(DesktopWindowsVpnBroker.commandParameters("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", command).length < 32767)
-        assertTrue(command.contains("[VpnRuntimeBroker]::Run("))
-        assertTrue(command.contains("GZipStream"))
-        assertFalse(command.contains("private_key"))
-        assertFailsWith<IllegalArgumentException> {
-            DesktopWindowsVpnBroker.command("pipe';injection", 123, 456, "S-1-5-18", "a".repeat(64))
-        }
-        for (sid in listOf("S-1-5-18';throw 'injection", "S-1-5-18\u0000", "S-1-5-18\n")) {
+    @Test fun fixedHelperLaunchContainsExactlyFiveOpaqueIdentityArguments() {
+        val pipe = "vpn-control-vpn-00000000-0000-0000-0000-000000000041"
+        val digest = "a".repeat(64)
+        val command = DesktopWindowsVpnBroker.command(pipe, 123, 456, "S-1-5-21-1-2-3-1001", digest)
+        assertEquals(listOf(pipe, "123", "456", "S-1-5-21-1-2-3-1001", digest)
+            .joinToString(" ", transform = ::windowsInstallArgument), command)
+        assertEquals(command, DesktopWindowsVpnBroker.commandParameters(
+            "C:\\private application\\app\\native\\windows-amd64\\vpn-control-vpn-broker.exe", command))
+    }
+
+    @Test fun fixedHelperArgumentsRejectNoncanonicalIdentityAndScriptInput() {
+        val pipe = "vpn-control-vpn-00000000-0000-0000-0000-000000000041"
+        val digest = "a".repeat(64)
+        for (badPipe in listOf("pipe';injection", pipe + "\n", pipe + " --run", "vpn-control-vpn-1-1-1-1-1")) {
             assertFailsWith<IllegalArgumentException> {
-                DesktopWindowsVpnBroker.command("vpn-control-vpn-00000000-0000-0000-0000-000000000041", 123, 456, sid, "a".repeat(64))
+                DesktopWindowsVpnBroker.command(badPipe, 123, 456, "S-1-5-18", digest)
             }
         }
-    }
-
-    @Test fun capturedBootstrapUsesSingleAsciiCommandWithoutDoubleEncoding() {
-        val command = DesktopWindowsVpnBroker.command("vpn-control-vpn-00000000-0000-0000-0000-000000000041",
-            123, 456, "S-1-5-21-1-2-3-1001", "a".repeat(64))
-        assertTrue(command.startsWith("\u0024ErrorActionPreference='Stop'"), "Bootstrap must be a captured ASCII script")
-        assertTrue(command.all { it.code in 1..127 })
-        val source = Regex("FromBase64String\\('([A-Za-z0-9+/=]+)'\\)").find(command)?.groupValues?.get(1)
-        assertNotNull(source)
-        val captured = java.util.zip.GZIPInputStream(Base64.getDecoder().decode(source).inputStream()).use {
-            it.readBytes().decodeToString()
+        for (sid in listOf("S-1-5-18';throw 'injection", "S-1-5-18\u0000", "S-1-5-18\n")) {
+            assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnBroker.command(pipe, 123, 456, sid, digest) }
         }
-        assertTrue(captured.contains("class VpnRuntimeBroker"))
-        assertTrue(captured.contains("class OriginalUser"), "Original-user resource code must be captured before authorization")
-        assertFalse(command.contains("-EncodedCommand"))
+        for (pid in listOf(0L, -1L, 0x1_0000_0000L)) {
+            assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnBroker.command(pipe, pid, 456, "S-1-5-18", digest) }
+        }
+        for (creation in listOf(0L, -1L)) {
+            assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnBroker.command(pipe, 123, creation, "S-1-5-18", digest) }
+        }
+        for (badDigest in listOf(digest.uppercase(), digest + "\n", "a".repeat(63))) {
+            assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnBroker.command(pipe, 123, 456, "S-1-5-18", badDigest) }
+        }
     }
 
-    @Test fun capturedBootstrapReportsTheActualNativeArgvBoundAsResourceFailure() {
-        val executable = "C:\\path with spaces\\powershell.exe"
+    @Test fun fixedHelperArgumentsReportTheNativeCommandLineBoundAsResourceFailure() {
+        val executable = "C:\\path with spaces\\vpn-control-vpn-broker.exe"
         val one = DesktopWindowsVpnBroker.commandParameters(executable, "x")
         val remaining = 32767 - windowsInstallArgument(executable).length - one.length - 2
         DesktopWindowsVpnBroker.commandParameters(executable, "x".repeat(remaining + 1))
@@ -161,45 +160,15 @@ class DesktopWindowsVpnBrokerTest {
         assertFailsWith<IllegalArgumentException> { DesktopWindowsVpnBroker.commandParameters(executable, "x\u0000y") }
     }
 
-    @Test fun nativeCapturedBootstrapQuotingPreservesOneScriptAndLiteralPowerShellMetacharacters() {
-        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
-        assumeTrue(System.getenv("VPN_CONTROL_TEST_SCOPED_BROKER") == "1")
-        val values = listOf("", "C:\\path with spaces\\", "a\\\"b", "literal '; throw 'invalid", "\u0024([Console]::Write('injected')); ` & | > <", "line\nbreak")
-        val argv = listOf("C:\\trusted path\\probe.exe") + values + "Unicode: \uD83D\uDE80漢"
-        assertContentEquals(argv.toTypedArray(), com.sun.jna.platform.win32.Shell32Util.CommandLineToArgv(
-            argv.joinToString(" ", transform = ::windowsInstallArgument)))
-        val expected = Base64.getEncoder().encodeToString(values.joinToString("\u0000").encodeToByteArray())
-        val script = "\u0024values=@(${values.joinToString(",") { "'" + it.replace("'", "''") + "'" }});" +
-            "\u0024actual=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((\u0024values-join[char]0)));" +
-            "if(\u0024actual -ceq '$expected'){exit 0}else{exit 7}"
-        val executable = java.nio.file.Path.of(System.getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe").toString()
-        val parameters = DesktopWindowsVpnBroker.commandParameters(executable, script)
-        val parsed = com.sun.jna.platform.win32.Shell32Util.CommandLineToArgv(windowsInstallArgument(executable) + " " + parameters)
-        assertEquals(script, parsed.last())
-        assertEquals("-Command", parsed[parsed.lastIndex - 1])
-        // Exercise the product's raw ShellExecute parameter path. Relaunching the parsed script via
-        // ProcessBuilder applies Java's different quoting again and changes backslash-quote literals.
-        val launch = com.sun.jna.platform.win32.ShellAPI.SHELLEXECUTEINFO().also {
-            it.fMask = 0x40
-            it.lpVerb = "open" // The fixed literal-rendering probe requires no elevation.
-            it.lpFile = executable
-            it.lpParameters = parameters
-            it.nShow = 0
-        }
-        assertTrue(com.sun.jna.platform.win32.Shell32.INSTANCE.ShellExecuteEx(launch))
-        val process = assertNotNull(launch.hProcess)
-        try {
-            if (com.sun.jna.platform.win32.Kernel32.INSTANCE.WaitForSingleObject(process, 30000) != 0) {
-                // This exact ordinary probe owns no runtime or installer.
-                com.sun.jna.platform.win32.Kernel32.INSTANCE.TerminateProcess(process, 1)
-                fail("Native bootstrap quoting probe timed out")
-            }
-            val code = com.sun.jna.ptr.IntByReference()
-            assertTrue(com.sun.jna.platform.win32.Kernel32.INSTANCE.GetExitCodeProcess(process, code))
-            assertEquals(0, code.value, "PowerShell changed captured literal data")
-        } finally {
-            assertTrue(com.sun.jna.platform.win32.Kernel32.INSTANCE.CloseHandle(process))
-        }
+    @Test fun nativeFixedHelperArgumentsRoundTripWithoutAScriptHost() {
+        assumeTrue(com.sun.jna.Platform.isWindows())
+        val executable = "C:\\private application \uD83D\uDE80漢\\app\\native\\windows-amd64\\vpn-control-vpn-broker.exe"
+        val values = listOf("vpn-control-vpn-00000000-0000-0000-0000-000000000041",
+            "123", "456", "S-1-5-21-1-2-3-1001", "a".repeat(64))
+        val command = DesktopWindowsVpnBroker.command(values[0], 123, 456, values[3], values[4])
+        val parameters = DesktopWindowsVpnBroker.commandParameters(executable, command)
+        assertContentEquals((listOf(executable) + values).toTypedArray(),
+            com.sun.jna.platform.win32.Shell32Util.CommandLineToArgv(windowsInstallArgument(executable) + " " + parameters))
     }
 
     @Test fun nativeScopedChildStartsAndStopsWithoutTunOrWholeApplicationElevation() {

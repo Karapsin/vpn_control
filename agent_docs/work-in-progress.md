@@ -22,16 +22,42 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Latest pushed source is `01c13de6ed60782a7937b1c24053ce0f267ba99f`.
-  Checkpoint23 first push `749bdc38…` exposed Windows path serialization in the
-  macOS observer; the correction passed seven tests in the Windows guest and CI.
-  The next Windows CI step exposed CRLF conversion of byte-bound producer inputs.
-  Current dirty checkpoint24 fixes those inputs with explicit LF Git attributes:
-  causal real-Git checkout RED, then21 producer tests GREEN on host and Windows
-  ARM64/x64-emulation. All three retained checkout SHA values match their inputs.
-  Exact-SHA delivery is not yet successful; checkpoint22 `0fc15314…` remains the
-  last fully verified checkpoint. Root owns delivery/common integration/host builds;
-  workers have exclusive platform execution and bounded source assignments.
+- Latest pushed source is `564f2dccc82d763cf98d4f4fb96b7926402cd90d`
+  (checkpoint24, version2.1.6). Current uncommitted metadata rolled to2.1.7
+  after the tenth normal Unreleased entry, with one subsequent Unreleased note. Its final managed
+  pre-push receipt passed all15 commands. All five required workflows succeeded
+  for this exact SHA; the managed commit/push session65340 exited0. Authoritative
+  receipt: local `checkpoint24/commit-result.json`. This is now the latest fully
+  verified checkpoint; the overall native parity matrix remains incomplete.
+  Checkpoint23 exposed Windows path serialization and then CRLF conversion of
+  byte-bound producer inputs. Both have causal regressions and Windows guest
+  evidence; checkpoint24 preserves exact input bytes with explicit LF attributes.
+  Root owns delivery/common integration/host builds; workers have exclusive
+  platform execution and bounded source assignments. A detached exact-SHA source
+  snapshot is assigned for the new macOS fixture so Android's ongoing script edits
+  cannot contaminate its package evidence. The guest-only base2.1.19 and target2.2.0
+  DMGs now built successfully, with arm64 and strict/deep adhoc signature checks.
+  Their terminal receipt is local `checkpoint24/macos-fixture-source/guest-build-terminal-receipt.json`;
+  the first fresh-path attempt rejected headless interaction before showing a sheet
+  (operationb5cb75fc…, jobbab7d563…, installed=false). Base/A traffic were preserved;
+  this proves headless rejection, not late-authorization recovery. A fresh GUI-session
+  owner launch and its deterministic fixture preflight are now assigned. Preserve
+  both this terminal job and the older unknown watcher3343/job.
+- Coupled Windows broker v4 is integrated from13 hash-verified paths. The public
+  preparation path now launches the fixed packaged helper with five opaque inputs,
+  retains native identity/admission through channel disposal, and preserves unknown
+  authorization/cleanup ownership. Host Gradle selected224 Windows tests across40
+  classes:163 executed,61 native/opt-in skips, zero failures/errors. Producer21
+  tests also pass. Native JUnit1 passed in Windows ARM64/x64 emulation, asserting16
+  admission and6 entry-fence cases with typed native fakes. This is not UAC/traffic
+  evidence. The ARM guest lacks the pinned NativeAOT/MSVC toolchain and the gateway to the
+  equipped x64 guest times out before authentication. Bounded ARM guest toolchain
+  provisioning is under review, without changing the compiler or import policy.
+  Actual NativeAOT emitted imports (including newly reachable shell32),
+  packaged owner grant/denial, full mutable resources and production enablement
+  remain open; factory stays disabled. Evidence: local
+  `checkpoint21/windows/broker-draft/integration-coupled-v4/` and
+  `integrated-v4-gradle.log`.
 - The macOS native denial was sent after the initial180-second wait had expired.
   Its old owner lost the authorization process reply, leaving installed unknown;
   preserve exact watcher3343/job and do not replay. Current code retains a single
@@ -63,11 +89,83 @@ inputs and correlation records until authoritative reconciliation.
   current transport parser already accepts blank inventory.
 - Windows native Python launch verified the Android transport14 and trust3 tests
   with no skips/failures using verified portable Git/OpenSSL and process-only PATH.
-  Source hashes match current helpers. The first trust launch contained a backspace
+  Source hashes match checkpoint24 helpers; subsequent trust preflight edits need
+  another native launch after their freeze. The frozen trust10 revision has now
+  passed Windows native execution: nine executed, one explicit POSIX-mode skip,
+  zero failures. Root matched all three input hashes to
+  `checkpoint23/windows/android-fixture-trust-current10/receipt.json`. The first trust launch contained a backspace
   from an embedded Windows path literal; corrected separate-argv execution passed.
-  Its causal reusable launcher regression remains owed; preserve RED and corrected
-  request/exit evidence under local `checkpoint23/windows/android-fixture-tools/`.
+  A reusable argv-only native Python request builder now has an actual child-process
+  causal RED and eight GREEN host tests, wired into release hygiene. A real
+  skipped child test exposed nonserializable TestCase objects in the new receipt;
+  its own RED/GREEN regression now verifies stable test IDs and skip reasons.
+  Native Windows then exposed default-codepage Unicode source writes; a cp1252
+  regression reproduces that failure before explicit UTF-8 writes. Corrected native
+  eight-test execution now passes without skips on Windows11 ARM64/x64 emulation;
+  root matched both source hashes in `checkpoint25/windows/native-python8/receipt.json`.
+  Earlier native six-test run failed as recorded. Preserve original evidence under local
+  `checkpoint23/windows/android-fixture-tools/` and regression logs under
+  `checkpoint25/native-python-path-{red,green}.log`.
   No host/guest system trust or persistent PATH settings changed.
+- Current checkpoint25 content passed all15 managed prepush commands. Root is
+  preparing a reviewed development checkpoint, with Windows production enablement,
+  emitted NativeAOT validation and the full native/visual matrix explicitly open.
+  Final prepush must be rerun after this evidence update. The pinned SDK/bootstrap
+  verified and extracted in the ARM64 Windows guest; bootstrap layout then exited
+  0x80131709 before any installation. Preserve the terminal handle/logs and diagnose
+  before another attempt; the exact-SHA package workflow is additional artifact
+  evidence, not a replacement for native UAC/traffic tests.
+- API29 target2.3.0 installation now succeeded with one accepted operation
+  `e6de3f08-6a25-43d9-b169-67491101f767`, receipt
+  `e01fab27-b978-41e7-8dc5-2ad08a78ce2a`, session1475800986. The replacement owner
+  recovered installed=true without replay; exact target APK SHA256
+  `5e09e8234157f1f143e56d544ef19ce800b9ba9406d328c3e4c167d05e091efc`,
+  version2.3.0/code17200/nondebuggable and OFF were verified. Exactly one manifest
+  and one APK were served. Cleanup returned UID2000/null proxy/empty reverse.
+  Evidence: local `checkpoint25/android-api29-target/terminal-summary.json` and
+  full action/recovery outputs beside it. API35 success and additional lifecycle
+  failures remain open; current API29 cold routing readback/export is assigned.
+- API29 target cold-owner routing readback preserved56008 domains and exact newline
+  SHA256 `0ef2ce70d306e71d44a899d52a56a375022cb194cc534fab005934fb83bdaaa7`.
+  A separate export to a new private path returned PERSISTENCE_FAILED without
+  creating an output file; export-byte acceptance remains incomplete. Evidence:
+  local `checkpoint25/android-api29-target/cold-routing/`. Read-only diagnosis is
+  assigned before a causal quick regression and fix; no export retry occurred.
+- macOS fresh Aqua owner5312 has accepted operation7372a9de… / job6cc94484…,
+  with exact osascript5445 and one correlated SecurityAgent. A traffic remained
+  HTTPS200 through the observed120-second checkpoint; delayed cancellation is
+  pending at this recorded observation, so it is not yet native proof of the
+  late-authorization fix. Subsequent native receipts may postdate this source freeze.
+- Windows configuration-capture rejection now retains failed private-spool cleanup
+  and incoming admission cleanup for the controller's existing retry path. An actual
+  capture regression failed with null retained ownership before the fix. ConfigCapture
+  selection13 passed (11 executed,2 native skips); the initial extra transition-class
+  selector matched no class, so actual manager/lifecycle tests were then run. A related
+  initial-copy failure also lost a partially written spool before a resource existed;
+  its causal RED preceded a typed cleanup-retention fix. Current combined selection
+  passes49 tests selected/47 executed/2 native skips, with no failures/errors.
+  Evidence: local `checkpoint25/windows-config-cleanup-{red,green}.log`. New methods
+  have a separate Windows native JUnit assignment. This does not complete durable
+  privileged mutable-resource cleanup or full CUSTOM output support.
+- API29 no-update TLS preflight safely stopped before bind/force-stop/public check
+  because its staged directory was `shell_data_file`, while the actual certificate
+  store was `system_security_cacerts_file`. Exact source0fc base APK hash and OFF
+  baseline passed; cleanup returned UID2000/null proxy/empty reverse with no retained
+  staging. Evidence: local `checkpoint25/android-api29-no-update-tls/terminal-summary.json`.
+  The durable13-test driver now relabels only validated temporary regular entries
+  to the captured source context. A fresh nondebuggable owner then returned OK/up-to-date
+  for operation202c6fcf… with exactly one manifest and no download/install. Full envelope
+  and terminal cleanup proof are in `probe2-full.txt` and `terminal-summary2.json`
+  beside the initial abort. UID2000/null proxy/empty reverse and staging removal
+  were verified. No system-store/policy/enforcement changes occurred. The subsequent
+  API29 target replacement is recorded above; API35 remains a separate gate.
+- Pinned Windows NativeAOT prerequisites are approved for the owned ARM64 guest
+  at `C:\VpnParity\NativeAotTools-20260908-arm64`: SDK10.0.400, VS BuildTools17.14.39,
+  ARM64-host VCTools and Windows SDK26100 from captured official inputs. Verify
+  signatures/hashes/catalog and measured footprint, cap task footprint at20GiB and
+  retain10GiB free. Setup uses noWeb/norestart; preserve3010 without reboot/replay.
+  No host, product-installation, trust, Defender or policy changes. Record exact
+  setup handles and never kill a pending installer. Emitted-PE evidence remains open.
 - API35 benchmark-only acceptance completed on nondebuggable2.2.19: finite secondary
   timing1268.948834ms; synthetic candidate removed, original source/entries/settings/
   key presence and56000-domain digest verified. Earlier lost selection remains
@@ -103,9 +201,9 @@ inputs and correlation records until authoritative reconciliation.
 | Task | Agent | Owned files/subsystem | Dependencies/environment | Next handoff |
 | --- | --- | --- | --- | --- |
 | Windows binding | root | windows_native_helpers.py, its tests, preparation/packaging graph wiring | Existing compiled native authority; host checks serialized | Runtime-bound package verification and review |
-| Android fixture | android_terra | android_fixture_preflight.py and its tests | API35/5590 read-only until concrete sequence accepted | Causal regression and preserved baseline |
+| Android fixture | android_terra | android_fixture_trust.py and its tests; next setup in ignored scratch | API29/5584 preflight only; API35/5590 preserved | Trust10 Windows native GREEN; API29 no-update probe authorized after8 causal tests |
 | Windows native | windows | JNI native fixture and scratch admission component | Owned ARM64 Windows guest; x64 emulation labeled | Native counts/skips and admission review |
-| macOS fixture | mac_fixture_terra | Frozen guest build/evidence | Owned Tart guest, immutable be1e source; preserve relay/unknown jobs | Same-source base/target packages |
+| macOS fixture | mac_fixture_terra | Frozen guest build/evidence | Owned Tart guest, immutable checkpoint24 source; preserve relay/unknown jobs | Same-source base/target packages |
 
 - Windows runtime binding regression first failed because an unbound broker could
   be staged. The producer now records and checks the generated authority source;
@@ -376,11 +474,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Windows component integration, fixture regressions, docs and delivery | Shared models/UI, owner/factory/Main, build/version/CI | Dirty checkpoint23; checkpoint22 verified | Windows component30, helper20, desktop fixture27, Android transport11, Mac observer6 GREEN | Managed prepush and checkpoint push |
-| C/D-Android | android_terra, Terra medium | Exclusive API35/5590 installer lifecycle; fixture transport | Root owns source freeze/build and integration | Immutable source0fc APK pair2.2.19/2.3.0 | API29 cancellation/resume complete; API35 in progress | Exact receipt, cleanup, evidence limits |
-| F/E-Windows | windows, Astra | Broker coupled integration in ignored scratch; component review | Tracked broker integration, package/Gradle/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation | Kotlin21 and native fake-admission16/entry-fence6 GREEN | Immutable integration diff and lifetime review |
+| B/G/H | root | Windows component integration, fixture regressions, docs and delivery | Shared models/UI, owner/factory/Main, build/version/CI | Checkpoint24 pushed and all five exact-SHA CI GREEN | Final managed prepush15 GREEN; coupled Windows224 selected/61 native skips GREEN | Emitted broker PE/import review and next checkpoint |
+| C/D-Android | android_terra, Terra medium | API29/5584 trust preflight; API35/5590 retained baseline | Root owns source freeze/build and integration | Immutable source0fc APK pair2.2.19/2.3.0 | Both APIs cancellation/resume complete; trust10 host GREEN | Exact receipt, cleanup, evidence limits |
+| F/E-Windows | windows, Astra | Broker coupled integration in ignored scratch; component review | Tracked broker integration, package/Gradle/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation | Portable49 selected/36 executed; native JUnit1 invokes admission16/entry-fence6 GREEN | Immutable integration diff and lifetime review |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest current installer denial and relay | Root owns tracked source/build | Same-source be1 pair; exact worker3343 after prompt exit | Public outcome unknown, installed=null; no replay | Investigate reconciliation and causal regression |
+| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest frozen checkpoint24 package build | Root owns tracked source/build | Exact564f2dcc source; old worker3343/job preserved | Both DMGs built/verified; fresh-path scenario authorized | Native late-denial outcome and A traffic |
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
 built successfully in an independent frozen source directory; unrelated source edits may

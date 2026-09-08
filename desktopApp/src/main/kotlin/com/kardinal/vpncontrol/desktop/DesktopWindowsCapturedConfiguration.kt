@@ -70,12 +70,14 @@ internal class DesktopWindowsCapturedResource internal constructor(
     override fun toString() = "DesktopWindowsCapturedResource(<redacted>)"
 
     companion object {
-        fun capture(path: Path, spoolParent: Path): DesktopWindowsCapturedResource {
+        fun capture(path: Path, spoolParent: Path,
+                    createSpool: (Path) -> com.kardinal.vpncontrol.control.ControlTransferSpool = DesktopControlTransferSpool::create,
+        ): DesktopWindowsCapturedResource {
             // Resolve aliases while still ordinary. The privileged helper never receives this path.
             val source = path.toRealPath()
             val before = Files.readAttributes(source, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
             require(before.isRegularFile) { "UNSUPPORTED" }
-            val spool = DesktopControlTransferSpool.create(spoolParent)
+            val spool = createSpool(spoolParent)
             try {
                 var count = 0L
                 Files.newByteChannel(source, setOf(StandardOpenOption.READ, NOFOLLOW_LINKS)).use { input ->
@@ -102,7 +104,19 @@ internal class DesktopWindowsCapturedResource internal constructor(
                 return DesktopWindowsCapturedResource(UUID.randomUUID().toString(), extension,
                     count, spool.sha256(), spool)
             } catch (failure: Throwable) {
-                try { spool.erase() } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+                try { spool.erase() } catch (cleanup: Exception) {
+                    // No resource object was returned yet, so the caller cannot discover this
+                    // partial spool. Transfer cleanup ownership through the typed failure.
+                    val code = when (failure) {
+                        is DesktopWindowsRuntimeFailure -> failure.code
+                        is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
+                        is java.nio.file.AccessDeniedException, is SecurityException -> "PERMISSION_DENIED"
+                        else -> if (failure.message == "CONFLICT") "CONFLICT" else "UNAVAILABLE"
+                    }
+                    throw DesktopWindowsRuntimeFailure(code,
+                        stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS,
+                        retainedAdmission = AutoCloseable { spool.erase() })
+                }
                 throw failure
             }
         }

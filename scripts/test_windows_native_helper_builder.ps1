@@ -34,6 +34,7 @@ try {
         'desktopApp\src\main\resources\windows-install-helper-msi.cs',
         'desktopApp\src\main\resources\windows-install-helper.cs',
         'desktopApp\src\main\resources\windows-vpn-broker-main.cs',
+        'desktopApp\src\main\resources\windows-vpn-helper-admission.cs',
         'desktopApp\src\main\resources\windows-vpn-broker.cs',
         'desktopApp\src\main\resources\windows-vpn-user-files.cs',
         'desktopApp\src\main\resources\windows-vpn-cache-resources.cs',

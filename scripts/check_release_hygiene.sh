@@ -46,6 +46,9 @@ python3 scripts/test_android_update_fixture.py
 python3 scripts/test_android_fixture_preflight.py
 python3 scripts/test_android_fixture_transport.py
 python3 scripts/test_android_fixture_trust.py
+python3 scripts/test_android_no_update_tls_preflight.py
+python3 scripts/test_native_python_tests.py
+python3 scripts/test_macos_fixture_owner_launch.py
 python3 scripts/test_android_routing_evidence.py
 python3 scripts/test_android_install_visual_inventory.py
 python3 scripts/test_desktop_update_fixture.py
