@@ -22,6 +22,35 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint22 is pushed as `0fc15314f9c8c7c0e05df248bb603dbf6a93ab8c`;
+  all five required exact-SHA workflows succeeded, with all15 managed prepush
+  commands passing. Checkpoint23 continues Windows packaged broker admission and
+  native installer fixtures. Root owns component integration, shared launch/project
+  wiring, fixture command construction, documentation and delivery. Windows owns
+  ignored coupled-launch/fence drafts; android_terra owns
+  `android_fixture_transport.py` and its test. mac_fixture_terra exclusively operates
+  the fresh Tart Aqua-denial installation. Host Gradle remains root-scheduled.
+- API35 benchmark-only acceptance completed on nondebuggable2.2.19: finite secondary
+  timing1268.948834ms; synthetic candidate removed, original source/entries/settings/
+  key presence and56000-domain digest verified. Earlier lost selection remains
+  documented; final known baseline is unselected/OFF. Receipt:
+  `checkpoint22/android-api35-219/benchmark-only-receipt.json`.
+- Current-source Android pair2.2.19/2.3.0 is frozen under
+  `checkpoint23/android-installer-pair/`, source0fc and fingerprint
+  `e8aaf446190679f4a4bc548d08f0f4a3c36d086f6754b1f6490bd38897096c6e`.
+  API29 independently redisplayed a hidden OS confirmation after owner loss using
+  the same receipt5503e7c9…/session2010849851, then cancelled with installed=false.
+  Proxy, reverse mapping and temporary namespace trust were removed; UID2000/OFF
+  and base version verified. Setup-only disposable CA trust follows the original
+  fixture authorization; public app control remains non-root/nondebuggable.
+- API29 setup exposed adbd restart clearing reverse mappings while preserving the
+  proxy. Manual route repair preceded native success; a separate causal regression
+  now reproduces that missing route before the reusable transport-helper fix.
+  macOS fixture incorrectly supplied Android-only `--interactive`; the app rejected
+  it before installer admission. The guarded desktop argument builder now omits it;
+  causal RED and27/27 fixture GREEN are recorded under checkpoint23. Native retry
+  must use that builder; changing product authorization semantics is unnecessary.
+
 - Current checkpoint21 is pushed as `be1e94f0a5c4616381acbd8685bdedc034d034e4`;
   all five required exact-SHA workflows succeeded. Managed receipt:
   `.runtime/parity-evidence/checkpoint21/ci-result.json`. Earlier checkpoint20/21
@@ -309,11 +338,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Android store integration, shared routing, documentation, delivery | Shared models/UI, owner/factory/Main, build/version/CI | Current dirty checkpoint21 | Android integrated83 GREEN; hard-link-denial regression RED | Native publication checks, frozen APK, checkpoint21 push |
-| C-Android-FGS | android_terra, Terra medium | Service startup admission, AndroidVpnService and deadline regression | Other Android integration and Gradle remain root | API29 native deadline ANR captured | Causal regression in progress | RED, fix, GREEN, new APK |
-| F/E-Windows | windows, Astra | Completed two mutable fixture files; read-only publication review; deferred broker scratch | Package staging/Gradle/workflows/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation | Final native6 selected/4 executed/2 explicit skips GREEN | Independent JNI review, then broker admission slice |
-| E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Owned guests require revalidation | Remaining installed-package scenarios incomplete | Supported-path rerun, rollback/traffic/final packages |
-| E-Mac/G-Android-native | mac_fixture_terra, Terra medium | Exclusive API29 AVD5584 and Mac relay execution | Root owns source/build; no tracked edits assigned | Mac guest192.168.64.3 plus API29/48MiB |2.2.17 retained report exported; native hard-link denial identified | Next frozen APK install and Find Best/traffic rerun |
+| B/G/H | root | Windows component integration, fixture regressions, docs and delivery | Shared models/UI, owner/factory/Main, build/version/CI | Dirty checkpoint23; checkpoint22 verified | Windows component30, helper20, desktop fixture27, Android transport11, Mac observer6 GREEN | Managed prepush and checkpoint push |
+| C/D-Android | android_terra, Terra medium | Exclusive API35/5590 installer lifecycle; fixture transport | Root owns source freeze/build and integration | Immutable source0fc APK pair2.2.19/2.3.0 | API29 cancellation/resume complete; API35 in progress | Exact receipt, cleanup, evidence limits |
+| F/E-Windows | windows, Astra | Broker coupled integration in ignored scratch; component review | Tracked broker integration, package/Gradle/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation | Kotlin21 and native fake-admission16/entry-fence6 GREEN | Immutable integration diff and lifetime review |
+| E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
+| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest current installer denial and relay | Root owns tracked source/build | Same-source be1 pair; exact worker3343 after prompt exit | Public outcome unknown, installed=null; no replay | Investigate reconciliation and causal regression |
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
 built successfully in an independent frozen source directory; unrelated source edits may
@@ -664,6 +693,27 @@ identities, never authorization to kill/restart anything.
   protected5580/5582 untouched. Native scenarios use nondebuggable ADB without
   root or run-as. Frozen96f CLI manifestSHA
   `a14bdfa526c35cec734fe2b03ed4293d3eb9d2412db1d587cccaeba9042d54e6`.
+
+## Checkpoint 23 Fixture Corrections And Component Evidence
+
+- The actual macOS `ps` output renders the installer worker path containing
+  `Application Support` without shell quotes. The observer previously rejected
+  that live coordinator. A literal unquoted process-tail regression failed before
+  replacing shell parsing with an exact path plus terminal job/PID match; all six
+  observer tests now pass. RED/GREEN logs are in local
+  `.runtime/parity-evidence/checkpoint23/macos-ps-parser-{red,green}.log`.
+  This corrects observation only; cancellation and public terminal recovery still
+  require fresh native correlation and authoritative receipts.
+- Android fixture transport regressions now run in release hygiene: all eleven
+  pass, including adbd restart clearing reverse mappings, refusal to replace
+  unrelated mappings, changed proxy ownership, and retryable ordered cleanup.
+  The API29 manual route repair preceded the reusable regression; it was not a
+  regression-first operational repair. Native callers must also check mappings
+  before setup-time `adb root`, then verify UID2000 before public app commands.
+- Actual Gradle execution passed the new Windows helper admission selection
+  (13 tests) and existing Windows installation admission selection (14 tests),
+  with no failures or skips. This is component evidence; production broker
+  binding, scoped UAC and actual packaged-owner/native traffic gates remain open.
 
 ## Final Delivery Gates
 

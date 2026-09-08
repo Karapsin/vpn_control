@@ -42,6 +42,19 @@ def require_install_ready(status, target_version):
             "Public update status is not ready for the expected fixture version")
 
 
+def desktop_install_arguments(status, target_version, *, asynchronous=False):
+    """Build one guarded fixture request from the final public ready snapshot."""
+    require_install_ready(status, target_version)
+    controller, revision = status.get("controllerId"), status.get("configurationRevision")
+    require(isinstance(controller, str) and bool(controller.strip()) and
+            type(revision) is int and revision >= 0, "Public installer controller/revision missing")
+    require(type(asynchronous) is bool, "Fixture asynchronous option must be boolean")
+    # Android's --interactive opts into its separate interaction Activity. Desktop
+    # installation already uses the native authorization path for this request.
+    return ["--json", "--controller-id", controller, "--if-revision", str(revision),
+            *(["--async"] if asynchronous else []), "updates", "install"]
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)

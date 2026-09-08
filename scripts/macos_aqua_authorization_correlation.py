@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import re
-import shlex
 import stat
 import subprocess
 from pathlib import Path
@@ -27,15 +26,15 @@ def coordinator(row, owner_home):
     command = row["command"]
     if not command.startswith("/usr/bin/osascript ") or " -- " not in command:
         return None
-    try:
-        worker_args = shlex.split(command.rsplit(" -- ", 1)[1])
-    except ValueError:
+    # ps renders argv with spaces but does not shell-quote arguments. Parse
+    # the fixed suffix first, then compare the complete captured worker path.
+    tail = command.rsplit(" -- ", 1)[1]
+    match = re.fullmatch(r"(.+) --coordinate ([0-9a-f-]+) ([0-9]+)", tail)
+    if match is None or not UUID.fullmatch(match[2]):
         return None
-    if len(worker_args) != 4 or worker_args[1] != "--coordinate" or not UUID.fullmatch(worker_args[2]) or not worker_args[3].isdecimal():
-        return None
-    job_id, owner_pid = worker_args[2], int(worker_args[3])
+    job_id, owner_pid = match[2], int(match[3])
     expected = owner_home / INPUTS_SUFFIX / job_id / "vpn-control-install-worker"
-    if Path(worker_args[0]) != expected:
+    if match[1] not in (str(expected), "'" + str(expected) + "'"):
         return None
     try:
         metadata = expected.lstat()

@@ -92,6 +92,26 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(data["inputs"][0]["path"], str(source.resolve()))
             self.assertEqual(len(data["fingerprint"]), 64)
 
+    def test_kotlin_broker_admission_fixture_matches_current_producer(self):
+        resources = Path(__file__).parents[1] / "desktopApp/src/test/resources"
+        expected = json.loads((resources / "windows-vpn-helper-producer-fixture.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            install = root / "vpn-control-install-helper.exe"
+            broker = root / "vpn-control-vpn-broker.exe"
+            runtime = root / "sing-box.exe"
+            authority = root / "authority.cs"
+            manifest = root / "native-helpers.json"
+            install.write_bytes(pe())
+            broker.write_bytes((resources / "windows-vpn-helper-producer-image.bin").read_bytes())
+            runtime.write_bytes((resources / "windows-vpn-helper-producer-runtime.bin").read_bytes())
+            generated = self.run_tool("runtime-authority", "--runtime", runtime, "--output", authority)
+            self.assertEqual(0, generated.returncode, generated.stderr)
+            result = self.run_tool("verify-product", "--output", install, "--output", broker,
+                "--manifest", manifest, "--runtime", runtime, "--authority-source", authority)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(expected, json.loads(manifest.read_text(encoding="utf-8")))
+
     def test_runtime_authority_is_bound_to_prepared_amd64_bytes(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)

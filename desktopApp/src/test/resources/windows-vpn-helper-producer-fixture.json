@@ -1,0 +1,47 @@
+{
+  "artifacts": [
+    {
+      "clrHeader": false,
+      "delayImports": [],
+      "dependentLoadFlags": 2048,
+      "imports": [],
+      "machine": "AMD64",
+      "manifestResourceId": 1,
+      "manifestSha256": "a23ca6a1d6a0f66ab7191a71ba41468da98c0ee009292f5e2a685624881129a7",
+      "manifestSourceSha256": "a23ca6a1d6a0f66ab7191a71ba41468da98c0ee009292f5e2a685624881129a7",
+      "minimumWindowsBuild": 14393,
+      "name": "vpn-control-install-helper.exe",
+      "operations": [
+        "validate-only"
+      ],
+      "sections": 1,
+      "sha256": "fce157b1f0acb8ec8c028bdfd02d7cd60b831f160356574c7d29b574346af5d6",
+      "sizeBytes": 4096
+    },
+    {
+      "clrHeader": false,
+      "delayImports": [],
+      "dependentLoadFlags": 2048,
+      "imports": [],
+      "machine": "AMD64",
+      "manifestResourceId": 1,
+      "manifestSha256": "62a426912f0d79839e379ffe8666085cdb8af58b77821ade484b1a4d5c8353d3",
+      "manifestSourceSha256": "62a426912f0d79839e379ffe8666085cdb8af58b77821ade484b1a4d5c8353d3",
+      "minimumWindowsBuild": 14393,
+      "name": "vpn-control-vpn-broker.exe",
+      "operations": [
+        "authenticated-runtime-channel"
+      ],
+      "sections": 1,
+      "sha256": "265ece95e77bf3b5288afb43ff018fc523521d895faba7cd7f78ee8f5fa899f7",
+      "sizeBytes": 4096
+    }
+  ],
+  "policySha256": "d0d9a2a53bf4ce60c3d8c35104597dfba8dc52a9ff4fbd348c46812937f98707",
+  "runtimeAuthority": {
+    "authoritySourceSha256": "a32b2ca5a10a8d44812125ece2ed6304d9fe00fd6f0e86c5fd8967d8e30d2376",
+    "runtimeSha256": "bd6562a768d5c903d50b2d065888bb64e093ef1bd123a705935863618b23a1b4",
+    "runtimeSizeBytes": 4120
+  },
+  "schemaVersion": 1
+}

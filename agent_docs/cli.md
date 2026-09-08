@@ -83,8 +83,10 @@ capabilities
 ```
 
 Global options: `--help`, `--version`, `--json`, desktop-only `--state-dir PATH`,
-`--android`, Android-only `--serial SERIAL`, `--interactive`, `--async`,
+`--android`, `--async`,
 `--timeout-seconds N` (default 600, zero unlimited), `--controller-id ID`, `--if-revision N`.
+Android additionally supports `--serial SERIAL` and `--interactive`. Desktop
+`updates install` uses native authorization without Android's `--interactive` flag.
 Revision guards require the `controllerId` from the same observed JSON snapshot:
 `--controller-id ID --if-revision N`. A bare numeric revision is rejected before
 dispatch because the same number can recur after owner replacement. Desktop pinned

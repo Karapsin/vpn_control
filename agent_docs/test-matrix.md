@@ -367,3 +367,10 @@ Windows PowerShell, matching the Gradle producer's shell. Private inert executab
 exercise the actual producer with explicit paths and duplicate applications in
 both PATH orders. This catches application discovery joining several executable
 paths into one invalid command before the expensive native build starts.
+
+Android disposable HTTPS fixture transport regressions run through
+`test_android_fixture_transport.py` in release hygiene. They model adbd restart
+loss of reverse mappings and preserve unrelated route/proxy ownership through
+setup, cleanup failure and retry. Native callers must additionally reidentify the
+owned AVD and check mappings before any setup-time adbd restart. Public product
+commands always run with verified UID2000.

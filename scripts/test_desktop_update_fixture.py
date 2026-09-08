@@ -13,6 +13,7 @@ from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
+    desktop_install_arguments,
 )
 from test_fixture_environment import symlink_probe_available
 
@@ -37,6 +38,21 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             require_install_ready(status, "2.1.17")
         with self.assertRaises(ValueError):
             require_install_ready({**status, "ok": False}, "2.1.16")
+
+    def test_desktop_install_uses_owner_guard_without_android_interaction_flag(self):
+        status = {"ok": True, "final": True, "controllerId": "observed-owner",
+                  "configurationRevision": 9,
+                  "data": {"phase": "ready", "availableVersion": "2.2.0"}}
+        # The native macOS run rejected the Android-only switch before admission.
+        self.assertEqual(["--json", "--controller-id", "observed-owner", "--if-revision", "9",
+                          "updates", "install"], desktop_install_arguments(status, "2.2.0"))
+        self.assertEqual(["--json", "--controller-id", "observed-owner", "--if-revision", "9",
+                          "--async", "updates", "install"],
+                         desktop_install_arguments(status, "2.2.0", asynchronous=True))
+        for changes in ({"controllerId": None}, {"configurationRevision": True},
+                        {"configurationRevision": -1}, {"final": False}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                desktop_install_arguments({**status, **changes}, "2.2.0")
 
     def test_wrong_jvm_fails_before_creating_build_output(self):
         with tempfile.TemporaryDirectory() as temporary:
