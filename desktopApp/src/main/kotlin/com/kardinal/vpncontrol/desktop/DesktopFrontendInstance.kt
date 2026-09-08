@@ -20,7 +20,8 @@ internal class DesktopFrontendInstance private constructor(
     }
 
     companion object {
-        fun start(directory: Path, visibility: DesktopFrontendVisibility): DesktopFrontendInstance? {
+        fun start(directory: Path, visibility: DesktopFrontendVisibility,
+            quitExit: DesktopFrontendQuitExit = DesktopFrontendQuitExit({ visibility.ownerId })): DesktopFrontendInstance? {
             val lock = DesktopSingleInstanceLock.acquire(directory.resolve("frontend.lock")) ?: return null
             val identity = UUID.randomUUID().toString()
             val server = DesktopActivationServer.start(
@@ -38,8 +39,13 @@ internal class DesktopFrontendInstance private constructor(
                         request == null -> DesktopCliResponse.failure("UNSUPPORTED")
                         request.controllerId != identity -> DesktopCliResponse.failure("CONFLICT")
                         request.command.operation == ControlOperationId.QUIT -> runCatching {
-                            visibility.installExit.execute(command as DesktopCliCommand.ControlSubmit,
-                                DesktopFrontendProcessIdentity.current(identity))
+                            val submit = command as DesktopCliCommand.ControlSubmit
+                            val process = DesktopFrontendProcessIdentity.current(identity)
+                            when (request.command.arguments.keys) {
+                                installExitArgumentKeys -> visibility.installExit.execute(submit, process)
+                                quitExitArgumentKeys -> quitExit.execute(submit, process)
+                                else -> DesktopCliResponse.failure("INVALID_ARGUMENT")
+                            }
                         }.getOrElse { DesktopCliResponse.failure("UNAVAILABLE", 2) }
                         request.command.operation in setOf(ControlOperationId.GUI_SHOW, ControlOperationId.GUI_HIDE) -> {
                             val owner = (request.command.arguments["owner"] as? ControlValue.Text)?.value
@@ -54,7 +60,10 @@ internal class DesktopFrontendInstance private constructor(
                     }
                     }
                 },
-                onCliResponseFlushed = visibility.installExit::responseFlushed,
+                onCliResponseFlushed = { command, response ->
+                    visibility.installExit.responseFlushed(command, response)
+                    quitExit.responseFlushed(command, response)
+                },
                 portFile = endpoint(directory),
                 controllerId = identity,
             )
@@ -72,5 +81,8 @@ internal class DesktopFrontendInstance private constructor(
                 ControlCommand(ControlOperationId.GUI_HIDE, mapOf("owner" to ControlValue.Text(ownerId)))), clientTimeoutSeconds = 3), endpoint(directory))
 
         internal fun endpoint(directory: Path): Path = directory.resolve("frontend.port")
+
+        private val installExitArgumentKeys = setOf("owner", "installOperation", "jobId", "pid", "startedAtEpochMillis")
+        private val quitExitArgumentKeys = setOf("owner", "quitRequestId", "pid", "startedAtEpochMillis")
     }
 }

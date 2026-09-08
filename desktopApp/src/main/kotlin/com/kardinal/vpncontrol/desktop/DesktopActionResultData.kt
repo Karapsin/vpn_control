@@ -18,6 +18,12 @@ internal object DesktopActionResultData {
     }
 
     fun decode(operation: ControlOperationId, response: DesktopCliResponse): Map<String, ControlValue>? {
+        // Preserve the known recovery failure separately from the outer runtime failure.
+        // Arbitrary exceptions and profile contents are never retained as result data.
+        if (operation == ControlOperationId.FIND_BEST && !response.success && response.exitCode == 1 &&
+            response.message == "ROLLBACK_FAILED") {
+            return mapOf("recoveryCode" to ControlValue.Text("ROLLBACK_FAILED"))
+        }
         if (operation !in setOf(ControlOperationId.SUBSCRIPTIONS_REFRESH, ControlOperationId.LOCATIONS_BENCHMARK) ||
             !response.message.startsWith("{")) return null
         val values = ControlDocumentCodec.decodeValues(response.message)

@@ -170,6 +170,12 @@ and operation list/status/wait/cancel. Long commands accept `--async` with `--js
 operation inspection does not create a replacement owner. Its `data` contains the
 observed operation summary, or `data.operations` for list. The outer envelope
 describes the inspection request; wait propagates the observed terminal exit code.
+Desktop Find Best and location benchmarks accept cancellation by operation ID.
+Search cancellation awaits cleanup and restoration of the captured actual runtime;
+pending selection is not a recovery target. A known failed restoration reports
+`RUNTIME_FAILED` with `data.recoveryCode=ROLLBACK_FAILED`. An unresolved runtime
+outcome stays nonterminal and explicitly unknown. Cancellation does not discard
+an already committed result.
 Remaining JSON commands are reported by capabilities; guarded writes use the
 explicit owner/revision pair described above. Local errors without an
 owner snapshot have null `controllerId` and warning `OWNER_METADATA_UNAVAILABLE`;
@@ -326,6 +332,12 @@ owner while the GUI is attached; runtime/jobs survive detach or lease expiry.
 First GUI attach initializes reconnect once in owner scope, independent of client
 cancellation. Navigation/drafts/pickers stay frontend-local. Complete installer,
 Windows privilege and native GUI traffic evidence remain unfinished.
+Successful explicit public `quit` captures its attached frontend generation before
+stopping the owner runtime. After flushing that exact terminal response, the owner
+requests closure through the authenticated frontend endpoint and waits for its
+matching acknowledgment or confirmed disappearance. The frontend closes only after
+its own acknowledgment is flushed. Generic owner/transport failure does not close
+the GUI, and a replacement frontend is never targeted by a retained quit request.
 GUI/tray connection toggles, explicit restart, Find Best, per-location benchmark
 and subscription refresh now submit through that session. On/off/restart support
 JSON and async CLI submission and appear in operation history; they are not yet

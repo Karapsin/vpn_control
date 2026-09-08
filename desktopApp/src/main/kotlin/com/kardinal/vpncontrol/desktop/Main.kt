@@ -160,7 +160,8 @@ fun main(rawArgs: Array<String>) {
     val activationEvents = DesktopActivationEvents()
     val hideEvents = DesktopActivationEvents()
     val visibility = DesktopFrontendVisibility()
-    val frontendRegistration = DesktopFrontendInstance.start(DesktopWorkspacePaths.root(), visibility)
+    val quitExit = DesktopFrontendQuitExit({ visibility.ownerId })
+    val frontendRegistration = DesktopFrontendInstance.start(DesktopWorkspacePaths.root(), visibility, quitExit)
     if (frontendRegistration == null) {
         if (requestedFrontendOwner == null) DesktopFrontendInstance.show(DesktopWorkspacePaths.root())
         else runCatching {
@@ -189,7 +190,7 @@ fun main(rawArgs: Array<String>) {
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
     try {
         application {
-            DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, ::exitApplication)
+            DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, quitExit, ::exitApplication)
         }
     } finally {
         connection.close()
@@ -205,6 +206,7 @@ private fun DesktopApplication(
     hideEvents: DesktopActivationEvents,
     frontend: DesktopFrontendClient,
     visibility: DesktopFrontendVisibility,
+    quitExit: DesktopFrontendQuitExit,
     onExitApplication: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -261,6 +263,10 @@ private fun DesktopApplication(
     DisposableEffect(visibility) {
         visibility.installExit.install { detachFrontend() }
         onDispose { visibility.installExit.install(null) }
+    }
+    DisposableEffect(quitExit) {
+        quitExit.install { detachFrontend() }
+        onDispose { quitExit.install(null) }
     }
 
     fun checkAndDownloadUpdate() {

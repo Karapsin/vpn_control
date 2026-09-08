@@ -8,6 +8,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Retain partially copied Windows runtime inputs for cleanup retry and require an active GUI session for macOS installer fixtures.
 - Close attached desktop frontends during CLI update handoff and verify Android update recovery and private exports.
 - Stop idle CLI log followers when their output closes and preflight macOS fixture installations.
+- Cancel desktop searches with explicit recovery results and close captured frontends on quit.
+- Keep benchmark waiter-disconnect regression aligned with explicit operation cancellation.
 
 ## 2.1.7 - 2026-09-08
 

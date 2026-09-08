@@ -22,7 +22,69 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Latest pushed source is `30bb0c0beced8eaf991de0047ad2f1c64ee39295`
+- Checkpoint27 is pushed as `88752578cbb9ec89c00d7158004c64f7d336aeb5`
+  (version2.1.7, three Unreleased notes). All15 managed prepush commands passed;
+  all five required exact-SHA workflows succeeded and managed session29131 exited0
+  (`checkpoint27/commit-result.json`). The final native Windows
+  stream selection passed7/7 with no skips on AMD64 Java17 under ARM64 emulation;
+  root verified source/artifact hashes against the committed content. Receipt:
+  `checkpoint27/windows-stream-health-native-v2/result.json`. This is component
+  evidence with real CLI child pipes, not an installed Windows launcher test.
+  Checkpoint28 now addresses public search cancellation and normal-QUIT frontend
+  closure. Causal public-adapter REDs compiled and ran: Find Best cancellation
+  returns CONFLICT; the captured frontend rejects normal quit closure. Both are
+  retained in `checkpoint28/public-actions-red.log` and per-class XML files.
+  The final focused union passed58/58 with no skips, including both public
+  cancellation paths, actual-A recovery success/failure/unknown, normal-quit
+  closure and existing installer-exit regressions. A second causal RED proved
+  recovery detail was lost from the public envelope; it now retains only the
+  typed `recoveryCode=ROLLBACK_FAILED`, without exception text. Evidence:
+  `checkpoint28/actions-focused-green.log` and `*-recovery-red.xml`.
+  Frozen standalone JVM bundle24/24 passed on host and macOS guest Temurin17
+  ARM64, all76 JAR hashes verified; guest receipt is
+  `checkpoint28/macos-desktop-actions-native/result.json`. This is component
+  evidence; exact delivered package normal-quit rerun remains pending.
+  The first full prepush found one obsolete benchmark cancellation assertion in
+  `DesktopHeadlessSessionTest`: its waiter-disconnect scenario explicitly cancelled
+  the owner operation while expecting cancellation to be unsupported. It now
+  asserts cancellability without cancelling owner work; the independent public
+  cancellation regression still tests explicit cancellation. The corrected focused
+  selection passed11/11 with no skips (`checkpoint28/waiter-focused-green.log`);
+  the failed full receipt is retained as `checkpoint28/first-failed-prepush-result.json`.
+  Windows frozen24 initially failed one process-identity test because the Limited
+  user could execute the retained JRE but could not resolve its Windows Temp path.
+  Actual owner identity matched. The hash-identical user-owned JRE fixture rerun
+  passed24/24 with no skips (`checkpoint28/windows-desktop-actions-native/rerun24-result.json`);
+  production identity checks and ACLs remain unchanged. A routine launcher preflight
+  regression for this fixture ancestry failure remains required in the next slice.
+- Exact26 macOS machine replacement now passed automatic captured frontend/owner
+  exit after the matching handoff-ready acknowledgment, protected SUCCEEDED/OK,
+  same-source target2.2.2 recovery with installed=true/cleanupCode=OK and normal TLS
+  traffic. Operation628331af-fe1f-4f86-bf22-b461f0fc2cc8,
+  jobea1c81ad-e31b-4cf9-852c-38315957b046. Public OFF stopped the target runtime;
+  public QUIT stopped owner8717 but frontend8582 remained after20s and is preserved
+  for lifecycle diagnosis. Receipt: `checkpoint26/macos-auto-handoff/native-automatic-handoff-receipt.json`.
+  Older uncertain jobs were not touched. This closes the new automatic installer
+  exit scenario, not the full macOS failure/rollback/lifecycle matrix.
+- Windows exact25 packaged-owner component now passed real UAC grant and
+  prepare-abort. Limited owner5664, elevated original-user helper4744 and captured
+  suspended runtime2304 reached READY with port61480 closed; production
+  `prepared.close()` reported ABORT_CONFIRMED/exit0. Same-generation cleanup proved
+  all owned processes gone and protected stage absent. Root read result/events,
+  stable module inventory and cleanup receipts under
+  `checkpoint25/windows/packaged-owner-loopback/attempt4/`. This uses a fixture main
+  class/CFG overlay on verified production files in the ARM64 guest with x64
+  emulation; production factory enablement, forwarded traffic, TUN and MSI remain
+  open. The separate loopback2 component also passed commit/status/listener/stop
+  and exact process/stage cleanup. Its TCP connection proves listener readiness,
+  not a forwarded SOCKS payload or response token. Its compact immutable handoff is
+  `checkpoint27/windows-broker-lifecycle-handoff/`.
+  Observer corrections for auxiliary conhost children and exited retained
+  handles are promoted to `windows_broker_fixture_observer.py` with16 routine
+  tests (14 portable, two native). Exact Windows16/16 passed with no skips;
+  root verified the source hashes in `checkpoint28/windows-broker-observer-native/`.
+  The test command is now included in release hygiene/prepush.
+- Previous verified source is `30bb0c0beced8eaf991de0047ad2f1c64ee39295`
   (checkpoint26, version2.1.7, two Unreleased notes). All15 managed prepush
   commands and all five required exact-SHA workflows succeeded; managed session30020
   exited0. Receipt: `checkpoint26/commit-result.json`. This checkpoint includes
@@ -630,11 +692,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Shared integration, docs and delivery | All tracked files frozen for checkpoint27 | Checkpoint26 exact-SHA CI GREEN | Stream host18 GREEN; fixture43 GREEN; native Windows rerun pending | Managed prepush, checkpoint push and exact-SHA CI |
-| C/D-Android | android_terra, Terra medium | Read-only review; owned API29/5584 and API35/5590 | Root owns all tracked integration | Immutable source0fc APK pair2.2.19/2.3.0 | Both target replacements, API29 safe export and corrected idle closure GREEN | Remaining Android acceptance after freeze |
+| B/G/H | root | Search cancellation tests/policy, shared integration, docs and delivery | CLI support/runner; host Gradle; metadata/commits | Checkpoint27 all five exact-SHA workflows GREEN | Stream host18/native Windows7 and fixture43 GREEN; public search cancellation RED | Focused cancellation GREEN, integrated checkpoint28 |
+| C/D-Android | android_terra, Terra medium | SSH fixture preparation; owned API29/5584 and API35/5590 | No tracked edits currently; coordinate guest fixture with Mac owner | API29 target2.3.0 nondebuggable/OFF/no key; 46 relevant source files match frozen APK | Read-only preflight GREEN; task SSH fixture topology under validation | Live actual-A/pending-key-B restart/recovery |
 | F/E-Windows | windows, Astra | Exclusive Windows native execution and ignored scratch | Tracked broker/package/factory/Main/autostart remain root | ARM64 Windows guest, x64 emulation; exact checkpoint25 CI artifact | Emitted PE/import and inert entry checks GREEN | Limited-user packaged-owner UAC prepare/abort and loopback runtime |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Exclusive Tart guest native installer | Root owns tracked source and host builds | Exact26 pair2.2.1/2.2.2 verified; older jobs preserved | Fresh normalized base and owner/frontend ready; guarded A setup | Automatic frontend exit, replacement, receipt and recovery |
+| E-Mac | mac_fixture_terra, Terra medium | Normal-quit frontend helper, owner gate/controller, frontend instance, Main and their tests | AppService only paired quit helper; root owns install helpers/protocol models/builds | Exact26 replacement/traffic GREEN; target frontend8582 preserved | Compiled public close RED; implementation in progress | Correlated normal-quit close, focused tests, new packaged native rerun |
 
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16

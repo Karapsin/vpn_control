@@ -215,7 +215,7 @@ class DesktopHeadlessSessionTest {
         started.await()
         assertTrue(session.hasBackgroundWork())
         assertEquals(com.kardinal.vpncontrol.model.ControlOperationPhase.RUNNING, session.operationSnapshot().single().phase)
-        assertEquals("CONFLICT", session.execute(DesktopCliCommand.OperationCancel(session.operationSnapshot().single().id)).message)
+        assertTrue(session.operationSnapshot().single().cancellable)
         waiter.cancel()
         waiter.join()
         assertTrue(session.execute(DesktopCliCommand.Status).success)

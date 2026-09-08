@@ -288,6 +288,11 @@ class DesktopAppService internal constructor(
             DesktopActivationServer.requestCliCommand(command,
                 DesktopFrontendInstance.endpoint(desktopStore.updateDirectory().toAbsolutePath().parent))
         } }).awaitExit()
+    internal suspend fun awaitControlQuitFrontendExit(correlation: DesktopFrontendQuitCorrelation) =
+        DesktopOwnerFrontendQuit(correlation, request = { command -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            DesktopActivationServer.requestCliCommand(command,
+                DesktopFrontendInstance.endpoint(desktopStore.updateDirectory().toAbsolutePath().parent))
+        } }).awaitAcknowledgement()
 
     fun dismissUpdate() {
         updateService.dismiss()

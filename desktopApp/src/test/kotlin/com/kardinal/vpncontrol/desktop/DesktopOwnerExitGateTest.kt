@@ -5,10 +5,39 @@ import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class DesktopOwnerExitGateTest {
+    @Test fun normalQuitWaitsForItsExactFlushedOwnerResponseBeforeFrontendCallback() {
+        val owner = java.util.UUID.randomUUID().toString()
+        val frontend = DesktopFrontendProcessIdentity(java.util.UUID.randomUUID().toString(), 42, 99)
+        val correlation = DesktopFrontendQuitCorrelation(owner, "supported public request", frontend)
+        var callbacks = 0
+        var release: (() -> Unit)? = null
+        val gate = DesktopOwnerExitGate(releaseQuit = { actual, ready ->
+            assertEquals(correlation, actual)
+            callbacks++
+            release = ready
+        })
+        gate.requestFrontendQuitAfterResponse(correlation)
+        fun response(requestId: String = correlation.publicRequestId, responseOwner: String = owner,
+            code: ControlCode = ControlCode.OK) = DesktopCliResponse(code == ControlCode.OK,
+            ControlProtocolCodec.encodeResult(ControlResult(responseOwner, requestId, code, 0,
+                operationId = java.util.UUID.randomUUID().toString())), code.exitCode)
+        val command = DesktopCliCommand.ControlSubmit(ControlRequest(correlation.publicRequestId,
+            ControlCommand(ControlOperationId.QUIT), controllerId = owner))
+        gate.responseFlushed(command.copy(request = command.request.copy(requestId = "other")), response("other"))
+        gate.responseFlushed(command, response(responseOwner = java.util.UUID.randomUUID().toString()))
+        gate.responseFlushed(command, response(code = ControlCode.BUSY))
+        assertEquals(0, callbacks)
+        gate.responseFlushed(command, response())
+        assertEquals(1, callbacks)
+        assertFalse(gate.exitRequested)
+        assertNotNull(release).invoke()
+        assertTrue(gate.exitRequested)
+    }
+
     @Test fun flushedInstallerResponseWaitsForCapturedFrontendAndRevocationInvalidatesLateRelease() {
         var callbacks = 0
         var release: (() -> Unit)? = null
-        val gate = DesktopOwnerExitGate { _, _, ready -> callbacks++; release = ready }
+        val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> callbacks++; release = ready })
         val job = "00000000-0000-0000-0000-000000000001"
         val correlation = DesktopInstallCorrelation("owner", "install", "operation")
         val request = ControlRequest("inspect", ControlCommand(ControlOperationId.OPERATIONS_STATUS,
@@ -31,7 +60,7 @@ class DesktopOwnerExitGateTest {
 
     @Test fun exactFrontendCompletionReleasesOnlyAfterPublicResponseWasFlushed() {
         var release: (() -> Unit)? = null
-        val gate = DesktopOwnerExitGate { _, _, ready -> release = ready }
+        val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> release = ready })
         val job = "00000000-0000-0000-0000-000000000001"
         gate.requestInstallExitAfterResponse(DesktopInstallCorrelation("owner", "install", "operation"), job)
         assertNull(release)

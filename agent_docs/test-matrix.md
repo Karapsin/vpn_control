@@ -94,12 +94,29 @@ stdout/stderr readers while log history remains empty, and also verifies healthy
 pipes and regular files keep following. Keep the native ADB/package scenarios;
 a throwing printer mock cannot reproduce closure during a suppressed empty poll.
 
+`DesktopSearchCancellationCliTest` exercises public Find Best/benchmark cancellation
+through the real operation owner and service cleanup, including delayed actual-runtime
+recovery, failed recovery, unknown outcomes and preservation of pending selection.
+`DesktopFrontendInstanceTest` exercises automatic public-QUIT-to-frontend closure
+through authenticated endpoints; normal-quit gate/receiver/sender tests reject
+mismatched identities, retain response-loss retries and distinguish unknown from
+confirmed process exit. These run in ordinary desktop tests; keep the installed
+package and live-traffic scenarios as separate native acceptance.
+
 `test_macos_packaging_jdk_preflight.py` runs in release hygiene. It checks actual
 JVM property parsing, selected-launcher arguments, known Homebrew packaging
 rejection, Java major and native architecture. `test_desktop_update_fixture.py`
 verifies rejection precedes build-directory creation and native build execution.
 Compose's own packaging vendor check remains enabled; passing this focused
 preflight is not blanket approval of other JDK distributions.
+
+`scripts/test_windows_broker_fixture_observer.py` runs in release hygiene. Its
+portable tests exercise the actual read-only ready/exit consumers: auxiliary
+console children cannot replace the captured runtime PID/generation/hash, and a
+retained process handle's generation and exit signal are checked before an image
+query that can fail after exit. Unavailable observations remain unknown. Two
+additional Windows-native cases inspect the current process and an inert child;
+these must execute on Windows and are explicit skips on other hosts.
 
 `scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
 regression catches Windows path backslashes being interpreted as Python escapes

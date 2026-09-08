@@ -54,21 +54,29 @@ internal class DesktopControllerOwner(
         val frontend: DesktopFrontendProcessIdentity?, val observer: kotlinx.coroutines.Job? = null)
     private val installExitMonitor = Any()
     private var installExitFrontend: InstallExitFrontend? = null
-    private val exitGate = DesktopOwnerExitGate { correlation, jobId, release ->
-        val observer = synchronized(installExitMonitor) {
-            val captured = installExitFrontend?.takeIf { it.correlation == correlation }
-            if (captured == null) null
-            else {
-                val frontend = captured.frontend
-                if (frontend == null) { release(); null }
-                else scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-                    service.awaitControlInstallFrontendExit(frontend, correlation, jobId)
-                    release()
-                }.also { installExitFrontend = captured.copy(observer = it) }
+    private val exitGate = DesktopOwnerExitGate(
+        releaseInstall = { correlation, jobId, release ->
+            val observer = synchronized(installExitMonitor) {
+                val captured = installExitFrontend?.takeIf { it.correlation == correlation }
+                if (captured == null) null
+                else {
+                    val frontend = captured.frontend
+                    if (frontend == null) { release(); null }
+                    else scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                        service.awaitControlInstallFrontendExit(frontend, correlation, jobId)
+                        release()
+                    }.also { installExitFrontend = captured.copy(observer = it) }
+                }
             }
-        }
-        observer?.start()
-    }
+            observer?.start()
+        },
+        releaseQuit = { correlation, release ->
+            scope.launch {
+                service.awaitControlQuitFrontendExit(correlation)
+                release()
+            }
+        },
+    )
     private var installHandoff: DesktopInstallHandoff? = null
     private val guiVisibility = DesktopGuiVisibilityControl(controllerId, service::controlMetadata, frontends::registration)
     val exitRequested: Boolean get() = exitGate.exitRequested
@@ -160,8 +168,17 @@ internal class DesktopControllerOwner(
             if (service.state.isBusy)
                 return DesktopControlWriteResponse(DesktopCliResponse.failure("BUSY"), service.controlMetadata())
         }
+        val frontend = synchronized(this) { frontends.registration() }?.let { registration ->
+            service.controlInstallFrontend(registration).getOrElse {
+                return DesktopControlWriteResponse(DesktopCliResponse.failure("CONFLICT"), service.controlMetadata())
+            }
+        }
         val stopped = service.shutdownForExit()
-        if (stopped.isSuccess) requestExitAfterResponse(requestId)
+        if (stopped.isSuccess) {
+            if (frontend == null) requestExitAfterResponse(requestId)
+            else exitGate.requestFrontendQuitAfterResponse(
+                DesktopFrontendQuitCorrelation(controllerId, requestId, frontend))
+        }
         return DesktopControlWriteResponse(stopped.fold({ DesktopCliResponse.success("") }, {
             DesktopCliResponse.failure(if (it.message == "PERSISTENCE_FAILED") "PERSISTENCE_FAILED" else "RUNTIME_FAILED")
         }), service.controlMetadata())

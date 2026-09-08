@@ -4,9 +4,43 @@ import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import com.kardinal.vpncontrol.model.*
+import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class DesktopFrontendInstanceTest {
+    @Test fun publicQuitCanCloseOnlyItsCapturedFrontendGeneration() = runBlocking {
+        val directory = Files.createTempDirectory("frontend-public-quit")
+        val owner = DesktopControllerOwner(DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory)))
+        val ownerEndpoint = directory.resolve("owner.port")
+        val ownerServer = assertNotNull(DesktopActivationServer.start(
+            onShowWindow = { DesktopActivationShowResult.HEADLESS }, controllerId = owner.controllerId,
+            portFile = ownerEndpoint, onCliCommand = { runBlocking { owner.execute(it) } },
+            onCliResponseFlushed = owner::responseFlushed))
+        val presentation = visibility().apply { ownerId = owner.controllerId }
+        val exited = java.util.concurrent.CountDownLatch(1)
+        val quitExit = DesktopFrontendQuitExit({ owner.controllerId }, { it() }).apply {
+            install { exited.countDown() }
+        }
+        val frontend = assertNotNull(DesktopFrontendInstance.start(directory, presentation, quitExit))
+        try {
+            assertTrue(owner.execute(DesktopCliCommand.ControlFrontendLease(java.util.UUID.randomUUID().toString(),
+                owner.controllerId, frontend.identity, DesktopFrontendLeaseAction.ATTACH)).success)
+            val identity = DesktopFrontendProcessIdentity.read(directory, frontend.identity).getOrThrow()
+            val publicRequestId = "public quit request with spaces"
+            val publicResponse = DesktopActivationServer.requestCliCommand(DesktopCliCommand.ControlSubmit(ControlRequest(
+                publicRequestId, ControlCommand(ControlOperationId.QUIT), controllerId = owner.controllerId)), ownerEndpoint)
+            assertTrue(publicResponse.success)
+            assertTrue(exited.await(3, java.util.concurrent.TimeUnit.SECONDS),
+                "A flushed public QUIT must close only its captured frontend")
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
+            while (!owner.exitRequested && System.nanoTime() < deadline) Thread.sleep(5)
+            assertTrue(owner.exitRequested, "Owner must release only after the frontend's exact acknowledgement")
+            assertEquals(frontend.identity, identity.registrationId)
+        } finally {
+            frontend.close(); ownerServer.close(); owner.close(); directory.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun authenticatedInstallExitReachesTheCapturedFrontendEndpoint() {
         val directory = Files.createTempDirectory("frontend-install-exit")
         val owner = java.util.UUID.randomUUID().toString()
