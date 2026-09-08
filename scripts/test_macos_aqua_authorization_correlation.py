@@ -3,7 +3,7 @@ import stat
 import subprocess
 import sys
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 import macos_aqua_authorization_correlation as subject
@@ -14,6 +14,10 @@ WORKER = HOME / "Library/Application Support/vpn-control-install-inputs" / JOB /
 
 
 class ProcessParserTest(unittest.TestCase):
+    def test_macos_process_paths_do_not_inherit_host_separators(self):
+        self.assertEqual("/Users/Alice Doe/Library/Application Support/worker",
+                         subject.process_path(PureWindowsPath("/Users/Alice Doe/Library/Application Support/worker")))
+
     def test_parses_exact_quoted_worker_path_and_ignores_malformed_rows(self):
         raw = """nonsense
 11 bad 501 ignored
@@ -28,11 +32,11 @@ class ProcessParserTest(unittest.TestCase):
 
     def test_actual_ps_unquoted_path_with_spaces_requires_exact_tail(self):
         metadata = type("Metadata", (), {"st_mode": stat.S_IFREG | 0o700, "st_uid": 501})()
-        command = f"/usr/bin/osascript -e on run argv -- {WORKER} --coordinate {JOB} 42"
+        command = f"/usr/bin/osascript -e on run argv -- {WORKER.as_posix()} --coordinate {JOB} 42"
         with mock.patch.object(Path, "lstat", return_value=metadata), mock.patch.object(subject.os, "getuid", return_value=501, create=True):
             row = {"pid": 13, "command": command}
             self.assertEqual(subject.coordinator(row, HOME), {"osascriptPid": 13, "jobId": JOB, "ownerPid": 42})
-            for bad in (command + " extra", command.replace(str(WORKER), str(WORKER) + "-other"), command.replace(f"--coordinate {JOB}", "--coordinate not-a-uuid")):
+            for bad in (command + " extra", command.replace(WORKER.as_posix(), WORKER.as_posix() + "-other"), command.replace(f"--coordinate {JOB}", "--coordinate not-a-uuid")):
                 self.assertIsNone(subject.coordinator({"pid": 13, "command": bad}, HOME))
 
     def test_observation_rejects_non_product_or_ambiguous_prompt(self):
@@ -77,7 +81,7 @@ class LaunchPortabilityTest(unittest.TestCase):
             cwd=Path(__file__).resolve().parent, capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("Ran 5 tests", result.stderr)
+        self.assertIn("Ran 6 tests", result.stderr)
         self.assertNotIn("skipped", result.stderr)
 
 

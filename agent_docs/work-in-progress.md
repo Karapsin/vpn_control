@@ -696,6 +696,16 @@ identities, never authorization to kill/restart anything.
 
 ## Checkpoint 23 Fixture Corrections And Component Evidence
 
+Checkpoint23 was pushed as `749bdc38d658eec05e9e91c8644b3c67fa2a0693` after
+all15 managed prepush commands passed. Windows package CI34264247437 failed
+release hygiene: the macOS observer used host-specific path serialization, so its
+literal POSIX fixture failed on Windows. A PureWindowsPath regression reproduced
+this on the host before changing comparison to POSIX serialization. All7 observer
+tests now pass locally; corrective native Windows execution and exact-SHA CI
+remain delivery gates. Evidence is under local checkpoint23,
+`windows-ci-failed.log` and `macos-path-portability-{red,green}.log`.
+
+
 - The actual macOS `ps` output renders the installer worker path containing
   `Application Support` without shell quotes. The observer previously rejected
   that live coordinator. A literal unquoted process-tail regression failed before

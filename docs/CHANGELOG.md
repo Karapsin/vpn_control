@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve large Android routing assets through native startup, meet foreground-service deadlines, and fix Windows native fixture paths.
 - Bind Windows broker packages to the bundled runtime and guard Android fixture source inspection.
 - Validate packaged Windows VPN helper admission and harden native update fixture recovery checks.
+- Keep macOS authorization process-path checks portable across Windows test hosts.
 
 ## 2.1.6 - 2026-09-08
 

@@ -22,6 +22,11 @@ def parse_ps(text):
     return rows
 
 
+def process_path(path):
+    # Captured macOS process arguments use POSIX paths on every test host.
+    return path.as_posix()
+
+
 def coordinator(row, owner_home):
     command = row["command"]
     if not command.startswith("/usr/bin/osascript ") or " -- " not in command:
@@ -34,7 +39,7 @@ def coordinator(row, owner_home):
         return None
     job_id, owner_pid = match[2], int(match[3])
     expected = owner_home / INPUTS_SUFFIX / job_id / "vpn-control-install-worker"
-    if match[1] not in (str(expected), "'" + str(expected) + "'"):
+    if match[1] not in (process_path(expected), "'" + process_path(expected) + "'"):
         return None
     try:
         metadata = expected.lstat()
