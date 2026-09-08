@@ -10,7 +10,7 @@ Authoritative native and generated artifact policy is `ARTIFACT-001` through `AR
 | `app/src/main/jniLibs/arm64-v8a/libsing-box.so` | Android release ARM64 native sing-box runtime. | Tracked. Refresh only as part of an explicit runtime update. |
 | `app/src/debug/jniLibs/x86_64/libsing-box.so` | Android emulator/debug x86_64 native sing-box runtime. | Tracked. Keep compatible with debug instrumentation/smoke testing. |
 
-## Application JNI String Construction
+## Application JNI Helpers
 
 `app/src/main/cpp/` contains application-owned C sources for `vpn_control_strings`.
 This helper constructs a Java String from bounded spool reads through standard JNI;
@@ -26,6 +26,14 @@ The ordinary `:app:testDebugUnitTest` tier builds the same C implementation for
 the host using the pinned SDK CMake/Ninja, the Gradle JDK JNI headers, and a host
 C compiler. Host-only allocator failure hooks are excluded from Android builds.
 Child JVM memory tests must propagate `java.library.path` from the parent test.
+The same application-owned library also provides exclusive file publication for
+generated Android routing assets. API29 may deny Java hard-link publication, so
+the helper uses native atomic rename with no replacement: `renameat2` through the
+system-call interface on Android/Linux, `renamex_np` on macOS hosts, and
+`MoveFileExW` without replacement or copy flags on Windows hosts. Unsupported
+operations fail explicitly; there is no ordinary rename/copy fallback. Paths use
+validated UTF-16 and standard UTF-8 rather than JNI modified UTF-8. Ordinary app
+unit tests cover publication and destination preservation alongside string tests.
 The consecutive large-routing regression exercises the actual helper with a
 48-MiB Java heap; passing it does not replace API29/API35 packaged verification.
 

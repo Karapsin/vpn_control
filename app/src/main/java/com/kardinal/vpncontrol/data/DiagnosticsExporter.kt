@@ -15,6 +15,10 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Kept separate so diagnostics routing disclosure stays testable without Android I/O. */
+internal fun diagnosticsDirectDomainSuffixesLine(domains: List<String>): String =
+    "direct_domain_suffixes_count=${domains.size}"
+
 class DiagnosticsExporter(
     private val context: Context,
     private val storage: ProfileStorage,
@@ -101,7 +105,7 @@ class DiagnosticsExporter(
             appendLine("proxy_packages=${state.routingRules.proxyPackages.joinToString(",")}")
             appendLine("android_app_scope=${androidAppScope(state)}")
             appendLine("bypass_packages=${state.routingRules.bypassPackages.joinToString(",")}")
-            appendLine("direct_domain_suffixes=${state.routingRules.directDomainSuffixes.joinToString(",")}")
+            appendLine(diagnosticsDirectDomainSuffixesLine(state.routingRules.directDomainSuffixes))
             appendLine("selected_profile_name=${DiagnosticsSanitizer.redactText(state.selectedProfileName)}")
             appendLine("selected_profile_server_present=${state.selectedProfileServer.isNotBlank()}")
             appendLine("selected_profile_raw_present=${state.selectedProfileRawLink.isNotBlank()}")

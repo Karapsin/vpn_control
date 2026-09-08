@@ -41,6 +41,7 @@ internal class AndroidLocationDestructiveControl(
         val observed = observation()
         if (observed.knowledge == AndroidRuntimeKnowledge.UNKNOWN) return result(ControlCode.RUNTIME_FAILED, listOf("RUNTIME_NOT_CHANGED", "RUNTIME_OUTCOME_UNKNOWN"))
         val point = if (observed.knowledge == AndroidRuntimeKnowledge.RUNNING) capture() else null
+        try {
         if (observed.knowledge == AndroidRuntimeKnowledge.RUNNING && (point == null || point.observation != observed))
             return result(ControlCode.RUNTIME_FAILED, listOf("RUNTIME_NOT_CHANGED", "RUNTIME_OUTCOME_UNKNOWN"))
         fun removed(raw: String, source: String): Boolean = source.isBlank() &&
@@ -69,9 +70,12 @@ internal class AndroidLocationDestructiveControl(
         if (!mustStop) return result(code(requireNotNull(saved.exceptionOrNull())))
         val recovered = if (observation() == expected) runCatching { restore(requireNotNull(point), expected).getOrThrow() } else Result.failure(IllegalStateException("RUNTIME_COMMAND_STALE"))
         val restored = capture()
+        try {
         val exact = recovered.isSuccess && restored != null && restored.runtimeJson == point?.runtimeJson && restored.configuration == point.configuration
         return result(if (exact) code(requireNotNull(saved.exceptionOrNull())) else ControlCode.RUNTIME_FAILED,
             listOf(if (exact) "RUNTIME_RESTORED" else if (observation().knowledge == AndroidRuntimeKnowledge.STOPPED) "RUNTIME_STOPPED" else "RUNTIME_OUTCOME_UNKNOWN"))
+        } finally { restored?.close() }
+        } finally { point?.close() }
     }
 
     private fun code(error: Throwable): ControlCode = when (error.message) {

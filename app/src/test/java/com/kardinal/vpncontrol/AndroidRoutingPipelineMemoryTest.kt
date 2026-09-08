@@ -12,6 +12,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidRoutingPipelineMemoryTest {
+    @Test fun largePersistedRoutingCanBuildRuntimeConfigWithin48MiB() {
+        val classpath = requireNotNull(System.getProperty("vpnControl.test.runtimeClasspath"))
+        val directory = java.nio.file.Files.createTempDirectory("android-routing-runtime-memory-").toFile()
+        val log = File(directory, "runtime.log")
+        try {
+            val process = ProcessBuilder(File(System.getProperty("java.home"), "bin/java").path,
+                "-Xmx48m", "-XX:+UseSerialGC",
+                "-Djava.library.path=${System.getProperty("java.library.path")}",
+                "-cp", classpath, AndroidRoutingPipelineMemoryProbe::class.java.name,
+                directory.path, "original", "warm", "runtime")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue("Runtime configuration probe timed out", process.waitFor(90, TimeUnit.SECONDS))
+                assertEquals(log.readText(), 0, process.exitValue())
+                print(log.readText())
+            } finally { if (process.isAlive) process.destroyForcibly() }
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun fullRoutingDocumentUsesRealDataStoreWithin48MiBWithCompactingJvmCollector() {
         val classpath = requireNotNull(System.getProperty("vpnControl.test.runtimeClasspath"))
         val evidence = java.nio.file.Files.createTempDirectory("android-routing-memory-evidence-").toFile()
@@ -164,6 +183,40 @@ object AndroidRoutingPipelineMemoryProbe {
                     check(documents.result(2000, retry).byteCount > 10 * 1024 * 1024)
                     println("stage=$requestId-replayed revision=${read.configurationRevision}")
                     documents.discard(2000, retry)
+                }
+            }
+            if (args.getOrNull(3) == "runtime") {
+                val state = configuration.snapshot().value
+                check(state.routingRules.directDomainSuffixes.size == 56_000)
+                println("stage=runtime-config-before heapUsed=${Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()}")
+                val profile = ProxyProfile(protocol = ProxyProtocol.SOCKS, remarks = "Memory fixture",
+                    server = "127.0.0.1", serverPort = 1080, username = "", password = "",
+                    network = "tcp", flow = "", security = "", sni = "", fingerprint = "",
+                    publicKey = "", shortId = "", path = "", hostHeader = "", serviceName = "",
+                    headerType = "none", rawLink = "")
+                val assets = AndroidDirectDomainRuleSetStore(File(directory, "runtime-rule-sets"))
+                AndroidRuntimeConfigBuilder(assets).build(profile, state.dnsSettings, state.routingRules,
+                    AppMode.VPN, null, null).use { built ->
+                    check(built.json.length < 64 * 1024) // Domains live in the complete native source file.
+                    val asset = requireNotNull(assets.acquireFromConfig(built.json))
+                    asset.use {
+                        val file = File(it.path)
+                        check(file.length() > 10 * 1024 * 1024)
+                        val expected = java.security.MessageDigest.getInstance("SHA-256")
+                        expected.update("{\"version\":1,\"rules\":[{\"domain_suffix\":[".toByteArray())
+                        state.routingRules.directDomainSuffixes.forEachIndexed { index, domain ->
+                            expected.update((if (index == 0) "" else ",").toByteArray())
+                            expected.update("\".$domain\"".toByteArray())
+                        }
+                        expected.update("]}]}".toByteArray())
+                        val actual = java.security.MessageDigest.getInstance("SHA-256")
+                        file.inputStream().use { input ->
+                            val buffer = ByteArray(8192)
+                            while (true) { val count = input.read(buffer); if (count < 0) break; actual.update(buffer, 0, count) }
+                        }
+                        check(java.security.MessageDigest.isEqual(expected.digest(), actual.digest()))
+                    }
+                    println("stage=runtime-config-after chars=${built.json.length}")
                 }
             }
         } finally {

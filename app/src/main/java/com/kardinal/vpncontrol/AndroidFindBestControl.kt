@@ -19,6 +19,7 @@ internal class AndroidFindBestControl(
     private val commit: suspend (ProfileSelection, String, Long, AndroidFindBestPlan) -> ControlCommitted<PersistedState>,
     private val cancelInteraction: (String) -> Unit,
     private val finishInteraction: (String) -> Unit = {},
+    private val reportFailure: (Throwable) -> Unit = {},
 ) {
     interface Runtime {
         suspend fun start(selection: ProfileSelection): Result<Unit>
@@ -63,7 +64,14 @@ internal class AndroidFindBestControl(
         var commitUnknown = false
         var code = ControlCode.RUNTIME_FAILED
         val warnings = mutableListOf<String>()
+        fun reportFailureSafely(error: Throwable) {
+            if (error is CancellationException) return
+            try { reportFailure(error) }
+            catch (_: Exception) { }
+            catch (_: OutOfMemoryError) { }
+        }
         suspend fun reconcileFailure(error: Throwable) {
+            reportFailureSafely(error)
             if (error is OutOfMemoryError) warnings += "RESOURCE_EXHAUSTED"
             if (succeeded) {
                 // The commit returned authoritative metadata before later presentation failed.
@@ -118,6 +126,7 @@ internal class AndroidFindBestControl(
                             metadata.value.validationSettings.normalized().activeVerificationWindowSize) { candidate, number ->
                             probe(candidate, number).getOrElse { error ->
                                 if (error is CancellationException) throw error
+                                reportFailureSafely(error)
                                 BenchmarkSearchLogic.failedActiveVerificationBenchmark(candidate.preflight,
                                     "candidate_verification_failed", "error")
                             }
@@ -133,6 +142,7 @@ internal class AndroidFindBestControl(
                             if (started.isFailure) throw requireNotNull(started.exceptionOrNull())
                             val verified = verify(attempt).getOrElse { error ->
                                 if (error is CancellationException) throw error
+                                reportFailureSafely(error)
                                 BenchmarkSearchLogic.failedActiveVerificationBenchmark(attempt.preflight,
                                     "active_verification_failed", "error")
                             }
@@ -155,6 +165,7 @@ internal class AndroidFindBestControl(
                         index += metadata.value.validationSettings.normalized().activeVerificationWindowSize.coerceAtLeast(1)
                         progress(minOf(index.toLong(), total), total)
                     }
+                    reportFailureSafely(AndroidFindBestNoVerifiedCandidateException())
                 }
                 probes[id] = worker
                 if (!canRun()) worker.cancel()

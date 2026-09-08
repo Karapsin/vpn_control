@@ -3,7 +3,14 @@ package com.kardinal.vpncontrol.data
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.DnsSettings
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.longOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,6 +24,7 @@ object SingBoxConfigFactory {
         routingRules: RoutingRules,
         activeVerificationPort: Int? = null,
         homeRoute: HomeSshRouteRuntimeOptions? = null,
+        localDirectDomainRuleSetPath: String? = null,
     ): String {
         val validatedHomeRoute = homeRoute?.validated()
         val directOutboundTag = validatedHomeRoute?.let { HomeSshRouteConfigBuilder.HOME_EGRESS_TAG } ?: "direct"
@@ -35,6 +43,7 @@ object SingBoxConfigFactory {
                 }
             },
             directOutboundTag = directOutboundTag,
+            localDirectDomainRuleSetPath = localDirectDomainRuleSetPath,
         )
 
         val tunInbound = JSONObject()
@@ -103,6 +112,7 @@ object SingBoxConfigFactory {
         listenPort: Int = DEFAULT_PROXY_ONLY_PORT,
         managementProxyPort: Int? = null,
         homeRoute: HomeSshRouteRuntimeOptions? = null,
+        localDirectDomainRuleSetPath: String? = null,
     ): String {
         require(managementProxyPort == null || managementProxyPort != listenPort) {
             "Management proxy port must differ from the user proxy port"
@@ -119,6 +129,7 @@ object SingBoxConfigFactory {
                 }
             },
             directOutboundTag = directOutboundTag,
+            localDirectDomainRuleSetPath = localDirectDomainRuleSetPath,
         )
 
         val root = JSONObject()
@@ -234,5 +245,14 @@ object SingBoxConfigFactory {
 }
 
 private fun JsonObject.toAndroidJsonObject(): JSONObject {
-    return JSONObject(toString())
+    // Reuse primitive values instead of serializing and reparsing the whole routing
+    // document. The intermediate strings can exceed the API29 application heap.
+    return JSONObject().also { result -> forEach { (key, value) -> result.put(key, value.toAndroidJsonValue()) } }
+}
+
+private fun JsonElement.toAndroidJsonValue(): Any = when (this) {
+    is JsonObject -> toAndroidJsonObject()
+    is JsonArray -> JSONArray().also { result -> forEach { result.put(it.toAndroidJsonValue()) } }
+    JsonNull -> JSONObject.NULL
+    is JsonPrimitive -> if (isString) content else booleanOrNull ?: longOrNull ?: double
 }

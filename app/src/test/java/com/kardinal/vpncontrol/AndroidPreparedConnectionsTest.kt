@@ -2,11 +2,71 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.control.ControlRuntimeConfiguration
 import com.kardinal.vpncontrol.data.LocationConfigs
+import com.kardinal.vpncontrol.data.AndroidPersistedDomainSuffixes
 import com.kardinal.vpncontrol.model.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidPreparedConnectionsTest {
+    @Test fun consumedAssetOutlivesPreparationExpiryAndReleasesAfterServiceHandoff() {
+        val directory = java.nio.file.Files.createTempDirectory("prepared-rule-set-").toFile()
+        try {
+            val store = com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore(directory)
+            var now = 0L
+            val prepared = AndroidPreparedConnections(clockMillis = { now }, retentionMillis = 10)
+            val selected = selection()
+            val lease = requireNotNull(store.stage(RoutingRules(directDomainSuffixes = listOf("example.test"))))
+            val path = lease.path
+            prepared.remember(selected, PersistedState(), lease)
+            val consumed = requireNotNull(prepared.consumePrepared(prepared.dispatch(selected), selected.runtimeConfigJson))
+            now = 11L
+            assertNull(prepared.dispatch(selected)) // Prunes only the preparation's independent lease.
+            store.prune(emptySet())
+            assertTrue(java.io.File(path).exists())
+            val active = requireNotNull(consumed.takeRuleSetLease())
+            consumed.close()
+            store.prune(emptySet())
+            assertTrue(java.io.File(path).exists())
+            active.close()
+            store.prune(emptySet())
+            assertFalse(java.io.File(path).exists())
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun mismatchedAndDiscardedDispatchesDoNotRetainExpiredAssets() {
+        val directory = java.nio.file.Files.createTempDirectory("prepared-rejected-rule-set-").toFile()
+        try {
+            val store = com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore(directory)
+            var now = 0L
+            val prepared = AndroidPreparedConnections(clockMillis = { now }, retentionMillis = 10)
+            val selected = selection()
+            val lease = requireNotNull(store.stage(RoutingRules(directDomainSuffixes = listOf("example.test"))))
+            val path = lease.path
+            prepared.remember(selected, PersistedState(), lease)
+            assertNull(prepared.consumePrepared(prepared.dispatch(selected), "different"))
+            prepared.discard(prepared.dispatch(selected))
+            now = 11L
+            assertNull(prepared.dispatch(selected))
+            store.prune(emptySet())
+            assertFalse(java.io.File(path).exists())
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun persistedDomainsRetainTheirImmutableLazySnapshotWhileMutableDomainsAreCopied() {
+        val prepared = AndroidPreparedConnections()
+        val selection = selection()
+        val persisted = AndroidPersistedDomainSuffixes.decode("one.test\ntwo.test")
+        val immutable = ControlRuntimeConfiguration(selection.profile.rawLink, selection.sourceUrl, AppMode.VPN,
+            RoutingRules(directDomainSuffixes = persisted), DnsSettings(), HomeSshRouteSettings())
+        prepared.remember(selection, immutable)
+        assertSame(persisted, requireNotNull(prepared.consume(prepared.dispatch(selection), selection.runtimeConfigJson)).routing.directDomainSuffixes)
+
+        val mutable = mutableListOf("one.test")
+        val mutableConfig = immutable.copy(routing = immutable.routing.copy(directDomainSuffixes = mutable))
+        prepared.remember(selection, mutableConfig)
+        mutable += "later.test"
+        assertEquals(listOf("one.test"), requireNotNull(prepared.consume(prepared.dispatch(selection), selection.runtimeConfigJson)).routing.directDomainSuffixes)
+    }
     @Test fun generatedSshRuntimeRetainsExactPreparationAndDetectsLaterCredentialChanges() {
         val prepared = AndroidPreparedConnections()
         val selection = selection()

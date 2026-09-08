@@ -27,6 +27,7 @@ object SingBoxRouteDnsBuilder {
     const val BOOTSTRAP_DNS_SERVER = "1.1.1.1"
     const val BOOTSTRAP_DNS_SERVER_TAG = "bootstrap-dns"
     const val SECURE_DNS_SERVER_TAG = "secure-dns"
+    const val LOCAL_DIRECT_DOMAINS_TAG = "runtime-direct-domains"
     private val json = Json { explicitNulls = false }
     private val localDirectCidrs = listOf(
         "127.0.0.0/8",
@@ -41,6 +42,8 @@ object SingBoxRouteDnsBuilder {
         routingRules: RoutingRules,
         leadingRouteRules: List<JsonObject> = emptyList(),
         directOutboundTag: String = "direct",
+        // Platform-owned immutable source file; never persisted as a user rule set.
+        localDirectDomainRuleSetPath: String? = null,
     ): SingBoxRouteDnsConfig {
         val directCidrs = directCidrs()
         val routeRules = buildRouteRules(
@@ -48,13 +51,25 @@ object SingBoxRouteDnsBuilder {
             directCidrs = directCidrs,
             leadingRouteRules = leadingRouteRules,
             directOutboundTag = directOutboundTag,
+            localDirectDomainRuleSetPath = localDirectDomainRuleSetPath,
         )
         val route = buildJsonObject {
             put("auto_detect_interface", true)
             put("default_domain_resolver", SECURE_DNS_SERVER_TAG)
             put("final", "proxy")
             put("rules", routeRules)
-            val definitions = buildRuleSetDefinitions(routingRules.ruleSets, directOutboundTag)
+            val definitions = buildList {
+                if (localDirectDomainRuleSetPath != null && !routingRules.ignoreRules) {
+                    require(localDirectDomainRuleSetPath.isNotBlank()) { "Local direct-domain rule set path is empty" }
+                    add(buildJsonObject {
+                        put("type", "local")
+                        put("tag", LOCAL_DIRECT_DOMAINS_TAG)
+                        put("format", "source")
+                        put("path", localDirectDomainRuleSetPath)
+                    })
+                }
+                addAll(buildRuleSetDefinitions(routingRules.ruleSets, directOutboundTag))
+            }
             if (!routingRules.ignoreRules && definitions.isNotEmpty()) {
                 put("rule_set", JsonArray(definitions))
             }
@@ -138,11 +153,18 @@ object SingBoxRouteDnsBuilder {
         directCidrs: List<String>,
         leadingRouteRules: List<JsonObject>,
         directOutboundTag: String,
+        localDirectDomainRuleSetPath: String?,
     ): JsonArray {
         return buildJsonArray {
             leadingRouteRules.forEach(::add)
             add(directCidrRouteRule(directCidrs, directOutboundTag))
-            if (!routingRules.ignoreRules && routingRules.allDirectDomainSuffixes.isNotEmpty()) {
+            if (!routingRules.ignoreRules && localDirectDomainRuleSetPath != null) {
+                add(buildJsonObject {
+                    put("rule_set", LOCAL_DIRECT_DOMAINS_TAG)
+                    put("action", "route")
+                    put("outbound", directOutboundTag)
+                })
+            } else if (!routingRules.ignoreRules && routingRules.allDirectDomainSuffixes.isNotEmpty()) {
                 add(
                     buildJsonObject {
                         put("domain_suffix", routingRules.allDirectDomainSuffixes.asJsonArray())

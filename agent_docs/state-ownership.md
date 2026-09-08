@@ -68,6 +68,61 @@ release, equal snapshots, subscription-gap writes and source failures in routine
 Android unit tests. Per `TEST-001`, retain the native consecutive add/remove and
 independent cold-read scenario: a successful first import does not cover this lifetime.
 
+## Android Generated Routing Assets
+
+`AndroidRuntimeConfigBuilder` streams generated direct domains through
+`AndroidDirectDomainRuleSetStore` into private content-addressed sing-box source
+rule sets. The main runtime JSON references the local asset; user routing storage,
+transfer version and CUSTOM rule-set meaning remain unchanged. This avoids retaining
+another full domain JSON string in the 48 MiB ART heap. It does not promise constant
+memory parsing or unlimited native runtime resources.
+
+Publication uses the application JNI helper's atomic no-replace rename, because
+API29 app policy denied hard-link creation. Existing or raced targets are never
+overwritten; unsupported native operations remain failures with no copy fallback.
+Same-file aliases return an existing-target result, and malformed path characters
+are rejected before filesystem mutation. A successful publication consumes only
+the temporary source. Full digest and private-mode checks still precede leasing.
+
+The builder holds a lease until `AndroidPreparedConnections` captures one. Dispatch
+holds an independent lease; expiry, rejection and cancellation release only their
+own references. `AndroidVpnService` reacquires and hashes the exact generated asset
+before validation or stopping an existing runtime, including cold service starts.
+After native startup the observer owns the active lease. Recovery points retain
+another reference so actual A survives candidate B and rollback; every caller must
+close its recovery point. Failed native cleanup retains resources under UNKNOWN.
+
+Pruning runs only with an unchanged authoritative STOPPED observation. It protects
+leased assets and references in both committed and current runtime JSON. Inspection
+failure skips deletion. A preparation may retain its asset until the existing
+five-minute expiry/capacity pruning; while running or uncertain, unleased disk assets
+may remain until a later safe cleanup. Do not claim the reference cap bounds total
+on-disk cache size.
+
+Routine tests cover real 48 MiB persisted routing plus full generated-asset digest,
+immutable snapshot capture versus mutable inputs, file publication/identity,
+CUSTOM tag collisions, empty normalized rules, preparation handoff, and A/B/recovery
+lease lifetimes. `AndroidFindBestControl` reports failed planning/probes/verification and exhausted
+searches through an owner callback. `AndroidFailureTrace` records bounded class/frame
+and cause identity only, never exception messages, suppressed text or configuration.
+Diagnostic failures must not replace the authoritative operation/recovery result.
+These traces are in the private diagnostics log included by `diagnostics export`;
+`logs` reads the connection/status journal and does not contain that log. Reports
+include `direct_domain_suffixes_count`, never the complete domain list. Full routing
+content belongs to explicit routing inspection/export, not diagnostic summaries.
+Native acceptance still requires the nondebuggable APK to validate
+and run those source rule sets through its bundled libbox. Host JVM success alone
+cannot prove Android filesystem or native routing behavior.
+
+External service START admission promotes a neutral foreground notification
+synchronously before dispatching configuration reads, validation, or runtime work.
+That notification must not read storage or wait for the command mutex. STOP and
+retained foreground-service commands retain their existing dispatch paths. A
+promotion failure completes the exact command with failure and may stop only a
+fresh service whose runtime observation is authoritatively STOPPED. This ordering
+is covered by `AndroidVpnServiceForegroundDeadlineTest`; the Android OS deadline
+and packaged large-routing startup still require emulator verification.
+
 ## Desktop Owns Desktop IO And Runtime Side Effects
 
 Desktop owns file persistence, tray/single-instance lifecycle, autostart, process management, and Linux/Windows VPN runtime setup:

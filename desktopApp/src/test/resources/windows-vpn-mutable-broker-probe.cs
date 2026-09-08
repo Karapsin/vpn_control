@@ -129,6 +129,49 @@ public static class MutableBrokerProbe {
 }
 
 public static class MutableBrokerStateProbe {
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
+ static extern uint GetShortPathName(string path,StringBuilder output,int count);
+ public static string FixtureRootAliases(string root) {
+  CheckFixtureRootAliases(root);
+  string canonical=Path.GetFullPath(root);
+  if(canonical.Length<233) {
+   // Stay within Framework's existing-directory limit while leaving room for scope.json
+   // and gate names. The alias fixture must not spend this capacity on extra nesting.
+   string existing=Path.Combine(canonical,new string('p',233-canonical.Length));
+   Directory.CreateDirectory(existing);
+   CheckFixtureRootAliases(existing);
+   Directory.Delete(existing);
+  }
+  Need(Directory.Exists(canonical),"Alias fixture deleted its caller-owned root");
+  if(canonical.Length<232) {
+   // A 233-character caller root must survive: padding to 234 cannot use an empty
+   // child name, because Path.Combine(root, "") denotes the existing caller itself.
+   string boundary=Path.Combine(canonical,new string('q',232-canonical.Length));
+   Need(!Directory.Exists(boundary)&&!File.Exists(boundary),"Boundary fixture already exists");
+   Directory.CreateDirectory(boundary);
+   try {
+    Need(Path.GetFullPath(boundary).Length==233,"Boundary length mismatch");
+    Need(FixtureRootAliases(boundary)=="MUTABLE_ROOT_ALIASES_OK","Boundary alias exercise failed");
+    Need(Directory.Exists(boundary),"Alias fixture deleted its caller-owned boundary root");
+   } finally { if(Directory.Exists(boundary)) Directory.Delete(boundary); }
+  }
+  return "MUTABLE_ROOT_ALIASES_OK";
+ }
+ static void CheckFixtureRootAliases(string root) {
+  // Dot spelling is deterministic even on volumes that disable 8.3 names. When an actual
+  // short name exists, exercise the same TEMP spelling used by Windows CI runners too.
+  Need(Directory.Exists(root),"Existing fixture root required");
+  string dotted=Path.Combine(root,".");
+  Need(MetadataFrames(dotted)=="MUTABLE_METADATA_OK:7","Dot fixture metadata failed");
+  Need(Ordering(dotted)=="MUTABLE_ORDERING_OK:6","Dot fixture ordering failed");
+  var buffer=new StringBuilder(32768);uint count=GetShortPathName(root,buffer,buffer.Capacity);
+  if(count==0||count>=buffer.Capacity) throw new IOException("Fixture short-path query failed");
+  string shorter=buffer.ToString();
+  if(!String.Equals(shorter,root,StringComparison.OrdinalIgnoreCase)) {
+   Need(MetadataFrames(shorter)=="MUTABLE_METADATA_OK:7","Short fixture metadata failed");
+   Need(Ordering(shorter)=="MUTABLE_ORDERING_OK:6","Short fixture ordering failed");
+  }
+ }
  static void Need(bool value,string message) { if(!value) throw new Exception(message); }
  static void Fails(string code,Action action) {
   try { action(); } catch(IOException failure) { Need(failure.Message==code,"Wrong bounded failure: "+failure.Message);return; }
@@ -160,6 +203,7 @@ public static class MutableBrokerStateProbe {
    return RuntimeResourcePreparation.ReadFrameForOwner(reader,owner);
  }
  public static string MetadataFrames(string root) {
+  root=Path.GetFullPath(root);
   var binding=Binding(root);byte[] metadata=Metadata(binding,root);
   using(var memory=new MemoryStream()) {
    byte[] frame=Frame(metadata);memory.Write(frame,0,frame.Length);memory.WriteByte(99);memory.Position=0;
@@ -222,6 +266,7 @@ public static class MutableBrokerStateProbe {
   public void CloseRetainedStreams() { Events.Add("close");if(CloseFailures-- >0) throw new IOException("PERSISTENCE_FAILED"); }
  }
  public static string Ordering(string root) {
+  root=Path.GetFullPath(root);
   for(int scenario=0;scenario<6;scenario++) {
    string path=Path.Combine(root,"gate-"+scenario);var binding=Binding(root);
    using(var storage=new Storage(path)) {

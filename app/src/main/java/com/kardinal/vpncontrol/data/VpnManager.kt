@@ -32,17 +32,19 @@ class VpnManager(
         val profile = LocationConfigs.decodeStoredLocation(point.configuration.locationReference)
         val selection = ProfileSelection(profile, com.kardinal.vpncontrol.model.ProfileBenchmark(profile, "", "", null, null, 0.0, ""),
             point.runtimeJson, point.configuration.sourceReference)
-        com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(selection, point.configuration)
+        com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(selection, point.configuration, point.retainRuleSetLease())
         startAndAwait(selection, true, 300_000L, null, expected, session).getOrThrow()
     }
 
     internal suspend fun restoreUnchangedRuntimeArtifacts(point: com.kardinal.vpncontrol.AndroidRuntimeRestorePoint): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val actual = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).runtimeObserver.captureRuntime()
+            actual.use {
             check(actual != null && actual.observation == point.observation && actual.runtimeJson == point.runtimeJson &&
                 actual.configuration == point.configuration) { "RUNTIME_COMMAND_STALE" }
             storage.runtimeConfigFile().writeText(point.runtimeJson)
             storage.lastProfileFile().writeText(LocationConfigs.decodeStoredLocation(point.configuration.locationReference).rawLink)
+            }
         }
     }
 
@@ -56,7 +58,7 @@ class VpnManager(
         val profile = LocationConfigs.decodeStoredLocation(point.configuration.locationReference)
         val selection = ProfileSelection(profile, com.kardinal.vpncontrol.model.ProfileBenchmark(profile, "", "", null, null, 0.0, ""),
             point.runtimeJson, point.configuration.sourceReference)
-        owner.preparedConnections.remember(selection, point.configuration)
+        owner.preparedConnections.remember(selection, point.configuration, point.retainRuleSetLease())
         startAndAwait(selection, false, 300_000L, eligible, stopped).getOrThrow()
     }
 

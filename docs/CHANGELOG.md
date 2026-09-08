@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add Windows native broker packaging and cache handoff validation, with earlier Android instrumentation checks.
 - Verify controller credential ownership using native account identities and keep Windows broker compiler fixtures complete.
 - Keep Windows private-file ownership regressions compatible with live spool writer locks.
+- Preserve large Android routing assets through native startup, meet foreground-service deadlines, and fix Windows native fixture paths.
 
 ## 2.1.6 - 2026-09-08
 

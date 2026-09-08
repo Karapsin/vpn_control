@@ -21,6 +21,40 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class SingBoxRouteDnsBuilderTest {
     @Test
+    fun localDirectDomainAssetPreservesPrecedenceWithoutMaterializingDomains() {
+        val domains = object : AbstractList<String>() {
+            override val size: Int get() = error("Local asset must replace domain traversal")
+            override fun get(index: Int): String = error("Local asset must replace domain traversal")
+        }
+        val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsSettings = DnsSettings(),
+            routingRules = RoutingRules(directDomainSuffixes = domains),
+            leadingRouteRules = listOf(SingBoxRouteDnsBuilder.dnsHijackRouteRule()),
+            directOutboundTag = "home-egress",
+            localDirectDomainRuleSetPath = "/private/日本語/domains.json",
+        )
+        val rules = config.route.array("rules")
+        assertEquals("hijack-dns", rules[0].jsonObject.string("action"))
+        assertTrue("ip_cidr" in rules[1].jsonObject)
+        val domainRule = rules[2].jsonObject
+        assertEquals("home-egress", domainRule.string("outbound"))
+        val definition = config.route.array("rule_set").single().jsonObject
+        assertEquals(domainRule.string("rule_set"), definition.string("tag"))
+        assertEquals("local", definition.string("type"))
+        assertEquals("source", definition.string("format"))
+        assertEquals("/private/日本語/domains.json", definition.string("path"))
+        assertEquals(null, config.experimental)
+
+        val ignored = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
+            dnsSettings = DnsSettings(),
+            routingRules = RoutingRules(ignoreRules = true, directDomainSuffixes = domains),
+            localDirectDomainRuleSetPath = "/private/domains.json",
+        )
+        assertEquals(1, ignored.route.array("rules").size)
+        assertFalse("rule_set" in ignored.route)
+    }
+
+    @Test
     fun routeDnsConfigPreservesLeadingRulesDirectCidrsDomainsAndRuleSets() {
         val config = SingBoxRouteDnsBuilder.buildRouteDnsConfig(
             dnsSettings = DnsSettings(

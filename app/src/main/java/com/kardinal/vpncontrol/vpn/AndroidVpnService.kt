@@ -96,24 +96,37 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     override fun onCreate() { super.onCreate(); owner.retainedRuntimeServices.register(retentionHost) }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        serviceScope.launch {
-            commandMutex.withLock {
-                val commandId = intent?.getStringExtra(EXTRA_COMMAND_ID)
-                val result = runCatching {
-                    check(!lifecycleCleanup.finishing) { "RUNTIME_COMMAND_STALE" }
-                    check(!retainedRefresh.occupied) { "RUNTIME_COMMAND_STALE" }
-                    when (intent?.action) {
-                        ACTION_STOP -> {
-                            check(commandId == null || owner.runtimeCommands.claim(commandId,
-                                com.kardinal.vpncontrol.AndroidRuntimeAction.STOP, observation = owner.runtimeObserver.state.value)) { "RUNTIME_COMMAND_STALE" }
-                            stopVpn(stoppedText(currentAppMode()), startId)
-                            check(owner.runtimeObserver.state.value.knowledge ==
-                                com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) { "RUNTIME_OUTCOME_UNKNOWN" }
+        val commandId = intent?.getStringExtra(EXTRA_COMMAND_ID)
+        try {
+            AndroidVpnServiceStartAdmission.dispatch(intent?.action, { showStartupForegroundNotification() }) {
+                serviceScope.launch {
+                    commandMutex.withLock {
+                        val result = runCatching {
+                            check(!lifecycleCleanup.finishing) { "RUNTIME_COMMAND_STALE" }
+                            check(!retainedRefresh.occupied) { "RUNTIME_COMMAND_STALE" }
+                            when (intent?.action) {
+                                ACTION_STOP -> {
+                                    check(commandId == null || owner.runtimeCommands.claim(commandId,
+                                        com.kardinal.vpncontrol.AndroidRuntimeAction.STOP, observation = owner.runtimeObserver.state.value)) { "RUNTIME_COMMAND_STALE" }
+                                    stopVpn(stoppedText(currentAppMode()), startId)
+                                    check(owner.runtimeObserver.state.value.knowledge ==
+                                        com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) { "RUNTIME_OUTCOME_UNKNOWN" }
+                                }
+                                else -> startVpn(startId, intent?.getStringExtra(EXTRA_PREPARED_CONNECTION_ID), commandId).getOrThrow()
+                            }
                         }
-                        else -> startVpn(startId, intent?.getStringExtra(EXTRA_PREPARED_CONNECTION_ID), commandId).getOrThrow()
+                        owner.runtimeCommands.complete(commandId, result)
                     }
                 }
-                owner.runtimeCommands.complete(commandId, result)
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Unable to enter foreground service", error)
+            DiagnosticsLogger.append(applicationContext,
+                "Unable to enter foreground service: ${error.javaClass.simpleName}")
+            owner.runtimeCommands.complete(commandId, Result.failure(error))
+            if (owner.runtimeObserver.state.value.knowledge ==
+                com.kardinal.vpncontrol.AndroidRuntimeKnowledge.STOPPED) {
+                stopSelfResult(startId)
             }
         }
         return START_STICKY
@@ -133,13 +146,17 @@ class AndroidVpnService : VpnService(), PlatformInterface {
 
     private suspend fun startVpn(startId: Int? = null, preparedId: String? = null, commandId: String? = null, retainForeground: Boolean = false): Result<Unit> {
         var replacingRuntime = false
+        var pendingRuleSet: com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore.Lease? = null
         return try {
             DiagnosticsLogger.append(applicationContext, "AndroidVpnService.startVpn invoked")
             val configFile = RuntimeFiles.runtimeConfigFile(this)
             val configContent = configFile.takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
                 ?: error("VPN config missing")
-            val prepared = owner.runtimeCommands.prepareStart(commandId, configContent, preparedId, owner.preparedConnections,
-                owner.runtimeObserver.state.value, Libbox::checkConfig)
+            val prepared = owner.runtimeCommands.prepareStartWithAssets(commandId, configContent, preparedId, owner.preparedConnections,
+                owner.runtimeObserver.state.value) { config ->
+                pendingRuleSet = owner.directDomainRuleSets.acquireFromConfig(config)
+                Libbox.checkConfig(config)
+            }?.use { it.configuration }
             val appMode = prepared?.mode ?: storage.snapshot().appMode
             val inbounds = org.json.JSONObject(configContent).optJSONArray("inbounds")
             val needsTun = inbounds != null && (0 until inbounds.length()).any {
@@ -162,9 +179,10 @@ class AndroidVpnService : VpnService(), PlatformInterface {
             startedService.start()
             // A TUN descriptor is the actual mode evidence; pending persisted mode is not.
             owner.runtimeObserver.started(
-                startedService, if (tunInterface != null) AppMode.VPN else AppMode.PROXY_ONLY, configContent, prepared,
+                startedService, if (tunInterface != null) AppMode.VPN else AppMode.PROXY_ONLY, configContent, prepared, pendingRuleSet,
             )
 
+            pendingRuleSet = null // Ownership transferred to the observed native runtime.
             storage.updateVpnRunning(true)
             storage.updateStatus(startedText(appMode))
             showForegroundNotification(runningText(appMode))
@@ -182,6 +200,8 @@ class AndroidVpnService : VpnService(), PlatformInterface {
                 // for its FGS deadline. Never stop a pre-existing/uncertain runtime here.
                 stopSelfResult(startId)
             }
+            pendingRuleSet?.let(owner.runtimeObserver::retainUncertainRuleSet)
+            pendingRuleSet = null
             Result.failure(error)
         }
     }
@@ -201,6 +221,7 @@ class AndroidVpnService : VpnService(), PlatformInterface {
         DiagnosticsLogger.append(applicationContext, "AndroidVpnService.stopVpn invoked: ${statusMessage ?: "no status"}")
         resetRuntimeSession()
         storage.updateVpnRunning(false)
+        owner.pruneDirectDomainRuleSets(storage.snapshot().runtimeConfigJson)
         if (!statusMessage.isNullOrBlank()) {
             storage.updateStatus(statusMessage)
         }
@@ -493,7 +514,20 @@ class AndroidVpnService : VpnService(), PlatformInterface {
     }
 
     private fun showForegroundNotification(text: String) {
-        val notification = buildNotification(text)
+        promoteForeground(buildNotification(text))
+    }
+
+    /** No state/storage I/O belongs before the Android foreground-service deadline. */
+    private fun showStartupForegroundNotification() {
+        createNotificationChannel()
+        promoteForeground(NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("VPN Control")
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setOngoing(true)
+            .build())
+    }
+
+    private fun promoteForeground(notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,

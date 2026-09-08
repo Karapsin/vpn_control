@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(vpn_control_strings LANGUAGES C)
 
-add_library(vpn_control_strings SHARED android_native_string.c)
+add_library(vpn_control_strings SHARED android_native_string.c android_native_publication.c)
 target_compile_features(vpn_control_strings PRIVATE c_std_11)
 set_target_properties(vpn_control_strings PROPERTIES C_VISIBILITY_PRESET hidden)
 

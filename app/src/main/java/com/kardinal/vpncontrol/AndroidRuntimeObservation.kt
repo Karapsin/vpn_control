@@ -4,6 +4,7 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ControlValue
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.control.ControlRuntimeConfiguration
+import com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.nio.ByteBuffer
@@ -62,19 +63,34 @@ internal class AndroidRuntimeObserver(
     private var activeConfiguration: ControlRuntimeConfiguration? = null
     private var activeLocationName: String? = null
     private var activeRuntimeJson: String? = null
+    private var activeRuleSetLease: AndroidDirectDomainRuleSetStore.Lease? = null
+    // A failed native close leaves the runtime's file consumption unknowable.
+    // Keep every lease acquired for it until process lifetime ends; pruning these
+    // files could invalidate a still-running native runtime.
+    private val uncertainRuleSetLeases = mutableListOf<AndroidDirectDomainRuleSetStore.Lease>()
     private var cleanupUncertain = false
     private val mutableState = MutableStateFlow(AndroidRuntimeObservation(
         if (initiallyStopped) AndroidRuntimeKnowledge.STOPPED else AndroidRuntimeKnowledge.UNKNOWN,
     ))
     val state = mutableState.asStateFlow()
 
-    @Synchronized fun started(handle: Any, mode: AppMode, actualRuntimeConfig: String, prepared: ControlRuntimeConfiguration? = null) {
-        if (cleanupUncertain) return
-        if (activeHandle === handle) return // Observing an already-started native handle is a no-op.
+    @Synchronized fun started(handle: Any, mode: AppMode, actualRuntimeConfig: String,
+        prepared: ControlRuntimeConfiguration? = null,
+        ruleSetLease: AndroidDirectDomainRuleSetStore.Lease? = null) {
+        if (cleanupUncertain || activeHandle === handle) {
+            // A caller may have staged an asset before discovering this is an
+            // existing/uncertain runtime. It was never adopted here.
+            ruleSetLease?.close()
+            return
+        }
         val configurationId = MessageDigest.getInstance("SHA-256").run {
             update(salt)
             digest(actualRuntimeConfig.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
         }
+        // A distinct observed handle supersedes a known active runtime. Only
+        // this valid transition can release the prior active input asset.
+        activeRuleSetLease?.close()
+        activeRuleSetLease = ruleSetLease
         activeHandle = handle
         activeConfiguration = prepared?.takeIf { it.mode == mode }
         // Capture the display name from the actual prepared location once. Later
@@ -92,16 +108,35 @@ internal class AndroidRuntimeObserver(
     }
 
     @Synchronized fun resetCompleted(cleanupSucceeded: Boolean) {
+        val lease = activeRuleSetLease
+        activeRuleSetLease = null
         activeHandle = null
         activeConfiguration = null
         activeLocationName = null
         activeRuntimeJson = null
         // Existing native cleanup forgets handles after a close exception. Do not claim off
         // or a single known runtime afterward; only a new process can remove that uncertainty.
+        if (cleanupSucceeded && !cleanupUncertain) lease?.close()
+        else lease?.let(uncertainRuleSetLeases::add)
         cleanupUncertain = cleanupUncertain || !cleanupSucceeded
         mutableState.value = if (cleanupUncertain) AndroidRuntimeObservation() else {
             if (mutableState.value.knowledge == AndroidRuntimeKnowledge.STOPPED) return
             AndroidRuntimeObservation(AndroidRuntimeKnowledge.STOPPED, stoppedAtEpochMillis = clockMillis())
+        }
+    }
+
+    /**
+     * A service start can fail after staging a rule set but before it has an
+     * observable native handle. Once cleanup is unknown, preserve that input
+     * exactly like an active runtime input; otherwise the observer did not
+     * adopt it and must release the caller's lease.
+     */
+    @Synchronized fun retainUncertainRuleSet(lease: AndroidDirectDomainRuleSetStore.Lease?) {
+        if (lease == null) return
+        if (cleanupUncertain || mutableState.value.knowledge == AndroidRuntimeKnowledge.UNKNOWN) {
+            uncertainRuleSetLeases += lease
+        } else {
+            lease.close()
         }
     }
 
@@ -113,7 +148,8 @@ internal class AndroidRuntimeObserver(
     @Synchronized fun captureRuntime(): AndroidRuntimeRestorePoint? {
         val observation = mutableState.value
         if (observation.knowledge != AndroidRuntimeKnowledge.RUNNING) return null
-        return AndroidRuntimeRestorePoint(observation, activeRuntimeJson ?: return null, activeConfiguration ?: return null)
+        return AndroidRuntimeRestorePoint(observation, activeRuntimeJson ?: return null,
+            activeConfiguration ?: return null, activeRuleSetLease?.retain())
     }
 
     @Synchronized fun pendingRestart(committed: PersistedState): Boolean? = when (mutableState.value.knowledge) {
@@ -176,6 +212,14 @@ internal class AndroidRuntimeObserver(
 }
 
 internal class AndroidRuntimeRestorePoint(val observation: AndroidRuntimeObservation,
-    val runtimeJson: String, val configuration: ControlRuntimeConfiguration) {
+    val runtimeJson: String, val configuration: ControlRuntimeConfiguration,
+    private var ruleSetLease: AndroidDirectDomainRuleSetStore.Lease? = null) : AutoCloseable {
+    @Synchronized fun retainRuleSetLease(): AndroidDirectDomainRuleSetStore.Lease? = ruleSetLease?.retain()
+
+    @Synchronized override fun close() {
+        ruleSetLease?.close()
+        ruleSetLease = null
+    }
+
     override fun toString(): String = "AndroidRuntimeRestorePoint(<redacted>)"
 }

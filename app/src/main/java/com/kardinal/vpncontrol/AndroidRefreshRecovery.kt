@@ -20,6 +20,8 @@ internal suspend fun recoverAndroidRefresh(point: AndroidRuntimeRestorePoint, at
     if (current.knowledge != AndroidRuntimeKnowledge.STOPPED) return@withContext "RUNTIME_OUTCOME_UNKNOWN"
     val recovered = runCatching { restore(point, current).getOrThrow() }
     val actual = capture()
+    try {
     if (recovered.isSuccess && actual != null && actual.configuration == point.configuration && actual.runtimeJson == point.runtimeJson)
         "RUNTIME_RESTORED" else if (observation().knowledge == AndroidRuntimeKnowledge.STOPPED) "RUNTIME_STOPPED" else "RUNTIME_OUTCOME_UNKNOWN"
+    } finally { actual?.close() }
 }

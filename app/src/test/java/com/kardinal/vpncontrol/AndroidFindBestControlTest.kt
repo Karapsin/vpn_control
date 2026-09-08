@@ -152,6 +152,48 @@ class AndroidFindBestControlTest {
         assertFalse(result.toString().contains("PRIVATE"))
     }
 
+    @Test fun failedPlanReportsOriginalFailureOnceWithoutChangingRecoveryOutcome() = runTest {
+        val runtime = Runtime()
+        val failure = IllegalStateException("PRIVATE_PLAN_FAILURE")
+        val reported = mutableListOf<Throwable>()
+        val control = AndroidFindBestControl("owner", { captured }, { true }, { _, _, _, _ -> ControlCode.OK },
+            { runtime }, { Result.failure(failure) }, { _, _ -> error("probe") }, { error("verify") },
+            { _, _, _, _ -> error("commit") }, {}, reportFailure = { reported += it })
+
+        val result = control.execute(request(), "op", { _, _ -> }, { true }, { true }, { true })
+
+        assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+        assertEquals(listOf("RUNTIME_RESTORED"), result.warnings)
+        assertEquals(1, runtime.recoveries)
+        assertEquals(1, runtime.releases)
+        assertEquals(1, reported.size)
+        assertTrue(reported.single().containsCauseIdentity(failure))
+    }
+
+    @Test fun swallowedProbeAndVerificationFailuresAreReportedBeforeExhaustion() = runTest {
+        for (stage in listOf("probe", "verify")) {
+            val runtime = Runtime()
+            val failure = IllegalStateException("PRIVATE_$stage")
+            val reported = mutableListOf<Throwable>()
+            val profile = LocationConfigs.decodeStoredLocation("socks://127.0.0.1:1080#winner")
+            val measured = ProfileBenchmark(profile, "ok", "ok", 1.0, 2.0, 1.0, "")
+            val attempt = ProfileSelectionAttempt(ProfileSelection(profile, measured, "{}"), PreflightResult(profile, 1.0, ""))
+            val control = AndroidFindBestControl("owner", { captured }, { false }, { _, _, _, _ -> ControlCode.OK },
+                { runtime }, { Result.success(AndroidFindBestPlan(ProfileSelectionAttemptPlan(listOf(attempt), emptyMap(), null))) },
+                { _, _ -> if (stage == "probe") Result.failure(failure) else Result.success(measured) },
+                { if (stage == "verify") Result.failure(failure) else Result.success(measured) },
+                { _, _, _, _ -> error("commit") }, {}, reportFailure = { reported += it })
+
+            val result = control.execute(request(), "op-$stage", { _, _ -> }, { true }, { true }, { true })
+
+            assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+            assertEquals(1, runtime.recoveries)
+            assertEquals(1, runtime.releases)
+            assertEquals(1, reported.count { it === failure })
+            assertEquals(1, reported.count { it is AndroidFindBestNoVerifiedCandidateException })
+        }
+    }
+
     @Test fun nativeStartCancellationWaitsForAckBeforeRecovery() = runTest {
         val entered = CompletableDeferred<Unit>(); val ack = CompletableDeferred<Unit>()
         var recovered = false
@@ -234,6 +276,16 @@ class AndroidFindBestControlTest {
         assertEquals(ControlValue.BooleanValue(false), result.data["committed"])
         assertEquals(1, runtime.recoveries)
         assertEquals(1, runtime.releases)
+    }
+
+    private fun Throwable.containsCauseIdentity(target: Throwable): Boolean {
+        val seen = java.util.IdentityHashMap<Throwable, Unit>()
+        var current: Throwable? = this
+        while (current != null && seen.put(current, Unit) == null) {
+            if (current === target) return true
+            current = current.cause
+        }
+        return false
     }
 
     @Test fun publicFindBestReachesAuthoritativeOwnerWithoutFrontend() = runTest {

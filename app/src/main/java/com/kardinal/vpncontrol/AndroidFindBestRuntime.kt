@@ -44,18 +44,20 @@ internal class AndroidFindBestRuntime private constructor(
         return if (outcome == "RUNTIME_NOT_CHANGED" && manager.restoreUnchangedRuntimeArtifacts(original).isFailure)
             "RUNTIME_ARTIFACT_RESTORE_FAILED" else outcome
     }
-    override suspend fun release(): Result<Unit> = retained?.release() ?: Result.success(Unit)
+    override suspend fun release(): Result<Unit> = try { retained?.release() ?: Result.success(Unit) } finally { original?.close() }
     companion object {
         suspend fun open(observer: AndroidRuntimeObserver, manager: VpnManager,
             services: AndroidRetainedRuntimeServices, eligible: () -> Boolean): AndroidFindBestRuntime {
             val observed = observer.state.value
             check(observed.knowledge != AndroidRuntimeKnowledge.UNKNOWN) { "RUNTIME_OUTCOME_UNKNOWN" }
             val point = observer.captureRuntime()
+            try {
             val retained = if (observed.knowledge == AndroidRuntimeKnowledge.RUNNING) {
                 check(point != null && point.observation == observed) { "RUNTIME_OUTCOME_UNKNOWN" }
                 requireNotNull(services.acquire(observed)) { "RUNTIME_RETENTION_UNAVAILABLE" }
             } else null
             return AndroidFindBestRuntime(observer, manager, services, eligible, point, observed, retained)
+            } catch (failure: Throwable) { point?.close(); throw failure }
         }
     }
 }

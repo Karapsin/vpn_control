@@ -10,6 +10,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class DesktopWindowsMutableBrokerNativeTest {
+    @Test fun fixtureRootAliasesAreCanonicalizedBeforeSyntheticNativeProofs() =
+        probe("MutableBrokerStateProbe", "FixtureRootAliases", "MUTABLE_ROOT_ALIASES_OK")
+
     @Test fun metadataFramesCannotConsumeConfigurationOrAllocateUnboundedIdentityArrays() =
         probe("MutableBrokerStateProbe", "MetadataFrames", "MUTABLE_METADATA_OK:7")
 

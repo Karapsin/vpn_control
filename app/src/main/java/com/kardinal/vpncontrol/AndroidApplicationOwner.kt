@@ -16,6 +16,21 @@ internal class AndroidApplicationOwner(context: Context) {
     private val appContext = context.applicationContext
     val storage = ProfileStorage(appContext) { authoritativeRuntimeRunning() }
     val subscriptionRefreshScheduler = SubscriptionRefreshScheduler(appContext) { storage.configurationSnapshot().value }
+    val directDomainRuleSets by lazy { com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore(
+        java.io.File(appContext.filesDir, "runtime-rule-sets")) }
+    fun pruneDirectDomainRuleSets(committedRuntimeJson: String) {
+        val observed = runtimeObserver.state.value
+        if (observed.knowledge != AndroidRuntimeKnowledge.STOPPED) return
+        // Failure to inspect recovery inputs retains resources; it never licenses deletion.
+        runCatching {
+            val paths = buildSet {
+                directDomainRuleSets.pathFromConfig(committedRuntimeJson)?.let(::add)
+                val file = storage.runtimeConfigFile()
+                if (file.exists()) directDomainRuleSets.pathFromConfig(file.readText())?.let(::add)
+            }
+            if (runtimeObserver.state.value == observed) directDomainRuleSets.prune(paths)
+        }
+    }
     val orchestrator = BenchmarkOrchestrator(appContext, storage)
     val repository = AppRepository(storage, orchestrator, subscriptionRefreshScheduler) { authoritativeRuntimeRunning() }
     val vpnManager = VpnManager(appContext, storage)
@@ -115,6 +130,8 @@ internal class AndroidApplicationOwner(context: Context) {
         orchestrator::verifyActiveSelection,
         storage::commitControlBestSelection, connectionControl::cancelConsentWait,
         connectionControl::finishFindBestInteraction,
+        { failure -> com.kardinal.vpncontrol.data.DiagnosticsLogger.append(appContext,
+            AndroidFailureTrace.format("find-best", failure)) },
     ) }
 
     fun findBestFromGui() { commands.launch {

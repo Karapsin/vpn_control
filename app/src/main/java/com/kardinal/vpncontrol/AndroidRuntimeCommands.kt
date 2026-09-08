@@ -55,11 +55,18 @@ internal class AndroidRuntimeCommands(
     fun prepareStart(id: String?, config: String, preparedId: String?, preparations: AndroidPreparedConnections,
         observation: AndroidRuntimeObservation? = null, validate: (String) -> Unit = {})
         : com.kardinal.vpncontrol.control.ControlRuntimeConfiguration? {
+        return prepareStartWithAssets(id, config, preparedId, preparations, observation, validate)?.use { it.configuration }
+    }
+
+    fun prepareStartWithAssets(id: String?, config: String, preparedId: String?, preparations: AndroidPreparedConnections,
+        observation: AndroidRuntimeObservation? = null, validate: (String) -> Unit = {}): AndroidPreparedRuntime? {
         check(id == null || claim(id, AndroidRuntimeAction.START, config, observation)) { "RUNTIME_COMMAND_STALE" }
-        val prepared = preparations.consume(preparedId, config)
-        check(preparedId == null || prepared != null) { "RUNTIME_PREPARATION_STALE" }
-        validate(config)
-        return prepared
+        val prepared = preparations.consumePrepared(preparedId, config)
+        try {
+            check(preparedId == null || prepared != null) { "RUNTIME_PREPARATION_STALE" }
+            validate(config)
+            return prepared
+        } catch (failure: Throwable) { prepared?.close(); throw failure }
     }
 
     suspend fun await(ticket: Ticket, timeoutMillis: Long): Result<Unit> =

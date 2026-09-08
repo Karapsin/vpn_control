@@ -145,18 +145,14 @@ class BenchmarkOrchestrator(
                                 ] ?: error("No subscription source was selected")
                                 val activeVerificationPort = activeVerificationPortFor(state.appMode)
                                 ProfileSelectionAttempt(
-                                    selection = ProfileSelection(
+                                    selection = buildPreparedSelection(
                                         profile = preflight.profile,
                                         benchmark = preflight.toPreflightBenchmark(),
-                                        runtimeConfigJson = buildRuntimeConfig(
-                                            profile = preflight.profile,
-                                            state = state,
-                                            dnsSettings = dnsSettings,
-                                            activeVerificationPort = activeVerificationPort,
-                                        ),
+                                        state = state,
+                                        dnsSettings = dnsSettings,
+                                        activeVerificationPort = activeVerificationPort,
                                         sourceUrl = selectedTarget.sourceUrl,
-                                        managementProxyPort = activeVerificationPort,
-                                    ).also { rememberPreparedSelection(it, state) },
+                                    ),
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
                                 )
@@ -183,17 +179,13 @@ class BenchmarkOrchestrator(
                             val attempts = attemptPlan.orderedAttempts.map { preflight ->
                                 val activeVerificationPort = activeVerificationPortFor(state.appMode)
                                 ProfileSelectionAttempt(
-                                    selection = ProfileSelection(
+                                    selection = buildPreparedSelection(
                                         profile = preflight.profile,
                                         benchmark = preflight.toPreflightBenchmark(),
-                                        runtimeConfigJson = buildRuntimeConfig(
-                                            profile = preflight.profile,
-                                            state = state,
-                                            dnsSettings = dnsSettings,
-                                            activeVerificationPort = activeVerificationPort,
-                                        ),
-                                        managementProxyPort = activeVerificationPort,
-                                    ).also { rememberPreparedSelection(it, state) },
+                                        state = state,
+                                        dnsSettings = dnsSettings,
+                                        activeVerificationPort = activeVerificationPort,
+                                    ),
                                     preflight = preflight,
                                     activeVerificationPort = activeVerificationPort,
                                 )
@@ -349,6 +341,13 @@ class BenchmarkOrchestrator(
             }
             val dnsSettings = state.dnsSettings
             val managementProxyPort = activeVerificationPortFor(state.appMode)
+            val built = if (profile.rawLink.isNotBlank()) {
+                buildRuntimeConfig(profile, state, dnsSettings, managementProxyPort)
+            } else {
+                val ruleSets = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).directDomainRuleSets
+                BuiltRuntimeConfig(state.runtimeConfigJson, ruleSets.acquireFromConfig(state.runtimeConfigJson))
+            }
+            try {
             ProfileSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(
@@ -360,19 +359,11 @@ class BenchmarkOrchestrator(
                     score = 0.0,
                     detail = state.lastBenchmarkSummary.ifBlank { "Using cached selection" },
                 ),
-                runtimeConfigJson = if (profile.rawLink.isNotBlank()) {
-                    buildRuntimeConfig(
-                        profile = profile,
-                        state = state,
-                        dnsSettings = dnsSettings,
-                        activeVerificationPort = managementProxyPort,
-                    )
-                } else {
-                    state.runtimeConfigJson
-                },
+                runtimeConfigJson = built.json,
                 sourceUrl = state.selectedProfileSourceUrl,
                 managementProxyPort = managementProxyPort,
-            ).also { rememberPreparedSelection(it, state) }
+            ).also { rememberPreparedSelection(it, state, built.retainDirectDomains()) }
+            } finally { built.close() }
         }
     }
 
@@ -385,7 +376,7 @@ class BenchmarkOrchestrator(
             val profile = LocationConfigs.parseLocationInput(rawLink)
             val dnsSettings = state.dnsSettings
             val managementProxyPort = activeVerificationPortFor(state.appMode)
-            ProfileSelection(
+            buildPreparedSelection(
                 profile = profile,
                 benchmark = ProfileBenchmark(
                     profile = profile,
@@ -395,12 +386,6 @@ class BenchmarkOrchestrator(
                     secondaryTotal = null,
                     score = 0.0,
                     detail = detail,
-                ),
-                runtimeConfigJson = buildRuntimeConfig(
-                    profile = profile,
-                    state = state,
-                    dnsSettings = dnsSettings,
-                    activeVerificationPort = managementProxyPort,
                 ),
                 sourceUrl = if (state.profileSourceMode == ProfileSourceMode.SUBSCRIPTION) {
                     if (isAllSubscriptionsGroupActive(state.activeSubscriptionId, state.subscriptions)) {
@@ -412,7 +397,10 @@ class BenchmarkOrchestrator(
                     state.selectedProfileSourceUrl
                 },
                 managementProxyPort = managementProxyPort,
-            ).also { rememberPreparedSelection(it, state) }
+                state = state,
+                dnsSettings = dnsSettings,
+                activeVerificationPort = managementProxyPort,
+            )
         }
     }
 
@@ -472,10 +460,34 @@ class BenchmarkOrchestrator(
         )
     }
 
-    private fun rememberPreparedSelection(selection: ProfileSelection, state: PersistedState) {
-        com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).preparedConnections.remember(
-            selection, state,
+    private fun rememberPreparedSelection(selection: ProfileSelection, state: PersistedState,
+        ruleSetLease: AndroidDirectDomainRuleSetStore.Lease? = null) {
+        val owner = com.kardinal.vpncontrol.AndroidApplicationOwner.get(context)
+        owner.preparedConnections.remember(
+            selection, state, ruleSetLease,
         )
+        // A transferred lease keeps this newly staged asset alive while STOPPED-only
+        // pruning discards obsolete, unreferenced content-addressed files.
+        owner.pruneDirectDomainRuleSets(state.runtimeConfigJson)
+    }
+
+    private fun buildPreparedSelection(
+        profile: ProxyProfile,
+        benchmark: ProfileBenchmark,
+        state: PersistedState,
+        dnsSettings: DnsSettings,
+        activeVerificationPort: Int?,
+        sourceUrl: String = "",
+        managementProxyPort: Int? = activeVerificationPort,
+    ): ProfileSelection {
+        val built = buildRuntimeConfig(profile, state, dnsSettings, activeVerificationPort)
+        try {
+            return ProfileSelection(profile, benchmark, built.json, sourceUrl, managementProxyPort).also {
+                rememberPreparedSelection(it, state, built.retainDirectDomains())
+            }
+        } finally {
+            built.close()
+        }
     }
 
     private fun buildRuntimeConfig(
@@ -483,7 +495,7 @@ class BenchmarkOrchestrator(
         state: PersistedState,
         dnsSettings: DnsSettings,
         activeVerificationPort: Int? = null,
-    ): String {
+    ): BuiltRuntimeConfig {
         val homeRoute = state.homeSshRouteSettings
             .takeIf { it.enabled }
             ?.let { settings ->
@@ -495,29 +507,17 @@ class BenchmarkOrchestrator(
             }
         if (profile.protocol == ProxyProtocol.CUSTOM) {
             require(profile.customConfigJson.isNotBlank()) { "Custom config is empty" }
-            return SingBoxCustomConfigTransformer.transform(
+            val json = SingBoxCustomConfigTransformer.transform(
                 rawConfig = profile.customConfigJson,
                 managementProxyPort = activeVerificationPort ?: activeVerificationPortFor(state.appMode),
                 homeRoute = homeRoute,
             )
+            return BuiltRuntimeConfig(json,
+                com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).directDomainRuleSets.acquireFromConfig(json))
         }
-        return when (state.appMode) {
-            AppMode.VPN -> SingBoxConfigFactory.buildTunConfig(
-                profile = profile,
-                dns = dnsSettings,
-                routingRules = state.routingRules,
-                activeVerificationPort = activeVerificationPort,
-                homeRoute = homeRoute,
-            )
-            AppMode.PROXY_ONLY -> SingBoxConfigFactory.buildProxyOnlyConfig(
-                profile = profile,
-                dns = dnsSettings,
-                routingRules = state.routingRules,
-                listenPort = SingBoxConfigFactory.DEFAULT_PROXY_ONLY_PORT,
-                managementProxyPort = activeVerificationPort ?: activeVerificationPortFor(state.appMode),
-                homeRoute = homeRoute,
-            )
-        }
+        return AndroidRuntimeConfigBuilder(
+            com.kardinal.vpncontrol.AndroidApplicationOwner.get(context).directDomainRuleSets,
+        ).build(profile, dnsSettings, state.routingRules, state.appMode, activeVerificationPort, homeRoute)
     }
 
     private fun PreflightResult.toPreflightBenchmark(): ProfileBenchmark {

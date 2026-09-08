@@ -40,6 +40,7 @@ internal class AndroidSubscriptionRefreshControl(
         progress: (Long, Long) -> Unit, beginCommit: () -> Boolean, canFetch: () -> Boolean = { true },
         continuation: AndroidRefreshContinuation? = null,
     ): ControlResult {
+        var actual: AndroidRuntimeRestorePoint? = null
         var durable: ControlCommitted<PersistedState>? = null
         var loaded = emptyList<AndroidRefreshLoad>()
         var saved = false
@@ -72,7 +73,7 @@ internal class AndroidSubscriptionRefreshControl(
         }
         try {
             val before = snapshot().also { durable = it }
-            val actual = capture()
+            actual = capture()
             if (request.controllerId != controllerId || before.controllerId != controllerId ||
                 request.ifRevision != null && request.ifRevision != before.revision) return result(ControlCode.CONFLICT)
             val sources = targets(before.value, (request.command.arguments.getValue("id") as ControlValue.Text).value)
@@ -130,6 +131,7 @@ internal class AndroidSubscriptionRefreshControl(
             "RUNTIME_STATE_UNKNOWN", "RUNTIME_COMMAND_STALE", "ACTIVE_MANAGEMENT_ROUTE_UNAVAILABLE" -> ControlCode.RUNTIME_FAILED
             else -> ControlCode.PERSISTENCE_FAILED
         }, listOf(if (saved) "REFRESH_COMMITTED" else "REFRESH_NOT_COMMITTED")) }
+        finally { actual?.close() }
     }
 
     companion object {
