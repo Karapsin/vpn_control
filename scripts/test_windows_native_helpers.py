@@ -5,10 +5,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from windows_native_helpers import fixture_transfer_target, validate_guest_destination
+from windows_native_helpers import fixture_transfer_target, validate_guest_destination, runtime_authority
 
 
 TOOL = Path(__file__).with_name("windows_native_helpers.py")
@@ -66,11 +67,20 @@ class WindowsNativeHelpersTest(unittest.TestCase):
         broker = directory / "vpn-control-vpn-broker.exe"
         install.write_bytes(pe())
         broker.write_bytes(pe(manifest=BROKER_MANIFEST.read_bytes()))
+        runtime = directory / "sing-box.exe"
+        runtime.write_bytes(pe())
+        authority = directory / "authority.cs"
+        runtime_authority(runtime, authority)
         manifest = directory / "native-helpers.json"
         result = self.run_tool("verify-product", "--output", install, "--output", broker,
-                               "--manifest", manifest)
+                               "--manifest", manifest, "--runtime", runtime, "--authority-source", authority)
         self.assertEqual(0, result.returncode, result.stderr)
         return install, broker, manifest
+
+    def image_with_runtime(self, image, contents=None):
+        (image / "app").mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(image / "app/runtime.jar", "w") as jar:
+            jar.writestr("bin/windows-amd64/sing-box.exe", pe() if contents is None else contents)
 
     def test_source_manifest_is_stable_and_hashed(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -129,7 +139,7 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             root = Path(scratch)
             output, broker, manifest = self.verified_pair(root)
             image = root / "prepared application"
-            (image / "app").mkdir(parents=True)
+            self.image_with_runtime(image)
             result = self.run_tool("stage-product", "--output", output, "--output", broker, "--manifest", manifest,
                                    "--app-image", image)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -139,6 +149,80 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(json.loads((staged / manifest.name).read_text()), json.loads(manifest.read_text()))
             inspected = self.run_tool("inspect-image", "--app-image", image)
             self.assertEqual(inspected.returncode, 0, inspected.stderr)
+
+    def test_staging_rejects_broker_without_runtime_authority(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output, broker, manifest = self.verified_pair(root)
+            record = json.loads(manifest.read_text())
+            record.pop("runtimeAuthority", None)
+            manifest.write_text(json.dumps(record))
+            image = root / "image"
+            (image / "app").mkdir(parents=True)
+            result = self.run_tool("stage-product", "--output", output, "--output", broker,
+                                   "--manifest", manifest, "--app-image", image)
+            self.assertNotEqual(0, result.returncode,
+                                "A broker with no captured runtime binding was packaged")
+            self.assertIn("runtime authority", result.stderr)
+            self.assertFalse((image / "app/native/windows-amd64").exists())
+
+    def test_staging_and_inspection_reject_replaced_or_ambiguous_runtime(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output, broker, manifest = self.verified_pair(root)
+            image = root / "image"
+            args = ("stage-product", "--output", output, "--output", broker,
+                    "--manifest", manifest, "--app-image", image)
+            changed = bytearray(pe())
+            changed[-1] ^= 1
+            self.image_with_runtime(image, bytes(changed))
+            result = self.run_tool(*args)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("runtime differs", result.stderr)
+            self.assertFalse((image / "app/native/windows-amd64").exists())
+            self.image_with_runtime(image)
+            result = self.run_tool(*args)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.image_with_runtime(image, bytes(changed))
+            self.assertNotEqual(0, self.run_tool("inspect-image", "--app-image", image).returncode)
+            self.image_with_runtime(image)
+            (image / "app/duplicate.jar").write_bytes((image / "app/runtime.jar").read_bytes())
+            result = self.run_tool("inspect-image", "--app-image", image)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("ambiguous", result.stderr)
+
+    def test_product_rejects_changed_compiled_authority_source(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output, broker, manifest = self.verified_pair(root)
+            original = manifest.read_bytes()
+            (root / "authority.cs").write_text("class WrongAuthority {}")
+            result = self.run_tool("verify-product", "--output", output, "--output", broker,
+                                   "--manifest", manifest, "--runtime", root / "sing-box.exe",
+                                   "--authority-source", root / "authority.cs")
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("authority source disagrees", result.stderr)
+            self.assertEqual(original, manifest.read_bytes())
+
+    def test_product_rejects_invalid_runtime_authority_metadata(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output, broker, manifest = self.verified_pair(root)
+            original = json.loads(manifest.read_text())
+            image = root / "image"
+            self.image_with_runtime(image)
+            for field, value in (("runtimeSizeBytes", True), ("runtimeSizeBytes", 63),
+                                 ("runtimeSha256", "A" * 64), ("authoritySourceSha256", "0" * 64),
+                                 ("unexpected", "extra")):
+                with self.subTest(field=field, value=value):
+                    record = json.loads(json.dumps(original))
+                    record["runtimeAuthority"][field] = value
+                    manifest.write_text(json.dumps(record))
+                    result = self.run_tool("stage-product", "--output", output, "--output", broker,
+                                           "--manifest", manifest, "--app-image", image)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("runtime authority", result.stderr)
+                    self.assertFalse((image / "app/native/windows-amd64").exists())
 
     def test_staging_rejects_package_without_the_fixed_vpn_broker(self):
         with tempfile.TemporaryDirectory() as scratch:

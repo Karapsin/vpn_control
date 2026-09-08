@@ -73,6 +73,18 @@ scripts/package_macos_desktop.sh
 scripts/package_arch_desktop_update.sh
 ```
 
+Windows native helper preparation generates a canonical C# runtime hash constant
+from the prepared AMD64 runtime. Product verification checks that generated source
+against the current runtime and records `runtimeAuthority` (runtime SHA256, size,
+and generated-source SHA256) in `native-helpers.json`. Component-only verification
+may omit the binding; application staging and package inspection require it and
+stream-verify exactly one `bin/windows-amd64/sing-box.exe` resource in the app JARs.
+Missing, ambiguous or changed resources reject the package. PE metadata and helper
+hashes are still independently recomputed. This manifest establishes build/package
+consistency, not proof of compiled code: the pinned native broker's compiled hash
+remains the authority when accepting runtime bytes. Never use manifest metadata
+alone to authorize privileged execution.
+
 The generated Arch update bundle contains the Compose app image and prepared Linux `sing-box` runtime. It is written under `dist/arch/`, remains untracked, and reapplies capabilities only while installing the verified release bundle.
 
 ## Runtime Refresh Checklist

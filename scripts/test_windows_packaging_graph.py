@@ -109,9 +109,15 @@ binary = output / 'publish/vpn-control-install-helper.exe'
 broker = output / 'publish/vpn-control-vpn-broker.exe'
 shutil.copyfile(pathlib.Path(__file__).with_name('candidate.exe'), binary)
 shutil.copyfile(pathlib.Path(__file__).with_name('broker.exe'), broker)
+tool = pathlib.Path(__file__).with_name('windows_native_helpers.py')
+runtime = pathlib.Path(__file__).parents[1] / 'desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe'
+authority = output / 'authority.cs'
+subprocess.run([sys.executable, str(tool), 'runtime-authority', '--runtime', str(runtime),
+               '--output', str(authority)], check=True)
 subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('windows_native_helpers.py')),
                'verify-product', '--output', str(binary), '--output', str(broker),
-               '--manifest', str(output / 'native-helpers.json')], check=True)
+               '--manifest', str(output / 'native-helpers.json'), '--runtime', str(runtime),
+               '--authority-source', str(authority)], check=True)
 print('FIXTURE_NATIVE_READY')
 ''', encoding="utf-8")
         with (self.root / "desktopApp/build.gradle").open("a", encoding="utf-8") as build:
@@ -125,7 +131,15 @@ tasks.named('prepareWindowsNativeHelpers').configure {
 }
 tasks.named('createDistributable').configure {
     doFirst {
-        new File(destinationDir.get().asFile, packageName.get() + '/app').mkdirs()
+        def app = new File(destinationDir.get().asFile, packageName.get() + '/app')
+        // Rebuilding the prepared image replaces its prior generated contents.
+        project.delete(app)
+        app.mkdirs()
+        new java.util.zip.ZipOutputStream(new FileOutputStream(new File(app, 'runtime.jar'))).withCloseable { jar ->
+            jar.putNextEntry(new java.util.zip.ZipEntry('bin/windows-amd64/sing-box.exe'))
+            jar.write(rootProject.file('desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe').bytes)
+            jar.closeEntry()
+        }
     }
 }
 ['packageExe', 'packageMsi'].each { name ->

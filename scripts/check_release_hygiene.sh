@@ -43,6 +43,7 @@ python3 scripts/test_linux_public_install_harness.py
 python3 scripts/test_prepare_linux_install_vm.py
 python3 scripts/test_prepare_android_native_tools.py
 python3 scripts/test_android_update_fixture.py
+python3 scripts/test_android_fixture_preflight.py
 python3 scripts/test_android_routing_evidence.py
 python3 scripts/test_android_install_visual_inventory.py
 python3 scripts/test_desktop_update_fixture.py

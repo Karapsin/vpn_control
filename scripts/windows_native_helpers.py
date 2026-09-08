@@ -9,11 +9,13 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 
@@ -21,6 +23,25 @@ PRODUCT_NAMES = {"vpn-control-install-helper.exe", "vpn-control-vpn-broker.exe"}
 TEST_MARKERS = ("test", "probe")
 IMPORT_POLICY = Path(__file__).resolve().parent.parent / "desktopApp/native/windows/import-policy.json"
 SYSTEM32_DEPENDENT_LOAD_FLAGS = 0x800
+RUNTIME_RESOURCE = "bin/windows-amd64/sing-box.exe"
+
+
+def authority_source(digest: str) -> bytes:
+    return ("// Generated from the prepared bundled runtime; do not edit or commit.\n"
+            "internal static class VpnBrokerRuntimeAuthority {\n"
+            '    internal const string Sha256 = "' + digest + '";\n}\n').encode("ascii")
+
+
+def validate_runtime_authority(record: object) -> dict[str, object]:
+    if not isinstance(record, dict) or set(record) != {
+            "runtimeSha256", "runtimeSizeBytes", "authoritySourceSha256"}:
+        raise ValueError("native runtime authority schema rejected")
+    digest, size = record["runtimeSha256"], record["runtimeSizeBytes"]
+    if (not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or type(size) is not int or not 64 <= size <= 192 * 1024 * 1024
+            or record["authoritySourceSha256"] != hashlib.sha256(authority_source(digest)).hexdigest()):
+        raise ValueError("native runtime authority identity rejected")
+    return dict(record)
 
 
 def sha256(path: Path) -> str:
@@ -31,7 +52,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def runtime_authority(runtime: Path, output: Path) -> dict[str, object]:
+def runtime_authority(runtime: Path, output: Path | None = None) -> dict[str, object]:
     """Bind the broker build to the exact prepared bundled runtime, never a caller path."""
     if runtime.is_symlink() or not runtime.is_file():
         raise ValueError("bundled runtime must be a regular file")
@@ -55,11 +76,11 @@ def runtime_authority(runtime: Path, output: Path) -> dict[str, object]:
         if count != size:
             raise ValueError("bundled runtime changed during capture")
     value = digest.hexdigest()
-    output.write_text(
-        "// Generated from the prepared bundled runtime; do not edit or commit.\n"
-        "internal static class VpnBrokerRuntimeAuthority {\n"
-        '    internal const string Sha256 = "' + value + '";\n}\n', encoding="ascii")
-    return {"runtimeSha256": value, "runtimeSizeBytes": size, "authoritySourceSha256": sha256(output)}
+    generated = authority_source(value)
+    if output is not None:
+        output.write_bytes(generated)
+    return {"runtimeSha256": value, "runtimeSizeBytes": size,
+            "authoritySourceSha256": hashlib.sha256(generated).hexdigest()}
 
 
 def validate_guest_destination(candidate: Path, expected_leaf: str) -> Path:
@@ -281,18 +302,25 @@ def artifact_manifest(output: Path, allowed_imports: set[str] | None = None) -> 
          "minimumWindowsBuild": policy["minimumWindowsBuild"], "operations": policy["operations"], **metadata}]}
 
 
-def products_manifest(outputs: list[Path], allowed_imports: set[str] | None = None) -> dict[str, object]:
+def products_manifest(outputs: list[Path], allowed_imports: set[str] | None = None,
+                      runtime_binding: dict[str, object] | None = None) -> dict[str, object]:
     if not outputs or len({output.name for output in outputs}) != len(outputs):
         raise ValueError("native helper outputs must be nonempty and distinct")
     records = [artifact_manifest(output, allowed_imports) for output in sorted(outputs, key=lambda path: path.name)]
     if len({record["policySha256"] for record in records}) != 1:
         raise ValueError("native helper policy changed during validation")
-    return {"schemaVersion": 1, "policySha256": records[0]["policySha256"],
-            "artifacts": [artifact for record in records for artifact in record["artifacts"]]}
+    result = {"schemaVersion": 1, "policySha256": records[0]["policySha256"],
+              "artifacts": [artifact for record in records for artifact in record["artifacts"]]}
+    if runtime_binding is not None:
+        if "vpn-control-vpn-broker.exe" not in {output.name for output in outputs}:
+            raise ValueError("runtime authority requires the VPN broker")
+        result["runtimeAuthority"] = validate_runtime_authority(runtime_binding)
+    return result
 
 
-def validate_output(outputs: list[Path], manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
-    result = products_manifest(outputs, allowed_imports)
+def validate_output(outputs: list[Path], manifest: Path, allowed_imports: set[str] | None = None,
+                    runtime_binding: dict[str, object] | None = None) -> dict[str, object]:
+    result = products_manifest(outputs, allowed_imports, runtime_binding)
     manifest.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
@@ -301,7 +329,7 @@ def verified_product(outputs: list[Path], manifest: Path) -> dict[str, object]:
     if manifest.is_symlink() or not manifest.is_file():
         raise ValueError("native helper manifest must be a regular file")
     record = json.loads(manifest.read_text(encoding="utf-8"))
-    if record != products_manifest(outputs):
+    if not isinstance(record, dict) or record != products_manifest(outputs, runtime_binding=record.get("runtimeAuthority")):
         raise ValueError("native helper manifest disagrees with captured bytes or reviewed policy")
     return record
 
@@ -313,12 +341,41 @@ def image_native_directory(image: Path) -> Path:
     return image / "app" / "native" / "windows-amd64"
 
 
+def verify_image_runtime(image: Path, record: dict[str, object]) -> None:
+    """Check build/package consistency; the native compiled digest still authorizes execution."""
+    binding = validate_runtime_authority(record.get("runtimeAuthority"))
+    found = 0
+    for jar_path in sorted((image / "app").glob("*.jar")):
+        if jar_path.is_symlink() or not jar_path.is_file():
+            raise ValueError("packaged runtime JAR is redirected")
+        with zipfile.ZipFile(jar_path) as jar:
+            entries = [entry for entry in jar.infolist() if entry.filename == RUNTIME_RESOURCE]
+            for entry in entries:
+                found += 1
+                if found != 1 or entry.file_size != binding["runtimeSizeBytes"]:
+                    raise ValueError("packaged runtime identity is ambiguous or has changed size")
+                digest = hashlib.sha256()
+                count = 0
+                with jar.open(entry) as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        count += len(chunk)
+                        if count > binding["runtimeSizeBytes"]:
+                            raise ValueError("packaged runtime exceeds captured size")
+                        digest.update(chunk)
+                if count != binding["runtimeSizeBytes"] or digest.hexdigest() != binding["runtimeSha256"]:
+                    raise ValueError("packaged runtime differs from native runtime authority")
+    if found != 1:
+        raise ValueError("prepared application bundled runtime is missing")
+
+
 def inspect_image(image: Path) -> dict[str, object]:
     directory = image_native_directory(image)
     for parent in (directory.parent, directory):
         if parent.is_symlink() or not parent.is_dir():
             raise ValueError("prepared application native helpers are missing or redirected")
-    return verified_product([directory / name for name in sorted(PRODUCT_NAMES)], directory / "native-helpers.json")
+    record = verified_product([directory / name for name in sorted(PRODUCT_NAMES)], directory / "native-helpers.json")
+    verify_image_runtime(image, record)
+    return record
 
 
 def stage_product(outputs: list[Path], manifest: Path, image: Path) -> dict[str, object]:
@@ -326,6 +383,7 @@ def stage_product(outputs: list[Path], manifest: Path, image: Path) -> dict[str,
     if {output.name for output in outputs} != PRODUCT_NAMES:
         raise ValueError("prepared applications require both fixed Windows helpers")
     directory = image_native_directory(image)
+    verify_image_runtime(image, record)
     if directory.parent.is_symlink():
         raise ValueError("prepared application native directory is redirected")
     directory.parent.mkdir(exist_ok=True)
@@ -341,7 +399,8 @@ def stage_product(outputs: list[Path], manifest: Path, image: Path) -> dict[str,
         (temporary / "native-helpers.json").write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         # Check the bytes actually captured, not just the earlier source observation.
-        if products_manifest([temporary / output.name for output in outputs]) != record:
+        if products_manifest([temporary / output.name for output in outputs],
+                             runtime_binding=record.get("runtimeAuthority")) != record:
             raise ValueError("native helper changed during application staging")
         os.rename(temporary, directory)
     finally:
@@ -369,6 +428,8 @@ def main() -> int:
     verify = sub.add_parser("verify-product")
     verify.add_argument("--output", type=Path, action="append", required=True)
     verify.add_argument("--manifest", type=Path, required=True)
+    verify.add_argument("--runtime", type=Path)
+    verify.add_argument("--authority-source", type=Path)
     verify.add_argument("--allowed-import", action="append", help="Further restrict the reviewed product import policy")
     stage = sub.add_parser("stage-product")
     stage.add_argument("--output", type=Path, action="append", required=True)
@@ -388,14 +449,21 @@ def main() -> int:
             record = runtime_authority(args.runtime, args.output)
         elif args.command == "verify-product":
             allowed = None if args.allowed_import is None else {name.lower() for name in args.allowed_import}
-            record = validate_output(args.output, args.manifest, allowed)
+            if (args.runtime is None) != (args.authority_source is None):
+                raise ValueError("runtime and generated authority source must be verified together")
+            binding = runtime_authority(args.runtime) if args.runtime is not None else None
+            if binding is not None and (args.authority_source.is_symlink()
+                    or not args.authority_source.is_file()
+                    or sha256(args.authority_source) != binding["authoritySourceSha256"]):
+                raise ValueError("compiled authority source disagrees with captured runtime")
+            record = validate_output(args.output, args.manifest, allowed, binding)
         elif args.command == "stage-product":
             record = stage_product(args.output, args.manifest, args.app_image)
         elif args.command == "inspect-image":
             record = inspect_image(args.app_image)
         else:
             record = {"destination": str(validate_guest_destination(args.candidate, args.expected_leaf))}
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
         print(f"windows_native_helpers: {error}", file=sys.stderr)
         return 2
     print(json.dumps(record, sort_keys=True))

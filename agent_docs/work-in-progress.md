@@ -22,6 +22,45 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Current checkpoint21 is pushed as `be1e94f0a5c4616381acbd8685bdedc034d034e4`;
+  all five required exact-SHA workflows succeeded. Managed receipt:
+  `.runtime/parity-evidence/checkpoint21/ci-result.json`. Earlier checkpoint20/21
+  entries below describe historical iterations, not current delivery status.
+- Checkpoint22 intentionally spans Windows helper runtime binding and Android
+  fixture preflight regressions. Native evidence remains separate from component
+  checks. The API35 source inspection cleared an uncaptured selected configuration;
+  source and saved entries were restored, but the original selection cannot be
+  identified after observer salt renewal. Preserve OFF and all saved data, record
+  the changed baseline, and require a preflight before further source inspection.
+
+| Task | Agent | Owned files/subsystem | Dependencies/environment | Next handoff |
+| --- | --- | --- | --- | --- |
+| Windows binding | root | windows_native_helpers.py, its tests, preparation/packaging graph wiring | Existing compiled native authority; host checks serialized | Runtime-bound package verification and review |
+| Android fixture | android_terra | android_fixture_preflight.py and its tests | API35/5590 read-only until concrete sequence accepted | Causal regression and preserved baseline |
+| Windows native | windows | JNI native fixture and scratch admission component | Owned ARM64 Windows guest; x64 emulation labeled | Native counts/skips and admission review |
+| macOS fixture | mac_fixture_terra | Frozen guest build/evidence | Owned Tart guest, immutable be1e source; preserve relay/unknown jobs | Same-source base/target packages |
+
+- Windows runtime binding regression first failed because an unbound broker could
+  be staged. The producer now records and checks the generated authority source;
+  staging/inspection require the exact runtime resource hash and size. All19 helper
+  tests pass, including changed bytes, duplicate runtime resources and malformed
+  binding metadata. Evidence: `checkpoint22/windows-authority-{red,green}.log`.
+- Android fixture source-inspection preflight rejects selected, running, unknown or
+  incomplete state and returns the exact observed controller/revision guard. Its
+  causal RED and3/3 GREEN receipts are under `checkpoint22/android-api35-219/`;
+  `test_android_fixture_preflight.py` is included in routine release hygiene.
+- Windows JNI publication native selection completed on Windows11 ARM64 with x64
+  Temurin17 emulation:7 selected,6 executed,1 explicit Windows symlink skip,0 failures.
+  Same-path, hardlink alias, Unicode and concurrent publication cases executed.
+  This is emulation/component evidence, not native x86_64 package certification.
+  DLL SHA256 `740efd3af4a9abc7c2d8573160040f2359313f7474188f4db0c611014971265f`;
+  receipts under `checkpoint21/windows/android-publication-native/`.
+- macOS same-source fixture sourceHead is be1e, fingerprint
+  `1fa3e700d1617cf0a3a314588c5838fc7f54540af620bd479f29866dbf1366af`.
+  Base2.1.19/target2.2.0 are test-only overrides; guest build uses the frozen runtime
+  and preserves canonical2.1.6. Durable archive/manifest:
+  `checkpoint22/macos-fixture-source/`. No installation evidence is claimed yet.
+
 - Checkpoint20 is now pushed as `e2fa2230922683fd24651dc2dacdfffe5c231fec`.
   Exact-SHA Windows workflow34239971003 failed two native mutable-broker fixture
   cases; its other914 selected cases include57 explicit skips. Reproduction

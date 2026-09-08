@@ -336,7 +336,8 @@ window; a windowless close-to-tray process is not a failed-close reproduction.
 
 `test_windows_native_helpers.py` also exercises verified app-image staging and
 inspection of both fixed helpers, including missing-broker and byte/policy mismatch
-rejection. Passing these data-only tests
+rejection. It also covers missing/malformed runtime authority, changed generated
+source, and changed/duplicate packaged runtime resources. Passing these data-only tests
 does not certify the NativeAOT role execution, packaged wiring or MSI replacement.
 The Windows package workflow builds both pinned NativeAOT projects before the app
 image. Extracted and installed MSI checks verify both manifest/PE records, execute
@@ -345,6 +346,12 @@ reject missing arguments and a mismatched compiled runtime digest before admissi
 The producer hashes the prepared bundled AMD64 runtime into generated build output;
 the broker project fails without that authority, and Gradle tracks the runtime as
 an input. Native installer/UAC/recovery scenarios remain separate acceptance requirements.
+
+`test_android_fixture_preflight.py` runs in release hygiene. It reproduces the
+fixture inspection that cleared an uncaptured selection and requires a final,
+authoritatively stopped, explicitly unselected state before switching source scope.
+The helper returns the observed controller/revision for the actual mutation guard;
+it does not authorize replay after owner replacement or restore a lost selection.
 
 `DesktopWindowsBrokerEntrypointTest` runs three native compiler fixtures for missing,
 mismatched and matching compiled runtime authority without launching a runtime.

@@ -70,5 +70,5 @@ try {
 $binary = Join-Path $publish 'vpn-control-install-helper.exe'
 $broker = Join-Path $publish 'vpn-control-vpn-broker.exe'
 $manifest = Join-Path $output 'native-helpers.json'
-& $Python $inventoryTool verify-product --output $binary --output $broker --manifest $manifest $(foreach ($import in $AllowedImport) { '--allowed-import'; $import })
+& $Python $inventoryTool verify-product --output $binary --output $broker --manifest $manifest --runtime $runtime --authority-source $authoritySource $(foreach ($import in $AllowedImport) { '--allowed-import'; $import })
 if ($LASTEXITCODE -ne 0) { throw 'Native helper artifact validation failed' }
