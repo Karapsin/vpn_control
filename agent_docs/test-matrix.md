@@ -17,7 +17,8 @@ python3 scripts/test_visual_review.py
 python3 scripts/check_contract_docs.py
 ./scripts/check_localization.py
 ./scripts/status_catalog_tool.py check
-./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin
+./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
+python3 scripts/test_android_instrumentation_signatures.py
 ```
 
 ## Validation Tiers
@@ -60,9 +61,10 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Android settings or diagnostics orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
 | Android application JNI/string storage | `./gradlew :app:testDebugUnitTest` builds the real host JNI library and runs constrained-heap/allocator regressions; install pinned SDK tools from `native-runtime-artifacts.md`, then verify API29/API35 packaged behavior |
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
+| Android instrumentation tests or runner/signature wiring | `./gradlew :app:verifyDebugAndroidTestSignatures` compiles tests and checks actual JUnit bytecode before packaging or connected execution. `python3 scripts/test_android_instrumentation_signatures.py` exercises compiler dependencies and invalid/valid signatures without an emulator. Both run in Fast Checks and pre-push; keep the exact native scenario. |
 | Disposable full-VPN integration harness | `python3 scripts/test_vpn_integration_fixture.py`, `./gradlew :desktopApp:test :app:compileDebugAndroidTestKotlin`, then dispatch `VPN Integration` with `profile=all` only on hosted disposable runners |
 | Root/module Gradle configuration and Android SDK lookup | `python3 scripts/test_desktop_sdk_independence.py` configures the real desktop task graph with an unavailable SDK; also run affected Android compilation/tests. Included after build setup in Fast Checks and pre-push. |
-| Windows installer Gradle graph | `python3 scripts/test_windows_packaging_graph.py` verifies task discovery, prepared-image dependencies, native-helper producer failure and verified staging before EXE/MSI in a minimal real Gradle fixture. Included after build setup in Fast Checks and pre-push. |
+| Windows installer Gradle graph | `python3 scripts/test_windows_packaging_graph.py` verifies task discovery, prepared-image dependencies, native-helper producer failure, bundled-runtime input invalidation and verified staging before EXE/MSI in a minimal real Gradle fixture. Included after build setup in Fast Checks and pre-push. |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
 | Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
 | Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
@@ -158,8 +160,8 @@ Android VPN/config patch:
 If the Android patch changes actual generated `sing-box` config shape, also run or update:
 
 ```bash
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.data.SingBoxConfigFactoryInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.SingBoxConfigFactoryInstrumentedTest
 ```
 
 If the patch changes shared outbound/TLS/transport generation, also update or inspect:
@@ -185,19 +187,19 @@ app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstru
 Import/export UI patch:
 
 ```bash
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.ImportExportActionsInstrumentedTest
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.ImportExportErrorInstrumentedTest
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.ImportExportMenuVisibilityInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportActionsInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportErrorInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportMenuVisibilityInstrumentedTest
 ```
 
 Protocol parser patch:
 
 ```bash
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.data.ProxyParserInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.ProxyParserInstrumentedTest
 ./gradlew :shared:core:desktopTest
 ```
 
@@ -325,13 +327,33 @@ or treats a click/process observation as authoritative authorization. A subproce
 regression removes `os.getuid` before launching the real parser/correlation suite,
 reproducing Windows' missing Unix API on every host without skipping these tests.
 
+`macos_fixture_frontend.py` closes one reidentified fixture frontend by PID using
+SSH and its guest Aqua session. The release-hygiene test checks exact argument
+separation, positive identities, the close button and explicit unknown outcome on
+transport timeout. The helper never selects a frontmost app, retries a timeout or
+kills a frontend. Before use, confirm the assigned disposable guest and a visible
+window; a windowless close-to-tray process is not a failed-close reproduction.
+
 `test_windows_native_helpers.py` also exercises verified app-image staging and
-inspection, including byte/policy mismatch rejection. Passing these data-only tests
+inspection of both fixed helpers, including missing-broker and byte/policy mismatch
+rejection. Passing these data-only tests
 does not certify the NativeAOT role execution, packaged wiring or MSI replacement.
-The Windows package workflow builds the pinned native helper before the app image;
-both extracted and installed MSI checks verify its manifest/PE and execute its
-nonmutating `validate-only` probe. Native installer/UAC/recovery scenarios remain
-separate acceptance requirements.
+The Windows package workflow builds both pinned NativeAOT projects before the app
+image. Extracted and installed MSI checks verify both manifest/PE records, execute
+the installer helper's nonmutating `validate-only` probe and require the broker to
+reject missing arguments and a mismatched compiled runtime digest before admission.
+The producer hashes the prepared bundled AMD64 runtime into generated build output;
+the broker project fails without that authority, and Gradle tracks the runtime as
+an input. Native installer/UAC/recovery scenarios remain separate acceptance requirements.
+
+`DesktopWindowsBrokerEntrypointTest` runs three native compiler fixtures for missing,
+mismatched and matching compiled runtime authority without launching a runtime.
+`DesktopWindowsMutableBrokerNativeTest` includes metadata, configuration and commit
+ordering checks in ordinary Windows tests. Its two inert-child pipe cases require
+`VPN_CONTROL_TEST_SCOPED_BROKER_MUTABLE=1` only in the assigned disposable VM. They
+cover post-exit cache publication, repeated admission and a9MiB configuration,
+retaining protected journals when cleanup is unproven. Record exact Java wrapper
+execution as well as native source tests; neither enables the production broker.
 
 The early Windows package checks run `test_windows_native_helper_builder.ps1` with
 Windows PowerShell, matching the Gradle producer's shell. Private inert executables

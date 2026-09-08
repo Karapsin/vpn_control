@@ -4,7 +4,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
-internal data class DesktopWindowsRuntimeStatus(val running: Boolean, val log: ByteArray = byteArrayOf())
+internal data class DesktopWindowsRuntimeStatus(
+    val running: Boolean,
+    val log: ByteArray = byteArrayOf(),
+    val resourceReconciliation: DesktopWindowsNativeResourceReconciliation? = null,
+)
 
 /** The native channel owns a retained broker handle and a job-contained child, never a PID-only kill. */
 internal interface DesktopWindowsRuntimeChannel : AutoCloseable {
@@ -34,11 +38,12 @@ internal enum class DesktopWindowsRuntimePreparationStage { AUTHORIZATION, HELPE
 internal class DesktopPreparedWindowsRuntimeProcess(
     private val channel: DesktopWindowsPreparedRuntimeChannel,
     private val logFile: Path,
+    private val resources: DesktopWindowsRuntimeResourceReconciliation? = null,
 ) : DesktopPreparedRuntimeProcess {
     private enum class State { PREPARED, TRANSFERRED, CLOSED }
     private var state = State.PREPARED
     // Allocate the owner before commit; a post-commit allocation failure must not lose the child.
-    private val runtime = DesktopWindowsScopedRuntimeProcess(channel, logFile)
+    private val runtime = DesktopWindowsScopedRuntimeProcess(channel, logFile, resources = resources)
 
     @Synchronized override fun commit(): DesktopRuntimeProcess {
         check(state == State.PREPARED) { "Prepared runtime has already been consumed" }
@@ -71,18 +76,22 @@ internal class DesktopWindowsScopedRuntimeProcess(
     private val logFile: Path,
     private val clockNanos: () -> Long = System::nanoTime,
     private val pauseMillis: (Long) -> Unit = Thread::sleep,
+    private val resources: DesktopWindowsRuntimeResourceReconciliation? = null,
 ) : DesktopRuntimeProcess {
     private var verifiedExited = false
+    private var warnings = emptyList<DesktopRuntimeResourceWarning>()
+    override val resourceWarnings: List<DesktopRuntimeResourceWarning>
+        @Synchronized get() = warnings.toList()
     override val isAlive: Boolean
         @Synchronized get() {
             if (verifiedExited) return false
             val status = try { channel.status() } catch (_: Exception) {
                 // Loss of the waiter is not proof that the job-contained runtime stopped.
-                if (channel.childExited()) verifiedExited = true
+                if (channel.childExited()) confirmExit(null)
                 return !verifiedExited
             }
             if (status.log.isNotEmpty()) Files.write(logFile, status.log, java.nio.file.StandardOpenOption.APPEND)
-            verifiedExited = !status.running
+            if (!status.running) confirmExit(status.resourceReconciliation)
             return status.running
         }
     override fun pid() = channel.childPid
@@ -105,5 +114,12 @@ internal class DesktopWindowsScopedRuntimeProcess(
     override fun close() {
         check(!isAlive) { "OUTCOME_UNKNOWN" }
         channel.close()
+        warnings.takeIf { it.isNotEmpty() }?.let(::DesktopRuntimeResourcePublicationFailure)?.let { throw it }
+    }
+
+    @Synchronized private fun confirmExit(native: DesktopWindowsNativeResourceReconciliation?) {
+        verifiedExited = true
+        val retained = resources ?: return
+        warnings = retained.afterConfirmedExit { native ?: throw java.io.IOException("OUTCOME_UNKNOWN") }
     }
 }

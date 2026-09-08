@@ -215,3 +215,5 @@ tasks.withType<Test>().configureEach {
         systemProperty("java.library.path", nativeStringHostDirectory.get().dir("lib").asFile.absolutePath)
     }
 }
+
+apply(from = rootProject.file("scripts/android_instrumentation_signatures.gradle"))

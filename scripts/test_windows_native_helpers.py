@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,7 @@ from windows_native_helpers import fixture_transfer_target, validate_guest_desti
 
 TOOL = Path(__file__).with_name("windows_native_helpers.py")
 MANIFEST = Path(__file__).parents[1] / "desktopApp/native/windows/InstallHelper/loader.manifest"
+BROKER_MANIFEST = Path(__file__).parents[1] / "desktopApp/native/windows/VpnBroker/loader.manifest"
 
 
 def pe(machine=0x8664, clr=False, marker=b"", dependent_flags=0x800, manifest=None):
@@ -59,6 +61,17 @@ class WindowsNativeHelpersTest(unittest.TestCase):
     def run_tool(self, *args):
         return subprocess.run([sys.executable, str(TOOL), *map(str, args)], text=True, capture_output=True)
 
+    def verified_pair(self, directory):
+        install = directory / "vpn-control-install-helper.exe"
+        broker = directory / "vpn-control-vpn-broker.exe"
+        install.write_bytes(pe())
+        broker.write_bytes(pe(manifest=BROKER_MANIFEST.read_bytes()))
+        manifest = directory / "native-helpers.json"
+        result = self.run_tool("verify-product", "--output", install, "--output", broker,
+                               "--manifest", manifest)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return install, broker, manifest
+
     def test_source_manifest_is_stable_and_hashed(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
@@ -68,6 +81,32 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             data = json.loads((root / "sources.json").read_text())
             self.assertEqual(data["inputs"][0]["path"], str(source.resolve()))
             self.assertEqual(len(data["fingerprint"]), 64)
+
+    def test_runtime_authority_is_bound_to_prepared_amd64_bytes(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            runtime = root / "sing-box.exe"
+            generated = root / "authority.cs"
+            for contents in (pe(), pe(marker=b"changed-runtime")):
+                runtime.write_bytes(contents)
+                result = self.run_tool("runtime-authority", "--runtime", runtime, "--output", generated)
+                self.assertEqual(0, result.returncode, result.stderr)
+                expected = hashlib.sha256(contents).hexdigest()
+                self.assertEqual(expected, json.loads(result.stdout)["runtimeSha256"])
+                self.assertIn('internal const string Sha256 = "' + expected + '";', generated.read_text())
+                self.assertNotIn(str(runtime), generated.read_text())
+
+    def test_runtime_authority_rejects_missing_and_wrong_architecture_inputs(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            runtime = root / "sing-box.exe"
+            generated = root / "authority.cs"
+            self.assertNotEqual(0, self.run_tool("runtime-authority", "--runtime", runtime, "--output", generated).returncode)
+            for contents in (b"not a PE", pe(machine=0xaa64), pe(machine=0x14c)):
+                runtime.write_bytes(contents)
+                result = self.run_tool("runtime-authority", "--runtime", runtime, "--output", generated)
+                self.assertNotEqual(0, result.returncode, result.stdout)
+                self.assertFalse(generated.exists())
 
     def test_rejects_clr_and_test_product_artifacts(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -88,23 +127,20 @@ class WindowsNativeHelpersTest(unittest.TestCase):
     def test_stages_verified_helper_into_the_prepared_application(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
-            output = root / "vpn-control-install-helper.exe"
-            output.write_bytes(pe())
-            manifest = root / "native-helpers.json"
-            self.assertEqual(self.run_tool("verify-product", "--output", output,
-                                           "--manifest", manifest).returncode, 0)
+            output, broker, manifest = self.verified_pair(root)
             image = root / "prepared application"
             (image / "app").mkdir(parents=True)
-            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+            result = self.run_tool("stage-product", "--output", output, "--output", broker, "--manifest", manifest,
                                    "--app-image", image)
             self.assertEqual(result.returncode, 0, result.stderr)
             staged = image / "app/native/windows-amd64"
             self.assertEqual((staged / output.name).read_bytes(), output.read_bytes())
+            self.assertEqual((staged / broker.name).read_bytes(), broker.read_bytes())
             self.assertEqual(json.loads((staged / manifest.name).read_text()), json.loads(manifest.read_text()))
             inspected = self.run_tool("inspect-image", "--app-image", image)
             self.assertEqual(inspected.returncode, 0, inspected.stderr)
 
-    def test_rejects_changed_helper_or_manifest_before_staging(self):
+    def test_staging_rejects_package_without_the_fixed_vpn_broker(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             output = root / "vpn-control-install-helper.exe"
@@ -114,9 +150,21 @@ class WindowsNativeHelpersTest(unittest.TestCase):
                                            "--manifest", manifest).returncode, 0)
             image = root / "image"
             (image / "app").mkdir(parents=True)
+            result = self.run_tool("stage-product", "--output", output,
+                                   "--manifest", manifest, "--app-image", image)
+            self.assertNotEqual(0, result.returncode,
+                                "A package missing the fixed VPN broker was accepted")
+            self.assertFalse((image / "app/native/windows-amd64").exists())
+
+    def test_rejects_changed_helper_or_manifest_before_staging(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            output, broker, manifest = self.verified_pair(root)
+            image = root / "image"
+            (image / "app").mkdir(parents=True)
             original_manifest = manifest.read_bytes()
             output.write_bytes(pe(marker=b"changed"))
-            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+            result = self.run_tool("stage-product", "--output", output, "--output", broker, "--manifest", manifest,
                                    "--app-image", image)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("manifest disagrees", result.stderr)
@@ -125,7 +173,7 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             record = json.loads(original_manifest)
             record["artifacts"][0]["operations"] = ["arbitrary-command"]
             manifest.write_text(json.dumps(record))
-            result = self.run_tool("stage-product", "--output", output, "--manifest", manifest,
+            result = self.run_tool("stage-product", "--output", output, "--output", broker, "--manifest", manifest,
                                    "--app-image", image)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("manifest disagrees", result.stderr)
@@ -139,14 +187,16 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             native.mkdir(parents=True)
             result = self.run_tool("inspect-image", "--app-image", image)
             self.assertNotEqual(result.returncode, 0)
-            output = native / "vpn-control-install-helper.exe"
-            output.write_bytes(pe())
-            self.assertEqual(self.run_tool("verify-product", "--output", output,
-                                           "--manifest", native / "native-helpers.json").returncode, 0)
-            output.write_bytes(pe(marker=b"replaced-after-package"))
-            result = self.run_tool("inspect-image", "--app-image", image)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("manifest disagrees", result.stderr)
+            output, broker, _ = self.verified_pair(native)
+            for candidate in (output, broker):
+                original = candidate.read_bytes()
+                candidate.write_bytes(original + b"replaced-after-package")
+                result = self.run_tool("inspect-image", "--app-image", image)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("manifest disagrees", result.stderr)
+                candidate.write_bytes(original)
+            broker.unlink()
+            self.assertNotEqual(0, self.run_tool("inspect-image", "--app-image", image).returncode)
 
     def test_fixture_target_guard_rejects_the_legacy_sibling(self):
         expected = "fresh-msi"

@@ -22,17 +22,83 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Branch `dev`; checkpoint18 `2503c5eed85c54108feb65d5411bfcd98c9da2bd` is pushed.
-  It adds the Windows native-helper package producer/probes and the approved
-  token-saving agent workflow. Required acceptance and review gates are unchanged.
-- Canonical product version is2.1.5 with nine Unreleased bullets at checkpoint18.
+- The host rebooted on2026-09-08. Host `/tmp/vpn-*` evidence and scratch helpers
+  were lost; references below are historical records, not currently available
+  archives. Repository source, Gradle outputs and the managed receipt survived.
+  New evidence is retained in ignored `.runtime/parity-evidence/checkpoint20/`.
+  Startup synchronization after reboot passed without changing the dirty `dev` tree.
+- Checkpoint20 remains uncommitted. Its pre-reboot managed prepush passed all15
+  commands:1657 JVM tests selected,1580 executed,77 explicit skips, zero failures.
+  After the native owner-identity fix, the complete managed tier passed all15
+  commands again:1658 selected,1581 executed,77 explicit skips, zero failures.
+  The version is2.1.6 with three Unreleased bullets. Subsequent documentation or code
+  edits require a fresh prepush receipt before the checkpoint push. Current results
+  are retained in `.runtime/parity-evidence/checkpoint20/prepush-final.json`.
+- The recovered Windows ARM64 guest completed the current full desktop JVM suite
+  under x64 emulation:207 classes,915 selected,858 executed,57 assumption skips,
+  **72 failures**. Native result and per-class accounting are retained under
+  `.runtime/parity-evidence/checkpoint20/windows/new-batch-native/`; Java exited1,
+  no Java/VPN/msiexec remained, and Installer InProgress was false. Most failures
+  depend on endpoint verification using JVM `user.name`, which differs from the
+  actual SYSTEM token identity. A C# fixture dependency omission and installer
+  permission cases are being diagnosed separately. This is failed component-suite
+  evidence, not packaged x86_64 acceptance; no failure has been waived.
+- The endpoint identity defect has a portable causal regression: overriding JVM
+  `user.name` reproduced `UserPrincipalNotFoundException` at credential publication.
+  Verification now uses the native Windows token SID or POSIX effective UID,
+  retaining private ACL/mode checks. Host endpoint/spool/activation/correlation
+  selection passed25/25 without skips. Evidence is `endpoint-owner-red.{log,xml}`
+  and `endpoint-owner-green-xml/` under the current evidence directory. The Windows
+  compiler fixture now captures all required broker modules; its host selection
+  passed9 with2 explicit native skips. Corrected native SYSTEM checks passed the
+  compiler case1/1 and endpoint permissions4/4 with an intentionally nonexistent
+  JVM account name; a foreign-owner endpoint was rejected. Evidence:
+  `windows/system-narrow-results.json`. The ordinary-owner full suite completed:
+  207 classes,916 selected,859 executed,57 explicit skips. Its only failure was
+  the new test helper opening a conflicting inspection handle on a live spool.
+  The assertion now resolves the native token account for a metadata-only NIO
+  owner comparison. The corrected ordinary selection passed7 with1 POSIX-only
+  skip; SYSTEM permissions passed4/4 with the invalid JVM name. Exactly two test
+  classes changed; all product class/resource bytes match the complete native run.
+  This is full-suite plus focused corrected coverage, not a single zero-failure
+  full-suite rerun. See `windows/ordinary-full-native/`, `ordinary-quick-native/`,
+  `system-quick-owner-result.json` and `test-owner-assertion-overlay-receipt.json`.
+  The spool sharing regression remains in routine `DesktopControlTransferSpoolTest`;
+  its failure/repair needs native Windows sharing semantics. The full-run preflight
+  correctly refuses SYSTEM as an ordinary-owner context; reusable launcher/preflight
+  source and fast fixture checks are queued for the next slice.
+- Owned API29 AVD5584 and the macOS guest were restored without wiping their data.
+  The authenticated Android relay passed normal TLS validation end to end; its
+  processes use persistent tmux sessions. API29 GUI Find Best and exact fixture
+  cleanup remain in progress. Protected AVDs and unknown installation receipts
+  remain untouched. Current CLI adapter execution uses restored JVM build outputs,
+  not a packaged launcher.
+- API29 GUI Find Best initially reached a known `RUNTIME_FAILED`. Retained UI evidence proves
+  that consent was displayed, but does not establish acceptance or the failed
+  runtime phase. A separately identified diagnostic operation
+  `219831a1-dca0-4ea0-a028-5124f8c16934` reproduced a14,352,392-byte allocation
+  failure under the48MiB heap limit before progress. A causal memory regression
+  and allocation-path diagnosis are the next Android slice; no speculative fix
+  has been applied. Evidence is `android/findbest-rerun/` under the current directory.
+  Exact candidate cleanup reached OFF with zero locations/subscriptions. Full
+  routing readback completed with56008 suffixes and the unchanged expected digest
+  `0ef2ce70d306e71d44a899d52a56a375022cb194cc534fab005934fb83bdaaa7`;
+  receipt `android/final-routing-readback.json` under the current evidence directory.
+  Local CLI file export into the repository
+  correctly rejected a non-sticky0777 ancestor; a private home-directory control
+  passed. The existing writable-ancestor regression covers that policy, and no
+  host permissions were changed to bypass it.
+- Branch `dev`; checkpoint19 `de9f9e4f79f7396db876f685a7f8a50969f12ed1` is pushed
+  and all five required exact-SHA workflows passed. It preserves fixed Windows
+  installer outcomes and fixes native-helper discovery and Android test launching.
+  The approved token-saving workflow is active; acceptance/review gates are unchanged.
+- Canonical product version is2.1.6 with no Unreleased bullets at checkpoint19.
   Native fixture versions are test-only Gradle overrides; canonical metadata stays intact.
-- Managed checkpoint18 prepush passed:1636 JVM tests selected,1574 executed,62 explicit
+- Managed checkpoint19 prepush passed:1641 JVM tests selected,1574 executed,67 explicit
   platform/opt-in skips, zero failures, plus complete script/hygiene/localization/tool
-  checks. Receipt `/tmp/vpn-parity-checkpoint18-prepush.json` covers that checkpoint
+  checks. Receipt `/tmp/vpn-parity-checkpoint19-prepush.json` covers that checkpoint
   only; new content requires another full receipt.
-- Checkpoint18 exact-SHA CI: Fast Checks, Android, Linux and macOS passed; Windows
-  failed before NativeAOT compilation because PowerShell discovered two Python
+- Checkpoint18's Windows CI failure is repaired in checkpoint19. PowerShell found two Python
   executables and joined their paths into one invalid command. Advisory VPN passed.
   Log `/tmp/vpn-2503-windows-ci-failed.log`. A native Windows PowerShell regression
   reproduces this through the actual producer after an explicit-path positive
@@ -41,7 +107,13 @@ inputs and correlation records until authoritative reconciliation.
   Python and Dotnet. All3 native cases passed with zero skips (PowerShell5.1,
   Windows ARM64/x64 emulation): adjacent `green-result.json`, producer SHA
   `4697b2f49fe5f75f1895af108027d1ebef95896281c1597547040375c7de24ca`.
-  The regression runs before expensive package builds; new exact-SHA CI is pending.
+  The regression runs before expensive package builds. Current exact-SHA Windows
+  CI built, inspected and launched the NativeAOT AMD64 helper from both extracted
+  and installed MSI payloads. Helper SHA
+  `c5e2e7c0b8b4e145bf4b64cea34d3af91a580bb9b6d4aba5e7ed7525daec03c1`,
+  no CLR header, dependent-load flags2048; only validate-only is enabled.
+  Log `/tmp/vpn-ci-34219519026-readonly.log`; compact five-workflow receipt
+  `/tmp/vpn-parity-checkpoint19-ci.json`.
 - Checkpoint17's missing-`os.getuid` Aqua-test failure is fixed in checkpoint18.
   A subprocess removes that API before launching the actual parser suite; causal
   RED `/tmp/vpn-aqua-portability-red.log`, fixed5 GREEN on host and native Windows.
@@ -71,11 +143,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | CLI/common integration, documentation, visuals and final audit | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Android launcher3 GREEN and real instrumentation reached | Native producer regression; checkpoint19 |
-| C/D/G-Android | android_terra, Terra medium | Android actions/install/storage and native scenarios | App Gradle/CI and host builds remain root | Owned5584 API29/48MiB,5590 API35/192MiB and isolated5592 API35 | Actual SOCKS benchmark RED on5592 | Diagnose fixture/protocol; actions/install/visuals |
-| F/E-Windows | windows, Astra | Fixed installer roles/codecs, installer adapter/lease and focused tests; broker components | Package staging/Gradle/workflows/factory/Main/autostart remain root | Owned native x64 guest2314 unavailable; ARM guest component execution | Fixed role22 native cases GREEN; builder PATH causal RED | Native resolver GREEN, fixed sessions and MSI success |
+| B/G/H | root | CLI/common integration, documentation, visuals, Windows helper packaging | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Checkpoint19 all CI GREEN; dual-helper verifier15 and graph9 GREEN | Real NativeAOT broker package build; checkpoint20 |
+| C/D/G-Android | android_terra, Terra medium | Android actions/install/storage, protocol smoke, benchmark semantics regression | App Gradle/CI and host builds remain root | Owned5584 API29/48MiB,5590 API35/192MiB and isolated5592 API35 | Signature guard and final native smoke GREEN; public API35 Recheck/Find Best final OK | Remaining actions/install/visuals |
+| F/E-Windows | windows, Astra | Fixed installer roles/codecs, installer adapter/lease and focused tests; broker components | Package staging/Gradle/workflows/factory/Main/autostart remain root | Owned native x64 guest2314 unavailable; ARM guest component execution | Native v5 cache/9MiB and compiled-runtime admission GREEN; exact8 JUnit wrappers GREEN | Checkpoint20, then fixed helper production admission |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Owned Arch2317, Ubuntu2318, Fedora2316; revalidate before use | Current Arch pair built; unsupported-path attempt terminal failed | Supported-path rerun, rollback/traffic/final packages |
-| E-Mac/H | mac_fixture_terra, Terra medium | Mac guest execution and Aqua fixture correlation | Root owns common update/UI/scenes/hygiene | Exclusive macOS15.7.7 ARM64 guest192.168.64.3 | Machine r4 replacement and next-owner recovery passed | Causal fixture correction; remaining native/visual cases |
+| E-Mac/H/F | mac_fixture_terra, Terra medium | Mac guest execution, Kotlin broker/resource channel, independent packaging review | Root owns factory/Main/build; Windows owns native C# | Exclusive macOS15.7.7 ARM64 guest192.168.64.3 | Kotlin decoder/reconciliation22 GREEN; dual-helper packaging reviewed | Native v5 counterpart and remaining visual cases |
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
 built successfully in an independent frozen source directory; unrelated source edits may
@@ -153,6 +225,48 @@ receipt `/tmp/vpn-windows-finish.WhKUbn/fixed-installer-roles-v1/review-green-v1
 This is Windows ARM64/x64-emulated C# execution with inert sessions, not native
 installer integration. Host role/protocol selection13 selected,7 executed,6 explicit
 Windows-only skips; the new role source is in the project and producer inventory.
+The exact current five JUnit methods also executed natively (5/5, zero skips),
+through x64 Temurin17/PowerShell5.1 on the ARM64 guest. Source/resource hashes match:
+`/tmp/vpn-windows-finish.WhKUbn/fixed-installer-roles-v1/junit-wrapper-v1/summary.json`.
+
+The following MSI adapter slice is implemented but not production-bound: fixed
+read-only ProductName/UpgradeCode queries, retained handles/input on close failure,
+silent per-user installation API and exact native result retention. Its19 behavioral
+and2 real System32 database cases passed without installation or byte/mtime changes.
+Evidence `/tmp/vpn-windows-finish.WhKUbn/fixed-installer-msi-v1-evidence.zip`.
+Root reviewed the module and added its project/source inventory. Original-user
+process/token/package/ancestor admission and actual install-user binding remain open.
+Both exact current MSI JUnit methods also ran natively:2 executed, zero skips/failures,
+using x64 Temurin17/PowerShell5.1 on the ARM64 guest. Archive
+`/tmp/vpn-windows-finish.WhKUbn/fixed-installer-msi-junit-v1-evidence.zip`, SHA
+`ea26b93f631b4a7ec922ae592282714782d05876c5e1a512855d358697b64e0e`.
+
+Kotlin mutable-resource opcode5 now retains durable correlation before UAC and
+decodes terminal resource evidence only after native exit. Opcode4 stays unchanged;
+CACHE is an intermediate implementation and OUTPUT/cold recovery remain open.
+Review caught the final-log bytes being read as the terminal envelope. The direct
+decoder test reproduced that failure before correction; decoder/scoped-process/
+reconciliation selection22 executed with no skips/failures. Its RED is retained in
+the worker tool turn (no standalone RED receipt). The earlier broad selection39
+selected/30 executed/9 platform skips is `/tmp/vpn-windows-resource-v5-focused.log`.
+Native C# v5 now passes metadata7, commit/gate ordering6, configuration5 and two
+real authenticated-pipe cases with an inert child: cache publication/repeated
+admission and a9MiB configuration. Protected stages and gates remain retained;
+cleanup=false is explicit. Main now binds its runtime digest to a constant generated
+from the prepared bundled AMD64 runtime. Missing, mismatched and matching authority
+passed6 native assertions; causal RED showed mismatched authority reaching only an
+injected inert runner before the fix. No caller-selected digest authorizes another
+runtime. Both suites ran on Windows ARM64/x64 emulation under SYSTEM, not ordinary
+UAC or NativeAOT. Root verified all10 source hashes against the handoff. Archive
+`/tmp/vpn-windows-finish.WhKUbn/broker-v5-authority-component-evidence.zip`, SHA
+`5f487f0e433547942398901e708fb5b0963f0e91d73d7d7d9c3b9dba0d10a40e`.
+Current host Windows selection196 selected/137 executed/59 platform-opt-in skips,
+zero failures: `/tmp/vpn-checkpoint20-windows-focused.log`. All8 new exact JUnit
+wrappers then ran natively through x64 Temurin17/PowerShell5.1, with no skips or
+failures; runtime inventory stayed empty and protected stage/journal evidence was
+retained. Archive `/tmp/vpn-windows-finish.WhKUbn/broker-v5-junit-v1-evidence.zip`, SHA
+`aee2b502a06638c6e5c231fbc673bfa8cb300eab96895f63884297ef792d41b6`.
+This remains ARM64 emulation with inert children. The production factory remains disabled.
 
 The Windows helper tool now stages verified PE bytes/manifest into a prepared
 `app/native/windows-amd64` directory and inspects the packaged result. Twelve fast
@@ -161,9 +275,27 @@ Windows-only Gradle producer wiring, pinned SDK CI setup, and helper validation/
 nonmutating launch probes in extracted and installed MSI checks. Eight real Gradle
 graph tests passed, including producer failure blocking packages and verified bytes
 reaching both installer inputs: `/tmp/vpn-windows-native-package-graph.log`.
-Current NativeAOT build/package execution is still pending; the ARM guest lacks the
-pinned SDK/MSVC and the native x64 guest remains unreachable. No tooling was installed
-to bypass this limitation. This slice does not enable unfinished installer roles.
+Current NativeAOT build/package execution passed in checkpoint19 Windows CI as
+recorded above. The ARM guest lacks the pinned SDK/MSVC and native x64 guest access
+is still unavailable; CI evidence does not enable or certify unfinished roles.
+The next package slice adds the actual VpnBroker NativeAOT project and stages both
+fixed executables under one verified manifest. A package missing its broker was
+accepted by the old staging code: causal RED
+`/tmp/vpn-native-broker-package-missing-red.log`. The verifier now requires both
+reviewed helper names, hashes, PE/loader policies and copied bytes before atomic
+publication. Verifier13 GREEN `/tmp/vpn-native-broker-package-green.log`; real
+Gradle graph8 GREEN `/tmp/vpn-native-broker-package-graph.log`. Independent review
+accepted this boundary. Synthetic PE/graph evidence does not certify actual AOT
+compilation; the next exact-SHA Windows workflow must build and probe both files.
+The producer now generates the compiled runtime authority from its exact prepared
+runtime input. Generator/verifier15 pass; graph9 includes unchanged-input reuse
+and runtime-change invalidation before both installers. Logs
+`/tmp/vpn-native-broker-runtime-authority-green.log` and
+`/tmp/vpn-native-broker-package-graph-final.log`.
+The updated dual-helper producer's three inert executable-discovery cases also pass
+on Windows PowerShell5.1, with all21 captured inputs matching current source.
+Archive `/tmp/vpn-windows-finish.WhKUbn/dual-helper-builder-v1-evidence.zip`, SHA
+`6d916e75339ae64a28d370c1d02d074559f79b0b928a4e26bf6e6f0922cca2ba`.
 
 The macOS Aqua fixture observer is read-only: a single matching process/prompt is
 only candidate correlation, never proof of authorization. Terminal authority uses
@@ -178,12 +310,61 @@ The new single-device Android instrumentation launcher avoids AGP8.7.3's broken
 GREEN: `/tmp/vpn-android-instrumented-launcher-green.log`. Native launcher failure
 and corrected launch are recorded in `/tmp/vpn-android-local-protocol-5592-launch-diagnostic.log`
 and `/tmp/vpn-android-local-protocol-5592-benchmark-red.log`. The corrected launcher
-ran exactly one test on owned5592; the actual SOCKS benchmark failed and remains
-under investigation. Launcher success is not benchmark acceptance.
-The preserved assertion now includes the benchmark's redacted detail; the second
-native run confirms target code000. Both observed fixture connections were TCP
-preflight probes closing before SOCKS negotiation, so an authentication-method or
-HTTPS mismatch is not yet established as the cause of this runtime failure.
+ran exactly one test on owned5592. The safe greeting transcript identified two
+empty preflight connections followed by native sessions offering only method2;
+the old fixture incorrectly replied method0. RFC1929 fixture support now passes
+7 quick tests, including unoffered methods, correct/wrong credentials and redacted
+transcripts. Native auth/CONNECT passed before TLS reached the plaintext fixture:
+`/tmp/vpn-android-local-protocol-5592-auth-boundary.log` and
+`/tmp/vpn-terra-protocol-api35/fixture/greetings-auth-rfc2.ndjson`.
+
+The authenticated bundled sing-box relay was restored after the host reboot.
+Guest PID939 listens on loopback58181; host PID27277 forwards loopback18081 to it;
+the guest reverse-dynamic SSH listener uses58183. Persistent tmux sessions are
+`vpn-parity-macos-{restore,egress,relay,android-forward}-20260908`. A normal-trust
+HTTPS request through the full Android-facing18081 path passed; no CA/root/host
+VPN settings changed. Current evidence is retained under
+`.runtime/parity-evidence/checkpoint20/macos/` in `android-facing-health.txt`,
+`relay-stability.txt`, `tmux-processes.txt` and the corresponding listener receipts.
+The Android native rerun reached manual/ok before an incorrect new assertion
+required primary timing. Manual benchmarks intentionally keep primaryTotal=null;
+testTotal is the measured proxy request. A host semantics regression now preserves
+that contract; the native assertion was corrected without changing product code.
+Log `/tmp/vpn-android-local-protocol-5592-trusted-https.log` retains this test defect.
+The measured rerun passed exactly1 native test with no skips, test_ms844.282209 and
+score1311.400334. Its source/APKs/XML/logs are recorded privately under
+`/tmp/vpn-terra-protocol-api35/trusted-measurement/`. Resolved diagnostic child-replay
+code was then removed. The final concise smoke passed exactly1 native test with
+zero skips after correcting the JUnit signatures described below. Its debug APK
+SHA `16f32483a8ad8ad4f32feed57d8571c383d2bb1363125b350eb7c0611905bb28`, test APK
+SHA `941de8b06416f8f2a56d51ccb469bbc87ff10d5302f9a7557c4c6d5572a837da`, XML/log hashes
+are archived in `/tmp/vpn-terra-protocol-api35/final-smoke-signature-guard`.
+Test target routing has a passing quick config test that checks CIDR containment
+and requires the final proxy route. This is debug instrumentation evidence; the
+nondebuggable public GUI/ADB action scenarios remain separate.
+
+The concise native smoke initially could not initialize its JUnit runner: three
+expression-bodied tests returned Int, and a provider test returned Bundle.
+`verifyDebugAndroidTestSignatures` reproduces all four using actual compiled
+bytecode, before APK packaging or connected execution. Explicit Unit returns fix
+the methods. Its isolated Gradle fixture compiles valid and invalid classes and
+also catches a missing compile dependency, which had made the first verifier read
+stale bytecode. Guard and fixture now pass; both are in Fast Checks and managed
+prepush. Causal RED `/tmp/vpn-android-instrumentation-signatures-red.log`; native
+rerun/archive above preserves the original OS scenario.
+
+API35/5590 nondebuggable GUI Recheck reached final OK with test=ok, tcp52.6ms and
+score846.62375, operation `c0333fad-af5b-4dae-9b96-0adc25ea643e`.
+GUI Find Best reached final OK, operation `35ae6758-ef38-4526-8a77-90c874cbabcd`,
+revision23. Explicit disconnect and guarded restoration reached final OK through
+revision26: runtime OFF, no selected/active location, original source and validation
+target restored. Locations match semantically after excluding regenerated exported_at;
+digest `e9527d74df47fc3f8726699580572c78f7b99bfc17222cfb952303f021794909`.
+Private manifest `/tmp/vpn-terra-api35-public-baseline/public5590-gui-evidence-manifest.json`
+records exact APK/signer/source and operations. Production Android main/JNI/assets
+and shared source closure matches the bcc fixture; only test build wiring and
+canonical version metadata differ. This remains bcc2.2.15 fixture evidence, not
+certification of a final delivered package or the remaining cancellation/SSH matrix.
 
 ### Desktop Installation Evidence
 
@@ -206,9 +387,31 @@ root-verified archive `/tmp/vpn-parity-macos-r4-os-close.afDvtb/r4-lifecycle-thr
 SHA `4087f58c2dcc71736838b7e714d791ca26852113f1018e07a78ea17174cb6b79`.
 The first GUI-free scheduled-refresh fixture reported partial failure because
 active refresh uses the running proxy route rather than the offline JVM fixture
-proxy. A corrected isolated SOCKS/TLS fixture is under native verification; it
-does not yet close the scheduled-refresh gate. The broader r4 environment and
-unknown earlier installer jobs are preserved.
+proxy. A corrected isolated SOCKS/TLS fixture passed scheduled refresh with the
+same active runtime and traffic10/10 before plus20/20 after. Root-verified archive
+`/tmp/vpn-parity-macos-r4-active-route-refresh.tar.gz`, SHA
+`f66579e3a6cba56dde4149d27c187ef7bce92d796b2003035e487dd3c99989ec`.
+The intervening manual/active fixture-body mismatch has an executable local-route
+RED/GREEN consistency check. The broader r4 environment and unknown jobs are preserved.
+
+The reusable exact-PID Aqua helper passed4 quick tests and a fresh native window
+close (AX1→0, exit0, owner remained OFF), final source SHA
+`120a3e8bd399d314147d0bca052dc4b1b684a8f6d8ceb6d84e8a98ead9d8f54b`.
+Archive `/tmp/vpn-parity-macos-r4-aqua-helper-final.tar.gz`, SHA
+`77dd33314bf29e035bd4f92ffd9fd7a25b78b8c36aa4b1319fed9f6bfa773973`.
+This is launcher/Aqua evidence, not installation authorization. Task owners were
+publicly quit; close-to-tray frontends may remain without windows. Do not kill them
+or replay a timed-out remote click based on observation alone.
+
+Reuse the current exact-SHA CI evidence before repeating native launch checks:
+macOS run34219519076 passed7 native worker gate and3 ENOSPC cases plus the newly
+built2.1.6 DMG's disconnected public CLI smoke. Linux run34219519200 passed public
+CLI smoke for extracted DEB/RPM payloads and an installed Arch bundle. Windows
+run34219519026 passed NativeAOT production/staging/probes, the routine role wrappers,
+extracted public CLI smoke and installed MSI smoke. Their logs are retained as
+`/tmp/vpn-ci-<run-id>-readonly.log`. CLI smoke includes streams/Ctrl-C/QR and large
+routing import/retained result/private export. These specific proofs do not replace
+real update/UAC/Aqua/original-user recovery, GUI/traffic or final signing evidence.
 
 Linux earlier same-source Ubuntu/Arch recovery and RPM scenarios have evidence;
 see the historical ledger for manifests. Current7c Arch pair2.1.6/2.1.7 built with
@@ -241,9 +444,10 @@ Scratch `/tmp/vpn-windows-finish.WhKUbn/kernel-inventory-v3` retains identities.
 - Windows is the largest implementation gap: installer helper currently exposes
   only validate-only; runtime installer still launches captured PowerShell roles.
   Complete fixed native user/coordinator roles, original-user token handling,
-  pinned helper launch and package inclusion. The broker fixed entrypoint exists,
-  but lacks complete project/package/production binding and rejects mutable
-  resources. Finish resource ownership/recovery/configuration support, enable the
+  pinned helper launch and verified native packaging. Broker project/staging and
+  Kotlin/native mutable-resource framing have component evidence; actual AOT/package
+  checks remain. Finish OUTPUT/cold resource recovery and full configuration
+  support, replace the PowerShell launch with retained fixed-helper admission, enable the
   production path, then remove whole-GUI elevation and HIGHEST autostart. Current
   `windowsScopedRuntimeEnabled=false` is not parity completion.
 - Android: both-API installer lifecycle/cancellation/retention/confirmation recovery
@@ -254,8 +458,8 @@ Scratch `/tmp/vpn-windows-finish.WhKUbn/kernel-inventory-v3` retains identities.
   dependency/replacement/rollback cases, traffic and GUI/controller continuity.
 - macOS: remaining local/machine authorization-denial/failure/rollback/cleanup cases,
   current-package signing/worker evidence, proxy traffic and GUI/controller continuity.
-  Correct the Aqua fixture using real process/receipt schemas and causal tests;
-  an unrelated SecurityAgent or clicked prompt cannot establish authorization.
+  The corrected Aqua observer and exact-PID helper have native evidence; keep using
+  real receipt authority for subsequent authorization scenarios.
 - Shared/public audit: capabilities/help/real handlers, equivalent human/JSON
   timeouts/errors/raw bytes, every required stream/owner-replacement case,
   document/persistence/resource/export races and GUI/CLI action equivalence.
@@ -282,8 +486,10 @@ identities, never authorization to kill/restart anything.
   Loopback-only fixture TLS process17077/port39419 has process-only JVM trust.
   On restored access, revalidate old owner OFF/terminal, use its public quit, confirm
   exit, then install current base at the supported root. Preserve prior evidence.
-- macOS owned Tart `vpn-control-visual-macos`, guest192.168.64.3. r4 serve38207 and
-  GUI39769 last observed OFF. Preserve uncertain earlier jobs79677cc5… and5d5a78c3…
+- macOS owned Tart `vpn-control-visual-macos`, guest192.168.64.3. Latest read-only
+  inventory observed r4 owner38207, frontend44198 and runtime44590; older r2/r3
+  owners/runtimes remain present. About349MiB disk was free. Preserve the live relay
+  and uncertain earlier jobs2c8…,79677cc5… and5d5a78c3…
   and their owners/watchers/input applications. Earlier authorization arrived after
   owner timeout; later cancellation is not proof of terminal recovery.
 - Android owned5584/API29,5590/API35 and isolated5592/API35 protocol-test AVD.

@@ -50,18 +50,29 @@ namespace VpnScopedConfiguration {
    foreach(var property in value.EnumerateObject()) result[PropertyName(property)]=property.Value;
    return result;
   }
-  static void QueueObject(Stack<Work> work,JsonElement value,Context context,string stage) {
+  static void QueueObject(Stack<Work> work,JsonElement value,Context context,string stage,
+    Dictionary<string,string> mutable,HashSet<string> used) {
    var map=Object(value);JsonElement kind;
    string type=map.TryGetValue("type",out kind)?StringValue(kind):null;
    bool url=(context.Is("dns","servers","*")&&(type=="https"||type=="h3")) ||
     ((context.Is("outbounds","*","transport")||context.Is("inbounds","*","transport"))&&(type=="ws"||type=="http"||type=="httpupgrade")) ||
     (context.Is("outbounds","*")&&type=="http");
    bool cache=context.Is("experimental","cache_file");
+   string cachePath=null;
    if(cache) {
     JsonElement enabled,path;
-    Need(map.Count==2&&map.TryGetValue("enabled",out enabled)&&
-     (enabled.ValueKind==JsonValueKind.True||enabled.ValueKind==JsonValueKind.False)&&
-     map.TryGetValue("path",out path)&&StringValue(path)=="cache.db");
+    if(mutable==null) {
+     Need(map.Count==2&&map.TryGetValue("enabled",out enabled)&&
+      (enabled.ValueKind==JsonValueKind.True||enabled.ValueKind==JsonValueKind.False)&&
+      map.TryGetValue("path",out path)&&StringValue(path)=="cache.db");
+     cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
+    } else {
+     foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
+     Need(map.TryGetValue("enabled",out enabled)&&enabled.ValueKind==JsonValueKind.True&&
+      map.TryGetValue("path",out path)&&StringValue(path)!=null);
+     string reference=StringValue(map["path"]);
+     Need(mutable.TryGetValue(reference,out cachePath)&&used.Add(reference));
+    }
    }
    var properties=new List<KeyValuePair<string,JsonElement>>(map);
    work.Push(new Work(Kind.EndObject));
@@ -76,13 +87,14 @@ namespace VpnScopedConfiguration {
      if(key=="masquerade"&&child.ValueKind==JsonValueKind.String)
       Need(!StringValue(child).StartsWith("file:",StringComparison.OrdinalIgnoreCase));
      if(key=="path") Need(cache||(url&&child.ValueKind==JsonValueKind.String));
-     if(cache&&key=="path"&&stage!=null) work.Push(new Work(Kind.String,text:Path.Combine(stage,"cache.db")));
+     if(cache&&key=="path") work.Push(new Work(Kind.String,text:cachePath));
      else work.Push(new Work(Kind.Value,child,new Context(context,key)));
     }
     work.Push(new Work(Kind.Property,text:key));
    }
   }
-  public static string Normalize(string text,string stage,Dictionary<string,string> resources=null) {
+  public static string Normalize(string text,string stage,Dictionary<string,string> resources=null,
+    Dictionary<string,string> mutable=null) {
    Need(text!=null);
    try {
     // Parsing and rendering materialize the logical document. A document is not rejected because
@@ -92,6 +104,7 @@ namespace VpnScopedConfiguration {
     using(var output=new MemoryStream()) {
      Need(document.RootElement.ValueKind==JsonValueKind.Object);
      using(var writer=new Utf8JsonWriter(output,new JsonWriterOptions { MaxDepth=Int32.MaxValue })) {
+      var used=new HashSet<string>(StringComparer.Ordinal);
       var work=new Stack<Work>();work.Push(new Work(Kind.Value,document.RootElement,Context.Root));
       while(work.Count!=0) {
        Work next=work.Pop();
@@ -112,7 +125,7 @@ namespace VpnScopedConfiguration {
          break;
         case Kind.Value:
          if(next.Value.ValueKind==JsonValueKind.Object) {
-          writer.WriteStartObject();QueueObject(work,next.Value,next.Context,stage);
+          writer.WriteStartObject();QueueObject(work,next.Value,next.Context,stage,mutable,used);
          } else if(next.Value.ValueKind==JsonValueKind.Array) {
           writer.WriteStartArray();work.Push(new Work(Kind.EndArray));
           var context=new Context(next.Context,"*");
@@ -122,6 +135,7 @@ namespace VpnScopedConfiguration {
          break;
        }
       }
+      Need(mutable==null||used.Count==mutable.Count);
      }
      return utf8.GetString(output.GetBuffer(),0,checked((int)output.Length));
     }

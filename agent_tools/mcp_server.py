@@ -139,9 +139,11 @@ PREPUSH_COMMANDS = [
         ":app:testDebugUnitTest",
         ":app:compileDebugKotlin",
         ":app:compileDebugAndroidTestKotlin",
+        ":app:verifyDebugAndroidTestSignatures",
     ],
     [sys.executable, "scripts/test_desktop_sdk_independence.py"],
     [sys.executable, "scripts/test_windows_packaging_graph.py"],
+    [sys.executable, "scripts/test_android_instrumentation_signatures.py"],
     [sys.executable, "scripts/test_windows_install_admission_diagnostic.py"],
 ]
 

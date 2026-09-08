@@ -12,18 +12,29 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $native = Join-Path $root 'desktopApp\native\windows'
 $inventoryTool = Join-Path $root 'scripts\windows_native_helpers.py'
-$project = Join-Path $native 'InstallHelper\InstallHelper.csproj'
+$projects = @(
+    (Join-Path $native 'InstallHelper\InstallHelper.csproj'),
+    (Join-Path $native 'VpnBroker\VpnBroker.csproj')
+)
 $required = @(
     (Join-Path $native 'global.json'),
     (Join-Path $native 'Directory.Build.props'),
     (Join-Path $native 'toolchain.lock.json'),
     (Join-Path $native 'import-policy.json'),
-    $project,
+    $projects[0],
+    $projects[1],
     (Join-Path $native 'InstallHelper\loader.manifest'),
+    (Join-Path $native 'VpnBroker\loader.manifest'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-native.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-protocol.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-roles.cs'),
-    (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper.cs')
+    (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-msi.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-broker-main.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-broker.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-user-files.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-cache-resources.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-config.cs')
 )
 foreach ($path in $required) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Native helper input missing: $path" }
@@ -38,6 +49,12 @@ $inventory = Join-Path $output 'native-helper-sources.json'
 & $Python $inventoryTool sources --output $inventory $required
 if ($LASTEXITCODE -ne 0) { throw 'Native helper source inventory failed' }
 if ($ValidateOnly) { return }
+$runtime = Join-Path $root 'desktopApp\src\main\resources\bin\windows-amd64\sing-box.exe'
+$authoritySource = Join-Path $output 'VpnBrokerRuntimeAuthority.g.cs'
+& $Python $inventoryTool runtime-authority --runtime $runtime --output $authoritySource
+if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime authority generation failed' }
+& $Python $inventoryTool sources --output $inventory $required $runtime $authoritySource
+if ($LASTEXITCODE -ne 0) { throw 'Native helper runtime/source inventory failed' }
 $publish = Join-Path $output 'publish'
 Push-Location $native
 try {
@@ -45,10 +62,13 @@ try {
     $lock = Get-Content -LiteralPath (Join-Path $native 'toolchain.lock.json') -Raw | ConvertFrom-Json
     $sdk = & $Dotnet --version
     if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne $lock.sdkVersion) { throw 'Pinned native helper SDK is unavailable' }
-    & $Dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TreatWarningsAsErrors=true -p:ILLinkTreatWarningsAsErrors=true -p:IlcTreatWarningsAsErrors=true -o $publish
-    if ($LASTEXITCODE -ne 0) { throw 'Native helper publish failed' }
+    foreach ($project in $projects) {
+        & $Dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TreatWarningsAsErrors=true -p:ILLinkTreatWarningsAsErrors=true -p:IlcTreatWarningsAsErrors=true "-p:VpnBrokerRuntimeAuthoritySource=$authoritySource" -o $publish
+        if ($LASTEXITCODE -ne 0) { throw 'Native helper publish failed' }
+    }
 } finally { Pop-Location }
 $binary = Join-Path $publish 'vpn-control-install-helper.exe'
+$broker = Join-Path $publish 'vpn-control-vpn-broker.exe'
 $manifest = Join-Path $output 'native-helpers.json'
-& $Python $inventoryTool verify-product --output $binary --manifest $manifest $(foreach ($import in $AllowedImport) { '--allowed-import'; $import })
+& $Python $inventoryTool verify-product --output $binary --output $broker --manifest $manifest $(foreach ($import in $AllowedImport) { '--allowed-import'; $import })
 if ($LASTEXITCODE -ne 0) { throw 'Native helper artifact validation failed' }

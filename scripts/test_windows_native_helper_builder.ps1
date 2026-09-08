@@ -26,10 +26,18 @@ try {
         'desktopApp\native\windows\import-policy.json',
         'desktopApp\native\windows\InstallHelper\InstallHelper.csproj',
         'desktopApp\native\windows\InstallHelper\loader.manifest',
+        'desktopApp\native\windows\VpnBroker\VpnBroker.csproj',
+        'desktopApp\native\windows\VpnBroker\loader.manifest',
         'desktopApp\src\main\resources\windows-install-native.cs',
         'desktopApp\src\main\resources\windows-install-helper-protocol.cs',
         'desktopApp\src\main\resources\windows-install-helper-roles.cs',
-        'desktopApp\src\main\resources\windows-install-helper.cs'
+        'desktopApp\src\main\resources\windows-install-helper-msi.cs',
+        'desktopApp\src\main\resources\windows-install-helper.cs',
+        'desktopApp\src\main\resources\windows-vpn-broker-main.cs',
+        'desktopApp\src\main\resources\windows-vpn-broker.cs',
+        'desktopApp\src\main\resources\windows-vpn-user-files.cs',
+        'desktopApp\src\main\resources\windows-vpn-cache-resources.cs',
+        'desktopApp\src\main\resources\windows-vpn-config.cs'
     )
     foreach ($relative in $inputs) {
         $source = Join-Path $repository $relative

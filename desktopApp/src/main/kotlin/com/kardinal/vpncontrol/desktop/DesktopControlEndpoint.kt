@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.sun.jna.NativeLibrary
+import com.sun.jna.Platform
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.nio.ByteBuffer
@@ -65,17 +67,27 @@ internal class DesktopControlEndpoint(val port: Int, val controllerId: String, v
         }
 
         internal fun verifyPermissions(path: Path) {
-            val owner = Files.getOwner(path, NOFOLLOW_LINKS)
-            val currentUser = path.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
-            require(owner == currentUser)
-            if (Files.getFileStore(path).supportsFileAttributeView("posix")) {
+            if (Platform.isWindows()) {
+                // user.name is overridable and SYSTEM may report a machine account.
+                // Bind credentials to the actual process token and inspected file SID.
+                val native = JnaWindowsInstallNative()
+                val sid = JnaWindowsInstallAdmission().currentSid()
+                val handle = native.open(path.toAbsolutePath().toString(), WindowsInstallNative.INSPECT, shareDelete = false)
+                try {
+                    native.requirePrivateExport(handle, sid)
+                    val owner = Files.getOwner(path, NOFOLLOW_LINKS)
+                    val view = Files.getFileAttributeView(path, AclFileAttributeView::class.java, NOFOLLOW_LINKS)
+                        ?: throw DesktopControlProtocolException()
+                    require(isPrivateControlAcl(owner, view.acl))
+                } finally { native.close(handle) }
+            } else {
+                require(Files.getFileStore(path).supportsFileAttributeView("posix"))
+                val uid = NativeLibrary.getInstance(Platform.C_LIBRARY_NAME)
+                    .getFunction("geteuid").invokeInt(emptyArray())
+                require(Files.getAttribute(path, "unix:uid", NOFOLLOW_LINKS) == uid)
                 require(Files.getPosixFilePermissions(path, NOFOLLOW_LINKS).all {
                     it in PosixFilePermissions.fromString("rw-------")
                 })
-            } else {
-                val view = Files.getFileAttributeView(path, AclFileAttributeView::class.java, NOFOLLOW_LINKS)
-                    ?: throw DesktopControlProtocolException()
-                require(isPrivateControlAcl(owner, view.acl))
             }
         }
     }

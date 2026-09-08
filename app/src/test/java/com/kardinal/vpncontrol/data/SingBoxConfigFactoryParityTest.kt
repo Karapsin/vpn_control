@@ -193,6 +193,28 @@ class SingBoxConfigFactoryParityTest {
     }
 
     @Test
+    fun androidValidationConfigRoutesTrustedFixtureTargetThroughProxy() {
+        val route = parseConfig(
+            SingBoxConfigFactory.buildProxyValidationConfig(
+                profile = socksProfile(),
+                httpPort = 2080,
+                dns = DnsSettings(),
+            ),
+        ).getValue("route").jsonObject
+        val directCidrs = route.getValue("rules")
+            .jsonArray
+            .flatMap { rule ->
+                rule.jsonObject["ip_cidr"]?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
+            }
+
+        assertEquals("proxy", route.getValue("final").jsonPrimitive.content)
+        assertFalse(
+            "1.0.0.1 must not match any validation direct-CIDR rule",
+            directCidrs.any { cidrContainsIpv4(it, "1.0.0.1") },
+        )
+    }
+
+    @Test
     fun androidVpnActiveVerificationInboundRoutesToProxyBeforeDirectRules() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
@@ -420,4 +442,20 @@ class SingBoxConfigFactoryParityTest {
                 rule["outbound"]?.jsonPrimitive?.content == "block"
         }
     }
+
+    private fun cidrContainsIpv4(cidr: String, address: String): Boolean {
+        val (network, prefixText) = cidr.split("/", limit = 2)
+        val prefix = prefixText.toInt()
+        require(prefix in 0..32)
+        val mask = if (prefix == 0) 0L else (0xffff_ffffL shl (32 - prefix)) and 0xffff_ffffL
+        return (ipv4AsLong(network) and mask) == (ipv4AsLong(address) and mask)
+    }
+
+    private fun ipv4AsLong(value: String): Long = value
+        .split(".")
+        .fold(0L) { accumulated, part ->
+            val octet = part.toInt()
+            require(octet in 0..255)
+            (accumulated shl 8) or octet.toLong()
+        }
 }

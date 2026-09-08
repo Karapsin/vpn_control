@@ -2,7 +2,9 @@
   "schemaVersion": 1,
   "roles": {
     "vpn-control-install-helper.exe": {
-      "operations": ["validate-only"],
+      "operations": [
+        "validate-only"
+      ],
       "minimumWindowsBuild": 14393,
       "dependentLoadFlags": 2048,
       "manifest": "InstallHelper/loader.manifest",
@@ -17,6 +19,29 @@
         "api-ms-win-crt-string-l1-1-0.dll",
         "bcrypt.dll",
         "kernel32.dll",
+        "ole32.dll"
+      ],
+      "delayImports": []
+    },
+    "vpn-control-vpn-broker.exe": {
+      "operations": [
+        "authenticated-runtime-channel"
+      ],
+      "minimumWindowsBuild": 14393,
+      "dependentLoadFlags": 2048,
+      "manifest": "VpnBroker/loader.manifest",
+      "imports": [
+        "advapi32.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "bcrypt.dll",
+        "kernel32.dll",
+        "ntdll.dll",
         "ole32.dll"
       ],
       "delayImports": []

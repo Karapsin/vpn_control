@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol.data
 
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kardinal.vpncontrol.model.BenchmarkValidationSettings
@@ -8,12 +9,22 @@ import java.net.Socket
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LocalProtocolSmokeInstrumentedTest {
+    private companion object {
+        // This endpoint is reachable through the task-owned authenticated relay and uses
+        // ordinary public CA validation.  It is intentionally outside the validation
+        // direct-CIDR exceptions so the benchmark must traverse the candidate proxy.
+        const val TRUSTED_EGRESS_TARGET = "https://1.0.0.1/cdn-cgi/trace"
+
+        const val LOCAL_SOCKS_LINK = "socks://alice:secretpass@10.0.2.2:18081#SOCKS%20Local"
+    }
+
     private val appContext = InstrumentationRegistry.getInstrumentation().targetContext
     private val storage = ProfileStorage(appContext)
     private val orchestrator = BenchmarkOrchestrator(appContext, storage)
@@ -22,7 +33,7 @@ class LocalProtocolSmokeInstrumentedTest {
     fun prepareValidationSettings() = runBlocking {
         storage.updateValidationSettings(
             BenchmarkValidationSettings(
-                testUrl = "https://example.com/",
+                testUrl = TRUSTED_EGRESS_TARGET,
                 batchSize = 1,
                 retryCount = 0,
             ),
@@ -31,7 +42,7 @@ class LocalProtocolSmokeInstrumentedTest {
 
     @Test
     fun benchmarksLocalSocksServer() = runSmoke(
-        link = "socks://alice:secretpass@10.0.2.2:18081#SOCKS%20Local",
+        link = LOCAL_SOCKS_LINK,
         port = 18081,
     )
 
@@ -59,7 +70,7 @@ class LocalProtocolSmokeInstrumentedTest {
         port = 18083,
     )
 
-    private fun runSmoke(link: String, port: Int) = runBlocking {
+    private fun runSmoke(link: String, port: Int): Unit = runBlocking {
         assumeTrue(
             "Live protocol smoke requires a bundled sing-box binary for this ABI",
             hasBundledSingBoxBinary(),
@@ -73,6 +84,16 @@ class LocalProtocolSmokeInstrumentedTest {
 
         assertEquals("manual", benchmark.primaryStatus)
         assertEquals(benchmark.detail, "ok", benchmark.testStatus)
+        assertEquals("manual benchmarks intentionally do not expose a primary total", null, benchmark.primaryTotal)
+        assertTrue(
+            "expected a finite positive successful test timing, got ${benchmark.testTotal}",
+            benchmark.testTotal?.let { it.isFinite() && it > 0.0 } == true,
+        )
+        Log.i(
+            "LocalProtocolSmoke",
+            "benchmark test_ms=${benchmark.testTotal} score=${benchmark.score}",
+        )
+        Unit
     }
 
     private fun isServerReachable(port: Int): Boolean {

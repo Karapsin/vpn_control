@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-from test_windows_native_helpers import pe
+from test_windows_native_helpers import pe, BROKER_MANIFEST
 
 
 FIXTURE_BUILD = """
@@ -91,9 +91,14 @@ class WindowsPackagingGraphTest(unittest.TestCase):
             shutil.copy2(self.repository / "scripts" / name, scripts / name)
         native = self.root / "desktopApp/native/windows"
         (native / "InstallHelper").mkdir(parents=True)
-        for name in ("import-policy.json", "InstallHelper/loader.manifest"):
+        (native / "VpnBroker").mkdir()
+        for name in ("import-policy.json", "InstallHelper/loader.manifest", "VpnBroker/loader.manifest"):
             shutil.copy2(self.repository / "desktopApp/native/windows" / name, native / name)
         (scripts / "candidate.exe").write_bytes(pe())
+        (scripts / "broker.exe").write_bytes(pe(manifest=BROKER_MANIFEST.read_bytes()))
+        runtime = self.root / "desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe"
+        runtime.parent.mkdir(parents=True)
+        runtime.write_bytes(pe())
         (scripts / "fixture_native_build.py").write_text('''
 import pathlib, shutil, subprocess, sys
 output = pathlib.Path(sys.argv[1])
@@ -101,9 +106,12 @@ if sys.argv[2] == 'fail':
     raise SystemExit('FIXTURE_NATIVE_BUILD_FAILED')
 (output / 'publish').mkdir(parents=True, exist_ok=True)
 binary = output / 'publish/vpn-control-install-helper.exe'
+broker = output / 'publish/vpn-control-vpn-broker.exe'
 shutil.copyfile(pathlib.Path(__file__).with_name('candidate.exe'), binary)
+shutil.copyfile(pathlib.Path(__file__).with_name('broker.exe'), broker)
 subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('windows_native_helpers.py')),
-               'verify-product', '--output', str(binary), '--manifest', str(output / 'native-helpers.json')], check=True)
+               'verify-product', '--output', str(binary), '--output', str(broker),
+               '--manifest', str(output / 'native-helpers.json')], check=True)
 print('FIXTURE_NATIVE_READY')
 ''', encoding="utf-8")
         with (self.root / "desktopApp/build.gradle").open("a", encoding="utf-8") as build:
@@ -126,6 +134,10 @@ tasks.named('createDistributable').configure {
             def packaged = new File(appImage.get().asFile, 'app/native/windows-amd64/vpn-control-install-helper.exe')
             if (!packaged.isFile() || packaged.bytes != rootProject.file('scripts/candidate.exe').bytes) {
                 throw new GradleException('Installer did not receive the verified native helper')
+            }
+            def broker = new File(appImage.get().asFile, 'app/native/windows-amd64/vpn-control-vpn-broker.exe')
+            if (!broker.isFile() || broker.bytes != rootProject.file('scripts/broker.exe').bytes) {
+                throw new GradleException('Installer did not receive the verified native VPN broker')
             }
             println "FIXTURE_NATIVE_PACKAGED_${name}"
         }
@@ -186,6 +198,26 @@ tasks.named('createDistributable').configure {
         self.assertIn("FIXTURE_NATIVE_BUILD_FAILED", output)
         self.assertNotIn("FIXTURE_IMAGE_READY", output)
         self.assertNotIn("FIXTURE_PACKAGED_", output)
+
+    def test_changed_bundled_runtime_rebuilds_native_helpers_before_packaging(self):
+        self.enable_native_producer()
+        task = ":desktopApp:packageDistributionForCurrentOS"
+        result, output = self.run_gradle(task, *self.native_properties)
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("FIXTURE_NATIVE_READY", output)
+
+        result, output = self.run_gradle(task, *self.native_properties)
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn(":desktopApp:prepareWindowsNativeHelpers UP-TO-DATE", output)
+        self.assertNotIn("FIXTURE_NATIVE_READY", output)
+
+        runtime = self.root / "desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe"
+        runtime.write_bytes(runtime.read_bytes() + b"changed-bundled-runtime")
+        result, output = self.run_gradle(task, *self.native_properties)
+        self.assertEqual(0, result.returncode, output)
+        self.assertLess(output.index("FIXTURE_NATIVE_READY"), output.index("FIXTURE_IMAGE_READY"))
+        self.assertIn("FIXTURE_NATIVE_PACKAGED_packageExe", output)
+        self.assertIn("FIXTURE_NATIVE_PACKAGED_packageMsi", output)
 
     def test_graph_inspection_does_not_build_native_helper(self):
         self.enable_native_producer(failure=True)

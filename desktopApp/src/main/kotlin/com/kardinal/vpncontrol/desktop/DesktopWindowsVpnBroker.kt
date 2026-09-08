@@ -51,10 +51,10 @@ internal object DesktopWindowsVpnBroker {
     internal fun prepareRetained(
         captured: DesktopWindowsCapturedConfiguration,
         logFile: Path,
-        scope: DesktopWindowsRuntimeResourceScope,
+        scopeProvider: DesktopWindowsRuntimeResourceScopeProvider,
         onProgress: (DesktopWindowsRuntimePreparationStage) -> Unit = {},
     ): DesktopPreparedRuntimeProcess = captured.withSnapshot { config, resources ->
-        prepareCaptured(config, resources, logFile, onProgress, captured.mutableResources, scope)
+        prepareCaptured(config, resources, logFile, onProgress, captured.mutableResources, scopeProvider)
     }
 
     internal fun prepareCapturedInput(captured: DesktopWindowsCapturedConfiguration,
@@ -130,12 +130,12 @@ internal object DesktopWindowsVpnBroker {
     private fun prepareCaptured(config: String, resources: List<DesktopWindowsCapturedResource>, logFile: Path,
                                 onProgress: (DesktopWindowsRuntimePreparationStage) -> Unit,
                                 mutableResources: List<DesktopWindowsRuntimeResource> = emptyList(),
-                                scope: DesktopWindowsRuntimeResourceScope? = null): DesktopPreparedRuntimeProcess {
+                                scopeProvider: DesktopWindowsRuntimeResourceScopeProvider? = null): DesktopPreparedRuntimeProcess {
         if (mutableResources.isNotEmpty()) {
-            if (scope == null) throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
-            // The production gate stays closed until cache leases and protected publication
-            // receipts participate in this channel's native exit acknowledgment.
-            throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+            if (mutableResources.any { it.kind != DesktopWindowsRuntimeResourceKind.CACHE })
+                throw DesktopWindowsRuntimeFailure("UNSUPPORTED", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+            if (scopeProvider == null) throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
+                stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
         }
         check(System.getProperty("os.name").startsWith("Windows", true))
         val architecture = System.getProperty("os.arch").lowercase()
@@ -154,6 +154,18 @@ internal object DesktopWindowsVpnBroker {
             check(api.GetProcessTimes(Kernel32.INSTANCE.GetCurrentProcess(), created, rest, rest.share(8), rest.share(16)))
             created.getLong(0)
         } }
+        val scope = if (mutableResources.isEmpty()) null else scopeProvider?.current()
+            ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+        val resourceJob = scope?.let {
+            DesktopWindowsRuntimeResourceJob(UUID.randomUUID().toString(), it,
+                mutableResources.map { resource -> DesktopWindowsRuntimeResourceEntry(resource.id, resource.kind) },
+                DesktopWindowsRuntimeResourceNativeOwner(ProcessHandle.current().pid(), creation, ownerSid))
+        }
+        // Durable correlation precedes UAC and every native input. A failed admission never
+        // touches actual A and leaves the unresolved journal available for authoritative recovery.
+        val reconciliation = resourceJob?.let {
+            DesktopWindowsRuntimeResourceReconciliation.retain(it, scopeProvider?.journals())
+        }
         val name = "vpn-control-vpn-${UUID.randomUUID()}"
         val capturedCommand = command(name, ProcessHandle.current().pid(), creation,
             ownerSid, digest)
@@ -181,7 +193,7 @@ internal object DesktopWindowsVpnBroker {
             throw DesktopWindowsRuntimeFailure("UNAVAILABLE", stage = DesktopWindowsRuntimePreparationStage.AUTHORIZATION)
         }
         val channel = NativeChannel(api, name, broker, ownedJob)
-        val retained = DesktopWindowsScopedRuntimeProcess(channel, logFile)
+        val retained = DesktopWindowsScopedRuntimeProcess(channel, logFile, resources = reconciliation)
         var stage = DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION
         try {
             onProgress(stage)
@@ -193,13 +205,13 @@ internal object DesktopWindowsVpnBroker {
             check(api.GetNamedPipeServerProcessId(pipe, server) && server.value == brokerPid) { "PERMISSION_DENIED" }
             stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS
             onProgress(stage)
-            channel.initialize(runtime, config, resources) {
+            channel.initialize(runtime, config, resources, resourceJob, mutableResources) {
                 stage = DesktopWindowsRuntimePreparationStage.CHILD_CREATED
                 onProgress(stage)
             }
             stage = DesktopWindowsRuntimePreparationStage.READY
             onProgress(stage)
-            DesktopPreparedWindowsRuntimeProcess(channel, logFile)
+            DesktopPreparedWindowsRuntimeProcess(channel, logFile, reconciliation)
         } catch (failure: Throwable) {
             throw desktopWindowsPreparationFailure(failure, stage,
                 abort = channel::abort, close = channel::close, unresolved = { retained },
@@ -318,9 +330,22 @@ internal object DesktopWindowsVpnBroker {
         private var committed = false
         fun connect(): WinNT.HANDLE = connect(api, pipeName, broker).also { pipe = it }
         fun initialize(runtime: ByteArray, configuration: String, resources: List<DesktopWindowsCapturedResource>,
-                       childCreated: () -> Unit) {
-            write(integer(4))
+                       resourceJob: DesktopWindowsRuntimeResourceJob?,
+                       mutableResources: List<DesktopWindowsRuntimeResource>, childCreated: () -> Unit) {
+            val preparation = resourceJob?.let { job ->
+                ByteArrayOutputStream().also { output ->
+                    DesktopWindowsRuntimeResourceProtocol.writePreparation(job, mutableResources, output::write)
+                }.toByteArray().also { bytes -> require(bytes.size in 1..MAX_RESOURCE_PREPARATION_BYTES) }
+            }
+            // Opcode 4 remains byte-for-byte compatible with immutable-only helpers. Mutable
+            // candidates use opcode 5, which requires the authenticated resource envelope.
+            mutableProtocol = preparation != null
+            write(integer(if (preparation == null) 4 else 5))
             write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(ownedJob.handleValue).array())
+            if (preparation != null) {
+                write(integer(preparation.size))
+                write(preparation)
+            }
             write(integer(runtime.size)); write(runtime)
             writeConfiguration(configuration, ::write)
             write(integer(resources.size))
@@ -337,11 +362,19 @@ internal object DesktopWindowsVpnBroker {
                 write(ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN).putInt(0).putLong(offset).array())
                 write(resource.sha256.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             }
-            when (read(1).single().toInt()) {
+            val result = read(1).single().toInt()
+            when (result) {
                 0 -> Unit
                 1 -> throw DesktopWindowsRuntimeFailure("INVALID_ARGUMENT")
                 2 -> throw DesktopWindowsRuntimeFailure("PERMISSION_DENIED")
                 3 -> throw DesktopWindowsRuntimeFailure("RESOURCE_EXHAUSTED")
+                // Legacy helpers and generic native IO both use 4. It safely fails preparation
+                // before B can run, but does not establish which side lacked the v5 contract.
+                4 -> throw DesktopWindowsRuntimeFailure("UNAVAILABLE")
+                5 -> throw DesktopWindowsRuntimeFailure("INCOMPATIBLE_PROTOCOL")
+                6 -> throw DesktopWindowsRuntimeFailure("CONFLICT")
+                7 -> throw DesktopWindowsRuntimeFailure("PERSISTENCE_FAILED")
+                8 -> throw DesktopWindowsRuntimeFailure("UNSUPPORTED")
                 else -> throw DesktopWindowsRuntimeFailure("UNAVAILABLE")
             }
             childCreated()
@@ -379,12 +412,10 @@ internal object DesktopWindowsVpnBroker {
         private fun exchange(command: Int): DesktopWindowsRuntimeStatus {
             check(!closed)
             write(byteArrayOf(command.toByte()))
-            val alive = read(1).single().toInt()
-            check(alive in 0..1)
-            val size = ByteBuffer.wrap(read(4)).order(ByteOrder.LITTLE_ENDIAN).int
-            check(size in 0..65536)
-            return DesktopWindowsRuntimeStatus(alive == 1, read(size)).also { pending = it.copy(log = byteArrayOf()) }
+            return DesktopWindowsRuntimeResourceProtocol.readStatus(mutableProtocol, ::read)
+                .also { pending = it.copy(log = byteArrayOf()) }
         }
+        private var mutableProtocol = false
         private fun integer(value: Int) = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
         private fun write(bytes: ByteArray, start: Int = 0, length: Int = bytes.size) {
             var offset = start
@@ -443,6 +474,7 @@ internal object DesktopWindowsVpnBroker {
             closed = true
         }
     }
+    private const val MAX_RESOURCE_PREPARATION_BYTES = 8 * 1024 * 1024
     private interface Api : StdCallLibrary {
         fun GetSystemDirectoryW(output: Pointer, capacity: Int): Int
         fun GetProcessTimes(process: WinNT.HANDLE, creation: Pointer, exit: Pointer, kernel: Pointer, user: Pointer): Boolean

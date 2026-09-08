@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import re
 import shlex
+import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -47,24 +50,98 @@ class SocksHttpFixtureTest(unittest.TestCase):
         self.assertNotIn("usesCleartextTraffic", release_manifest)
 
     def test_fixture_completes_socks_handshake_and_returns_token(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "greetings.ndjson"
+            server, thread = start_fixture(transcript)
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05\x01\x00")
+                    self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                    client.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+                    self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                    receive_exact(client, 8)
+                    client.sendall(b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\n\r\n")
+                    response = receive_until_close(client)
+                self.assertIn(b"HTTP/1.1 200 OK", response)
+                self.assertTrue(response.endswith(b"fixture-token"))
+                self.assertIn({"event": "methods", "offered": [0]}, read_transcript(transcript))
+            finally:
+                stop_fixture(server, thread)
+
+    def test_fixture_records_partial_greeting_without_authentication_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "greetings.ndjson"
+            server, thread = start_fixture(transcript)
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05")
+                    client.shutdown(socket.SHUT_WR)
+                    receive_until_close(client)
+                self.assertEqual([{"event": "greeting", "first_read_bytes": 1}], read_transcript(transcript))
+            finally:
+                stop_fixture(server, thread)
+
+    def test_fixture_rejects_auth_only_greeting_when_authentication_is_not_configured(self) -> None:
         server = FixtureServer("127.0.0.1", 0, "fixture-token")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             with socket.create_connection(server.server_address, timeout=3) as client:
-                client.sendall(b"\x05\x01\x00")
-                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
-                client.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
-                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
-                receive_exact(client, 8)
-                client.sendall(b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\n\r\n")
-                response = receive_until_close(client)
-            self.assertIn(b"HTTP/1.1 200 OK", response)
-            self.assertTrue(response.endswith(b"fixture-token"))
+                client.sendall(b"\x05\x01\x02")
+                self.assertEqual(b"\x05\xff", receive_exact(client, 2))
         finally:
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=3)
+            stop_fixture(server, thread)
+
+    def test_fixture_authenticates_configured_username_password_without_recording_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "greetings.ndjson"
+            server = FixtureServer("127.0.0.1", 0, "fixture-token", transcript, "fixture-user", "fixture-pass")
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05\x01\x02")
+                    self.assertEqual(b"\x05\x02", receive_exact(client, 2))
+                    client.sendall(b"\x01\x0cfixture-user\x0cfixture-pass")
+                    self.assertEqual(b"\x01\x00", receive_exact(client, 2))
+                    client.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+                    self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                    receive_exact(client, 8)
+                self.assertEqual(
+                    [
+                        {"event": "greeting", "first_read_bytes": 2},
+                        {"event": "methods", "offered": [2]},
+                        {"event": "auth", "accepted": True},
+                        {"event": "connect", "reached": True},
+                        {"event": "tunnel_payload", "kind": "eof"},
+                    ],
+                    read_transcript(transcript, minimum_events=5),
+                )
+            finally:
+                stop_fixture(server, thread)
+
+    def test_fixture_rejects_wrong_configured_credentials_without_recording_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "greetings.ndjson"
+            server = FixtureServer("127.0.0.1", 0, "fixture-token", transcript, "fixture-user", "fixture-pass")
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05\x01\x02")
+                    self.assertEqual(b"\x05\x02", receive_exact(client, 2))
+                    client.sendall(b"\x01\x0cfixture-user\x0awrong-pass")
+                    self.assertEqual(b"\x01\x01", receive_exact(client, 2))
+                self.assertEqual(
+                    [
+                        {"event": "greeting", "first_read_bytes": 2},
+                        {"event": "methods", "offered": [2]},
+                        {"event": "auth", "accepted": False},
+                    ],
+                    read_transcript(transcript, minimum_events=3),
+                )
+            finally:
+                stop_fixture(server, thread)
 
 
 def receive_exact(connection: socket.socket, size: int) -> bytes:
@@ -81,6 +158,30 @@ def receive_until_close(connection: socket.socket) -> bytes:
         if not chunk:
             return bytes(received)
         received.extend(chunk)
+
+
+def start_fixture(transcript: Path) -> tuple[FixtureServer, threading.Thread]:
+    server = FixtureServer("127.0.0.1", 0, "fixture-token", transcript)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def stop_fixture(server: FixtureServer, thread: threading.Thread) -> None:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=3)
+
+
+def read_transcript(transcript: Path, minimum_events: int = 1) -> list[dict[str, object]]:
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if transcript.exists():
+            events = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+            if len(events) >= minimum_events:
+                return events
+        time.sleep(0.01)
+    return [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
 
 
 if __name__ == "__main__":

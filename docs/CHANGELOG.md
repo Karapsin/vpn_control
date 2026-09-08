@@ -3,6 +3,12 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Add Windows native broker packaging and cache handoff validation, with earlier Android instrumentation checks.
+- Verify controller credential ownership using native account identities and keep Windows broker compiler fixtures complete.
+- Keep Windows private-file ownership regressions compatible with live spool writer locks.
+
 ## 2.1.6 - 2026-09-08
 
 - Run generated-source fixture rejection without requiring Windows symlink privileges.

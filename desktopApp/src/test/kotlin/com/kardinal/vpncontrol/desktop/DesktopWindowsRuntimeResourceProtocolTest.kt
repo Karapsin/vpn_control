@@ -64,11 +64,47 @@ class DesktopWindowsRuntimeResourceProtocolTest {
         }
     }
 
+    @Test fun terminalEnvelopeFollowsNonemptyFinalLog() {
+        val output = terminalStatusBytes()
+        val log = "final-log".encodeToByteArray()
+        var offset = 0
+        val status = DesktopWindowsRuntimeResourceProtocol.readStatus(mutable = true) { count ->
+            check(count >= 0 && offset + count <= output.size)
+            output.copyOfRange(offset, offset + count).also { offset += count }
+        }
+        assertFalse(status.running)
+        assertContentEquals(log, status.log)
+        assertEquals(JOB, assertNotNull(status.resourceReconciliation).jobId)
+        assertEquals(output.size, offset)
+    }
+
+    @Test fun truncatedOrInvalidTerminalEnvelopeIsRejectedBeforeReconciliation() {
+        fun decode(bytes: ByteArray) {
+            var offset = 0
+            DesktopWindowsRuntimeResourceProtocol.readStatus(mutable = true) { count ->
+                check(count >= 0 && offset + count <= bytes.size)
+                bytes.copyOfRange(offset, offset + count).also { offset += count }
+            }
+        }
+        assertFailsWith<IllegalStateException> { decode(terminalStatusBytes().dropLast(1).toByteArray()) }
+        assertFailsWith<IllegalStateException> { decode(terminalStatusBytes(kind = 9)) }
+    }
+
     companion object {
         private const val JOB = "00000000-0000-0000-0000-000000000031"
         private const val SCOPE = "00000000-0000-0000-0000-000000000032"
         private const val CONTROLLER = "00000000-0000-0000-0000-000000000033"
         private const val SID = "S-1-5-21-1-2-3-1001"
+        private fun terminalStatusBytes(kind: Int = 0): ByteArray {
+            val output = ByteArrayOutputStream()
+            fun integer(value: Int) { output.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()) }
+            fun text(value: String) { val bytes = value.encodeToByteArray(); integer(bytes.size); output.write(bytes) }
+            val log = "final-log".encodeToByteArray()
+            output.write(0); integer(log.size); output.write(log)
+            integer(1); text(JOB); integer(1); text("00000000-0000-0000-0000-000000000041")
+            output.write(kind); output.write(1); output.write(0); output.write(1)
+            return output.toByteArray()
+        }
         internal fun fixture(): Pair<DesktopWindowsRuntimeResourceJob, List<DesktopWindowsRuntimeResource>> {
             val scope = DesktopWindowsRuntimeResourceScope(SCOPE, CONTROLLER,
                 DesktopWindowsResourceScopeRecord("C:\\workspace\\.scope", "1".repeat(24), "2".repeat(24), 71, "3".repeat(64)))

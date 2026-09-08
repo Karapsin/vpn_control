@@ -17,6 +17,7 @@ namespace VpnScopedStorage {
 
  /** Decoding is side-effect free. The broker supplies the already retained native owner's identity. */
  public sealed class RuntimeResourcePreparation {
+  internal const int MaximumMetadataBytes=8*1024*1024;
   public readonly RuntimeResourceBinding Binding;
   readonly MutableResourceInput[] inputs;
   RuntimeResourcePreparation(RuntimeResourceBinding binding,MutableResourceInput[] captured) {
@@ -24,6 +25,19 @@ namespace VpnScopedStorage {
   }
   public MutableResourceInput[] Inputs { get { return (MutableResourceInput[])inputs.Clone(); } }
   public override string ToString() { return "Native resource preparation (<redacted>)"; }
+  public static RuntimeResourcePreparation ReadFrameForOwner(BinaryReader reader,OwnerIdentity expected) {
+   int length=reader.ReadInt32();
+   if(length<=0) throw new IOException("INVALID_ARGUMENT");
+   if(length>MaximumMetadataBytes) throw new IOException("RESOURCE_EXHAUSTED");
+   byte[] bytes=reader.ReadBytes(length);
+   if(bytes.Length!=length) throw new IOException("INVALID_ARGUMENT");
+   using(var frame=new MemoryStream(bytes,false))
+   using(var fields=new BinaryReader(frame,new System.Text.UTF8Encoding(false,true),true)) {
+    var result=ReadForOwner(fields,expected);
+    if(frame.Position!=frame.Length) throw new IOException("INVALID_ARGUMENT");
+    return result;
+   }
+  }
   public static RuntimeResourcePreparation ReadForOwner(BinaryReader reader,OwnerIdentity expected) {
    try {
     if(expected==null) throw new IOException("INVALID_ARGUMENT");
@@ -176,6 +190,99 @@ namespace VpnScopedStorage {
     }
     disposed=true;
    }
+  }
+ }
+
+ /** The fixed broker creates the concrete adapter from admitted native storage. The internal
+  * behavior seam exercises ordering without allowing pipe callers to supply native outcome flags.
+  */
+ internal sealed class RuntimeResourceLifecycle {
+  internal interface Batch {
+   void CaptureAtCommit(); void MarkCommitIntent(); void BeginPublicationAfterExit();
+   PublicationResult[] Snapshot(); void WaitForPublication(); void CloseRetainedStreams();
+  }
+  sealed class NativeBatch : Batch {
+   readonly RuntimeCacheResources value;
+   internal NativeBatch(RuntimeCacheResources batch) { value=batch; }
+   public void CaptureAtCommit() { value.CaptureAtCommit(); }
+   public void MarkCommitIntent() { value.MarkCommitIntent(); }
+   public void BeginPublicationAfterExit() { value.BeginPublicationAfterExit(); }
+   public PublicationResult[] Snapshot() { return value.Snapshot(); }
+   public void WaitForPublication() { value.WaitForPublication(); }
+   public void CloseRetainedStreams() { value.CloseRetainedStreams(); }
+  }
+  readonly RuntimeResourceBinding binding;
+  readonly Batch batch;
+  readonly ResourceAdmissionGate gate;
+  readonly Func<bool> exactChildExited;
+  bool attempted,closed;
+  internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,RuntimeCacheResources resources,
+    ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited)
+   : this(admitted,new NativeBatch(resources),admission,retainedNativeChildExited) { }
+  internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,Batch resources,
+    ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited) {
+   if(admitted==null||resources==null||admission==null||retainedNativeChildExited==null||
+     admission.AdmissionClosed||!admission.HadOriginalAdmission||!admission.Matches(admitted)) throw new IOException("CONFLICT");
+   binding=admitted;batch=resources;gate=admission;exactChildExited=retainedNativeChildExited;
+  }
+  internal void Commit(Action resumeExactSuspendedChild) {
+   if(attempted||closed||resumeExactSuspendedChild==null) throw new IOException("CONFLICT");
+   attempted=true;
+   batch.CaptureAtCommit();
+   gate.MarkCommitIntent(); // Durable before a possibly successful native resume.
+   batch.MarkCommitIntent();
+   resumeExactSuspendedChild();
+  }
+  internal PublicationResult[] AfterConfirmedExit() {
+   if(!exactChildExited()) throw new IOException("BUSY");
+   batch.BeginPublicationAfterExit();
+   var result=batch.Snapshot();
+   if(result!=null) return result;
+   var pending=new List<PublicationResult>();
+   foreach(var resource in binding.Resources)
+    pending.Add(new PublicationResult(binding.JobId,resource.Id,"PENDING_PUBLICATION","OUTCOME_UNKNOWN"));
+   return pending.ToArray();
+  }
+  internal void FinishAfterConfirmedExit() {
+   if(closed) return;
+   if(!exactChildExited()) throw new IOException("BUSY");
+   batch.BeginPublicationAfterExit();batch.WaitForPublication();batch.CloseRetainedStreams();
+   gate.CloseAfterNativeReconciliation();closed=true;
+  }
+  internal void WriteTerminal(BinaryWriter writer) {
+   var result=AfterConfirmedExit();var identities=binding.Resources;
+   if(result.Length!=identities.Length) throw new IOException("CONFLICT");
+   var byId=new Dictionary<string,PublicationResult>(StringComparer.Ordinal);
+   foreach(var item in result) {
+    if(item==null||item.JobId!=binding.JobId||byId.ContainsKey(item.ResourceId)) throw new IOException("CONFLICT");
+    byId.Add(item.ResourceId,item);
+   }
+   writer.Write(1);PublicationJournal.Text(writer,binding.JobId);writer.Write(identities.Length);
+   foreach(var identity in identities) {
+    PublicationResult item;if(!byId.TryGetValue(identity.Id,out item)) throw new IOException("CONFLICT");
+    byte disposition,code;
+    switch(item.Disposition) {
+     case "NO_MUTABLE_HANDOFF":disposition=0;break;
+     case "PUBLISHED":disposition=1;break;
+     case "PENDING_PUBLICATION":disposition=2;break;
+     case "COMMITTED_CLEANUP_PENDING":disposition=3;break;
+     default:throw new IOException("CONFLICT");
+    }
+    switch(item.Code) {
+     case null:code=0;break;
+     case "PERSISTENCE_FAILED":code=1;break;
+     case "PERMISSION_DENIED":code=2;break;
+     case "CONFLICT":code=3;break;
+     case "OUTCOME_UNKNOWN":code=4;break;
+     default:throw new IOException("CONFLICT");
+    }
+    if((disposition<2)!=(code==0)) throw new IOException("CONFLICT");
+    PublicationJournal.Text(writer,identity.Id);writer.Write((byte)(identity.Kind=="CACHE"?0:1));
+    writer.Write(disposition);writer.Write(code);
+   }
+   // The intermediate broker retains its protected stage/gate for bounded future recovery.
+   // Published bytes are known independently; no disposal proof is inferred from child exit.
+   writer.Write(false);
   }
  }
 }

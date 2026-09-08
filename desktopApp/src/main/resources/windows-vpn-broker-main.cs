@@ -31,11 +31,28 @@ public static class VpnRuntimeBrokerEntry {
   return new Invocation(args[0],pid,created,owner.Sid,args[4]);
  }
  public static int Main(string[] args) {
+  return Execute(args,invocation=>VpnRuntimeBroker.Run(invocation.PipeName,invocation.OwnerProcessId,
+   invocation.OwnerCreationFileTime,invocation.OwnerSid,invocation.RuntimeSha256));
+ }
+ sealed class AuthorityFailure : Exception {
+  internal readonly string Code;
+  internal AuthorityFailure(string code) { Code=code; }
+ }
+ static void RequireRuntimeAuthority(Invocation invocation) {
+#if VPN_RUNTIME_AUTHORITY
+  if(!String.Equals(invocation.RuntimeSha256,VpnBrokerRuntimeAuthority.Sha256,StringComparison.Ordinal))
+   throw new AuthorityFailure("PERMISSION_DENIED");
+#else
+  throw new AuthorityFailure("UNAVAILABLE");
+#endif
+ }
+ internal static int Execute(string[] args,Action<Invocation> run) {
   try {
    Invocation invocation=Parse(args);
-   VpnRuntimeBroker.Run(invocation.PipeName,invocation.OwnerProcessId,invocation.OwnerCreationFileTime,
-    invocation.OwnerSid,invocation.RuntimeSha256);
+   RequireRuntimeAuthority(invocation);
+   run(invocation);
    return 0;
+  } catch(AuthorityFailure failure) { Console.Error.WriteLine(failure.Code);return 1;
   } catch(OutOfMemoryException) { Console.Error.WriteLine("RESOURCE_EXHAUSTED");return 1; }
   catch(ArgumentException) { Console.Error.WriteLine("INVALID_ARGUMENT");return 1; }
   catch(Exception) { Console.Error.WriteLine("RUNTIME_FAILED");return 1; }

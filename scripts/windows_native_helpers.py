@@ -31,6 +31,37 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def runtime_authority(runtime: Path, output: Path) -> dict[str, object]:
+    """Bind the broker build to the exact prepared bundled runtime, never a caller path."""
+    if runtime.is_symlink() or not runtime.is_file():
+        raise ValueError("bundled runtime must be a regular file")
+    size = runtime.stat().st_size
+    if not 64 <= size <= 192 * 1024 * 1024:
+        raise ValueError("bundled runtime size rejected")
+    with runtime.open("rb") as source:
+        header = source.read(64)
+        offset = struct.unpack_from("<I", header, 0x3C)[0]
+        if header[:2] != b"MZ" or not 64 <= offset <= size - 6:
+            raise ValueError("bundled runtime PE header rejected")
+        source.seek(offset)
+        if source.read(6) != b"PE\0\0\x64\x86":
+            raise ValueError("bundled runtime must be AMD64")
+        source.seek(0)
+        digest = hashlib.sha256()
+        count = 0
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+            count += len(chunk)
+        if count != size:
+            raise ValueError("bundled runtime changed during capture")
+    value = digest.hexdigest()
+    output.write_text(
+        "// Generated from the prepared bundled runtime; do not edit or commit.\n"
+        "internal static class VpnBrokerRuntimeAuthority {\n"
+        '    internal const string Sha256 = "' + value + '";\n}\n', encoding="ascii")
+    return {"runtimeSha256": value, "runtimeSizeBytes": size, "authoritySourceSha256": sha256(output)}
+
+
 def validate_guest_destination(candidate: Path, expected_leaf: str) -> Path:
     """Accept only the named disposable guest root, never a sibling guest."""
     if not expected_leaf or "/" in expected_leaf or "\\" in expected_leaf:
@@ -250,17 +281,27 @@ def artifact_manifest(output: Path, allowed_imports: set[str] | None = None) -> 
          "minimumWindowsBuild": policy["minimumWindowsBuild"], "operations": policy["operations"], **metadata}]}
 
 
-def validate_output(output: Path, manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
-    result = artifact_manifest(output, allowed_imports)
+def products_manifest(outputs: list[Path], allowed_imports: set[str] | None = None) -> dict[str, object]:
+    if not outputs or len({output.name for output in outputs}) != len(outputs):
+        raise ValueError("native helper outputs must be nonempty and distinct")
+    records = [artifact_manifest(output, allowed_imports) for output in sorted(outputs, key=lambda path: path.name)]
+    if len({record["policySha256"] for record in records}) != 1:
+        raise ValueError("native helper policy changed during validation")
+    return {"schemaVersion": 1, "policySha256": records[0]["policySha256"],
+            "artifacts": [artifact for record in records for artifact in record["artifacts"]]}
+
+
+def validate_output(outputs: list[Path], manifest: Path, allowed_imports: set[str] | None = None) -> dict[str, object]:
+    result = products_manifest(outputs, allowed_imports)
     manifest.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
 
-def verified_product(output: Path, manifest: Path) -> dict[str, object]:
+def verified_product(outputs: list[Path], manifest: Path) -> dict[str, object]:
     if manifest.is_symlink() or not manifest.is_file():
         raise ValueError("native helper manifest must be a regular file")
     record = json.loads(manifest.read_text(encoding="utf-8"))
-    if record != artifact_manifest(output):
+    if record != products_manifest(outputs):
         raise ValueError("native helper manifest disagrees with captured bytes or reviewed policy")
     return record
 
@@ -277,11 +318,13 @@ def inspect_image(image: Path) -> dict[str, object]:
     for parent in (directory.parent, directory):
         if parent.is_symlink() or not parent.is_dir():
             raise ValueError("prepared application native helpers are missing or redirected")
-    return verified_product(directory / "vpn-control-install-helper.exe", directory / "native-helpers.json")
+    return verified_product([directory / name for name in sorted(PRODUCT_NAMES)], directory / "native-helpers.json")
 
 
-def stage_product(output: Path, manifest: Path, image: Path) -> dict[str, object]:
-    record = verified_product(output, manifest)
+def stage_product(outputs: list[Path], manifest: Path, image: Path) -> dict[str, object]:
+    record = verified_product(outputs, manifest)
+    if {output.name for output in outputs} != PRODUCT_NAMES:
+        raise ValueError("prepared applications require both fixed Windows helpers")
     directory = image_native_directory(image)
     if directory.parent.is_symlink():
         raise ValueError("prepared application native directory is redirected")
@@ -292,12 +335,13 @@ def stage_product(output: Path, manifest: Path, image: Path) -> dict[str, object
         return record
     temporary = Path(tempfile.mkdtemp(prefix=".windows-amd64-", dir=directory.parent))
     try:
-        with output.open("rb") as source, (temporary / output.name).open("xb") as target:
-            shutil.copyfileobj(source, target, 1024 * 1024)
+        for output in outputs:
+            with output.open("rb") as source, (temporary / output.name).open("xb") as target:
+                shutil.copyfileobj(source, target, 1024 * 1024)
         (temporary / "native-helpers.json").write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         # Check the bytes actually captured, not just the earlier source observation.
-        if artifact_manifest(temporary / output.name) != record:
+        if products_manifest([temporary / output.name for output in outputs]) != record:
             raise ValueError("native helper changed during application staging")
         os.rename(temporary, directory)
     finally:
@@ -319,12 +363,15 @@ def main() -> int:
     sources = sub.add_parser("sources")
     sources.add_argument("--output", type=Path, required=True)
     sources.add_argument("inputs", type=Path, nargs="+")
+    authority = sub.add_parser("runtime-authority")
+    authority.add_argument("--runtime", type=Path, required=True)
+    authority.add_argument("--output", type=Path, required=True)
     verify = sub.add_parser("verify-product")
-    verify.add_argument("--output", type=Path, required=True)
+    verify.add_argument("--output", type=Path, action="append", required=True)
     verify.add_argument("--manifest", type=Path, required=True)
     verify.add_argument("--allowed-import", action="append", help="Further restrict the reviewed product import policy")
     stage = sub.add_parser("stage-product")
-    stage.add_argument("--output", type=Path, required=True)
+    stage.add_argument("--output", type=Path, action="append", required=True)
     stage.add_argument("--manifest", type=Path, required=True)
     stage.add_argument("--app-image", type=Path, required=True)
     inspect = sub.add_parser("inspect-image")
@@ -337,6 +384,8 @@ def main() -> int:
         if args.command == "sources":
             record = source_manifest(args.inputs)
             args.output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        elif args.command == "runtime-authority":
+            record = runtime_authority(args.runtime, args.output)
         elif args.command == "verify-product":
             allowed = None if args.allowed_import is None else {name.lower() for name in args.allowed_import}
             record = validate_output(args.output, args.manifest, allowed)

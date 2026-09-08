@@ -185,10 +185,11 @@ output goes to stderr. Timeout bounds each read, not the entire stream lifetime.
 Log records have owner-scoped cursors, including an empty-history/tail cursor for
 `--limit 0`; subsequent reads use positive batches and report `LOG_HISTORY_GAP`
 when bounded history was lost. Same-timestamp messages remain distinct. Closing or
-interrupting the client stops observation, not owner operations. Disconnected
-macOS and Linux ARM64 app-image checks cover native Ctrl-C and streams; Windows,
-final exact-commit packages, VPN traffic and Android streaming remain outstanding. These reads do
-not add operations or change configuration.
+interrupting the client stops observation, not owner operations. Android exposes
+the same watch/follow commands through authenticated provider reads on the selected
+ADB device, pinned to the first owner. These reads do not add operations or change
+configuration. Current native/package evidence and remaining platform gates are
+tracked in [work-in-progress.md](work-in-progress.md).
 
 JSON inspection also covers `locations list/show`, `subscriptions list/show`,
 `routing show`, `ssh key status` and `updates status`. Lists return `locations` or

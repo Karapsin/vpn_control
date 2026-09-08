@@ -12,7 +12,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidControlProviderInstrumentedTest {
-    @Test fun ownUidUsesBoundedContentStreamsWithoutVpnOrGui() = runBlocking {
+    @Test fun ownUidUsesBoundedContentStreamsWithoutVpnOrGui(): Unit = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val authority = context.packageName + ".control"
         val info = requireNotNull(context.packageManager.resolveContentProvider(authority, 0))
@@ -37,5 +37,6 @@ class AndroidControlProviderInstrumentedTest {
         assertEquals(ControlCode.OK, response.code)
         assertEquals(request.requestId, response.requestId)
         resolver.call(root, "discard", id, null)
+        Unit
     }
 }

@@ -103,6 +103,10 @@ class DesktopProxyRuntimeManager(
         resourceScopeProvider?.current() ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
             stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
 
+    @Synchronized internal fun requireRuntimeResourceScopeProvider(): DesktopWindowsRuntimeResourceScopeProvider =
+        resourceScopeProvider ?: throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
+            stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
+
     @Volatile
     private var process: DesktopRuntimeProcess? = null
 
@@ -247,7 +251,7 @@ class DesktopProxyRuntimeManager(
             val captured = checkNotNull(launch.captured)
             return if (captured.mutableResources.isEmpty()) DesktopWindowsVpnBroker.prepareRetained(captured, launch.logFile) {
                 caller.ensureActive()
-            } else DesktopWindowsVpnBroker.prepareRetained(captured, launch.logFile, requireRuntimeResourceScope()) {
+            } else DesktopWindowsVpnBroker.prepareRetained(captured, launch.logFile, requireRuntimeResourceScopeProvider()) {
                 caller.ensureActive()
             }
         }

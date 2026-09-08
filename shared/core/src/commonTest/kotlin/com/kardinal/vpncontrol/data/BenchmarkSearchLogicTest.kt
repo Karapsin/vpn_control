@@ -5,9 +5,23 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BenchmarkSearchLogicTest {
+    @Test
+    fun manualBenchmarkRetainsOnlyTheSuccessfulTestTiming() {
+        val benchmark = BenchmarkSearchLogic.buildValidatedBenchmark(
+            candidate = preflight("Measured", connectMillis = 23.0, country = "DE"),
+            testResult = ProxyRunResult(codes = listOf("200"), totals = listOf(17.0)),
+        )
+
+        assertEquals("manual", benchmark.primaryStatus)
+        assertNull(benchmark.primaryTotal)
+        assertEquals("ok", benchmark.testStatus)
+        assertEquals(17.0, benchmark.testTotal)
+    }
+
     @Test
     fun activeVerificationWindowIncludesCurrentAndNextCandidates() {
         val attempts = listOf("first", "second", "third", "fourth")

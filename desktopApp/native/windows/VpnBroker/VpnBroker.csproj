@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>vpn-control-vpn-broker</AssemblyName>
+    <RootNamespace>VpnControl.VpnBroker</RootNamespace>
+    <StartupObject>VpnRuntimeBrokerEntry</StartupObject>
+    <ApplicationManifest>loader.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);VPN_RUNTIME_AUTHORITY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-broker-main.cs" Link="windows-vpn-broker-main.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-broker.cs" Link="windows-vpn-broker.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-user-files.cs" Link="windows-vpn-user-files.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-cache-resources.cs" Link="windows-vpn-cache-resources.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-vpn-config.cs" Link="windows-vpn-config.cs" />
+    <Compile Include="$(VpnBrokerRuntimeAuthoritySource)" Link="VpnBrokerRuntimeAuthority.g.cs" />
+  </ItemGroup>
+  <Target Name="RequireBundledRuntimeAuthority" BeforeTargets="CoreCompile">
+    <Error Condition="'$(VpnBrokerRuntimeAuthoritySource)' == '' Or !Exists('$(VpnBrokerRuntimeAuthoritySource)')"
+           Text="Build the broker through prepare_windows_native_helpers.ps1 to bind its bundled runtime." />
+  </Target>
+</Project>

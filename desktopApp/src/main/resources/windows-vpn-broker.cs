@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
+using VpnScopedStorage;
 public static class VpnRuntimeBroker {
  [StructLayout(LayoutKind.Sequential)] struct SA { public int n; public IntPtr d; public int inherit; }
  [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct SI {
@@ -100,6 +101,17 @@ public static class VpnRuntimeBroker {
   if(failure is OutOfMemoryException || (failure is IOException && (((uint)failure.HResult&0xffff)==112 || ((uint)failure.HResult&0xffff)==39))) code=3;
   else if(failure is UnauthorizedAccessException) code=2;
   else if(failure is ArgumentException || failure is DecoderFallbackException) code=1;
+  else if(failure is IOException) {
+   switch(failure.Message) {
+    case "INVALID_ARGUMENT":code=1;break;
+    case "PERMISSION_DENIED":code=2;break;
+    case "RESOURCE_EXHAUSTED":code=3;break;
+    case "INCOMPATIBLE_PROTOCOL":code=5;break;
+    case "CONFLICT":code=6;break;
+    case "PERSISTENCE_FAILED":code=7;break;
+    case "UNSUPPORTED":code=8;break;
+   }
+  }
   try { writer.Write(code); writer.Flush(); } catch { }
  }
  static bool Trusted(string sid) { return sid=="S-1-5-18" || sid=="S-1-5-32-544"; }
@@ -211,7 +223,8 @@ public static class VpnRuntimeBroker {
   string reference=value as string,path; Need(reference!=null&&resources!=null&&resources.TryGetValue(reference,out path));
   return resources[reference];
  }
- static void Config(object value,string context,string stage,System.Collections.Generic.Dictionary<string,string> resources) {
+ static void Config(object value,string context,string stage,System.Collections.Generic.Dictionary<string,string> resources,
+   System.Collections.Generic.Dictionary<string,string> mutable,System.Collections.Generic.HashSet<string> used) {
   var map=value as System.Collections.Generic.Dictionary<string,object>;
   if(map!=null) {
    object kind; string type=map.TryGetValue("type",out kind)?kind as string:null;
@@ -219,7 +232,19 @@ public static class VpnRuntimeBroker {
     ((context=="/outbounds/*/transport"||context=="/inbounds/*/transport")&&(type=="ws"||type=="http"||type=="httpupgrade")) ||
     (context=="/outbounds/*"&&type=="http");
    bool cache=context=="/experimental/cache_file";
-   if(cache) Need(map.Count==2&&map.ContainsKey("enabled")&&map["enabled"] is bool&&map.ContainsKey("path")&&Equals(map["path"],"cache.db"));
+   string cachePath=null;
+   if(cache) {
+    if(mutable==null) {
+     Need(map.Count==2&&map.ContainsKey("enabled")&&map["enabled"] is bool&&map.ContainsKey("path")&&Equals(map["path"],"cache.db"));
+     cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
+    } else {
+     foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
+     object enabled,path;
+     Need(map.TryGetValue("enabled",out enabled)&&Equals(enabled,true)&&map.TryGetValue("path",out path)&&path is string);
+     string reference=(string)map["path"];
+     Need(mutable.TryGetValue(reference,out cachePath)&&used.Add(reference));
+    }
+   }
    foreach(string key in new System.Collections.Generic.List<string>(map.Keys)) {
     object child=map[key];
     if(ReadFileField(key,context,type)) { map[key]=ResourceValue(child,resources); continue; }
@@ -231,20 +256,38 @@ public static class VpnRuntimeBroker {
      string path=child as string;
      Need(cache||(url&&path!=null));
     }
-    Config(child,context+"/"+key,stage,resources);
+    Config(child,context+"/"+key,stage,resources,mutable,used);
    }
    // This destination is chosen only by the broker; no caller-selected privileged cache path survives.
-   if(cache&&stage!=null) map["path"]=Path.Combine(stage,"cache.db");
-  } else { var array=value as object[]; if(array!=null) foreach(var item in array) Config(item,context+"/*",stage,resources); }
+   if(cache) map["path"]=cachePath;
+  } else { var array=value as object[]; if(array!=null) foreach(var item in array) Config(item,context+"/*",stage,resources,mutable,used); }
  }
  public static string NormalizeConfiguration(string text,string stage) {
   return NormalizeConfiguration(text,stage,null);
  }
- static string NormalizeConfiguration(string text,string stage,System.Collections.Generic.Dictionary<string,string> resources) {
+ internal static string NormalizeConfiguration(string text,string stage,System.Collections.Generic.Dictionary<string,string> resources,
+   System.Collections.Generic.Dictionary<string,string> mutable=null) {
+#if NET8_0_OR_GREATER
+  return VpnScopedConfiguration.Configuration.Normalize(text,stage,resources,mutable);
+#else
   // Parsing materializes the logical document. Native resource failure is distinct from invalid input.
   var parser=new System.Web.Script.Serialization.JavaScriptSerializer(); parser.MaxJsonLength=Int32.MaxValue;
   var root=parser.DeserializeObject(text); Need(root is System.Collections.Generic.Dictionary<string,object>);
-  Config(root,"",stage,resources); return parser.Serialize(root);
+  var used=new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+  Config(root,"",stage,resources,mutable,used);Need(mutable==null||used.Count==mutable.Count);return parser.Serialize(root);
+#endif
+ }
+ static FileStream OpenPrivateResource(string stage,SafeFileHandle stagePin,string name,FileMode mode,
+   System.Collections.Generic.HashSet<string> admittedNames) {
+  if(!admittedNames.Contains(name)||(mode!=FileMode.Open&&mode!=FileMode.CreateNew)) throw new IOException("CONFLICT");
+  AdmissionNeed(String.Equals(FinalPath(stagePin).TrimEnd('\\'),stage,StringComparison.OrdinalIgnoreCase));
+  VerifyDirectory(stagePin,true,false);
+  var file=CreateFile(Path.Combine(stage,name),0xc0020000,1,IntPtr.Zero,mode==FileMode.CreateNew?1U:3U,0x80200000,IntPtr.Zero);
+  if(file.IsInvalid) { int error=Marshal.GetLastWin32Error();file.Dispose();throw new IOException(error==5?"PERMISSION_DENIED":"PERSISTENCE_FAILED"); }
+  try {
+   AdmissionNeed((ObjectAttributes(file)&16)==0&&String.Equals(FinalPath(file),Path.Combine(stage,name),StringComparison.OrdinalIgnoreCase));
+   return new FileStream(file,FileAccess.ReadWrite,65536,false);
+  } catch { file.Dispose();throw; }
  }
  static void CleanupStage(string stage,SafeFileHandle stagePin,System.Collections.Generic.List<string> resources) {
   // The retained private directory cannot be replaced while its exact known children are removed.
@@ -275,6 +318,9 @@ public static class VpnRuntimeBroker {
   IntPtr job=IntPtr.Zero,attributes=IntPtr.Zero,jobSlot=IntPtr.Zero,handles=IntPtr.Zero; bool jobAdmitted=false; PI child=new PI();
   var pins=new System.Collections.Generic.List<SafeFileHandle>(); string stage=null; SafeFileHandle stagePin=null;
   var resourceFiles=new System.Collections.Generic.List<string>();
+  RuntimeResourcePreparation mutablePreparation=null;RuntimeCacheResources mutableResources=null;
+  RuntimeResourceLifecycle mutableLifecycle=null;OriginalUser originalUser=null;
+  FileStream admissionStream=null;ResourceAdmissionGate admissionGate=null;
   Thread watchdog=null; int watchdogDone=0;
   try {
    long c,e,k,u; Need(GetProcessTimes(owner,out c,out e,out k,out u)&&c==ownerStart);
@@ -299,7 +345,8 @@ public static class VpnRuntimeBroker {
     }}); watchdog.IsBackground=true; watchdog.Start();
     using(var reader=new BinaryReader(pipe,Encoding.UTF8,true)) using(var writer=new BinaryWriter(pipe,Encoding.UTF8,true)) {
      try {
-     Need(reader.ReadInt32()==4);
+     int protocol=reader.ReadInt32();
+     if(protocol!=4&&protocol!=5) throw new IOException("INCOMPATIBLE_PROTOCOL");
      // Duplicate only authority the authenticated ordinary owner already retained before UAC.
      // A fresh anonymous job pins every possible child even if its creation acknowledgment is lost.
      Need(DuplicateHandle(owner,new IntPtr(reader.ReadInt64()),GetCurrentProcess(),out job,0,false,2));
@@ -307,20 +354,41 @@ public static class VpnRuntimeBroker {
      Need(QueryJobLimits(job,9,ref limits,Marshal.SizeOf<LIMIT>(),IntPtr.Zero)&&limits.flags==0x2008&&limits.active==1);
      Need(QueryJobAccounting(job,1,ref accounting,Marshal.SizeOf<ACCOUNTING>(),IntPtr.Zero)&&accounting.total==0&&accounting.active==0);
      jobAdmitted=true;
+     if(protocol==5) {
+      mutablePreparation=RuntimeResourcePreparation.ReadFrameForOwner(reader,new OwnerIdentity(ownerPid,ownerStart,ownerSid));
+      foreach(var item in mutablePreparation.Inputs) if(item.Identity.Kind!="CACHE") throw new IOException("UNSUPPORTED");
+     }
      byte[] image=Blob(reader,192*1024*1024);
      using(var sha=SHA256.Create()) Need(BitConverter.ToString(sha.ComputeHash(image)).Replace("-","").ToLowerInvariant()==expectedHash);
      string root=Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
      var ancestors=new System.Collections.Generic.Stack<string>(); for(var d=new DirectoryInfo(root);d!=null;d=d.Parent) ancestors.Push(d.FullName);
      foreach(var ancestor in ancestors) pins.Add(Pin(ancestor,false,pins));
-     stage=Path.Combine(root,"vpn-control-vpn-"+Guid.NewGuid().ToString("D")); Need(!Directory.Exists(stage)&&!File.Exists(stage));
+     stage=Path.Combine(root,"vpn-control-vpn-"+(mutablePreparation==null?Guid.NewGuid().ToString("D"):mutablePreparation.Binding.JobId));
+     if(Directory.Exists(stage)||File.Exists(stage)) throw new IOException("CONFLICT");
      var protection=new DirectorySecurity(); protection.SetAccessRuleProtection(true,false); protection.SetOwner(new SecurityIdentifier("S-1-5-32-544"));
      foreach(var sid in new[]{"S-1-5-18","S-1-5-32-544"}) protection.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
      CreatePrivateDirectory(stage,protection); stagePin=Pin(stage,true,pins); pins.Add(stagePin);
+     if(mutablePreparation!=null) {
+      // The UUID names one protected admission object. CreateNew and atomic private directory
+      // creation never reopen, truncate, or repair an earlier/competing helper's evidence.
+      admissionStream=new FileStream(Path.Combine(stage,".admission"),FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None,65536,FileOptions.WriteThrough);
+      admissionGate=ResourceAdmissionGate.CreateForOriginal(admissionStream,mutablePreparation.Binding,
+       ()=>WaitForSingleObject(owner,0)==258);
+      originalUser=new OriginalUser(owner,ownerSid);
+      var names=new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+      foreach(var item in mutablePreparation.Inputs) { names.Add("cache-"+item.Identity.Id+".db");names.Add("publication-"+item.Identity.Id+".journal"); }
+      mutableResources=new RuntimeCacheResources(originalUser,mutablePreparation.Binding,mutablePreparation.Inputs,
+       (name,mode)=>OpenPrivateResource(stage,stagePin,name,mode,names),
+       ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0);
+      mutableLifecycle=new RuntimeResourceLifecycle(mutablePreparation.Binding,mutableResources,admissionGate,
+       ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0);
+     }
      string executable=Path.Combine(stage,"sing-box.exe"),configuration=Path.Combine(stage,"config.json"),log=Path.Combine(stage,"runtime.log");
      using(var f=new FileStream(executable,FileMode.CreateNew,FileAccess.Write,FileShare.None)) f.Write(image,0,image.Length);
      string received=Path.Combine(stage,"received.json"); ConfigurationBlob(reader,received);
      var resources=Resources(reader,stage,resourceFiles);
-     string normalized=NormalizeConfiguration(File.ReadAllText(received,new UTF8Encoding(false,true)),stage,resources);
+     string normalized=NormalizeConfiguration(File.ReadAllText(received,new UTF8Encoding(false,true)),stage,resources,
+      mutableResources==null?null:mutableResources.ConfigurationPaths(stage));
      using(var f=new StreamWriter(new FileStream(configuration,FileMode.CreateNew,FileAccess.Write,FileShare.None),new UTF8Encoding(false,true))) f.Write(normalized);
      normalized=null; File.Delete(received);
      using(var output=new FileStream(log,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite))
@@ -340,7 +408,10 @@ public static class VpnRuntimeBroker {
       // The original owner already retains this exact job; no undiscoverable duplicated child
       // handle leaks if the acknowledgment is lost. Only COMMIT executes the suspended child.
       writer.Write((byte)0); writer.Write(child.pid); writer.Flush();
-      Need(reader.ReadByte()==3); Need(ResumeThread(child.thread)==1); writer.Write((byte)0); writer.Flush(); long offset=0;
+      Need(reader.ReadByte()==3);
+      if(mutableLifecycle==null) Need(ResumeThread(child.thread)==1);
+      else mutableLifecycle.Commit(()=>Need(ResumeThread(child.thread)==1));
+      writer.Write((byte)0); writer.Flush(); long offset=0;
       while(true) {
        int command=reader.ReadByte(); Need(command==0||command==1||command==2);
        if(command!=0) {
@@ -351,7 +422,9 @@ public static class VpnRuntimeBroker {
        using(var logs=new FileStream(log,FileMode.Open,FileAccess.Read,FileShare.ReadWrite)) {
         logs.Position=offset; recent=new byte[(int)Math.Min(65536,Math.Max(0,logs.Length-offset))]; int read=logs.Read(recent,0,recent.Length); offset+=read; Array.Resize(ref recent,read);
        }
-       writer.Write(alive); writer.Write(recent.Length); writer.Write(recent); writer.Flush();
+       writer.Write(alive); writer.Write(recent.Length); writer.Write(recent);
+       if(!alive&&mutableLifecycle!=null) mutableLifecycle.WriteTerminal(writer);
+       writer.Flush();
        if(!alive) break;
       }
      }
@@ -363,12 +436,19 @@ public static class VpnRuntimeBroker {
    bool watchdogExited=watchdog==null || watchdog.Join(1000);
    if(job!=IntPtr.Zero) { if(jobAdmitted) TerminateJobObject(job,1); CloseHandle(job); }
    bool childExited=child.process==IntPtr.Zero || WaitForSingleObject(child.process,10000)==0;
+   if(childExited&&mutableLifecycle!=null) {
+    // Publication can outlive both the owner JVM and its final status request. Keep this helper's
+    // original-user token, exact protected parent, journals and gate until its publisher finishes.
+    try { mutableLifecycle.FinishAfterConfirmedExit(); } catch { /* Durable input/evidence stays retained. */ }
+   }
    if(child.process!=IntPtr.Zero) CloseHandle(child.process);
    if(child.thread!=IntPtr.Zero) CloseHandle(child.thread);
    if(attributes!=IntPtr.Zero) { DeleteProcThreadAttributeList(attributes); Marshal.FreeHGlobal(attributes); }
    if(jobSlot!=IntPtr.Zero) Marshal.FreeHGlobal(jobSlot); if(handles!=IntPtr.Zero) Marshal.FreeHGlobal(handles);
    // Retain an uncertain child's inputs. Confirmed terminal inputs have no recovery purpose.
-   if(childExited && stage!=null && stagePin!=null) { try { CleanupStage(stage,stagePin,resourceFiles); } catch { } }
+   if(childExited && mutablePreparation==null && stage!=null && stagePin!=null) { try { CleanupStage(stage,stagePin,resourceFiles); } catch { } }
+   if(admissionStream!=null) { try { admissionStream.Dispose(); } catch { } }
+   if(originalUser!=null) { try { originalUser.Dispose(); } catch { } }
    for(int i=pins.Count-1;i>=0;i--) pins[i].Dispose();
    if(watchdogExited) CloseHandle(owner); // Do not close a native handle while another thread waits on it.
   }

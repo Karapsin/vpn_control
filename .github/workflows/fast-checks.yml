@@ -66,6 +66,10 @@ on:
       - "scripts/test_android_update_fixture.py"
       - "scripts/run_android_instrumented_tests.py"
       - "scripts/test_android_instrumented_launcher.py"
+      - "scripts/android_instrumentation_signatures.gradle"
+      - "scripts/test_android_instrumentation_signatures.py"
+      - "scripts/macos_fixture_frontend.py"
+      - "scripts/test_macos_fixture_frontend.py"
       - "scripts/android_routing_evidence.py"
       - "scripts/test_android_routing_evidence.py"
       - "scripts/test_android_install_visual_inventory.py"
@@ -174,10 +178,13 @@ jobs:
         run: ./scripts/status_catalog_tool.py check
 
       - name: Run fast unit tests
-        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin
+        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
 
       - name: Verify desktop build without Android SDK
         run: python scripts/test_desktop_sdk_independence.py
 
       - name: Verify Windows packaging task graph
         run: python scripts/test_windows_packaging_graph.py
+
+      - name: Verify Android instrumentation signature guard
+        run: python scripts/test_android_instrumentation_signatures.py

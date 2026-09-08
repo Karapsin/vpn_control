@@ -149,6 +149,27 @@ try {
     if ($LASTEXITCODE -ne 0 -or $NativeProbe -cne "VPN_INSTALL_HELPER_VALIDATE_ONLY_OK") {
         throw "Installed native helper did not pass its nonmutating launch probe"
     }
+    $BrokerOutput = Join-Path $ValidationRoot "native-broker.stdout.txt"
+    $BrokerError = Join-Path $ValidationRoot "native-broker.stderr.txt"
+    $BrokerProbe = Start-Process -FilePath (Join-Path $InstalledImage "app/native/windows-amd64/vpn-control-vpn-broker.exe") `
+        -NoNewWindow -RedirectStandardOutput $BrokerOutput -RedirectStandardError $BrokerError -PassThru
+    if (-not $BrokerProbe.WaitForExit(30000)) { throw "Installed native broker argument rejection timed out; outcome is unknown" }
+    $BrokerProbe.Refresh()
+    if ($BrokerProbe.ExitCode -ne 1 -or (Get-Content $BrokerOutput -Raw) -or
+        (Get-Content $BrokerError -Raw).Trim() -cne "INVALID_ARGUMENT") {
+        throw "Installed native broker did not reject missing arguments before admission"
+    }
+    $BrokerProbe.Dispose()
+    $BrokerDenied = Start-Process -FilePath (Join-Path $InstalledImage "app/native/windows-amd64/vpn-control-vpn-broker.exe") `
+        -ArgumentList @("vpn-control-vpn-00000000-0000-0000-0000-000000000041", "1", "1", "S-1-5-18", ("0" * 64)) `
+        -NoNewWindow -RedirectStandardOutput $BrokerOutput -RedirectStandardError $BrokerError -PassThru
+    if (-not $BrokerDenied.WaitForExit(30000)) { throw "Installed native broker runtime-authority rejection timed out; outcome is unknown" }
+    $BrokerDenied.Refresh()
+    if ($BrokerDenied.ExitCode -ne 1 -or (Get-Content $BrokerOutput -Raw) -or
+        (Get-Content $BrokerError -Raw).Trim() -cne "PERMISSION_DENIED") {
+        throw "Installed native broker did not reject an unapproved runtime before owner admission"
+    }
+    $BrokerDenied.Dispose()
 
     Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $SmokeStateDir -Label "installed app"
     Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $RelaunchStateDir -Label "installed app relaunch"

@@ -10,6 +10,30 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class DesktopWindowsVpnConfigCaptureTest {
+    private val nativeBrokerModules = listOf(
+        "windows-vpn-broker.cs", "windows-vpn-user-files.cs", "windows-vpn-cache-resources.cs",
+    )
+
+    private fun captureNativeBrokerModules(prefix: String): Path {
+        val directory = Files.createTempDirectory(prefix)
+        try {
+            nativeBrokerModules.forEach { name ->
+                requireNotNull(javaClass.getResourceAsStream("/$name")).use { input ->
+                    Files.newOutputStream(directory.resolve(name)).use { output -> input.copyTo(output) }
+                }
+            }
+            return directory
+        } catch (failure: Throwable) {
+            deleteNativeBrokerModules(directory)
+            throw failure
+        }
+    }
+
+    private fun deleteNativeBrokerModules(directory: Path) {
+        (nativeBrokerModules + "pin-probe.cs").forEach { Files.deleteIfExists(directory.resolve(it)) }
+        Files.delete(directory)
+    }
+
     @Test fun resourceAdmissionFailureIsNotReportedAsInvalidConfiguration() {
         for ((cause, code) in listOf(
             IllegalArgumentException("Unsupported installer access mask") to "PERMISSION_DENIED",
@@ -184,15 +208,13 @@ class DesktopWindowsVpnConfigCaptureTest {
 
     @Test fun nativeCsharpCompilerAndAuthoritativePolicyAgreeWithoutLaunchingAChild() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
-        val source = Files.createTempFile("vpn-broker-policy-", ".cs")
+        val source = captureNativeBrokerModules("vpn-broker-policy-")
         try {
-            javaClass.getResourceAsStream("/windows-vpn-broker.cs")!!.use {
-                Files.copy(it, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            }
             val script = """
                 ${'$'}ErrorActionPreference='Stop'
                 ${'$'}ProgressPreference='SilentlyContinue'
-                Add-Type -TypeDefinition ([IO.File]::ReadAllText(${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE)) -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
+                ${'$'}sources=@(${nativeBrokerModules.joinToString(",") { "'$it'" }}) | ForEach-Object { Join-Path ${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE ${'$'}_ }
+                Add-Type -Path ${'$'}sources -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
                 ${'$'}rows=[Console]::In.ReadToEnd()|ConvertFrom-Json
                 foreach(${'$'}row in ${'$'}rows) {
                     ${'$'}accepted=${'$'}false
@@ -227,22 +249,22 @@ class DesktopWindowsVpnConfigCaptureTest {
             val diagnostics = process.inputStream.use { it.readNBytes(8193).decodeToString().take(8192) }
             assertEquals(0, process.exitValue(), diagnostics)
             assertTrue(diagnostics.endsWith("POLICY_OK"), diagnostics)
-        } finally { Files.delete(source) }
+        } finally { deleteNativeBrokerModules(source) }
     }
 
     @Test fun nativeRetainedPrivilegedDirectoryCannotBeRenamedWhilePinned() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         assumeTrue(System.getenv("VPN_CONTROL_TEST_WINDOWS_PRIVILEGED_PIN") == "1")
-        val source = Files.createTempFile("vpn-broker-pin-", ".cs")
+        val source = captureNativeBrokerModules("vpn-broker-pin-")
         try {
-            javaClass.getResourceAsStream("/windows-vpn-broker.cs")!!.use {
-                Files.copy(it, source, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            }
             val script = """
                 ${'$'}ErrorActionPreference='Stop'
                 ${'$'}ProgressPreference='SilentlyContinue'
                 ${'$'}wrapper=' public static class PinProbe { public static System.IDisposable Hold(string path) { return (System.IDisposable)typeof(VpnRuntimeBroker).GetMethod("Pin",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).Invoke(null,new object[]{path,true,new System.Collections.Generic.List<Microsoft.Win32.SafeHandles.SafeFileHandle>()}); } }'
-                Add-Type -TypeDefinition ([IO.File]::ReadAllText(${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE)+${'$'}wrapper) -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
+                ${'$'}wrapperPath=Join-Path ${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE 'pin-probe.cs'
+                [IO.File]::WriteAllText(${'$'}wrapperPath,${'$'}wrapper)
+                ${'$'}sources=@(${nativeBrokerModules.joinToString(",") { "'$it'" }}) | ForEach-Object { Join-Path ${'$'}env:VPN_CONTROL_BROKER_POLICY_SOURCE ${'$'}_ }
+                Add-Type -Path (@(${'$'}sources)+${'$'}wrapperPath) -ReferencedAssemblies @('System.dll','System.Core.dll','System.Web.Extensions.dll')
                 ${'$'}stage=Join-Path ${'$'}env:ProgramData ('vpn-broker-pin-'+[Guid]::NewGuid().ToString('D'))
                 ${'$'}acl=New-Object Security.AccessControl.DirectorySecurity
                 ${'$'}acl.SetAccessRuleProtection(${'$'}true,${'$'}false)
@@ -267,6 +289,6 @@ class DesktopWindowsVpnConfigCaptureTest {
             val diagnostics = process.inputStream.use { it.readNBytes(8193).decodeToString().take(8192) }
             assertEquals(0, process.exitValue(), diagnostics)
             assertTrue(diagnostics.endsWith("PIN_OK"), diagnostics)
-        } finally { Files.delete(source) }
+        } finally { deleteNativeBrokerModules(source) }
     }
 }

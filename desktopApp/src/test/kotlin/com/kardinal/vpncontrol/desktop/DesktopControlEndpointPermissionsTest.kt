@@ -15,6 +15,25 @@ import kotlin.test.assertTrue
 
 class DesktopControlEndpointPermissionsTest {
     @Test
+    fun jvmAccountNameDoesNotDetermineControllerCredentialOwnership() {
+        val directory = Files.createTempDirectory("vpn-control-native-owner")
+        val file = directory.resolve("endpoint")
+        val endpoint = DesktopControlEndpoint.create(12345)
+        val originalName = System.getProperty("user.name")
+        try {
+            // SYSTEM can have a machine-account JVM name. The same mismatch can be
+            // reproduced without Windows or elevation by overriding this property.
+            System.setProperty("user.name", "vpn-control-nonexistent-account-${java.util.UUID.randomUUID()}")
+            endpoint.publish(file)
+            assertEquals(endpoint.token, DesktopControlEndpoint.read(file).token)
+        } finally {
+            if (originalName == null) System.clearProperty("user.name")
+            else System.setProperty("user.name", originalName)
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun publishedDescriptorBelongsToInvokingUserEvenWhenDefaultFileOwnerDiffers() {
         // Elevated Windows tokens commonly create ordinary temp files owned by Administrators.
         // A controller credential must instead belong to the invoking account, from creation.
@@ -23,8 +42,11 @@ class DesktopControlEndpointPermissionsTest {
         try {
             val endpoint = DesktopControlEndpoint.create(12345)
             endpoint.publish(file)
-            val invokingUser = file.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
-            assertEquals(invokingUser, Files.getOwner(file))
+            if (com.sun.jna.Platform.isWindows()) assertCurrentWindowsOwner(file)
+            else {
+                val invokingUser = file.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
+                assertEquals(invokingUser, Files.getOwner(file))
+            }
             assertEquals(endpoint.token, DesktopControlEndpoint.read(file).token)
         } finally { directory.toFile().deleteRecursively() }
     }
@@ -67,4 +89,12 @@ class DesktopControlEndpointPermissionsTest {
             assertFailsWith<DesktopControlProtocolException> { DesktopControlEndpoint.read(file) }
         } finally { directory.toFile().deleteRecursively() }
     }
+}
+
+internal fun assertCurrentWindowsOwner(path: java.nio.file.Path) {
+    // Observe ACL metadata without opening a competing data handle: the live spool
+    // deliberately retains an exclusive writer. Derive the name from the OS token.
+    val account = com.sun.jna.platform.win32.Advapi32Util.getAccountBySid(JnaWindowsInstallAdmission().currentSid())
+    val principal = path.fileSystem.userPrincipalLookupService.lookupPrincipalByName(account.fqn)
+    assertEquals(principal, Files.getOwner(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
 }

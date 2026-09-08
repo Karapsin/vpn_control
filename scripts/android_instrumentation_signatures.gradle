@@ -1,0 +1,81 @@
+import org.gradle.api.GradleException
+import org.gradle.api.file.FileTree
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
+
+buildscript {
+    dependencies {
+        classpath fileTree(dir: new File(gradle.gradleHomeDir, "lib"), include: ["asm-*.jar"])
+    }
+}
+
+// AndroidJUnitRunner rejects annotated methods whose JVM signature is not ()V.
+// Kotlin expression bodies can otherwise silently expose a non-Unit tail value.
+def androidTestClassDirectories = [
+    layout.buildDirectory.dir("tmp/kotlin-classes/debugAndroidTest"),
+    layout.buildDirectory.dir("intermediates/javac/debugAndroidTest/compileDebugAndroidTestJavaWithJavac/classes"),
+]
+
+def verifyDebugAndroidTestSignatures = tasks.register("verifyDebugAndroidTestSignatures") {
+    group = "verification"
+    description = "Verifies that @org.junit.Test debug Android-test methods have JUnit-compatible JVM signatures."
+    dependsOn("compileDebugAndroidTestKotlin", "compileDebugAndroidTestJavaWithJavac")
+
+    doLast {
+        def violations = []
+        int[] inspectedTests = [0]
+        androidTestClassDirectories.each { directoryProvider ->
+            File directory = directoryProvider.get().asFile
+            if (directory.isDirectory()) {
+                FileTree classes = fileTree(directory) { include("**/*.class") }
+                classes.files.each { classFile ->
+                    new ClassReader(classFile.bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+                    private String owner
+
+                    @Override
+                    void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+                        owner = name.replace('/', '.')
+                    }
+
+                    @Override
+                    MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                        return new MethodVisitor(Opcodes.ASM9) {
+                            private boolean junitTest
+
+                            @Override
+                            org.objectweb.asm.AnnotationVisitor visitAnnotation(String annotationDescriptor, boolean visible) {
+                                if (annotationDescriptor == "Lorg/junit/Test;") {
+                                    junitTest = true
+                                    inspectedTests[0]++
+                                }
+                                return super.visitAnnotation(annotationDescriptor, visible)
+                            }
+
+                            @Override
+                            void visitEnd() {
+                                if (junitTest && ((access & Opcodes.ACC_PUBLIC) == 0 || (access & Opcodes.ACC_STATIC) != 0 || descriptor != "()V")) {
+                                    violations << "${owner}.${name}${descriptor} must be a public, non-static ()V @org.junit.Test method"
+                                }
+                            }
+                        }
+                    }
+                    }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES)
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Invalid Android instrumentation test signatures:\n" + violations.join("\n"))
+        }
+        if (inspectedTests[0] == 0) {
+            throw new GradleException("No @org.junit.Test methods were found in compiled debug Android-test outputs")
+        }
+    }
+}
+
+["packageDebugAndroidTest", "connectedDebugAndroidTest"].each { consumerTask ->
+    tasks.matching { it.name == consumerTask }.configureEach {
+        dependsOn(verifyDebugAndroidTestSignatures)
+    }
+}

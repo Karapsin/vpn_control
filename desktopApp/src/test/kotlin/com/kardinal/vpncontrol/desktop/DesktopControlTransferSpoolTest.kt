@@ -54,7 +54,7 @@ class DesktopControlTransferSpoolTest {
             } }
             else Files.walk(parent).use { paths -> paths.filter { it != parent }.forEach {
                 val owner = Files.getOwner(it)
-                assertEquals(it.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name")), owner)
+                assertCurrentWindowsOwner(it)
                 assertTrue(isPrivateControlAcl(owner, Files.getFileAttributeView(it, AclFileAttributeView::class.java).acl))
             } }
         } finally { spool.erase() }

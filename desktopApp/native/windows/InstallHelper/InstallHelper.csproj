@@ -10,5 +10,6 @@
     <Compile Include="..\..\..\src\main\resources\windows-install-helper.cs" Link="windows-install-helper.cs" />
     <Compile Include="..\..\..\src\main\resources\windows-install-helper-protocol.cs" Link="windows-install-helper-protocol.cs" />
     <Compile Include="..\..\..\src\main\resources\windows-install-helper-roles.cs" Link="windows-install-helper-roles.cs" />
+    <Compile Include="..\..\..\src\main\resources\windows-install-helper-msi.cs" Link="windows-install-helper-msi.cs" />
   </ItemGroup>
 </Project>

@@ -597,6 +597,11 @@ namespace VpnScopedStorage {
     var owner=new OwnerIdentity(reader.ReadInt64(),reader.ReadInt64(),PublicationJournal.Text(reader,184));
     Target proof=PublicationJournal.ReadTarget(reader);int count=reader.ReadInt32();
     if(count<=0) throw new IOException("INVALID_ARGUMENT");
+    // Metadata is bounded independently of configuration streams. Validate the minimum encoded
+    // identity size before allocating a caller-sized array, including on a truncated frame.
+    if(count>(8*1024*1024)/49) throw new IOException("RESOURCE_EXHAUSTED");
+    if(reader.BaseStream.CanSeek&&count>(reader.BaseStream.Length-reader.BaseStream.Position)/49)
+     throw new IOException("INVALID_ARGUMENT");
     var resources=new ResourceIdentity[count];
     for(int i=0;i<count;i++) {
      resources[i]=new ResourceIdentity(PublicationJournal.Text(reader,36),PublicationJournal.Text(reader,6));
@@ -631,11 +636,13 @@ namespace VpnScopedStorage {
   bool failed;
   public bool AdmissionClosed { get; private set; }
   public bool HadOriginalAdmission { get; private set; }
+  public bool CommitIntended { get; private set; }
   ResourceAdmissionGate(FileStream exclusive,RuntimeResourceBinding expected) {
    if(exclusive==null||!exclusive.CanRead||!exclusive.CanWrite||!exclusive.CanSeek) throw new IOException("INVALID_ARGUMENT");
    storage=exclusive; binding=expected.CanonicalBytes();
   }
   public override string ToString() { return "Protected resource admission (<redacted>)"; }
+  internal bool Matches(RuntimeResourceBinding expected) { return expected!=null&&Equal(binding,expected.CanonicalBytes()); }
   static void Need(bool value,string code) { if(!value) throw new IOException(code); }
   static byte[] Hash(byte[] prior,byte[] bytes) {
    using(var digest=SHA256.Create()) { digest.TransformBlock(prior,0,prior.Length,null,0); digest.TransformFinalBlock(bytes,0,bytes.Length); return digest.Hash; }
@@ -683,12 +690,16 @@ namespace VpnScopedStorage {
    if(AdmissionClosed) return;
    Append(new byte[]{2}); AdmissionClosed=true;
   }
+  public void MarkCommitIntent() {
+   Need(HadOriginalAdmission&&!AdmissionClosed&&!CommitIntended,"CONFLICT");
+   Append(new byte[]{3}); CommitIntended=true;
+  }
   void Read() {
    storage.Position=0; int count=0;
    try {
     using(var reader=new BinaryReader(storage,new UTF8Encoding(false,true),true)) {
      while(storage.Position<storage.Length) {
-      Need(storage.Length-storage.Position>=4&&count<2,"OUTCOME_UNKNOWN");
+      Need(storage.Length-storage.Position>=4&&count<3,"OUTCOME_UNKNOWN");
       int size=reader.ReadInt32();
       // The expected binding fixes this metadata frame's exact size; it is not a config limit.
       Need(size==(count==0?checked(binding.Length+2):1)&&storage.Length-storage.Position>=(long)size+32,"OUTCOME_UNKNOWN");
@@ -698,7 +709,11 @@ namespace VpnScopedStorage {
        Need(payload[0]==1&&(payload[1]==0||payload[1]==1),"OUTCOME_UNKNOWN");
        var actual=new byte[binding.Length]; Buffer.BlockCopy(payload,2,actual,0,actual.Length);
        Need(Equal(actual,binding),"CONFLICT"); AdmissionClosed=payload[1]==1; HadOriginalAdmission=!AdmissionClosed;
-      } else { Need(payload[0]==2&&!AdmissionClosed,"OUTCOME_UNKNOWN"); AdmissionClosed=true; }
+      } else {
+       Need(!AdmissionClosed,"OUTCOME_UNKNOWN");
+       if(payload[0]==3) { Need(HadOriginalAdmission&&!CommitIntended,"OUTCOME_UNKNOWN");CommitIntended=true; }
+       else { Need(payload[0]==2,"OUTCOME_UNKNOWN");AdmissionClosed=true; }
+      }
       chain=digest; count++;
      }
     }

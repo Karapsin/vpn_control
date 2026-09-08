@@ -7,7 +7,7 @@ def verifier = rootProject.file('scripts/windows_native_helpers.py')
 
 def prepare = tasks.register('prepareWindowsNativeHelpers', Exec) {
     group = 'distribution'
-    description = 'Build and validate the fixed native Windows installer helper.'
+    description = 'Build and validate the fixed native Windows installer and VPN helpers.'
     workingDir(rootProject.file('desktopApp/native/windows'))
     inputs.files(builder, verifier)
     inputs.files(rootProject.fileTree('desktopApp/native/windows') {
@@ -15,8 +15,9 @@ def prepare = tasks.register('prepareWindowsNativeHelpers', Exec) {
         exclude '**/bin/**', '**/obj/**'
     })
     inputs.files(rootProject.fileTree('desktopApp/src/main/resources') {
-        include 'windows-install-*.cs'
+        include 'windows-install-*.cs', 'windows-vpn-*.cs'
     })
+    inputs.file(rootProject.file('desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe'))
     inputs.property('dotnet', dotnet)
     inputs.property('python', python)
     outputs.dir(nativeOutput)
@@ -34,6 +35,7 @@ tasks.matching { it.name == 'createDistributable' }.configureEach { image ->
         project.exec {
             commandLine(python.get(), verifier.absolutePath, 'stage-product',
                 '--output', new File(nativeDirectory, 'publish/vpn-control-install-helper.exe').absolutePath,
+                '--output', new File(nativeDirectory, 'publish/vpn-control-vpn-broker.exe').absolutePath,
                 '--manifest', new File(nativeDirectory, 'native-helpers.json').absolutePath,
                 '--app-image', imageDirectory.absolutePath)
         }
