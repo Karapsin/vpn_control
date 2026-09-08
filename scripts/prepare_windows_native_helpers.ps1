@@ -27,8 +27,8 @@ $required = @(
 foreach ($path in $required) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Native helper input missing: $path" }
 }
-if (-not (Test-Path -LiteralPath $Dotnet -PathType Leaf)) { throw "Pinned dotnet missing: $Dotnet" }
-if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw "Python missing: $Python" }
+$Dotnet = (Get-Command -Name $Dotnet -CommandType Application -ErrorAction Stop).Source
+$Python = (Get-Command -Name $Python -CommandType Application -ErrorAction Stop).Source
 if (-not (Test-Path -LiteralPath $inventoryTool -PathType Leaf)) { throw "Inventory tool missing: $inventoryTool" }
 
 $output = [IO.Path]::GetFullPath($OutputRoot)
@@ -38,8 +38,15 @@ $inventory = Join-Path $output 'native-helper-sources.json'
 if ($LASTEXITCODE -ne 0) { throw 'Native helper source inventory failed' }
 if ($ValidateOnly) { return }
 $publish = Join-Path $output 'publish'
-& $Dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TreatWarningsAsErrors=true -p:ILLinkTreatWarningsAsErrors=true -p:IlcTreatWarningsAsErrors=true -o $publish
-if ($LASTEXITCODE -ne 0) { throw 'Native helper publish failed' }
+Push-Location $native
+try {
+    # SDK resolution follows the working directory, not the --project operand.
+    $lock = Get-Content -LiteralPath (Join-Path $native 'toolchain.lock.json') -Raw | ConvertFrom-Json
+    $sdk = & $Dotnet --version
+    if ($LASTEXITCODE -ne 0 -or $sdk.Trim() -ne $lock.sdkVersion) { throw 'Pinned native helper SDK is unavailable' }
+    & $Dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TreatWarningsAsErrors=true -p:ILLinkTreatWarningsAsErrors=true -p:IlcTreatWarningsAsErrors=true -o $publish
+    if ($LASTEXITCODE -ne 0) { throw 'Native helper publish failed' }
+} finally { Pop-Location }
 $binary = Join-Path $publish 'vpn-control-install-helper.exe'
 $manifest = Join-Path $output 'native-helpers.json'
 & $Python $inventoryTool verify-product --output $binary --manifest $manifest $(foreach ($import in $AllowedImport) { '--allowed-import'; $import })

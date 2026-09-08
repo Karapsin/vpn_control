@@ -22,20 +22,25 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Branch `dev`; checkpoint16 `bccac4f80cb6b698dec563e9fe0afebd8108d6fb` is pushed.
-  It adds native Windows process-generation/classification checks and the early
-  Arch public-fixture installation-path guard, with focused regressions.
-- Canonical product version is2.1.5 with seven Unreleased bullets at checkpoint16.
+- Branch `dev`; checkpoint17 `243de045308053b092f038b5ca8873ae7815276d` is pushed.
+  It preserves manifest cancellation identity, adds fixed Windows protocol/staging
+  checks and the macOS Aqua observer, and separates current/historical work notes.
+- Canonical product version is2.1.5 with eight Unreleased bullets at checkpoint17.
   Native fixture versions are test-only Gradle overrides; canonical metadata stays intact.
-- Managed prepush passed:1627 JVM tests selected,1566 executed,61 explicit platform/
-  opt-in skips, zero failures, plus complete script/hygiene/localization/tool checks.
-  Receipt `/tmp/vpn-parity-checkpoint16-prepush.json`. Initial attempt failed before
-  Gradle because its temporary JDK was incomplete; the existing verified Temurin17
-  installation restored the build environment and the complete tier was rerun.
-- Checkpoint16 exact-SHA CI: Fast Checks, Android, Windows and macOS passed; Linux
-  and advisory VPN Integration failed the stalled-manifest cancellation state test.
-  Logs `/tmp/vpn-bcc-{linux,advisory}-ci-failed.log`. The checkpoint is not verified.
-  Root reproduced the cause without networking: closing a cancelled stream made
+- Managed checkpoint17 prepush passed:1636 JVM tests selected,1574 executed,62 explicit
+  platform/opt-in skips, zero failures, plus complete script/hygiene/localization/tool
+  checks. Receipt `/tmp/vpn-parity-checkpoint17-prepush.json` covers that checkpoint
+  only; new content requires another full receipt.
+- Checkpoint17 exact-SHA CI: Fast Checks, Android, Linux and macOS passed; Windows
+  failed its routine Aqua parser test because Windows has no `os.getuid` attribute
+  to mock. Advisory VPN Integration passed. The checkpoint is not fully verified.
+  Log `/tmp/vpn-243-windows-ci-failed.log`. The new subprocess regression removes
+  that API before launching the actual parser suite: causal RED
+  `/tmp/vpn-aqua-portability-red.log`; fixed5 GREEN
+  `/tmp/vpn-aqua-portability-green.log`. Routine release hygiene includes the new
+  regression, and native Windows launch plus new exact-SHA CI remain pending.
+- Checkpoint16's Linux cancellation failure is repaired in checkpoint17. Root
+  reproduced the cause without networking: closing a cancelled stream made
   the child throw IOException, which coroutineScope preferred over cancellation.
   Capturing the caller context outside that scope preserves cancellation identity.
   Causal RED `/tmp/vpn-manifest-cancel-io-red.{log,xml}`; all7 focused cancellation
@@ -52,10 +57,14 @@ inputs and correlation records until authoritative reconciliation.
 One writer per file; root owns lifecycle tools, scope, version, documentation,
 commits/push/CI, shared declarations, common integration and the host build queue.
 Workers do not commit, bump versions or invoke lifecycle synchronization.
+The user-approved resource-efficient defaults in `development.md` are active:
+focused briefs, Terra medium for bounded work, stronger review for privileged code,
+concise evidence summaries, reused native harnesses and coherent checkpoint checks.
+All workers were notified; required coverage and delivery gates remain unchanged.
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | CLI/common integration, documentation, visuals and final audit | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Checkpoint16 prepush passed | Exact-SHA CI; coherent coverage ledger |
+| B/G/H | root | CLI/common integration, documentation, visuals and final audit | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Native-helper graph8 and Aqua5 passed | Package producer/native launch; checkpoint18 |
 | C/D/G-Android | android_terra, Terra medium | Android actions/install/storage and native scenarios | App Gradle/CI and host builds remain root | Owned5584 API29/48MiB and5590 API35/192MiB | Clean2.2.14 large-data chains and API35 streams passed | New same-source installer pair, SSH/actions/visuals |
 | F/E-Windows | windows, Astra | Fixed installer roles/codecs, installer adapter/lease and focused tests; broker components | Package staging/Gradle/workflows/factory/Main/autostart remain root | Owned native x64 guest2314; gateway unavailable | Kernel causal RED, host13 passed, native6 pending retrieval | Fixed helper role implementation and MSI success |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Owned Arch2317, Ubuntu2318, Fedora2316; revalidate before use | Current Arch pair built; unsupported-path attempt terminal failed | Supported-path rerun, rollback/traffic/final packages |
@@ -129,15 +138,21 @@ live SSH routing or active-connection preservation. No secrets belong in evidenc
 ### Current Coherent Follow-up Slice
 
 The fixed Windows installer invocation/worker-ready codecs are data-only; Main
-still exposes validate-only and the installer launch path is unchanged. Four owned
-protocol/CSPROJ/test paths are held for checkpoint17; host selection14 selected,
+still exposes validate-only and the installer launch path is unchanged. The
+protocol/CSPROJ/test paths are committed in checkpoint17; host selection14 selected,
 13 executed, one explicit native C# compatibility skip. The helper source inventory
 includes the new C# protocol input. Source roles and package binding remain required.
 
 The Windows helper tool now stages verified PE bytes/manifest into a prepared
 `app/native/windows-amd64` directory and inspects the packaged result. Twelve fast
-helper tests pass, including changed-byte/policy rejection. Gradle/package/CI
-producer wiring is the next implementation slice, not yet enabled by these tools.
+helper tests pass, including changed-byte/policy rejection. Root has now added
+Windows-only Gradle producer wiring, pinned SDK CI setup, and helper validation/
+nonmutating launch probes in extracted and installed MSI checks. Eight real Gradle
+graph tests passed, including producer failure blocking packages and verified bytes
+reaching both installer inputs: `/tmp/vpn-windows-native-package-graph.log`.
+Current NativeAOT build/package execution is still pending; the ARM guest lacks the
+pinned SDK/MSVC and the native x64 guest remains unreachable. No tooling was installed
+to bypass this limitation. This slice does not enable unfinished installer roles.
 
 The macOS Aqua fixture observer is read-only: a single matching process/prompt is
 only candidate correlation, never proof of authorization. Terminal authority uses
@@ -145,6 +160,7 @@ the successful public updates envelope and preserves unknown installed state.
 Four direct tests passed on host and native macOS Python3.9; actual earlier fixture
 false-positive and invalid-envelope RED logs are retained under
 `/tmp/macos-aqua-correlation-prepare.ZSyEvK`. The test runs in release hygiene.
+Its current five-test portable selection and Windows CI repair are recorded above.
 
 ### Desktop Installation Evidence
 

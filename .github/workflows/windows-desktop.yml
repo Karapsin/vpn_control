@@ -26,6 +26,7 @@ on:
       - "scripts/package_windows_desktop.ps1"
       - "scripts/test_windows_desktop_package.ps1"
       - "scripts/test_windows_packaging_graph.init.gradle"
+      - "scripts/test_windows_packaging_graph.py"
       - "scripts/test_windows_package_helpers.ps1"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
@@ -34,6 +35,10 @@ on:
       - "scripts/windows_launcher_utf8.py"
       - "scripts/test_windows_launcher_utf8.py"
       - "scripts/test_windows_installed_desktop.ps1"
+      - "scripts/prepare_windows_native_helpers.ps1"
+      - "scripts/windows_native_helpers.py"
+      - "scripts/test_windows_native_helpers.py"
+      - "scripts/windows_native_packaging.gradle"
 
 jobs:
   package-windows-desktop:
@@ -59,6 +64,18 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Read native helper SDK version
+        id: native-helper-sdk
+        shell: pwsh
+        run: |
+          $Pin = Get-Content desktopApp/native/windows/toolchain.lock.json -Raw | ConvertFrom-Json
+          "version=$($Pin.sdkVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Set up native helper SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}
 
       - name: Verify Windows admission diagnostic behavior
         run: python scripts/test_windows_install_admission_diagnostic.py

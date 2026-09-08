@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve bounded CLI failure correlation in packaged smoke diagnostics.
 - Validate Arch update fixture paths early and identify verified Windows kernel processes during install admission.
 - Preserve cancelled update outcomes and validate fixed installer metadata, helper staging, and native authorization fixtures.
+- Build and verify fixed Windows helpers in packaged applications and keep native fixture tests portable.
 
 ## 2.1.5 - 2026-09-08
 

@@ -59,6 +59,7 @@ The only startup-sync exception is a clearly read-only request where current rem
 - For every distinct failure type discovered in VM, emulator, native/package, manual, visual, or integration testing, add a quick deterministic regression before fixing it and include it in routine checks. Follow `TEST-001` in `agent_docs/contracts.md`; record failing/passing evidence and keep the native scenario.
 - If large work intentionally spans multiple dirty buckets, document the intent in `agent_docs/work-in-progress.md`.
 - Start low-context repository navigation from `agent_docs/README.md`.
+- Follow the resource-efficient workflow in `agent_docs/development.md`: focused context and delegation, concise evidence summaries, and batched checks. Preserve every contract, causal regression, native acceptance scenario, and exact-SHA delivery gate.
 - Use `agent_docs/state-ownership.md` before adding cross-platform actions or moving platform side effects.
 - Use `agent_docs/native-runtime-artifacts.md` before touching native runtime binaries or runtime preparation scripts.
 

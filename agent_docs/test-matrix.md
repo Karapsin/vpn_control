@@ -62,7 +62,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
 | Disposable full-VPN integration harness | `python3 scripts/test_vpn_integration_fixture.py`, `./gradlew :desktopApp:test :app:compileDebugAndroidTestKotlin`, then dispatch `VPN Integration` with `profile=all` only on hosted disposable runners |
 | Root/module Gradle configuration and Android SDK lookup | `python3 scripts/test_desktop_sdk_independence.py` configures the real desktop task graph with an unavailable SDK; also run affected Android compilation/tests. Included after build setup in Fast Checks and pre-push. |
-| Windows installer Gradle graph | `python3 scripts/test_windows_packaging_graph.py` verifies task discovery with configuration on demand and prepared-image dependencies in a minimal real Gradle fixture. Included after build setup in Fast Checks and pre-push. |
+| Windows installer Gradle graph | `python3 scripts/test_windows_packaging_graph.py` verifies task discovery, prepared-image dependencies, native-helper producer failure and verified staging before EXE/MSI in a minimal real Gradle fixture. Included after build setup in Fast Checks and pre-push. |
 | Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
 | Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
 | Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
@@ -314,8 +314,14 @@ in the current WIP ledger. Keep ordinary HTTP failure reporting covered as well.
 Release hygiene executes `test_macos_aqua_authorization_correlation.py` directly:
 actual process parsing, unmatched/ambiguous prompt rejection, successful public
 receipt envelopes and unknown installed state. The observer never sends credentials
-or treats a click/process observation as authoritative authorization.
+or treats a click/process observation as authoritative authorization. A subprocess
+regression removes `os.getuid` before launching the real parser/correlation suite,
+reproducing Windows' missing Unix API on every host without skipping these tests.
 
 `test_windows_native_helpers.py` also exercises verified app-image staging and
 inspection, including byte/policy mismatch rejection. Passing these data-only tests
 does not certify the NativeAOT role execution, packaged wiring or MSI replacement.
+The Windows package workflow builds the pinned native helper before the app image;
+both extracted and installed MSI checks verify its manifest/PE and execute its
+nonmutating `validate-only` probe. Native installer/UAC/recovery scenarios remain
+separate acceptance requirements.

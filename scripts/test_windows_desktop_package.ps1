@@ -104,6 +104,13 @@ Assert-PeSubsystem -FilePath $Launcher.FullName -Expected 2
 Assert-PeSubsystem -FilePath $CliLauncher.FullName -Expected 3
 & python3 (Join-Path $RepoRoot "scripts/windows_launcher_utf8.py") --verify-only --app-image $Launcher.DirectoryName
 if ($LASTEXITCODE -ne 0) { throw "Extracted Windows launchers are missing safe UTF-8 manifests" }
+& python3 (Join-Path $RepoRoot "scripts/windows_native_helpers.py") inspect-image --app-image $Launcher.DirectoryName
+if ($LASTEXITCODE -ne 0) { throw "Extracted MSI native helper is missing or failed artifact validation" }
+$NativeHelper = Join-Path $Launcher.DirectoryName "app/native/windows-amd64/vpn-control-install-helper.exe"
+$NativeProbe = & $NativeHelper validate-only
+if ($LASTEXITCODE -ne 0 -or $NativeProbe -cne "VPN_INSTALL_HELPER_VALIDATE_ONLY_OK") {
+    throw "Extracted MSI native helper did not pass its nonmutating launch probe"
+}
 $ExpectedVersion = & python3 (Join-Path $RepoRoot "scripts/version_metadata.py") --field version
 if ($LASTEXITCODE -ne 0) { throw "Could not read expected package version" }
 & python3 (Join-Path $RepoRoot "scripts/test_packaged_cli.py") --launcher $CliLauncher.FullName --expected-version $ExpectedVersion

@@ -77,6 +77,7 @@ on:
       - "scripts/test_arch_public_update.py"
       - "scripts/test_desktop_sdk_independence.py"
       - "scripts/test_windows_packaging_graph.py"
+      - "scripts/windows_native_packaging.gradle"
       - "scripts/windows_install_admission_diagnostic.py"
       - "scripts/test_windows_install_admission_diagnostic.py"
       - "scripts/test_windows_packaging_graph.init.gradle"

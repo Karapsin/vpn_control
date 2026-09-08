@@ -53,6 +53,14 @@ Windows desktop from a Windows host:
 - JDK 17 is available.
 - WiX is downloaded by the Compose packaging task when needed.
 - Package regression scripts validate MSI/EXE payloads and extracted launcher smoke behavior.
+- Windows `createDistributable` depends on `prepareWindowsNativeHelpers`, which uses
+  the SDK pinned in `desktopApp/native/windows/toolchain.lock.json` and stages the
+  verified helper into `app/native/windows-amd64`. CI installs that SDK; local
+  packaging needs it and the compatible native C++ toolchain. Override executable
+  locations with Gradle properties `vpnControlWindowsDotnet` and
+  `vpnControlWindowsPython` when needed. Compilation and graph inspection do not
+  invoke the native builder. Extracted/installed MSI checks verify the helper bytes
+  and run its nonmutating probe; this does not prove privileged installation roles.
 - MSI-extracted GUI/CLI launchers also pass read-only `windows_launcher_utf8.py
   --verify-only`; verification is safe after signing and must not repair test inputs.
 - The Windows app-image task runs `scripts/windows_launcher_utf8.py` on both generated

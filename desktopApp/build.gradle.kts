@@ -97,6 +97,10 @@ tasks.named("processResources") {
     dependsOn(generateDesktopVersionResource)
 }
 
+if (hostOs.isWindows) {
+    apply(from = rootProject.file("scripts/windows_native_packaging.gradle"))
+}
+
 tasks.withType<AbstractJPackageTask>().configureEach {
     if (hostOs.isLinux && targetFormat == TargetFormat.Deb) {
         // Compose 1.7.3 appends its own resource directory after freeArgs.

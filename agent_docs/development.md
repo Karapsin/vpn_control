@@ -79,6 +79,48 @@ When you enter the repository without fresh context, route the task before editi
 
 If the docs disagree, treat `AGENTS.md` as the hard-rule layer and the focused docs as the subsystem detail layer. Fix the contradiction as part of the patch when the answer is clear; otherwise call it out explicitly.
 
+## Resource-Efficient Execution
+
+Optimize tokens per completed, verified change. The acceptance criteria and required
+checks remain unchanged; reduced coverage is not an efficiency measure.
+
+- Keep current ownership, blockers, next actions and evidence links in
+  `work-in-progress.md`. Replace stale summaries instead of appending contradictory
+  updates. Keep historical detail in linked archives and read it only for a specific
+  question. Reuse already-read instructions within a continuous task.
+- Use one implementation owner per subsystem and concrete, independent worker
+  assignments. Default bounded implementation and test execution to **GPT-5.6 Terra
+  with medium reasoning**, when available. Reserve stronger-model work for privileged
+  code, difficult unresolved failures, shared design decisions and focused independent
+  review. Preserve an explicit user model override. Do not restart an effective
+  worker merely to change models; transfer at a coherent handoff.
+- Give workers a focused brief: outcome, owned/reserved files, applicable contracts,
+  interfaces, exact checks, environment/permission boundaries and evidence locations.
+  Aim for about 500 words; include additional essential constraints when needed.
+  Avoid a full conversation fork for a task that needs only this brief. Reuse a
+  worker when its existing context matches the next assignment.
+- Keep routine handoffs near 200 words: completed behavior, changed paths, command
+  and result counts/skips, source/artifact identity, evidence paths, unresolved cases,
+  and cleanup. Send intermediate messages for decisions, completion or actionable
+  failures, rather than each setup command. Preserve timely user progress updates.
+- Save full redacted logs and machine-readable receipts outside tracked source.
+  Return exit status, counts/skips, artifact identity and evidence paths by default;
+  read bounded failure excerpts when needed. Do not trim the evidence needed to
+  understand a failure or infer success from a shell wrapper's exit alone.
+- Run the mapped focused checks while editing. Batch compatible selections into one
+  host Gradle invocation. Repeat passed checks when content, inputs, environment,
+  failures or unresolved concerns justify it. Run the complete managed prepush tier
+  after each coherent checkpoint's final content/version edit, then push and verify
+  every required workflow for that exact SHA. Retain checkpoint pushes.
+- Reuse native harnesses and validate the assigned environment, artifact, endpoint
+  and trust before product scenarios. Freeze and hash artifacts; reuse evidence only
+  for its proven source and scope. Keep every distinct TEST-001 quick regression and
+  the original native scenario. Use existing long waits/event notifications and back
+  off unchanged remote observations; never restart work because a poll timed out.
+
+Measure savings from available task usage over comparable accepted changes; do not
+invent percentages or treat a cheaper model as proof of fewer total tokens.
+
 ## Repository Agent Lifecycle
 
 Use the project MCP lifecycle described in `agent_tools/README.md`. `prepare_start` performs dirty-aware synchronization to the `dev` development branch and routes the task before inspection. `docs` and `change_impact` provide focused repository context from the local documentation index. `workflow_status` makes the current dirty scope and missing actions visible.

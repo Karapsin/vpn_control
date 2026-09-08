@@ -1,0 +1,41 @@
+// Applied only for Windows packaging; ordinary compilation/tests need no native toolchain.
+def nativeOutput = layout.buildDirectory.dir('windows-native-helpers/install')
+def python = providers.gradleProperty('vpnControlWindowsPython').orElse('python3')
+def dotnet = providers.gradleProperty('vpnControlWindowsDotnet').orElse('dotnet')
+def builder = rootProject.file('scripts/prepare_windows_native_helpers.ps1')
+def verifier = rootProject.file('scripts/windows_native_helpers.py')
+
+def prepare = tasks.register('prepareWindowsNativeHelpers', Exec) {
+    group = 'distribution'
+    description = 'Build and validate the fixed native Windows installer helper.'
+    workingDir(rootProject.file('desktopApp/native/windows'))
+    inputs.files(builder, verifier)
+    inputs.files(rootProject.fileTree('desktopApp/native/windows') {
+        include '**/*.csproj', '**/*.props', '**/*.json', '**/*.manifest'
+        exclude '**/bin/**', '**/obj/**'
+    })
+    inputs.files(rootProject.fileTree('desktopApp/src/main/resources') {
+        include 'windows-install-*.cs'
+    })
+    inputs.property('dotnet', dotnet)
+    inputs.property('python', python)
+    outputs.dir(nativeOutput)
+    commandLine('powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', builder.absolutePath, '-RepositoryRoot', rootProject.projectDir.absolutePath,
+        '-Dotnet', dotnet.get(), '-Python', python.get(), '-OutputRoot', nativeOutput.get().asFile.absolutePath)
+}
+
+tasks.matching { it.name == 'createDistributable' }.configureEach { image ->
+    dependsOn(prepare)
+    inputs.files(prepare.map { it.outputs.files })
+    doLast {
+        def nativeDirectory = nativeOutput.get().asFile
+        def imageDirectory = new File(image.destinationDir.get().asFile, image.packageName.get())
+        project.exec {
+            commandLine(python.get(), verifier.absolutePath, 'stage-product',
+                '--output', new File(nativeDirectory, 'publish/vpn-control-install-helper.exe').absolutePath,
+                '--manifest', new File(nativeDirectory, 'native-helpers.json').absolutePath,
+                '--app-image', imageDirectory.absolutePath)
+        }
+    }
+}

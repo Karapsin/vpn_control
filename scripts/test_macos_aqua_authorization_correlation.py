@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import stat
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -21,7 +23,7 @@ class ProcessParserTest(unittest.TestCase):
         rows = subject.parse_ps(raw)
         self.assertEqual([row["pid"] for row in rows], [12, 13])
         metadata = type("Metadata", (), {"st_mode": stat.S_IFREG | 0o700, "st_uid": 501})()
-        with mock.patch.object(Path, "lstat", return_value=metadata), mock.patch.object(subject.os, "getuid", return_value=501):
+        with mock.patch.object(Path, "lstat", return_value=metadata), mock.patch.object(subject.os, "getuid", return_value=501, create=True):
             self.assertEqual(subject.coordinator(rows[-1], HOME), {"osascriptPid": 13, "jobId": JOB, "ownerPid": 42})
 
     def test_observation_rejects_non_product_or_ambiguous_prompt(self):
@@ -51,6 +53,23 @@ class CorrelationAndRecoveryTest(unittest.TestCase):
         self.assertEqual(bad["reason"], "public-envelope-not-successful-final")
         value = subject.public_recovery({"ok": True, "code": "OK", "final": True, "data": {"installations": [entry]}}, JOB)
         self.assertIsNone(value["installed"])
+
+
+class LaunchPortabilityTest(unittest.TestCase):
+    def test_routine_suite_launches_without_unix_identity_api(self):
+        # Windows has no os.getuid. Exercise the real test entry point under
+        # that API surface on every host, without skipping the parser cases.
+        result = subprocess.run(
+            [sys.executable, "-c", "import os, runpy, sys; "
+             "os.__dict__.pop('getuid', None); "
+             "sys.argv = [sys.argv[1], 'ProcessParserTest', 'CorrelationAndRecoveryTest']; "
+             "runpy.run_path(sys.argv[0], run_name='__main__')",
+             str(Path(__file__).resolve())],
+            cwd=Path(__file__).resolve().parent, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("Ran 4 tests", result.stderr)
+        self.assertNotIn("skipped", result.stderr)
 
 
 if __name__ == "__main__":

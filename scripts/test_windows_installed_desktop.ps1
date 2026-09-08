@@ -142,6 +142,13 @@ try {
         throw "Installed vpn-control.exe launcher was not found"
     }
     Assert-FileExists "Installed vpn-control.exe launcher is missing" $Launcher
+    $InstalledImage = Split-Path -Parent $Launcher
+    & python3 (Join-Path $RepoRoot "scripts/windows_native_helpers.py") inspect-image --app-image $InstalledImage
+    if ($LASTEXITCODE -ne 0) { throw "Installed native helper is missing or failed artifact validation" }
+    $NativeProbe = & (Join-Path $InstalledImage "app/native/windows-amd64/vpn-control-install-helper.exe") validate-only
+    if ($LASTEXITCODE -ne 0 -or $NativeProbe -cne "VPN_INSTALL_HELPER_VALIDATE_ONLY_OK") {
+        throw "Installed native helper did not pass its nonmutating launch probe"
+    }
 
     Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $SmokeStateDir -Label "installed app"
     Invoke-InstalledSmoke -Launcher $Launcher -StateDirectory $RelaunchStateDir -Label "installed app relaunch"
