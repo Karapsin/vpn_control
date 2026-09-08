@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.6 - 2026-09-08
 
 - Run generated-source fixture rejection without requiring Windows symlink privileges.
 - Close cancelled update manifest responses before joining blocked body readers.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate Arch update fixture paths early and identify verified Windows kernel processes during install admission.
 - Preserve cancelled update outcomes and validate fixed installer metadata, helper staging, and native authorization fixtures.
 - Build and verify fixed Windows helpers in packaged applications and keep native fixture tests portable.
+- Preserve fixed Windows installer outcomes and make native helper builds and Android test-device selection deterministic.
 
 ## 2.1.5 - 2026-09-08
 

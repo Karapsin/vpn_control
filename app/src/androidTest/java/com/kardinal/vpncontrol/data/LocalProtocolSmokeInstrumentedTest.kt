@@ -72,7 +72,7 @@ class LocalProtocolSmokeInstrumentedTest {
         val benchmark = orchestrator.benchmarkLocation(link).getOrThrow()
 
         assertEquals("manual", benchmark.primaryStatus)
-        assertEquals("ok", benchmark.testStatus)
+        assertEquals(benchmark.detail, "ok", benchmark.testStatus)
     }
 
     private fun isServerReachable(port: Int): Boolean {

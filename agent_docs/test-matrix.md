@@ -203,23 +203,30 @@ Protocol parser patch:
 
 ## Android Instrumentation
 
-Run all Android instrumentation tests on a connected device or emulator:
+Run Android instrumentation only on the explicitly assigned device or emulator:
 
 ```bash
-./gradlew :app:connectedDebugAndroidTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592
 ```
 
 Prerequisites:
 
-- A device or emulator is visible in `adb devices`.
+- Reidentify the owned device in `adb devices`; replace the example serial above.
 - The debug build can be installed on that device.
 - VPN permission prompts may still require manual interaction for tests that exercise real VPN flows.
+
+The launcher uses AGP's early `ANDROID_SERIAL` device-provider filter. Do not use
+Gradle's `--serial` option with AGP 8.7.3: its later filter mutates an immutable
+device list and fails before instrumentation starts. The release-hygiene regression
+`test_android_instrumented_launcher.py` verifies one-device selection, invalid
+serial rejection and failure/cancellation propagation without retry. A successful
+launcher can still report a failing instrumented test; retain that native result.
 
 Run local protocol smoke tests only when local fixture servers are available:
 
 ```bash
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.data.LocalProtocolSmokeInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.LocalProtocolSmokeInstrumentedTest
 ```
 
 See `agent_docs/smoke-android.md` for fixture ports and the Trojan opt-in flag.
@@ -325,3 +332,9 @@ The Windows package workflow builds the pinned native helper before the app imag
 both extracted and installed MSI checks verify its manifest/PE and execute its
 nonmutating `validate-only` probe. Native installer/UAC/recovery scenarios remain
 separate acceptance requirements.
+
+The early Windows package checks run `test_windows_native_helper_builder.ps1` with
+Windows PowerShell, matching the Gradle producer's shell. Private inert executables
+exercise the actual producer with explicit paths and duplicate applications in
+both PATH orders. This catches application discovery joining several executable
+paths into one invalid command before the expensive native build starts.

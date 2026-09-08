@@ -65,6 +65,10 @@ function Invoke-CheckedNative {
 Assert-ReleaseHygiene
 if (-not $SkipTests) {
     & (Join-Path $PSScriptRoot "test_windows_package_helpers.ps1")
+    # Match the Windows PowerShell host used by the native producer, even when
+    # packaging itself was launched from PowerShell Core.
+    Invoke-CheckedNative "powershell.exe" "-NoProfile" "-NonInteractive" "-ExecutionPolicy" "Bypass" `
+        "-File" (Join-Path $PSScriptRoot "test_windows_native_helper_builder.ps1") "-RepositoryRoot" $RepoRoot
 }
 
 Write-Host "[vpn-control] checking Java runtime"

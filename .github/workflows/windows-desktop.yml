@@ -38,6 +38,7 @@ on:
       - "scripts/prepare_windows_native_helpers.ps1"
       - "scripts/windows_native_helpers.py"
       - "scripts/test_windows_native_helpers.py"
+      - "scripts/test_windows_native_helper_builder.ps1"
       - "scripts/windows_native_packaging.gradle"
 
 jobs:

@@ -22,23 +22,30 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
-- Branch `dev`; checkpoint17 `243de045308053b092f038b5ca8873ae7815276d` is pushed.
-  It preserves manifest cancellation identity, adds fixed Windows protocol/staging
-  checks and the macOS Aqua observer, and separates current/historical work notes.
-- Canonical product version is2.1.5 with eight Unreleased bullets at checkpoint17.
+- Branch `dev`; checkpoint18 `2503c5eed85c54108feb65d5411bfcd98c9da2bd` is pushed.
+  It adds the Windows native-helper package producer/probes and the approved
+  token-saving agent workflow. Required acceptance and review gates are unchanged.
+- Canonical product version is2.1.5 with nine Unreleased bullets at checkpoint18.
   Native fixture versions are test-only Gradle overrides; canonical metadata stays intact.
-- Managed checkpoint17 prepush passed:1636 JVM tests selected,1574 executed,62 explicit
+- Managed checkpoint18 prepush passed:1636 JVM tests selected,1574 executed,62 explicit
   platform/opt-in skips, zero failures, plus complete script/hygiene/localization/tool
-  checks. Receipt `/tmp/vpn-parity-checkpoint17-prepush.json` covers that checkpoint
+  checks. Receipt `/tmp/vpn-parity-checkpoint18-prepush.json` covers that checkpoint
   only; new content requires another full receipt.
-- Checkpoint17 exact-SHA CI: Fast Checks, Android, Linux and macOS passed; Windows
-  failed its routine Aqua parser test because Windows has no `os.getuid` attribute
-  to mock. Advisory VPN Integration passed. The checkpoint is not fully verified.
-  Log `/tmp/vpn-243-windows-ci-failed.log`. The new subprocess regression removes
-  that API before launching the actual parser suite: causal RED
-  `/tmp/vpn-aqua-portability-red.log`; fixed5 GREEN
-  `/tmp/vpn-aqua-portability-green.log`. Routine release hygiene includes the new
-  regression, and native Windows launch plus new exact-SHA CI remain pending.
+- Checkpoint18 exact-SHA CI: Fast Checks, Android, Linux and macOS passed; Windows
+  failed before NativeAOT compilation because PowerShell discovered two Python
+  executables and joined their paths into one invalid command. Advisory VPN passed.
+  Log `/tmp/vpn-2503-windows-ci-failed.log`. A native Windows PowerShell regression
+  reproduces this through the actual producer after an explicit-path positive
+  control. Causal RED: `/tmp/vpn-windows-finish.WhKUbn/native-helper-builder-path-20260908/red-result.json`.
+  The resolver now selects the first Application candidate in PATH order for both
+  Python and Dotnet. All3 native cases passed with zero skips (PowerShell5.1,
+  Windows ARM64/x64 emulation): adjacent `green-result.json`, producer SHA
+  `4697b2f49fe5f75f1895af108027d1ebef95896281c1597547040375c7de24ca`.
+  The regression runs before expensive package builds; new exact-SHA CI is pending.
+- Checkpoint17's missing-`os.getuid` Aqua-test failure is fixed in checkpoint18.
+  A subprocess removes that API before launching the actual parser suite; causal
+  RED `/tmp/vpn-aqua-portability-red.log`, fixed5 GREEN on host and native Windows.
+  Native receipt `/tmp/vpn-windows-finish.WhKUbn/aqua-portability-20260908/native-evidence-v3.json`.
 - Checkpoint16's Linux cancellation failure is repaired in checkpoint17. Root
   reproduced the cause without networking: closing a cancelled stream made
   the child throw IOException, which coroutineScope preferred over cancellation.
@@ -64,9 +71,9 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | CLI/common integration, documentation, visuals and final audit | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Native-helper graph8 and Aqua5 passed | Package producer/native launch; checkpoint18 |
-| C/D/G-Android | android_terra, Terra medium | Android actions/install/storage and native scenarios | App Gradle/CI and host builds remain root | Owned5584 API29/48MiB and5590 API35/192MiB | Clean2.2.14 large-data chains and API35 streams passed | New same-source installer pair, SSH/actions/visuals |
-| F/E-Windows | windows, Astra | Fixed installer roles/codecs, installer adapter/lease and focused tests; broker components | Package staging/Gradle/workflows/factory/Main/autostart remain root | Owned native x64 guest2314; gateway unavailable | Kernel causal RED, host13 passed, native6 pending retrieval | Fixed helper role implementation and MSI success |
+| B/G/H | root | CLI/common integration, documentation, visuals and final audit | Shared models/UI, owner/factory/Main, build/version/CI | Frozen packages and platform evidence | Android launcher3 GREEN and real instrumentation reached | Native producer regression; checkpoint19 |
+| C/D/G-Android | android_terra, Terra medium | Android actions/install/storage and native scenarios | App Gradle/CI and host builds remain root | Owned5584 API29/48MiB,5590 API35/192MiB and isolated5592 API35 | Actual SOCKS benchmark RED on5592 | Diagnose fixture/protocol; actions/install/visuals |
+| F/E-Windows | windows, Astra | Fixed installer roles/codecs, installer adapter/lease and focused tests; broker components | Package staging/Gradle/workflows/factory/Main/autostart remain root | Owned native x64 guest2314 unavailable; ARM guest component execution | Fixed role22 native cases GREEN; builder PATH causal RED | Native resolver GREEN, fixed sessions and MSI success |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Owned Arch2317, Ubuntu2318, Fedora2316; revalidate before use | Current Arch pair built; unsupported-path attempt terminal failed | Supported-path rerun, rollback/traffic/final packages |
 | E-Mac/H | mac_fixture_terra, Terra medium | Mac guest execution and Aqua fixture correlation | Root owns common update/UI/scenes/hygiene | Exclusive macOS15.7.7 ARM64 guest192.168.64.3 | Machine r4 replacement and next-owner recovery passed | Causal fixture correction; remaining native/visual cases |
 
@@ -137,11 +144,15 @@ live SSH routing or active-connection preservation. No secrets belong in evidenc
 
 ### Current Coherent Follow-up Slice
 
-The fixed Windows installer invocation/worker-ready codecs are data-only; Main
-still exposes validate-only and the installer launch path is unchanged. The
-protocol/CSPROJ/test paths are committed in checkpoint17; host selection14 selected,
-13 executed, one explicit native C# compatibility skip. The helper source inventory
-includes the new C# protocol input. Source roles and package binding remain required.
+The fixed Windows installer invocation/worker-ready codecs and role state machines
+remain inert in production: Main still exposes validate-only and the old installer
+launch path is unchanged. Review found four causal defects in the new role core:
+valid commit racing owner exit, undefined receipt phase, and cancellation receipt
+publication failure before/after replacement. All22 native component cases now pass;
+receipt `/tmp/vpn-windows-finish.WhKUbn/fixed-installer-roles-v1/review-green-v1-native-evidence.json`.
+This is Windows ARM64/x64-emulated C# execution with inert sessions, not native
+installer integration. Host role/protocol selection13 selected,7 executed,6 explicit
+Windows-only skips; the new role source is in the project and producer inventory.
 
 The Windows helper tool now stages verified PE bytes/manifest into a prepared
 `app/native/windows-amd64` directory and inspects the packaged result. Twelve fast
@@ -162,6 +173,18 @@ false-positive and invalid-envelope RED logs are retained under
 `/tmp/macos-aqua-correlation-prepare.ZSyEvK`. The test runs in release hygiene.
 Its current five-test portable selection and Windows CI repair are recorded above.
 
+The new single-device Android instrumentation launcher avoids AGP8.7.3's broken
+`--serial` filtering by using its earlier `ANDROID_SERIAL` provider filter. Fast3
+GREEN: `/tmp/vpn-android-instrumented-launcher-green.log`. Native launcher failure
+and corrected launch are recorded in `/tmp/vpn-android-local-protocol-5592-launch-diagnostic.log`
+and `/tmp/vpn-android-local-protocol-5592-benchmark-red.log`. The corrected launcher
+ran exactly one test on owned5592; the actual SOCKS benchmark failed and remains
+under investigation. Launcher success is not benchmark acceptance.
+The preserved assertion now includes the benchmark's redacted detail; the second
+native run confirms target code000. Both observed fixture connections were TCP
+preflight probes closing before SOCKS negotiation, so an authentication-method or
+HTTPS mismatch is not yet established as the cause of this runtime failure.
+
 ### Desktop Installation Evidence
 
 macOS r4 machine update from a source-matched23d base2.1.17 to target2.1.18 passed
@@ -175,6 +198,17 @@ Root-verified redacted archive `/tmp/vpn-parity-macos-r4-evidence.hErTxE/r4-evid
 SHA `a65d83021f6d9d89088747852261d0cad920ca8ddf948b5dff925bbc95bc56f0`.
 This is an earlier-source fixture and ad-hoc signing evidence, not final delivered
 package/signing certification. Current full DMG smoke and18-test CLI harness passed.
+
+The same installed r4 app preserved traffic and one controller/runtime through
+seven GUI/CLI lifecycle gestures (40/40 probes each). A real Aqua close-button
+action by exact frontend PID also passed40/40 with the runtime identity unchanged;
+root-verified archive `/tmp/vpn-parity-macos-r4-os-close.afDvtb/r4-lifecycle-through-os-close.tar.gz`,
+SHA `4087f58c2dcc71736838b7e714d791ca26852113f1018e07a78ea17174cb6b79`.
+The first GUI-free scheduled-refresh fixture reported partial failure because
+active refresh uses the running proxy route rather than the offline JVM fixture
+proxy. A corrected isolated SOCKS/TLS fixture is under native verification; it
+does not yet close the scheduled-refresh gate. The broader r4 environment and
+unknown earlier installer jobs are preserved.
 
 Linux earlier same-source Ubuntu/Arch recovery and RPM scenarios have evidence;
 see the historical ledger for manifests. Current7c Arch pair2.1.6/2.1.7 built with
@@ -252,7 +286,9 @@ identities, never authorization to kill/restart anything.
   GUI39769 last observed OFF. Preserve uncertain earlier jobs79677cc5… and5d5a78c3…
   and their owners/watchers/input applications. Earlier authorization arrived after
   owner timeout; later cancellation is not proof of terminal recovery.
-- Android only owned5584/API29 and5590/API35. Installed clean fixture2.2.14;
+- Android owned5584/API29,5590/API35 and isolated5592/API35 protocol-test AVD.
+  API29 has clean fixture2.2.14, API35/5590 has current source-pair base2.2.15;
+  5592 has the debug instrumentation fixture and host loopback SOCKS server18081.
   protected5580/5582 untouched. Native scenarios use nondebuggable ADB without
   root or run-as. Frozen96f CLI manifestSHA
   `a14bdfa526c35cec734fe2b03ed4293d3eb9d2412db1d587cccaeba9042d54e6`.
