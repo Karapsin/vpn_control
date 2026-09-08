@@ -6,16 +6,31 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.ByteBuffer
 import com.sun.jna.Platform
+import com.sun.jna.platform.win32.Advapi32
+import com.sun.jna.platform.win32.Advapi32Util
+import com.sun.jna.platform.win32.Kernel32
+import com.sun.jna.platform.win32.WinNT
 import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class DesktopExportPublicationTest {
-    private fun privateDirectory(parent: Path, name: String): Path = Files.createDirectory(
-        parent.resolve(name), java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
-            java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"),
-        ),
-    )
+    private fun privateDirectory(parent: Path, name: String): Path {
+        val target = parent.resolve(name)
+        if (!Platform.isWindows()) return Files.createDirectory(
+            target, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"),
+            ),
+        )
+        val token = WinNT.HANDLEByReference()
+        check(Advapi32.INSTANCE.OpenProcessToken(Kernel32.INSTANCE.GetCurrentProcess(), WinNT.TOKEN_QUERY, token))
+        val sid = try { Advapi32Util.getTokenAccount(token.value).sidString }
+        finally { Kernel32.INSTANCE.CloseHandle(token.value) }
+        JnaWindowsInstallNative().createDirectory(
+            target.toString(), "O:${sid}G:${sid}D:P(A;;FA;;;$sid)", allowExisting = false,
+        )
+        return target
+    }
 
     @Test fun windowsRenameUsesNoReplaceNullRootAndExactUnicodeLeafForBothAbis() {
         val leaf = "published 東京 😀.json"
@@ -58,6 +73,37 @@ class DesktopExportPublicationTest {
         val root = Files.createTempDirectory("export-publication-東京")
         try { block(root) }
         finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
+    }
+
+    @Test fun elevenPointFiveMiBTextPublishesFromNestedPrivateAncestry() = fixture { root ->
+        val privateParent = privateDirectory(root, "private-parent")
+        val target = privateParent.resolve("routing-export.json")
+        val text = "a".repeat(11 * 1024 * 1024 + 512 * 1024)
+        val result = DesktopPrivateExportWriter.writeText(target.toString(), text)
+        result.getOrElse { failure ->
+            throw AssertionError(
+                "writeText publication stage failed with ${failure.javaClass.name}",
+                failure,
+            )
+        }
+        assertEquals(text.length.toLong(), Files.size(target))
+        assertEquals(text, Files.readString(target))
+        if (!Platform.isWindows()) assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"),
+            Files.getPosixFilePermissions(privateParent))
+    }
+
+    @Test fun macWritableNonStickyAncestorRejectsNestedPrivateExport() {
+        assumeTrue(Platform.isMac())
+        fixture { root ->
+            val unsafeAncestor = Files.createDirectory(root.resolve("unsafe-ancestor"))
+            Files.setPosixFilePermissions(unsafeAncestor,
+                java.nio.file.attribute.PosixFilePermissions.fromString("rwxrwxrwx"))
+            val privateParent = privateDirectory(unsafeAncestor, "private")
+            val target = privateParent.resolve("routing-export.json")
+            val result = DesktopPrivateExportWriter.writeText(target.toString(), "private")
+            assertIs<IllegalArgumentException>(result.exceptionOrNull())
+            assertFalse(Files.exists(target))
+        }
     }
 
     @Test fun interruptedProducerLeavesNoFinalOrOwnedPartial() = fixture { root ->

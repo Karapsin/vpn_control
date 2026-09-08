@@ -282,6 +282,12 @@ class DesktopAppService internal constructor(
         updateService.settleVerifiedInstall(correlation, receipt)
     internal fun controlInstallFrontend(registrationId: String): Result<DesktopFrontendProcessIdentity> =
         DesktopFrontendProcessIdentity.read(desktopStore.updateDirectory().toAbsolutePath().parent, registrationId)
+    internal suspend fun awaitControlInstallFrontendExit(frontend: DesktopFrontendProcessIdentity,
+        correlation: DesktopInstallCorrelation, jobId: String) = DesktopInstallFrontendExit(frontend, correlation, jobId,
+        request = { command -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            DesktopActivationServer.requestCliCommand(command,
+                DesktopFrontendInstance.endpoint(desktopStore.updateDirectory().toAbsolutePath().parent))
+        } }).awaitExit()
 
     fun dismissUpdate() {
         updateService.dismiss()

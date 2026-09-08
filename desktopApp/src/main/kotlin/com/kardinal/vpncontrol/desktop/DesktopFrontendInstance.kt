@@ -37,6 +37,10 @@ internal class DesktopFrontendInstance private constructor(
                     when {
                         request == null -> DesktopCliResponse.failure("UNSUPPORTED")
                         request.controllerId != identity -> DesktopCliResponse.failure("CONFLICT")
+                        request.command.operation == ControlOperationId.QUIT -> runCatching {
+                            visibility.installExit.execute(command as DesktopCliCommand.ControlSubmit,
+                                DesktopFrontendProcessIdentity.current(identity))
+                        }.getOrElse { DesktopCliResponse.failure("UNAVAILABLE", 2) }
                         request.command.operation in setOf(ControlOperationId.GUI_SHOW, ControlOperationId.GUI_HIDE) -> {
                             val owner = (request.command.arguments["owner"] as? ControlValue.Text)?.value
                             val code = if (request.command.arguments.keys != setOf("owner") || request.ifRevision != null ||
@@ -50,6 +54,7 @@ internal class DesktopFrontendInstance private constructor(
                     }
                     }
                 },
+                onCliResponseFlushed = visibility.installExit::responseFlushed,
                 portFile = endpoint(directory),
                 controllerId = identity,
             )

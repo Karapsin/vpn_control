@@ -14,6 +14,7 @@ internal class DesktopFrontendVisibility(
     private val timeoutMillis: Long = DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS,
 ) {
     @Volatile var ownerId: String? = null
+    val installExit = DesktopFrontendInstallExit({ ownerId }, dispatch)
     @Volatile var available: () -> Boolean = { false }
     @Volatile private var handler: ((Boolean) -> ControlCode)? = null
     private val ready = CountDownLatch(1)

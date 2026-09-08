@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Retain partially copied Windows runtime inputs for cleanup retry and require an active GUI session for macOS installer fixtures.
+- Close attached desktop frontends during CLI update handoff and verify Android update recovery and private exports.
 
 ## 2.1.7 - 2026-09-08
 

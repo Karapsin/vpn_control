@@ -62,6 +62,40 @@ class FakeAdb:
 
 
 class PreflightScriptTest(unittest.TestCase):
+    def test_emulator_identity_accepts_legacy_or_boot_only_and_rejects_missing_or_conflict(self):
+        class IdentityAdb:
+            def __init__(self, kernel, boot): self.values = {"ro.kernel.qemu.avd_name": kernel, "ro.boot.qemu.avd_name": boot}
+            def shell(self, *args):
+                self.asserted = args
+                return self.values[args[1]]
+        self.assertEqual('api29', preflight.require_emulator_avd_name(IdentityAdb('api29', '')))
+        self.assertEqual('api35', preflight.require_emulator_avd_name(IdentityAdb('', 'api35')))
+        with self.assertRaisesRegex(RuntimeError, 'missing'):
+            preflight.require_emulator_avd_name(IdentityAdb('', ''))
+        with self.assertRaisesRegex(RuntimeError, 'conflicting'):
+            preflight.require_emulator_avd_name(IdentityAdb('api29', 'api35'))
+
+    def test_baseline_admits_boot_only_api35_identity_with_valid_off_package_and_hash(self):
+        class BootOnlyAdb(FakeAdb):
+            def shell(self, *args):
+                if args == ('getprop', 'ro.kernel.qemu.avd_name'):
+                    self.calls.append(('shell', *args)); return ''
+                if args == ('getprop', 'ro.boot.qemu.avd_name'):
+                    self.calls.append(('shell', *args)); return 'api35'
+                if args == ('getprop', 'ro.build.version.sdk'):
+                    self.calls.append(('shell', *args)); return '35'
+                return super().shell(*args)
+        adb = BootOnlyAdb()
+        status = {'ok': True, 'controllerId': 'owner', 'data': {'runtimeRunning': False}}
+        completed = type('Result', (), {'stdout': json.dumps(status)})()
+        digest = hashlib.sha256(b'base').hexdigest()
+        with patch.object(preflight.subprocess, 'run', return_value=completed):
+            baseline = preflight.verify_public_baseline(adb, Path('cli.py'), 'serial', 'api35', '35', '2.2.19', '17180', digest)
+        self.assertEqual('api35', baseline['avd'])
+        self.assertEqual(digest, baseline['installedBaseSha256'])
+        self.assertIn(('shell', 'getprop', 'ro.kernel.qemu.avd_name'), adb.calls)
+        self.assertIn(('shell', 'getprop', 'ro.boot.qemu.avd_name'), adb.calls)
+
     def test_baseline_rejects_running_before_any_root_step(self):
         adb = FakeAdb()
         status = {'ok': True, 'data': {'runtimeRunning': True}}
@@ -132,7 +166,98 @@ class PreflightScriptTest(unittest.TestCase):
 
     def test_lifecycle_target_install_metadata_defaults_false(self):
         import inspect
-        self.assertIs(False, inspect.signature(preflight.run_fixture_lifecycle).parameters['target_install'].default)
+        signature = inspect.signature(preflight.run_fixture_lifecycle).parameters
+        self.assertIs(False, signature['target_install'].default)
+        self.assertEqual('/system/etc/security/cacerts', signature['ca_store_target'].default)
+        self.assertEqual('null', signature['expected_proxy'].default)
+
+    def test_lifecycle_rejects_unapproved_target_before_adb(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; base.write_bytes(b'base')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=root/'ca.pem', leaf_certificate=root/'leaf.pem',
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=root/'receipt.json',
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            with patch.object(preflight, 'Adb') as adb:
+                with self.assertRaisesRegex(ValueError, 'target'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {}, ca_store_target='/unapproved/cacerts')
+            adb.assert_not_called()
+
+    def test_lifecycle_rejects_unapproved_proxy_before_adb(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; base.write_bytes(b'base')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=root/'ca.pem', leaf_certificate=root/'leaf.pem',
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=root/'receipt.json',
+                expected_avd='avd', expected_api='35', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            with patch.object(preflight, 'Adb') as adb:
+                with self.assertRaisesRegex(ValueError, 'proxy'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {}, expected_proxy='127.0.0.1:18081')
+            adb.assert_not_called()
+
+    def test_lifecycle_rejects_proxy_mismatch_before_root_or_reverse(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; base.write_bytes(b'base')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=root/'ca.pem', leaf_certificate=root/'leaf.pem',
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=root/'receipt.json',
+                expected_avd='avd', expected_api='35', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = FakeAdb(); fake.proxy = 'null'
+            with patch.object(preflight, 'Adb', return_value=fake):
+                with self.assertRaisesRegex(RuntimeError, 'baseline'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {}, ca_store_target='/apex/com.android.conscrypt/cacerts', expected_proxy=':0')
+            self.assertNotIn(('root',), fake.calls)
+            self.assertEqual({}, fake.reverse_map)
+
+    def test_apex_target_and_colon_zero_baseline_are_used_and_restored(self):
+        class StableZygoteAdb(FakeAdb):
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='35', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = StableZygoteAdb(); fake.proxy = ':0'
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                with self.assertRaisesRegex(RuntimeError, 'ACTION_FAILED'):
+                    preflight.run_fixture_lifecycle(
+                        args, lambda *_: (_ for _ in ()).throw(RuntimeError('ACTION_FAILED')),
+                        target_install=True, ca_store_target='/apex/com.android.conscrypt/cacerts', expected_proxy=':0',
+                    )
+            saved = json.loads(receipt.read_text())
+            self.assertEqual('/apex/com.android.conscrypt/cacerts', saved['target'])
+            self.assertEqual(':0', saved['expectedProxy'])
+            self.assertEqual(':0', fake.proxy)
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'cp', '-a', '/apex/com.android.conscrypt/cacerts/.', '/data/local/tmp/vpn-control-test/'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                           '/data/local/tmp/vpn-control-test', '/apex/com.android.conscrypt/cacerts'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'umount', '/apex/com.android.conscrypt/cacerts'), fake.calls)
 
     def test_injected_action_failure_still_reaches_terminal_fixture_cleanup(self):
         class StableZygoteAdb(FakeAdb):
@@ -168,8 +293,13 @@ class PreflightScriptTest(unittest.TestCase):
             saved = json.loads(receipt.read_text())
             self.assertEqual(['action'], calls)
             self.assertTrue(saved['targetInstall'])
+            self.assertEqual('/system/etc/security/cacerts', saved['target'])
+            self.assertEqual('null', saved['expectedProxy'])
             self.assertEqual('RuntimeError', saved['failure']['type'])
             self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'cp', '-a', '/system/etc/security/cacerts/.', '/data/local/tmp/vpn-control-test/'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                           '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
             self.assertFalse(fake.rooted)
             self.assertEqual({}, fake.reverse_map)
             self.assertEqual('null', fake.proxy)

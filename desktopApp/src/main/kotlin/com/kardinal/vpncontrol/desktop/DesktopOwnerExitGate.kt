@@ -4,11 +4,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /** Only the exact successful terminal response may release a requested owner exit. */
-internal class DesktopOwnerExitGate {
+internal class DesktopOwnerExitGate(
+    private val releaseInstall: (DesktopInstallCorrelation, String, () -> Unit) -> Unit = { _, _, release -> release() },
+) {
     private val pending = AtomicReference<String?>(null)
     private val released = AtomicBoolean()
     private data class InstallExit(val correlation: DesktopInstallCorrelation, val jobId: String)
     private val install = AtomicReference<InstallExit?>(null)
+    private val notified = AtomicReference<InstallExit?>(null)
     val exitRequested: Boolean get() = released.get()
     val exitPending: Boolean get() = pending.get() != null || install.get() != null || released.get()
 
@@ -33,7 +36,13 @@ internal class DesktopOwnerExitGate {
                 (request.requestId == identity.requestId && request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL ||
                     request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS &&
                         request.command.arguments["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.operationId)))
-                released.set(true)
+                if (notified.compareAndSet(null, expected)) {
+                    try {
+                        releaseInstall(identity, expected.jobId) {
+                            if (install.get() == expected && notified.get() == expected) released.set(true)
+                        }
+                    } catch (_: Exception) { notified.compareAndSet(expected, null) }
+                }
         }
         if (pending.get() != request.requestId) return
         if (result.requestId == request.requestId && result.controllerId == request.controllerId &&
@@ -50,6 +59,7 @@ internal class DesktopOwnerExitGate {
 
     fun revokeInstallExit(correlation: DesktopInstallCorrelation, jobId: String) {
         val expected = install.get() ?: return
-        if (expected == InstallExit(correlation, jobId)) install.compareAndSet(expected, null)
+        if (expected == InstallExit(correlation, jobId) && install.compareAndSet(expected, null))
+            notified.compareAndSet(expected, null)
     }
 }

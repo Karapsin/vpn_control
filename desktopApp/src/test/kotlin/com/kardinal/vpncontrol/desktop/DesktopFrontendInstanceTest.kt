@@ -2,9 +2,40 @@ package com.kardinal.vpncontrol.desktop
 
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
+import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class DesktopFrontendInstanceTest {
+    @Test fun authenticatedInstallExitReachesTheCapturedFrontendEndpoint() {
+        val directory = Files.createTempDirectory("frontend-install-exit")
+        val owner = java.util.UUID.randomUUID().toString()
+        val presentation = visibility().apply { ownerId = owner }
+        val exited = java.util.concurrent.CountDownLatch(1)
+        presentation.installExit.install { exited.countDown() }
+        val frontend = assertNotNull(DesktopFrontendInstance.start(directory, presentation))
+        try {
+            val identity = DesktopFrontendProcessIdentity.current(frontend.identity)
+            val requestId = java.util.UUID.randomUUID().toString()
+            val request = ControlRequest(requestId, ControlCommand(ControlOperationId.QUIT, mapOf(
+                "owner" to ControlValue.Text(owner),
+                "installOperation" to ControlValue.Text(java.util.UUID.randomUUID().toString()),
+                "jobId" to ControlValue.Text(java.util.UUID.randomUUID().toString()),
+                "pid" to ControlValue.IntegerValue(identity.pid),
+                "startedAtEpochMillis" to ControlValue.IntegerValue(identity.startedAtEpochMillis),
+            )), controllerId = frontend.identity)
+            val response = DesktopActivationServer.requestCliCommand(DesktopCliCommand.ControlSubmit(request),
+                DesktopFrontendInstance.endpoint(directory))
+            assertTrue(response.success, "Captured frontend must accept its authenticated installation exit: ${response.message}")
+            val result = ControlProtocolCodec.decodeResult(response.message)
+            assertEquals(frontend.identity, result.controllerId)
+            assertEquals(requestId, result.requestId)
+            assertEquals(ControlCode.OK, result.code)
+            assertTrue(result.final)
+            assertTrue(exited.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        } finally { frontend.close(); directory.toFile().deleteRecursively() }
+    }
+
     private fun visibility(onShow: () -> Unit = {}, onHide: () -> Unit = {}) = DesktopFrontendVisibility({ it() }).apply {
         ownerId = "test-owner"
         available = { true }

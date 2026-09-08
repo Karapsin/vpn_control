@@ -131,6 +131,23 @@ def require_task_staging(staging: str) -> None:
 
 SELINUX_CONTEXT = re.compile(r"u:object_r:[A-Za-z0-9_.-]+:s0(?::c[0-9]+(?:,c[0-9]+)*)?")
 STAGED_CHILD_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+CA_STORE_TARGETS = frozenset({
+    "/system/etc/security/cacerts",
+    "/apex/com.android.conscrypt/cacerts",
+})
+DISCONNECTED_PROXY_BASELINES = frozenset({"null", ":0"})
+
+
+def require_ca_store_target(target: str) -> str:
+    if target not in CA_STORE_TARGETS:
+        raise ValueError("Fixture CA-store target is not approved")
+    return target
+
+
+def require_disconnected_proxy_baseline(proxy: str) -> str:
+    if proxy not in DISCONNECTED_PROXY_BASELINES:
+        raise ValueError("Fixture proxy baseline is not approved")
+    return proxy
 
 
 def staged_regular_file_paths(adb: Adb, staging: str) -> list[str]:
@@ -187,6 +204,16 @@ def require_installed_base_hash(adb: Adb, package_dump: str, expected_sha256: st
     return digest
 
 
+def require_emulator_avd_name(adb: Adb) -> str:
+    """Read both emulator AVD identity properties on every lifecycle admission."""
+    kernel = adb.shell("getprop", "ro.kernel.qemu.avd_name")
+    boot = adb.shell("getprop", "ro.boot.qemu.avd_name")
+    identities = {value for value in (kernel, boot) if value}
+    if len(identities) != 1:
+        raise RuntimeError("Fixture emulator AVD identity is missing or conflicting")
+    return identities.pop()
+
+
 def establish_owned_transport(adb: Adb, device_port: int, host_port: int, previous_proxy: str) -> None:
     if adb.reverse_mapping(device_port) is not None:
         raise RuntimeError("Fixture target reverse route already exists")
@@ -218,7 +245,7 @@ def establish_owned_transport(adb: Adb, device_port: int, host_port: int, previo
 
 def verify_public_baseline(adb: Adb, cli: Path, serial: str, expected_avd: str, expected_api: str,
                            expected_version: str, expected_code: str, expected_sha256: str) -> dict:
-    avd = adb.shell("getprop", "ro.kernel.qemu.avd_name")
+    avd = require_emulator_avd_name(adb)
     api = adb.shell("getprop", "ro.build.version.sdk")
     package = adb.shell("dumpsys", "package", "com.kardinal.vpncontrol")
     status = subprocess.run(
@@ -260,16 +287,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-sha256", required=True)
     return parser.parse_args()
 
-def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: bool = False) -> dict:
+def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: bool = False,
+                          ca_store_target: str = "/system/etc/security/cacerts",
+                          expected_proxy: str = "null") -> dict:
     if not isinstance(target_install, bool):
         raise ValueError("Fixture target-install metadata must be boolean")
-    args.target = "/system/etc/security/cacerts"
+    args.target = require_ca_store_target(ca_store_target)
+    expected_proxy = require_disconnected_proxy_baseline(expected_proxy)
     require_task_staging(args.staging)
     frozen_hash = require_artifact_hash(args.base_apk, args.base_sha256)
     adb = Adb(args.adb, args.serial)
-    receipt = {"serial": args.serial, "target": args.target, "targetInstall": target_install, "cleanupFailures": []}
+    receipt = {"serial": args.serial, "target": args.target, "expectedProxy": expected_proxy,
+               "targetInstall": target_install, "cleanupFailures": []}
     previous_proxy = adb.global_proxy()
-    if adb.shell_id() != "uid=2000" or adb.reverse_inventory() or previous_proxy != "null":
+    if adb.shell_id() != "uid=2000" or adb.reverse_inventory() or previous_proxy != expected_proxy:
         raise RuntimeError("Public no-update preflight requires an unowned public transport baseline")
     receipt["baseline"] = verify_public_baseline(
         adb, args.cli, args.serial, args.expected_avd, args.expected_api,

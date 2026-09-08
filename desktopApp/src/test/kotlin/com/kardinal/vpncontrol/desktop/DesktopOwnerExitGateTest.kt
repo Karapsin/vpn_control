@@ -5,6 +5,45 @@ import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class DesktopOwnerExitGateTest {
+    @Test fun flushedInstallerResponseWaitsForCapturedFrontendAndRevocationInvalidatesLateRelease() {
+        var callbacks = 0
+        var release: (() -> Unit)? = null
+        val gate = DesktopOwnerExitGate { _, _, ready -> callbacks++; release = ready }
+        val job = "00000000-0000-0000-0000-000000000001"
+        val correlation = DesktopInstallCorrelation("owner", "install", "operation")
+        val request = ControlRequest("inspect", ControlCommand(ControlOperationId.OPERATIONS_STATUS,
+            mapOf("id" to ControlValue.Text("operation"))), controllerId = "owner")
+        val result = ControlResult("owner", "inspect", ControlCode.ACCEPTED, 0, final = false, operationId = "operation",
+            data = mapOf("jobId" to ControlValue.Text(job), "handoffReady" to ControlValue.BooleanValue(true)))
+        fun flush(ready: Boolean = true) = gate.responseFlushed(DesktopCliCommand.ControlSubmit(request),
+            DesktopCliResponse.success(ControlProtocolCodec.encodeResult(result.copy(
+                data = result.data + ("handoffReady" to ControlValue.BooleanValue(ready))))))
+        gate.requestInstallExitAfterResponse(correlation, job)
+        flush(false)
+        assertEquals(0, callbacks)
+        flush(); flush()
+        assertEquals(1, callbacks)
+        assertFalse(gate.exitRequested)
+        gate.revokeInstallExit(correlation, job)
+        assertNotNull(release).invoke()
+        assertFalse(gate.exitRequested)
+    }
+
+    @Test fun exactFrontendCompletionReleasesOnlyAfterPublicResponseWasFlushed() {
+        var release: (() -> Unit)? = null
+        val gate = DesktopOwnerExitGate { _, _, ready -> release = ready }
+        val job = "00000000-0000-0000-0000-000000000001"
+        gate.requestInstallExitAfterResponse(DesktopInstallCorrelation("owner", "install", "operation"), job)
+        assertNull(release)
+        val request = ControlRequest("install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner")
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(request), DesktopCliResponse.success(ControlProtocolCodec.encodeResult(
+            ControlResult("owner", "install", ControlCode.ACCEPTED, 0, final = false, operationId = "operation",
+                data = mapOf("jobId" to ControlValue.Text(job), "handoffReady" to ControlValue.BooleanValue(true))))))
+        assertFalse(gate.exitRequested)
+        assertNotNull(release).invoke()
+        assertTrue(gate.exitRequested)
+    }
+
     @Test fun terminalFailureRevokesOnlyItsOwnUnflushedInstallExitPermit() {
         val gate = DesktopOwnerExitGate()
         val job = "00000000-0000-0000-0000-000000000001"

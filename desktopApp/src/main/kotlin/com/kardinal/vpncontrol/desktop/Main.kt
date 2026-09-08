@@ -258,6 +258,11 @@ private fun DesktopApplication(
         }
     }
 
+    DisposableEffect(visibility) {
+        visibility.installExit.install { detachFrontend() }
+        onDispose { visibility.installExit.install(null) }
+    }
+
     fun checkAndDownloadUpdate() {
         if (updateJob?.isActive == true) return
         updateDialogRequested = true
