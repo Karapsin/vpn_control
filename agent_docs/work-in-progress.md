@@ -16,6 +16,73 @@ A timeout never authorizes restarting or killing an installer/runtime.
 
 ## Current Repository And Scope
 
+Checkpoint15 `7c28fe6cf04d98edb05076f835a2d049894b00a6` now has all five required
+exact-SHA workflows successful; the resumed managed checks finished successfully.
+The next coherent dirty batch contains Windows native process classification,
+its six Windows fixture tests, the Arch public-harness path guard and these docs.
+Native Windows v4 result retrieval is blocked by gateway connection timeouts;
+QGA/task outcomes remain unknown, never restarted from that observation.
+
+Current-source Arch base2.1.6 was first installed under an alternate task path.
+Its public update authenticated, then failed terminal RUNTIME_FAILED before handoff:
+job `f8de2e5a-3e62-496b-a821-8c12b4ed117b`, operation
+`6eed2827-740a-4003-999b-91dea7741c0c`, protected FAILED receipt sequence1.
+The privileged Arch adapter explicitly requires `/opt/vpn-control`; the generic
+fixture verifier had admitted the alternate path. This is a fixture setup defect,
+not proof of a supported-path update failure. The actual harness now rejects this
+setup before fixture access/owner startup/authorization. Causal RED (1 of14 failed)
+and GREEN14 are `/tmp/vpn-arch-install-prefix-{red,green}.log`; the existing routine
+harness includes both rejection and canonical-path verification tests. Arch bundle
+verifier10 also passed. Native corrected-path installation remains next once guest
+access returns; preserve prior owners, inputs, receipts and both frozen packages.
+
+API35 exact guarded cleanup operation `cdab40f0-0259-43ae-af8f-43706c71f08d`
+completed after its accepted timeout without replay:56000 domains and original
+newline digest `5b7fcc5a4bff652c2165ff53836f01abc141df36df8705b9350f8ccfe64fe15c`.
+The application-owner remains responsible for subsequent native stream/lifecycle checks.
+
+Earlier checkpoint15 observation:
+
+Checkpoint15 `7c28fe6cf04d98edb05076f835a2d049894b00a6` is pushed; canonical2.1.5,
+six Unreleased notes. Its four-file smoke diagnostics/ledger slice passed managed
+prepush (`/tmp/vpn-parity-checkpoint15-prepush.json`). At02:08MSK Fast Checks,
+Android and macOS succeeded; Linux/Windows remain pending. The original watcher
+hit local ENOSPC; redundant source/archive copies were reclaimed only after
+matching completed guest builds, and exact-SHA managed checks resumed.
+
+Current Windows dirty slice is the approved native process classification C#,
+PowerShell consumer and NativeSource tests. Causal native RED rejected independently
+verified kernel classes3/4; no PID/name/error-code exemption is added. Host focused
+checks passed13 backend tests with six native-only skips, log
+`/tmp/vpn-windows-kernel-focused-host.log`. Native exact-overlay6+13 verification
+is active; this is not packaged MSI replacement evidence.
+
+Current7c Arch fixture built base2.1.6/target2.1.7 with actual JDK17 in owned2317.
+Guest `/home/vpnfixture/fixture-7c28fe6-5t1xfenn/fixture`; source fingerprint
+`53b3c2beb2e056766ca8a523f47835691a3c8dcbbcdcd1c77c85582499e4acb7`.
+Both packages were rehashed against receipt
+`/tmp/vpn-linux-fixture-7c28fe6-native-receipt.json`. Build runner16100 is terminal0;
+public installation/recovery remains next. Local redundant snapshot source/archive
+were pruned; manifests and complete guest source/packages remain preserved.
+
+API35 same-process visible `a235x.test` add/remove succeeded. Current96f packaged
+CLI cold routing read then completed in about five minutes with56001 domains
+(original56000 plus known temporary fix235), exact result digest recorded in
+`/tmp/5590-cli-cold-routing-show-0201.json`. Earlier silent116second read was
+interrupted observation, not demonstrated stall:64KiB ADB frames were advancing.
+Android owner is preparing guarded removal of only the known temporary domain.
+
+Mac current full target2.1.18 DMG smoke passed after scoped capacity cleanup;
+earlier exit2 cause remains a resource-pressure inference because its JSON was
+lost. Late authorization for job79677 arrived327seconds after request, beyond
+owner180second deadline; native coordinator later expired its600second commit
+wait. Late public cancellation cannot be claimed terminal from its stale receipt.
+Independent r3 job5d5a78c3-cfe3-4d28-801e-d36ee94bd011 remains unknown/PREPARING
+with watcher30904; preserve both jobs and inspect launch/authorization evidence.
+Guest capacity is now above1.5GiB after hash-verified redundant task cleanup.
+
+Earlier checkpoint14 evidence:
+
 Checkpoint14 `96f35f2e4de49e078ea598939258a5361192323b` is pushed to
 `origin/dev`, canonical2.1.5 with five Unreleased notes. Its managed prepush passed;
 receipt `/tmp/vpn-parity-checkpoint14-prepush.json`. At the 2026-09-08 01:52 MSK

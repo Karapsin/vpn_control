@@ -82,19 +82,46 @@ function Write-PrivateRecord([string]$Path, [string]$Principal, [string]$Json) {
     [VpnInstallNative]::PublishPrivateRecord($Path, $Principal, [Text.UTF8Encoding]::new($false,$true).GetBytes($Json))
 }
 
+function Close-ProcessImagePins {
+    for ($index=$script:pins.Count-1; $index -ge 0; $index--) {
+        if ($script:pins[$index] -is [VpnInstallNative+ProcessImagePin]) {
+            try { $script:pins[$index].Dispose() } catch { throw 'BUSY' }
+            $script:pins.RemoveAt($index)
+        }
+    }
+}
+
 # Internal callable seam; worker command lines cannot supply these readers.
 function Assert-NoInstallationCopies($Processes, [string]$Launcher, [uint32[]]$Excluded, $Installation,
-    [scriptblock]$ReadImage = { param($Id) [VpnInstallNative]::ProcessImage([uint32]$Id) },
+    [scriptblock]$ReadImage = { param($Id) [VpnInstallNative+ProcessImagePin]::new([uint32]$Id) },
     [scriptblock]$SameImage = { param($Image, $Captured) $Captured.ContainsImage($Image) }) {
-    foreach ($process in $Processes) {
-        try {
+    try {
+        # A previous failed native close is still owned and still blocks readiness.
+        Close-ProcessImagePins
+        foreach ($process in $Processes) {
             if ($process.Id -in $Excluded) { continue }
-            try { $image = & $ReadImage $process.Id; $same = & $SameImage $image $Installation }
-            catch { if ($process.HasExited) { continue }; throw 'BUSY' }
-            if ($same -isnot [bool]) { throw 'BUSY' }
-            if ($same) { throw 'BUSY' }
-        } finally { $process.Dispose() }
-    }
+            $pin=$null
+            try {
+                $candidate=& $ReadImage $process.Id
+                if ($candidate -isnot [VpnInstallNative+ProcessImagePin]) { throw 'BUSY' }
+                $pin=$candidate; $script:pins.Add($pin)
+                $observation=$pin.Observe()
+                if ($observation.Pid -ne $process.Id) { throw 'BUSY' }
+                if ($observation.KernelOnly) { continue }
+                $same=& $SameImage $observation.Image $Installation
+                if ($same -isnot [bool] -or $same) { throw 'BUSY' }
+            } catch {
+                # A managed HasExited flag, image-query error, or unreadable snapshot
+                # never supplies the retained native generation proof.
+                throw 'BUSY'
+            } finally {
+                if ($null -ne $pin) {
+                    try { $pin.Dispose() } catch { throw 'BUSY' }
+                    $null=$script:pins.Remove($pin)
+                }
+            }
+        }
+    } finally { foreach ($process in $Processes) { $process.Dispose() } }
 }
 
 function Read-ProtectedReceipt([string]$Job, [string]$JobId) {

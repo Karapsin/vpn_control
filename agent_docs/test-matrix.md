@@ -267,7 +267,11 @@ checks as well: a clean minimal launcher does not establish application behavior
 
 `scripts/test_arch_public_update.py` exercises real bundle and JAR contents in
 routine hygiene. The native public installer driver accepts `--arch-source-fixture`
-with `--require-same-source-recovery` for bundle-installed Arch bases. It verifies
+with `--require-same-source-recovery` for bundle-installed Arch bases. Use the
+supported `/opt/vpn-control/bin/vpn-control` installation path: the driver rejects
+alternate paths before owner startup or authorization, matching the privileged
+Arch adapter. `test_linux_public_install_harness.py` exercises both early rejection
+and continued full verification for the supported path in routine hygiene. It verifies
 the installed tree against the immutable base archive before owner startup;
 DEB/RPM scenarios still require package-manager ownership. Keep harness source
 hashes distinct from the immutable package fingerprint when testing older packages.

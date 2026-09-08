@@ -152,6 +152,10 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
     with open("/dev/tty", "rb"):
         pass
     if arch_source_fixture is not None:
+        # The privileged Arch adapter admits only this fixed installation root.
+        # Reject alternate fixture paths before launching any owner or authorization.
+        require(launcher == Path("/opt/vpn-control/bin/vpn-control"),
+                "Arch public installation requires /opt/vpn-control/bin/vpn-control")
         require(same_source_recovery and not fresh_deb_dependencies,
                 "Arch fixture requires same-source recovery without DEB dependency checks")
         fixture = verify_arch_bundle_base(launcher, arch_source_fixture)

@@ -6,15 +6,10 @@ import kotlin.test.*
 import org.junit.Assume.assumeTrue
 
 class DesktopWindowsInstallNativeSourceTest {
-    @Test fun physicalImageAliasesAndUnknownReadersCannotReachReplacement() {
-        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
-        val common = javaClass.getResourceAsStream("/windows-install-common.ps1")!!.use { it.readBytes() }
-        val encoded = Base64.getEncoder().encodeToString(common)
-        val script = """
-            ${'$'}ErrorActionPreference='Stop'
-            . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded'))))
+    @Test fun physicalImageAliasesAndUnknownReadersCannotReachReplacement() = runInventoryFixture(
+        """
             function New-TestCopy {
-                ${'$'}copy=[pscustomobject]@{Id=100;HasExited=${'$'}false}
+                ${'$'}copy=[pscustomobject]@{Id=912;HasExited=${'$'}false}
                 ${'$'}copy|Add-Member ScriptMethod Dispose { ${'$'}script:disposed++ }
                 return ${'$'}copy
             }
@@ -24,29 +19,127 @@ class DesktopWindowsInstallNativeSourceTest {
                 @{image='C:\other-app\vpn-control.exe';same=${'$'}false;unknown=${'$'}false;blocked=${'$'}false},
                 @{image='C:\unknown\vpn-control-cli.exe';same=${'$'}false;unknown=${'$'}true;blocked=${'$'}true}
             )
-            foreach (${'$'}case in ${'$'}cases) {
+            foreach(${'$'}case in ${'$'}cases) {
+                [NativeInventoryFixture]::Reset()
                 ${'$'}script:case=${'$'}case; ${'$'}script:disposed=0; ${'$'}caught=${'$'}null
                 try {
                     Assert-NoInstallationCopies @((New-TestCopy)) 'C:\installed\vpn-control.exe' @() ${'$'}null `
-                        -ReadImage { param(${'$'}Id) return ${'$'}script:case.image } `
-                        -SameImage { param(${'$'}Image,${'$'}Captured) if (${'$'}script:case.unknown) { throw 'native identity unavailable' }; return ${'$'}script:case.same }
+                        -ReadImage { param(${'$'}Id) return [NativeInventoryFixture]::PinWithImage(${'$'}script:case.image) } `
+                        -SameImage { param(${'$'}Image,${'$'}Captured)
+                            if (${'$'}Image -isnot [string] -or ${'$'}Image -cne ${'$'}script:case.image) { throw 'Native image observation lost' }
+                            if (${'$'}script:case.unknown) { throw 'Native identity unavailable' }; return ${'$'}script:case.same
+                        }
                 } catch { ${'$'}caught=${'$'}_.Exception.Message }
                 if (${'$'}case.blocked -and ${'$'}caught -cne 'BUSY') { throw 'Aliased or unknown live copy reached replacement' }
                 if (-not ${'$'}case.blocked -and ${'$'}null -ne ${'$'}caught) { throw 'Unrelated physical installation was blocked' }
-                if (${'$'}script:disposed -ne 1) { throw 'Process snapshot ownership lost' }
+                if (${'$'}script:disposed -ne 1 -or ${'$'}script:pins.Count -ne 0) { throw 'Process snapshot ownership lost' }
             }
             Write-Output 'PHYSICAL_COPIES_OK'
-        """.trimIndent()
-        assertTrue(script.length < 30000 && script.all { it.code < 128 })
-        val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
-            .redirectErrorStream(true).start()
-        try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Copy admission regression timed out")
-            val output = process.inputStream.bufferedReader().readText()
-            assertEquals(0, process.exitValue(), output)
-            assertTrue(output.contains("PHYSICAL_COPIES_OK"), output)
-        } finally { if (process.isAlive) process.destroyForcibly() }
-    }
+        """.trimIndent(),
+        "PHYSICAL_COPIES_OK",
+    )
+
+    @Test fun nativeInventoryClassificationRequiresExactLiveHandleAndKnownLayout() = runInventoryFixture(
+        """
+            ${'$'}passed=@([NativeInventoryFixture]::RunNativeCases())
+            if (${'$'}passed.Count -ne 28) { throw 'Native inventory fixture cases were not all executed' }
+            Write-Output ('NATIVE_INVENTORY_FIXTURES_OK:'+ ${'$'}passed.Count)
+        """.trimIndent(),
+        "NATIVE_INVENTORY_FIXTURES_OK:28",
+    )
+
+    @Test fun verifiedKernelOnlyRecordsDoNotRequireAnExecutableImage() = runInventoryFixture(
+        """
+            ${'$'}ErrorActionPreference='Stop'
+            function New-TestCopy {
+                ${'$'}copy=[pscustomobject]@{Id=912;HasExited=${'$'}false}
+                ${'$'}copy|Add-Member ScriptMethod Dispose { ${'$'}script:disposed++ }
+                return ${'$'}copy
+            }
+            foreach(${'$'}scenario in @('kernel3','kernel4')) {
+                [NativeInventoryFixture]::Reset()
+                ${'$'}script:pin=[NativeInventoryFixture]::Pin(${'$'}scenario)
+                ${'$'}script:disposed=0; ${'$'}script:compared=0; ${'$'}caught=${'$'}null
+                try {
+                    try {
+                        Assert-NoInstallationCopies @((New-TestCopy)) 'C:\installed\vpn-control.exe' @() ${'$'}null `
+                            -ReadImage { param(${'$'}Id) return ${'$'}script:pin } `
+                            -SameImage { param(${'$'}Image,${'$'}Captured) ${'$'}script:compared++; throw 'Kernel-only process required executable image' }
+                    } catch { ${'$'}caught=${'$'}_.Exception.Message }
+                    if (${'$'}null -ne ${'$'}caught) { throw ('Verified '+${'$'}scenario+' should reach readiness; actual='+${'$'}caught) }
+                    if (${'$'}script:compared -ne 0 -or ${'$'}script:disposed -ne 1) { throw 'Kernel classification lost exact observation ownership' }
+                    if ([string]::Join(',', [NativeInventoryFixture]::Trace) -cne 'open,stamp1,image,snapshot,stamp2,close') { throw 'Kernel classification did not use the same retained handle' }
+                    if (${'$'}script:pins.Count -ne 0) { throw 'Confirmed closed inventory pin retained' }
+                } finally { ${'$'}script:pin.Dispose() }
+            }
+            Write-Output 'KERNEL_INVENTORY_CONSUMER_OK'
+        """.trimIndent(),
+        "KERNEL_INVENTORY_CONSUMER_OK",
+    )
+
+    @Test fun unknownInventoryCannotReachReadinessFromManagedExitOrCallerFlags() = runInventoryFixture(
+        """
+            ${'$'}ErrorActionPreference='Stop'
+            function New-TestCopy {
+                # A managed HasExited claim must never suppress unknown native classification.
+                ${'$'}copy=[pscustomobject]@{Id=912;HasExited=${'$'}script:claimsExit}
+                ${'$'}copy|Add-Member ScriptMethod Dispose { ${'$'}script:disposed++ }
+                return ${'$'}copy
+            }
+            foreach(${'$'}scenario in @('normal0','normal1','normal2','unknown-class','foreign-pid','reused-pid','pid-before','pid-after','creation-after','exit-before','exit-after','unknown-flags','thread-overflow','truncated','bad-next','duplicate','snapshot-failure','image-query-failure','query-before-failure','query-after-failure','empty-image','open-failure','caller-classification')) {
+                foreach(${'$'}claimsExit in @(${'$'}false,${'$'}true)) {
+                    [NativeInventoryFixture]::Reset()
+                    ${'$'}script:scenario=${'$'}scenario; ${'$'}script:claimsExit=${'$'}claimsExit; ${'$'}script:disposed=0; ${'$'}script:compared=0; ${'$'}caught=${'$'}null; ${'$'}script:pin=${'$'}null
+                    try {
+                        try {
+                            Assert-NoInstallationCopies @((New-TestCopy)) 'C:\installed\vpn-control.exe' @() ${'$'}null `
+                                -ReadImage { param(${'$'}Id)
+                                    if (${'$'}script:scenario -eq 'caller-classification') { return [pscustomobject]@{KernelOnly=${'$'}true;Image=${'$'}null} }
+                                    ${'$'}script:pin=[NativeInventoryFixture]::Pin(${'$'}script:scenario); return ${'$'}script:pin
+                                } `
+                                -SameImage { param(${'$'}Image,${'$'}Captured) ${'$'}script:compared++; return ${'$'}false }
+                        } catch { ${'$'}caught=${'$'}_.Exception.Message }
+                        if (${'$'}caught -cne 'BUSY') { throw ('Unknown native process reached readiness: '+${'$'}scenario+' exit='+${'$'}claimsExit+' result='+${'$'}caught) }
+                        if (${'$'}script:disposed -ne 1 -or ${'$'}script:compared -ne 0) { throw 'Unknown process comparison or ownership changed' }
+                        if (${'$'}script:pins.Count -ne 0) { throw 'Confirmed closed unknown pin retained' }
+                    } finally { if (${'$'}null -ne ${'$'}script:pin) { ${'$'}script:pin.Dispose() } }
+                }
+            }
+            Write-Output 'UNKNOWN_INVENTORY_BUSY_OK'
+        """.trimIndent(),
+        "UNKNOWN_INVENTORY_BUSY_OK",
+    )
+
+    @Test fun unclosedInventoryPinsBlockReadinessUntilTheExactHandleCloses() = runInventoryFixture(
+        """
+            ${'$'}ErrorActionPreference='Stop'
+            function New-TestCopy {
+                ${'$'}copy=[pscustomobject]@{Id=912;HasExited=${'$'}false}
+                ${'$'}copy|Add-Member ScriptMethod Dispose { ${'$'}script:disposed++ }
+                return ${'$'}copy
+            }
+            foreach(${'$'}scenario in @('image-close-once','close-once-and-read-failure')) {
+                [NativeInventoryFixture]::Reset()
+                ${'$'}script:pin=[NativeInventoryFixture]::Pin(${'$'}scenario)
+                ${'$'}script:disposed=0; ${'$'}caught=${'$'}null
+                try {
+                    try {
+                        Assert-NoInstallationCopies @((New-TestCopy)) 'C:\installed\vpn-control.exe' @() ${'$'}null `
+                            -ReadImage { param(${'$'}Id) return ${'$'}script:pin } `
+                            -SameImage { param(${'$'}Image,${'$'}Captured) return ${'$'}false }
+                    } catch { ${'$'}caught=${'$'}_.Exception.Message }
+                    if (${'$'}caught -cne 'BUSY') { throw 'Native close failure reached readiness' }
+                    if (${'$'}script:disposed -ne 1 -or -not ${'$'}script:pins.Contains(${'$'}script:pin)) { throw 'Unclosed exact native handle ownership was discarded' }
+                    Assert-NoInstallationCopies @() 'C:\installed\vpn-control.exe' @() ${'$'}null
+                    if (${'$'}script:pins.Count -ne 0) { throw 'Retry did not close retained inventory handle' }
+                    ${'$'}closes=@([NativeInventoryFixture]::Trace | Where-Object { ${'$'}_ -eq 'close' })
+                    if (${'$'}closes.Count -ne 2) { throw 'Native handle was not retried exactly once' }
+                } finally { ${'$'}script:pin.Dispose(); ${'$'}null=${'$'}script:pins.Remove(${'$'}script:pin) }
+            }
+            Write-Output 'INVENTORY_CLOSE_RETRY_OK'
+        """.trimIndent(),
+        "INVENTORY_CLOSE_RETRY_OK",
+    )
 
     @Test fun actualFixedPowerShellNativeSourceCompilesAndRejectsUnsafeAclFixtures() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
@@ -199,6 +292,169 @@ class DesktopWindowsInstallNativeSourceTest {
             val output = process.inputStream.bufferedReader().readText()
             assertEquals(0, process.exitValue(), output)
             assertTrue(output.contains("NATIVE_POLICY_OK"), output)
+        } finally { if (process.isAlive) process.destroyForcibly() }
+    }
+
+    private fun runInventoryFixture(body: String, marker: String) {
+        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
+        val native = javaClass.getResourceAsStream("/windows-install-native.cs")!!.use { it.reader().readText() }
+        val common = javaClass.getResourceAsStream("/windows-install-common.ps1")!!.use { it.readBytes() }
+        // These fakes drive the same retained-handle observation and native-byte parser
+        // as the coordinator. They compile only into this test's captured assembly.
+        val fixtures = """
+            // Compiled only by the test, in the same assembly as the captured production source.
+            public static class NativeInventoryFixture {
+                const uint Pid=912;
+                const long Created=132000000000000001L;
+                public static readonly List<string> Trace=new List<string>();
+                static Reader latest;
+                public static void Reset() { Trace.Clear(); latest=null; }
+                public static VpnInstallNative.ProcessImagePin Pin(string scenario) {
+                    latest=new Reader(scenario,@"X:\ALIAS\VPN-CO~1.EXE");
+                    return new VpnInstallNative.ProcessImagePin(Pid,latest);
+                }
+                public static VpnInstallNative.ProcessImagePin PinWithImage(string image) {
+                    latest=new Reader("image",image);
+                    return new VpnInstallNative.ProcessImagePin(Pid,latest);
+                }
+                public static bool SnapshotCleared() {
+                    if (latest==null || latest.Captured==null) return false;
+                    foreach(byte value in latest.Captured) if(value!=0) return false;
+                    return true;
+                }
+                static byte[] Record(uint id,long created,int classification) {
+                    byte[] bytes=new byte[312];
+                    Array.Copy(BitConverter.GetBytes((ulong)id),0,bytes,80,8);
+                    Array.Copy(BitConverter.GetBytes(created),0,bytes,32,8);
+                    Array.Copy(BitConverter.GetBytes((uint)(classification<<1)),0,bytes,304,4);
+                    return bytes;
+                }
+                sealed class Reader : VpnInstallNative.IProcessImageNative {
+                    readonly string scenario, image;
+                    int stamps, closes;
+                    bool opened, closed;
+                    internal byte[] Captured;
+                    internal Reader(string value,string inputImage) { scenario=value; image=inputImage; }
+                    void Exact(IntPtr handle) {
+                        if (!opened || closed || handle!=new IntPtr(71)) throw new IOException("Wrong retained handle");
+                    }
+                    public IntPtr Open(uint pid) {
+                        Trace.Add("open");
+                        if (pid!=Pid || opened) throw new IOException("Wrong requested identity");
+                        if (scenario=="open-failure") throw new IOException("Native open failure");
+                        opened=true; return new IntPtr(71);
+                    }
+                    public VpnInstallNative.ProcessImageStamp Stamp(IntPtr handle) {
+                        Exact(handle); stamps++; Trace.Add("stamp"+stamps);
+                        if (scenario==(stamps==1 ? "query-before-failure" : "query-after-failure")) throw new IOException("Native stamp failure");
+                        uint pid=Pid; long created=Created, exited=0;
+                        if (scenario==(stamps==1 ? "pid-before" : "pid-after")) pid++;
+                        if (stamps>1 && scenario=="creation-after") created++;
+                        if (stamps==1 && scenario=="zero-creation") created=0;
+                        if (scenario==(stamps==1 ? "exit-before" : "exit-after")) exited=Created+1;
+                        return new VpnInstallNative.ProcessImageStamp(pid,created,exited);
+                    }
+                    public string Image(IntPtr handle) {
+                        Exact(handle); Trace.Add("image");
+                        if (scenario=="image-query-failure") throw new IOException("Native query failure");
+                        if (scenario=="empty-image") return "";
+                        if (scenario=="image" || scenario=="image-close-once") return image;
+                        return null;
+                    }
+                    public byte[] Snapshot() {
+                        Exact(new IntPtr(71)); Trace.Add("snapshot");
+                        if (scenario=="snapshot-failure") throw new IOException("Native snapshot failure");
+                        int classification=scenario=="kernel4" ? 4 : 3;
+                        if (scenario.StartsWith("normal")) classification=int.Parse(scenario.Substring(6));
+                        if (scenario=="unknown-class") classification=5;
+                        Captured=Record(scenario=="foreign-pid" ? Pid+1 : Pid,scenario=="reused-pid" ? Created+1 : Created,classification);
+                        if (scenario=="unknown-flags") Captured[304]|=64;
+                        if (scenario=="thread-overflow") Array.Copy(BitConverter.GetBytes(uint.MaxValue),0,Captured,4,4);
+                        if (scenario=="bad-next") Captured[0]=1;
+                        if (scenario=="truncated") Captured=new byte[307];
+                        if (scenario=="next-outside") Array.Copy(BitConverter.GetBytes(313U),0,Captured,0,4);
+                        if (scenario=="duplicate" || scenario=="variable-record") {
+                            int next=scenario=="variable-record" ? 314 : 312;
+                            byte[] pair=new byte[next+312]; Array.Copy(Captured,pair,312);
+                            Array.Copy(BitConverter.GetBytes((uint)next),0,pair,0,4);
+                            Array.Copy(Record(scenario=="duplicate" ? Pid : Pid+1,Created+1,4),0,pair,next,312);
+                            Captured=pair;
+                        }
+                        if (scenario=="close-once-and-read-failure") Captured[304]|=64;
+                        return Captured;
+                    }
+                    public void Close(IntPtr handle) {
+                        Exact(handle); Trace.Add("close"); closes++;
+                        if (scenario.Contains("close-once") && closes==1) throw new IOException("Transient native close failure");
+                        closed=true;
+                    }
+                }
+                static void Check(bool condition,string name) { if (!condition) throw new IOException("Native fixture failed: "+name); }
+                public static string[] RunNativeCases() {
+                    List<string> passed=new List<string>();
+                    foreach(string scenario in new string[]{"kernel3","kernel4","variable-record","image"}) {
+                        Reset(); VpnInstallNative.ProcessImagePin pin=Pin(scenario);
+                        try {
+                            VpnInstallNative.ProcessImageObservation observation=pin.Observe();
+                            Check(observation.Pid==Pid && observation.CreationFileTime==Created,"tuple");
+                            Check(observation.KernelOnly==(scenario!="image"),scenario);
+                            Check((observation.Image!=null)==(scenario=="image"),"image alternative");
+                            Check(!Trace.Contains("close"),"ownership must outlive observation");
+                            if (scenario!="image") Check(SnapshotCleared(),"native snapshot retention");
+                            Check(String.Join(",",Trace)==(scenario=="image" ? "open,stamp1,image,stamp2" : "open,stamp1,image,snapshot,stamp2"),"same retained handle ordering");
+                            passed.Add(scenario);
+                        } finally { pin.Dispose(); }
+                        Check(Trace[Trace.Count-1]=="close","exact closure");
+                    }
+                    foreach(string scenario in new string[]{"normal0","normal1","normal2","unknown-class","foreign-pid","reused-pid", "pid-before","pid-after","zero-creation","creation-after","exit-before","exit-after","unknown-flags","thread-overflow","truncated","bad-next","next-outside","duplicate","snapshot-failure","image-query-failure","query-before-failure","query-after-failure","empty-image"}) {
+                        Reset(); VpnInstallNative.ProcessImagePin pin=Pin(scenario); bool rejected=false;
+                        try { pin.Observe(); } catch(IOException) { rejected=true; }
+                        finally { pin.Dispose(); }
+                        Check(rejected,"unknown admitted: "+scenario);
+                        Check(Trace[Trace.Count-1]=="close","failed observation lost handle");
+                        if (scenario=="pid-before" || scenario=="query-before-failure" || scenario=="zero-creation" || scenario=="exit-before")
+                            Check(!Trace.Contains("image") && !Trace.Contains("snapshot"),"identity checked too late");
+                        if (latest.Captured!=null) Check(SnapshotCleared(),"failed snapshot retained");
+                        passed.Add(scenario);
+                    }
+                    Reset(); VpnInstallNative.ProcessImagePin retained=Pin("image-close-once");
+                    retained.Observe(); bool closeFailed=false;
+                    try { retained.Dispose(); } catch(IOException) { closeFailed=true; }
+                    Check(closeFailed,"native close failure hidden");
+                    retained.Dispose(); retained.Dispose();
+                    Check(String.Join(",",Trace)=="open,stamp1,image,stamp2,close,close","exact close was not retried");
+                    bool disposed=false; try { retained.Observe(); } catch(ObjectDisposedException) { disposed=true; }
+                    Check(disposed,"disposed pin reused"); passed.Add("native-close-retry");
+                    return passed.ToArray();
+                }
+            }
+        """.trimIndent()
+        fun capture(bytes: ByteArray): String {
+            val output = java.io.ByteArrayOutputStream()
+            java.util.zip.GZIPOutputStream(output).use { it.write(bytes) }
+            return Base64.getEncoder().encodeToString(output.toByteArray())
+        }
+        val source = capture((native + "\n" + fixtures).toByteArray(Charsets.UTF_8))
+        val encodedCommon = capture(common)
+        val script = """
+            ${'$'}ErrorActionPreference='Stop'
+            function Read-CapturedSource([string]${'$'}Encoded) {
+                ${'$'}gzip=[IO.Compression.GZipStream]::new([IO.MemoryStream]::new([Convert]::FromBase64String(${'$'}Encoded)),[IO.Compression.CompressionMode]::Decompress)
+                ${'$'}reader=[IO.StreamReader]::new(${'$'}gzip,[Text.Encoding]::UTF8)
+                try { return ${'$'}reader.ReadToEnd() } finally { ${'$'}reader.Dispose() }
+            }
+            Add-Type -TypeDefinition (Read-CapturedSource '$source')
+            . ([ScriptBlock]::Create((Read-CapturedSource '$encodedCommon')))
+            $body
+        """.trimIndent()
+        assertTrue(script.length < 30000 && script.all { it.code < 128 }, "Captured inventory fixture must fit Windows command line")
+        val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+            .redirectErrorStream(true).start()
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Native inventory regression timed out")
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), output)
+            assertTrue(output.contains(marker), output)
         } finally { if (process.isAlive) process.destroyForcibly() }
     }
 }

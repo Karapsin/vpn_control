@@ -94,6 +94,163 @@ public static class VpnInstallNative {
         }
         public void Dispose() { if (handle != IntPtr.Zero) { CloseHandle(handle); handle=IntPtr.Zero; } }
     }
+    [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetProcessId(IntPtr process);
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("ntdll.dll")] static extern int NtQuerySystemInformation(int information,
+        IntPtr buffer, uint length, out uint returned);
+
+    // The public inventory path accepts only a PID. The internal native reader is a
+    // same-assembly regression seam, never selected by a worker argument or request.
+    internal interface IProcessImageNative {
+        IntPtr Open(uint pid);
+        ProcessImageStamp Stamp(IntPtr handle);
+        string Image(IntPtr handle);
+        byte[] Snapshot();
+        void Close(IntPtr handle);
+    }
+    internal sealed class ProcessImageStamp {
+        internal readonly uint Pid;
+        internal readonly long Created, Exited;
+        internal ProcessImageStamp(uint pid, long created, long exited) {
+            Pid=pid; Created=created; Exited=exited;
+        }
+    }
+    public sealed class ProcessImageObservation {
+        public readonly uint Pid;
+        public readonly long CreationFileTime;
+        public readonly string Image;
+        public readonly bool KernelOnly;
+        internal ProcessImageObservation(uint pid, long created, string image, bool kernelOnly) {
+            Pid=pid; CreationFileTime=created; Image=image; KernelOnly=kernelOnly;
+        }
+        public override string ToString() { return "ProcessImageObservation(redacted)"; }
+    }
+    public sealed class ProcessImagePin : IDisposable {
+        readonly uint pid;
+        readonly IProcessImageNative native;
+        IntPtr handle;
+        public ProcessImagePin(uint processId) : this(processId,new FixedProcessImageNative()) { }
+        internal ProcessImagePin(uint processId, IProcessImageNative reader) {
+            if (processId==0 || reader==null) throw new ArgumentException("Invalid process identity");
+            pid=processId; native=reader;
+            // No fallible inspection occurs in construction after ownership is acquired.
+            // The caller retains this object before observing the process.
+            handle=native.Open(pid);
+            if (handle==IntPtr.Zero) throw new IOException("Process handle unavailable");
+        }
+        public ProcessImageObservation Observe() {
+            if (handle==IntPtr.Zero) throw new ObjectDisposedException("ProcessImagePin");
+            ProcessImageStamp before=native.Stamp(handle);
+            RequireStamp(before,pid,0);
+            string image=native.Image(handle);
+            bool kernelOnly=false;
+            if (image==null) {
+                byte[] snapshot=native.Snapshot();
+                try { kernelOnly=MatchKernelProcess(snapshot,pid,before.Created); }
+                finally { if (snapshot!=null) Array.Clear(snapshot,0,snapshot.Length); }
+                if (!kernelOnly) throw new IOException("Process executable identity unavailable");
+            } else if (image.Length==0) throw new IOException("Empty process executable identity");
+            // Snapshot and executable path must refer to this same retained generation.
+            // A late query failure or exit cannot turn an unknown process into absence.
+            RequireStamp(native.Stamp(handle),pid,before.Created);
+            return new ProcessImageObservation(pid,before.Created,image,kernelOnly);
+        }
+        public void Dispose() {
+            if (handle==IntPtr.Zero) return;
+            native.Close(handle); // A failed close retains the exact handle for retry.
+            handle=IntPtr.Zero;
+        }
+        public override string ToString() { return "ProcessImagePin(redacted)"; }
+        static void RequireStamp(ProcessImageStamp stamp, uint expectedPid, long expectedCreation) {
+            if (stamp==null || stamp.Pid!=expectedPid || stamp.Created<=0 || stamp.Exited!=0 ||
+                expectedCreation!=0 && stamp.Created!=expectedCreation)
+                throw new IOException("Retained process identity changed or exited");
+        }
+    }
+    const int MaxProcessSnapshot=64*1024*1024;
+    sealed class FixedProcessImageNative : IProcessImageNative {
+        public IntPtr Open(uint pid) {
+            IntPtr result=OpenProcess(0x1000,false,pid);
+            if (result==IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            return result;
+        }
+        public ProcessImageStamp Stamp(IntPtr handle) {
+            uint pid=GetProcessId(handle);
+            if (pid==0) throw new Win32Exception(Marshal.GetLastWin32Error());
+            long created,exited,kernel,user;
+            if (!GetProcessTimes(handle,out created,out exited,out kernel,out user))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            return new ProcessImageStamp(pid,created,exited);
+        }
+        public string Image(IntPtr handle) {
+            StringBuilder image=new StringBuilder(32768); uint length=32768;
+            // The failure code carries no classification authority. Any failed image
+            // lookup requires independent kernel evidence and the retained tuple.
+            return QueryFullProcessImageNameW(handle,0,image,ref length) ? image.ToString() : null;
+        }
+        public byte[] Snapshot() {
+            if (IntPtr.Size!=8) throw new IOException("Process classification layout unavailable");
+            int size=65536;
+            for (int attempt=0;attempt<12;attempt++) {
+                IntPtr buffer=Marshal.AllocHGlobal(size);
+                try {
+                    uint returned;
+                    int status=NtQuerySystemInformation(148,buffer,(uint)size,out returned);
+                    if (status==0) {
+                        if (returned<308 || returned>size) throw new IOException("Invalid process snapshot length");
+                        byte[] bytes=new byte[returned];
+                        Marshal.Copy(buffer,bytes,0,(int)returned); return bytes;
+                    }
+                    if (status!=unchecked((int)0xC0000004)) throw new IOException("Process classification unavailable");
+                    long needed=Math.Max((long)size*2,(long)returned+65536);
+                    if (needed>MaxProcessSnapshot) throw new IOException("Process snapshot resource limit");
+                    size=(int)needed;
+                } finally { Marshal.FreeHGlobal(buffer); }
+            }
+            throw new IOException("Process snapshot changed during bounded capture");
+        }
+        public void Close(IntPtr handle) {
+            if (!CloseHandle(handle)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+    // SystemFullProcessInformation (148), x64 SYSTEM_PROCESS_INFORMATION (256)
+    // plus SYSTEM_EXTENDED_THREAD_INFORMATION (136 each), then extension Flags+48.
+    // These private NT layouts are deliberately fail-closed on unknown bounds/flags;
+    // they grant no authority from process names, PIDs, or image-query error codes.
+    // Reference: winsiderss/phnt ntexapi.h, SYSTEM_PROCESS_INFORMATION_EXTENSION.
+    static bool MatchKernelProcess(byte[] bytes, uint processId, long created) {
+        if (IntPtr.Size!=8 || bytes==null || bytes.Length<308 || bytes.Length>MaxProcessSnapshot)
+            throw new IOException("Process classification layout unavailable");
+        HashSet<uint> ids=new HashSet<uint>();
+        bool found=false, kernelOnly=false;
+        long offset=0;
+        while (true) {
+            if (offset>bytes.Length-308) throw new IOException("Truncated process record");
+            int start=(int)offset;
+            uint next=BitConverter.ToUInt32(bytes,start);
+            long end=next==0 ? bytes.Length : offset+next;
+            if (next!=0 && next<308 || end>bytes.Length || end<=offset)
+                throw new IOException("Invalid process record bounds");
+            ulong id=BitConverter.ToUInt64(bytes,start+80);
+            long generation=BitConverter.ToInt64(bytes,start+32);
+            if (id>uint.MaxValue || !ids.Add((uint)id)) throw new IOException("Invalid process snapshot identity");
+            long extension=offset+256L+136L*BitConverter.ToUInt32(bytes,start+4);
+            if (extension>end-52) throw new IOException("Invalid process extension bounds");
+            uint flags=BitConverter.ToUInt32(bytes,(int)extension+48);
+            int classification=(int)((flags>>1)&15);
+            if ((flags&~63U)!=0 || classification>=5) throw new IOException("Unknown process classification");
+            if (id==processId) {
+                if (generation!=created) throw new IOException("Process snapshot generation mismatch");
+                found=true; kernelOnly=classification==3 || classification==4;
+            }
+            // Native variable-length records need not be padded to eight bytes.
+            if (next==0) break;
+            offset=end;
+        }
+        if (!found) throw new IOException("Process snapshot identity missing");
+        return kernelOnly;
+    }
+
     public static string ProgramData() { return KnownFolder("62AB5D82-FDC1-4DC3-A9DD-070D1D495D97", IntPtr.Zero); }
     public static string ProcessImage(uint pid) {
         IntPtr process=OpenProcess(0x1000,false,pid);

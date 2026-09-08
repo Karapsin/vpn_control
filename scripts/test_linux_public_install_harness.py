@@ -19,6 +19,28 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_arch_recovery_rejects_alternate_install_path_before_fixture_or_process_access(self):
+        linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)
+        with mock.patch("test_linux_public_install.os", linux), \
+             mock.patch("builtins.open", return_value=io.BytesIO()), \
+             mock.patch("test_linux_public_install.verify_arch_bundle_base",
+                        side_effect=AssertionError("Unsupported installation reached fixture verification")) as verify:
+            with self.assertRaisesRegex(RuntimeError, "Arch public installation requires /opt/vpn-control/bin/vpn-control"):
+                run(Path("/opt/vpn-control-parity/bin/vpn-control"), "2.1.7", True,
+                    same_source_recovery=True, arch_source_fixture=Path("unused-source-fixture"))
+        verify.assert_not_called()
+
+    def test_arch_recovery_canonical_path_still_requires_full_fixture_verification(self):
+        linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)
+        with mock.patch("test_linux_public_install.os", linux), \
+             mock.patch("builtins.open", return_value=io.BytesIO()), \
+             mock.patch("test_linux_public_install.verify_arch_bundle_base",
+                        side_effect=RuntimeError("Full source verification reached")) as verify:
+            with self.assertRaisesRegex(RuntimeError, "Full source verification reached"):
+                run(Path("/opt/vpn-control/bin/vpn-control"), "2.1.7", True,
+                    same_source_recovery=True, arch_source_fixture=Path("unused-source-fixture"))
+        verify.assert_called_once()
+
     def test_terminal_observer_drains_final_output_then_records_known_exit_after_pty_eio(self):
         class Process:
             polls = 0
