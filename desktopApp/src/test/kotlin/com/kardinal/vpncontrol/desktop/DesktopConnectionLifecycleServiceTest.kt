@@ -14,6 +14,72 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopConnectionLifecycleServiceTest {
+    @Test fun unknownRestoreKeepsItsCodeAndExactInputsUntilNativeConfirmation() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val location = desktopLifecycleLocation(0)
+        service.startConnection(state, listOf(location), location, null, { state }, {},
+            { _, next -> state = next; Result.success(Unit) }, { state = it(state) }).getOrThrow()
+        var confirmed = false
+        var closes = 0
+        var restores = 0
+        runtime.restoreLease = object : DesktopRuntimeRestoreLease {
+            override suspend fun restore(): Result<DesktopRuntimeSession> {
+                restores++
+                return if (confirmed) runtime.startResult.also { runtime.running = true }
+                else Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
+            }
+            override fun close() { closes++ }
+        }
+        val restore = service.captureRuntimeRestore()
+        runtime.running = false
+        val progress = DesktopOperationProgress {}
+        kotlinx.coroutines.withContext(progress) {
+            retainDesktopRuntimeInputs(restore as AutoCloseable)
+            assertEquals("OUTCOME_UNKNOWN", restore().exceptionOrNull()?.message)
+            releaseDesktopRuntimeRestore(restore)
+            assertTrue(progress.hasPendingOutcome)
+            assertTrue(progress.hasRetainedInputs)
+            assertEquals(0, closes)
+            assertEquals(1, restores)
+            confirmed = true // The fixture now establishes the original native outcome.
+            desktopControlConfirmOutcome()
+            restore().getOrThrow()
+            releaseDesktopRuntimeRestore(restore)
+            assertEquals(1, closes)
+            assertFalse(progress.hasRetainedInputs)
+        }
+    }
+
+    @Test fun uncertainCandidateKeepsPreviousLeaseOwnedWithoutRollbackOrRelease() = runTest {
+        val runtime = FakeDesktopRuntimeController()
+        val service = DesktopConnectionLifecycleService(runtime)
+        var state = MainUiState(appMode = AppMode.PROXY_ONLY)
+        val location = desktopLifecycleLocation(0)
+        service.startConnection(state, listOf(location), location, null, { state }, {},
+            { _, next -> state = next; Result.success(Unit) }, { state = it(state) }).getOrThrow()
+        var closes = 0
+        runtime.restoreLease = object : DesktopRuntimeRestoreLease {
+            override suspend fun restore(): Result<DesktopRuntimeSession> = error("Unknown work cannot be rolled back")
+            override fun close() { closes++ }
+        }
+        runtime.startResult = Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
+        val progress = DesktopOperationProgress {}
+        kotlinx.coroutines.withContext(progress) {
+            val result = service.startConnection(state, listOf(location), location, null, { state }, {},
+                { _, next -> state = next; Result.success(Unit) }, { state = it(state) })
+            assertEquals("OUTCOME_UNKNOWN", result.exceptionOrNull()?.message)
+            assertEquals(0, closes)
+            assertTrue(progress.hasPendingOutcome)
+            assertTrue(progress.hasRetainedInputs)
+            desktopControlConfirmOutcome()
+            progress.releaseAllTerminal().getOrThrow()
+            assertEquals(1, closes)
+            assertEquals(2, runtime.startedProfiles.size)
+        }
+    }
+
     @Test fun capturedDisconnectedRestoreStopsLaterCandidateInsteadOfFailingOrApplyingSelection() = runTest {
         val runtime = FakeDesktopRuntimeController()
         val service = DesktopConnectionLifecycleService(runtime)
@@ -455,6 +521,8 @@ private class FakeDesktopRuntimeController(
 ) : DesktopRuntimeController {
     val startedProfiles = mutableListOf<ProxyProfile>()
     val startedRules = mutableListOf<RoutingRules>()
+    var restoreLease: DesktopRuntimeRestoreLease? = null
+    override fun captureRuntimeRestoreLease(): DesktopRuntimeRestoreLease? = restoreLease
 
     override suspend fun start(
         profile: ProxyProfile,

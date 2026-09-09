@@ -12,8 +12,21 @@ internal suspend fun commitDesktopRuntimeMutation(
 ): Result<Unit> = withContext(NonCancellable) {
     if (!stopRequired) return@withContext commit()
     val restore = captureRestore()
-    val result = runCatching { stop().getOrThrow(); commit().getOrThrow() }
-    if (result.isSuccess) return@withContext result
-    val rollback = runCatching { restore().getOrThrow() }
-    if (rollback.isFailure) Result.failure(IllegalStateException("ROLLBACK_FAILED")) else result
+    retainDesktopRuntimeInputs(restore as? AutoCloseable)
+    try {
+        val result = runCatching { stop().getOrThrow(); commit().getOrThrow() }
+        if (result.isSuccess) return@withContext result
+        if (result.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+            desktopControlReportPendingOutcome()
+            return@withContext result
+        }
+        val rollback = runCatching { restore().getOrThrow() }
+        if (rollback.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+            desktopControlReportPendingOutcome()
+            return@withContext rollback
+        }
+        if (rollback.isFailure) Result.failure(IllegalStateException("ROLLBACK_FAILED")) else result
+    } finally {
+        releaseDesktopRuntimeRestore(restore)
+    }
 }

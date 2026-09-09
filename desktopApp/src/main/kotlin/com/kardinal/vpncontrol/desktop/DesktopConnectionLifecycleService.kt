@@ -31,6 +31,8 @@ internal interface DesktopRuntimeController {
     fun currentPort(): Int?
 
     fun currentManagementProxyPort(): Int? = currentPort()
+
+    fun captureRuntimeRestoreLease(): DesktopRuntimeRestoreLease? = null
 }
 
 internal class DesktopConnectionLifecycleService(
@@ -61,27 +63,37 @@ internal class DesktopConnectionLifecycleService(
         val captured = activeConnection.takeIf { wasRunning }
         val configuration = captured?.configuration
         val location = captured?.location
-        return restore@{
+        val lease = if (wasRunning) runtime.captureRuntimeRestoreLease() else null
+        var restoredConnection = captured
+        return DesktopRuntimeRestoreAction(lease) restore@{
             if (!wasRunning) {
                 val stopped = if (runtime.isRunning()) runtime.stop() else Result.success(Unit)
+                if (stopped.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                    desktopControlReportPendingOutcome()
+                    return@restore stopped
+                }
                 if (!runtime.isRunning()) clearActiveConfiguration()
                 return@restore stopped
             }
             if (configuration == null) return@restore Result.failure(IllegalStateException("ROLLBACK_FAILED"))
-            if (runtime.isRunning() && activeConfiguration == configuration) return@restore Result.success(Unit)
+            if (runtime.isRunning() && activeConnection === restoredConnection) return@restore Result.success(Unit)
             val restored = runCatching {
-                runtime.start(
+                (lease?.restore() ?: runtime.start(
                     profile = LocationConfigs.decodeStoredLocation(configuration.locationReference),
                     routingRules = configuration.routing,
                     dnsSettings = configuration.dns,
                     appMode = configuration.mode,
                     homeSshRouteSettings = configuration.ssh,
-                ).getOrThrow()
+                )).getOrThrow()
             }
             if (restored.isSuccess) {
-                recordStarted(configuration, location)
+                restoredConnection = recordStarted(configuration, location)
                 Result.success(Unit)
             } else {
+                if (restored.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                    desktopControlReportPendingOutcome()
+                    return@restore Result.failure(restored.exceptionOrNull()!!)
+                }
                 if (!runtime.isRunning()) clearActiveConfiguration()
                 Result.failure(IllegalStateException("ROLLBACK_FAILED"))
             }
@@ -127,85 +139,103 @@ internal class DesktopConnectionLifecycleService(
             if (prepared.isFailure) return prepared
         }
 
-        val result = runtime.start(
-            profile = profile.getOrThrow(),
-            routingRules = startingState.routingRules,
-            dnsSettings = startingState.dnsSettings,
-            appMode = targetMode,
-            activeVerificationPort = activeVerificationPort,
-            homeSshRouteSettings = startingState.homeSshRouteSettings,
-        )
-        if (result.isSuccess) {
-            val active = recordStarted(ControlRuntimeConfiguration.committed(startingState), location)
-            val session = result.getOrThrow()
-            val startedAt = active.startedAt
-            setResumeConnectionOnLaunch(true)
-            val startedTarget = when (targetMode) {
-                AppMode.PROXY_ONLY -> "127.0.0.1:${session.listenPort}"
-                AppMode.VPN -> session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
-            }
-            val latestState = currentState()
-            val committed = commitState(
-                selectedLocations,
-                latestState.copy(
-                    selectedProfileName = startingState.selectedProfileName,
-                    selectedProfileServer = startingState.selectedProfileServer,
-                    selectedProfileRawLink = startingState.selectedProfileRawLink,
-                    selectedProfileSourceUrl = startingState.selectedProfileSourceUrl,
-                    isBusy = false,
-                    isVpnRunning = true,
-                    hasVpnPermission = true,
-                    sessionStartedAtEpochMillis = startedAt,
-                    sessionStoppedAtEpochMillis = 0L,
-                    successfulStarts = latestState.successfulStarts + 1,
-                    lastBenchmarkSummary = benchmarkSummary ?: latestState.lastBenchmarkSummary,
-                ).withStatus(ConnectionStatusMessages.connectionStartedOnTarget(targetMode, startedTarget)),
+        val previousLease = if (previous != null) runtime.captureRuntimeRestoreLease() else null
+        retainDesktopRuntimeInputs(previousLease)
+        try {
+            val result = runtime.start(
+                profile = profile.getOrThrow(),
+                routingRules = startingState.routingRules,
+                dnsSettings = startingState.dnsSettings,
+                appMode = targetMode,
+                activeVerificationPort = activeVerificationPort,
+                homeSshRouteSettings = startingState.homeSshRouteSettings,
             )
-            if (committed.isFailure) {
-                val rollback = if (previousConfiguration == null) runtime.stop() else runCatching {
-                    runtime.start(
-                        profile = LocationConfigs.decodeStoredLocation(previousConfiguration.locationReference),
-                        routingRules = previousConfiguration.routing,
-                        dnsSettings = previousConfiguration.dns,
-                        appMode = previousConfiguration.mode,
-                        homeSshRouteSettings = previousConfiguration.ssh,
-                    ).getOrThrow()
-                    Unit
+            if (result.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                desktopControlReportPendingOutcome()
+                return result.map { Unit }
+            }
+            if (result.isSuccess) {
+                val active = recordStarted(ControlRuntimeConfiguration.committed(startingState), location)
+                val session = result.getOrThrow()
+                val startedAt = active.startedAt
+                setResumeConnectionOnLaunch(true)
+                val startedTarget = when (targetMode) {
+                    AppMode.PROXY_ONLY -> "127.0.0.1:${session.listenPort}"
+                    AppMode.VPN -> session.interfaceName ?: DesktopProxyConfigFactory.DEFAULT_VPN_INTERFACE_NAME
                 }
-                var recovered: ActiveConnection? = null
-                if (rollback.isSuccess) {
-                    if (previousConfiguration != null) recovered = recordStarted(previousConfiguration, previousLocation)
-                    else clearActiveConfiguration()
-                } else if (!runtime.isRunning()) clearActiveConfiguration()
-                setResumeConnectionOnLaunch(runtime.isRunning())
-                updateState { it.copy(isBusy = false, isVpnRunning = runtime.isRunning(),
-                    sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
-                    sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis) }
-                return if (rollback.isSuccess) committed else Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+                val latestState = currentState()
+                val committed = commitState(
+                    selectedLocations,
+                    latestState.copy(
+                        selectedProfileName = startingState.selectedProfileName,
+                        selectedProfileServer = startingState.selectedProfileServer,
+                        selectedProfileRawLink = startingState.selectedProfileRawLink,
+                        selectedProfileSourceUrl = startingState.selectedProfileSourceUrl,
+                        isBusy = false,
+                        isVpnRunning = true,
+                        hasVpnPermission = true,
+                        sessionStartedAtEpochMillis = startedAt,
+                        sessionStoppedAtEpochMillis = 0L,
+                        successfulStarts = latestState.successfulStarts + 1,
+                        lastBenchmarkSummary = benchmarkSummary ?: latestState.lastBenchmarkSummary,
+                    ).withStatus(ConnectionStatusMessages.connectionStartedOnTarget(targetMode, startedTarget)),
+                )
+                if (committed.isFailure) {
+                    if (committed.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                        desktopControlReportPendingOutcome()
+                        return committed
+                    }
+                    val rollback = if (previousConfiguration == null) runtime.stop() else runCatching {
+                        (previousLease?.restore() ?: runtime.start(
+                            profile = LocationConfigs.decodeStoredLocation(previousConfiguration.locationReference),
+                            routingRules = previousConfiguration.routing,
+                            dnsSettings = previousConfiguration.dns,
+                            appMode = previousConfiguration.mode,
+                            homeSshRouteSettings = previousConfiguration.ssh,
+                        )).getOrThrow()
+                        Unit
+                    }
+                    if (rollback.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                        desktopControlReportPendingOutcome()
+                        return rollback
+                    }
+                    var recovered: ActiveConnection? = null
+                    if (rollback.isSuccess) {
+                        if (previousConfiguration != null) recovered = recordStarted(previousConfiguration, previousLocation)
+                        else clearActiveConfiguration()
+                    } else if (!runtime.isRunning()) clearActiveConfiguration()
+                    setResumeConnectionOnLaunch(runtime.isRunning())
+                    updateState { it.copy(isBusy = false, isVpnRunning = runtime.isRunning(),
+                        sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
+                        sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis) }
+                    return if (rollback.isSuccess) committed else Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+                }
+            } else {
+                val stillRunning = runtime.isRunning()
+                val transition = result.exceptionOrNull() as? DesktopRuntimeTransitionFailure
+                val recovered = if (stillRunning && previous != null &&
+                    transition?.recoveredSession != null && !transition.recoveryFailed) {
+                    // Native recovery restarted actual A. Retain its configuration and location,
+                    // but end the old child's telemetry identity without applying pending B.
+                    recordStarted(previous.configuration, previous.location)
+                } else null
+                if (!stillRunning) clearActiveConfiguration()
+                val status = if (result.exceptionOrNull()?.message == "CANCELLED")
+                    ConnectionStatusMessages.connectionStartCancelled(targetMode)
+                else ConnectionStatusMessages.connectionStartFailed(targetMode)
+                updateState {
+                    it.copy(
+                        isBusy = false,
+                        isVpnRunning = stillRunning,
+                        sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
+                        sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis,
+                    ).withStatus(status)
+                }
             }
-        } else {
-            val stillRunning = runtime.isRunning()
-            val transition = result.exceptionOrNull() as? DesktopRuntimeTransitionFailure
-            val recovered = if (stillRunning && previous != null &&
-                transition?.recoveredSession != null && !transition.recoveryFailed) {
-                // Native recovery restarted actual A. Retain its configuration and location,
-                // but end the old child's telemetry identity without applying pending B.
-                recordStarted(previous.configuration, previous.location)
-            } else null
-            if (!stillRunning) clearActiveConfiguration()
-            val status = if (result.exceptionOrNull()?.message == "CANCELLED")
-                ConnectionStatusMessages.connectionStartCancelled(targetMode)
-            else ConnectionStatusMessages.connectionStartFailed(targetMode)
-            updateState {
-                it.copy(
-                    isBusy = false,
-                    isVpnRunning = stillRunning,
-                    sessionStartedAtEpochMillis = recovered?.startedAt ?: it.sessionStartedAtEpochMillis,
-                    sessionStoppedAtEpochMillis = if (recovered != null) 0L else it.sessionStoppedAtEpochMillis,
-                ).withStatus(status)
-            }
+            return result.map { Unit }
+        } finally {
+            releaseDesktopRuntimeInputs(previousLease)
         }
-        return result.map { Unit }
     }
 
     suspend fun stopConnection(

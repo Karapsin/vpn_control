@@ -8,6 +8,26 @@ import kotlinx.coroutines.*
 import kotlin.test.*
 
 class DesktopOperationProgressTest {
+    @Test fun returnedUncertainResponseCannotSealOrReleaseTheOriginalInputs() = runBlocking {
+        for (code in listOf(ControlCode.OUTCOME_UNKNOWN, ControlCode.TIMEOUT, ControlCode.UNAVAILABLE, ControlCode.INCOMPATIBLE_PROTOCOL)) {
+            val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val runner = DesktopOperationRunner(owner, "owner")
+            var releases = 0
+            try {
+                runner.execute(ControlOperationId.ON, DesktopCliCommand.On, requestId = "request", resultEnvelope = true) {
+                    currentCoroutineContext()[DesktopOperationProgress]!!.retainInputs(AutoCloseable { releases++ })
+                    DesktopCliResponse.failure(code.wireName, code.exitCode)
+                }
+                val operation = runner.snapshot().single()
+                val observed = assertNotNull(runner.inspectResult(operation.id, "inspect", false))
+                assertFalse(observed.final, "Returned $code is not terminal native evidence")
+                assertEquals(code, observed.code)
+                assertTrue(runner.hasRetainedRuntimeInputs(operation.id))
+                assertEquals(0, releases)
+            } finally { owner.cancel() }
+        }
+    }
+
     @Test fun publicAuthenticatedCliKeepsUnknownOutcomeAndWaitTimeoutNonterminal() = runBlocking {
         val directory = java.nio.file.Files.createTempDirectory("vpn-operation-progress-cli-")
         val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -66,11 +86,13 @@ class DesktopOperationProgressTest {
         val reported = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         var effects = 0
+        val releases = java.util.concurrent.atomic.AtomicInteger()
         try {
             val original = async {
                 runner.execute(ControlOperationId.ON, DesktopCliCommand.On, requestId = "request",
                     expectedControllerId = "owner", resultEnvelope = true) {
                     effects++
+                    currentCoroutineContext()[DesktopOperationProgress]!!.retainInputs(AutoCloseable { releases.incrementAndGet() })
                     desktopControlReportPendingOutcome()
                     reported.complete(Unit)
                     finish.await()
@@ -91,6 +113,8 @@ class DesktopOperationProgressTest {
                 expectedControllerId = "owner", asynchronous = true, resultEnvelope = true) { error("Repeated native effect") }
             assertEquals(operation.id, ControlDocumentCodec.decodeResult(repeated.message).operationId)
             assertEquals(1, effects)
+            assertEquals(0, releases.get(), "Unknown native work still owns its captured inputs")
+            assertTrue(runner.hasRetainedRuntimeInputs(operation.id))
             val refused = runner.execute(ControlOperationId.ON, DesktopCliCommand.On, requestId = "other",
                 asynchronous = true) { error("Uncertain native operation must retain mutation admission") }
             assertEquals("BUSY", refused.message)
@@ -98,6 +122,8 @@ class DesktopOperationProgressTest {
             val terminal = assertNotNull(withTimeout(5_000) { runner.inspectResult(operation.id, "wait", true) })
             assertEquals(ControlCode.OK, terminal.code)
             assertTrue(terminal.final)
+            assertEquals(1, releases.get(), "The exact operation must release inputs after native confirmation and terminal completion")
+            assertFalse(runner.hasRetainedRuntimeInputs(operation.id))
             assertEquals(operation.id, terminal.operationId)
             assertFalse(ControlDocumentCodec.encodeResult(terminal).contains("private native"))
         } finally { finish.complete(Unit); owner.cancel() }
@@ -142,8 +168,10 @@ class DesktopOperationProgressTest {
     @Test fun unconfirmedActionFailureDoesNotEraseAnUncertainNativeOutcome() = runBlocking {
         val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val runner = DesktopOperationRunner(owner, "owner")
+        var releases = 0
         try {
             runner.execute(ControlOperationId.ON, DesktopCliCommand.On, requestId = "request", resultEnvelope = true) {
+                currentCoroutineContext()[DesktopOperationProgress]!!.retainInputs(AutoCloseable { releases++ })
                 desktopControlReportPendingOutcome()
                 error("Unexpected observer failure")
             }
@@ -151,6 +179,35 @@ class DesktopOperationProgressTest {
             val result = assertNotNull(runner.inspectResult(operation.id, "inspect", false))
             assertEquals(ControlCode.OUTCOME_UNKNOWN, result.code)
             assertFalse(result.final)
+            assertTrue(runner.hasRetainedRuntimeInputs(operation.id))
+            assertEquals(0, releases)
+        } finally { owner.cancel() }
+    }
+
+    @Test fun cleanupFailurePreservesCommittedSuccessAndRetriesOnlyTerminalInputs() = runBlocking {
+        val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val runner = DesktopOperationRunner(owner, "owner")
+        val releases = java.util.concurrent.atomic.AtomicInteger()
+        var effects = 0
+        try {
+            runner.execute(ControlOperationId.ON, DesktopCliCommand.On, requestId = "first") {
+                effects++
+                currentCoroutineContext()[DesktopOperationProgress]!!.retainInputs(AutoCloseable {
+                    if (releases.incrementAndGet() == 1) throw java.io.IOException("private cleanup error")
+                })
+                DesktopCliResponse.success("OK")
+            }
+            val first = runner.snapshot().single()
+            assertEquals(ControlCode.OK, first.result?.code)
+            assertTrue(runner.hasRetainedRuntimeInputs(first.id))
+            runner.execute(ControlOperationId.OFF, DesktopCliCommand.Off, requestId = "second") {
+                effects++
+                DesktopCliResponse.success("OK")
+            }
+            assertEquals(2, releases.get())
+            assertEquals(2, effects)
+            assertFalse(runner.hasRetainedRuntimeInputs(first.id))
+            assertEquals(ControlCode.OK, runner.snapshot().single { it.id == first.id }.result?.code)
         } finally { owner.cancel() }
     }
 }

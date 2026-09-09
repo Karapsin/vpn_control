@@ -64,6 +64,12 @@ internal object DesktopWindowsVpnConfigCapture {
                     }
                     throw DesktopWindowsRuntimeFailure(code, stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
                 }
+                val destination = resource.destination
+                val leaf = destination.path.replace('/', '\\').substringAfterLast('\\')
+                check(mutable.none { previous ->
+                    previous.destination.parentIdentity == destination.parentIdentity &&
+                        previous.destination.path.replace('/', '\\').substringAfterLast('\\').equals(leaf, ignoreCase = true)
+                }) { "CONFLICT" }
                 mutable += resource
                 resource.reference
             })
@@ -115,10 +121,15 @@ internal object DesktopWindowsVpnConfigCapture {
                     (context in listOf(listOf("outbounds", "*", "transport"), listOf("inbounds", "*", "transport")) &&
                         type in setOf("ws", "http", "httpupgrade")) || (context == listOf("outbounds", "*") && type == "http")
                 val cache = context == listOf("experimental", "cache_file")
+                val log = context == listOf("log")
+                val logDisabled = if (log) value["disabled"]?.let {
+                    require(it is JsonPrimitive && !it.isString && it.booleanOrNull != null) { "INVALID_ARGUMENT" }
+                    it.boolean
+                } == true else false
                 var cachePath = "cache.db"
                 if (cache) {
                     require(value.keys.all { it in setOf("enabled", "path", "cache_id", "store_fakeip", "store_rdrc", "rdrc_timeout") }) { "UNSUPPORTED" }
-                    require("enabled" !in value || (value["enabled"] as? JsonPrimitive)?.booleanOrNull != null) { "INVALID_ARGUMENT" }
+                    require("enabled" !in value || (value["enabled"] as? JsonPrimitive)?.let { !it.isString && it.booleanOrNull != null } == true) { "INVALID_ARGUMENT" }
                     val requested = value["path"]?.let { path ->
                         require(path is JsonPrimitive && path.isString) { "INVALID_ARGUMENT" }
                         path.content.ifEmpty { "cache.db" }
@@ -130,6 +141,17 @@ internal object DesktopWindowsVpnConfigCapture {
                 JsonObject(buildMap {
                     value.forEach { (key, child) ->
                         if (cache && key == "path") Unit // The admitted descriptor supplies the runtime path.
+                        else if (log && key == "output") {
+                            require(child is JsonPrimitive && child.isString) { "INVALID_ARGUMENT" }
+                            val requested = child.content
+                            val destination = when {
+                                logDisabled -> ""
+                                requested in setOf("", "stdout", "stderr") -> requested
+                                else -> requireNotNull(captureMutable) { "UNSUPPORTED" }(
+                                    requested, DesktopWindowsRuntimeResourceKind.OUTPUT)
+                            }
+                            put(key, JsonPrimitive(destination))
+                        }
                         else if (key == "private_key_path" && context == listOf("outbounds", "*") && type == "ssh") {
                             val expected = managedKey
                             val requested = (child as? JsonPrimitive)?.takeIf { it.isString }?.content

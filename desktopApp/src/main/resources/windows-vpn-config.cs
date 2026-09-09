@@ -51,23 +51,35 @@ namespace VpnScopedConfiguration {
    return result;
   }
   static void QueueObject(Stack<Work> work,JsonElement value,Context context,string stage,
-    Dictionary<string,string> mutable,HashSet<string> used) {
+    Dictionary<string,string> mutable,Dictionary<string,string> outputs,HashSet<string> used) {
    var map=Object(value);JsonElement kind;
    string type=map.TryGetValue("type",out kind)?StringValue(kind):null;
    bool url=(context.Is("dns","servers","*")&&(type=="https"||type=="h3")) ||
     ((context.Is("outbounds","*","transport")||context.Is("inbounds","*","transport"))&&(type=="ws"||type=="http"||type=="httpupgrade")) ||
     (context.Is("outbounds","*")&&type=="http");
    bool cache=context.Is("experimental","cache_file");
+   bool log=context.Is("log"),logDisabled=false;
+   JsonElement disabled;
+   if(log&&map.TryGetValue("disabled",out disabled)) {
+    Need(disabled.ValueKind==JsonValueKind.True||disabled.ValueKind==JsonValueKind.False);
+    logDisabled=disabled.ValueKind==JsonValueKind.True;
+   }
    string cachePath=null;
    if(cache) {
     JsonElement enabled,path;
-    if(mutable==null) {
+    bool hasEnabled=map.TryGetValue("enabled",out enabled);
+    Need(!hasEnabled||enabled.ValueKind==JsonValueKind.True||enabled.ValueKind==JsonValueKind.False);
+    foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
+    if(!hasEnabled||enabled.ValueKind==JsonValueKind.False) {
+     // The ordinary owner scrubs an unused destination; disabled metadata needs no file binding.
+     Need(map.TryGetValue("path",out path)&&StringValue(path)=="cache.db");
+     cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
+    } else if(mutable==null) {
      Need(map.Count==2&&map.TryGetValue("enabled",out enabled)&&
       (enabled.ValueKind==JsonValueKind.True||enabled.ValueKind==JsonValueKind.False)&&
       map.TryGetValue("path",out path)&&StringValue(path)=="cache.db");
      cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
     } else {
-     foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
      Need(map.TryGetValue("enabled",out enabled)&&enabled.ValueKind==JsonValueKind.True&&
       map.TryGetValue("path",out path)&&StringValue(path)!=null);
      string reference=StringValue(map["path"]);
@@ -78,7 +90,17 @@ namespace VpnScopedConfiguration {
    work.Push(new Work(Kind.EndObject));
    for(int i=properties.Count-1;i>=0;i--) {
     string key=properties[i].Key;JsonElement child=properties[i].Value;
-    if(ReadFileField(key,context,type)) work.Push(new Work(Kind.Resource,child));
+    if(log&&key=="output") {
+     string requested=StringValue(child),destination;Need(requested!=null);
+     if(logDisabled) destination="";
+     else if(requested==""||requested=="stdout"||requested=="stderr") destination=requested;
+     else {
+      Need(outputs!=null&&outputs.TryGetValue(requested,out destination)&&used.Add(requested));
+      destination=outputs[requested];
+     }
+     work.Push(new Work(Kind.String,text:destination));
+    }
+    else if(ReadFileField(key,context,type)) work.Push(new Work(Kind.Resource,child));
     else {
      Need(key!="output"&&key!="external_ui"&&key!="directory"&&!key.EndsWith("_directory",StringComparison.Ordinal)&&
       (key=="cache_file"||!key.EndsWith("_file",StringComparison.Ordinal))&&
@@ -94,7 +116,7 @@ namespace VpnScopedConfiguration {
    }
   }
   public static string Normalize(string text,string stage,Dictionary<string,string> resources=null,
-    Dictionary<string,string> mutable=null) {
+    Dictionary<string,string> mutable=null,Dictionary<string,string> outputs=null) {
    Need(text!=null);
    try {
     // Parsing and rendering materialize the logical document. A document is not rejected because
@@ -125,7 +147,7 @@ namespace VpnScopedConfiguration {
          break;
         case Kind.Value:
          if(next.Value.ValueKind==JsonValueKind.Object) {
-          writer.WriteStartObject();QueueObject(work,next.Value,next.Context,stage,mutable,used);
+          writer.WriteStartObject();QueueObject(work,next.Value,next.Context,stage,mutable,outputs,used);
          } else if(next.Value.ValueKind==JsonValueKind.Array) {
           writer.WriteStartArray();work.Push(new Work(Kind.EndArray));
           var context=new Context(next.Context,"*");
@@ -135,7 +157,7 @@ namespace VpnScopedConfiguration {
          break;
        }
       }
-      Need(mutable==null||used.Count==mutable.Count);
+      Need(used.Count==(mutable==null?0:mutable.Count)+(outputs==null?0:outputs.Count));
      }
      return utf8.GetString(output.GetBuffer(),0,checked((int)output.Length));
     }

@@ -224,7 +224,8 @@ public static class VpnRuntimeBroker {
   return resources[reference];
  }
  static void Config(object value,string context,string stage,System.Collections.Generic.Dictionary<string,string> resources,
-   System.Collections.Generic.Dictionary<string,string> mutable,System.Collections.Generic.HashSet<string> used) {
+   System.Collections.Generic.Dictionary<string,string> mutable,System.Collections.Generic.Dictionary<string,string> outputs,
+   System.Collections.Generic.HashSet<string> used) {
   var map=value as System.Collections.Generic.Dictionary<string,object>;
   if(map!=null) {
    object kind; string type=map.TryGetValue("type",out kind)?kind as string:null;
@@ -232,14 +233,20 @@ public static class VpnRuntimeBroker {
     ((context=="/outbounds/*/transport"||context=="/inbounds/*/transport")&&(type=="ws"||type=="http"||type=="httpupgrade")) ||
     (context=="/outbounds/*"&&type=="http");
    bool cache=context=="/experimental/cache_file";
+   bool log=context=="/log",logDisabled=false;object disabled;
+   if(log&&map.TryGetValue("disabled",out disabled)) { Need(disabled is bool);logDisabled=Equals(disabled,true); }
    string cachePath=null;
    if(cache) {
-    if(mutable==null) {
+    object enabled,path;bool hasEnabled=map.TryGetValue("enabled",out enabled);
+    Need(!hasEnabled||enabled is bool);
+    foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
+    if(!hasEnabled||Equals(enabled,false)) {
+     Need(map.TryGetValue("path",out path)&&Equals(path,"cache.db"));
+     cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
+    } else if(mutable==null) {
      Need(map.Count==2&&map.ContainsKey("enabled")&&map["enabled"] is bool&&map.ContainsKey("path")&&Equals(map["path"],"cache.db"));
      cachePath=stage==null?"cache.db":Path.Combine(stage,"cache.db");
     } else {
-     foreach(string key in map.Keys) Need(key=="enabled"||key=="path"||key=="cache_id"||key=="store_fakeip"||key=="store_rdrc"||key=="rdrc_timeout");
-     object enabled,path;
      Need(map.TryGetValue("enabled",out enabled)&&Equals(enabled,true)&&map.TryGetValue("path",out path)&&path is string);
      string reference=(string)map["path"];
      Need(mutable.TryGetValue(reference,out cachePath)&&used.Add(reference));
@@ -247,6 +254,16 @@ public static class VpnRuntimeBroker {
    }
    foreach(string key in new System.Collections.Generic.List<string>(map.Keys)) {
     object child=map[key];
+    if(log&&key=="output") {
+     string requested=child as string,destination;Need(requested!=null);
+     if(logDisabled) destination="";
+     else if(requested==""||requested=="stdout"||requested=="stderr") destination=requested;
+     else {
+      Need(outputs!=null&&outputs.TryGetValue(requested,out destination)&&used.Add(requested));
+      destination=outputs[requested];
+     }
+     map[key]=destination;continue;
+    }
     if(ReadFileField(key,context,type)) { map[key]=ResourceValue(child,resources); continue; }
     Need(key!="output"&&key!="external_ui"&&key!="directory"&&!key.EndsWith("_directory",StringComparison.Ordinal)&&
      (key=="cache_file"||!key.EndsWith("_file",StringComparison.Ordinal))&&
@@ -256,25 +273,26 @@ public static class VpnRuntimeBroker {
      string path=child as string;
      Need(cache||(url&&path!=null));
     }
-    Config(child,context+"/"+key,stage,resources,mutable,used);
+    Config(child,context+"/"+key,stage,resources,mutable,outputs,used);
    }
    // This destination is chosen only by the broker; no caller-selected privileged cache path survives.
    if(cache) map["path"]=cachePath;
-  } else { var array=value as object[]; if(array!=null) foreach(var item in array) Config(item,context+"/*",stage,resources,mutable,used); }
+  } else { var array=value as object[]; if(array!=null) foreach(var item in array) Config(item,context+"/*",stage,resources,mutable,outputs,used); }
  }
  public static string NormalizeConfiguration(string text,string stage) {
   return NormalizeConfiguration(text,stage,null);
  }
  internal static string NormalizeConfiguration(string text,string stage,System.Collections.Generic.Dictionary<string,string> resources,
-   System.Collections.Generic.Dictionary<string,string> mutable=null) {
+   System.Collections.Generic.Dictionary<string,string> mutable=null,System.Collections.Generic.Dictionary<string,string> outputs=null) {
 #if NET8_0_OR_GREATER
-  return VpnScopedConfiguration.Configuration.Normalize(text,stage,resources,mutable);
+  return VpnScopedConfiguration.Configuration.Normalize(text,stage,resources,mutable,outputs);
 #else
   // Parsing materializes the logical document. Native resource failure is distinct from invalid input.
   var parser=new System.Web.Script.Serialization.JavaScriptSerializer(); parser.MaxJsonLength=Int32.MaxValue;
   var root=parser.DeserializeObject(text); Need(root is System.Collections.Generic.Dictionary<string,object>);
   var used=new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-  Config(root,"",stage,resources,mutable,used);Need(mutable==null||used.Count==mutable.Count);return parser.Serialize(root);
+  Config(root,"",stage,resources,mutable,outputs,used);
+  Need(used.Count==(mutable==null?0:mutable.Count)+(outputs==null?0:outputs.Count));return parser.Serialize(root);
 #endif
  }
  static FileStream OpenPrivateResource(string stage,SafeFileHandle stagePin,string name,FileMode mode,
@@ -356,7 +374,8 @@ public static class VpnRuntimeBroker {
      jobAdmitted=true;
      if(protocol==5) {
       mutablePreparation=RuntimeResourcePreparation.ReadFrameForOwner(reader,new OwnerIdentity(ownerPid,ownerStart,ownerSid));
-      foreach(var item in mutablePreparation.Inputs) if(item.Identity.Kind!="CACHE") throw new IOException("UNSUPPORTED");
+      foreach(var item in mutablePreparation.Inputs)
+       if(item.Identity.Kind!="CACHE"&&item.Identity.Kind!="OUTPUT") throw new IOException("UNSUPPORTED");
      }
      byte[] image=Blob(reader,192*1024*1024);
      using(var sha=SHA256.Create()) Need(BitConverter.ToString(sha.ComputeHash(image)).Replace("-","").ToLowerInvariant()==expectedHash);
@@ -376,7 +395,7 @@ public static class VpnRuntimeBroker {
        ()=>WaitForSingleObject(owner,0)==258);
       originalUser=new OriginalUser(owner,ownerSid);
       var names=new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-      foreach(var item in mutablePreparation.Inputs) { names.Add("cache-"+item.Identity.Id+".db");names.Add("publication-"+item.Identity.Id+".journal"); }
+      foreach(var item in mutablePreparation.Inputs) { names.Add(RuntimeCacheResources.OwnedDataName(item.Identity));names.Add("publication-"+item.Identity.Id+".journal"); }
       mutableResources=new RuntimeCacheResources(originalUser,mutablePreparation.Binding,mutablePreparation.Inputs,
        (name,mode)=>OpenPrivateResource(stage,stagePin,name,mode,names),
        ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0);
@@ -388,7 +407,8 @@ public static class VpnRuntimeBroker {
      string received=Path.Combine(stage,"received.json"); ConfigurationBlob(reader,received);
      var resources=Resources(reader,stage,resourceFiles);
      string normalized=NormalizeConfiguration(File.ReadAllText(received,new UTF8Encoding(false,true)),stage,resources,
-      mutableResources==null?null:mutableResources.ConfigurationPaths(stage));
+      mutableResources==null?null:mutableResources.ConfigurationPaths(stage,"CACHE"),
+      mutableResources==null?null:mutableResources.ConfigurationPaths(stage,"OUTPUT"));
      using(var f=new StreamWriter(new FileStream(configuration,FileMode.CreateNew,FileAccess.Write,FileShare.None),new UTF8Encoding(false,true))) f.Write(normalized);
      normalized=null; File.Delete(received);
      using(var output=new FileStream(log,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite))

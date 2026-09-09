@@ -411,7 +411,9 @@ class DesktopFindBestServiceTest {
             captureRuntimeRestore = {
                 events += "capture"
                 val captured = actual
-                suspend { events += "restore"; actual = captured; Result.success(Unit) }
+                DesktopRuntimeRestoreAction(AutoCloseable { events += "release" }) {
+                    events += "restore"; actual = captured; Result.success(Unit)
+                }
             },
             stateProvider = { state }, visibleLocationsProvider = { locations }, locationsProvider = { locations },
             refreshSubscriptions = { _, _ -> events += "refresh"; actual = "Refresh temporary runtime"; Result.success(1) },
@@ -422,7 +424,7 @@ class DesktopFindBestServiceTest {
             evaluateProfiles = { _, _, _, _, _ -> BestCandidateAttemptPlan(listOf(candidate), emptyList(), emptyMap(), null) })
         assertTrue(service.findBestLocation().isFailure)
         assertEquals("Actual A", actual)
-        assertEquals(listOf("capture", "refresh", "restore"), events)
+        assertEquals(listOf("capture", "refresh", "restore", "release"), events)
         assertEquals(raw, state.selectedProfileRawLink)
         assertFalse(state.isBusy)
     }
@@ -467,8 +469,11 @@ class DesktopFindBestServiceTest {
                 activeSubscriptionId = "sub", subscriptions = listOf(SubscriptionSource(id = "sub", url = "https://example.com/sub")),
                 selectedProfileRawLink = raw, isVpnRunning = true)
             var restorations = 0
+            var released = 0
             val service = DesktopFindBestService(
-                captureRuntimeRestore = { suspend { restorations++; Result.failure(IllegalStateException(restoreCode)) } },
+                captureRuntimeRestore = { DesktopRuntimeRestoreAction(AutoCloseable { released++ }) {
+                    restorations++; Result.failure(IllegalStateException(restoreCode))
+                } },
                 stateProvider = { state }, visibleLocationsProvider = { emptyList() }, locationsProvider = { emptyList() },
                 refreshSubscriptions = { _, _ -> Result.success(0) },
                 startConnection = { _, _, _ -> error("no candidate") },
@@ -480,6 +485,7 @@ class DesktopFindBestServiceTest {
             assertEquals(expectedCode, service.findBestLocation().exceptionOrNull()?.message)
             assertEquals(1, restorations)
             assertEquals(expectedCode == "OUTCOME_UNKNOWN", state.isBusy)
+            assertEquals(if (expectedCode == "OUTCOME_UNKNOWN") 0 else 1, released)
             assertEquals(raw, state.selectedProfileRawLink)
         }
     }

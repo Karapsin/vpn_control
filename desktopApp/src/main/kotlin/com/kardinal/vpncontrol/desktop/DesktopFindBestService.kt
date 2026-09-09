@@ -90,6 +90,7 @@ internal class DesktopFindBestService(
         return try {
             // Capture before refresh: staged selection is never a runtime recovery target.
             capturedRestore = captureRuntimeRestore()
+            retainDesktopRuntimeInputs(capturedRestore as? AutoCloseable)
             val result = findBestAdmitted(
                 refreshSubscriptionsFirst,
                 restoreRuntime = { restoreOnce() },
@@ -104,6 +105,7 @@ internal class DesktopFindBestService(
         } catch (failure: Exception) {
             Result.failure(reconcileFailure(failure))
         } finally {
+            if (!unresolvedRuntime) releaseDesktopRuntimeRestore(capturedRestore)
             updateState { it.copy(isBusy = unresolvedRuntime, isRefreshing = false) }
         }
     }

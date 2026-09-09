@@ -68,12 +68,13 @@ namespace VpnScopedStorage {
   */
  public sealed class RuntimeCacheResources {
   sealed class Entry {
-   public readonly string Id,DataName,JournalName;
+   public readonly string Id,Kind,DataName,JournalName;
    public readonly CacheLease Lease;
    public FileStream Journal;
    public bool Captured;
-   public Entry(string id,CacheLease lease) {
-    Id=id; DataName="cache-"+id+".db"; JournalName="publication-"+id+".journal"; Lease=lease;
+   public Entry(ResourceIdentity identity,CacheLease lease) {
+    Id=identity.Id; Kind=identity.Kind; DataName=OwnedDataName(identity);
+    JournalName="publication-"+Id+".journal"; Lease=lease;
    }
   }
   readonly object sync=new object();
@@ -94,7 +95,7 @@ namespace VpnScopedStorage {
      original.Owner.Sid!=admitted.NativeOwner.Sid) throw new IOException("PERMISSION_DENIED");
    var identities=new List<ResourceIdentity>();
    foreach(var input in captured) {
-    if(input==null||input.Identity.Kind!="CACHE") throw new IOException("UNSUPPORTED");
+    if(input==null||(input.Identity.Kind!="CACHE"&&input.Identity.Kind!="OUTPUT")) throw new IOException("UNSUPPORTED");
     identities.Add(input.Identity);
    }
    var expected=new RuntimeResourceBinding(admitted.JobId,admitted.ScopeId,admitted.ControllerId,
@@ -104,26 +105,41 @@ namespace VpnScopedStorage {
    original.ValidateScope(admitted.ScopeRecord,admitted.ScopeId);
    // Recheck each ordinary parent before authorization readiness. Its bytes are deliberately not
    // captured yet: actual A may still be writing its cache until the manager commits replacement.
+   var destinations=new Dictionary<string,HashSet<string>>(StringComparer.Ordinal);
    foreach(var input in captured) {
     var current=original.AdmitDestination(input.Destination.Path);
     if(current.ParentIdentity!=input.Destination.ParentIdentity||
       !String.Equals(current.Path,input.Destination.Path,StringComparison.OrdinalIgnoreCase)) throw new IOException("CONFLICT");
-    entries.Add(new Entry(input.Identity.Id,new CacheLease(original,input.Destination,admitted.JobId,
+    HashSet<string> leaves;
+    if(!destinations.TryGetValue(current.ParentIdentity,out leaves)) {
+     leaves=new HashSet<string>(StringComparer.OrdinalIgnoreCase);destinations.Add(current.ParentIdentity,leaves);
+    }
+    if(!leaves.Add(Path.GetFileName(current.Path))) throw new IOException("CONFLICT");
+    entries.Add(new Entry(input.Identity,new CacheLease(original,input.Destination,admitted.JobId,
      input.Identity.Id,admitted.ScopeId,admitted.ControllerId,admitted.ScopeRecord)));
    }
    binding=admitted; privateFile=openAdmittedPrivateFile; exactChildExited=retainedNativeChildExited;
   }
-  public override string ToString() { return "Owned runtime cache batch (<redacted>)"; }
+  public override string ToString() { return "Owned mutable runtime files (<redacted>)"; }
+
+  internal static string OwnedDataName(ResourceIdentity identity) {
+   if(identity==null) throw new IOException("INVALID_ARGUMENT");
+   if(identity.Kind=="CACHE") return "cache-"+identity.Id+".db";
+   if(identity.Kind=="OUTPUT") return "output-"+identity.Id+".log";
+   throw new IOException("UNSUPPORTED");
+  }
 
   public string[] OwnedNames() {
    var names=new List<string>();
    foreach(var entry in entries) { names.Add(entry.DataName); names.Add(entry.JournalName); }
    return names.ToArray();
   }
-  public Dictionary<string,string> ConfigurationPaths(string admittedStage) {
+  public Dictionary<string,string> ConfigurationPaths(string admittedStage,string kind=null) {
+   if(kind!=null&&kind!="CACHE"&&kind!="OUTPUT") throw new IOException("INVALID_ARGUMENT");
    var paths=new Dictionary<string,string>(StringComparer.Ordinal);
-   foreach(var entry in entries) paths.Add("vpn-control-mutable:"+entry.Id,Path.Combine(admittedStage,entry.DataName));
-   return paths;
+   foreach(var entry in entries)
+    if(kind==null||entry.Kind==kind) paths.Add("vpn-control-mutable:"+entry.Id,Path.Combine(admittedStage,entry.DataName));
+   return kind!=null&&paths.Count==0?null:paths;
   }
   public void CaptureAtCommit() {
    lock(sync) {
@@ -135,8 +151,8 @@ namespace VpnScopedStorage {
      entry.Journal=privateFile(entry.JournalName,FileMode.CreateNew);
      using(var cache=privateFile(entry.DataName,FileMode.CreateNew)) entry.Lease.CaptureAtCommit(cache,entry.Journal);
      entry.Captured=true;
-     // Close the cache writer before sing-box opens or replaces its private database. The retained
-     // protected directory and native child identity guard later reads; no user path is reopened.
+     // Close the seed writer before sing-box opens its private database or appends to its private
+     // log. Both begin with the latest ordinary bytes after A stopped; no user path reaches B.
     }
    }
   }

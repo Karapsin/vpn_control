@@ -131,8 +131,6 @@ internal object DesktopWindowsVpnBroker {
                                 mutableResources: List<DesktopWindowsRuntimeResource> = emptyList(),
                                 scopeProvider: DesktopWindowsRuntimeResourceScopeProvider? = null): DesktopPreparedRuntimeProcess {
         if (mutableResources.isNotEmpty()) {
-            if (mutableResources.any { it.kind != DesktopWindowsRuntimeResourceKind.CACHE })
-                throw DesktopWindowsRuntimeFailure("UNSUPPORTED", stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
             if (scopeProvider == null) throw DesktopWindowsRuntimeFailure("UNAVAILABLE",
                 stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS)
         }

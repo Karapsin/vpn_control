@@ -14,7 +14,9 @@ class DesktopRuntimeMutationTransactionTest {
         val events = mutableListOf<String>()
         val job = launch {
             commitDesktopRuntimeMutation(true,
-                captureRestore = { events += "capture"; suspend { events += "restore"; Result.success(Unit) } },
+                captureRestore = { events += "capture"; DesktopRuntimeRestoreAction(AutoCloseable { events += "release" }) {
+                    events += "restore"; Result.success(Unit)
+                } },
                 stop = { events += "stop"; stopped.complete(Unit); continueStop.await(); Result.success(Unit) },
                 commit = { events += "save"; Result.failure(DesktopPersistenceException()) })
         }
@@ -22,6 +24,18 @@ class DesktopRuntimeMutationTransactionTest {
         job.cancel()
         continueStop.complete(Unit)
         job.join()
-        assertEquals(listOf("capture", "stop", "save", "restore"), events)
+        assertEquals(listOf("capture", "stop", "save", "restore", "release"), events)
+    }
+
+    @Test
+    fun successfulMutationReleasesRollbackInputsWithoutRestoring() = runTest {
+        val events = mutableListOf<String>()
+        commitDesktopRuntimeMutation(true,
+            captureRestore = { DesktopRuntimeRestoreAction(AutoCloseable { events += "release" }) {
+                events += "restore"; Result.success(Unit)
+            } },
+            stop = { events += "stop"; Result.success(Unit) },
+            commit = { events += "save"; Result.success(Unit) }).getOrThrow()
+        assertEquals(listOf("stop", "save", "release"), events)
     }
 }

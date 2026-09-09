@@ -24,6 +24,7 @@ class DesktopSubscriptionRefreshServiceTest {
             var state = MainUiState(subscriptions = listOf(source), isVpnRunning = true,
                 selectedProfileRawLink = "old", selectedProfileSourceUrl = source.url)
             var restored = 0
+            var released = 0
             var stops = 0
             val service = DesktopSubscriptionRefreshService(
                 stateProvider = { state }, locationsProvider = { listOf(old) },
@@ -36,7 +37,7 @@ class DesktopSubscriptionRefreshServiceTest {
                 updateState = { state = it(state) },
                 captureRestore = {
                     assertTrue(state.isVpnRunning)
-                    suspend {
+                    DesktopRuntimeRestoreAction(AutoCloseable { released++ }) {
                         restored++
                         if (rollbackFails) Result.failure(IllegalStateException("private runtime error"))
                         else { state = state.copy(isVpnRunning = true); Result.success(Unit) }
@@ -47,6 +48,7 @@ class DesktopSubscriptionRefreshServiceTest {
             assertEquals(if (rollbackFails) "ROLLBACK_FAILED" else "PERSISTENCE_FAILED", result.exceptionOrNull()?.message)
             assertEquals(1, stops)
             assertEquals(1, restored)
+            assertEquals(1, released)
             assertEquals(!rollbackFails, state.isVpnRunning)
             assertEquals("old", state.selectedProfileRawLink)
             assertFalse(state.isBusy)

@@ -794,8 +794,9 @@ class DesktopAppService internal constructor(
     private fun captureRuntimeOnlyMutationRestore(): suspend () -> Result<Unit> {
         val restore = connectionLifecycle.captureRuntimeRestore()
         val previousResume = resumeConnectionOnLaunch
-        return suspend {
+        return DesktopRuntimeRestoreAction(restore as? AutoCloseable) {
             val restored = restore()
+            if (restored.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") return@DesktopRuntimeRestoreAction restored
             synchronized(this) {
                 resumeConnectionOnLaunch = previousResume
                 val restoredState = state.copy(isBusy = false, isVpnRunning = connectionLifecycle.isRuntimeRunning())
@@ -960,8 +961,9 @@ class DesktopAppService internal constructor(
         val previousState = state.copy(isBusy = false, isRefreshing = false)
         val previousLocations = desktopLocations
         val previousResume = resumeConnectionOnLaunch
-        return {
+        return DesktopRuntimeRestoreAction(restoreRuntime as? AutoCloseable) {
             val restored = restoreRuntime()
+            if (restored.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") return@DesktopRuntimeRestoreAction restored
             resumeConnectionOnLaunch = previousResume
             val restoredState = previousState.copy(isVpnRunning = connectionLifecycle.isRuntimeRunning())
             val persisted = commitState(restoredState, previousLocations)

@@ -54,7 +54,7 @@ object SingBoxConfigFactory {
             .put("mtu", 1400)
             .put("auto_route", true)
             .put("strict_route", true)
-            .put("stack", "system")
+            .put("stack", "gvisor")
 
         if (!routingRules.ignoreRules && routingRules.proxyPackages.isNotEmpty()) {
             tunInbound.put(

@@ -117,16 +117,23 @@ namespace VpnScopedStorage {
    Need(directory||info.links==1,"UNSUPPORTED"); return info;
   }
   static string Identity(INFO info) { return info.volume.ToString("x8")+info.indexHigh.ToString("x8")+info.indexLow.ToString("x8"); }
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file,long distance,out long position,uint method);
   static Target Snapshot(string path,string parentIdentity,SafeFileHandle file) {
    if(file==null) return new Target(path,parentIdentity,null,0,null);
-   var info=Inspect(file,false);
-   // Borrow the already admitted handle while preserving its ownership and file position.
+   var info=Inspect(file,false);Target snapshot;
+   // Borrow the admitted handle without transferring ownership. A managed Position reset can
+   // remain inside the read buffer on modern .NET; it does not rewind the retained Win32 handle.
    using(var borrowed=new SafeFileHandle(file.DangerousGetHandle(),false))
    using(var input=new FileStream(borrowed,FileAccess.Read,65536,false)) using(var digest=SHA256.Create()) {
-    input.Position=0; byte[] hash=digest.ComputeHash(input); long bytes=input.Position; input.Position=0;
+    input.Position=0; byte[] hash=digest.ComputeHash(input); long bytes=input.Position;
     Need(bytes==((long)info.sizeHigh<<32|info.sizeLow),"CONFLICT");
-    return new Target(path,parentIdentity,Identity(info),bytes,BitConverter.ToString(hash).Replace("-","").ToLowerInvariant());
+    snapshot=new Target(path,parentIdentity,Identity(info),bytes,BitConverter.ToString(hash).Replace("-","").ToLowerInvariant());
    }
+   // Rewind only after the borrowed stream has disposed its buffer. Every following reader uses
+   // this exact retained file, with the same physical identity and sharing restrictions.
+   long position;Need(SetFilePointerEx(file,0,out position,0)&&position==0,"UNAVAILABLE");
+   return snapshot;
   }
   static string Final(SafeFileHandle file) {
    var path=new StringBuilder(32768); uint size=GetFinalPathNameByHandle(file,path,32768,0);
@@ -501,7 +508,8 @@ namespace VpnScopedStorage {
   }
  }
 
- /** One cache belonging to an already captured runtime. Private streams are admitted by the broker;
+ /** One mutable file belonging to an already captured runtime. Cache and append-only log output
+  * share this exact capture/compare/publish authority. Private streams are admitted by the broker;
   * every user-path operation remains inside OriginalUser. This object never replays failed writes.
   */
  public sealed class CacheLease {
@@ -515,7 +523,7 @@ namespace VpnScopedStorage {
   public CacheLease(OriginalUser user,Destination admitted,string job,string resource,string scope,string controller,Target proof) {
    original=user; destination=admitted; jobId=job; resourceId=resource; scopeId=scope; controllerId=controller; scopeRecord=proof;
   }
-  public override string ToString() { return "Retained runtime cache (<redacted>)"; }
+  public override string ToString() { return "Retained mutable runtime file (<redacted>)"; }
   public void CaptureAtCommit(FileStream admittedCache,FileStream admittedJournal) {
    if(journal!=null||captured!=null) throw new IOException("CONFLICT");
    original.ValidateScope(scopeRecord,scopeId);

@@ -27,41 +27,75 @@ inputs and correlation records until authoritative reconciliation.
   required exact-SHA workflows passed; managed session84454 terminated0. Receipt:
   `checkpoint30/commit-result.json`. Final SSH fixture13 passed on host and limited
   Windows user with matching hashes; receipt-write failure retains the live child.
-- Checkpoint31 in progress: root reproduced actual desktop A recovery reading
-  pending key B through the mutable credential path. Runtime preparation now
-  captures a private key per candidate and retains it through internal transition
-  recovery; invalid
-  preparation and terminal cleanup remove only candidate inputs. Causal RED and
-  focused GREEN evidence are under checkpoint30/desktop-ssh-snapshot-*;
-  current30 focused tests and frozen standalone JVM30 passed without skips under
-  checkpoint31/. The initial test setup failure (missing host pin) is separate
-  from the causal A/B/A assertion. Independent review found no blocker; native
-  guest30 passed on macOS and Windows with the exact frozen manifest
-  c0bc07c6477e8789c42dcb20b915e77d5ab9f424d56d3f5f36859677587a4cd7.
-  Root reviewed both preflight/JUnit30 receipts, no skips/failures or stderr.
-  A separate remaining integration gate is higher-level
-  lifecycle/Find Best recovery after a successful intermediate runtime start:
-  captureRuntimeRestore currently rebuilds from settings and needs a retained
-  runtime/credential lease rather than reopening the mutable committed-key path.
-  Windows TUN2 failed before commit due to a partially published fixture marker;
-  exact cleanup restored all baselines. A native inert reader reproduced the race;
-  atomic-publication helper9 now passes on host and native Windows, including
-  staged-file collision preservation. The unchanged Java acknowledgment reader
-  passed with the new publisher. TUN3 payload/cleanup success is reported by the
-  worker; root review of the final compact receipt is still pending.
-  Android A remains running; Chrome recreation and shell probes yielded no
-  correlated response. A separate-UID diagnostic APK is being prepared for one
-  socket probe; no B/Find Best mutation. Saved proxy restoration remains required.
-  macOS fixture setup initially omitted explicit selection and later copied a
-  stale proxy port. Tested helpers now guard stable selection/active identity and
-  derive proxy arguments from the server ready manifest (30 focused tests passed).
-  The corrected machine scenario reached exact Aqua grant, then rejected the
-  malformed DMG before handoff. Operation e4a74cc9-2300-419a-b846-36f3ddd7b95e
-  failed RUNTIME_FAILED; protected job ef46f996-f0c2-42aa-8216-4d9beed7beb0 FAILED,
-  installed=null, original runtime stayed live and passed TLS; base2.1.7 signature
-  and launcher unchanged. Root read terminal-r4/protected-failed/base-admission
-  receipts in checkpoint30/macos-malformed. This is pre-handoff failure evidence,
-  not replacement rollback. Fresh owner/server were publicly stopped afterward.
+- Checkpoint31 is pushed and verified as `324f17ebde0d445aeca157ff2828abc3e0d49af7`
+  (version2.1.7, nine Unreleased notes). All15 final prepush commands and all five
+  required exact-SHA workflows passed; managed session83287 terminated0. Receipt:
+  `checkpoint31/commit-result.json`. Per-candidate SSH credentials passed the same
+  frozen JVM30 selection on host, macOS ARM64 and Windows AMD64 under ARM64 emulation;
+  manifest c0bc07c6477e8789c42dcb20b915e77d5ab9f424d56d3f5f36859677587a4cd7.
+  This proves internal failed-start recovery, not recovery after a successful B.
+- Checkpoint32 is source-complete for managed prepush review. Desktop immutable
+  restore leases preserve actual A across successful intermediate B, failed
+  post-start persistence, cancellation and queued restore/close. The exact
+  operation retains cleanup owners while native outcome is unknown; confirmation
+  alone does not roll back or release inputs. Terminal cleanup retries preserve
+  committed success. Explicit unknown outcomes and transport failures with retained
+  native inputs remain nonterminal; completed upstream check failures stay terminal.
+  Root reviewed and integrated Windows OUTPUT capture/publication, exact console
+  semantics, mixed CACHE/OUTPUT destinations and modern .NET retained-handle rewind.
+  Causal REDs preceded fixes; final focused desktop selection passed142 tests with
+  12 explicit platform skips. Evidence: checkpoint32/final-focused-xml and the
+  restore-credential, lifecycle-unknown, operation-owner, restore-close and
+  returned-unknown RED/GREEN logs. Production scoped Windows binding remains off.
+- Initial checkpoint32 prepush passed ten checks, then desktop testing found one
+  failure among1012 tests (80 platform skips): a completed update-check transport
+  failure incorrectly stayed pending without native inputs. The existing causal
+  HeadlessSession regression was retained; pending classification now requires
+  retained inputs or explicit uncertainty. Focused HeadlessSession/progress/input
+  ownership GREEN is21 tests, no skips. Evidence: checkpoint32/prepush-failed-xml
+  and completed-check-transport-green-xml. A fresh full prepush receipt is required.
+- Current Windows source hashes match the final native draft. Root verified all469
+  files in windows-output/evidence-manifest.json; actual Windows JUnit1/internal17
+  passed on x64 .NET10 under ARM64 emulation. Pinned sing-box output semantics5/5
+  passed with all children self-exiting on an occupied loopback listener. Actual
+  packaged OUTPUT/cold recovery/native-x64-host proof remains open.
+- Frozen normal-restore JVM63 passed on host and native macOS ARM64 with no skips
+  or stderr, manifest c0e18e57992cf330a31d4c79f7cb700e1608088bdb7f367011a25c63a9845e44.
+  This bundle predates pending-operation ownership integration; it is component
+  evidence, not final source/package proof. Native overlay cleanup preserved the
+  immutable checkpoint31 inputs and all live installer/relay fixtures.
+- Android API29 separate-UID TCP pair isolated the stack failure: immutable system
+  2.3.1 APK timed out at connect after12s; gvisor2.3.2 connected in4ms and received
+  HTTP301 in27ms. Target TUN inbound/home-SOCKS outbound correlate with the helper.
+  Both ON operations reconciled terminally; target remains running. The production
+  change is only system→gvisor. Quick factory RED had12 tests/1 failure, followed
+  by focused GREEN. API35 both stacks passed correlated TUN TCP/direct egress;
+  helper UID10207, with no selected-SOCKS attribution. That is compatibility proof,
+  not full proxy-chain acceptance. Owned5590 ends at signed nondebuggable2.3.2 OFF;
+  subscription/null-selection/settings/routing56,000/SSH key baseline was restored,
+  task candidate/reverse/forward/helper removed. Preserve5584 active runtime and
+  saved proxy cleanup intent. Evidence: checkpoint30/android-tun-stack-pair and
+  checkpoint32/android-api35-stack-run. API29 SSH/Find Best acceptance continues.
+- Root reviewed Windows TUN3 component evidence: factory-generated config with
+  three documented fixture edits, real UAC helper start, raw NO_PROXY TCP payload,
+  exact owned-process cleanup and all six network baselines restored. This is
+  AMD64-on-ARM64 component evidence, not production-factory/native-x64/MSI parity.
+  Receipt/manifest/archive are under `checkpoint31/windows-tun3*`.
+- Root reviewed macOS malformed-DMG pre-handoff failure: install operation
+  e4a74cc9-2300-419a-b846-36f3ddd7b95e failed RUNTIME_FAILED; protected job
+  ef46f996-f0c2-42aa-8216-4d9beed7beb0 FAILED with installed=null. Original runtime
+  stayed live and passed the recorded TLS probe; base2.1.7 signature/launcher stayed
+  unchanged. This does not prove post-replacement rollback. Fresh owner/server were
+  publicly stopped; failure records remain under checkpoint30/macos-malformed.
+
+### Checkpoint32 Exclusive Ownership
+
+| Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies | Artifact/environment | Current check | Next handoff |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| C32-integrate | Root | Lifecycle, restore callbacks, AppService, Find Best, refresh/mutation scopes, tests/docs | Build/version/delivery | Lease primitive | Host Gradle (one invocation) | Credential RED2 | Integrated focused union |
+| C32-lease | mac_fixture_terra | RuntimeTransition, ProxyRuntimeManager, RestoreLease, separate lease tests | Root lifecycle/controller | Windows fresh prepare contract | Inert adapters | Refcount/close race review | Primitive and focused tests |
+| C32-output | windows | Broker/config capture/resource C# and focused tests | No factory/Main/autostart/common runtime edits | OUTPUT RED | Owned Windows guest, AMD64 components | RED3 Kotlin + RED9 native | OUTPUT native receipt |
+| C32-android | android_terra | Android SingBoxConfigFactory and parity test | No shared/build/version files | API29 pair + quick RED/GREEN | Owned5584/API29 and5590/API35 | Factory GREEN | Frozen API35 comparison |
 
 - Checkpoint29 is pushed and verified as `0e3951808c4332d563f6599637888f36df3e3822`
   (version2.1.7, six Unreleased notes). All15 prepush commands and all five required

@@ -160,6 +160,15 @@ class DesktopProxyRuntimeManager(
         }
     }
 
+    /** Pins the currently published immutable launch without reading staged settings. */
+    override fun captureRuntimeRestoreLease(): DesktopRuntimeRestoreLease? =
+        transition.captureRestoreLease() ?: object : DesktopRuntimeRestoreLease {
+            override suspend fun restore(): Result<DesktopRuntimeSession> =
+                Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+
+            override fun close() = Unit
+        }
+
     private fun buildLaunch(
         profile: ProxyProfile,
         routingRules: RoutingRules,

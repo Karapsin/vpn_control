@@ -32,6 +32,27 @@ internal class DesktopOperationRunner(
     private val guard = Any()
     private val jobs = mutableMapOf<String, Job>()
     private val pendingOutcomes = mutableMapOf<String, ControlCode>()
+    // Keep exact cleanup owners even if an unconfirmed native action loses its coroutine.
+    // These are retained inputs, never commands to replay an uncertain operation.
+    private val inputOwners = mutableMapOf<String, DesktopOperationProgress>()
+    private val terminalInputOwners = mutableSetOf<String>()
+
+    internal fun hasRetainedRuntimeInputs(id: String): Boolean = synchronized(guard) {
+        inputOwners[id]?.hasRetainedInputs == true
+    }
+
+    private fun retryTerminalInputCleanup() {
+        val owners = synchronized(guard) { terminalInputOwners.mapNotNull { id -> inputOwners[id]?.let { id to it } } }
+        for ((id, owner) in owners) {
+            runCatching { owner.releaseAllTerminal() }
+            synchronized(guard) {
+                if (inputOwners[id] === owner && !owner.hasRetainedInputs) {
+                    inputOwners.remove(id)
+                    terminalInputOwners.remove(id)
+                }
+            }
+        }
+    }
     private data class ExternalInstall(val correlation: DesktopInstallCorrelation, val actions: DesktopControlInstallActions,
         var outcome: DesktopInstallHandoffResult = DesktopInstallHandoffResult(ControlCode.ACCEPTED),
         var ready: Boolean = false, var cancelRequested: Boolean = false)
@@ -277,6 +298,7 @@ internal class DesktopOperationRunner(
         if (requestId.isBlank()) return DesktopCliResponse.failure("INVALID_ARGUMENT")
         if (expectedControllerId != null && expectedControllerId != ledger.controllerId)
             return DesktopCliResponse.failure("CONFLICT")
+        retryTerminalInputCleanup()
         if (mutates && synchronized(guard) { ledger.forRequest(requestId, now()) == null } && installBarrier())
             return DesktopCliResponse.failure("BUSY")
         val id = UUID.randomUUID().toString()
@@ -326,6 +348,7 @@ internal class DesktopOperationRunner(
             val response = try { action() }
             catch (_: CancellationException) { DesktopCliResponse.failure("CANCELLED", 130) }
             catch (_: Exception) { DesktopCliResponse.failure("RUNTIME_FAILED") }
+            uncertainResponseCode(response, progress.hasRetainedInputs)?.let(progress::pending)
             complete(id, requestId, response, retainSettingsValues, completionMetadata(), retainSubscriptionIdentity || retainLocationIdentity,
                 operation.takeIf { retainConfigurationValues })
             reply.complete(response)
@@ -348,7 +371,10 @@ internal class DesktopOperationRunner(
             }
         }
         synchronized(guard) {
-            if (!job.isCompleted) jobs[id] = job
+            if (!job.isCompleted) {
+                inputOwners[id] = progress
+                jobs[id] = job
+            }
             if (ledger.get(id, now())?.phase == ControlOperationPhase.CANCELLING) job.cancel()
         }
         job.start()
@@ -383,9 +409,23 @@ internal class DesktopOperationRunner(
         retainSubscriptionIdentity: Boolean = false, configurationOperation: ControlOperationId? = null) = synchronized(guard) {
         val operation = ledger.get(id, now()) ?: return@synchronized
         if (operation.phase.terminal) return@synchronized
+        uncertainResponseCode(response, inputOwners[id]?.hasRetainedInputs == true)?.let { code ->
+            pendingOutcomes[id] = code
+            changed()
+            return@synchronized
+        }
         // Cancellation or a thrown exception cannot erase a previously reported
         // uncertain native effect. Its owner must first confirm the actual outcome.
         if (pendingOutcomes.containsKey(id)) return@synchronized
+        inputOwners[id]?.let { owner ->
+            if (owner.hasPendingOutcome) return@synchronized
+            // Native confirmation does not itself decide rollback. Only this known terminal
+            // boundary releases any inputs the enclosing action no longer needs.
+            runCatching { owner.releaseAllTerminal() }
+            if (owner.hasPendingOutcome) return@synchronized
+            if (!owner.hasRetainedInputs) inputOwners.remove(id)
+            else terminalInputOwners.add(id)
+        }
         val actionData = runCatching { DesktopActionResultData.decode(operation.operation, response) }
         val values = if (response.success && configurationOperation != null) runCatching {
             DesktopConfigurationResultData.decode(configurationOperation, response.message)
@@ -408,6 +448,16 @@ internal class DesktopOperationRunner(
                 if (actionData.isFailure) listOf("RESULT_DATA_UNAVAILABLE") else emptyList()), now())
         changed()
     }
+
+    private fun uncertainResponseCode(response: DesktopCliResponse, hasRetainedInputs: Boolean): ControlCode? =
+        if (response.success) null else ControlCode.entries.firstOrNull {
+            it.wireName == response.message && it in setOf(ControlCode.OUTCOME_UNKNOWN,
+                ControlCode.TIMEOUT, ControlCode.UNAVAILABLE, ControlCode.INCOMPATIBLE_PROTOCOL) &&
+                // A completed check can fail because its upstream request timed out. Without
+                // retained native inputs or explicit pending evidence, that is an action failure.
+                // An explicit unknown outcome is never converted into known failure.
+                (it == ControlCode.OUTCOME_UNKNOWN || hasRetainedInputs)
+        }
 }
 
 private fun desktopOperationClock(): () -> Long {

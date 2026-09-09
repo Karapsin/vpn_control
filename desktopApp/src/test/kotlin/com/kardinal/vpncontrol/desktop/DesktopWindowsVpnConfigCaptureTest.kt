@@ -60,7 +60,7 @@ class DesktopWindowsVpnConfigCaptureTest {
         val resource = DesktopWindowsCapturedResource("fixture", ".json", 0, "0".repeat(64), spool)
         val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
             DesktopWindowsVpnConfigCapture.capture(
-                """{"route":{"rule_set":[{"type":"local","path":"first.json"}]},"log":{"output":"second.log"}}""",
+                """{"route":{"rule_set":[{"type":"local","path":"first.json"}]},"experimental":{"clash_api":{"external_ui":"second-ui"}}}""",
                 Path.of("fixture"), captureResource = { _, _ -> resource },
             )
         }
@@ -236,6 +236,152 @@ class DesktopWindowsVpnConfigCaptureTest {
                 assertFalse(progress, "Unbound mutable resources reached native authorization")
             }
         } finally { Files.delete(directory) }
+    }
+
+    @Test fun consoleLogOutputsPreserveTheirMeaningWithoutFilesystemAdmission() {
+        for (destination in listOf("", "stdout", "stderr")) {
+            val input = buildJsonObject { put("log", buildJsonObject {
+                put("output", destination); put("level", "debug"); put("timestamp", true)
+            }) }.toString()
+            assertEquals(Json.parseToJsonElement(input), Json.parseToJsonElement(DesktopWindowsVpnConfigCapture.prepare(input)))
+            DesktopWindowsVpnConfigCapture.capture(input, Path.of("fixture"),
+                captureResource = { _, _ -> error("Console output cannot become an immutable input") },
+                admitMutableResource = { _, _ -> error("Console output cannot become a file destination") },
+            ).use { captured ->
+                assertTrue(captured.mutableResources.isEmpty())
+                captured.withSnapshot { config, resources ->
+                    assertTrue(resources.isEmpty())
+                    assertEquals(Json.parseToJsonElement(input), Json.parseToJsonElement(config))
+                }
+            }
+        }
+    }
+
+    @Test fun logFileRemainsAnOpaqueOutputDestinationUntilFreshJobCommit() {
+        val directory = Path.of("fixture-base")
+        val input = """{"log":{"output":"logs/session.log","level":"info","timestamp":true}}"""
+        val resource = DesktopWindowsRuntimeResource("00000000-0000-0000-0000-000000000042",
+            DesktopWindowsRuntimeResourceKind.OUTPUT,
+            DesktopWindowsResourceDestination("C:\\private-fixture\\session.log", "0".repeat(24)))
+        var admissions = 0
+        DesktopWindowsVpnConfigCapture.capture(input, directory,
+            captureResource = { _, _ -> error("A running A may still append to this output") },
+            admitMutableResource = { path, kind ->
+                admissions++
+                assertEquals(directory.resolve("logs/session.log"), path)
+                assertEquals(DesktopWindowsRuntimeResourceKind.OUTPUT, kind)
+                resource
+            },
+        ).use { captured ->
+            assertEquals(1, admissions)
+            assertEquals(listOf(resource), captured.mutableResources)
+            captured.withSnapshot { config, resources ->
+                assertTrue(resources.isEmpty())
+                val log = Json.parseToJsonElement(config).jsonObject["log"]!!.jsonObject
+                assertEquals(resource.reference, log["output"]!!.jsonPrimitive.content)
+                assertEquals("info", log["level"]!!.jsonPrimitive.content)
+                assertTrue(log["timestamp"]!!.jsonPrimitive.boolean)
+                assertFalse(config.contains("logs/session.log"))
+                assertFalse(config.contains("private-fixture"))
+            }
+            var progress = false
+            val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+                DesktopWindowsVpnBroker.prepareRetained(captured, directory.resolve("broker.log")) { progress = true }
+            }
+            assertEquals("UNAVAILABLE", failure.code)
+            assertEquals(DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, failure.stage)
+            assertFalse(progress, "Unbound output destination reached authorization")
+        }
+        assertTrue(input.contains("logs/session.log"))
+    }
+
+    @Test fun disabledLogDoesNotCaptureOrOpenItsUnusedOutput() {
+        val input = """{"log":{"disabled":true,"output":"private-unused-output","level":"debug"}}"""
+        DesktopWindowsVpnConfigCapture.capture(input, Path.of("fixture"),
+            captureResource = { _, _ -> error("Disabled log input access") },
+            admitMutableResource = { _, _ -> error("Disabled log destination access") },
+        ).use { captured ->
+            assertTrue(captured.mutableResources.isEmpty())
+            captured.withSnapshot { config, resources ->
+                assertTrue(resources.isEmpty())
+                assertFalse(config.contains("private-unused-output"))
+                val log = Json.parseToJsonElement(config).jsonObject["log"]!!.jsonObject
+                assertTrue(log["disabled"]!!.jsonPrimitive.boolean)
+                assertEquals("", log["output"]!!.jsonPrimitive.content)
+                assertEquals("debug", log["level"]!!.jsonPrimitive.content)
+            }
+        }
+    }
+
+    @Test fun outputAdmissionRequiresExactLogContextAndStringSemantics() {
+        for ((input, code) in listOf(
+            """{"log":{"output":false}}""" to "INVALID_ARGUMENT",
+            """{"log":{"output":[]}}""" to "INVALID_ARGUMENT",
+            """{"log":{"disabled":"true","output":"unused.log"}}""" to "INVALID_ARGUMENT",
+            """{"experimental":{"cache_file":{"enabled":"true","path":"cache.db"}}}""" to "INVALID_ARGUMENT",
+            """{"outbounds":[{"type":"direct","output":"stdout"}]}""" to "UNSUPPORTED",
+            """{"other/log":{"output":"stdout"}}""" to "UNSUPPORTED",
+        )) {
+            val failure = assertFailsWith<DesktopWindowsRuntimeFailure>(input) {
+                DesktopWindowsVpnConfigCapture.capture(input, Path.of("fixture"),
+                    admitMutableResource = { _, _ -> error("Unvalidated output reached file admission") })
+            }
+            assertEquals(code, failure.code)
+        }
+        var admitted = false
+        DesktopWindowsVpnConfigCapture.capture("""{"log":{"output":"STDOUT"}}""", Path.of("fixture"),
+            admitMutableResource = { path, kind ->
+                assertEquals(Path.of("fixture", "STDOUT"), path)
+                assertEquals(DesktopWindowsRuntimeResourceKind.OUTPUT, kind)
+                admitted = true
+                DesktopWindowsRuntimeResource("00000000-0000-0000-0000-000000000043", kind,
+                    DesktopWindowsResourceDestination("C:\\fixture\\STDOUT", "0".repeat(24)))
+            },
+        ).close()
+        assertTrue(admitted, "Console sentinels are exact lowercase sing-box values")
+    }
+
+    @Test fun samePhysicalMutableDestinationIsRejectedBeforeAuthorization() {
+        var admissions = 0
+        val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+            DesktopWindowsVpnConfigCapture.capture(
+                """{"log":{"output":"trace.log"},"experimental":{"cache_file":{"enabled":true,"path":"cache.db"}}}""",
+                Path.of("fixture"), captureResource = { _, _ -> error("Mutable bytes opened before commit") },
+                admitMutableResource = { _, kind ->
+                    admissions++
+                    // Two captured path spellings name the same physical parent and Windows leaf.
+                    val destination = if (admissions == 1) "C:\\fixture\\shared.db" else "Z:\\same-parent\\SHARED.DB"
+                    DesktopWindowsRuntimeResource(java.util.UUID.randomUUID().toString(), kind,
+                        DesktopWindowsResourceDestination(destination, "0".repeat(24)))
+                },
+            ).close()
+        }
+        assertEquals(2, admissions)
+        assertEquals("CONFLICT", failure.code)
+        assertEquals(DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, failure.stage)
+    }
+
+    @Test fun cacheAndOutputKeepDistinctMutableIdentitiesWithoutReadingEither() {
+        val kinds = mutableListOf<DesktopWindowsRuntimeResourceKind>()
+        DesktopWindowsVpnConfigCapture.capture(
+            """{"log":{"output":"session.log"},"experimental":{"cache_file":{"enabled":true,"path":"cache.db"}}}""",
+            Path.of("fixture"), captureResource = { _, _ -> error("Mutable bytes captured before commit") },
+            admitMutableResource = { path, kind ->
+                kinds += kind
+                DesktopWindowsRuntimeResource(java.util.UUID.randomUUID().toString(), kind,
+                    DesktopWindowsResourceDestination("C:\\fixture\\${path.fileName}", "0".repeat(24)))
+            },
+        ).use { captured ->
+            assertEquals(listOf(DesktopWindowsRuntimeResourceKind.OUTPUT, DesktopWindowsRuntimeResourceKind.CACHE), kinds)
+            assertEquals(2, captured.mutableResources.map { it.id }.distinct().size)
+            captured.withSnapshot { config, resources ->
+                assertTrue(resources.isEmpty())
+                val document = Json.parseToJsonElement(config).jsonObject
+                assertEquals(captured.mutableResources[0].reference, document["log"]!!.jsonObject["output"]!!.jsonPrimitive.content)
+                assertEquals(captured.mutableResources[1].reference,
+                    document["experimental"]!!.jsonObject["cache_file"]!!.jsonObject["path"]!!.jsonPrimitive.content)
+            }
+        }
     }
 
     @Test fun disabledCacheAndNetworkUrlDoNotAdmitMutableFilesystemResources() {

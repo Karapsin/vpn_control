@@ -130,38 +130,59 @@ internal class DesktopSubscriptionRefreshService(
             refreshed.locations.none { it.matchesSelectedLocation(state) }
         val removedActive = locationsProvider().any(isActiveLocation) && refreshed.locations.none(isActiveLocation)
         var restore: (suspend () -> Result<Unit>)? = null
-        if (removedActive && state.isVpnRunning && stopVpnIfSelectedRemoved) {
-            restore = captureRestore()
-            val stopResult = runCatching {
-                stopConnection(SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(state.appMode)).getOrThrow()
+        try {
+            if (removedActive && state.isVpnRunning && stopVpnIfSelectedRemoved) {
+                restore = captureRestore()
+                retainDesktopRuntimeInputs(restore as? AutoCloseable)
+                val stopResult = runCatching {
+                    stopConnection(SubscriptionStatusMessages.subscriptionRefreshRemovedSelectedStopped(state.appMode)).getOrThrow()
+                }
+                if (stopResult.isFailure) {
+                    if (stopResult.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                        desktopControlReportPendingOutcome()
+                        return Result.failure(stopResult.exceptionOrNull()!!)
+                    }
+                    val rollback = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restore() }
+                    if (rollback.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                        desktopControlReportPendingOutcome()
+                        return Result.failure(rollback.exceptionOrNull()!!)
+                    }
+                    updateState { it.copy(isBusy = false, isRefreshing = false) }
+                    if (rollback.isFailure) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+                    return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException(ConnectionStatusMessages.connectionStopFailed(state.appMode)))
+                }
             }
-            if (stopResult.isFailure) {
-                val rollback = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restore() }
-                updateState { it.copy(isBusy = false, isRefreshing = false) }
-                if (rollback.isFailure) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
-                return Result.failure(stopResult.exceptionOrNull() ?: IllegalStateException(ConnectionStatusMessages.connectionStopFailed(state.appMode)))
-            }
-        }
 
-        val latestState = stateProvider()
-        val committed = commitState(
-            latestState.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
-                .copy(
-                    isBusy = false,
-                    isRefreshing = false,
-                    subscriptionHwid = refreshed.subscriptionHwid,
-                    subscriptions = refreshed.subscriptions,
-                )
-                .withStatus(refreshed.statusMessage),
-            refreshed.locations,
-        )
-        if (committed.isFailure) {
-            val rollback = restore?.let { action ->
-                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { action() }
+            val latestState = stateProvider()
+            val committed = commitState(
+                latestState.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
+                    .copy(
+                        isBusy = false,
+                        isRefreshing = false,
+                        subscriptionHwid = refreshed.subscriptionHwid,
+                        subscriptions = refreshed.subscriptions,
+                    )
+                    .withStatus(refreshed.statusMessage),
+                refreshed.locations,
+            )
+            if (committed.isFailure) {
+                if (committed.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                    desktopControlReportPendingOutcome()
+                    return Result.failure(committed.exceptionOrNull()!!)
+                }
+                val rollback = restore?.let { action ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { action() }
+                }
+                if (rollback?.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
+                    desktopControlReportPendingOutcome()
+                    return Result.failure(rollback.exceptionOrNull()!!)
+                }
+                updateState { it.copy(isBusy = false, isRefreshing = false) }
+                if (rollback?.isFailure == true) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
             }
-            updateState { it.copy(isBusy = false, isRefreshing = false) }
-            if (rollback?.isFailure == true) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
+            return committed.map { refreshed }
+        } finally {
+            releaseDesktopRuntimeRestore(restore)
         }
-        return committed.map { refreshed }
     }
 }

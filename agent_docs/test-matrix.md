@@ -143,8 +143,32 @@ candidate cleanup after validation failure and preserve the committed credential
 The focused selection includes DesktopProxyRuntimeManagerTest,
 DesktopHomeSshPersistenceTest, DesktopGuardedSshKeyTest, DesktopSshCliTest and
 DesktopFrontendSshKeyImportTest; native JVM launch uses frozen inputs and explicit
-preflight. Higher-level Find Best recovery requires its separate retained-input
-acceptance and is not established by the internal-transition regression alone.
+preflight. DesktopRuntimeRestoreCredentialTest and DesktopRuntimeRestoreLeaseTest
+exercise successful intermediate B, post-start persistence failure, retained A key
+bytes and closing a restore handle while it waits behind another transition.
+DesktopRuntimeMutationTransactionTest, DesktopSubscriptionRefreshServiceTest and
+DesktopFindBestServiceTest check terminal release and unresolved-outcome retention.
+DesktopOperationProgressTest and DesktopOperationRetainedInputsTest exercise the
+actual operation owner across unknown/native-confirmed completion, ended uncertain
+actions, returned uncertain codes, cleanup failure and explicit terminal retry.
+Unknown results must retain their exact inputs without replay; cleanup failure must
+not erase known committed success. Keep these in the routine desktop test tier.
+These run in the routine desktop test tier. Native Find Best/SSH traffic recovery
+remains a separate acceptance requirement; inert child adapters do not prove it.
+
+Android SingBoxConfigFactoryParityTest includes the causal API29 TCP stack guard.
+Keep the nondebuggable APK comparison with a separate-UID raw TCP probe and native
+TUN/outbound correlation on API29/API35; the fast emitted-config assertion catches
+stack regressions but does not replace real traffic or background lifecycle checks.
+
+DesktopWindowsOutputNativeTest runs by default in the Windows desktop test tier
+using the repository-pinned modern .NET SDK, direct dotnet execution and the actual
+broker/config/original-user/publication sources. Its17 native cases cover retained
+file-handle rewinds, complete large-input copies, console and file log destinations,
+mixed CACHE/OUTPUT descriptors, duplicate destinations, late writes and publication
+conflicts. Foreign platforms explicitly skip this Windows-only test. Missing SDK
+on Windows is a failed prerequisite. Preserve the actual runtime log-semantics and
+packaged privileged-helper scenarios alongside this inert native regression.
 
 `scripts/test_native_jvm_tests.py` exercises the reusable JVM launch gate before
 JUnit dispatch. A failed native image/path probe or missing success marker cannot

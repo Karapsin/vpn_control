@@ -139,6 +139,19 @@ class SingBoxConfigFactoryParityTest {
     }
 
     @Test
+    fun androidVpnConfigUsesGvisorTcpStackForUnprivilegedVpnService() {
+        val inbound = parseConfig(
+            SingBoxConfigFactory.buildTunConfig(
+                profile = socksProfile(),
+                dns = DnsSettings(),
+                routingRules = RoutingRules(ignoreRules = true),
+            ),
+        ).getValue("inbounds").jsonArray.single().jsonObject
+
+        assertEquals("gvisor", inbound.getValue("stack").jsonPrimitive.content)
+    }
+
+    @Test
     fun androidVpnConfigWithProxyPackagesLimitsTunInbound() {
         val config = SingBoxConfigFactory.buildTunConfig(
             profile = socksProfile(),
