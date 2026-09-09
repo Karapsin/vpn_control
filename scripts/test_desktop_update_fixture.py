@@ -13,7 +13,7 @@ from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
-    desktop_install_arguments,
+    desktop_install_arguments, require_selected_location, require_active_runtime, fixture_proxy_arguments,
 )
 from test_fixture_environment import symlink_probe_available
 
@@ -38,6 +38,43 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             require_install_ready(status, "2.1.17")
         with self.assertRaises(ValueError):
             require_install_ready({**status, "ok": False}, "2.1.16")
+
+    def test_proxy_arguments_derive_only_from_valid_server_ready_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            ready = Path(temporary) / "ready.json"
+            ready.write_text(json.dumps({"port": 53633,
+                "manifestSha256": "a" * 64}))
+            self.assertEqual([
+                "-Dhttps.proxyHost=127.0.0.1", "-Dhttps.proxyPort=53633",
+                "-Dhttp.proxyHost=127.0.0.1", "-Dhttp.proxyPort=53633",
+            ], fixture_proxy_arguments(ready))
+            for value in ({}, {"port": 0, "manifestSha256": "a" * 64},
+                          {"port": 53633, "manifestSha256": "bad"}):
+                ready.write_text(json.dumps(value))
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    fixture_proxy_arguments(ready)
+
+    def test_missing_selected_identity_is_rejected_before_runtime_start(self):
+        # Native malformed-DMG preparation added a location but did not select it;
+        # public ON then returned SELECT_LOCATION_FIRST without starting a runtime.
+        status = {"ok": True, "final": True, "code": "OK", "data": {
+            "selectedLocationId": None, "activeLocationId": None,
+            "runtimeRunning": False,
+        }}
+        with self.assertRaises(ValueError):
+            require_selected_location(status, "stable-fixture-location")
+        selected = {**status, "data": {**status["data"],
+            "selectedLocationId": "stable-fixture-location"}}
+        require_selected_location(selected, "stable-fixture-location")
+        with self.assertRaises(ValueError):
+            require_active_runtime(selected, "stable-fixture-location")
+        active = {**selected, "data": {**selected["data"],
+            "activeLocationId": "stable-fixture-location", "runtimeRunning": True}}
+        require_active_runtime(active, "stable-fixture-location")
+        for changed in ("wrong-location", None):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                require_selected_location({**selected, "data": {**selected["data"],
+                    "selectedLocationId": changed}}, "stable-fixture-location")
 
     def test_desktop_install_uses_owner_guard_without_android_interaction_flag(self):
         status = {"ok": True, "final": True, "controllerId": "observed-owner",

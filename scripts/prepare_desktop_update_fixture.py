@@ -43,6 +43,44 @@ def require_install_ready(status, target_version):
             "Public update status is not ready for the expected fixture version")
 
 
+def fixture_proxy_arguments(ready_file):
+    """Derive the owner JVM proxy properties from one verified fixture server receipt."""
+    try:
+        ready = json.loads(Path(ready_file).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("Fixture server ready manifest is unavailable") from error
+    port = ready.get("port") if isinstance(ready, dict) else None
+    manifest = ready.get("manifestSha256") if isinstance(ready, dict) else None
+    require(type(port) is int and 1 <= port <= 65535,
+            "Fixture server ready manifest has an invalid port")
+    require(isinstance(manifest, str) and re.fullmatch(r"[0-9a-f]{64}", manifest) is not None,
+            "Fixture server ready manifest has an invalid manifest digest")
+    return [
+        "-Dhttps.proxyHost=127.0.0.1", f"-Dhttps.proxyPort={port}",
+        "-Dhttp.proxyHost=127.0.0.1", f"-Dhttp.proxyPort={port}",
+    ]
+
+
+def require_selected_location(status, expected_location_id):
+    """Require the public OFF-or-ON selection committed by fixture setup."""
+    require(isinstance(expected_location_id, str) and bool(expected_location_id.strip()),
+            "Fixture selected location identity is missing")
+    data = status.get("data", {}) if isinstance(status, dict) else {}
+    require(status.get("ok") is True and status.get("final") is True and
+            status.get("code", "OK") == "OK" and isinstance(data, dict) and
+            data.get("selectedLocationId") == expected_location_id,
+            "Public status does not confirm the expected selected fixture location")
+
+
+def require_active_runtime(status, expected_location_id):
+    """Require that the selected fixture profile became the active runtime."""
+    require_selected_location(status, expected_location_id)
+    data = status["data"]
+    require(data.get("runtimeRunning") is True and
+            data.get("activeLocationId") == expected_location_id,
+            "Public status does not confirm the expected active fixture runtime")
+
+
 def desktop_install_arguments(status, target_version, *, asynchronous=False):
     """Build one guarded fixture request from the final public ready snapshot."""
     require_install_ready(status, target_version)

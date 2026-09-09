@@ -169,6 +169,30 @@ class DesktopProxyRuntimeManager(
         homeSshRouteSettings: HomeSshRouteSettings,
     ): DesktopRuntimeLaunch {
         DesktopWorkspacePaths.createDirectories(baseDir)
+        val directory = Files.createTempDirectory(baseDir, "candidate-")
+        try {
+            return buildLaunchInDirectory(profile, routingRules, dnsSettings, appMode,
+                activeVerificationPort, homeSshRouteSettings, directory)
+        } catch (failure: Throwable) {
+            // Preparation can fail before a launch descriptor exists. Remove only its known inputs.
+            for (path in listOf(directory.resolve("home-ssh-private-key"), directory.resolve("config.json"),
+                directory.resolve("runtime.log"), directory)) {
+                try { Files.deleteIfExists(path) } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+            }
+            throw failure
+        }
+    }
+
+    private fun buildLaunchInDirectory(
+        profile: ProxyProfile,
+        routingRules: RoutingRules,
+        dnsSettings: DnsSettings,
+        appMode: AppMode,
+        activeVerificationPort: Int?,
+        homeSshRouteSettings: HomeSshRouteSettings,
+        directory: Path,
+    ): DesktopRuntimeLaunch {
+        DesktopWorkspacePaths.createDirectories(baseDir)
         val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: allocateListenPort()
         val userProxyPort = when {
             appMode != AppMode.PROXY_ONLY -> managementPort
@@ -178,8 +202,9 @@ class DesktopProxyRuntimeManager(
         val homeRoute = homeSshRouteSettings.takeIf { it.enabled }?.let { settings ->
             HomeSshRouteRuntimeOptions(
                 settings = settings,
-                privateKeyPath = homeSshCredentialStore.privateKeyPathOrNull()
-                    ?: error("SSH Routing private key is missing"),
+                privateKeyPath = homeSshCredentialStore.capturePrivateKey(
+                    directory.resolve("home-ssh-private-key"),
+                ).toAbsolutePath().toString(),
             ).validated()
         }
         val interfaceName = if (appMode == AppMode.VPN) {
@@ -217,7 +242,6 @@ class DesktopProxyRuntimeManager(
                     homeRoute = homeRoute,
                 )
         }
-        val directory = Files.createTempDirectory(baseDir, "candidate-")
         val configPath = directory.resolve("config.json")
         val runtimeLogFile = directory.resolve("runtime.log")
         val launch = DesktopRuntimeLaunch(appMode, userProxyPort, managementPort, interfaceName,
@@ -286,6 +310,7 @@ class DesktopProxyRuntimeManager(
         launch.captured?.close()
         if (Files.exists(launch.logFile) && Files.size(launch.logFile) > 0)
             Files.copy(launch.logFile, defaultLogFile(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.deleteIfExists(launch.configPath.parent.resolve("home-ssh-private-key"))
         Files.deleteIfExists(launch.configPath)
         Files.deleteIfExists(launch.logFile)
         Files.deleteIfExists(launch.configPath.parent) // Never recursively remove unexpected files.

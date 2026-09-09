@@ -27,6 +27,46 @@ import com.kardinal.vpncontrol.model.HomeSshRouteSettings
 import java.util.concurrent.TimeUnit
 
 class DesktopProxyRuntimeManagerTest {
+    @Test fun failedCandidateRecoversActualSshKeyAfterPendingKeyImport() = runBlocking {
+        runtimeTransitionFixture { fixture ->
+            val credentials = DesktopHomeSshCredentialStore(fixture.directory)
+            val keyA = "-----BEGIN PRIVATE KEY-----\nfixture-A\n-----END PRIVATE KEY-----\n"
+            val keyB = "-----BEGIN PRIVATE KEY-----\nfixture-B\n-----END PRIVATE KEY-----\n"
+            val settings = HomeSshRouteSettings(enabled = true, host = "ssh.example.test", user = "fixture",
+                hostKeys = listOf("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"))
+            val observedKeys = mutableListOf<String>()
+            fixture.native.onPrepare = { launch ->
+                observedKeys += Files.readString(assertNotNull(launch.privateKeyPath))
+            }
+            credentials.importPrivateKey(keyA)
+            val actual = fixture.start("127.0.0.1", settings).getOrThrow()
+            credentials.importPrivateKey(keyB)
+            fixture.native.rejectCandidateReadiness = true
+            val failure = fixture.start("127.0.0.2", settings).exceptionOrNull() as DesktopRuntimeTransitionFailure
+            assertNotNull(failure.recoveredSession)
+            assertFalse(failure.recoveryFailed)
+            assertEquals(listOf(keyA, keyB, keyA), observedKeys)
+            assertEquals(actual.configJson, fixture.store.readRuntimeConfig())
+            fixture.manager.stop().getOrThrow()
+            assertTrue(fixture.native.launches.mapNotNull { it.privateKeyPath }.none(Files::exists))
+            assertEquals(keyB, Files.readString(Path.of(assertNotNull(credentials.privateKeyPathOrNull()))))
+        }
+    }
+
+    @Test fun invalidSshPreparationRemovesOnlyCandidateKeyAndKeepsCommittedCredential() = runBlocking {
+        runtimeTransitionFixture { fixture ->
+            val credentials = DesktopHomeSshCredentialStore(fixture.directory)
+            val key = "-----BEGIN PRIVATE KEY-----\nfixture-A\n-----END PRIVATE KEY-----\n"
+            val source = Path.of(credentials.importPrivateKey(key))
+            val result = fixture.start("127.0.0.1",
+                HomeSshRouteSettings(enabled = true, host = "ssh.example.test", user = "fixture"))
+            assertTrue(result.isFailure) // Missing pinned host key fails after the credential capture.
+            assertTrue(fixture.native.started.isEmpty())
+            assertEquals(key, Files.readString(source))
+            Files.list(fixture.directory.resolve("runtime")).use { assertEquals(0L, it.count()) }
+        }
+    }
+
     @Test fun failedAdmissionStaysPendingAndPreservesActualAUntilPinsClose() = runBlocking {
         runtimeTransitionFixture { fixture ->
             val actual = fixture.start("127.0.0.1").getOrThrow()
@@ -440,10 +480,10 @@ class DesktopProxyRuntimeManagerTest {
 private class RuntimeTransitionFixture(val directory: Path) {
     val store = InMemoryRuntimeConfigStore()
     val native = FakeRuntimeManagerNative()
-    val manager = DesktopProxyRuntimeManager(store, directory, native)
-    suspend fun start(server: String) = manager.start(
+    val manager = DesktopProxyRuntimeManager(store, directory.resolve("runtime"), native)
+    suspend fun start(server: String, ssh: HomeSshRouteSettings = HomeSshRouteSettings()) = manager.start(
         com.kardinal.vpncontrol.data.LocationConfigs.decodeStoredLocation("socks://$server:1080#Fixture"),
-        RoutingRules(), DnsSettings(), AppMode.PROXY_ONLY, null, HomeSshRouteSettings(),
+        RoutingRules(), DnsSettings(), AppMode.PROXY_ONLY, null, ssh,
     )
 }
 

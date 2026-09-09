@@ -122,6 +122,30 @@ alias does not fail on path spelling. Two portable cases use real files to accep
 the same inode and reject identical bytes in a different file. This changes only
 the smoke assertion; captured broker admission continues to require its exact path.
 
+Desktop update fixture setup uses `require_selected_location` before ON and
+`require_active_runtime` before an installer scenario; add does not select.
+`fixture_proxy_arguments` derives JVM proxy properties from the captured server
+ready manifest. The existing `test_desktop_update_fixture.py` routine selection
+covers missing/wrong stable selection, disconnected runtime and dynamic proxy
+port derivation so these setup mistakes fail before another native attempt.
+
+`scripts/test_native_fixture_signal.py` runs in routine hygiene. Its partial-write
+and staged-path collision regressions ensure native readers see complete fixed
+acknowledgments and failed exclusive creation never deletes another file. Signals
+publish through an exclusive atomic hard link; publication uncertainty retains
+staging, and cleanup failure does not erase known publication. Keep the real
+Windows callback RED/GREEN and the scoped TUN scenario: portable tests do not
+establish privileged runtime readiness.
+
+Desktop SSH runtime regressions exercise A start, committed key B import, failed
+candidate start and recovery reading A's captured private key. They also assert
+candidate cleanup after validation failure and preserve the committed credential.
+The focused selection includes DesktopProxyRuntimeManagerTest,
+DesktopHomeSshPersistenceTest, DesktopGuardedSshKeyTest, DesktopSshCliTest and
+DesktopFrontendSshKeyImportTest; native JVM launch uses frozen inputs and explicit
+preflight. Higher-level Find Best recovery requires its separate retained-input
+acceptance and is not established by the internal-transition regression alone.
+
 `scripts/test_native_jvm_tests.py` exercises the reusable JVM launch gate before
 JUnit dispatch. A failed native image/path probe or missing success marker cannot
 launch the suite; test failures and literal argv survive successful admission.

@@ -64,6 +64,29 @@ class DesktopHomeSshCredentialStore(
             ?.toString()
     }
 
+    /** Capture the committed key for one runtime generation, including later recovery. */
+    internal fun capturePrivateKey(target: Path): Path {
+        val source = privateKeyPathOrNull()?.let(Path::of)
+            ?: error("SSH Routing private key is missing")
+        val bytes = Files.newInputStream(source, java.nio.file.LinkOption.NOFOLLOW_LINKS).use {
+            it.readNBytes(MAX_PRIVATE_KEY_CHARS * 4 + 2)
+        }
+        require(bytes.isNotEmpty() && bytes.size <= MAX_PRIVATE_KEY_CHARS * 4 + 1) {
+            "SSH private key is invalid or too large"
+        }
+        Files.createFile(target)
+        try {
+            restrictToCurrentUser(target)
+            Files.write(target, bytes, WRITE)
+            return target
+        } catch (failure: Throwable) {
+            try { Files.deleteIfExists(target) } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+            throw failure
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     fun hasPrivateKey(): Boolean = privateKeyPathOrNull() != null
 
     /** Keep key material out of persisted state and restore it if its metadata commit fails. */

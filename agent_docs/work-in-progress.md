@@ -22,6 +22,47 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint30 is pushed and verified as `5a199886ecd4be31e67e0da02fca2269f0842505`
+  (version2.1.7, eight Unreleased notes). All15 final prepush commands and all five
+  required exact-SHA workflows passed; managed session84454 terminated0. Receipt:
+  `checkpoint30/commit-result.json`. Final SSH fixture13 passed on host and limited
+  Windows user with matching hashes; receipt-write failure retains the live child.
+- Checkpoint31 in progress: root reproduced actual desktop A recovery reading
+  pending key B through the mutable credential path. Runtime preparation now
+  captures a private key per candidate and retains it through internal transition
+  recovery; invalid
+  preparation and terminal cleanup remove only candidate inputs. Causal RED and
+  focused GREEN evidence are under checkpoint30/desktop-ssh-snapshot-*;
+  current30 focused tests and frozen standalone JVM30 passed without skips under
+  checkpoint31/. The initial test setup failure (missing host pin) is separate
+  from the causal A/B/A assertion. Independent review found no blocker; native
+  guest30 passed on macOS and Windows with the exact frozen manifest
+  c0bc07c6477e8789c42dcb20b915e77d5ab9f424d56d3f5f36859677587a4cd7.
+  Root reviewed both preflight/JUnit30 receipts, no skips/failures or stderr.
+  A separate remaining integration gate is higher-level
+  lifecycle/Find Best recovery after a successful intermediate runtime start:
+  captureRuntimeRestore currently rebuilds from settings and needs a retained
+  runtime/credential lease rather than reopening the mutable committed-key path.
+  Windows TUN2 failed before commit due to a partially published fixture marker;
+  exact cleanup restored all baselines. A native inert reader reproduced the race;
+  atomic-publication helper9 now passes on host and native Windows, including
+  staged-file collision preservation. The unchanged Java acknowledgment reader
+  passed with the new publisher. TUN3 payload/cleanup success is reported by the
+  worker; root review of the final compact receipt is still pending.
+  Android A remains running; Chrome recreation and shell probes yielded no
+  correlated response. A separate-UID diagnostic APK is being prepared for one
+  socket probe; no B/Find Best mutation. Saved proxy restoration remains required.
+  macOS fixture setup initially omitted explicit selection and later copied a
+  stale proxy port. Tested helpers now guard stable selection/active identity and
+  derive proxy arguments from the server ready manifest (30 focused tests passed).
+  The corrected machine scenario reached exact Aqua grant, then rejected the
+  malformed DMG before handoff. Operation e4a74cc9-2300-419a-b846-36f3ddd7b95e
+  failed RUNTIME_FAILED; protected job ef46f996-f0c2-42aa-8216-4d9beed7beb0 FAILED,
+  installed=null, original runtime stayed live and passed TLS; base2.1.7 signature
+  and launcher unchanged. Root read terminal-r4/protected-failed/base-admission
+  receipts in checkpoint30/macos-malformed. This is pre-handoff failure evidence,
+  not replacement rollback. Fresh owner/server were publicly stopped afterward.
+
 - Checkpoint29 is pushed and verified as `0e3951808c4332d563f6599637888f36df3e3822`
   (version2.1.7, six Unreleased notes). All15 prepush commands and all five required
   exact-SHA workflows passed; managed session9317 terminated0. Authoritative receipt:
@@ -751,11 +792,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Shared integration, JVM preflight, fixture review, docs and delivery | Host Gradle; metadata/commits; shared protocol | Checkpoint29 all five exact-SHA workflows GREEN | New JVM7, SSH logger12, SOCKS fixture9 host GREEN | Windows native union, checkpoint30 freeze/prepush/push |
-| C/D-Android | android_terra, Terra medium | SSH logger helper/tests and live A/B proof; owned5584/5590 | Frozen helper12; isolated Mac task ports59022–25 | Fresh live sshd logger; saved stale global proxy; A OFF before next attempt | Public relay settings correct; stale proxy/log observations corrected | Guarded proxy clear, one A traffic/auth attempt, then proposed B/Find Best recovery |
-| F/E-Windows | windows, Astra | Exclusive Windows VM; fixture9; then broker OUTPUT | No factory/Main/manager/autostart/shared edits | ARM64 guest/x64 emulation; exact25 CI native helpers | TUN1 traffic failed; exact cleanup restored baseline; fixture regressions GREEN | Native JVM old/private JRE gates, production-config TUN retry, OUTPUT |
+| B/G/H | root | Shared integration, desktop SSH snapshots, docs/delivery | Host Gradle; protocol/factory/manager/Main/version | Checkpoint30 all five exact-SHA workflows GREEN | Causal A/B/A RED then JVM30 GREEN | Independent review, native30, checkpoint31 |
+| C/D-Android | android_terra, Terra medium | Current A traffic diagnosis; standalone probe | Product owner/settings/shared files stay root | Owned5584; A running; saved proxy baseline | Chrome/socket traversal unresolved | Separate-UID diagnostic then causal result |
+| F/E-Windows | windows, Astra | Native fixture signal helper/tests; then OUTPUT | No factory/Main/manager/autostart/shared edits | ARM64 guest/x64 emulation; exact25 helpers | TUN2 precommit marker race reproduced; cleanup verified | Atomic marker native proof, TUN payload, OUTPUT |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Read-only timeout/unsupported-flag audit | Tracked implementation returned to root; guest task fixtures cleaned | Exact28 installed quit and300-nonce GUI continuity GREEN; old8582 preserved | Frozen JVM7/24 native GREEN | At most three actionable public CLI gaps with causal test proposals |
+| E-Mac | mac_fixture_terra, Terra medium | Native installer prerequisite diagnosis; SSH diff review | No tracked edits/builds | Owned Tart; old jobs retained; reserve restored | New ON failed before installer; fresh owner cleaned | Causal diagnosis, native JVM30, uncovered installer case |
 
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16
