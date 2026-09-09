@@ -122,6 +122,32 @@ alias does not fail on path spelling. Two portable cases use real files to accep
 the same inode and reject identical bytes in a different file. This changes only
 the smoke assertion; captured broker admission continues to require its exact path.
 
+`scripts/test_native_jvm_tests.py` exercises the reusable JVM launch gate before
+JUnit dispatch. A failed native image/path probe or missing success marker cannot
+launch the suite; test failures and literal argv survive successful admission.
+With Java tools available, it compiles `NativeJvmPreflight.java` for Java17 and
+checks the actual interpreter identity, readable dependency, missing dependency
+and wrong-image rejection. Set `JAVA_HOME` to the selected real JDK; an unusable
+configured toolchain fails rather than silently substituting another JDK.
+Native bundles include the compiled probe and use `run_native_jvm_tests` under
+their intended user after verifying all artifact hashes. Keep the selected Java
+and dependency bundle immutable across the separate probe and JUnit launches;
+this fixture gate does not secure a concurrently replaced interpreter. The probe changes no
+permissions and cannot establish runtime/VPN or installed-package acceptance.
+For an owned JRE-only guest, `VPN_CONTROL_NATIVE_JVM_PROBE_CLASSES` may point to
+the hash-verified frozen probe directory to run the three actual Java checks;
+record compilation on the build host separately from execution in the guest.
+
+`scripts/test_android_ssh_fixture.py` checks the actual fixture log consumer:
+fresh log/receipt claims before spawn, startup marker and same-read authentication,
+replacement/truncation/missing log rejection, retained child identity on unknown
+startup and post-spawn receipt-write failure, and live-handle authentication observation. These portable fake-process
+tests run in routine hygiene. Actual `sshd -E` and owner-only mode verification
+belong to the owned POSIX fixture; Windows execution does not certify POSIX modes
+or ACLs. The setup-only CLI receipt is correlation data, never kill authority or
+proof of later authentication. Keep the real A/B traffic scenario and current
+log observer alive together; historical log bytes cannot certify a new attempt.
+
 `scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
 regression catches Windows path backslashes being interpreted as Python escapes
 before a VM is needed. The reusable `native_python_request` builder supplies paths

@@ -62,6 +62,8 @@ python3 scripts/test_macos_package_cleanup.py
 python3 scripts/test_macos_aqua_authorization_correlation.py
 python3 scripts/test_windows_native_helpers.py
 python3 scripts/test_windows_broker_fixture_observer.py
+python3 scripts/test_native_jvm_tests.py
+python3 scripts/test_android_ssh_fixture.py
 python3 scripts/test_android_instrumented_launcher.py
 python3 scripts/test_macos_fixture_frontend.py
 python3 scripts/test_windows_launcher_utf8.py

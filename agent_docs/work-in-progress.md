@@ -22,6 +22,53 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint29 is pushed and verified as `0e3951808c4332d563f6599637888f36df3e3822`
+  (version2.1.7, six Unreleased notes). All15 prepush commands and all five required
+  exact-SHA workflows passed; managed session9317 terminated0. Authoritative receipt:
+  `checkpoint29/commit-result.json`. The corrected observer passed18/18 without skips
+  in the Windows guest; its current source hashes match the native manifest under
+  `checkpoint29/windows-observer-alias/`. The original CI path spellings were not
+  captured, so interpreter aliasing is a supported explanation rather than a
+  recorded exact pair; the corrected CI smoke establishes same-file identity.
+  Fresh exact28 macOS installed normal QUIT passed: operation
+  `f98f9601-bd45-4730-b7a7-96acc0f06053`, owner10573/frontend10594 exited without
+  manual closure; root reviewed package hashes, signatures, before/after inventory
+  and matching response. Only the new DMG mount was detached afterward. A separate
+  proxy lifecycle run passed seven sampled token probes and unchanged owner/runtime
+  across hide/show/close/crash. A subsequent single SOCKS session delivered all300
+  contiguous nonce records spanning attach/hide/show/close/crash without reconnect;
+  recorded maximum emission gap268.516ms at a200ms schedule. Root reviewed raw
+  transcript/event timestamps, client exit0 and unchanged owner/runtime identity.
+  Source/artifact/evidence: `checkpoint28/macos-ci-34290663708/`.
+  Checkpoint30 now owns reusable native JVM preflight and current Android SSH fixture
+  logging. JVM causal consumer RED2/2 is `checkpoint29/jvm-launcher-red.log`; current
+  host7/7 and frozen component24/24 passed under `checkpoint30/jvm-native-probe/`.
+  The same frozen utility/probe also passed7/7 and24/24 on native macOS ARM64;
+  Windows original-JRE access failure now stops in preflight without launching
+  JUnit; the hash-identical private JRE passed24/24. Native JVM7 and SOCKS9 also
+  passed without skips. The logger12 initially exposed a locale-dependent test
+  assertion; a quick multi-locale RED/GREEN regression now passes12/12 locally
+  and in the limited Windows user session (AMD64 Python on ARM64 emulation).
+  Root verified the final receipt and both source hashes under
+  `checkpoint30/windows-jvm-preflight/ssh-final-locale/`. Final metadata/prepush
+  remain pending. Subsequent review reproduced a post-spawn receipt-write
+  failure losing the retained sshd handle; the new13th test covers starting,
+  ready and unknown publication failures (three RED subcases, then13/13 GREEN).
+  All startup receipt failures now retain the live process in a typed unknown
+  result. Final native13 rerun passed without skips under the Windows limited
+  user; root verified both final hashes and terminal task receipt under
+  `checkpoint30/windows-jvm-preflight/ssh-receipt-write-final/`. Causal evidence:
+  checkpoint30/receipt-suite-* and receipt-write-red.log. Android A remains
+  running; earlier authentication errors predate the current task sshd and cannot
+  classify this attempt. Current relay connections were observed and guest direct
+  SOCKS HTTPS succeeded, but the Android browser response remains unproven.
+  Current-generation credential/traffic analysis continues without B/Find Best. A stale Android global proxy pointed to
+  a closed local port; its exact baseline is retained for guarded clear/restore.
+  Windows narrow-route TUN1 created the expected adapter/route but payload timed
+  out. Exact owned cleanup restored all baseline route/DNS/proxy/firewall state.
+  The handwritten fixture omitted production gvisor stack and its SOCKS acceptor
+  stopped on UDP. The next fixture derives production config and reuses the tested
+  per-client server; quick EOF/UDP-to-next-TCP regressions are in routine fixture9.
 - Checkpoint28 is pushed as `d8b900a41a864ba4fe00cf3d7ae99e222a37eb2e`
   (version2.1.7, five Unreleased notes). All15 final prepush commands passed.
   Exact-SHA Windows CI run34290663586 failed the native observer self-image smoke:
@@ -704,11 +751,11 @@ All workers were notified; required coverage and delivery gates remain unchanged
 
 | Task ID | Agent | Owned subsystem | Shared reservation | Dependencies / environment | Current check | Next handoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| B/G/H | root | Shared integration, observer CI correction, JVM launcher preflight, docs and delivery | Host Gradle; metadata/commits; shared protocol | Checkpoint28 pushed; Windows smoke CI failed | Search/quit focused58 and host/Mac/Windows component24 GREEN | Corrected observer native18, checkpoint29 and exact-SHA CI |
-| C/D-Android | android_terra, Terra medium | SSH fixture and live recovery; owned API29/5584 and API35/5590 | No tracked edits; isolated Mac task ports59022–25 | API29 target2.3.0 nondebuggable; task key residue; OFF after cleanup | Restart admission alone is not authentication/recovery proof | Establish A traffic, then isolated Find Best B failure and captured-A traffic recovery |
-| F/E-Windows | windows, Astra | Exclusive Windows VM; broker OUTPUT slice after CI correction | No factory/Main/manager/autostart/shared edits; root owns observer smoke | ARM64 Windows guest/x64 emulation; exact25 CI native helpers | UAC prepare-abort/listener lifecycle GREEN; TUN not yet run | Current observer native18, narrow TUN traffic, OUTPUT causal regression |
+| B/G/H | root | Shared integration, JVM preflight, fixture review, docs and delivery | Host Gradle; metadata/commits; shared protocol | Checkpoint29 all five exact-SHA workflows GREEN | New JVM7, SSH logger12, SOCKS fixture9 host GREEN | Windows native union, checkpoint30 freeze/prepush/push |
+| C/D-Android | android_terra, Terra medium | SSH logger helper/tests and live A/B proof; owned5584/5590 | Frozen helper12; isolated Mac task ports59022–25 | Fresh live sshd logger; saved stale global proxy; A OFF before next attempt | Public relay settings correct; stale proxy/log observations corrected | Guarded proxy clear, one A traffic/auth attempt, then proposed B/Find Best recovery |
+| F/E-Windows | windows, Astra | Exclusive Windows VM; fixture9; then broker OUTPUT | No factory/Main/manager/autostart/shared edits | ARM64 guest/x64 emulation; exact25 CI native helpers | TUN1 traffic failed; exact cleanup restored baseline; fixture regressions GREEN | Native JVM old/private JRE gates, production-config TUN retry, OUTPUT |
 | E-Linux | root | Linux installed-package/native acceptance | Common update/build remain root | Gateway connection timeout; existing jobs preserved | Remaining installed-package scenarios incomplete | Revalidate access and supported-path rerun |
-| E-Mac | mac_fixture_terra, Terra medium | Exact28 CI DMG fresh normal-QUIT installed scenario | Tracked implementation returned to root; guest UI exclusive | Exact26 replacement/traffic GREEN; old8582 preserved | Native component24 GREEN; exact28 artifact pending | Fresh installed owner/frontend automatic quit; coordinate isolated Android SSH ports |
+| E-Mac | mac_fixture_terra, Terra medium | Read-only timeout/unsupported-flag audit | Tracked implementation returned to root; guest task fixtures cleaned | Exact28 installed quit and300-nonce GUI continuity GREEN; old8582 preserved | Frozen JVM7/24 native GREEN | At most three actionable public CLI gaps with causal test proposals |
 
 
 Only one host Gradle invocation at a time. Android bccac4f snapshot pair2.2.15/16

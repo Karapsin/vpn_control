@@ -19,6 +19,43 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class SocksHttpFixtureTest(unittest.TestCase):
+    def test_exact_reader_stops_on_peer_eof(self) -> None:
+        class ClosedPeer:
+            calls = 0
+
+            def recv(self, _size: int) -> bytes:
+                self.calls += 1
+                if self.calls > 1:
+                    raise AssertionError("An EOF must not be read repeatedly")
+                return b""
+
+        with self.assertRaises(ConnectionError):
+            receive_exact(ClosedPeer(), 2)
+
+    def test_udp_rejection_preserves_a_subsequent_tcp_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "requests.ndjson"
+            server, thread = start_fixture(transcript)
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05\x01\x00")
+                    self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                    client.sendall(b"\x05\x03\x00\x01" + b"\x00" * 6)
+                    self.assertEqual(b"\x05\x07\x00\x01" + b"\x00" * 6, receive_exact(client, 10))
+                with socket.create_connection(server.server_address, timeout=3) as client:
+                    client.sendall(b"\x05\x01\x00")
+                    self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                    client.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+                    self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(client, 10))
+                    client.sendall(b"GET /after-udp HTTP/1.1\r\nHost: 198.18.0.1\r\n\r\n")
+                    self.assertTrue(receive_until_close(client).endswith(b"fixture-token"))
+                events = read_transcript(transcript, minimum_events=6)
+                self.assertEqual(2, sum(event.get("event") == "greeting" for event in events))
+                self.assertEqual(1, sum(event.get("event") == "connect" for event in events))
+                self.assertTrue(thread.is_alive())
+            finally:
+                stop_fixture(server, thread)
+
     def test_android_probe_uses_api29_and_api35_toybox_flags_with_bounded_eof(self) -> None:
         source = (REPOSITORY / "app/src/androidTest/java/com/kardinal/vpncontrol/data/FullVpnLifecycleInstrumentedTest.kt").read_text(encoding="utf-8")
         command = re.search(r'const val SHELL_TCP_PROBE = "([^"]+)"', source)
@@ -147,7 +184,10 @@ class SocksHttpFixtureTest(unittest.TestCase):
 def receive_exact(connection: socket.socket, size: int) -> bytes:
     received = bytearray()
     while len(received) < size:
-        received.extend(connection.recv(size - len(received)))
+        chunk = connection.recv(size - len(received))
+        if not chunk:
+            raise ConnectionError("SOCKS peer closed before the expected response")
+        received.extend(chunk)
     return bytes(received)
 
 

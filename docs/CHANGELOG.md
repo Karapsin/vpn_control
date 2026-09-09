@@ -11,6 +11,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Cancel desktop searches with explicit recovery results and close captured frontends on quit.
 - Keep benchmark waiter-disconnect regression aligned with explicit operation cancellation.
 - Make Windows observer smoke checks accept interpreter aliases only when they identify the same file.
+- Harden native JVM startup and SSH/SOCKS fixture observations with quick regressions.
+- Preserve the spawned SSH fixture process when receipt publication fails.
 
 ## 2.1.7 - 2026-09-08
 
