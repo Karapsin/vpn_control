@@ -1,11 +1,25 @@
+import subprocess
 import unittest
 
 from android_fixture_transport import (
+    adb_device_socks_greeting,
     cleanup_fixture_transport,
     establish_fixture_transport,
+    establish_socks_fixture_transport,
     fixture_proxy,
     parse_reverse_inventory,
+    verify_device_socks_greeting,
+    verify_socks_validation_url,
 )
+
+
+class FakeSocksRunner:
+    def __init__(self):
+        self.command = None
+
+    def __call__(self, command, **_kwargs):
+        self.command = command
+        return type("Result", (), {"returncode": 0, "stdout": b"\x05\x00"})()
 
 
 class FakeAdb:
@@ -16,6 +30,7 @@ class FakeAdb:
         self.calls = []
         self.fail_proxy = False
         self.fail_remove_once = False
+        self.socks_reply = b"\x05\x00"
 
     def reverse(self, device_port, host_port):
         self.calls.append(("reverse", device_port, host_port))
@@ -58,8 +73,59 @@ class FakeAdb:
         self.calls.append(("id",))
         return self.uid
 
+    def socks_greeting(self, device_port):
+        self.calls.append(("socks_greeting", device_port))
+        return self.socks_reply
+
 
 class AndroidFixtureTransportTest(unittest.TestCase):
+    validation_user_agent = "VPN Control fixture test/1"
+
+    def test_socks_validation_requires_accepted_https_status_over_proxy_dns(self):
+        captured = {}
+        def runner(command, **_kwargs):
+            captured["command"] = command
+            return type("Result", (), {"returncode": 0, "stdout": "301"})()
+        self.assertEqual("301", verify_socks_validation_url(
+            "https://validation.example.test/trace?opaque=fixture", 59023, user_agent=self.validation_user_agent, command_runner=runner,
+        ))
+        command = captured["command"]
+        self.assertIn("socks5h://127.0.0.1:59023", command)
+        self.assertIn("https://validation.example.test/trace?opaque=fixture", command)
+        self.assertIn(self.validation_user_agent, command)
+        self.assertIn("--noproxy", command)
+        self.assertEqual("", command[command.index("--noproxy") + 1])
+        self.assertNotIn("--insecure", command)
+
+    def test_socks_validation_rejects_non_success_status_without_exposing_url(self):
+        def runner(_command, **_kwargs):
+            return type("Result", (), {"returncode": 0, "stdout": "451"})()
+        with self.assertRaisesRegex(RuntimeError, "status") as raised:
+            verify_socks_validation_url("https://validation.example.test/", 59023, user_agent=self.validation_user_agent, command_runner=runner)
+        self.assertNotIn("validation.example", str(raised.exception))
+
+    def test_socks_validation_rejects_timeout_and_malformed_status(self):
+        def timeout(_command, **_kwargs):
+            raise subprocess.TimeoutExpired("curl", 10)
+        with self.assertRaisesRegex(TimeoutError, "timed out"):
+            verify_socks_validation_url("https://validation.example.test/", 59023, user_agent=self.validation_user_agent, command_runner=timeout)
+        def malformed(_command, **_kwargs):
+            return type("Result", (), {"returncode": 0, "stdout": "200\nextra"})()
+        with self.assertRaisesRegex(RuntimeError, "invalid status"):
+            verify_socks_validation_url("https://validation.example.test/", 59023, user_agent=self.validation_user_agent, command_runner=malformed)
+    def test_adb_socks_greeting_keeps_device_input_open_until_reply_can_arrive(self):
+        runner = FakeSocksRunner()
+        reply = adb_device_socks_greeting(["adb", "-s", "emulator-5584"], 45384,
+                                          command_runner=runner)
+        self.assertEqual(b"\x05\x00", reply)
+        self.assertIn("toybox printf '\\005\\001\\000'; toybox sleep 1", runner.command[-1])
+        self.assertIn("toybox nc -w 2 -W 2 127.0.0.1 45384", runner.command[-1])
+
+    def test_adb_socks_greeting_maps_bounded_command_timeout(self):
+        def timeout(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired("adb", 6)
+        with self.assertRaisesRegex(TimeoutError, "timed out"):
+            adb_device_socks_greeting(["adb"], 45384, command_runner=timeout)
     def test_reverse_inventory_accepts_blank_and_captured_serial_prefixed_record(self):
         self.assertEqual({}, parse_reverse_inventory("\n \t\n"))
         self.assertEqual({45384: 61408}, parse_reverse_inventory("tcp:45384 tcp:61408\n"))
@@ -94,6 +160,56 @@ class AndroidFixtureTransportTest(unittest.TestCase):
         self.assertEqual([("id",), ("reverse_inventory",), ("unroot",), ("wait",), ("id",),
                           ("reverse_mapping", 45384), ("reverse", 45384, 56706),
                           ("proxy", "127.0.0.1:45384")], adb.calls)
+
+    def test_socks_establish_does_not_certify_reverse_list_only_when_device_socks_greeting_is_eof(self):
+        adb = FakeAdb()
+        adb.reverse_mappings.clear()
+        adb.socks_reply = b""
+        with self.assertRaisesRegex(RuntimeError, "closed before replying"):
+            establish_socks_fixture_transport(adb, 45384, 56706)
+        self.assertEqual("null", adb.proxy)
+        self.assertEqual(56706, adb.reverse_mappings[45384])
+
+    def test_socks_establish_checks_device_greeting_after_reverse(self):
+        adb = FakeAdb()
+        adb.uid = "uid=2000"
+        establish_socks_fixture_transport(adb, 45384, 56706)
+        self.assertLess(
+            adb.calls.index(("reverse", 45384, 56706)),
+            adb.calls.index(("socks_greeting", 45384)),
+        )
+
+    def test_socks_establish_never_sets_an_http_proxy(self):
+        adb = FakeAdb()
+        adb.uid = "uid=2000"
+        establish_socks_fixture_transport(adb, 45384, 56706)
+        self.assertEqual("null", adb.proxy)
+        self.assertNotIn(("proxy", "127.0.0.1:45384"), adb.calls)
+
+    def test_device_socks_greeting_rejects_timeout_partial_and_rejected_reply(self):
+        cases = (
+            (TimeoutError("late"), "timed out"),
+            (EOFError("closed"), "closed before replying"),
+            (b"\x05", "partial"),
+            (b"\x05\xff", "rejected"),
+            ("\x05\x00", "invalid bytes"),
+        )
+        for reply, reason in cases:
+            with self.subTest(reply=type(reply).__name__):
+                adb = FakeAdb()
+                if isinstance(reply, BaseException):
+                    def greeting(_port, error=reply):
+                        raise error
+                    adb.socks_greeting = greeting
+                else:
+                    adb.socks_reply = reply
+                with self.assertRaisesRegex(RuntimeError, reason):
+                    verify_device_socks_greeting(adb, 45384)
+
+    def test_device_socks_greeting_accepts_exact_no_auth_reply(self):
+        adb = FakeAdb()
+        verify_device_socks_greeting(adb, 45384)
+        self.assertEqual([("socks_greeting", 45384)], adb.calls)
 
     def test_nonpublic_adbd_never_receives_route_or_proxy(self):
         adb = FakeAdb()

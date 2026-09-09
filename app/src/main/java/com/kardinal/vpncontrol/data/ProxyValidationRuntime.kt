@@ -6,12 +6,15 @@ import com.kardinal.vpncontrol.model.ProfileBenchmark
 import com.kardinal.vpncontrol.model.ProxyProfile
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -25,6 +28,21 @@ import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+
+internal fun validationRequestFailureStage(failure: Exception): String = when (failure) {
+    is javax.net.ssl.SSLException -> "request_tls"
+    is java.net.ConnectException -> "request_connect"
+    is SocketTimeoutException -> "request_timeout"
+    is InterruptedIOException -> "request_interrupted"
+    is IOException -> "request_io"
+    else -> "request_error"
+}
+
+internal fun validationReadinessStage(process: Process?): String =
+    if (process?.isAlive == false) "proxy_early_exit" else "proxy_not_ready"
+
+internal fun validationHttpOutcomeStage(code: String): String? =
+    if (code.length == 3 && code.first() in '2'..'3') null else "http_non_success"
 
 data class ValidationRuntimeSettings(
     val baseHttpPort: Int = 24080,
@@ -46,6 +64,9 @@ class ProxyValidationRuntime(
     private val genericSecondaryBlockedMarkers: List<String>,
     private val chatGptBlockedMarkers: List<String>,
     private val candidateCountryResolver: CandidateCountryResolver = NoopCandidateCountryResolver,
+    private val reportStage: (String) -> Unit = { stage ->
+        DiagnosticsLogger.append(context, "benchmark_validation=$stage")
+    },
 ) {
     suspend fun preflightProfiles(
         profiles: List<ProxyProfile>,
@@ -125,17 +146,24 @@ class ProxyValidationRuntime(
                 process = ProcessBuilder(binary.absolutePath, "run", "-c", configFile.absolutePath)
                     .redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
-                    .start()
+                .start()
 
                 if (!waitForPort("127.0.0.1", httpPort, settings.portWaitMillis)) {
-                    return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(profile, candidate, "proxy_not_ready")
+                    val readinessStage = validationReadinessStage(process)
+                    reportStage(readinessStage)
+                    return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(
+                        profile, candidate, readinessStage,
+                    )
                 }
 
                 val testResult = runProxyRuns(httpPort, benchmarkUrls.test, settings.testRuns, settings)
                 BenchmarkSearchLogic.buildValidatedBenchmark(candidate, testResult)
             }
 
-            benchmark ?: BenchmarkSearchLogic.failedBenchmark(profile, candidate, "validation_timeout")
+            benchmark ?: run {
+                reportStage("validation_timeout")
+                BenchmarkSearchLogic.failedBenchmark(profile, candidate, "validation_timeout")
+            }
         } finally {
             process?.destroy()
             if (process?.waitFor(2, TimeUnit.SECONDS) == false) {
@@ -151,21 +179,29 @@ class ProxyValidationRuntime(
         return temp
     }
 
-    private fun runProxyRuns(
+    internal fun runProxyRuns(
         httpPort: Int,
         url: String,
         runs: Int,
         settings: ValidationRuntimeSettings,
+        request: (Int, String, ValidationRuntimeSettings) -> ProxyCallResult =
+            { port, target, currentSettings -> executeProxyRequest(port, target, currentSettings) },
     ): ProxyRunResult {
         val codes = mutableListOf<String>()
         val totals = mutableListOf<Double>()
 
         repeat(runs) {
+            var requestFailed = false
             val result = try {
-                executeProxyRequest(httpPort, url, settings)
-            } catch (_: Exception) {
+                request(httpPort, url, settings)
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Exception) {
+                requestFailed = true
+                reportStage(validationRequestFailureStage(failure))
                 ProxyCallResult(code = "000", total = null)
             }
+            if (!requestFailed) validationHttpOutcomeStage(result.code)?.let(reportStage)
             codes.add(result.code)
             result.total?.let { totals.add(it) }
         }
@@ -240,7 +276,7 @@ class ProxyValidationRuntime(
         return false
     }
 
-    private data class ProxyCallResult(
+    internal data class ProxyCallResult(
         val code: String,
         val total: Double?,
     )

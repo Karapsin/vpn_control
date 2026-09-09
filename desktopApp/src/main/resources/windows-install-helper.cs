@@ -16,16 +16,26 @@ public static class VpnInstallHelper {
 
     public static int Main(string[] arguments) {
         try {
-            if (arguments == null || arguments.Length != 1 || !String.Equals(arguments[0], ValidateOnly, StringComparison.Ordinal))
-                throw new ArgumentException("Fixed helper command rejected");
-            ValidateNativeBoundary();
-            Console.WriteLine("VPN_INSTALL_HELPER_VALIDATE_ONLY_OK");
-            return 0;
+            return Run(arguments,new VpnInstallHelperNativeSessions());
         } catch (Exception error) when (error is ArgumentException || error is InvalidOperationException ||
             error is IOException || error is Win32Exception || error is UnauthorizedAccessException) {
             Console.Error.WriteLine("VPN_INSTALL_HELPER_VALIDATE_ONLY_FAILED");
             return 2;
         }
+    }
+
+    // Same-assembly seam: Main supplies only the fixed native factory. Tests compile an
+    // inert factory into this assembly; argv and environment never select a factory.
+    internal static int Run(string[] arguments,VpnInstallHelperSessionFactory factory) {
+        if (arguments != null && arguments.Length == 1 && String.Equals(arguments[0],ValidateOnly,StringComparison.Ordinal)) {
+            ValidateNativeBoundary();
+            Console.WriteLine("VPN_INSTALL_HELPER_VALIDATE_ONLY_OK");
+            return 0;
+        }
+        if (factory==null) throw new ArgumentNullException("factory");
+        // The protocol accepts only a fixed role and canonical private identity tuple.
+        // The factory is fixed by Main; tests can supply an inert same-assembly factory.
+        return factory.Run(VpnInstallHelperProtocol.ParseInvocation(arguments));
     }
 
     // This is the only currently enabled role. It gives the native build a

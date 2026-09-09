@@ -56,13 +56,25 @@ public static class VpnInstallNative {
         out IoStatusBlock status, IntPtr information, uint length, int informationClass);
     [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
 
+    // Same-assembly disposal seam. Production always supplies the fixed closer;
+    // no request or environment can replace it.
+    internal interface IProcessPinCloseNative { bool Close(IntPtr handle); }
+    sealed class FixedProcessPinCloseNative : IProcessPinCloseNative {
+        public bool Close(IntPtr handle) { return CloseHandle(handle); }
+    }
     public sealed class ProcessPin : IDisposable {
         IntPtr handle;
+        readonly IProcessPinCloseNative closer;
         public readonly uint Pid;
         public readonly string Image;
         public readonly string Principal;
         public readonly long StartedAtEpochMillis;
-        public ProcessPin(uint pid) {
+        public ProcessPin(uint pid) : this(pid,new FixedProcessPinCloseNative(),null) { }
+        internal ProcessPin(uint pid,IProcessPinCloseNative closeNative) : this(pid,closeNative,null) { }
+        // Same-assembly test seam after the real process handle is opened. Production has no callback.
+        internal ProcessPin(uint pid,IProcessPinCloseNative closeNative,Action afterOpen) {
+            if (closeNative==null) throw new ArgumentException("Process close native unavailable");
+            closer=closeNative;
             handle=OpenProcess(0x00101000, false, pid); // synchronize + query limited information
             if (handle == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
             try {
@@ -76,7 +88,20 @@ public static class VpnInstallNative {
                 if (!OpenProcessToken(handle, 8, out token)) throw new Win32Exception();
                 try { using (WindowsIdentity identity=new WindowsIdentity(token)) { Principal=identity.User.Value; } }
                 finally { CloseHandle(token); }
-            } catch { Dispose(); throw; }
+                if (afterOpen!=null) afterOpen();
+            } catch (Exception admissionFailure) {
+                // Construction cannot return a retry owner. Preserve the admission cause;
+                // a helper-process exit reclaims an unclosed handle and the marker records it.
+                if (handle!=IntPtr.Zero) {
+                    try {
+                        if (closer.Close(handle)) handle=IntPtr.Zero;
+                        else admissionFailure.Data["vpn.install.processPin.constructionCleanupUncertain"]=true;
+                    } catch (Exception closeFailure) {
+                        admissionFailure.Data["vpn.install.processPin.constructionCleanupUncertain"]=closeFailure.GetType().FullName;
+                    }
+                }
+                throw;
+            }
         }
         public bool Exited { get {
             if (handle == IntPtr.Zero) throw new ObjectDisposedException("ProcessPin");
@@ -92,7 +117,12 @@ public static class VpnInstallNative {
             try { return KnownFolder("F1B32785-6FBA-4FCF-9D55-7B8E7F157091", token); }
             finally { CloseHandle(token); }
         }
-        public void Dispose() { if (handle != IntPtr.Zero) { CloseHandle(handle); handle=IntPtr.Zero; } }
+        public void Dispose() {
+            if (handle==IntPtr.Zero) return;
+            // A failed close leaves this exact handle retained for an explicit retry.
+            if (!closer.Close(handle)) throw new IOException("Process pin close unavailable");
+            handle=IntPtr.Zero;
+        }
     }
     [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetProcessId(IntPtr process);
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

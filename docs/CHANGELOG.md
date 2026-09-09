@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Keep completed check failures terminal while retaining uncertain native operation inputs.
+- Preserve Android CLI operation waits and benchmark diagnostics, and harden Windows native cleanup and installer input ownership.
 
 ## 2.1.8 - 2026-09-09
 

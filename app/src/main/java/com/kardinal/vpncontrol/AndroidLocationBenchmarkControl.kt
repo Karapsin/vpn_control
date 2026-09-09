@@ -35,8 +35,15 @@ internal class AndroidLocationBenchmarkControl(
                     (if (captured == null) listOf("CONFIGURATION_REVISION_UNAVAILABLE") else emptyList()),
                 data = mapOf("committed" to ControlValue.BooleanValue(committed)) +
                     (id?.let { mapOf("id" to ControlValue.Text(it)) } ?: emptyMap()) +
-                    if (committed) mapOf("primaryTotalMs" to timing(measured?.primaryTotal),
-                        "secondaryTotalMs" to timing(measured?.secondaryTotal)) else emptyMap())
+                    if (committed) {
+                        val committedMeasurement = requireNotNull(measured)
+                        mapOf(
+                            "primaryStatus" to ControlValue.Text(committedMeasurement.primaryStatus),
+                            "secondaryStatus" to ControlValue.Text(committedMeasurement.secondaryStatus),
+                            "primaryTotalMs" to timing(committedMeasurement.primaryTotal),
+                            "secondaryTotalMs" to timing(committedMeasurement.secondaryTotal),
+                        )
+                    } else emptyMap())
         }
         try {
             val before = snapshot().also { captured = it }

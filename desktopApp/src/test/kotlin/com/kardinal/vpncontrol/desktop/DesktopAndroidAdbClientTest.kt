@@ -200,6 +200,40 @@ class DesktopAndroidAdbClientTest {
         assertEquals(ControlCode.CONFLICT, ControlProtocolCodec.decodeResult(client.request(stale, null, 20).message).code)
         assertEquals(stale, ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request"))))
     }
+
+    @Test fun synchronousMutationsContinueProviderTimeoutWithTheOriginalDeadlineAndIdentity() {
+        for ((arguments, operation) in listOf(
+            arrayOf("updates", "download") to ControlOperationId.UPDATES_DOWNLOAD,
+            arrayOf("settings", "set", "language", "en") to ControlOperationId.SETTINGS_SET,
+        )) fixture("per-read-timeout") { client, root ->
+            val lines = mutableListOf<String>()
+            assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--timeout-seconds", "0") + arguments,
+                printLine = lines::add, androidRequest = client::request))
+            val result = ControlProtocolCodec.decodeResult(lines.single())
+            assertEquals(ControlCode.OK, result.code)
+            val requests = Files.readAllLines(root.resolve("requests")).map {
+                ControlProtocolCodec.decodeRequest(java.util.Base64.getDecoder().decode(it).toString(Charsets.UTF_8))
+            }
+            assertEquals(listOf(operation, ControlOperationId.OPERATIONS_STATUS), requests.map { it.command.operation })
+            assertEquals("android-test-owner", requests[0].controllerId)
+            assertEquals("android-test-owner", requests[1].controllerId)
+            assertEquals(requests[0].requestId, result.requestId)
+        }
+    }
+
+    @Test fun synchronousDownloadDoesNotReplayMutationAfterOwnerReplacementDuringTimeoutContinuation() = fixture("per-read-timeout-replacement") { client, root ->
+        val lines = mutableListOf<String>()
+        assertEquals(ControlCode.OUTCOME_UNKNOWN.exitCode, DesktopCli.handleArgs(arrayOf("--android", "--json", "updates", "download"),
+            printLine = lines::add, androidRequest = client::request))
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, ControlProtocolCodec.decodeResult(lines.single()).code)
+        val requests = Files.readAllLines(root.resolve("requests")).map {
+            ControlProtocolCodec.decodeRequest(java.util.Base64.getDecoder().decode(it).toString(Charsets.UTF_8))
+        }
+        assertEquals(listOf(ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.OPERATIONS_STATUS),
+            requests.map { it.command.operation })
+        assertEquals("android-test-owner", requests[1].controllerId)
+    }
+
     private fun fixture(mode: String = "normal", action: (DesktopAndroidAdbClient, Path) -> Unit) {
         val root = Files.createTempDirectory("fake-adb-東京 space")
         val javaExecutable = Path.of(System.getProperty("java.home"), "bin",
@@ -337,9 +371,28 @@ object FakeAdbMain {
                 "discard" -> output("Result: Bundle[{}]\n")
                 else -> error("Unexpected test method")
             }
-            "write" -> Files.write(root.resolve("request"), System.`in`.readAllBytes())
+            "write" -> {
+                val bytes = System.`in`.readAllBytes()
+                Files.write(root.resolve("request"), bytes)
+                if (mode.startsWith("per-read-timeout")) Files.writeString(root.resolve("requests"),
+                    java.util.Base64.getEncoder().encodeToString(bytes) + "\n", java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND)
+            }
             "read" -> if (mode == "bad-utf8") System.out.write(byteArrayOf(0xC3.toByte(), 0x28)) else {
                 val request = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
+                if (mode.startsWith("per-read-timeout")) {
+                    val operation = "22a658de-80b4-45e9-b72e-8a1907baf861"
+                    val response = when (request.command.operation) {
+                        ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.SETTINGS_SET -> ControlResult("android-test-owner", request.requestId,
+                            ControlCode.TIMEOUT, 0, final = false, operationId = operation)
+                        ControlOperationId.OPERATIONS_STATUS -> ControlResult(
+                            if (mode == "per-read-timeout-replacement") "replacement-owner" else "android-test-owner",
+                            request.requestId, ControlCode.OK, 0, operationId = operation)
+                        else -> error("Unexpected timeout-continuation operation")
+                    }
+                    output(ControlProtocolCodec.encodeResult(response))
+                    return
+                }
                 if (mode == "interaction-required") {
                     output(ControlProtocolCodec.encodeResult(ControlResult("android-test-owner", request.requestId, ControlCode.INTERACTION_REQUIRED, 0)))
                     return

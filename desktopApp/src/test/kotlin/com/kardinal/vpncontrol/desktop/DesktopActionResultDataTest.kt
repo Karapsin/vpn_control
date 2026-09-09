@@ -30,10 +30,12 @@ class DesktopActionResultDataTest {
     }
 
     @Test fun benchmarkRetainsMeasuredFailureWithoutProfileContentOrInventedTiming() {
-        val json = """{"code":"BENCHMARK_FAILED","committed":true,"id":"opaque","primaryTotalMs":12.5,"secondaryTotalMs":null}"""
+        val json = """{"code":"BENCHMARK_FAILED","committed":true,"id":"opaque","primaryStatus":"ok","secondaryStatus":"timeout","primaryTotalMs":12.5,"secondaryTotalMs":null}"""
         val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.LOCATIONS_BENCHMARK,
             DesktopCliResponse.failure(json)))
         assertEquals(ControlValue.BooleanValue(true), values["committed"])
+        assertEquals(ControlValue.Text("ok"), values["primaryStatus"])
+        assertEquals(ControlValue.Text("timeout"), values["secondaryStatus"])
         assertEquals(ControlValue.DecimalValue(12.5), values["primaryTotalMs"])
         assertEquals(ControlValue.Null, values["secondaryTotalMs"])
         for (invalid in listOf(json.replace("12.5", "-1"), json.replace("true", "false"),

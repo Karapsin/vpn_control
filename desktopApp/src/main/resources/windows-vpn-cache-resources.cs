@@ -213,6 +213,13 @@ namespace VpnScopedStorage {
   * behavior seam exercises ordering without allowing pipe callers to supply native outcome flags.
   */
  internal sealed class RuntimeResourceLifecycle {
+  // Only the fixed broker supplies this admitted storage. It never comes from a wire flag.
+  internal interface TerminalStorage {
+   byte[] CapturePrivateInputManifest();
+   void DisposePrivateInputs(byte[] manifest);
+   void PublishTerminal(byte[] record);
+   byte[] ReadTerminal();
+  }
   internal interface Batch {
    void CaptureAtCommit(); void MarkCommitIntent(); void BeginPublicationAfterExit();
    PublicationResult[] Snapshot(); void WaitForPublication(); void CloseRetainedStreams();
@@ -231,15 +238,27 @@ namespace VpnScopedStorage {
   readonly Batch batch;
   readonly ResourceAdmissionGate gate;
   readonly Func<bool> exactChildExited;
-  bool attempted,closed;
+  internal TerminalStorage RetainedTerminalStorage { get; private set; }
+  bool attempted,closed,terminalConfirmed;
+  PublicationResult[] retainedPublication;
+  byte[] retainedManifest;
   internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,RuntimeCacheResources resources,
     ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited)
    : this(admitted,new NativeBatch(resources),admission,retainedNativeChildExited) { }
+  internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,RuntimeCacheResources resources,
+    ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited,TerminalStorage terminalStorage)
+   : this(admitted,new NativeBatch(resources),admission,retainedNativeChildExited,terminalStorage) { }
   internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,Batch resources,
     ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited) {
    if(admitted==null||resources==null||admission==null||retainedNativeChildExited==null||
      admission.AdmissionClosed||!admission.HadOriginalAdmission||!admission.Matches(admitted)) throw new IOException("CONFLICT");
    binding=admitted;batch=resources;gate=admission;exactChildExited=retainedNativeChildExited;
+  }
+  internal RuntimeResourceLifecycle(RuntimeResourceBinding admitted,Batch resources,
+    ResourceAdmissionGate admission,Func<bool> retainedNativeChildExited,TerminalStorage terminalStorage)
+   : this(admitted,resources,admission,retainedNativeChildExited) {
+   if(terminalStorage==null) throw new IOException("INVALID_ARGUMENT");
+   RetainedTerminalStorage=terminalStorage;
   }
   internal void Commit(Action resumeExactSuspendedChild) {
    if(attempted||closed||resumeExactSuspendedChild==null) throw new IOException("CONFLICT");
@@ -251,8 +270,11 @@ namespace VpnScopedStorage {
   }
   internal PublicationResult[] AfterConfirmedExit() {
    if(!exactChildExited()) throw new IOException("BUSY");
-   batch.BeginPublicationAfterExit();
+   if(retainedPublication!=null) return (PublicationResult[])retainedPublication.Clone();
    var result=batch.Snapshot();
+   if(result!=null) return result;
+   batch.BeginPublicationAfterExit();
+   result=batch.Snapshot();
    if(result!=null) return result;
    var pending=new List<PublicationResult>();
    foreach(var resource in binding.Resources)
@@ -262,8 +284,100 @@ namespace VpnScopedStorage {
   internal void FinishAfterConfirmedExit() {
    if(closed) return;
    if(!exactChildExited()) throw new IOException("BUSY");
-   batch.BeginPublicationAfterExit();batch.WaitForPublication();batch.CloseRetainedStreams();
-   gate.CloseAfterNativeReconciliation();closed=true;
+   // A validated durable intent is sufficient to resume exact private disposal. Never reread
+   // inputs that a prior attempt may already have deleted, or repeat ordinary publication.
+   byte[] receipt=RetainedTerminalStorage==null?null:RetainedTerminalStorage.ReadTerminal();
+   if(receipt!=null) retainedPublication=ReadTerminalReceipt(receipt);
+   else {
+    batch.BeginPublicationAfterExit();batch.WaitForPublication();
+    var published=KnownTerminalPublication();
+    batch.CloseRetainedStreams();
+    if(RetainedTerminalStorage!=null) {
+     byte[] manifest=RetainedTerminalStorage.CapturePrivateInputManifest();
+     receipt=TerminalReceipt(manifest,published);
+     RetainedTerminalStorage.PublishTerminal(receipt); // Durable BEFORE the first deletion.
+     retainedPublication=ReadTerminalReceipt(receipt);
+    }
+   }
+   batch.CloseRetainedStreams();
+   if(RetainedTerminalStorage!=null) RetainedTerminalStorage.DisposePrivateInputs(retainedManifest);
+   gate.CloseAfterNativeReconciliation();
+   terminalConfirmed=RetainedTerminalStorage!=null;closed=true;
+  }
+
+  PublicationResult[] KnownTerminalPublication() {
+   var known=batch.Snapshot();
+   if(known==null||known.Length!=binding.Resources.Length) throw new IOException("OUTCOME_UNKNOWN");
+   var byId=new Dictionary<string,PublicationResult>(StringComparer.Ordinal);
+   foreach(var item in known) {
+    if(item==null||item.JobId!=binding.JobId||byId.ContainsKey(item.ResourceId)) throw new IOException("CONFLICT");
+    byId.Add(item.ResourceId,item);
+   }
+   foreach(var identity in binding.Resources) {
+    PublicationResult item;if(!byId.TryGetValue(identity.Id,out item)) throw new IOException("CONFLICT");
+    if(item.Code!=null||(item.Disposition!="PUBLISHED"&&item.Disposition!="NO_MUTABLE_HANDOFF"))
+     throw new IOException("OUTCOME_UNKNOWN");
+   }
+   return known;
+  }
+  byte[] TerminalReceipt(byte[] manifest,PublicationResult[] published) {
+   if(manifest==null||manifest.Length==0) throw new IOException("CONFLICT");
+   using(var hash=System.Security.Cryptography.SHA256.Create()) {
+    byte[] authority=hash.ComputeHash(binding.CanonicalBytes());
+    using(var bytes=new MemoryStream()) using(var writer=new BinaryWriter(bytes,System.Text.Encoding.UTF8,true)) {
+     writer.Write(3);writer.Write(authority);writer.Write(manifest.Length);writer.Write(manifest);writer.Write(published.Length);
+     foreach(var item in published) { PublicationJournal.Text(writer,item.ResourceId);PublicationJournal.Text(writer,item.Disposition); }
+     writer.Flush();byte[] payload=bytes.ToArray();writer.Write(hash.ComputeHash(payload));writer.Flush();return bytes.ToArray();
+    }
+   }
+  }
+  PublicationResult[] ReadTerminalReceipt(byte[] record) {
+   try {
+    if(record.Length<77) throw new IOException("CONFLICT");
+    using(var hash=System.Security.Cryptography.SHA256.Create()) {
+     byte[] checksum=hash.ComputeHash(record,0,record.Length-32);
+     for(int i=0;i<32;i++) if(checksum[i]!=record[record.Length-32+i]) throw new IOException("CONFLICT");
+     using(var bytes=new MemoryStream(record,0,record.Length-32,false))
+     using(var reader=new BinaryReader(bytes,new System.Text.UTF8Encoding(false,true),true)) {
+      if(reader.ReadInt32()!=3) throw new IOException("CONFLICT");
+      byte[] authority=hash.ComputeHash(binding.CanonicalBytes());
+      for(int i=0;i<32;i++) if(reader.ReadByte()!=authority[i]) throw new IOException("CONFLICT");
+      int manifestLength=reader.ReadInt32();
+      if(manifestLength<=0||manifestLength>bytes.Length-bytes.Position-4) throw new IOException("CONFLICT");
+      byte[] manifest=reader.ReadBytes(manifestLength);
+      if(reader.ReadInt32()!=binding.Resources.Length) throw new IOException("CONFLICT");
+      var expected=new HashSet<string>(StringComparer.Ordinal);
+      foreach(var identity in binding.Resources) expected.Add(identity.Id);
+      var result=new List<PublicationResult>();
+      for(int i=0;i<binding.Resources.Length;i++) {
+       string id=PublicationJournal.Text(reader,36),disposition=PublicationJournal.Text(reader,32);
+       if(!expected.Remove(id)||(disposition!="PUBLISHED"&&disposition!="NO_MUTABLE_HANDOFF")) throw new IOException("CONFLICT");
+       result.Add(new PublicationResult(binding.JobId,id,disposition,null));
+      }
+      if(bytes.Position!=bytes.Length) throw new IOException("CONFLICT");
+      retainedManifest=manifest;return result.ToArray();
+     }
+    }
+   } catch(EndOfStreamException) { throw new IOException("CONFLICT"); }
+     catch(System.Text.DecoderFallbackException) { throw new IOException("CONFLICT"); }
+  }
+  bool terminalResponseAttempted;
+  internal void FinishAfterTransportClosed() {
+   // Once terminal evidence was attempted, leave any remaining work for explicit
+   // recovery rather than changing the reported outcome behind the caller.
+   if(!terminalResponseAttempted) FinishAfterConfirmedExit();
+  }
+  internal void CompleteAndWriteTerminal(BinaryWriter writer,Action releaseRuntimeInputs) {
+   if(releaseRuntimeInputs==null) throw new IOException("INVALID_ARGUMENT");
+   // The fixed broker supplies its own retained config/log streams. Release them before
+   // hashing/removing private inputs, then report the final publication and cleanup together.
+   try {
+    releaseRuntimeInputs();
+    FinishAfterConfirmedExit();
+   } catch(IOException) { /* Preserve durable intent and report cleanup unconfirmed. */ }
+     catch(UnauthorizedAccessException) { /* Original evidence remains retained. */ }
+   terminalResponseAttempted=true;
+   WriteTerminal(writer);
   }
   internal void WriteTerminal(BinaryWriter writer) {
    var result=AfterConfirmedExit();var identities=binding.Resources;
@@ -296,9 +410,7 @@ namespace VpnScopedStorage {
     PublicationJournal.Text(writer,identity.Id);writer.Write((byte)(identity.Kind=="CACHE"?0:1));
     writer.Write(disposition);writer.Write(code);
    }
-   // The intermediate broker retains its protected stage/gate for bounded future recovery.
-   // Published bytes are known independently; no disposal proof is inferred from child exit.
-   writer.Write(false);
+   writer.Write(terminalConfirmed);
   }
  }
 }

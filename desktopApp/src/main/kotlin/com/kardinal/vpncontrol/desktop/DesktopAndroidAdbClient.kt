@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.control.ControlDocumentCodec
+import com.kardinal.vpncontrol.control.ControlOperationRegistry
 import com.kardinal.vpncontrol.model.ControlCode
 import com.kardinal.vpncontrol.model.ControlRequest
 import com.kardinal.vpncontrol.model.ControlOperationId
@@ -102,9 +103,12 @@ internal class DesktopAndroidAdbClient(
                 request.controllerId != null && result.controllerId != request.controllerId && result.code != ControlCode.CONFLICT) {
                 fail(ControlCode.INCOMPATIBLE_PROTOCOL)
             }
-            val interactionCommand = request.command.operation in setOf(ControlOperationId.ON, ControlOperationId.OFF,
-                ControlOperationId.RESTART, ControlOperationId.FIND_BEST, ControlOperationId.UPDATES_INSTALL)
-            if ((interactionCommand || request.command.operation == ControlOperationId.OPERATIONS_WAIT) && !result.final && result.operationId != null) {
+            val interactionCommand = request.command.operation in interactiveOperations
+            val resumeSynchronousMutation = !request.asynchronous &&
+                ControlOperationRegistry[request.command.operation].mutates
+            val launchAsynchronousInteraction = request.asynchronous && interactionCommand
+            if ((resumeSynchronousMutation || launchAsynchronousInteraction || request.command.operation == ControlOperationId.OPERATIONS_WAIT) &&
+                !result.final && result.operationId != null) {
                 val operation = requireNotNull(result.operationId)
                 knownOperationId = operation
                 if (!OPAQUE.matches(operation)) fail(ControlCode.INCOMPATIBLE_PROTOCOL)
@@ -139,6 +143,10 @@ internal class DesktopAndroidAdbClient(
                     val waitSeconds = if (timeoutSeconds == 0L) 0L else ((remaining() - 1) / 1000 + 1).coerceAtLeast(1)
                     val queried = this.request(query, selected, waitSeconds)
                     result = runCatching { ControlDocumentCodec.decodeResult(queried.message) }.getOrElse { fail(ControlCode.INCOMPATIBLE_PROTOCOL) }
+                    // This request already has an accepted owner-bound operation. A nested client
+                    // can sanitize a replacement-owner response to a controller-less transport
+                    // failure, which is an unknown outcome rather than a safe terminal result.
+                    if (result.controllerId == null) fail(ControlCode.OUTCOME_UNKNOWN)
                     if (result.controllerId != null && result.controllerId != boundOwner) fail(ControlCode.OUTCOME_UNKNOWN)
                     if (result.code in setOf(ControlCode.OK, ControlCode.ACCEPTED) && result.operationId != operation)
                         fail(ControlCode.INCOMPATIBLE_PROTOCOL)
@@ -196,6 +204,9 @@ internal class DesktopAndroidAdbClient(
             ControlOperationId.ROUTING_APPS_ADD, ControlOperationId.ROUTING_APPS_REMOVE, ControlOperationId.ROUTING_APPS_SELECT_ALL, ControlOperationId.ROUTING_APPS_CLEAR,
             ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
             ControlOperationId.OPERATIONS_LIST, ControlOperationId.OPERATIONS_CANCEL)
+
+        private val interactiveOperations = setOf(ControlOperationId.ON, ControlOperationId.OFF,
+            ControlOperationId.RESTART, ControlOperationId.FIND_BEST, ControlOperationId.UPDATES_INSTALL)
 
         internal fun bundle(text: String): Map<String, String> {
             val match = Regex("Result: Bundle\\[\\{([^{}\\r\\n]*)}]").matchEntire(text.trim())

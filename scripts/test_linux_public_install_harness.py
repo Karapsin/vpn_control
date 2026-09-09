@@ -81,6 +81,16 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             self.assertEqual(child["pid"], child["session"], "PTY driver exit must not SIGHUP the fixture owner")
             self.assertNotEqual(os.getsid(0), child["session"])
 
+    def test_fixture_owner_does_not_propagate_dyld_injection_to_the_child(self):
+        environment = {"PATH": "/fixture/bin", "DYLD_INSERT_LIBRARIES": "/fixture/injected.dylib"}
+        with mock.patch("test_linux_public_install.subprocess.Popen") as start:
+            launch_fixture_owner(Path("/fixture/launcher"), Path("/fixture/state"), object(), environment)
+        child_environment = start.call_args.kwargs["env"]
+        self.assertNotIn("DYLD_INSERT_LIBRARIES", child_environment)
+        self.assertEqual("/fixture/bin", child_environment["PATH"])
+        self.assertEqual("/fixture/injected.dylib", environment["DYLD_INSERT_LIBRARIES"],
+                         "The caller environment must remain unchanged")
+
     def test_same_source_recovery_requires_exact_protected_job_operation_and_origin(self):
         accepted = {"controllerId": "before", "requestId": "request", "operationId": "operation", "data": {"jobId": "job"}}
         receipt = {"phase": "SUCCEEDED", "code": "OK", "jobId": "job"}

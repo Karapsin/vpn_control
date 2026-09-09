@@ -100,8 +100,13 @@ def require_package_managed_launcher(launcher):
 def launch_fixture_owner(launcher, workspace, log, environment):
     # Keep the owner's lifetime independent of the native-prompt driver's
     # controlling session. The CLI still registers its exact-owner tty agent.
+    # macOS development hosts can inject diagnostics into every child through
+    # DYLD_INSERT_LIBRARIES; the public harness records this owner's output as
+    # one exact JSON stream, so do not pass that host-only injection onward.
+    child_environment = dict(environment)
+    child_environment.pop("DYLD_INSERT_LIBRARIES", None)
     return subprocess.Popen([str(launcher), "--state-dir", str(workspace), "serve"],
-                            stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=environment,
+                            stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=child_environment,
                             start_new_session=True)
 
 

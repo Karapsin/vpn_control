@@ -12,6 +12,8 @@ internal object DesktopActionResultData {
             "id" to ControlValue.Text(id),
             "committed" to ControlValue.BooleanValue(true),
             "code" to ControlValue.Text(if (measured.testStatus == "ok") "OK" else "BENCHMARK_FAILED"),
+            "primaryStatus" to ControlValue.Text(measured.primaryStatus),
+            "secondaryStatus" to ControlValue.Text(measured.secondaryStatus),
             "primaryTotalMs" to timing(measured.primaryTotal),
             "secondaryTotalMs" to timing(measured.secondaryTotal),
         )
@@ -46,8 +48,9 @@ internal object DesktopActionResultData {
             require(text("code") == if (complete) "OK" else if (succeeded > 0) "PARTIAL_FAILURE" else "REFRESH_FAILED")
             require(response.success == complete && response.exitCode == if (complete) 0 else 1)
         } else {
-            require(values.keys == setOf("id", "committed", "code", "primaryTotalMs", "secondaryTotalMs"))
+            require(values.keys == setOf("id", "committed", "code", "primaryStatus", "secondaryStatus", "primaryTotalMs", "secondaryTotalMs"))
             require(text("id").isNotBlank())
+            require(text("primaryStatus").isNotBlank() && text("secondaryStatus").isNotBlank())
             require(values.getValue("committed") == ControlValue.BooleanValue(true))
             for (key in listOf("primaryTotalMs", "secondaryTotalMs")) {
                 val value = values.getValue(key)

@@ -295,13 +295,24 @@ public static class VpnRuntimeBroker {
   Need(used.Count==(mutable==null?0:mutable.Count)+(outputs==null?0:outputs.Count));return parser.Serialize(root);
 #endif
  }
+ [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file,int kind,IntPtr value,uint length);
+ static void DeletePrivateResource(FileStream input) {
+  IntPtr value=Marshal.AllocHGlobal(4);
+  try {
+   Marshal.WriteInt32(value,1);
+   if(!SetFileInformationByHandle(input.SafeFileHandle,4,value,4)) {
+    int error=Marshal.GetLastWin32Error();throw new IOException(error==5?"PERMISSION_DENIED":"PERSISTENCE_FAILED");
+   }
+  } finally { Marshal.FreeHGlobal(value); }
+ }
  static FileStream OpenPrivateResource(string stage,SafeFileHandle stagePin,string name,FileMode mode,
-   System.Collections.Generic.HashSet<string> admittedNames) {
+   System.Collections.Generic.HashSet<string> admittedNames,bool allowMissing=false) {
   if(!admittedNames.Contains(name)||(mode!=FileMode.Open&&mode!=FileMode.CreateNew)) throw new IOException("CONFLICT");
   AdmissionNeed(String.Equals(FinalPath(stagePin).TrimEnd('\\'),stage,StringComparison.OrdinalIgnoreCase));
   VerifyDirectory(stagePin,true,false);
-  var file=CreateFile(Path.Combine(stage,name),0xc0020000,1,IntPtr.Zero,mode==FileMode.CreateNew?1U:3U,0x80200000,IntPtr.Zero);
-  if(file.IsInvalid) { int error=Marshal.GetLastWin32Error();file.Dispose();throw new IOException(error==5?"PERMISSION_DENIED":"PERSISTENCE_FAILED"); }
+  var file=CreateFile(Path.Combine(stage,name),0xc0030000,1,IntPtr.Zero,mode==FileMode.CreateNew?1U:3U,0x80200000,IntPtr.Zero);
+  if(file.IsInvalid) { int error=Marshal.GetLastWin32Error();file.Dispose();if(allowMissing&&error==2)return null;throw new IOException(error==5?"PERMISSION_DENIED":"PERSISTENCE_FAILED"); }
   try {
    AdmissionNeed((ObjectAttributes(file)&16)==0&&String.Equals(FinalPath(file),Path.Combine(stage,name),StringComparison.OrdinalIgnoreCase));
    return new FileStream(file,FileAccess.ReadWrite,65536,false);
@@ -330,6 +341,88 @@ public static class VpnRuntimeBroker {
   if(Directory.GetFileSystemEntries(stage).Length!=0) return;
   stagePin.Dispose();
   Directory.Delete(stage); // Nonrecursive even if a privileged actor replaces this now-empty directory.
+ }
+ /** Private terminal state is constructed only by this fixed broker after admission.  Its names
+  * come from the captured binding; the pipe client cannot nominate cleanup targets or a result. */
+ internal sealed class StageTerminalStorage : RuntimeResourceLifecycle.TerminalStorage {
+  readonly string stage; readonly SafeFileHandle pin; readonly System.Collections.Generic.HashSet<string> privateNames,admittedNames;
+  readonly System.Collections.Generic.List<string> immutableNames;
+  const string ReceiptName="terminal-resource-receipt";
+  const int MaximumManifestBytes=8*1024*1024;
+  // The receipt contains one admitted metadata frame plus its manifest and bounded framing;
+  // RuntimeResourcePreparation already caps the complete binding/resource representation.
+  const int MaximumReceiptBytes=MaximumManifestBytes+RuntimeResourcePreparation.MaximumMetadataBytes+1024;
+  internal StageTerminalStorage(string admittedStage,SafeFileHandle admittedPin,System.Collections.Generic.List<string> names,System.Collections.Generic.List<string> immutable) {
+   stage=admittedStage;pin=admittedPin;privateNames=new System.Collections.Generic.HashSet<string>(names,StringComparer.Ordinal);
+   immutableNames=immutable;
+   foreach(var name in new[]{"sing-box.exe","config.json","received.json","runtime.log","cache.db"}) privateNames.Add(name);
+   if(privateNames.Contains(ReceiptName)) throw new IOException("CONFLICT");
+   admittedNames=new System.Collections.Generic.HashSet<string>(privateNames,StringComparer.Ordinal);admittedNames.Add(ReceiptName);
+  }
+  string[] CapturedNames() {
+   // Immutable inputs are registered as the fixed receiver captures them, including partial
+   // preparations. Keep gate and receipt metadata outside the disposable payload set.
+   foreach(var name in immutableNames) { privateNames.Add(name);admittedNames.Add(name); }
+   var names=new string[privateNames.Count];privateNames.CopyTo(names);Array.Sort(names,StringComparer.Ordinal);return names;
+  }
+  public byte[] CapturePrivateInputManifest() {
+   using(var bytes=new MemoryStream()) using(var writer=new BinaryWriter(bytes,Encoding.UTF8,true)) {
+    var names=CapturedNames();writer.Write(1);writer.Write(names.Length);
+    foreach(string name in names) {
+     PublicationJournal.Text(writer,name);
+     using(var input=OpenPrivateResource(stage,pin,name,FileMode.Open,admittedNames,true)) {
+      writer.Write(input!=null);if(input==null) continue;
+      writer.Write(input.Length);using(var hash=SHA256.Create()) writer.Write(hash.ComputeHash(input));
+     }
+    }
+    writer.Flush();if(bytes.Length>MaximumManifestBytes) throw new IOException("RESOURCE_EXHAUSTED");return bytes.ToArray();
+   }
+  }
+  public void DisposePrivateInputs(byte[] manifest) {
+   if(manifest==null||manifest.Length==0||manifest.Length>MaximumManifestBytes) throw new IOException("RESOURCE_EXHAUSTED");
+   var expected=CapturedNames();var byName=new System.Collections.Generic.Dictionary<string,Tuple<bool,long,byte[]>>(StringComparer.Ordinal);
+   using(var bytes=new MemoryStream(manifest,false)) using(var reader=new BinaryReader(bytes,Encoding.UTF8,true)) {
+    if(reader.ReadInt32()!=1||reader.ReadInt32()!=expected.Length) throw new IOException("CONFLICT");
+    string previous=null;foreach(var allowed in expected) {
+     string name=PublicationJournal.Text(reader,32767);byte rawPresent=reader.ReadByte();if(rawPresent>1||(previous!=null&&StringComparer.Ordinal.Compare(previous,name)>=0)) throw new IOException("CONFLICT");previous=name;bool present=rawPresent==1;long length=present?reader.ReadInt64():0;
+     byte[] hash=present?reader.ReadBytes(32):null;if((present&&(length<0||hash.Length!=32))||byName.ContainsKey(name)) throw new IOException("CONFLICT");
+     byName.Add(name,Tuple.Create(present,length,hash));
+    }
+    if(bytes.Position!=bytes.Length) throw new IOException("CONFLICT");
+   }
+   foreach(var name in expected) if(!byName.ContainsKey(name)) throw new IOException("CONFLICT");
+   RequireNoUnexpected(false);
+   foreach(string name in CapturedNames()) {
+    // Verify each remaining exact child and the retained parent. Only FILE_NOT_FOUND means
+    // an earlier cleanup already removed it; access errors never stand for absence.
+    var expectedEntry=byName[name];using(var input=OpenPrivateResource(stage,pin,name,FileMode.Open,admittedNames,true)) {
+     if(input==null) { if(expectedEntry.Item1) continue; else continue; }
+     if(!expectedEntry.Item1||input.Length!=expectedEntry.Item2) throw new IOException("CONFLICT");
+     using(var hash=SHA256.Create()) { var actual=hash.ComputeHash(input);for(int i=0;i<actual.Length;i++) if(actual[i]!=expectedEntry.Item3[i]) throw new IOException("CONFLICT"); }
+     DeletePrivateResource(input);
+    }
+   }
+   RequireNoUnexpected(true);
+  }
+  void RequireNoUnexpected(bool onlyMetadata) {
+   foreach(var path in Directory.GetFileSystemEntries(stage)) {
+    string name=Path.GetFileName(path);if(!admittedNames.Contains(name)&&name!=".admission") throw new IOException("CONFLICT");
+    if(onlyMetadata&&name!=".admission"&&name!=ReceiptName) throw new IOException("CONFLICT");
+   }
+   if(onlyMetadata&&(!File.Exists(Path.Combine(stage,".admission"))||!File.Exists(Path.Combine(stage,ReceiptName)))) throw new IOException("CONFLICT");
+  }
+  public void PublishTerminal(byte[] record) {
+   if(record==null||record.Length==0||record.Length>MaximumReceiptBytes) throw new IOException("RESOURCE_EXHAUSTED");
+   using(var output=OpenPrivateResource(stage,pin,ReceiptName,FileMode.CreateNew,admittedNames)) { output.Write(record,0,record.Length);output.Flush(true); }
+  }
+  public byte[] ReadTerminal() {
+   using(var input=OpenPrivateResource(stage,pin,ReceiptName,FileMode.Open,admittedNames,true)) {
+    if(input==null)return null;
+    if(input.Length<=0||input.Length>MaximumReceiptBytes) throw new IOException("RESOURCE_EXHAUSTED");byte[] record=new byte[(int)input.Length];int offset=0,read;
+    while(offset<record.Length&&(read=input.Read(record,offset,record.Length-offset))>0) offset+=read;
+    if(offset!=record.Length) throw new IOException("CONFLICT");return record;
+   }
+  }
  }
  public static void Run(string pipeName,uint ownerPid,long ownerStart,string ownerSid,string expectedHash) {
   IntPtr owner=OpenProcess(0x101040,false,ownerPid); Need(owner!=IntPtr.Zero);
@@ -400,7 +493,8 @@ public static class VpnRuntimeBroker {
        (name,mode)=>OpenPrivateResource(stage,stagePin,name,mode,names),
        ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0);
       mutableLifecycle=new RuntimeResourceLifecycle(mutablePreparation.Binding,mutableResources,admissionGate,
-       ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0);
+       ()=>child.process==IntPtr.Zero||WaitForSingleObject(child.process,0)==0,
+       new StageTerminalStorage(stage,stagePin,new System.Collections.Generic.List<string>(names),resourceFiles));
      }
      string executable=Path.Combine(stage,"sing-box.exe"),configuration=Path.Combine(stage,"config.json"),log=Path.Combine(stage,"runtime.log");
      using(var f=new FileStream(executable,FileMode.CreateNew,FileAccess.Write,FileShare.None)) f.Write(image,0,image.Length);
@@ -443,7 +537,7 @@ public static class VpnRuntimeBroker {
         logs.Position=offset; recent=new byte[(int)Math.Min(65536,Math.Max(0,logs.Length-offset))]; int read=logs.Read(recent,0,recent.Length); offset+=read; Array.Resize(ref recent,read);
        }
        writer.Write(alive); writer.Write(recent.Length); writer.Write(recent);
-       if(!alive&&mutableLifecycle!=null) mutableLifecycle.WriteTerminal(writer);
+       if(!alive&&mutableLifecycle!=null) mutableLifecycle.CompleteAndWriteTerminal(writer,()=>{ input.Dispose();output.Dispose(); });
        writer.Flush();
        if(!alive) break;
       }
@@ -459,7 +553,7 @@ public static class VpnRuntimeBroker {
    if(childExited&&mutableLifecycle!=null) {
     // Publication can outlive both the owner JVM and its final status request. Keep this helper's
     // original-user token, exact protected parent, journals and gate until its publisher finishes.
-    try { mutableLifecycle.FinishAfterConfirmedExit(); } catch { /* Durable input/evidence stays retained. */ }
+    try { mutableLifecycle.FinishAfterTransportClosed(); } catch { /* Durable input/evidence stays retained. */ }
    }
    if(child.process!=IntPtr.Zero) CloseHandle(child.process);
    if(child.thread!=IntPtr.Zero) CloseHandle(child.thread);

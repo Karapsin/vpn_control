@@ -81,6 +81,8 @@ class AndroidLocationBenchmarkControlTest {
         assertEquals(ControlCode.RUNTIME_FAILED, result.code)
         assertFalse(result.ok)
         assertEquals(ControlValue.BooleanValue(true), result.data["committed"])
+        assertEquals(ControlValue.Text("ok"), result.data["primaryStatus"])
+        assertEquals(ControlValue.Text("timeout"), result.data["secondaryStatus"])
         assertEquals(ControlValue.DecimalValue(12.0), result.data["primaryTotalMs"])
         assertEquals(ControlValue.Null, result.data["secondaryTotalMs"])
         assertEquals(7L, result.configurationRevision)
