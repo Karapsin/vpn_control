@@ -22,6 +22,41 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint33 is pushed as `62d307725c3a122ef5595a25ff9f3dddcef7b18c`
+  (version2.1.8, two Unreleased notes). All15 managed prepush checks passed.
+  Required exact-SHA Windows package CI failed: its native entrypoint JUnit test
+  invokes PowerShell5 Add-Type, whose compiler rejects the helper exception filter.
+  The prior manual .NET probes did not execute that wrapper and could not certify it.
+  CI evidence: checkpoint33/windows-ci-failed.log; 1016 desktop tests, one failure,
+  57 skips. Commit monitor first stopped on a transient GitHub HTTP500; resumed
+  checks then established the Windows failure. Do not claim checkpoint CI complete.
+- Checkpoint34 fixes are intentionally limited to the native test wrappers and
+  session fixture plus this record/version metadata. Root owns these files; other
+  source edits are paused until the CI repair is coherent. The entrypoint wrapper
+  now uses the production-pinned .NET SDK and verifies the version before compiling.
+  A stronger fixture assertion detects failure before actual input lookup instead
+  of accepting any exception. Its actual elevated Windows JUnit RED was reproduced;
+  frozen bundle manifest06093eb63d3aa9e96747704264baec0a0f3c3de355cded5eb69eef3c95418d6f
+  is under checkpoint34/wrapper-red-jvm.
+  On September13 the owned Windows VM was reidentified and the actual JUnit wrapper
+  rerun with hash-verified resource deltas. Private Temp leaf permissions alone
+  still failed ancestor admission (PID9412 terminal1); SYSTEM LocalAppData also
+  failed because its Windows ancestry grants TrustedInstaller mutation (PID7108
+  terminal1, read-only ancestor ACL evidence retained). The fixture now uses the
+  ordinary caller's LocalAppData, or a private ProgramData subtree for SYSTEM,
+  with explicit private subtree ACLs. Production admission is unchanged.
+  Actual SYSTEM JUnit GREEN: PID8024 terminal0, one test, no skips, JVM preflight0,
+  all five probe markers asserted. Evidence: checkpoint34/private-acl-run/system-status.json
+  and system-delta/manifest.json. This is x64 JVM/.NET component execution under
+  ARM64 emulation, not MSI installation or native x64 package acceptance.
+  Limited-token visualagent execution also passed one test with no skips and all
+  five markers; ordinary-final-result.json records exit0 and the expected user SID.
+  Its launch fixture first failed to read a SYSTEM-owned bundle, then correctly
+  rejected omitted JVM preflight dependency arguments. A separate readable copy
+  with every manifest hash verified and explicit preflight inputs passed; those
+  operator failures are retained separately and did not change product code.
+  Final managed prepush and new exact-SHA CI remain pending.
+
 - Checkpoint32 is pushed as `f943578fe11d36f4db291353d90aa9451210c9f4`
   (version2.1.8, one Unreleased note). All15 corrected prepush checks passed;
   all five required exact-SHA workflows passed (managed session81128 terminal0;

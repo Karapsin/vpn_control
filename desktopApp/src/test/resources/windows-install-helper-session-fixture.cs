@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.ComponentModel;
+using System.Security.Principal;
+using System.Security.AccessControl;
 
 public static class InstallerSessionAdmissionFixtures {
     sealed class CloseOnce : VpnInstallNative.IProcessPinCloseNative {
@@ -47,19 +50,45 @@ public static class InstallerSessionAdmissionFixtures {
         using (VpnInstallNative.ProcessImagePin pin=new VpnInstallNative.ProcessImagePin(pid)) {
             creation=pin.Observe().CreationFileTime;
         }
-        string local=Path.Combine(Path.GetTempPath(),"VpnInstallerInputLeak-"+Guid.NewGuid().ToString("N"));
+        bool originalUser;
+        SecurityIdentifier principal;
+        using (WindowsIdentity caller=WindowsIdentity.GetCurrent()) {
+            originalUser=!new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator);
+            principal=caller.User;
+        }
+        // SYSTEM has no interactive user profile: its LocalAppData is below Windows,
+        // whose TrustedInstaller mutation grants are outside owner-input policy.
+        // The test seam can use a private ProgramData subtree for that test identity.
+        string profileLocal=Environment.GetFolderPath(principal.IsWellKnown(WellKnownSidType.LocalSystemSid)
+            ? Environment.SpecialFolder.CommonApplicationData : Environment.SpecialFolder.LocalApplicationData);
+        if (String.IsNullOrEmpty(profileLocal)) throw new InvalidOperationException("Fixture requires the caller LocalAppData");
+        string local=Path.Combine(profileLocal,"VpnInstallerInputLeak-"+Guid.NewGuid().ToString("N"));
         string inputRoot=Path.Combine(local,"vpn-control-install-inputs");
         string moved=inputRoot+"-moved";
+        Directory.CreateDirectory(local);
+        // Admission validates every ancestor, so a private leaf below shared SYSTEM
+        // temp is insufficient. Keep our own subtree private under admitted ancestry.
+        DirectorySecurity security=new DirectorySecurity();
+        security.SetAccessRuleProtection(true,false);
+        security.SetOwner(principal);
+        foreach (SecurityIdentifier allowed in new[] {principal,new SecurityIdentifier("S-1-5-18"),new SecurityIdentifier("S-1-5-32-544")})
+            security.AddAccessRule(new FileSystemAccessRule(allowed,FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+        new DirectoryInfo(local).SetAccessControl(security);
         Directory.CreateDirectory(inputRoot);
         try {
             VpnInstallHelperProtocol.Invocation invocation=new VpnInstallHelperProtocol.Invocation(
-                VpnInstallHelperProtocol.Role.OriginalUser,
+                originalUser?VpnInstallHelperProtocol.Role.OriginalUser:VpnInstallHelperProtocol.Role.Coordinator,
                 "00000000-0000-0000-0000-00000000000c",pid,creation);
             Exception failure=null;
+            bool lookupReached=false;
             try {
-                OwnerInputAdmission.Open(invocation,true,delegate { return local; });
+                OwnerInputAdmission.Open(invocation,originalUser,delegate { lookupReached=true; return local; });
             } catch (Exception error) { failure=error; }
-            if (failure==null) throw new InvalidOperationException("Missing input unexpectedly admitted");
+            if (!lookupReached) throw new InvalidOperationException("Fixture never reached input admission");
+            Win32Exception missing=failure as Win32Exception;
+            if (missing==null || (missing.NativeErrorCode!=2 && missing.NativeErrorCode!=3))
+                throw new InvalidOperationException("Fixture did not reach the missing job child",failure);
             Directory.Move(inputRoot,moved);
             Directory.Delete(moved);
             return "MISSING_INPUT_ANCESTOR_RELEASED";

@@ -81,7 +81,7 @@ class DesktopWindowsResourceTerminalNativeTest {
         assertTrue(output.trimEnd().endsWith("TERMINAL_PROBE selected=14 failed=0"), output)
         Files.list(cases).use { assertEquals(0L, it.count(), "Successful native cases left mutable fixture data") }
         Files.delete(cases)
-        println("NATIVE_RESOURCE_TERMINAL_OK:13 SDK=$expectedVersion evidence=$root")
+        println("NATIVE_RESOURCE_TERMINAL_OK:14 SDK=$expectedVersion evidence=$root")
         if (System.getenv("VPN_CONTROL_TEST_WINDOWS_PROTECTED_STAGE") == "1") {
             // Opt in only inside the owned disposable native fixture with protected-stage authority.
             run("stage-build", listOf("build", "TerminalProbe.csproj", "--configuration", "Release",
