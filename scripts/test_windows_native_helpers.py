@@ -95,6 +95,12 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             self.assertEqual(len(data["fingerprint"]), 64)
 
     def test_installer_session_source_changes_the_preparation_inventory(self):
+        self.assert_installer_source_changes_inventory("windows-install-helper-sessions.cs")
+
+    def test_installer_inventory_source_changes_the_preparation_inventory(self):
+        self.assert_installer_source_changes_inventory("windows-install-helper-inventory.cs")
+
+    def assert_installer_source_changes_inventory(self, source_name):
         repository = Path(__file__).parents[1]
         producer = (repository / "scripts/prepare_windows_native_helpers.ps1").read_text(encoding="utf-8")
         required_block = producer.split("$required = @(", 1)[1].split("\n)\nforeach", 1)[0]
@@ -103,7 +109,7 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             prefix = Path() if base == "root" else Path("desktopApp/native/windows")
             inputs.append(prefix.joinpath(*relative.split("\\")))
 
-        session_source = Path("desktopApp/src/main/resources/windows-install-helper-sessions.cs")
+        session_source = Path("desktopApp/src/main/resources") / source_name
         builder = (repository / "scripts/test_windows_native_helper_builder.ps1").read_text(encoding="utf-8")
         fixture_block = builder.split("$inputs = @(", 1)[1].split("\n    )\n    foreach", 1)[0]
         fixture_inputs = {Path(*source.split("\\")) for source in re.findall(r"'([^']+)'", fixture_block)}

@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Run Windows installer admission regressions with the pinned compiler and valid private fixtures.
 - Retain asynchronous diagnostic exports and harden installer recovery and fixture validation.
 - Preserve diagnostic metadata warnings and malformed-export protocol errors.
+- Recover Android installation receipts and retain uncertain native installer outcomes with focused regression coverage.
 
 ## 2.1.8 - 2026-09-09
 

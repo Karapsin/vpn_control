@@ -22,6 +22,95 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+Checkpoint36 active state (September13, 17:24 UTC) supersedes the historical notes below:
+
+- Checkpoint35 pushed `898f8e89b2e1b55c22c7b629e872fd517ff38656`, version2.1.8,
+  five Unreleased notes. All15 local prepush commands passed before push. Exact-SHA
+  Linux Desktop Package failed a diagnostics test expecting ACCEPTED even when
+  immediate completion had already returned OK. Root reproduced deterministically
+  with an immediate dispatcher and corrected the test; delayed acceptance remains
+  independently covered. The full focused union subsequently passed62 tests with
+  no skips (Android settings14, ADB24, Android CLI11, diagnostics4, install9);
+  evidence: checkpoint36/diagnostics-install-green-v5.log. The push is not CI-complete. Evidence: checkpoint35/commit-result.json,
+  linux-ci-failed.log and linux-ci-diagnostics-race-red.log.
+- The new dirty batch intentionally spans Android retained diagnostics, Linux pending
+  install cancellation, Windows coordinator/inventory resources, fixture supervision,
+  and the CI test correction. No full parity or native MSI completion is claimed.
+- Linux same-source9e base2.3.1 remains installed. The one attempted target2.3.2
+  installation failed PolicyKit authentication (journal: conversation failed, not
+  authorized, TTY unknown). Original operation49e1c346-9058-4802-b751-466be941f74c
+  and job6d28615b-94e1-4143-b92d-ee7e8d8f2ca9 initially remained OUTCOME_UNKNOWN.
+  Exact operations cancel reconciled to CANCELLED/final=true/exit130; watcher19679
+  exited. No installer replay or package-manager termination occurred. The public
+  updates cancel bypassed this install and returned BUSY; a callable regression
+  reproduced that omission before the pending-target fix. Native evidence:
+  checkpoint36/linux-install-unknown/root-native-observation.json.
+- Android5584 is on source62d nondebuggable2.3.4; signed2.3.5 target is frozen.
+  Correct host PATH and removing DYLD_INSERT_LIBRARIES restored authenticated CLI
+  status. The subsequent fixture never published readiness, so no update request
+  or installer session occurred. Its CA mount was removed and proxy/reverses restored.
+  The association between the mount and cold-start timeout remains unproven.
+  Supervised fixture readiness and private atomic publication now have quick tests;
+  actual independent installer confirmation resume remains open.
+- Later API29 native run installed2.3.5/code17300 from the signed source62d target.
+  Process loss plus explicit resume preserved receipt413e8b6a-aa16-4e0b-8b94-50b0d3fa73df
+  and OS session1477112434; final public status reports installed=true, runtime off.
+  Root inspected XML038/043/049: the installer dialog stayed visible before resume.
+  Therefore this proves same-session recovery/install, NOT independent redisplay.
+  Temporary CA/proxy/server cleanup and restoration of task reverse mappings were
+  recorded. Evidence: checkpoint35/android-installer-resume-native-20260913T172610Z.
+- macOS real frozen C watcher plus inert relaunch confirmed SIGPIPE when the old
+  stdout reader closes and the child writes stdout. This does not prove that the
+  earlier real app PID24950 wrote stdout. The next paired test uses the actual
+  packaged launcher. Preserve existing guest GUI25488/owner25489 and older relays.
+
+| Task | Owner | Exclusive files/environment | Next check/handoff |
+| --- | --- | --- | --- |
+| Integration/CI | root | WIP, metadata, build inputs, host Gradle | Focused union, review, prepush and corrected exact-SHA push |
+| Android diagnostics | android_async_diagnostics | Android owner/reader and desktop Android adapter/tests | Retained export, status privacy, no waiter cancellation |
+| Android fixture | android_cold_tls_diagnosis | android_update_fixture.py and its test | Readiness before device effects; native retry still pending |
+| Linux cancellation | linux_install_unknown_diagnosis | DesktopHeadlessSession and install-session test | Actual RED captured, GREEN pending |
+| Linux native | root | Owned Ubuntu guest via root retained SSH shell | Cancelled job verified; next authorized installer attempt needs working TTY |
+| Windows coordinator | windows_msi_coordinator_slice | sessions.cs/native.cs and coordinator fixtures | Complete retained resources and production coordinator; no stub activation |
+| Windows inventory | windows_native_inventory | inventory.cs and dedicated fixtures; exclusive Windows VM | Frozen pinned-.NET native cases |
+| macOS relaunch | mac_watcher_capture_design | Ignored harness and exclusive Tart guest | Actual packaged stdout-open/closed comparison |
+
+Latest coordinator observations (September13, 17:53 UTC) supersede stale rows above:
+
+- Windows checkpoint35 CI also failed because the MSI/protocol native fixtures omitted
+  the roles source. The repaired immutable bundle ran through the real x64 JVM in the
+  ARM64 Windows guest: ten JUnit tests passed, exit0, no stderr, preflight passed.
+  Evidence: checkpoint36/windows-ci-junit-run-34770680414/junit-result.json and
+  status-v4.json. This closes the focused old CI reproduction only; newest coordinator
+  sources and the next exact-SHA CI remain unverified.
+- API29 installed2.3.6 after independently hiding confirmation, force-stopping the app
+  and explicitly resuming the same session. The replacement owner retained handed_off
+  with installed:null. Android receipt recovery is being repaired with exact installed
+  APK hash/version/build/signer proof, plus transient-proof retry and causal tests.
+  Native evidence: checkpoint36/android-installer-resume-hidden-native-20260913T174116Z.
+- macOS actual USER_LOCAL job e4c4d691-a967-4902-96cc-bf77cccfebfc was last observed
+  PREPARING with GUI26289/owner26290/watcher26736. A fresh worker is reidentifying it;
+  no replay, termination or ENOSPC diagnosis is authorized by this observation.
+- Active bounded ownership: android_receipt_reconcile owns Android install recovery,
+  sessions/lifecycle and their dedicated tests; windows_coordinator_production owns
+  native coordinator/protocol and its fixtures; mac_pending_reconcile owns read-only
+  pending Tart job diagnosis; linux_tty_authorization reviews the terminal harness.
+  Root owns Windows VM execution, shared build inputs, WIP and delivery. Original-user
+  and entrypoint test resource closures now include the required inventory source.
+
+Focused recovery closure (September13, 18:00 UTC): Android receipt policy/lifecycle
+passed14 tests after a causal old missing-session decision failed3 cases. Owner
+observe/status now schedule read-only installed-artifact verification outside the
+sessions monitor; current APK native proof remains required. Windows coordinator
+actual pinned-.NET/x64-JVM fixture passed6 tests; removing only the uncertainty catch
+causally failed AUTHORIZED response-loss. Evidence: checkpoint36/android-receipt-recovery
+and checkpoint36/windows-coordinator-junit/{red,green}/authoritative-result.json.
+Windows QGA PID status unexpectedly returned old output for one reused PID; root
+verified results from unique guest bundle output files instead. Native constructor
+and Kotlin production cutover are not certified by these component fixtures.
+
+Historical checkpoint notes (not current ownership or final validation):
+
 - Checkpoint34 is pushed as `9e99027c009d0e16749a3c599e569ea38b9b4681`
   (version2.1.8, three Unreleased notes). All15 managed prepush checks passed;
   actual pinned-.NET entrypoint JUnit passed under SYSTEM and the limited Windows
@@ -54,13 +143,6 @@ inputs and correlation records until authoritative reconciliation.
   Temporary authenticated SSH multiplexing expires after two hours; credentials
   are not saved in source or evidence. Root owns connection cleanup.
 
-| Task | Active owner | Exclusive source/environment | Next handoff |
-| --- | --- | --- | --- |
-| Checkpoint35 freeze/delivery | root | All tracked content frozen for review/checks | Version metadata, prepush, reviewed push/exact-SHA CI |
-| Windows final JUnit | windows_final_junit | Frozen compiled bundle; Windows VM | Actual SYSTEM/limited-user five-method results |
-| Linux manifest retry | linux_tls_manifest_retry | Ubuntu guest; separate frozen diagnostic fixture server | Public trusted manifest response |
-| Android confirmation resume | android_confirmation_resume_native | API29 AVD5584; verified2.3.5 target | Independent confirmation/session recovery |
-| macOS return diagnosis | completed handoff | Read-only checkpoint36 guest evidence | Next slice needs early-startup stderr/exit observation |
 
 Checkpoint35 focused evidence and remaining review:
 

@@ -163,7 +163,8 @@ internal class DesktopHeadlessSession(
                 resultEnvelope = true, mutates = false) {
                 val pending = operations.snapshot().filter { !it.phase.terminal && it.operation in setOf(
                     com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_CHECK,
-                    com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DOWNLOAD) }
+                    com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DOWNLOAD,
+                    com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL) }
                 pending.forEach { operations.cancelResponse(it.id) }
                 pending.forEach { operations.waitResponse(it.id) }
                 // Dismiss only after native IO/download cleanup has completed, not when cancellation is merely requested.

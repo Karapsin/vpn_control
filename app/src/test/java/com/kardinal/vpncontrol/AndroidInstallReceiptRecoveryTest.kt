@@ -55,4 +55,28 @@ class AndroidInstallReceiptRecoveryTest {
         assertTrue(AndroidInstallReceiptRecovery.cleanup(terminal, { status++ }, { confirmation++ }))
         assertEquals(2, status); assertEquals(2, confirmation)
     }
+
+    @Test fun missingCommittedSessionIsInstalledOnlyWhenTheInstalledApkMatchesEveryReceiptIdentity() {
+        val handedOff = receipt().copy(phase = AndroidInstallSessionPhase.HANDED_OFF,
+            confirmation = "immutable-confirmation")
+        val installed = AndroidInstallReceiptRecovery.InstalledArtifact(
+            version = handedOff.version, build = handedOff.build.toLong(), sha256 = handedOff.sha256,
+            signers = handedOff.signers,
+        )
+
+        assertEquals(AndroidInstallReceiptRecovery.Decision.INSTALLED,
+            AndroidInstallReceiptRecovery.decision(handedOff, sessionPresent = false, installed = installed))
+        for (mismatch in listOf(
+            installed.copy(version = "2.3.5"),
+            installed.copy(build = 51),
+            installed.copy(sha256 = "c".repeat(64)),
+            installed.copy(signers = setOf("c".repeat(64))),
+            installed.copy(signers = emptySet()),
+        )) assertEquals(AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN,
+            AndroidInstallReceiptRecovery.decision(handedOff, sessionPresent = false, installed = mismatch))
+        assertEquals(AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN,
+            AndroidInstallReceiptRecovery.decision(handedOff.copy(phase = AndroidInstallSessionPhase.STAGED), false, installed))
+        assertEquals(AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN,
+            AndroidInstallReceiptRecovery.decision(handedOff.copy(phase = AndroidInstallSessionPhase.UNKNOWN), false, installed))
+    }
 }

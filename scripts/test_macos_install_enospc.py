@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Opt-in syscall-fault checks of production macOS installer persistence.
 
-Runs only in an explicitly assigned guest directory. No application, installer,
-mount, authorization, or host storage is used; all inputs are tiny inert files.
+Runs only in an explicitly assigned guest directory. Inputs are inert files; one
+control mounts an 8 MiB task-owned sparse image. No application replacement,
+authorization, or host storage is used.
 """
 import hashlib
 import json
@@ -50,6 +51,31 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[2], "retry")) return 9;
     gate_pending(gate, true);
     struct receipt_writer writer = job_create(root, &request, &pins);
+    if (!strcmp(argv[2], "staging")) {
+        /* Model the real coordinator after staging fails with ENOSPC: its
+           transaction failure path must still replace PREPARING with a
+           terminal receipt.  The exhausted status write is intentionally
+           performed by the production publish() implementation. */
+        active = (struct transaction){.writer=&writer, .parent=-1, .old_bundle=-1,
+            .candidate=-1, .gate=-1, .executable=-1};
+        failure_handler = transaction_failed;
+        remaining = 0;
+        fail("PERSISTENCE_FAILED");
+    }
+    if (!strcmp(argv[2], "staging-volume")) {
+        /* This uses the actual filesystem rather than the syscall interposer.
+           The caller supplies a tiny task-owned image, so filling it cannot
+           consume guest capacity outside the fixture. */
+        int filler = openat(root, "fixture-fill", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+        require(filler >= 0, "UNAVAILABLE");
+        unsigned char bytes[65536] = {0};
+        while (write(filler, bytes, sizeof(bytes)) > 0) {}
+        require(errno == ENOSPC && close(filler) == 0, "UNAVAILABLE");
+        active = (struct transaction){.writer=&writer, .parent=-1, .old_bundle=-1,
+            .candidate=-1, .gate=-1, .executable=-1};
+        failure_handler = transaction_failed;
+        fail("PERSISTENCE_FAILED");
+    }
     remaining = !strcmp(argv[2], "clean") ? -1 : 8;
     if (!strcmp(argv[2], "package")) {
         request.package_size = 32;
@@ -100,6 +126,42 @@ int main(int argc, char **argv) {
 
     def test_partial_package_capture_preserves_preparing_and_blocks_replay(self):
         self.check_fault("package")
+
+    def test_staging_enospc_preserves_preparing_when_terminal_publication_cannot_persist(self):
+        """Total persistence loss leaves the authoritative PREPARING receipt intact."""
+        with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+            root = Path(temporary)
+            result = self.run_probe(root, "staging")
+            self.assertEqual(2, result.returncode, result.stderr)
+            self.assertEqual("PERSISTENCE_FAILED\n", result.stderr)
+            receipt = json.loads(next(root.glob("*/status.json")).read_text())
+            self.assertEqual("PREPARING", receipt["phase"])
+            self.assertEqual(0, receipt["sequence"])
+            self.assertEqual("OK", receipt["code"])
+            temporary = next(root.glob("*/status-*.tmp"))
+            self.assertEqual(0, temporary.stat().st_size)
+
+    def test_actual_small_volume_staging_enospc_must_publish_terminal_failure(self):
+        """Exercise bounded Darwin ENOSPC with space for terminal receipt metadata."""
+        with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+            fixture = Path(temporary)
+            image = fixture / "staging.sparseimage"
+            mount = fixture / "mount"
+            mount.mkdir(mode=0o700)
+            subprocess.run(["hdiutil", "create", "-size", "8m", "-fs", "HFS+", "-volname", "vpn-parity-enospc",
+                            "-type", "SPARSE", str(image)], check=True, capture_output=True, text=True)
+            subprocess.run(["hdiutil", "attach", "-nobrowse", "-mountpoint", str(mount), str(image)],
+                           check=True, capture_output=True, text=True)
+            try:
+                result = self.run_probe(mount, "staging-volume")
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertEqual("PERSISTENCE_FAILED\n", result.stderr)
+                receipt = json.loads(next(mount.glob("*/status.json")).read_text())
+                self.assertEqual("FAILED", receipt["phase"])
+                self.assertEqual(1, receipt["sequence"])
+                self.assertEqual("PERSISTENCE_FAILED", receipt["code"])
+            finally:
+                subprocess.run(["hdiutil", "detach", str(mount)], check=True, capture_output=True, text=True)
 
     def test_same_publication_path_succeeds_without_fault(self):
         with tempfile.TemporaryDirectory(dir=self.root) as temporary:

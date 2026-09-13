@@ -12,9 +12,13 @@ import android.util.AtomicFile
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -32,11 +36,15 @@ internal class AndroidPackageInstallSessions private constructor(private val con
     private val confirmations = mutableMapOf<String, PendingIntent>()
     private var receiptLoadUnavailable = false
     private val cleanedTerminal = mutableSetOf<String>()
+    private val recoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var statusReconciliationScheduled = false
+    private var statusRecoveryUnavailable = false
     @Volatile private var observer: ((AppInstallSessionStatus?) -> Unit)? = null
     @Synchronized fun observe(block: (AppInstallSessionStatus?) -> Unit) {
         observer = block
         block(if (receiptLoadUnavailable) AppInstallSessionStatus("unavailable", AndroidInstallSessionPhase.UNKNOWN, "", false)
             else latest()?.let(::uiStatus))
+        scheduleStatusReconciliation()
     }
 
     init {
@@ -64,6 +72,37 @@ internal class AndroidPackageInstallSessions private constructor(private val con
         } catch (error: Exception) { atomic.failWrite(output); throw error }
     }
 
+    /** Status reads may repair a lost callback, but never reopen, resume, or create a session. */
+    private fun scheduleStatusReconciliation() {
+        if (receiptLoadUnavailable || statusReconciliationScheduled) return
+        val pending = receipts.values.filter { !it.snapshot().terminal }
+        if (pending.size != 1) return
+        val item = pending.single()
+        val before = item.snapshot()
+        if (before.phase !in setOf(AndroidInstallSessionPhase.COMMITTING,
+                AndroidInstallSessionPhase.AWAITING_CONFIRMATION, AndroidInstallSessionPhase.HANDED_OFF)) return
+        statusReconciliationScheduled = true
+        recoveryScope.launch {
+            try {
+                val sessionPresent = runCatching { installer.getSessionInfo(before.sessionId) != null }.getOrNull()
+                val installed = if (sessionPresent == false) installedArtifact() else null
+                synchronized(this@AndroidPackageInstallSessions) {
+                    val decision = if (sessionPresent != null && receipts[before.id] === item && item.snapshot() == before)
+                        item.recover(sessionPresent, installed) else null
+                    if (decision == AndroidInstallReceiptRecovery.Decision.INSTALLED) cleanupTerminal()
+                    statusRecoveryUnavailable = sessionPresent == null ||
+                        decision == AndroidInstallReceiptRecovery.Decision.RETRY_PROOF
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                synchronized(this@AndroidPackageInstallSessions) { statusRecoveryUnavailable = true }
+            } finally {
+                synchronized(this@AndroidPackageInstallSessions) { statusReconciliationScheduled = false }
+            }
+        }
+    }
+
     @Synchronized fun recover(): AndroidUpdateInstallControl.Pinned? {
         check(!receiptLoadUnavailable) { "INSTALL_RECOVERY_UNAVAILABLE" }
         // Only a journal known to precede commit authorizes reclaiming interrupted staging.
@@ -87,10 +126,16 @@ internal class AndroidPackageInstallSessions private constructor(private val con
         check(pending.size == 1) { "INSTALL_RECOVERY_AMBIGUOUS" }
         val item = pending.single()
         val state = item.snapshot()
-        if (state.phase == AndroidInstallSessionPhase.UNKNOWN ||
-            installer.getSessionInfo(state.sessionId) == null) {
-            item.reconcile(false)
+        val sessionPresent = installer.getSessionInfo(state.sessionId) != null
+        when (item.recover(sessionPresent, if (sessionPresent) null else installedArtifact())) {
+            AndroidInstallReceiptRecovery.Decision.INSTALLED -> {
+                cleanupTerminal()
+                return null
+            }
+            AndroidInstallReceiptRecovery.Decision.RETRY_PROOF,
+            AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN ->
             error("INSTALL_OUTCOME_UNKNOWN")
+            AndroidInstallReceiptRecovery.Decision.SESSION_PRESENT -> Unit
         }
         return pin(item)
     }
@@ -267,10 +312,12 @@ internal class AndroidPackageInstallSessions private constructor(private val con
     }
 
     @Synchronized fun inspection(): Map<String, com.kardinal.vpncontrol.model.ControlValue> {
+        scheduleStatusReconciliation()
         val value = latest()
         return mapOf("installReceipt" to (value?.let { com.kardinal.vpncontrol.model.ControlValue.ObjectValue(publicReceipt(it)) }
             ?: com.kardinal.vpncontrol.model.ControlValue.Null),
-            "installRecoveryUnavailable" to com.kardinal.vpncontrol.model.ControlValue.BooleanValue(receiptLoadUnavailable),
+            "installRecoveryUnavailable" to com.kardinal.vpncontrol.model.ControlValue.BooleanValue(
+                receiptLoadUnavailable || statusRecoveryUnavailable),
             "legacyInstallerPins" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(
                 (File(context.filesDir, "control-installs").listFiles()?.size ?: 0).toLong()))
     }
@@ -310,6 +357,19 @@ internal class AndroidPackageInstallSessions private constructor(private val con
         PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners.orEmpty()
         .map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
 
+    @Suppress("DEPRECATION")
+    private fun installedArtifact(): AndroidInstallReceiptRecovery.InstalledArtifact? = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        val source = requireNotNull(info.applicationInfo?.sourceDir).takeIf { File(it).isFile }
+            ?: error("INSTALLED_APK_UNAVAILABLE")
+        AndroidInstallReceiptRecovery.InstalledArtifact(
+            version = info.versionName.orEmpty(), build = info.longVersionCode,
+            sha256 = sha256(File(source)),
+            signers = info.signingInfo?.apkContentsSigners.orEmpty()
+                .map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet(),
+        )
+    }.getOrNull()
+
     companion object {
         const val INSTALL_CONFIRMATION = "com.kardinal.vpncontrol.INSTALL_CONFIRMATION"
         @Volatile private var instance: AndroidPackageInstallSessions? = null
@@ -317,6 +377,16 @@ internal class AndroidPackageInstallSessions private constructor(private val con
             instance ?: AndroidPackageInstallSessions(context.applicationContext).also { instance = it }
         }
         private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        private fun sha256(file: File): String = file.inputStream().buffered().use { input ->
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(65536)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+            hex(digest.digest())
+        }
         private fun origin(id: String): Uri = Uri.parse("vpn-control-install-source://$id")
         private fun uiStatus(value: AndroidInstallSessionReceipt) = AppInstallSessionStatus(value.id, value.phase,
             value.version, value.phase == AndroidInstallSessionPhase.STAGED ||

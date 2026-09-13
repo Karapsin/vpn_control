@@ -17,6 +17,15 @@ class DesktopAndroidAdbClientTest {
         val stale = sent.copy(controllerId = "stale")
         assertEquals(ControlCode.CONFLICT, ControlProtocolCodec.decodeResult(client.request(stale, null, 20).message).code)
     }
+    @Test fun publicAsyncDiagnosticsBindsTheAuthenticatedOwner() = fixture { client, root ->
+        assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--async", "diagnostics", "export"),
+            printLine = {}, androidRequest = client::request))
+        val sent = ControlProtocolCodec.decodeRequest(Files.readString(root.resolve("request")))
+        assertEquals(ControlOperationId.DIAGNOSTICS_EXPORT, sent.command.operation)
+        assertEquals("android-test-owner", sent.controllerId)
+        assertTrue(sent.asynchronous)
+        assertTrue(sent.command.arguments.isEmpty())
+    }
     @Test fun publicAsyncBenchmarkBindsOwnerAndPreservesExplicitStaleEpoch() = fixture { client, root ->
         val output = mutableListOf<String>()
         assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--async", "locations", "benchmark", "1"),

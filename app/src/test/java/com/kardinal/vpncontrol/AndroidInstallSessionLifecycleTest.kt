@@ -74,6 +74,49 @@ class AndroidInstallSessionLifecycleTest {
         assertTrue(lifecycle.callback(17, "nonce", AndroidInstallSessionPhase.INSTALLED))
     }
 
+    @Test fun statusRecoveryPublishesDurableInstalledOnlyForTheExactInstalledArtifact() {
+        val writes = mutableListOf<AndroidInstallSessionReceipt>()
+        val published = mutableListOf<AndroidInstallSessionReceipt>()
+        val handedOff = receipt().copy(
+            phase = AndroidInstallSessionPhase.HANDED_OFF,
+            confirmation = "immutable-confirmation-capability", signers = setOf("b".repeat(64)))
+        val lifecycle = AndroidInstallSessionLifecycle(handedOff, writes::add, published::add)
+        val evidence = AndroidInstallReceiptRecovery.InstalledArtifact(
+            version = handedOff.version, build = handedOff.build.toLong(), sha256 = handedOff.sha256,
+            signers = setOf("c".repeat(64)))
+
+        assertEquals(AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN, lifecycle.recover(false, evidence))
+        assertEquals(AndroidInstallSessionPhase.UNKNOWN, lifecycle.snapshot().phase)
+        assertEquals(listOf(AndroidInstallSessionPhase.UNKNOWN), writes.map { it.phase })
+
+        val exactWrites = mutableListOf<AndroidInstallSessionReceipt>()
+        val exactPublished = mutableListOf<AndroidInstallSessionReceipt>()
+        val exact = AndroidInstallSessionLifecycle(handedOff, exactWrites::add, exactPublished::add)
+        val exactEvidence = AndroidInstallReceiptRecovery.InstalledArtifact(
+            version = handedOff.version, build = handedOff.build.toLong(), sha256 = handedOff.sha256,
+            signers = handedOff.signers)
+        assertEquals(AndroidInstallReceiptRecovery.Decision.INSTALLED, exact.recover(false, exactEvidence))
+        assertEquals(listOf(AndroidInstallSessionPhase.INSTALLED), exactWrites.map { it.phase })
+        assertEquals(listOf(AndroidInstallSessionPhase.INSTALLED), exactPublished.map { it.phase })
+    }
+
+    @Test fun transientInstalledProofFailureRetainsHandoffForTheNextStatusRead() {
+        val writes = mutableListOf<AndroidInstallSessionReceipt>()
+        val receipt = receipt().copy(phase = AndroidInstallSessionPhase.HANDED_OFF,
+            confirmation = "immutable-confirmation-capability", signers = setOf("b".repeat(64)))
+        val lifecycle = AndroidInstallSessionLifecycle(receipt, writes::add)
+        val evidence = AndroidInstallReceiptRecovery.InstalledArtifact(
+            version = receipt.version, build = receipt.build.toLong(), sha256 = receipt.sha256,
+            signers = receipt.signers)
+
+        assertEquals(AndroidInstallReceiptRecovery.Decision.RETRY_PROOF, lifecycle.recover(false, null))
+        assertEquals(AndroidInstallSessionPhase.HANDED_OFF, lifecycle.snapshot().phase)
+        assertTrue(writes.isEmpty())
+        assertEquals(AndroidInstallReceiptRecovery.Decision.INSTALLED, lifecycle.recover(false, evidence))
+        assertEquals(AndroidInstallSessionPhase.INSTALLED, lifecycle.snapshot().phase)
+        assertEquals(AndroidInstallSessionPhase.INSTALLED, writes.single().phase)
+    }
+
     @Test fun explicitConfirmationResumeDoesNotDemoteOrRewriteAcknowledgedHandoff() {
         val writes = mutableListOf<AndroidInstallSessionReceipt>()
         val before = receipt().copy(phase = AndroidInstallSessionPhase.HANDED_OFF,

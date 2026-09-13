@@ -202,7 +202,7 @@ internal class DesktopAndroidAdbClient(
             ControlOperationId.UPDATES_CHECK, ControlOperationId.UPDATES_DOWNLOAD, ControlOperationId.UPDATES_CANCEL, ControlOperationId.UPDATES_DISMISS, ControlOperationId.UPDATES_INSTALL,
             ControlOperationId.ROUTING_SET, ControlOperationId.ROUTING_IMPORT, ControlOperationId.ROUTING_APPS_SET,
             ControlOperationId.ROUTING_APPS_ADD, ControlOperationId.ROUTING_APPS_REMOVE, ControlOperationId.ROUTING_APPS_SELECT_ALL, ControlOperationId.ROUTING_APPS_CLEAR,
-            ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
+            ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.DIAGNOSTICS_EXPORT, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
             ControlOperationId.OPERATIONS_LIST, ControlOperationId.OPERATIONS_CANCEL)
 
         private val interactiveOperations = setOf(ControlOperationId.ON, ControlOperationId.OFF,

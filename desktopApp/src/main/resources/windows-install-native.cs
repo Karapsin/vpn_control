@@ -368,6 +368,12 @@ public static class VpnInstallNative {
                     String.Equals(identity,identities[1],StringComparison.Ordinal);
             }
         }
+        // Fixed coordinator-only discovery input. These are copied from the two
+        // already inspected sibling image objects; no request path is accepted.
+        internal string[] RetainedImagePaths() {
+            if (disposed) throw new ObjectDisposedException("ExecutableReplacementSet");
+            return (string[])paths.Clone();
+        }
         // Caller holds the protected gate's exclusive byte 0 throughout this call
         // and subsequent replacement. Both probes close before MSI, because a
         // retained WRITE handle would itself prevent normal publication/replacement.
@@ -429,6 +435,12 @@ public static class VpnInstallNative {
             throw new IOException("Native image identity rejected");
         return BitConverter.ToString(identity);
     }
+    // Both handles must already be retained by the caller. This is deliberately
+    // object identity, not a case-folded path or a digest comparison.
+    public static bool SameFileObject(SafeFileHandle first,SafeFileHandle second) {
+        if (first==null || second==null || first.IsInvalid || second.IsInvalid) throw new ArgumentException("Installer object identity rejected");
+        return String.Equals(ObjectIdentity(first,false),ObjectIdentity(second,false),StringComparison.Ordinal);
+    }
     public static SafeFileHandle OpenReceipt(string path) {
         // Protected status is atomically replaced; a retained reader keeps its old
         // object. Private input/package reads above must continue denying deletion.
@@ -455,12 +467,39 @@ public static class VpnInstallNative {
             } catch { if (stream != null) stream.Dispose(); else file.Dispose(); throw; }
         } finally { if (pointer != IntPtr.Zero) Marshal.FreeHGlobal(pointer); LocalFree(descriptor); }
     }
+    // A fixed-leaf child of an already inspected directory. Callers may not pass
+    // separators or reparse traversal as a leaf; the directory object remains
+    // the authority for protected coordinator output.
+    public static FileStream CreateProtectedChild(SafeFileHandle directory,string leaf,string sddl,byte[] initial) {
+        if (directory==null || directory.IsInvalid || leaf==null || leaf.Length<1 || leaf.Length>96 ||
+            leaf.IndexOf('\\')>=0 || leaf.IndexOf('/')>=0 || leaf.IndexOf(':')>=0 ||
+            leaf=="." || leaf==".." || leaf.EndsWith(".",StringComparison.Ordinal) ||
+            leaf.EndsWith(" ",StringComparison.Ordinal))
+            throw new ArgumentException("Installer protected child rejected");
+        Inspect(directory,true,false,null);
+        string parent=ReceiptObjectPath(directory).TrimEnd('\\');
+        FileStream result=CreateFile(Path.Combine(parent,leaf),sddl,initial);
+        try { InspectLinkedAncestor(directory,result.SafeFileHandle,null); return result; }
+        catch { result.Dispose(); throw; }
+    }
     public static FileStream OpenGate(string path, bool write) {
         SafeFileHandle file=CreateFileW(path, (write ? 0xC0000000u : 0x80000000u) | ReadControl | ReadAttributes,
             3, IntPtr.Zero, 3, 0x80200000, IntPtr.Zero);
         if (file.IsInvalid) { file.Dispose(); throw new Win32Exception(Marshal.GetLastWin32Error()); }
         try { return new FileStream(file, write ? FileAccess.ReadWrite : FileAccess.Read, 1, false); }
         catch { file.Dispose(); throw; }
+    }
+    // The digest is derived from an already opened, inspected file object.  It is
+    // used for the worker image witness; callers retain the stream until the
+    // coordinator has finished admitting that generation.
+    public static string Sha256(FileStream stream) {
+        if (stream==null || !stream.CanRead) throw new ArgumentException("Installer digest handle rejected");
+        stream.Position=0;
+        using (SHA256 digest=SHA256.Create()) {
+            byte[] value=digest.ComputeHash(stream);
+            stream.Position=0;
+            return BitConverter.ToString(value).Replace("-","").ToLowerInvariant();
+        }
     }
     // Original-user records become visible only after their bytes are flushed and their writer is closed.
     // A leaf-only rename retains the strict parent pins and never replaces an existing acknowledgment.

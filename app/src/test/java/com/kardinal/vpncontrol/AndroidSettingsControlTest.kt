@@ -257,6 +257,45 @@ class AndroidSettingsControlTest {
         assertEquals(result, fixture.control.execute(request))
     }
 
+    @Test fun asyncDiagnosticsRetainsOneReportAndWaiterCancellationDoesNotCancelOwner() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var reports = 0
+        val committed = ControlCommitted("owner", 7L, PersistedState())
+        val control = AndroidSettingsControl("owner", backgroundScope, { committed },
+            { _, _, _ -> error("Diagnostics must not write settings") }, {}, { false },
+            diagnosticsExport = {
+                reports++
+                started.complete(Unit)
+                release.await()
+                "SANITIZED_RETAINED_REPORT"
+            })
+        val export = ControlRequest("diagnostics", ControlCommand(ControlOperationId.DIAGNOSTICS_EXPORT),
+            controllerId = "owner", asynchronous = true)
+        val accepted = control.execute(export)
+        assertEquals(ControlCode.ACCEPTED, accepted.code)
+        assertFalse(accepted.final)
+        val id = requireNotNull(accepted.operationId)
+        started.await()
+        assertEquals(id, control.execute(export).operationId)
+        assertEquals(1, reports)
+        val waiting = async { control.execute(ControlRequest("first-wait", ControlCommand(
+            ControlOperationId.OPERATIONS_WAIT, mapOf("id" to ControlValue.Text(id))), controllerId = "owner")) }
+        runCurrent()
+        waiting.cancel()
+        release.complete(Unit)
+        runCurrent()
+        val completed = control.execute(ControlRequest("second-wait", ControlCommand(
+            ControlOperationId.OPERATIONS_WAIT, mapOf("id" to ControlValue.Text(id))), controllerId = "owner"))
+        assertEquals(ControlCode.OK, completed.code)
+        assertEquals(id, completed.operationId)
+        assertEquals(7L, completed.configurationRevision)
+        assertEquals("SANITIZED_RETAINED_REPORT", (completed.data.getValue("content") as ControlValue.Text).value)
+        val status = control.execute(ControlRequest("status", ControlCommand(
+            ControlOperationId.OPERATIONS_STATUS, mapOf("id" to ControlValue.Text(id))), controllerId = "owner"))
+        assertFalse(status.data.containsKey("content"))
+    }
+
     private class Fixture(scope: CoroutineScope, pending: (PersistedState) -> Boolean? = { false }, jobs: AndroidCommandJobs? = null, scheduling: suspend () -> Unit = {}) {
         var committed = ControlCommitted("owner", 0L, PersistedState(subscriptionRefreshPolicy = SubscriptionRefreshPolicy.OFF))
         var writes = 0

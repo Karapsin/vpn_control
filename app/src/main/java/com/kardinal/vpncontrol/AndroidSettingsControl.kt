@@ -41,6 +41,7 @@ internal class AndroidSettingsControl(
     private val routingImport: (suspend (com.kardinal.vpncontrol.data.AndroidPreparedRouting, String, Long?) -> AndroidSettingsCommit)? = null,
     private val routingDispatcher: kotlinx.coroutines.CoroutineDispatcher? = null,
     private val retainedResults: AndroidRetainedControlResults? = null,
+    private val diagnosticsExport: (suspend (PersistedState) -> String)? = null,
 ) {
     private val ledger = ControlOperationLedger(controllerId)
     private val waiting = mutableMapOf<String, CompletableDeferred<ControlResult>>()
@@ -85,10 +86,11 @@ internal class AndroidSettingsControl(
         val isRefresh = request.command.operation == ControlOperationId.SUBSCRIPTIONS_REFRESH
         val isBenchmark = request.command.operation == ControlOperationId.LOCATIONS_BENCHMARK
         val isFindBest = request.command.operation == ControlOperationId.FIND_BEST
+        val isDiagnostics = request.command.operation == ControlOperationId.DIAGNOSTICS_EXPORT
         val isUpdate = isInstall || request.command.operation in AndroidUpdateControl.operations
         val updateControlPlane = request.command.operation in AndroidUpdateControl.controlPlane
         val isLocationRemoval = request.command.operation in com.kardinal.vpncontrol.data.AndroidLocationControl.destructiveOperations
-        val allowsAsync = isFindBest || isBenchmark || isRefresh || isRuntime || isLocationRemoval || isUpdate && !updateControlPlane || request.command.operation in setOf(ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE)
+        val allowsAsync = isFindBest || isBenchmark || isRefresh || isRuntime || isLocationRemoval || isDiagnostics || isUpdate && !updateControlPlane || request.command.operation in setOf(ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE)
         if (request.command.operation !in operations || request.asynchronous && !allowsAsync || request.interactive && !isConnection && !isInstall && !isFindBest) {
             return rejected(request, ControlCode.INVALID_ARGUMENT)
         }
@@ -102,6 +104,7 @@ internal class AndroidSettingsControl(
         if (isRefresh && refresh == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isBenchmark && benchmark == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isFindBest && findBest == null) return rejected(request, ControlCode.UNSUPPORTED)
+        if (isDiagnostics && diagnosticsExport == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isInstall && updateInstall == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isLocation && if (isLocationRemoval) locationRemoval == null else location == null) return rejected(request, ControlCode.UNSUPPORTED)
         if (isRouting && routing == null) return rejected(request, ControlCode.UNSUPPORTED)
@@ -131,7 +134,7 @@ internal class AndroidSettingsControl(
             if (request.command.arguments.keys != setOf("input") || content.isNullOrBlank())
                 return rejected(request, ControlCode.INVALID_ARGUMENT)
             request.command.arguments
-        } else if (isRuntime || isUpdate || isFindBest) {
+        } else if (isRuntime || isUpdate || isFindBest || isDiagnostics) {
             if (request.command.arguments.isNotEmpty()) return rejected(request, ControlCode.INVALID_ARGUMENT)
             emptyMap()
         } else ControlSettingsLogic.parseRequestArguments(request.command.operation, request.command.arguments)
@@ -144,22 +147,23 @@ internal class AndroidSettingsControl(
             if ((isUpdate || isRefresh || isBenchmark || isFindBest) && request.ifRevision != null && request.ifRevision != current.revision) return rejected(request, ControlCode.CONFLICT)
             if (isInstall && !request.interactive) return rejected(request, ControlCode.INTERACTION_REQUIRED)
             if (isConnection) connection?.preflight(request, current.value)?.let { return rejected(request, it) }
-            else if (!isUpdate && !isRefresh && if (isOff) off?.available() != true else pendingRestart(current.value) == null)
+            else if (!isDiagnostics && !isUpdate && !isRefresh && if (isOff) off?.available() != true else pendingRestart(current.value) == null)
                 return rejected(request, ControlCode.UNAVAILABLE)
         }
         var rejection: ControlCode? = null
         val completion = synchronized(ledger) {
             val isNew = ledger.forRequest(request.requestId, now()) == null
+            val requiresMutationLease = !updateControlPlane && !isDiagnostics
             val alreadyBusy = isNew && if (updateControlPlane) ledger.list(now()).count {
                 it.operation in AndroidUpdateControl.controlPlane && !it.phase.terminal
-            } >= 32 else busy()
-            val lease = if (isNew && !alreadyBusy && !updateControlPlane) mutationJobs?.tryAcquireMutation() else null
-            if (isNew && (alreadyBusy || !updateControlPlane && mutationJobs != null && lease == null)) {
+            } >= 32 else if (isDiagnostics) false else busy()
+            val lease = if (isNew && !alreadyBusy && requiresMutationLease) mutationJobs?.tryAcquireMutation() else null
+            if (isNew && (alreadyBusy || requiresMutationLease && mutationJobs != null && lease == null)) {
                 rejection = ControlCode.BUSY
                 null
             } else when (val admission = ledger.admit(
                 UUID.randomUUID().toString(), request.requestId, request.command.operation,
-                fingerprint, mutates = !updateControlPlane, cancellable = isFindBest || isBenchmark || isRefresh || isUpdate && !updateControlPlane, now = now(),
+                fingerprint, mutates = requiresMutationLease, cancellable = isFindBest || isBenchmark || isRefresh || isUpdate && !updateControlPlane, now = now(),
             )) {
                 is ControlOperationAdmission.Rejected -> {
                     if (lease != null) mutationJobs?.releaseMutation(lease)
@@ -215,6 +219,7 @@ internal class AndroidSettingsControl(
                             } },
                             canFetch = { synchronized(ledger) { ledger.get(operation.id, now())?.phase != ControlOperationPhase.CANCELLING } },
                             continuation = refreshContinuation)
+                            else if (isDiagnostics) performDiagnostics(request, operation.id)
                             else if (isInstall) performInstall(request, operation.id)
                             else if (isLocationRemoval) requireNotNull(locationRemoval).execute(request, operation.id)
                             else if (isUpdate) performUpdate(request, operation.id, updateGeneration)
@@ -422,7 +427,14 @@ internal class AndroidSettingsControl(
         if (id.isNullOrBlank() || request.command.arguments.keys != setOf("id") || request.interactive || request.asynchronous || request.ifRevision != null)
             return rejected(request, ControlCode.INVALID_ARGUMENT)
         val operation = synchronized(ledger) { ledger.get(id, now()) } ?: return rejected(request, ControlCode.NOT_FOUND)
-        operation.result?.let { return it.copy(requestId = request.requestId) }
+        operation.result?.let { terminal ->
+            // A retained diagnostics report is retrievable only through wait/export delivery.
+            // Status remains an operation summary even after the owner has completed.
+            return if (request.command.operation == ControlOperationId.OPERATIONS_STATUS &&
+                operation.operation == ControlOperationId.DIAGNOSTICS_EXPORT)
+                terminal.copy(requestId = request.requestId, data = terminal.data - "content")
+            else terminal.copy(requestId = request.requestId)
+        }
         if (request.command.operation == ControlOperationId.OPERATIONS_STATUS) return accepted(request.requestId, operation)
         val completion = synchronized(ledger) { ledger.get(id, now())?.result?.let { CompletableDeferred(it) } ?: waiting[id] }
             ?: return rejected(request, ControlCode.NOT_FOUND)
@@ -549,6 +561,29 @@ internal class AndroidSettingsControl(
         return rejected(request, outcome.code).copy(operationId = operationId, data = outcome.data)
     }
 
+    /** The report is retained only as a terminal export result; summaries never include its content. */
+    private suspend fun performDiagnostics(request: ControlRequest, operationId: String): ControlResult {
+        var committed: ControlCommitted<PersistedState>? = null
+        return try {
+            committed = snapshot()
+            val report = requireNotNull(diagnosticsExport).invoke(committed.value)
+            val pending = pendingRestart(committed.value)
+            ControlResult(controllerId, request.requestId, ControlCode.OK, committed.revision,
+                operationId = operationId, restartRequired = pending ?: false,
+                data = mapOf("content" to ControlValue.Text(report)),
+                warnings = listOf("METADATA_OBSERVED_AFTER_REPORT") +
+                    if (pending == null) listOf("PENDING_RESTART_STATE_UNAVAILABLE") else emptyList())
+        } catch (_: OutOfMemoryError) {
+            androidControlResourceFailure(controllerId, request.requestId, operationId, committed?.revision)
+        } catch (_: Exception) {
+            val pending = committed?.value?.let(pendingRestart)
+            ControlResult(controllerId, request.requestId, ControlCode.RUNTIME_FAILED, committed?.revision ?: 0,
+                operationId = operationId, restartRequired = pending ?: false,
+                warnings = (if (committed == null) listOf("CONFIGURATION_REVISION_UNAVAILABLE") else emptyList()) +
+                    if (pending == null) listOf("PENDING_RESTART_STATE_UNAVAILABLE") else emptyList())
+        }
+    }
+
     private suspend fun perform(request: ControlRequest, operationId: String, patch: Map<String, ControlValue>): ControlResult {
         var durable: AndroidSettingsCommit? = null
         return try {
@@ -617,6 +652,6 @@ internal class AndroidSettingsControl(
             ControlOperationId.SSH_KEY_IMPORT, ControlOperationId.SOURCE_SET,
             ControlOperationId.OFF, ControlOperationId.ON, ControlOperationId.RESTART, ControlOperationId.OPERATIONS_CANCEL) + inspectionOperations +
             com.kardinal.vpncontrol.data.AndroidSubscriptionControl.operations + com.kardinal.vpncontrol.data.AndroidRoutingControl.operations +
-            com.kardinal.vpncontrol.data.AndroidLocationControl.operations + AndroidUpdateControl.operations + ControlOperationId.UPDATES_INSTALL + ControlOperationId.SUBSCRIPTIONS_REFRESH + ControlOperationId.LOCATIONS_BENCHMARK + ControlOperationId.FIND_BEST
+            com.kardinal.vpncontrol.data.AndroidLocationControl.operations + AndroidUpdateControl.operations + ControlOperationId.UPDATES_INSTALL + ControlOperationId.SUBSCRIPTIONS_REFRESH + ControlOperationId.LOCATIONS_BENCHMARK + ControlOperationId.FIND_BEST + ControlOperationId.DIAGNOSTICS_EXPORT
     }
 }

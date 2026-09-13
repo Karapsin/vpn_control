@@ -12,41 +12,52 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-class DesktopWindowsOriginalUserAdapterTest {
-    @Test fun acknowledgementLossRetainsTheAttemptAndNeverReplaysMsi() = runFixture("AcknowledgementLossDoesNotReplayMsi", "ACK_LOSS_NO_REPLAY")
+class DesktopWindowsCoordinatorAdapterTest {
+    @Test fun coordinatorAdapterRetainsUnknownOutcomesAndHasNoMsiAuthority() =
+        runFixture("KnownResultHasNoMsiAuthority", "COORDINATOR_ADAPTER_NO_MSI")
 
-    @Test fun wrongReceiptCorrelationIsRejectedBeforeAnyMsiInvocation() = runFixture("WrongCorrelationIsRejectedBeforeMsi", "FOREIGN_RECEIPT_REJECTED")
+    @Test fun lostInstallingReceiptAcknowledgementDoesNotClearPendingOrReadAResult() =
+        runFixture("LostInstallingAcknowledgementRetainsPending", "COORDINATOR_INSTALLING_ACK_RETAINED")
 
-    @Test fun stalledInstallingReceiptReachesTheFiniteReconciliationDeadline() = runFixture("StalledInstallingReceiptReachesDeadline", "INSTALLING_DEADLINE_REACHED")
+    @Test fun workerExitBeforeExactResultRemainsUnknown() =
+        runFixture("WorkerExitBeforeResultRemainsUnknown", "COORDINATOR_WORKER_EXIT_UNKNOWN")
 
-    @Test fun advancedInstallingReceiptWaitsForItsCorrelatedTerminalReceipt() = runFixture("AdvancedInstallingReceiptWaitsForTerminal", "ADVANCED_INSTALLING_ACCEPTED")
+    @Test fun visibleInstallingReceiptAcknowledgementLossRetainsPendingWithoutTerminalReplay() =
+        runFixture("VisibleInstallingAckLossRetainsPendingWithoutDuplicateTerminal", "COORDINATOR_VISIBLE_ACK_LOSS_RETAINED")
+
+    @Test fun visibleAuthorizedReceiptAcknowledgementLossDoesNotFabricateFailedSequenceOne() =
+        runFixture("VisibleAuthorizedAckLossRetainsPendingWithoutConflictingFailedReceipt", "COORDINATOR_AUTHORIZED_ACK_LOSS_RETAINED")
+
+    @Test fun actualAdapterReceiptBoundaryUsesMonotonicSequences() =
+        runFixture("ActualAdapterReceiptWriterKeepsMonotonicSequence", "COORDINATOR_RECEIPT_SEQUENCE_MONOTONIC")
 
     private fun runFixture(operation: String, expected: String) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
-        val directory = Files.createTempDirectory("vpn-install-original-user-")
+        val directory = Files.createTempDirectory("vpn-install-coordinator-adapter-")
         listOf(
-            "windows-install-native.cs", "windows-install-helper-protocol.cs",
-            "windows-install-helper-roles.cs", "windows-install-helper-msi.cs",
-            "windows-install-helper-sessions.cs", "windows-install-helper-inventory.cs", "windows-install-helper-original-user-fixture.cs",
+            "windows-install-native.cs", "windows-install-helper-inventory.cs", "windows-install-helper-protocol.cs", "windows-install-helper-roles.cs",
+            "windows-install-helper-msi.cs", "windows-install-helper-sessions.cs",
+            "windows-install-helper-coordinator-adapter-fixture.cs",
         ).forEach { name -> javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, directory.resolve(name)) } }
+        var retainEvidence = false
         try {
             val pin = Files.readAllBytes(Path.of(System.getProperty("vpnControl.test.nativeGlobalJson", "native/windows/global.json")))
             val sdk = Json.parseToJsonElement(pin.decodeToString()).jsonObject["sdk"]!!.jsonObject
             assertEquals("disable", sdk["rollForward"]!!.jsonPrimitive.content)
             Files.write(directory.resolve("global.json"), pin)
             Files.writeString(directory.resolve("NuGet.Config"), "<configuration><packageSources><clear /></packageSources></configuration>")
-            Files.writeString(directory.resolve("OriginalUserAdapterProbe.csproj"), """
+            Files.writeString(directory.resolve("CoordinatorAdapterProbe.csproj"), """
                 <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
                   <TargetFramework>net10.0-windows</TargetFramework><OutputType>Exe</OutputType>
-                  <StartupObject>OriginalUserAdapterProbe</StartupObject><UseAppHost>false</UseAppHost>
+                  <StartupObject>CoordinatorAdapterProbe</StartupObject><UseAppHost>false</UseAppHost>
                   <InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable>
                   <ImplicitUsings>disable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
                 </PropertyGroup></Project>
             """.trimIndent())
             Files.writeString(directory.resolve("ProbeMain.cs"), """
                 using System;
-                internal static class OriginalUserAdapterProbe {
-                  public static void Main() { Console.WriteLine(OriginalUserAdapterFixtures.$operation()); }
+                internal static class CoordinatorAdapterProbe {
+                  public static void Main() { Console.WriteLine(CoordinatorAdapterFixtures.$operation()); }
                 }
             """.trimIndent())
             val dotnet = System.getenv("VPN_CONTROL_TEST_DOTNET") ?: "dotnet.exe"
@@ -64,23 +75,16 @@ class DesktopWindowsOriginalUserAdapterTest {
                     }.start()
                 process.outputStream.close()
                 if (!process.waitFor(90, TimeUnit.SECONDS)) {
-                    synchronized(retainedProcesses) { retainedProcesses.add(process) }
-                    fail("Original-user $phase still owns PID ${process.pid()}; evidence: $directory")
+                    retainEvidence = true
+                    fail("Coordinator adapter $phase still owns PID ${process.pid()}; evidence retained: $directory")
                 }
-                val stdout = Files.readString(output)
-                val stderr = Files.readString(error)
-                assertEquals(0, process.exitValue(), "Original-user $phase failed; evidence: $directory\n$stdout\n$stderr")
+                val stdout = Files.readString(output); val stderr = Files.readString(error)
+                assertEquals(0, process.exitValue(), "Coordinator adapter $phase failed; evidence: $directory\n$stdout\n$stderr")
                 return stdout
             }
             assertEquals(sdk["version"]!!.jsonPrimitive.content, run("sdk", listOf("--version")).trim())
-            run("build", listOf("build", "OriginalUserAdapterProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"))
-            val text = run("probe", listOf(directory.resolve("bin/Release/net10.0-windows/OriginalUserAdapterProbe.dll").toString()))
-            assertTrue(text.contains(expected), text)
-            println("NATIVE_ORIGINAL_USER_ADAPTER_OK evidence=$directory")
-        } finally {
-            if (!retainedProcesses.any { it.isAlive }) directory.toFile().deleteRecursively()
-        }
+            run("build", listOf("build", "CoordinatorAdapterProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"))
+            assertTrue(run("probe", listOf(directory.resolve("bin/Release/net10.0-windows/CoordinatorAdapterProbe.dll").toString())).contains(expected))
+        } finally { if (!retainEvidence) directory.toFile().deleteRecursively() }
     }
-
-    companion object { private val retainedProcesses = mutableListOf<Process>() }
 }

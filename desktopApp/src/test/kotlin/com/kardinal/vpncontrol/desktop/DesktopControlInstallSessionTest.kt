@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlin.test.*
@@ -149,6 +150,48 @@ class DesktopControlInstallSessionTest {
         assertTrue(cancellations > 0)
         assertFalse(session.operationSnapshot().single().phase.terminal)
         assertTrue(session.hasBackgroundWork())
+    }
+
+    @Test fun updatesCancelTargetsTheExactPendingInstallBeforeDismissal() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        var prepared = 0
+        var cancellations = 0
+        var dismissals = 0
+        var cancellationCode = ControlCode.OUTCOME_UNKNOWN
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { command ->
+            assertEquals(DesktopCliCommand.UpdatesDismiss, command)
+            dismissals++
+            DesktopCliResponse.success("")
+        }, {}, controllerId = "owner", install = DesktopControlInstallActions(
+            prepare = { _, _ ->
+                prepared++
+                DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job)
+            },
+            recover = { Result.success(emptyList()) },
+            cancel = {
+                cancellations++
+                DesktopInstallHandoffResult(cancellationCode, job)
+            },
+        ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        val cancellation = async {
+            session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+                "cancel", ControlCommand(ControlOperationId.UPDATES_CANCEL), controllerId = "owner")))
+        }
+
+        advanceTimeBy(300)
+        runCurrent()
+
+        assertNotNull(install.operationId)
+        assertEquals(1, cancellations, "Cancellation must target the one retained install")
+        assertEquals(1, prepared, "Cancellation must reuse the retained install identity")
+        assertEquals(0, dismissals, "Dismissal waits for the exact install cancellation")
+        cancellationCode = ControlCode.CANCELLED
+        advanceTimeBy(300)
+        runCurrent()
+        assertTrue(cancellation.await().success)
+        assertEquals(1, dismissals)
     }
 
     @Test fun previousOwnerUnknownBlocksMutationsAndResumeButKeepsInspectionResponsive() = runTest {

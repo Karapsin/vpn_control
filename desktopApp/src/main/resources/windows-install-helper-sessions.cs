@@ -21,11 +21,15 @@ internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFa
         bool originalUser=invocation.Operation==VpnInstallHelperProtocol.Role.OriginalUser;
         OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,originalUser);
         OriginalUserSessionAdapter session=null;
+        CoordinatorSessionAdapter coordinator=null;
         try {
-            if (!originalUser) throw new IOException("RUNTIME_FAILED");
-            session=new OriginalUserSessionAdapter(admission);
-            int result=VpnInstallHelperRoles.RunOriginalUser(session);
-            return result;
+            if (originalUser) {
+                session=new OriginalUserSessionAdapter(admission);
+                return VpnInstallHelperRoles.RunOriginalUser(session);
+            }
+            coordinator=new CoordinatorSessionAdapter(admission);
+            VpnInstallHelperRoles.RunCoordinator(coordinator);
+            return 0;
         } catch (VpnInstallHelperRoles.WorkerFailure failure) {
             // Main would otherwise immediately end the process and release every
             // local pin.  An attempted MSI call therefore remains live while this
@@ -43,9 +47,254 @@ internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFa
         } finally {
             // A failed retained close keeps the whole admitted chain alive for
             // its explicit retry; do not discard the owner witness underneath it.
+            if (coordinator!=null) coordinator.Dispose();
             if (session!=null) session.Dispose();
             admission.Dispose();
         }
+    }
+}
+
+// Coordinator state is intentionally separated from OriginalUserSessionAdapter:
+// it owns only protected state and retained identity witnesses, never an MSI
+// adapter, package handle, command line, or relaunch authority.
+internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.CoordinatorSession, IDisposable {
+    readonly CoordinatorSessionAdapterFacilities fixture;
+    readonly OwnerInputAdmission admission;
+    readonly DateTime precommitDeadline, exitDeadline;
+    readonly CoordinatorReceiptWriter fixtureReceiptWriter;
+    CoordinatorReceiptWriter receiptWriter;
+    VpnInstallNative.ProcessPin worker, frontend;
+    VpnInstallNative.ProcessImagePin workerGeneration, coordinatorGeneration;
+    VpnInstallNative.ExecutableReplacementSet installation;
+    FileStream workerImage, coordinatorImage, gate, cancel;
+    SafeFileHandle programDataDirectory, programDataWitness, machineDirectory, jobDirectory;
+    bool reserved, exclusive;
+    bool disposed;
+
+    internal CoordinatorSessionAdapter(CoordinatorSessionAdapterFacilities facilities) {
+        if (facilities==null) throw new ArgumentNullException("facilities");
+        fixture=facilities;
+    }
+    internal CoordinatorSessionAdapter(CoordinatorSessionAdapterFacilities facilities,CoordinatorReceiptWriter writer) {
+        if (facilities==null || writer==null || facilities.JobId!=writer.JobId) throw new ArgumentException("Coordinator fixture rejected");
+        fixture=facilities; fixtureReceiptWriter=writer;
+    }
+
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission) {
+        if (retainedAdmission==null || retainedAdmission.Request==null) throw new IOException("CONFLICT");
+        admission=retainedAdmission;
+        precommitDeadline=DateTime.UtcNow.AddMinutes(3);
+        exitDeadline=precommitDeadline;
+        try { AdmitWorker(); }
+        catch { Dispose(); throw; }
+    }
+
+    public string JobId { get { return fixture==null ? admission.Request.JobId : fixture.JobId; } }
+    public void ReserveInstallation() {
+        if (fixture!=null) { fixture.ReserveInstallation(); return; }
+        string launcherDirectory=Path.GetDirectoryName(admission.Request.Launcher);
+        if (String.IsNullOrEmpty(launcherDirectory)) throw new IOException("CONFLICT");
+        SafeFileHandle directory=VpnInstallNative.OpenDirectory(launcherDirectory);
+        string installationId;
+        try {
+            VpnInstallNative.Inspect(directory,true,false,admission.Owner.Principal);
+            installationId=VpnInstallNative.InstallationId(directory);
+            installation=new VpnInstallNative.ExecutableReplacementSet(directory,admission.Owner.Principal);
+            directory=null;
+        } finally { if (directory!=null) directory.Dispose(); }
+        string machine=OpenProtectedMachineDirectory();
+        string gatePath=Path.Combine(machine,"gate-"+installationId);
+        const string gateAcl="O:BAG:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)";
+        try { gate=VpnInstallNative.CreateFile(gatePath,gateAcl,new byte[17]); }
+        catch (Win32Exception error) { if (error.NativeErrorCode!=80) throw; gate=VpnInstallNative.OpenGate(gatePath,true); }
+        VpnInstallNative.InspectLinkedAncestor(machineDirectory,gate.SafeFileHandle,null);
+        VpnInstallNative.Inspect(gate.SafeFileHandle,false,false,null);
+        if (gate.Length!=17 || !VpnInstallNative.TryLock(gate.SafeFileHandle,16,true)) throw new IOException("BUSY");
+        reserved=true; gate.Position=0;
+        for (int index=0;index<17;index++) if (gate.ReadByte()!=0) throw new IOException("BUSY");
+    }
+    public void CreateProtectedJob() {
+        if (fixture!=null) { fixture.CreateProtectedJob(); return; }
+        string machine=OpenProtectedMachineDirectory();
+        string jobPath=Path.Combine(machine,JobId);
+        const string jobAcl="O:BAG:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;GRGX;;;BU)";
+        VpnInstallNative.CreateDirectory(jobPath,jobAcl);
+        jobDirectory=VpnInstallNative.OpenDirectory(jobPath);
+        VpnInstallNative.InspectLinkedAncestor(machineDirectory,jobDirectory,null);
+        VpnInstallNative.Inspect(jobDirectory,true,false,null);
+        string cancelAcl="O:BAG:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;0x00120083;;;";
+        cancel=VpnInstallNative.CreateProtectedChild(jobDirectory,"cancel",cancelAcl+admission.Owner.Principal+")",new byte[] { 0 });
+        receiptWriter=new CoordinatorReceiptWriter(JobId,jobDirectory,new NativeCoordinatorReceiptPublisher());
+    }
+    public void Publish(VpnInstallHelperRoles.Phase phase,string code) {
+        if (fixture!=null) { if (fixtureReceiptWriter!=null) fixtureReceiptWriter.Publish(phase,code); else fixture.Publish(phase,code); return; }
+        if (jobDirectory==null) throw new IOException("CONFLICT");
+        if (receiptWriter==null) receiptWriter=new CoordinatorReceiptWriter(JobId,jobDirectory,new NativeCoordinatorReceiptPublisher());
+        receiptWriter.Publish(phase,code);
+    }
+    public void SetPending(bool value) {
+        if (fixture!=null) { fixture.SetPending(value); return; }
+        if (gate==null) throw new IOException("CONFLICT");
+        gate.Position=8; gate.WriteByte(value ? (byte)1 : (byte)0); gate.Flush(true);
+    }
+    public bool CancellationRequested { get {
+        if (fixture!=null) return fixture.CancellationRequested;
+        if (cancel==null) throw new IOException("CONFLICT");
+        cancel.Position=0; int value=cancel.ReadByte();
+        if (value!=0 && value!=1) throw new IOException("CONFLICT"); return value==1;
+    } }
+    public bool OwnerExited { get { return fixture==null ? admission.Owner.Exited : fixture.OwnerExited; } }
+    public bool FrontendExited { get { return fixture==null ? frontend==null || frontend.Exited : fixture.FrontendExited; } }
+    public bool WorkerExited { get { return fixture==null ? worker.Exited : fixture.WorkerExited; } }
+    public bool PrecommitDeadlineReached { get { return fixture==null ? DateTime.UtcNow>=precommitDeadline : fixture.PrecommitDeadlineReached; } }
+    public bool ExitDeadlineReached { get { return fixture==null ? DateTime.UtcNow>=exitDeadline : fixture.ExitDeadlineReached; } }
+    public bool CommitExists() {
+        if (fixture!=null) return fixture.CommitExists();
+        byte[] record=admission.ReadPrivateLeaf("commit.json",true);
+        return record!=null && VpnInstallHelperProtocol.IsCommit(record,JobId);
+    }
+    public bool TryExclusiveAdmission() {
+        if (fixture!=null) return fixture.TryExclusiveAdmission();
+        if (gate==null || !admission.Owner.Exited || (frontend!=null && !frontend.Exited)) return false;
+        if (!exclusive) exclusive=VpnInstallNative.TryLock(gate.SafeFileHandle,0,true);
+        return exclusive;
+    }
+    public bool TryInstallationReady() {
+        if (fixture!=null) return fixture.TryInstallationReady();
+        if (!exclusive || installation==null) throw new IOException("CONFLICT");
+        return VpnInstallHelperProcessInventory.TryNoAdmittedInstallationCopies(installation,
+            (uint)Process.GetCurrentProcess().Id,worker.Pid) && installation.TryReady();
+    }
+    public uint? ReadNativeResult() {
+        if (fixture!=null) return fixture.ReadNativeResult();
+        byte[] record=admission.ReadPrivateLeaf("worker-result.json",true);
+        return record==null ? (uint?)null : VpnInstallHelperProtocol.ParseWorkerResult(record,JobId);
+    }
+    public void Pause() { if (fixture==null) Thread.Sleep(100); else fixture.Pause(); }
+    string OpenProtectedMachineDirectory() {
+        if (machineDirectory!=null) return Path.Combine(VpnInstallNative.ProgramData(),"vpn-control-install-jobs");
+        string programData=VpnInstallNative.ProgramData();
+        programDataDirectory=VpnInstallNative.OpenDirectory(programData);
+        try { VpnInstallNative.Inspect(programDataDirectory,true,true,null); }
+        catch {
+            // ProgramData can legitimately carry inheritable metadata rights; retain
+            // a nonempty exact child witness rather than trusting a path lookup.
+            programDataWitness=VpnInstallNative.PinNonEmptyAncestor(programDataDirectory,null);
+        }
+        string machine=Path.Combine(programData,"vpn-control-install-jobs");
+        const string machineAcl="O:BAG:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;GRGX;;;BU)";
+        try { VpnInstallNative.CreateDirectory(machine,machineAcl); }
+        catch (Win32Exception error) { if (error.NativeErrorCode!=183) throw; }
+        machineDirectory=VpnInstallNative.OpenDirectory(machine);
+        VpnInstallNative.InspectLinkedAncestor(programDataDirectory,machineDirectory,null);
+        VpnInstallNative.Inspect(machineDirectory,true,false,null);
+        return machine;
+    }
+    void AdmitWorker() {
+        VpnInstallHelperProtocol.WorkerReady ready=VpnInstallHelperProtocol.ParseWorkerReady(admission.ReadPrivateLeaf("worker-ready.json",false));
+        if (ready.JobId!=JobId || ready.PrincipalSid!=admission.Owner.Principal) throw new IOException("CONFLICT");
+        worker=new VpnInstallNative.ProcessPin(ready.Pid);
+        workerGeneration=new VpnInstallNative.ProcessImagePin(ready.Pid);
+        VpnInstallNative.ProcessImageObservation observed=workerGeneration.Observe();
+        if (worker.Exited || worker.Principal!=admission.Owner.Principal || observed.KernelOnly ||
+            observed.CreationFileTime!=ready.CreationFileTime) throw new IOException("CONFLICT");
+        SafeFileHandle image=VpnInstallNative.OpenRead(observed.Image,false);
+        try {
+            VpnInstallNative.Inspect(image,false,false,null);
+            workerImage=new FileStream(image,FileAccess.Read,1,false); image=null;
+            if (!String.Equals(VpnInstallNative.Sha256(workerImage),ready.HelperSha256,StringComparison.Ordinal)) throw new IOException("CONFLICT");
+        } finally { if (image!=null) image.Dispose(); }
+        coordinatorGeneration=new VpnInstallNative.ProcessImagePin((uint)Process.GetCurrentProcess().Id);
+        VpnInstallNative.ProcessImageObservation coordinator=coordinatorGeneration.Observe();
+        if (coordinator.KernelOnly) throw new IOException("CONFLICT");
+        SafeFileHandle coordinatorHandle=VpnInstallNative.OpenRead(coordinator.Image,false);
+        try {
+            VpnInstallNative.Inspect(coordinatorHandle,false,false,null);
+            coordinatorImage=new FileStream(coordinatorHandle,FileAccess.Read,1,false); coordinatorHandle=null;
+            if (!VpnInstallNative.SameFileObject(workerImage.SafeFileHandle,coordinatorImage.SafeFileHandle) ||
+                !String.Equals(VpnInstallNative.Sha256(coordinatorImage),ready.HelperSha256,StringComparison.Ordinal))
+                throw new IOException("CONFLICT");
+        } finally { if (coordinatorHandle!=null) coordinatorHandle.Dispose(); }
+        if (admission.Request.FrontendPid.HasValue) {
+            frontend=new VpnInstallNative.ProcessPin(admission.Request.FrontendPid.Value);
+            if (frontend.Exited || frontend.Principal!=admission.Owner.Principal ||
+                frontend.StartedAtEpochMillis!=admission.Request.FrontendStartedAtEpochMillis.Value ||
+                !String.Equals(frontend.Image,admission.Request.Launcher,StringComparison.OrdinalIgnoreCase)) throw new IOException("CONFLICT");
+        }
+    }
+    public void Dispose() {
+        if (disposed) return;
+        if (fixture!=null) { fixture.Dispose(); disposed=true; return; }
+        Exception failure=null;
+        try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { failure=error; }
+        try { if (reserved) { VpnInstallNative.Unlock(gate.SafeFileHandle,16); reserved=false; } } catch (Exception error) { if (failure==null) failure=error; }
+        IDisposable[] resources={ cancel,jobDirectory,machineDirectory,programDataWitness,programDataDirectory,gate,workerImage,coordinatorImage,
+            workerGeneration,coordinatorGeneration,worker,frontend,installation };
+        for (int index=0;index<resources.Length;index++) try { if (resources[index]!=null) resources[index].Dispose(); }
+            catch (Exception error) { if (failure==null) failure=error; }
+        if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
+        disposed=true;
+    }
+}
+
+// Same-assembly only. It intentionally has no MSI, command, path, token or
+// process-launch member, making it impossible for a coordinator regression to
+// acquire original-user installation authority through this seam.
+internal interface CoordinatorSessionAdapterFacilities : IDisposable {
+    string JobId { get; }
+    void ReserveInstallation();
+    void CreateProtectedJob();
+    void Publish(VpnInstallHelperRoles.Phase phase,string code);
+    void SetPending(bool value);
+    bool CancellationRequested { get; }
+    bool OwnerExited { get; }
+    bool FrontendExited { get; }
+    bool WorkerExited { get; }
+    bool PrecommitDeadlineReached { get; }
+    bool ExitDeadlineReached { get; }
+    bool CommitExists();
+    bool TryExclusiveAdmission();
+    bool TryInstallationReady();
+    uint? ReadNativeResult();
+    void Pause();
+}
+
+// The writer is the sole receipt publication boundary used by the production
+// adapter. A test may replace only its atomic publisher; it cannot supply a
+// coordinator role, installer, token, path, or process-launch authority.
+internal interface CoordinatorReceiptPublisher {
+    void Replace(SafeFileHandle directory,string temporaryName,byte[] record);
+}
+
+internal sealed class NativeCoordinatorReceiptPublisher : CoordinatorReceiptPublisher {
+    const string ReceiptAcl="O:BAG:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)";
+    public void Replace(SafeFileHandle directory,string temporaryName,byte[] record) {
+        using (FileStream output=VpnInstallNative.CreateProtectedChild(directory,temporaryName,ReceiptAcl,record)) { }
+        VpnInstallNative.ReplaceReceipt(directory,temporaryName);
+    }
+}
+
+internal sealed class CoordinatorReceiptWriter {
+    readonly string jobId;
+    readonly SafeFileHandle directory;
+    readonly CoordinatorReceiptPublisher publisher;
+    readonly VpnInstallHelperRoles.ReceiptCursor cursor;
+    long sequence=-1;
+    internal string JobId { get { return jobId; } }
+    internal CoordinatorReceiptWriter(string job,SafeFileHandle retainedDirectory,CoordinatorReceiptPublisher receiptPublisher) {
+        VpnInstallHelperProtocol.Job(job);
+        if (receiptPublisher==null) throw new ArgumentNullException("receiptPublisher");
+        jobId=job; directory=retainedDirectory; publisher=receiptPublisher;
+        cursor=new VpnInstallHelperRoles.ReceiptCursor(job);
+    }
+    internal void Publish(VpnInstallHelperRoles.Phase phase,string code) {
+        VpnInstallHelperRoles.Receipt receipt=new VpnInstallHelperRoles.Receipt(jobId,checked(sequence+1),phase,code);
+        try {
+            publisher.Replace(directory,"status-"+Guid.NewGuid().ToString("D")+".tmp",VpnInstallHelperProtocol.EncodeReceipt(receipt));
+        } catch (VpnInstallHelperRoles.PublicationUncertainException) { throw; }
+        catch (Exception error) { throw new VpnInstallHelperRoles.PublicationUncertainException(error); }
+        cursor.Accept(receipt);
+        sequence=receipt.Sequence;
     }
 }
 
@@ -251,6 +500,7 @@ internal sealed class OwnerInputAdmission : IDisposable {
     internal readonly VpnInstallNative.ProcessImagePin OwnerGeneration;
     internal readonly WindowsIdentity Caller;
     internal VpnInstallHelperProtocol.Request Request { get; private set; }
+    internal SafeFileHandle InputDirectory { get; private set; }
 
     OwnerInputAdmission(VpnInstallNative.ProcessPin owner,VpnInstallNative.ProcessImagePin generation,
         WindowsIdentity caller) {
@@ -313,6 +563,7 @@ internal sealed class OwnerInputAdmission : IDisposable {
             SafeFileHandle input=OpenPinnedDirectory(inputRoot,
                 Path.Combine(local,"vpn-control-install-inputs",invocation.JobId),Owner.Principal,false);
             retained.Add(input);
+            InputDirectory=input;
             requestHandle=VpnInstallNative.OpenRead(Path.Combine(local,"vpn-control-install-inputs",invocation.JobId,"request.json"),false);
             VpnInstallNative.InspectLinkedAncestor(input,requestHandle,Owner.Principal);
             VpnInstallNative.Inspect(requestHandle,false,false,Owner.Principal);
@@ -333,6 +584,27 @@ internal sealed class OwnerInputAdmission : IDisposable {
             catch (Exception cleanupFailure) {
                 readFailure.Data["vpn.install.inputAdmission.cleanupUncertain"]=cleanupFailure.GetType().FullName;
             }
+            throw;
+        }
+    }
+
+    // Only known protocol leaves are read through the retained private input
+    // directory. A caller cannot choose a path or replace an admitted leaf.
+    internal byte[] ReadPrivateLeaf(string leaf,bool initialMissing) {
+        if (InputDirectory==null || InputDirectory.IsInvalid) throw new IOException("CONFLICT");
+        if (leaf!="worker-ready.json" && leaf!="commit.json" && leaf!="worker-result.json")
+            throw new IOException("INVALID_ARGUMENT");
+        string local=Owner.LocalAppData();
+        string path=Path.Combine(local,"vpn-control-install-inputs",Request.JobId,leaf);
+        try {
+            using (SafeFileHandle file=VpnInstallNative.OpenRead(path,false)) {
+                VpnInstallNative.InspectLinkedAncestor(InputDirectory,file,Owner.Principal);
+                VpnInstallNative.Inspect(file,false,false,Owner.Principal);
+                using (FileStream stream=new FileStream(file,FileAccess.Read,1,false))
+                    return ReadBounded(stream,65536);
+            }
+        } catch (Win32Exception error) {
+            if (initialMissing && (error.NativeErrorCode==2 || error.NativeErrorCode==3)) return null;
             throw;
         }
     }

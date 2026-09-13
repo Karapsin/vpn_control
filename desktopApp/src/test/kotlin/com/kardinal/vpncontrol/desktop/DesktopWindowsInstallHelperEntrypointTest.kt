@@ -23,7 +23,7 @@ class DesktopWindowsInstallHelperEntrypointTest {
             "windows-install-helper-protocol.cs",
             "windows-install-helper-roles.cs",
             "windows-install-helper-msi.cs",
-            "windows-install-helper-sessions.cs",
+            "windows-install-helper-sessions.cs", "windows-install-helper-inventory.cs",
             "windows-install-helper-entrypoint-fixture.cs",
             "windows-install-helper-session-fixture.cs",
         ).map { name ->

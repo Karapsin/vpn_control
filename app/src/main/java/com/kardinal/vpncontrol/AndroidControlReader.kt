@@ -215,6 +215,8 @@ internal class AndroidControlReader(
             val apps = installedApps?.invoke() ?: return response(ControlCode.UNAVAILABLE)
             return response(ControlCode.OK, com.kardinal.vpncontrol.data.AndroidRoutingControl.list(persisted, command.arguments, apps))
         }
+        // Legacy read-only test/compatibility owner. Production provides settingsWrite, which
+        // dispatches diagnostics through AndroidSettingsControl before this point.
         if (command.operation == ControlOperationId.DIAGNOSTICS_EXPORT) {
             if (command.arguments.isNotEmpty()) return response(ControlCode.INVALID_ARGUMENT)
             val exporter = diagnosticsExport ?: return response(ControlCode.UNAVAILABLE)

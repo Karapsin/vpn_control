@@ -29,21 +29,20 @@ internal object DesktopAndroidCli {
                 ControlOperationId.SERVE, ControlOperationId.GUI_SHOW, ControlOperationId.GUI_HIDE, ControlOperationId.QUIT)) {
             return fail(ControlCode.UNSUPPORTED)
         }
-        if (invocation.client.asynchronous && invocation.operation == ControlOperationId.DIAGNOSTICS_EXPORT)
-            return fail(ControlCode.UNSUPPORTED)
         val controlRequest = com.kardinal.vpncontrol.control.ControlCliRequestBuilder.build(
             invocation, requestId, readInput, readQrImage).getOrElse {
                 return fail(if (it is OutOfMemoryError) ControlCode.UNAVAILABLE else ControlCode.INVALID_ARGUMENT)
             }
-        if (invocation.operation == ControlOperationId.OPERATIONS_WAIT && "--output" in invocation.options)
-            return fail(ControlCode.UNSUPPORTED)
         val response = desktopCliJsonResponse(controlRequest,
             request(controlRequest, invocation.client.serial, invocation.client.timeoutSeconds))
-        if (invocation.operation in DesktopControlExports.operations) {
+        if ("--output" in invocation.options && (invocation.operation in DesktopControlExports.operations ||
+            invocation.operation == ControlOperationId.OPERATIONS_WAIT)) {
             val output = requireNotNull(invocation.options["--output"])
-            val format = invocation.options["--format"] ?: "json"
+            val format = invocation.options["--format"] ?: if (invocation.operation in setOf(
+                ControlOperationId.DIAGNOSTICS_EXPORT, ControlOperationId.OPERATIONS_WAIT)) "text" else "json"
             if (output != "-") {
-                val exported = DesktopControlExports.write(response, output, format, writeText, writeBinary)
+                val exported = DesktopControlExports.write(response, output, format, writeText, writeBinary,
+                    if (invocation.operation == ControlOperationId.OPERATIONS_WAIT) ControlCode.INVALID_ARGUMENT else ControlCode.INCOMPATIBLE_PROTOCOL)
                 printResponse(exported)
                 return exported.exitCode
             }
@@ -53,7 +52,8 @@ internal object DesktopAndroidCli {
             val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(response.message)
             if (!result.ok) return rawFailure(result.code)
             val content = (result.data["content"] as? ControlValue.Text)?.value
-            if (!result.final || result.code != ControlCode.OK || content == null) return rawFailure(ControlCode.INCOMPATIBLE_PROTOCOL)
+            if (!result.final || result.code != ControlCode.OK || content == null)
+                return rawFailure(if (invocation.operation == ControlOperationId.OPERATIONS_WAIT) ControlCode.INVALID_ARGUMENT else ControlCode.INCOMPATIBLE_PROTOCOL)
             val code = DesktopControlExports.writeRaw(content, format, writeBinary)
             return if (code == ControlCode.OK) 0 else rawFailure(code)
         }

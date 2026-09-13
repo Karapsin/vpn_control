@@ -70,6 +70,29 @@ public static class VpnInstallHelperProtocol {
             "\",\"exitCode\":"+exitCode.ToString(CultureInfo.InvariantCulture)+"}");
     }
 
+    internal static bool IsCommit(byte[] bytes,string expectedJob) {
+        Dictionary<string,object> record=Record(bytes,4096);
+        Fields(record,"version","jobId");
+        if (Integer(record,"version")!=1 || Text(record,"jobId")!=expectedJob) throw Invalid();
+        Job(expectedJob); return true;
+    }
+
+    internal static uint ParseWorkerResult(byte[] bytes,string expectedJob) {
+        Dictionary<string,object> record=Record(bytes,4096);
+        Fields(record,"version","jobId","exitCode");
+        if (Integer(record,"version")!=1 || Text(record,"jobId")!=expectedJob) throw Invalid();
+        long exit=Integer(record,"exitCode");
+        if (exit<0 || exit>UInt32.MaxValue) throw Invalid();
+        Job(expectedJob); return (uint)exit;
+    }
+
+    internal static byte[] EncodeReceipt(VpnInstallHelperRoles.Receipt receipt) {
+        if (receipt==null) throw Invalid();
+        return new UTF8Encoding(false,true).GetBytes("{\"version\":1,\"jobId\":\""+receipt.JobId+
+            "\",\"sequence\":"+receipt.Sequence.ToString(CultureInfo.InvariantCulture)+",\"phase\":\""+
+            receipt.State.ToString()+"\",\"code\":\""+receipt.Code+"\"}");
+    }
+
     internal static VpnInstallHelperRoles.Receipt ParseReceipt(byte[] bytes) {
         Dictionary<string,object> record=Record(bytes,4096);
         Fields(record,"version","jobId","sequence","phase","code");

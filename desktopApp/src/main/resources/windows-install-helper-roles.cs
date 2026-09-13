@@ -61,6 +61,14 @@ internal static class VpnInstallHelperRoles {
         }
     }
 
+    // A protected receipt replacement has no acknowledgement channel that can
+    // distinguish failure-before-visibility from loss after the new object became
+    // visible. The coordinator must retain its pending outcome in either case;
+    // it may never publish a different receipt at the same sequence as recovery.
+    internal sealed class PublicationUncertainException : IOException {
+        internal PublicationUncertainException(Exception cause) : base("OUTCOME_UNKNOWN",cause) { }
+    }
+
     internal static int RunOriginalUser(OriginalUserSession session) {
         bool started=false;
         uint? nativeExit=null;
@@ -186,6 +194,8 @@ internal static class VpnInstallHelperRoles {
                 // A live modifying installer is never killed or classified failed on a timer.
                 session.Pause();
             }
+        } catch (PublicationUncertainException) {
+            throw;
         } catch {
             if (created && !installing && !terminalPublicationAttempted) {
                 if (!preparingPublished) session.Publish(Phase.Preparing,"OK");

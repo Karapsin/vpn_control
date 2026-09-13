@@ -281,7 +281,7 @@ open. Desktop QR image imports and PNG exports are implemented, as are JSON file
 exports for locations/routing/diagnostics; content is not echoed in the final
 envelope and success follows client file writing. CLI stdout is
 explicit UTF-8 on every OS, independent of the JVM/console default encoding.
-Desktop asynchronous diagnostics export accepts without `--output`; use its
+Desktop and Android asynchronous diagnostics export accept without `--output`; use the
 operation ID with `operations wait <id> --output PATH|-` to retrieve and write
 the retained report. The original export destination is never sent to the owner.
 

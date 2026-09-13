@@ -97,7 +97,9 @@ class DesktopWindowsInstallHelperProtocolTest {
     @Test fun actualFixedNativeCodecAcceptsKotlinBytesAndRejectsMalformedRecordsWithoutNativeEffects() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-install-helper-protocol-")
-        val files = listOf("windows-install-native.cs", "windows-install-helper-protocol.cs").map { name ->
+        val files = listOf(
+            "windows-install-native.cs", "windows-install-helper-protocol.cs", "windows-install-helper-roles.cs",
+        ).map { name ->
             directory.resolve(name).also { path ->
                 javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, path) }
             }

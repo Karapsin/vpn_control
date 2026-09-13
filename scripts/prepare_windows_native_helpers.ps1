@@ -30,6 +30,7 @@ $required = @(
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-roles.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-msi.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-sessions.cs'),
+    (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper-inventory.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-install-helper.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-broker-main.cs'),
     (Join-Path $root 'desktopApp\src\main\resources\windows-vpn-helper-admission.cs'),

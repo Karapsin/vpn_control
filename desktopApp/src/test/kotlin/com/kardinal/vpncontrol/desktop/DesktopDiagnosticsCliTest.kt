@@ -121,7 +121,7 @@ class DesktopDiagnosticsCliTest {
     @Test
     fun asyncDiagnosticsExportRetainsExactReportForOperationWait() = runBlocking {
         val report = "VPN Control Desktop Diagnostics\nredacted report\n"
-        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
         val session = DesktopHeadlessSession(scope, { com.kardinal.vpncontrol.MainUiState() }, executeCommand = {
             assertEquals(DesktopCliCommand.DiagnosticsExport, it)
             DesktopCliResponse.success(report)
@@ -132,10 +132,11 @@ class DesktopDiagnosticsCliTest {
             val accepted = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
                 session.execute(DesktopCliCommand.ControlSubmit(request)).message)
 
-            assertEquals(ControlCode.ACCEPTED, accepted.code)
-            assertFalse(accepted.final)
+            // Immediate completion may publish the terminal report before async admission returns.
+            assertEquals(ControlCode.OK, accepted.code)
+            assertTrue(accepted.final)
             assertNotNull(accepted.operationId)
-            assertNull(accepted.data["content"])
+            assertEquals(report, (accepted.data.getValue("content") as com.kardinal.vpncontrol.model.ControlValue.Text).value)
 
             val completed = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
                 session.execute(DesktopCliCommand.ControlSubmit(ControlRequest("wait-request",

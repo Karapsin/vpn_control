@@ -107,6 +107,7 @@ internal class AndroidApplicationOwner(context: Context) {
             runtimeObserver::hasAuthoritativeConfiguration) },
         routingDispatcher = kotlinx.coroutines.Dispatchers.IO,
         retainedResults = AndroidRetainedControlResults { AndroidControlTransferSpool.create(appContext.cacheDir.toPath()) },
+        diagnosticsExport = diagnosticsExporter::exportText,
         setSource = { arguments, epoch, revision -> storage.commitControlSource(arguments, epoch, revision) {
             when (runtimeObserver.state.value.knowledge) {
                 AndroidRuntimeKnowledge.STOPPED -> false
@@ -200,7 +201,6 @@ internal class AndroidApplicationOwner(context: Context) {
         updateSnapshot = { updateState.value },
         updateInspection = { updateActions.control.inspection { updateState.value } + updateActions.installationInspection() },
         installedApps = installedAppsCatalog::load,
-        diagnosticsExport = diagnosticsExporter::exportText,
     )
     init { storage.observeConnectionLogs(controlReader::observeLogs) }
     private val mutableUpdateState = MutableStateFlow(AppUpdateState())

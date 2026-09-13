@@ -19,7 +19,7 @@ internal data class AndroidInstallSessionReceipt(
         AndroidInstallSessionPhase.FAILED, AndroidInstallSessionPhase.CANCELLED)
 }
 
-/** Persist before publishing transitions. Only an exact OS callback proves completion. */
+/** Persist before publishing transitions. A verified installed APK can recover a lost OS callback. */
 internal class AndroidInstallSessionLifecycle(
     initial: AndroidInstallSessionReceipt,
     private val persist: (AndroidInstallSessionReceipt) -> Unit,
@@ -62,6 +62,17 @@ internal class AndroidInstallSessionLifecycle(
     }
     @Synchronized fun reconcile(sessionPresent: Boolean) {
         if (!sessionPresent && !receipt.terminal) update(receipt.copy(phase = AndroidInstallSessionPhase.UNKNOWN))
+    }
+    @Synchronized fun recover(sessionPresent: Boolean,
+        installed: AndroidInstallReceiptRecovery.InstalledArtifact?): AndroidInstallReceiptRecovery.Decision {
+        val decision = AndroidInstallReceiptRecovery.decision(receipt, sessionPresent, installed)
+        when (decision) {
+            AndroidInstallReceiptRecovery.Decision.INSTALLED -> update(receipt.copy(phase = AndroidInstallSessionPhase.INSTALLED))
+            AndroidInstallReceiptRecovery.Decision.OUTCOME_UNKNOWN -> if (receipt.phase != AndroidInstallSessionPhase.UNKNOWN)
+                update(receipt.copy(phase = AndroidInstallSessionPhase.UNKNOWN))
+            else -> Unit
+        }
+        return decision
     }
     private fun update(next: AndroidInstallSessionReceipt) {
         persist(next)

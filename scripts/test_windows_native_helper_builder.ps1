@@ -33,6 +33,7 @@ try {
         'desktopApp\src\main\resources\windows-install-helper-roles.cs',
         'desktopApp\src\main\resources\windows-install-helper-msi.cs',
         'desktopApp\src\main\resources\windows-install-helper-sessions.cs',
+        'desktopApp\src\main\resources\windows-install-helper-inventory.cs',
         'desktopApp\src\main\resources\windows-install-helper.cs',
         'desktopApp\src\main\resources\windows-vpn-broker-main.cs',
         'desktopApp\src\main\resources\windows-vpn-helper-admission.cs',

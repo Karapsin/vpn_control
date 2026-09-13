@@ -18,6 +18,7 @@ class DesktopWindowsInstallHelperMsiTest {
         val directory = Files.createTempDirectory("vpn-install-helper-msi-")
         val files = listOf(
             "windows-install-native.cs", "windows-install-helper-protocol.cs",
+            "windows-install-helper-roles.cs",
             "windows-install-helper-msi.cs", "windows-install-helper-msi-fixture.cs",
         ).map { name ->
             directory.resolve(name).also { path ->

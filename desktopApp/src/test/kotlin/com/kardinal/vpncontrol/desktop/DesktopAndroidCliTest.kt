@@ -38,6 +38,35 @@ class DesktopAndroidCliTest {
         assertEquals("SANITIZED_ANDROID_REPORT", written)
         assertFalse(lines.single().contains("SANITIZED_ANDROID_REPORT"))
     }
+    @Test fun androidAsyncDiagnosticsWaitWritesOnlyClientDestination() {
+        val acceptedLines = mutableListOf<String>()
+        assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "--async", "diagnostics", "export"),
+            printLine = acceptedLines::add, androidRequest = { request, _, _ ->
+                assertTrue(request.asynchronous)
+                assertTrue(request.command.arguments.isEmpty())
+                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("android", request.requestId,
+                    ControlCode.ACCEPTED, 3, final = false, operationId = "diagnostics-operation")))
+            }))
+        assertEquals(ControlCode.ACCEPTED, ControlProtocolCodec.decodeResult(acceptedLines.single()).code)
+        val completedLines = mutableListOf<String>()
+        var written = ""
+        assertEquals(0, DesktopCli.handleArgs(arrayOf("--android", "--json", "operations", "wait", "diagnostics-operation",
+            "--output", "report 東京.txt"), printLine = completedLines::add, androidRequest = { request, _, _ ->
+            assertEquals(ControlOperationId.OPERATIONS_WAIT, request.command.operation)
+            assertEquals(setOf("id"), request.command.arguments.keys)
+            DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("android", request.requestId,
+                ControlCode.OK, 3, operationId = "diagnostics-operation",
+                data = mapOf("content" to ControlValue.Text("SANITIZED_RETAINED_REPORT")))))
+        }, writeOutput = { path, content ->
+            assertEquals("report 東京.txt", path)
+            written = content
+            Result.success(Unit)
+        }))
+        assertEquals("SANITIZED_RETAINED_REPORT", written)
+        val completed = ControlProtocolCodec.decodeResult(completedLines.single())
+        assertEquals(ControlCode.OK, completed.code)
+        assertFalse(completed.data.containsKey("content"))
+    }
     @Test fun androidFileExportNeverOverwritesExistingLocalDestination() {
         val directory = Files.createTempDirectory("android-export-東京")
         val destination = directory.resolve("saved.json")
