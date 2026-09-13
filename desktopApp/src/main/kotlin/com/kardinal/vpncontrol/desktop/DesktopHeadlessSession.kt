@@ -432,5 +432,9 @@ internal data class DesktopControlInstallActions(
     val prepare: suspend (DesktopInstallCorrelation, Long?) -> DesktopInstallHandoffResult,
     val recover: () -> Result<List<DesktopInstallCorrelationRecovery>>,
     val cancel: () -> DesktopInstallHandoffResult,
+    val resumeLateAuthorization: suspend (DesktopInstallCorrelation, String) -> DesktopInstallHandoffResult = { _, job ->
+        DesktopInstallHandoffResult(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN, job)
+    },
+    val onInstallReady: (DesktopInstallCorrelation, String) -> Unit = { _, _ -> },
     val settle: (DesktopInstallCorrelation, DesktopInstallJobReceipt) -> Result<Unit> = { _, _ -> Result.success(Unit) },
 )

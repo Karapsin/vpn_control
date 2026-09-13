@@ -33,12 +33,14 @@ Evidence: checkpoint38/{prepush-result,commit-request,commit-result}.json.
 The previous a4a5b743 checkpoint failed Windows IL3050; the generic marshaling
 fix and routine NativeAOT analyzer regression are in this verified checkpoint.
 
-The next intentional dirty slice covers desktop direct file-export transport and
-its real constrained-client regression, Windows native coordinator bootstrap/child
-lifecycle and scalar-token regression, plus macOS test-fixture build recovery, Android credential reopen coverage and a
-regression retaining the existing6GiB Linux build-VM capacity.
-These changes are uncommitted; version metadata has rolled to2.1.9 and requires new full prepush
-and a separate exact-SHA push. Native helper activation in the JVM remains pending.
+Checkpoint40 is pushed as `bb79fc8850b478d407e52b42c53a36b8546434f6`,
+version2.1.9 with one Unreleased note. All15 managed prepush checks passed.
+Exact-SHA Windows Desktop Package run34782234297 failed: three native compiler
+fixtures omitted the newly required original-user launcher source. The push is
+not fully verified. Evidence: checkpoint40/{commit,prepush-retry}-result.json.
+The intentional next dirty slice fixes those fixture dependencies and the macOS
+late-authorization recovery defect described below. Native helper activation in
+the JVM remains pending. Root will version, prepush and verify a new exact SHA.
 
 ## Implemented And Locally Tested
 
@@ -143,12 +145,14 @@ The exact test DMG was detached and removed from the VM; pending job inputs rema
 
 | Owner | Files or environment | Current check / next handoff |
 | --- | --- | --- |
-| root | WIP, shared build/delivery; exclusive Windows VM | Actual scalar RED/GREEN; export focused tests; native proof review |
-| desktop_export_failure_audit39 | DesktopControlDocuments, ActivationServer, Cli, Exports, PublicCliClient startup and focused tests | Real 64MiB public-client export regression; native metadata/publication review |
-| windows_aot_regression39 | Native helper sessions/original-user launch and focused fixtures/tests | Bootstrap lifetime fix; current-token regression; no JVM activation |
-| mac_fixture_recovery40 | Owned Tart guest; prepare_desktop_update_fixture and focused tests | Preserve successful base, recover target packaging after terminal ENOSPC |
-| windows_token_diagnosis39 | Exclusive Ubuntu2311 Linux fixture/recovery operator; no shared fixture script edits | Revalidate existing authenticated Arch hop; prepare immutable same-source DEB pair |
-| windows_apphost_desktop39 | AndroidSshCredentialVersionsInstrumentedTest only; handed off | Positive fresh-store/new-epoch credential test added; root compile passed; native verification pending |
+| root | WIP, shared build/delivery; exclusive Windows VM | Native original-user diagnostics/coordinator execution; exact-SHA CI fix integration |
+| desktop_export_failure_audit39 | Exclusive Fedora2316/Arch2317 operator; export source frozen | Complete same-source public update recovery after Linux ownership transfer |
+| windows_aot_regression39 | Windows compiler fixture dependency tests | Failed Windows CI causal regression and fixture fix; no VM or JVM activation |
+| mac_fixture_recovery40 | Owned Tart guest; Mac installer; Handoff, OperationRunner, ControllerOwner, HeadlessSession and focused tests | Late authorization retains exact worker; serialize resume/cancel and preserve runtime-stop/commit/response-ack ordering |
+| windows_msi_native_cutover | Ignored original-user diagnostic bundle only | Capture full native permission error; root alone executes in Windows VM |
+| windows_apphost_desktop39 | Exclusive Android5596 native actions | API35 benchmark passed; next Find Best cancellation/recovery |
+| windows_token_diagnosis39 | Linux handoff only; no active environment ownership | Transferred exact routes/current fixture state to Linux operator |
+
 
 - Windows VM: `.runtime/visual-vms/windows/qga.sock`; ARM64 guest/x64 emulation.
   Preserve unrelated processes. QGA PID status can be stale after PID reuse; use
@@ -250,3 +254,85 @@ successful current installed-package acceptance run.
   remained off; owned owner/server and temporary TLS materials were cleaned.
   This is headless user-local evidence; machine-owned authorization and GUI
   return remain separate acceptance gates. Root receipt review is in progress.
+
+## Current Native Recovery Results And Open Defect
+
+- Ubuntu same-source public recovery passed for frozen da81 source, base2.1.7 to
+  target2.1.8. Operation770423aa-d91a-4f91-87e1-8f1ab68a9052 and
+  job1e0f6bfa-3dd2-47ea-acc7-636f0c606d0b recovered on the replacement owner;
+  receipt SUCCEEDED/OK. Evidence: checkpoint40/linux-current-public-recovery.
+  Guest2318 was shut down after terminal cleanup. This is not bb79 package proof.
+- macOS user-local same-source replacement passed for the frozen a4a fixture,
+  base2.3.3 to target2.3.4; job48ccc0a5-97d5-4dc0-833e-4c7d195a1f80 recovered
+  installed=true on the replacement owner. All15 manifest-listed evidence hashes
+  verified: checkpoint40/mac-user-local-recovery. It is not bb79 package proof.
+- The distinct machine-owned Mac job697bf383-698c-4e41-ba6d-8d05930211ae remains
+  AUTHORIZED/OK sequence1 after approval arrived beyond the initial wait. The old
+  owner operation1a60aa37-776c-4088-9e20-14f5760dead9 remains OUTCOME_UNKNOWN;
+  base2.3.3 is unchanged. Preserve worker, inputs and correlation; no manual
+  commit/replay/cleanup. Causal quick regression now fails with attempted cancel
+  on timeout: checkpoint40/mac-late-auth-red-causal.{log,xml}. Fix in progress.
+- Windows original-user probe completed with PERMISSION_DENIED. Exact scheduled
+  task is Ready/result1 and no helper process remains; full error diagnostics
+  are next. Evidence: checkpoint40/original-user-root-final. This is neither
+  successful original-user execution nor MSI/UAC proof.
+- API35 public benchmark produced secondaryTotalMs841.071083 with real relay TLS
+  traffic; interactive Find Best accepted VPN consent and activated the winner.
+  Public off and fixture deletion completed; final runtime stopped. Evidence is
+  under checkpoint37/android-api35-native. Remaining action/failure matrix stays
+  open; do not infer Find Best preserves selection as benchmark does.
+
+## Checkpoint41 Work Under Review
+
+- Windows compiler dependency fixes have a source-list closure regression with
+  isolated bb79 RED evidence; the host guard passed. Native-only compiler tests
+  skipped on macOS, so the failed Windows CI gate still needs a new verified push.
+- Mac late authorization focused selection executed29 tests successfully and
+  skipped12 Windows-only cases. Further review found cancellation admission during
+  reserved resume, retrying exit-arm without replay, and foreign-result job binding
+  defects. Fresh owner mac_resume_race_review41 controls OperationRunner and
+  ControlInstallSessionTest to close them before final acceptance.
+- Windows autostart ownership/explicit migration selection passed18 tests. It is
+  under review for exact path/legacy registration ownership and query failures;
+  migration is not activated and whole-GUI elevation remains unchanged.
+- Original-user native diagnostics prove Capture succeeds for ordinary user/session1,
+  then StartSameHelper fails CreateProcessWithTokenW with Win32 error1314. Evidence:
+  checkpoint40/original-user-root-diagnostic/runs/7d7986b430814340a6e595f5be4dbfea.
+  Fresh owner windows_original_user_launch41 owns the launcher and focused tests.
+- Native coordinator5c25 emitted its exact admission marker and native completion,
+  but its PowerShell wrapper3512 remained live without an apphost at observation.
+  No restart/termination was performed. Component marker is not full lifecycle proof.
+- Fresh android_cancel_native41 owns API35/5596 cancellation acceptance; previous
+  cold-CLI attempts reached already-completed operations and do not close that gate.
+
+## Checkpoint41 Freeze Evidence
+
+The reviewed code slice contains the Mac retained-authorization fix and cancellation
+admission/cleanup safeguards, Windows original-user launch fallback and compiler
+fixture dependencies, and Windows autostart ownership inspection/explicit migration.
+No release or whole-GUI elevation removal is part of this checkpoint.
+
+- Focused current Kotlin union:56 tests executed, zero failures/skips
+  (`checkpoint40/mac-resume-race/green3.log` and retained XML). Three resumed-job
+  races failed causally before their fixes; pre-commit stop failure also reproduced,
+  while ambiguous-commit no-cancellation safety stayed green. Exit arming retries
+  without another commit; pre-commit unconfirmed cancellation permits only owned
+  cancellation retry. Full prepush remains required after final metadata.
+- Windows current launcher compiled in the owned ARM64/x64 guest and actual
+  ordinary-user/session1 native probe passed, including real helper launch and
+  forced1314 fallback branch with child identity checks. Frozen current fixture:
+  `checkpoint41/original-user-fallback3/runs/a990829a202f449ba24279adde559f2a`.
+  This is component evidence, not MSI/UAC/elevated-or-other-admin acceptance.
+- Root verified all Fedora evidence hashes and actual exact operation/job recovery
+  in `checkpoint41/linux-fedora-public-recovery`. Frozen source remains da81.
+- Root verified64 Android evidence files in
+  `checkpoint37/android-api35-native/native-cancel-retained`. Before and after the
+  cancelled0/2 Find Best operation, selected B remained pending while active A and
+  its runtime ID remained unchanged. This does not prove cancellation after a
+  candidate runtime replacement or general traffic continuity.
+- Old Mac machine job697bf383 accepted public cancellation and its cancel byte is1,
+  but protected receipt remains AUTHORIZED/OK sequence1 with no observed coordinator.
+  Owner38162 and watcher38203 remain; no quit/manual cleanup/replay was performed.
+  It cannot certify the new source and remains an unresolved native fixture gate.
+- Arch2317 public authorization attempt failed; exact authentication/terminal
+  correlation is being rechecked before any new attempt. Preserve unknown work.

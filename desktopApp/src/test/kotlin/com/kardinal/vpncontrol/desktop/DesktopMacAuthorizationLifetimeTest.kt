@@ -113,6 +113,7 @@ class DesktopMacAuthorizationLifetimeTest {
         return DesktopMacLateAuthorization(
             ownerId = "owner",
             lifetime = DesktopMacAuthorizationLifetime({ Result.success(Unit) }, DesktopMacAuthorizationCollector(job, process)),
+            watcher = FakeProcess(true, byteArrayOf()),
             requireReceiptAbsent = requireReceiptAbsent,
             stopWatcher = stopWatcher,
             closePrepared = closePrepared,

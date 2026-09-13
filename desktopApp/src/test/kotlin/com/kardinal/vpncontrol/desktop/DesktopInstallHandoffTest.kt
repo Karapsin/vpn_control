@@ -52,6 +52,95 @@ class DesktopInstallHandoffTest {
         assertEquals(ControlCode.BUSY, handoff.prepare("retry").code)
         handoff.close()
     }
+
+    @Test fun lateAuthorizationTimeoutRetainsExactWorkerWithoutAttemptingCancellation() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> { events += "commit"; return Result.success(Unit) }
+            override fun cancel(): Result<Unit> {
+                events += "cancel"
+                return Result.failure(IllegalStateException("UNAVAILABLE"))
+            }
+            override fun close() { events += "close" }
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = {
+                throw DesktopInstallPreparationFailure(prepared, IllegalStateException("OUTCOME_UNKNOWN"),
+                    retainsLateAuthorization = true)
+            },
+            stopRuntime = { fail("Late authorization has not yet resumed the handoff") },
+            requestExit = { fail("Late authorization has not yet acknowledged a public response") },
+        )
+
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId), handoff.prepare("request"))
+        assertEquals(emptyList(), events)
+        handoff.close()
+        assertEquals(listOf("cancel", "close"), events)
+    }
+
+    @Test fun lateAuthorizationResumesSameWorkerThroughStopCommitAndResponseOrder() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = worker(events)
+        val handoff = DesktopInstallHandoff(
+            prepare = {
+                throw DesktopInstallPreparationFailure(prepared, IllegalStateException("OUTCOME_UNKNOWN"),
+                    retainsLateAuthorization = true)
+            },
+            stopRuntime = { events += "stop"; Result.success(Unit) },
+            requestExit = { events += "exit:$it" },
+        )
+
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId), handoff.prepare("request"))
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OK, prepared.jobId),
+            handoff.resumeLateAuthorization("request", prepared.jobId))
+        assertEquals(listOf("stop", "commit", "exit:request"), events)
+        assertEquals(ControlCode.BUSY, handoff.retryCancellation().code)
+    }
+
+    @Test fun lateAuthorizationStopFailureCancelsTheExactWorkerBeforeAnyCommitAttempt() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = worker(events)
+        val handoff = DesktopInstallHandoff(
+            prepare = { throw DesktopInstallPreparationFailure(prepared, IllegalStateException("OUTCOME_UNKNOWN"),
+                retainsLateAuthorization = true) },
+            stopRuntime = { events += "stop"; Result.failure(IllegalStateException("RUNTIME_FAILED")) },
+            requestExit = { fail("Stop failure must not request exit") },
+        )
+
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, handoff.prepare("request").code)
+        assertEquals(DesktopInstallHandoffResult(ControlCode.RUNTIME_FAILED),
+            handoff.resumeLateAuthorization("request", prepared.jobId))
+        assertEquals(listOf("stop", "cancel", "close"), events)
+        assertEquals(ControlCode.NOT_FOUND, handoff.retryCancellation().code)
+    }
+
+    @Test fun lateAuthorizationAmbiguousCommitDoesNotCancelOrReplayTheExactWorker() = runBlocking {
+        var commits = 0
+        var cancellations = 0
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> {
+                commits++
+                return Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
+            }
+            override fun cancel(): Result<Unit> { cancellations++; return Result.success(Unit) }
+            override fun close() {}
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = { throw DesktopInstallPreparationFailure(prepared, IllegalStateException("OUTCOME_UNKNOWN"),
+                retainsLateAuthorization = true) },
+            stopRuntime = { Result.success(Unit) }, requestExit = { fail("Ambiguous commit must not exit") },
+        )
+
+        handoff.prepare("request")
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId),
+            handoff.resumeLateAuthorization("request", prepared.jobId))
+        assertEquals(1, commits); assertEquals(0, cancellations)
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId),
+            handoff.resumeLateAuthorization("request", prepared.jobId))
+        assertEquals(1, commits); assertEquals(0, cancellations)
+    }
     @Test fun workerCreatedBeforeReadinessFailureRetainsItsIdentityUntilCancellationConfirmed() = runBlocking {
         val events = mutableListOf<String>()
         val created = object : DesktopPreparedInstall {

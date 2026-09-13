@@ -10,6 +10,7 @@ internal class DesktopMacAuthorizationLifetime(
     private val awaitAuthorization: suspend () -> Result<Unit>,
     private val collector: DesktopMacAuthorizationCollector,
 ) {
+    fun coordinatorAlive(): Boolean = collector.isAlive()
     suspend fun awaitInitial(): Result<Unit> = awaitAuthorization()
 
     /** The same bounded collector serves immediate and maintenance-time observation. */

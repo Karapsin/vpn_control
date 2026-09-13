@@ -21,14 +21,23 @@ class DesktopAutostartParityTest {
             commandResolver = { "C:\\test-only\\vpn-control.exe" },
             commandRunner = { command ->
                 osCalls++
-                val code = when (command.take(2)) {
-                    listOf("schtasks", "/Query") -> if (enabled) 0 else 1
-                    listOf("reg", "query") -> 1
-                    listOf("schtasks", "/Create") -> if (failWrites) 1 else { enabled = true; 0 }
-                    listOf("schtasks", "/Delete") -> if (failWrites) 1 else { enabled = false; 0 }
+                val missing = DesktopAutostartCommandResult(1, "ERROR: The system cannot find the file specified.")
+                when (command.take(2)) {
+                    listOf("schtasks", "/Query") -> if (!enabled) missing else DesktopAutostartCommandResult(0, """
+                        <Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+                          <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+                          <Principals><Principal><UserId>S-1-5-21-1</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+                          <Actions><Exec><Command>C:\test-only\vpn-control.exe</Command><Arguments>--autostart</Arguments></Exec></Actions>
+                        </Task>
+                    """.trimIndent())
+                    listOf("whoami.exe", "/user") -> DesktopAutostartCommandResult(0, "\"fixture\\user\",\"S-1-5-21-1\"")
+                    listOf("reg", "query") -> missing
+                    listOf("schtasks", "/Create") -> if (failWrites) DesktopAutostartCommandResult(1, "private OS error")
+                        else { enabled = true; DesktopAutostartCommandResult(0, "") }
+                    listOf("schtasks", "/Delete") -> if (failWrites) DesktopAutostartCommandResult(1, "private OS error")
+                        else { enabled = false; DesktopAutostartCommandResult(0, "") }
                     else -> error("Unexpected OS action: ${command.take(2)}")
                 }
-                DesktopAutostartCommandResult(code, if (code == 1) "private OS error" else "")
             },
         )
         try {

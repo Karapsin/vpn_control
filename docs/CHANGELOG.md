@@ -6,6 +6,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Verify retained-operation and location exports against their authenticated controller endpoints.
+- Recover delayed installer authorization safely and preserve original-user launch and autostart ownership.
+- Exercise validated autostart ownership in GUI and CLI parity checks.
 
 ## 2.1.9 - 2026-09-13
 

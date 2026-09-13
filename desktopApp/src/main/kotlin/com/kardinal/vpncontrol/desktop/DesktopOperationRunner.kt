@@ -55,7 +55,8 @@ internal class DesktopOperationRunner(
     }
     private data class ExternalInstall(val correlation: DesktopInstallCorrelation, val actions: DesktopControlInstallActions,
         var outcome: DesktopInstallHandoffResult = DesktopInstallHandoffResult(ControlCode.ACCEPTED),
-        var ready: Boolean = false, var cancelRequested: Boolean = false)
+        var ready: Boolean = false, var cancelRequested: Boolean = false, var lateAuthorizationResumed: Boolean = false,
+        var lateAuthorizationCommitted: Boolean = false, var lateAuthorizationCancellationRetryAllowed: Boolean = false)
     private val installs = mutableMapOf<String, ExternalInstall>()
     private val mutableChanges = kotlinx.coroutines.flow.MutableStateFlow(0L)
     val changes: kotlinx.coroutines.flow.StateFlow<Long> = mutableChanges
@@ -115,12 +116,14 @@ internal class DesktopOperationRunner(
     }
 
     fun cancelResponse(id: String): DesktopCliResponse {
-        val (code, job) = synchronized(guard) {
-            ledger.requestCancellation(id, now()) to jobs[id]
+        val (code, job, external) = synchronized(guard) {
+            val code = ledger.requestCancellation(id, now())
+            val external = installs[id]
+            if (code == ControlCode.OK) external?.cancelRequested = true
+            Triple(code, jobs[id], external)
         }
         if (code != ControlCode.OK) return DesktopCliResponse.failure(code.wireName, code.exitCode)
         changed()
-        val external = synchronized(guard) { installs[id]?.also { it.cancelRequested = true } }
         if (external == null) job?.cancel()
         // This reports the current phase; cancellation acceptance is not terminal completion.
         return statusResponse(id)
@@ -239,6 +242,66 @@ internal class DesktopOperationRunner(
                         else recovered.receipt?.takeIf { it.phase.terminal }?.let { receipt ->
                             if (runCatching { actions.settle(external.correlation, receipt).getOrThrow() }.isSuccess)
                                 completeInstall(external, recovered.code)
+                        }
+                        val jobId = recovered.binding?.jobId
+                        val resume = synchronized(guard) {
+                            val eligible = !external.cancelRequested && !external.ready && !external.lateAuthorizationResumed &&
+                                external.outcome.code == ControlCode.OUTCOME_UNKNOWN && jobId != null &&
+                                recovered.receipt?.phase == DesktopInstallJobPhase.AUTHORIZED
+                            if (eligible) {
+                                // From this point a cancellation must not claim it can stop the
+                                // exact worker while adapter validation/handoff is in flight.
+                                external.lateAuthorizationResumed = true
+                                ledger.advance(id, requireNotNull(ledger.get(id, now())).phase, now(), cancellable = false)
+                            }
+                            eligible
+                        }
+                        if (resume) {
+                            val exactJob = requireNotNull(jobId)
+                            val resumed = runCatching {
+                                actions.resumeLateAuthorization(external.correlation, exactJob)
+                            }.getOrElse { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, jobId) }
+                            if (resumed.code == ControlCode.OK && resumed.jobId == exactJob) synchronized(guard) {
+                                // Commit succeeded. Exit acknowledgement may be retried, but the
+                                // native handoff must never be replayed or made cancellable again.
+                                external.lateAuthorizationCommitted = true
+                                external.outcome = DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, exactJob)
+                            } else synchronized(guard) {
+                                if (resumed.code == ControlCode.UNAVAILABLE && resumed.jobId == exactJob) {
+                                    // Validation did not cross the handoff boundary. Let the
+                                    // same retained job be re-observed; never create a worker.
+                                    external.lateAuthorizationResumed = false
+                                    ledger.advance(id, requireNotNull(ledger.get(id, now())).phase, now(), cancellable = true)
+                                    external.outcome = DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, exactJob)
+                                } else if (resumed.cancellationRetryAllowed && resumed.jobId == exactJob) {
+                                    // The exact worker did not observe commit, but its first
+                                    // cancellation acknowledgement was uncertain. Keep resume
+                                    // frozen and admit only the owner's cancellation retry.
+                                    external.lateAuthorizationCancellationRetryAllowed = true
+                                    ledger.advance(id, requireNotNull(ledger.get(id, now())).phase, now(), cancellable = true)
+                                    external.outcome = DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, exactJob)
+                                } else {
+                                    // A resumed result is only meaningful for the worker whose
+                                    // protected receipt reserved this handoff.
+                                    external.outcome = DesktopInstallHandoffResult(resumed.code, exactJob)
+                                }
+                            }
+                            changed()
+                        }
+                        val arm = synchronized(guard) {
+                            jobId?.takeIf { exactJob -> external.lateAuthorizationCommitted && !external.ready &&
+                                external.outcome.jobId == exactJob }
+                        }
+                        if (arm != null) {
+                            val armed = runCatching { actions.onInstallReady(external.correlation, arm) }.isSuccess
+                            synchronized(guard) {
+                                if (external.lateAuthorizationCommitted && external.outcome.jobId == arm) {
+                                    external.outcome = DesktopInstallHandoffResult(
+                                        if (armed) ControlCode.ACCEPTED else ControlCode.OUTCOME_UNKNOWN, arm)
+                                    external.ready = armed
+                                }
+                            }
+                            changed()
                         }
                     }
                     kotlinx.coroutines.delay(250)

@@ -4,12 +4,62 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.*
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopControlInstallSessionTest {
+    @Test fun cancellationCannotBeAcceptedAfterLateAuthorizationReservesTheIrreversibleHandoff() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        val enteredResume = CompletableDeferred<Unit>()
+        val releaseResume = CompletableDeferred<Unit>()
+        var ready = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) }, cancel = { DesktopInstallHandoffResult(ControlCode.CANCELLED, job) },
+                resumeLateAuthorization = { _, _ ->
+                    enteredResume.complete(Unit)
+                    releaseResume.await()
+                    DesktopInstallHandoffResult(ControlCode.OK, job)
+                },
+                onInstallReady = { _, _ -> ready++ },
+            ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertTrue(enteredResume.isCompleted)
+        val cancellation = session.execute(DesktopCliCommand.OperationCancel(requireNotNull(install.operationId)))
+        assertFalse(cancellation.success)
+        assertEquals("CONFLICT", cancellation.message)
+        releaseResume.complete(Unit)
+        runCurrent()
+        assertEquals(1, ready)
+    }
+
+    @Test fun cancelBeforeLateAuthorizationReservationNeverResumesWorker() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        var resumes = 0
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) }, cancel = { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                resumeLateAuthorization = { _, _ -> resumes++; DesktopInstallHandoffResult(ControlCode.OK, job) }))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest("install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        session.execute(DesktopCliCommand.OperationCancel(requireNotNull(install.operationId)))
+        recovered = listOf(DesktopInstallCorrelationRecovery(DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)), DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(0, resumes)
+    }
     @Test fun unixAdmissionNeverLoadsWindowsTokenApisAndUnsupportedPlatformsHaveNoSideEffects() {
         assertEquals(null, desktopControlInstallPlatform("Linux") { error("Windows token API on Linux") })
         assertEquals(null, desktopControlInstallPlatform("Mac OS X") { error("Windows token API on macOS") })
@@ -150,6 +200,139 @@ class DesktopControlInstallSessionTest {
         assertTrue(cancellations > 0)
         assertFalse(session.operationSnapshot().single().phase.terminal)
         assertTrue(session.hasBackgroundWork())
+    }
+
+    @Test fun lateAuthorizedExactJobResumesOnceAndStatusReportsAcknowledgedHandoff() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        var resumes = 0
+        var ready = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {},
+            controllerId = "owner", install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) },
+                cancel = { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                resumeLateAuthorization = { value, exact ->
+                    assertEquals(correlation, value); assertEquals(job, exact); resumes++
+                    DesktopInstallHandoffResult(ControlCode.OK, job)
+                },
+                onInstallReady = { value, exact -> assertEquals(correlation, value); assertEquals(job, exact); ready++ },
+            ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes); assertEquals(1, ready)
+        val status = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "status", ControlCommand(ControlOperationId.OPERATIONS_STATUS, mapOf("id" to ControlValue.Text(requireNotNull(install.operationId)))),
+            controllerId = "owner"))).message)
+        assertEquals(ControlCode.ACCEPTED, status.code)
+        assertEquals(ControlValue.BooleanValue(true), status.data["handoffReady"])
+        assertFalse(status.final)
+    }
+
+    @Test fun lateAuthorizedHandoffRetriesExitArmingWithoutReplayingItsExactWorker() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        var resumes = 0
+        var arms = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) }, cancel = { error("Committed handoff cannot be cancelled") },
+                resumeLateAuthorization = { _, _ -> resumes++; DesktopInstallHandoffResult(ControlCode.OK, job) },
+                onInstallReady = { _, _ -> arms++; if (arms == 1) error("response acknowledgement unavailable") },
+            ))
+        session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner")))
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes); assertEquals(1, arms)
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes); assertEquals(2, arms)
+    }
+
+    @Test fun lateAuthorizationNeverReplacesTheReservedJobWithAnUncorrelatedResumeResult() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        val other = "00000000-0000-0000-0000-000000000002"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) }, cancel = { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                resumeLateAuthorization = { _, _ -> DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, other) },
+            ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        val status = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "status", ControlCommand(ControlOperationId.OPERATIONS_STATUS, mapOf("id" to ControlValue.Text(requireNotNull(install.operationId)))),
+            controllerId = "owner"))).message)
+        assertEquals(ControlValue.Text(job), status.data["jobId"])
+    }
+
+    @Test fun unconfirmedPrecommitCancellationReopensOnlyTheOwnedCancellationRetry() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        var resumes = 0
+        var cancellations = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) },
+                cancel = { cancellations++; DesktopInstallHandoffResult(ControlCode.CANCELLED, job) },
+                resumeLateAuthorization = { _, _ ->
+                    resumes++
+                    DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job, cancellationRetryAllowed = true)
+                },
+            ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes)
+        assertTrue(session.operationSnapshot().single().cancellable)
+        assertTrue(session.execute(DesktopCliCommand.OperationCancel(requireNotNull(install.operationId))).success)
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes); assertEquals(1, cancellations)
+        assertEquals(ControlOperationPhase.CANCELLED, session.operationSnapshot().single().phase)
+    }
+
+    @Test fun ambiguousLateCommitDoesNotReopenCancellationOrReplayTheExactWorker() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        var resumes = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {}, controllerId = "owner",
+            install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) }, cancel = { error("Ambiguous commit must not cancel") },
+                resumeLateAuthorization = { _, _ -> resumes++; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+            ))
+        val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner"))).message)
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes)
+        assertFalse(session.operationSnapshot().single().cancellable)
+        assertFalse(session.execute(DesktopCliCommand.OperationCancel(requireNotNull(install.operationId))).success)
+        advanceTimeBy(300); runCurrent()
+        assertEquals(1, resumes)
     }
 
     @Test fun updatesCancelTargetsTheExactPendingInstallBeforeDismissal() = runTest {

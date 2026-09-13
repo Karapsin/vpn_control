@@ -213,6 +213,11 @@ internal class DesktopUpdateService(
             }
         }
 
+    /** Adapter-only validation for the one exact worker retained after macOS authorization wait expiry. */
+    fun validateLateAuthorizedInstall(correlation: DesktopInstallCorrelation, jobId: String): Result<Unit> =
+        if (osName.startsWith("Mac", true)) macInstaller.validateLateAuthorizedHandoff(correlation, jobId)
+        else Result.failure(IllegalStateException("UNSUPPORTED"))
+
     private fun releaseInstallInputs(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {
         when {
             osName.startsWith("Windows", true) -> windowsInstaller.releaseCompleted(correlation, receipt).getOrThrow()

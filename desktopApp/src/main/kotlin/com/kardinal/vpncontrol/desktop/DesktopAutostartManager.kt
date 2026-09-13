@@ -4,6 +4,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Locale
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.name
 
 internal class DesktopAutostartManager(
@@ -33,7 +35,9 @@ internal class DesktopAutostartManager(
     fun isEnabled(): Boolean {
         return when (platform) {
             DesktopAutostartPlatform.LINUX -> isLinuxAutostartEnabled()
-            DesktopAutostartPlatform.WINDOWS -> isWindowsTaskEnabled() || migrateLegacyWindowsRunEntry()
+            // Inspection is deliberately read-only. A user explicitly enabling startup may
+            // migrate the legacy Run entry, but ordinary application startup never does.
+            DesktopAutostartPlatform.WINDOWS -> isWindowsTaskEnabled() || isWindowsRunEnabled()
             DesktopAutostartPlatform.UNSUPPORTED -> false
         }
     }
@@ -53,6 +57,27 @@ internal class DesktopAutostartManager(
                 DesktopAutostartPlatform.UNSUPPORTED -> error("Start on login is not supported on this desktop platform.")
             }
         }
+    }
+
+    /**
+     * Explicit repair only. Startup inspection deliberately never calls this: task replacement
+     * needs a final ownership recheck and is not safe to infer from a task name alone.
+     */
+    internal fun migrateOwnedWindowsHighestTaskToOrdinaryUser(): Result<Boolean> = runCatching {
+        check(platform == DesktopAutostartPlatform.WINDOWS) { "Windows autostart is unavailable on this platform." }
+        val command = commandResolver()?.takeIf(String::isNotBlank)
+            ?: error("Could not resolve the desktop app launcher path.")
+        val first = inspectWindowsTaskOwnership(command)
+        check(first is WindowsTaskOwnership.OwnedHighest) { first.reason }
+        // schtasks has no compare-and-swap registration. This narrows, but cannot eliminate, a
+        // concurrent replacement race; the caller must keep this explicit repair inactive until
+        // a coordinator supplies an atomic Task Scheduler operation.
+        val second = inspectWindowsTaskOwnership(command)
+        check(second is WindowsTaskOwnership.OwnedHighest && second.xml == first.xml) {
+            "CONFLICT"
+        }
+        createWindowsTask(command, replaceOwned = true)
+        true
     }
 
     private fun isLinuxAutostartEnabled(): Boolean {
@@ -305,65 +330,108 @@ internal class DesktopAutostartManager(
         """.trimMargin()
     }
 
-    private fun isWindowsRunEnabled(): Boolean {
-        return commandRunner(
-            listOf("reg", "query", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE),
-        ).exitCode == 0
-    }
+    private fun isWindowsRunEnabled(): Boolean = commandResolver()?.takeIf(String::isNotBlank)?.let { command ->
+        inspectWindowsRunOwnership(command) is WindowsRunOwnership.Owned
+    } ?: false
 
-    private fun isWindowsTaskEnabled(): Boolean {
-        return commandRunner(
-            listOf("schtasks", "/Query", "/TN", WINDOWS_TASK_NAME),
-        ).exitCode == 0
-    }
-
-    private fun migrateLegacyWindowsRunEntry(): Boolean {
-        if (!isWindowsRunEnabled()) {
-            return false
+    private fun isWindowsTaskEnabled(): Boolean = commandResolver()?.takeIf(String::isNotBlank)?.let { command ->
+        when (inspectWindowsTaskOwnership(command)) {
+            is WindowsTaskOwnership.OwnedHighest, is WindowsTaskOwnership.OwnedOrdinary -> true
+            else -> false
         }
-        return setWindowsTaskEnabled(true)
-    }
+    } ?: false
 
     private fun setWindowsTaskEnabled(enabled: Boolean): Boolean {
         if (enabled) {
             val command = commandResolver()?.takeIf(String::isNotBlank)
                 ?: error("Could not resolve the desktop app launcher path.")
-            val result = commandRunner(
-                listOf(
-                    "schtasks",
-                    "/Create",
-                    "/TN",
-                    WINDOWS_TASK_NAME,
-                    "/SC",
-                    "ONLOGON",
-                    "/TR",
-                    windowsScheduledTaskCommand(command, workspaceDirectory),
-                    "/RL",
-                    "HIGHEST",
-                    "/F",
-                ),
-            )
-            if (result.exitCode != 0) {
-                error(result.output.ifBlank { "Failed to create Windows startup scheduled task." })
+            // Validate a same-named legacy value before creating a task; otherwise a later
+            // ownership failure would leave a partial migration behind.
+            when (val runOwnership = inspectWindowsRunOwnership(command)) {
+                WindowsRunOwnership.Absent, WindowsRunOwnership.Owned -> Unit
+                is WindowsRunOwnership.Unknown -> error(runOwnership.reason)
+            }
+            when (val ownership = inspectWindowsTaskOwnership(command)) {
+                is WindowsTaskOwnership.Absent -> createWindowsTask(command)
+                is WindowsTaskOwnership.OwnedOrdinary -> Unit
+                is WindowsTaskOwnership.OwnedHighest -> error("CONFLICT")
+                is WindowsTaskOwnership.Unknown -> error(ownership.reason)
             }
             deleteWindowsRunEntryIfPresent()
             return true
         }
 
-        if (isWindowsTaskEnabled()) {
+        val command = commandResolver()?.takeIf(String::isNotBlank)
+            ?: error("Could not resolve the desktop app launcher path.")
+        when (val ownership = inspectWindowsTaskOwnership(command)) {
+            is WindowsTaskOwnership.Absent -> Unit
+            is WindowsTaskOwnership.OwnedOrdinary, is WindowsTaskOwnership.OwnedHighest -> {
             val result = commandRunner(
                 listOf("schtasks", "/Delete", "/TN", WINDOWS_TASK_NAME, "/F"),
             )
             if (result.exitCode != 0) {
                 error(result.output.ifBlank { "Failed to delete Windows startup scheduled task." })
             }
+            }
+            is WindowsTaskOwnership.Unknown -> error(ownership.reason)
         }
         deleteWindowsRunEntryIfPresent()
         return false
     }
 
+    private fun createWindowsTask(command: String, replaceOwned: Boolean = false) {
+        val arguments = mutableListOf(
+            "schtasks", "/Create", "/TN", WINDOWS_TASK_NAME, "/SC", "ONLOGON",
+            "/TR", windowsScheduledTaskCommand(command, workspaceDirectory),
+            "/RL", "LIMITED",
+        )
+        if (replaceOwned) arguments += "/F"
+        val result = commandRunner(
+            arguments,
+        )
+        if (result.exitCode != 0) error(result.output.ifBlank { "Failed to create Windows startup scheduled task." })
+    }
+
+    private fun inspectWindowsTaskOwnership(command: String): WindowsTaskOwnership {
+        val result = commandRunner(listOf("schtasks", "/Query", "/TN", WINDOWS_TASK_NAME, "/XML"))
+        if (result.exitCode != 0) return if (missingWindowsRegistration(result)) WindowsTaskOwnership.Absent
+        else WindowsTaskOwnership.Unknown("UNAVAILABLE")
+        val sid = currentWindowsUserSid()
+            ?: return WindowsTaskOwnership.Unknown("UNAVAILABLE")
+        return WindowsTaskXml.inspect(result.output, command, windowsTaskArguments(workspaceDirectory), sid)
+    }
+
+    private fun inspectWindowsRunOwnership(command: String): WindowsRunOwnership {
+        val result = commandRunner(listOf("reg", "query", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE))
+        if (result.exitCode != 0) return if (missingWindowsRegistration(result)) WindowsRunOwnership.Absent
+        else WindowsRunOwnership.Unknown("UNAVAILABLE")
+        val values = result.output.lineSequence().map(String::trim).filter { it.isNotEmpty() }
+            .mapNotNull { WINDOWS_RUN_ENTRY.matchEntire(it)?.groupValues?.get(1) }.toList()
+        return when {
+            values.size != 1 -> WindowsRunOwnership.Unknown("CONFLICT")
+            windowsIdentity(values.single()) != windowsIdentity(windowsScheduledTaskCommand(command, workspaceDirectory)) ->
+                WindowsRunOwnership.Unknown("CONFLICT")
+            else -> WindowsRunOwnership.Owned
+        }
+    }
+
+    private fun missingWindowsRegistration(result: DesktopAutostartCommandResult): Boolean =
+        result.exitCode == 1 && result.output.trim().contains("cannot find", ignoreCase = true)
+
+    private fun currentWindowsUserSid(): String? {
+        val result = commandRunner(listOf("whoami.exe", "/user", "/fo", "csv", "/nh"))
+        if (result.exitCode != 0) return null
+        return WHOAMI_SID.matchEntire(result.output.trim())?.groupValues?.get(1)
+    }
+
     private fun deleteWindowsRunEntryIfPresent() {
-        if (!isWindowsRunEnabled()) return
+        val command = commandResolver()?.takeIf(String::isNotBlank)
+            ?: error("UNAVAILABLE")
+        when (val ownership = inspectWindowsRunOwnership(command)) {
+            WindowsRunOwnership.Absent -> return
+            WindowsRunOwnership.Owned -> Unit
+            is WindowsRunOwnership.Unknown -> error(ownership.reason)
+        }
         val result = commandRunner(
             listOf("reg", "delete", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE, "/f"),
         )
@@ -378,6 +446,8 @@ internal class DesktopAutostartManager(
         private const val WINDOWS_RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
         private const val WINDOWS_RUN_VALUE = "VPN Control"
         private const val WINDOWS_TASK_NAME = "VPN Control"
+        private val WINDOWS_RUN_ENTRY = Regex("^VPN Control\\s+REG_SZ\\s+(.+)$", RegexOption.IGNORE_CASE)
+        private val WHOAMI_SID = Regex("^\"[^\"]*\",\"(S-[0-9]+-(?:[0-9]+-)*[0-9]+)\"$")
         private const val I3_AUTOSTART_BEGIN = "# VPN Control autostart: begin"
         private const val I3_AUTOSTART_END = "# VPN Control autostart: end"
         private const val I3_SHELL_SCRIPT = "exec \"\$1\" --autostart"
@@ -426,6 +496,9 @@ internal class DesktopAutostartManager(
             return "${quoteWindowsCommandPath(command)} --autostart" +
                 (workspaceDirectory?.let { " --state-dir ${quoteWindowsCommandPath(it.toString())}" } ?: "")
         }
+
+        private fun windowsTaskArguments(workspaceDirectory: Path?): String = "--autostart" +
+            (workspaceDirectory?.let { " --state-dir ${quoteWindowsCommandPath(it.toString())}" } ?: "")
 
         private fun quoteWindowsCommandPath(value: String): String {
             // Windows argv parsing doubles backslashes before quotes and the closing quote.
@@ -545,6 +618,103 @@ internal class DesktopAutostartManager(
         }
     }
 }
+
+internal sealed interface WindowsTaskOwnership {
+    object Absent : WindowsTaskOwnership
+    data class OwnedHighest(val xml: String) : WindowsTaskOwnership
+    object OwnedOrdinary : WindowsTaskOwnership
+    data class Unknown(override val reason: String) : WindowsTaskOwnership
+    val reason: String get() = when (this) {
+        Absent -> "NOT_FOUND"
+        is OwnedHighest -> "CONFLICT"
+        OwnedOrdinary -> "OK"
+        is Unknown -> this.reason
+    }
+}
+
+private sealed interface WindowsRunOwnership {
+    object Absent : WindowsRunOwnership
+    object Owned : WindowsRunOwnership
+    data class Unknown(val reason: String) : WindowsRunOwnership
+}
+
+/** Bounded, entity-free recognition of one task definition; it never mutates Task Scheduler. */
+internal object WindowsTaskXml {
+    private const val MAX_XML_BYTES = 128 * 1024
+
+    fun inspect(xml: String, expectedCommand: String, expectedArguments: String, expectedUserSid: String): WindowsTaskOwnership {
+        if (xml.toByteArray(Charsets.UTF_8).size !in 1..MAX_XML_BYTES) {
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        }
+        val document = runCatching {
+            DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+                isXIncludeAware = false
+                isExpandEntityReferences = false
+            }.newDocumentBuilder().parse(org.xml.sax.InputSource(xml.reader()))
+        }.getOrElse {
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        }
+        val root = document.documentElement ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (root.name() != "Task") return WindowsTaskOwnership.Unknown("CONFLICT")
+        val actions = elements(document, "Actions").singleOrNull()
+            ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (directChildren(actions).any { it.name() != "Exec" })
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        val exec = directChildren(actions).singleOrNull()
+            ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (directChildren(exec).any { it.name() !in setOf("Command", "Arguments", "WorkingDirectory") })
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        val command = directText(exec, "Command") ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        val arguments = directText(exec, "Arguments") ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        val workingDirectory = directText(exec, "WorkingDirectory")
+        if (workingDirectory != null && workingDirectory.isNotBlank())
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (windowsIdentity(command) != windowsIdentity(expectedCommand) || arguments != expectedArguments)
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        val triggers = elements(document, "Triggers").singleOrNull()
+            ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (directChildren(triggers).any { it.name() != "LogonTrigger" })
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        val trigger = directChildren(triggers).singleOrNull()
+            ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (directText(trigger, "Enabled")?.equals("true", ignoreCase = true) != true)
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        val principal = elements(document, "Principal").singleOrNull()
+            ?: return WindowsTaskOwnership.Unknown("CONFLICT")
+        if (directText(principal, "UserId") != expectedUserSid || directText(principal, "LogonType") != "InteractiveToken")
+            return WindowsTaskOwnership.Unknown("CONFLICT")
+        return when (directText(principal, "RunLevel")) {
+            "HighestAvailable" -> WindowsTaskOwnership.OwnedHighest(xml)
+            "LeastPrivilege" -> WindowsTaskOwnership.OwnedOrdinary
+            else -> WindowsTaskOwnership.Unknown("CONFLICT")
+        }
+    }
+
+    private fun elements(document: org.w3c.dom.Document, name: String): List<org.w3c.dom.Element> =
+        (0 until document.getElementsByTagNameNS("*", name).length).map { index ->
+            document.getElementsByTagNameNS("*", name).item(index) as org.w3c.dom.Element
+        }
+
+    private fun directChildren(parent: org.w3c.dom.Element): List<org.w3c.dom.Element> =
+        (0 until parent.childNodes.length).mapNotNull { parent.childNodes.item(it) as? org.w3c.dom.Element }
+
+    private fun directText(parent: org.w3c.dom.Element, name: String): String? =
+        directChildren(parent).filter { it.name() == name }.singleOrNull()?.textContent
+
+    private fun org.w3c.dom.Element.name(): String = localName ?: nodeName.substringAfterLast(':')
+
+}
+
+/** Windows comparisons are case-insensitive, but NTFS preserves Unicode code-point distinctions. */
+private fun windowsIdentity(value: String): String = value.lowercase(Locale.ROOT)
 
 internal enum class DesktopAutostartPlatform {
     LINUX,

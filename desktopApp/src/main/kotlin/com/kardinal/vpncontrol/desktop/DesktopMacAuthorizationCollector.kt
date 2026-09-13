@@ -7,6 +7,8 @@ internal class DesktopMacAuthorizationCollector(private val jobId: String, priva
     private var completed = false
     private var reply: ControlCode? = null
 
+    fun isAlive(): Boolean = process.isAlive
+
     @Synchronized fun poll(): ControlCode? {
         if (completed) return reply
         if (process.isAlive) return null

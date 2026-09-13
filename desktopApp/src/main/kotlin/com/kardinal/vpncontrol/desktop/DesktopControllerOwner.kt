@@ -33,6 +33,13 @@ internal class DesktopControllerOwner(
         quitOwner = ::quitForControl,
         install = DesktopControlInstallActions(::installForControl, service::recoverControlInstalls,
             { installHandoff?.retryCancellation() ?: DesktopInstallHandoffResult(ControlCode.NOT_FOUND) },
+            resumeLateAuthorization = { correlation, jobId ->
+                if (service.validateLateAuthorizedControlInstall(correlation, jobId).isSuccess)
+                    installHandoff?.resumeLateAuthorization(correlation.requestId, jobId)
+                        ?: DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, jobId)
+                else DesktopInstallHandoffResult(ControlCode.UNAVAILABLE, jobId)
+            },
+            onInstallReady = { correlation, jobId -> armInstallExit(correlation, jobId) },
             settle = { correlation, receipt -> runCatching {
                 service.settleControlInstall(correlation, receipt).getOrThrow()
                 exitGate.revokeInstallExit(correlation, receipt.jobId)
@@ -155,11 +162,19 @@ internal class DesktopControllerOwner(
             stopRuntime = service::shutdownForExit, requestExit = {})
         installHandoff = handoff
         val result = handoff.prepare(correlation.requestId)
-        if (result.code == ControlCode.OK) {
-            synchronized(installExitMonitor) { installExitFrontend = InstallExitFrontend(correlation, frontend) }
-            exitGate.requestInstallExitAfterResponse(correlation, requireNotNull(result.jobId))
-        }
+        result.jobId?.let { synchronized(installExitMonitor) {
+            installExitFrontend = InstallExitFrontend(correlation, frontend)
+        } }
+        if (result.code == ControlCode.OK) armInstallExit(correlation, requireNotNull(result.jobId))
         return result
+    }
+
+    private fun armInstallExit(correlation: DesktopInstallCorrelation, jobId: String) {
+        synchronized(installExitMonitor) {
+            val existing = installExitFrontend?.takeIf { it.correlation == correlation }
+            installExitFrontend = existing ?: InstallExitFrontend(correlation, null)
+        }
+        exitGate.requestInstallExitAfterResponse(correlation, jobId)
     }
     private suspend fun quitForControl(requestId: String, expectedRevision: Long?): DesktopControlWriteResponse {
         synchronized(service) {

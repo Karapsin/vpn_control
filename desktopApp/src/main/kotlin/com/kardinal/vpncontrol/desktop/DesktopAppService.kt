@@ -278,6 +278,8 @@ class DesktopAppService internal constructor(
 
     internal fun recoverControlInstalls(): Result<List<DesktopInstallCorrelationRecovery>> =
         updateService.recoverInstallCorrelations()
+    internal fun validateLateAuthorizedControlInstall(correlation: DesktopInstallCorrelation, jobId: String): Result<Unit> =
+        updateService.validateLateAuthorizedInstall(correlation, jobId)
     internal fun settleControlInstall(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> =
         updateService.settleVerifiedInstall(correlation, receipt)
     internal fun controlInstallFrontend(registrationId: String): Result<DesktopFrontendProcessIdentity> =

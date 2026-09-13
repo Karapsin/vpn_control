@@ -27,7 +27,8 @@ class DesktopWindowsOriginalUserAdapterTest {
         listOf(
             "windows-install-native.cs", "windows-install-helper-protocol.cs",
             "windows-install-helper-roles.cs", "windows-install-helper-msi.cs",
-            "windows-install-helper-sessions.cs", "windows-install-helper-inventory.cs", "windows-install-helper-original-user-fixture.cs",
+            "windows-install-helper-sessions.cs", "windows-install-original-user-launch.cs",
+            "windows-install-helper-inventory.cs", "windows-install-helper-original-user-fixture.cs",
         ).forEach { name -> javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, directory.resolve(name)) } }
         try {
             val pin = Files.readAllBytes(Path.of(System.getProperty("vpnControl.test.nativeGlobalJson", "native/windows/global.json")))

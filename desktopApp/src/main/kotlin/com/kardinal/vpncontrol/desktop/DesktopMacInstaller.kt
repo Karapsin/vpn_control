@@ -22,6 +22,9 @@ internal interface DesktopMacInstallAdapter {
     suspend fun prepare(packageFile: Path, asset: UpdateAsset, correlation: DesktopInstallCorrelation,
         frontend: DesktopFrontendProcessIdentity? = null, onCancellationConfirmed: () -> Unit = {}): Result<DesktopPreparedInstall>
     fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>>
+    /** Revalidate the exact protected AUTHORIZED receipt before a retained handoff may resume. */
+    fun validateLateAuthorizedHandoff(correlation: DesktopInstallCorrelation, jobId: String): Result<Unit> =
+        Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
     fun reconcileLateAuthorization(ownerId: String): Result<Unit> = Result.success(Unit)
     fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit>
 }
@@ -37,6 +40,16 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
     private var lateAuthorization: DesktopMacLateAuthorization? = null
 
     override fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> = runCatching { correlations.recoverAll() }
+    override fun validateLateAuthorizedHandoff(correlation: DesktopInstallCorrelation, jobId: String): Result<Unit> =
+        synchronized(this) {
+            runCatching {
+                require(pending?.jobId == jobId)
+                require(lateAuthorization?.canResume(correlation.controllerId) == true)
+                val recovered = correlations.recover(correlation)
+                require(recovered.binding?.jobId == jobId && !recovered.notStarted)
+                require(recovered.receipt?.phase == DesktopInstallJobPhase.AUTHORIZED)
+            }
+        }
     override fun reconcileLateAuthorization(ownerId: String): Result<Unit> = synchronized(this) {
         val observer = lateAuthorization ?: return@synchronized Result.success(Unit)
         observer.reconcile(ownerId).also { if (observer.isCompleted()) lateAuthorization = null }
@@ -68,6 +81,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
         var coordinatorAttempted = false
         var authorizationCollector: DesktopMacAuthorizationCollector? = null
         var authorizationRejected: ControlCode? = null
+        var retainLateAuthorization = false
         var reader: DesktopInstallJobStore.Reader? = null
         try {
             correlations.requireNew(correlation)
@@ -185,6 +199,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
                 lateAuthorization = DesktopMacLateAuthorization(
                     ownerId = correlation.controllerId,
                     lifetime = authorizationLifetime,
+                    watcher = requireNotNull(watcher),
                     requireReceiptAbsent = { correlations.requireReceiptAbsent(correlation, job) },
                     stopWatcher = {
                         watcher?.let { active ->
@@ -197,7 +212,16 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
                     onCancellationConfirmed = { pending = null; onCancellationConfirmed() },
                 )
             }
-            authorizationLifetime.awaitInitial().getOrThrow()
+            try {
+                authorizationLifetime.awaitInitial().getOrThrow()
+            } catch (failure: Exception) {
+                // The coordinator may still be waiting on real macOS authorization. Keep this
+                // exact prepared worker observable so owner maintenance can distinguish a
+                // later protected AUTHORIZED receipt from denial; never cancel it on timeout.
+                retainLateAuthorization = failure.message == ControlCode.OUTCOME_UNKNOWN.name &&
+                    lateAuthorization != null
+                throw failure
+            }
             lateAuthorization = null
             check(watcher.isAlive) { "CONFLICT" }
             Result.success(prepared)
@@ -231,7 +255,8 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
             }
             // An osascript exit alone does not prove no privileged worker started. Preserve
             // exact correlation and protected polling; never retry installation from the journal.
-            pending?.let { Result.failure(DesktopInstallPreparationFailure(it, reported)) } ?: Result.failure(reported)
+            pending?.let { Result.failure(DesktopInstallPreparationFailure(it, reported,
+                retainsLateAuthorization = retainLateAuthorization)) } ?: Result.failure(reported)
         }
     }
 

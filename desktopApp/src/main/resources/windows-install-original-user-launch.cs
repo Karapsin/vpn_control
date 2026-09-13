@@ -14,6 +14,7 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
     const uint TOKEN_ASSIGN_PRIMARY=1, TOKEN_DUPLICATE=2, TOKEN_QUERY=8;
     const uint TOKEN_ADJUST_DEFAULT=0x80, TOKEN_ADJUST_SESSIONID=0x100;
     const uint LOGON_WITH_PROFILE=1, CREATE_SUSPENDED=4;
+    const int ERROR_PRIVILEGE_NOT_HELD=1314;
     const int TokenSessionId=12, TokenElevation=20;
     IntPtr token;
     internal readonly uint ShellPid, ShellSession;
@@ -56,16 +57,46 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
     // executable is always this NativeAOT image, so neither coordinator nor JVM can
     // select a script, JAR, MSI, shell, or alternate helper.
     internal StartedHelper StartSameHelper(string[] arguments) {
+        return StartSameHelperCore(arguments,null);
+    }
+    // Same-assembly fixture seam. It can reproduce only the observed privileged
+    // launch failure; the fallback itself still creates and verifies a real child.
+    internal StartedHelper StartSameHelperForPrivilegeFailureFixture(string[] arguments,int capturedLaunchError) {
+        return StartSameHelperCore(arguments,capturedLaunchError);
+    }
+    StartedHelper StartSameHelperCore(string[] arguments,int? capturedLaunchErrorForFixture) {
         if (token==IntPtr.Zero) throw new ObjectDisposedException("VpnInstallOriginalUserLaunch");
         ValidateInvocation(arguments);
         if (arguments[0]!="install-user") throw new IOException("INVALID_ARGUMENT");
         using (VpnInstallNative.ImageObjectPin selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf()) {
         string image=SelfImage();
         STARTUPINFO startup=new STARTUPINFO(); startup.cb=Marshal.SizeOf<STARTUPINFO>();
-        PROCESS_INFORMATION child;
+        // The fixture may inject the first launch failure. Keep its process record
+        // zeroed until either native launch supplies owned handles, so exception
+        // cleanup can never act on uninitialized data.
+        PROCESS_INFORMATION child=default(PROCESS_INFORMATION);
         System.Text.StringBuilder command=new System.Text.StringBuilder(Quote(image)+" "+String.Join(" ",Array.ConvertAll(arguments,Quote)));
-        if (!CreateProcessWithTokenW(token,LOGON_WITH_PROFILE,image,command,CREATE_SUSPENDED,IntPtr.Zero,null,ref startup,out child))
-            throw Error("PERMISSION_DENIED");
+        bool capturedStarted;
+        int launchError;
+        if (capturedLaunchErrorForFixture.HasValue) {
+            capturedStarted=false; launchError=capturedLaunchErrorForFixture.Value;
+        } else {
+            capturedStarted=CreateProcessWithTokenW(token,LOGON_WITH_PROFILE,image,command,CREATE_SUSPENDED,IntPtr.Zero,null,ref startup,out child);
+            launchError=capturedStarted ? 0 : Marshal.GetLastWin32Error();
+        }
+        if (!capturedStarted) {
+            // A normal interactive process can lack SeImpersonatePrivilege even when
+            // its primary token has the captured shell's non-elevated SID and session.
+            // In that one case CreateProcessW preserves the same identity without
+            // needing a token-assignment privilege.  Never use this path for an
+            // elevated caller, another approving account, or another session.
+            if (!CurrentProcessCanUseOriginalUserFallback(launchError)) throw Error("PERMISSION_DENIED",launchError);
+            // Native process creation receives a mutable command buffer. Rebuild the
+            // fixed invocation after the failed call instead of reusing its output.
+            command=new System.Text.StringBuilder(Quote(image)+" "+String.Join(" ",Array.ConvertAll(arguments,Quote)));
+            if (!CreateProcessW(image,command,IntPtr.Zero,IntPtr.Zero,false,CREATE_SUSPENDED,IntPtr.Zero,null,ref startup,out child))
+                throw Error("PERMISSION_DENIED");
+        }
         try {
             VerifyChild(child.hProcess,selfImage);
             if (ResumeThread(child.hThread)==UInt32.MaxValue) throw Error("OUTCOME_UNKNOWN");
@@ -168,6 +199,21 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
         try { if (!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,out current)) throw Error("UNAVAILABLE"); return TokenScalar(current,TokenElevation)!=0; }
         finally { if (current!=IntPtr.Zero) CloseHandle(current); }
     }
+    // Kept separate so the routine fixture covers each boundary of the fallback
+    // admission decision without needing an interactive shell or a privilege fault.
+    internal static bool CurrentTokenFallbackPermitted(int launchError,uint currentSession,string currentSid,bool currentElevated,uint shellSession,string shellSid) {
+        return launchError==ERROR_PRIVILEGE_NOT_HELD && !currentElevated && currentSession==shellSession &&
+            !String.IsNullOrEmpty(currentSid) && !String.IsNullOrEmpty(shellSid) && String.Equals(currentSid,shellSid,StringComparison.Ordinal);
+    }
+    bool CurrentProcessCanUseOriginalUserFallback(int launchError) {
+        IntPtr current=IntPtr.Zero;
+        try {
+            if (!ProcessIdToSessionId(GetCurrentProcessId(),out uint session) ||
+                !OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,out current)) return false;
+            return CurrentTokenFallbackPermitted(launchError,session,TokenSid(current),TokenScalar(current,TokenElevation)!=0,ShellSession,PrincipalSid);
+        } catch { return false; }
+        finally { if (current!=IntPtr.Zero) CloseHandle(current); }
+    }
     static string SelfImage() {
         string image=Process.GetCurrentProcess().MainModule.FileName;
         if (String.IsNullOrEmpty(image) || !String.Equals(System.IO.Path.GetFileName(image),"vpn-control-install-helper.exe",StringComparison.OrdinalIgnoreCase)) throw new IOException("CONFLICT");
@@ -178,7 +224,8 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
     static string TokenSid(IntPtr source) { using (WindowsIdentity identity=new WindowsIdentity(source)) { if (identity.User==null) throw new IOException("UNAVAILABLE"); return identity.User.Value; } }
     static string ProcessImage(IntPtr process) { var text=new System.Text.StringBuilder(32768); int length=text.Capacity; if (!QueryFullProcessImageNameW(process,0,text,ref length) || length<1 || length>=text.Capacity) throw Error("UNAVAILABLE"); return text.ToString(); }
     static string Quote(string value) { if (String.IsNullOrEmpty(value)) return "\"\""; string result="\""; int slashes=0; foreach(char c in value) { if(c=='\\') { slashes++; continue; } if(c=='\"') result+=new String('\\',slashes*2+1); else result+=new String('\\',slashes); result+=c; slashes=0; } return result+new String('\\',slashes*2)+"\""; }
-    static IOException Error(string code) { return new IOException(code,new Win32Exception(Marshal.GetLastWin32Error())); }
+    static IOException Error(string code) { return Error(code,Marshal.GetLastWin32Error()); }
+    static IOException Error(string code,int nativeError) { return new IOException(code,new Win32Exception(nativeError)); }
     public void Dispose() { if (token!=IntPtr.Zero) { CloseHandle(token); token=IntPtr.Zero; } }
     [StructLayout(LayoutKind.Sequential)] struct FILETIME { internal uint low,high; }
     [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct STARTUPINFO {
@@ -204,4 +251,5 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateTokenEx(IntPtr source,uint access,IntPtr attributes,int level,int type,out IntPtr token);
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,IntPtr value,int capacity,out int returned);
     [DllImport("advapi32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern bool CreateProcessWithTokenW(IntPtr token,uint flags,string application,System.Text.StringBuilder command,uint creation,IntPtr environment,string directory,ref STARTUPINFO startup,out PROCESS_INFORMATION process);
+    [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern bool CreateProcessW(string application,System.Text.StringBuilder command,IntPtr processAttributes,IntPtr threadAttributes,bool inheritHandles,uint creation,IntPtr environment,string directory,ref STARTUPINFO startup,out PROCESS_INFORMATION process);
 }

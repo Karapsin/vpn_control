@@ -61,7 +61,7 @@ class DesktopAutostartManagerTest {
                 workspaceDirectory = workspace,
                 commandRunner = { command ->
                     commands += command
-                    DesktopAutostartCommandResult(if (command[1] == "/Create") 0 else 1, "")
+                    DesktopAutostartCommandResult(if (command[1] == "/Create") 0 else 1, missingRegistration())
                 },
             )
             assertTrue(manager.setEnabled(true).isSuccess)
@@ -480,7 +480,7 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
-    fun setEnabledWritesAndDeletesWindowsHighestPrivilegeScheduledTask() {
+    fun setEnabledWritesAndDeletesRecognizedOrdinaryWindowsScheduledTask() {
         val commands = mutableListOf<List<String>>()
         var taskEnabled = false
         var legacyRunEnabled = false
@@ -490,8 +490,10 @@ class DesktopAutostartManagerTest {
             commandRunner = { command ->
                 commands += command
                 when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> {
-                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1, "")
+                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1,
+                            if (taskEnabled && command.contains("/XML")) windowsTaskXml(runLevel = "LeastPrivilege") else missingRegistration())
                     }
                     command.take(2) == listOf("schtasks", "/Create") -> {
                         taskEnabled = true
@@ -502,7 +504,8 @@ class DesktopAutostartManagerTest {
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     command.take(2) == listOf("reg", "query") -> {
-                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1, "")
+                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1,
+                            if (legacyRunEnabled) ownedRunEntry() else missingRegistration())
                     }
                     command.take(2) == listOf("reg", "delete") -> {
                         legacyRunEnabled = false
@@ -530,8 +533,7 @@ class DesktopAutostartManagerTest {
                 "/TR",
                 "\"C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe\" --autostart",
                 "/RL",
-                "HIGHEST",
-                "/F",
+                "LIMITED",
             )
         })
 
@@ -551,7 +553,7 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
-    fun isEnabledMigratesLegacyWindowsRunEntryToHighestPrivilegeScheduledTask() {
+    fun inspectionLeavesLegacyWindowsRunEntryUntouchedUntilExplicitEnable() {
         val commands = mutableListOf<List<String>>()
         var taskEnabled = false
         var legacyRunEnabled = true
@@ -561,15 +563,18 @@ class DesktopAutostartManagerTest {
             commandRunner = { command ->
                 commands += command
                 when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> {
-                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1, "")
+                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1,
+                            if (taskEnabled && command.contains("/XML")) windowsTaskXml(runLevel = "LeastPrivilege") else missingRegistration())
                     }
                     command.take(2) == listOf("schtasks", "/Create") -> {
                         taskEnabled = true
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     command.take(2) == listOf("reg", "query") -> {
-                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1, "")
+                        DesktopAutostartCommandResult(if (legacyRunEnabled) 0 else 1,
+                            if (legacyRunEnabled) ownedRunEntry() else missingRegistration())
                     }
                     command.take(2) == listOf("reg", "delete") -> {
                         legacyRunEnabled = false
@@ -585,10 +590,103 @@ class DesktopAutostartManagerTest {
         assertTrue(legacyRunEnabled)
         assertTrue(commands.all { it.take(2) in listOf(listOf("schtasks", "/Query"), listOf("reg", "query")) })
         assertTrue(manager.isEnabled())
-        assertTrue(taskEnabled)
-        assertFalse(legacyRunEnabled)
-        assertTrue(commands.any { it.take(2) == listOf("schtasks", "/Create") })
-        assertTrue(commands.any { it.take(2) == listOf("reg", "delete") })
+        assertFalse(taskEnabled)
+        assertTrue(legacyRunEnabled)
+        assertTrue(commands.all { it.take(2) in listOf(listOf("schtasks", "/Query",), listOf("reg", "query")) })
+    }
+
+    @Test
+    fun explicitMigrationReplacesOnlyRevalidatedOwnedHighestTask() {
+        val commands = mutableListOf<List<String>>()
+        var taskXml = windowsTaskXml(runLevel = "HighestAvailable")
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertTrue(manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().isSuccess)
+        assertEquals(2, commands.count { it.take(2) == listOf("schtasks", "/Query") })
+        assertTrue(commands.single { it.take(2) == listOf("schtasks", "/Create") }.contains("LIMITED"))
+    }
+
+    @Test
+    fun unknownSameNameTaskIsNeverMutated() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                if (command.first() == "whoami.exe") DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                else DesktopAutostartCommandResult(0, windowsTaskXml(command = "C:\\other\\tool.exe", runLevel = "HighestAvailable"))
+            },
+        )
+
+        val result = manager.migrateOwnedWindowsHighestTaskToOrdinaryUser()
+
+        assertTrue(result.isFailure)
+        assertEquals("CONFLICT", result.exceptionOrNull()?.message)
+        assertTrue(commands.all { it.take(2) == listOf("schtasks", "/Query") || it.first() == "whoami.exe" })
+    }
+
+    @Test
+    fun taskXmlRejectsExternalEntitiesAndAmbiguousActions() {
+        val external = """<!DOCTYPE Task [<!ENTITY x SYSTEM \"file:///not-read\">]><Task><Actions><Exec><Command>&x;</Command><Arguments>--autostart</Arguments></Exec></Actions></Task>"""
+        assertTrue(WindowsTaskXml.inspect(external, "C:\\vpn-control.exe", "--autostart", "S-1-5-21-1") is WindowsTaskOwnership.Unknown)
+        val ambiguous = windowsTaskXml(runLevel = "LeastPrivilege").replace("</Actions>",
+            "<Exec><Command>C:\\vpn-control.exe</Command><Arguments>--autostart</Arguments></Exec></Actions>")
+        assertTrue(WindowsTaskXml.inspect(ambiguous, "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe", "--autostart", "S-1-5-21-1") is WindowsTaskOwnership.Unknown)
+    }
+
+    @Test
+    fun taskPathComparisonDoesNotCollapseDistinctUnicodeNames() {
+        val composed = "C:\\Users\\me\\caf\u00e9\\vpn-control.exe"
+        val decomposed = "C:\\Users\\me\\cafe\u0301\\vpn-control.exe"
+        val ownership = WindowsTaskXml.inspect(windowsTaskXml(command = decomposed, runLevel = "LeastPrivilege"),
+            composed, "--autostart", "S-1-5-21-1")
+        assertTrue(ownership is WindowsTaskOwnership.Unknown)
+    }
+
+    @Test
+    fun unrelatedRunValueIsNeverDeleted() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(1, missingRegistration())
+                    command.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(0,
+                        "VPN Control    REG_SZ    \"C:\\other\\tool.exe\" --autostart")
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+        assertTrue(manager.setEnabled(true).isFailure)
+        assertTrue(commands.none { it.take(2) == listOf("reg", "delete") })
+    }
+
+    @Test
+    fun taskQueryFailureIsNotTreatedAsAbsence() {
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { DesktopAutostartCommandResult(5, "Access is denied.") },
+        )
+        assertTrue(manager.setEnabled(true).isFailure)
     }
 
     private fun createExecutableLauncher(tempDir: Path): String {
@@ -624,6 +722,22 @@ class DesktopAutostartManagerTest {
             .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
             .replace("%", "%%")
     }
+
+    private fun windowsTaskXml(
+        command: String = "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe",
+        runLevel: String,
+    ): String = """
+        <Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+          <Principals><Principal id="Author"><UserId>S-1-5-21-1</UserId><LogonType>InteractiveToken</LogonType><RunLevel>$runLevel</RunLevel></Principal></Principals>
+          <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+          <Actions Context="Author"><Exec><Command>$command</Command><Arguments>--autostart</Arguments></Exec></Actions>
+        </Task>
+    """.trimIndent()
+
+    private fun missingRegistration() = "ERROR: The system cannot find the file specified."
+
+    private fun ownedRunEntry() =
+        "VPN Control    REG_SZ    \"C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe\" --autostart"
 
     @Test
     fun desktopEntryFixtureKeepsBothBackslashEscapingLayers() {

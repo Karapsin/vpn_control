@@ -9,6 +9,7 @@ import com.kardinal.vpncontrol.model.ControlCode
 internal class DesktopMacLateAuthorization(
     private val ownerId: String,
     private val lifetime: DesktopMacAuthorizationLifetime,
+    private val watcher: Process,
     private val requireReceiptAbsent: () -> Unit,
     private val stopWatcher: () -> Boolean,
     private val closePrepared: () -> Unit,
@@ -18,6 +19,10 @@ internal class DesktopMacLateAuthorization(
     private var completed = false
 
     @Synchronized fun isCompleted(): Boolean = completed
+
+    /** The original-user watcher and the exact coordinator must still be the retained pair. */
+    @Synchronized fun canResume(owner: String): Boolean = !completed && owner == ownerId &&
+        watcher.isAlive && lifetime.coordinatorAlive()
 
     @Synchronized fun reconcile(currentOwnerId: String): Result<Unit> = runCatching {
         if (completed || currentOwnerId != ownerId) return@runCatching
