@@ -24,7 +24,8 @@ internal object DesktopControlExports {
     }
 
     fun write(response: DesktopCliResponse, output: String, format: String,
-              writeText: (String, String) -> Result<Unit>, writeBinary: (String, ByteArray) -> Result<Unit>): DesktopCliResponse {
+              writeText: (String, String) -> Result<Unit>, writeBinary: (String, ByteArray) -> Result<Unit>,
+              missingContentCode: ControlCode = ControlCode.INCOMPATIBLE_PROTOCOL): DesktopCliResponse {
         val result = ControlDocumentCodec.decodeResult(response.message)
         fun finish(code: ControlCode, message: String = "", data: Map<String, ControlValue> = emptyMap()): DesktopCliResponse {
             val completed = result.copy(code = code, message = message, data = data)
@@ -33,7 +34,7 @@ internal object DesktopControlExports {
         if (!result.ok) return finish(result.code, result.message)
         if (!result.final || result.code != ControlCode.OK || output == "-") return finish(ControlCode.INCOMPATIBLE_PROTOCOL)
         val content = (result.data["content"] as? ControlValue.Text)?.value
-            ?: return finish(ControlCode.INCOMPATIBLE_PROTOCOL)
+            ?: return finish(missingContentCode)
         val size: Long
         val written: Result<Unit>
         if (format == "qr-png") {

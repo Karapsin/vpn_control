@@ -1,17 +1,157 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.ConnectionLogEntry
+import com.kardinal.vpncontrol.model.ControlCommand
+import com.kardinal.vpncontrol.model.ControlCode
+import com.kardinal.vpncontrol.model.ControlOperationId
+import com.kardinal.vpncontrol.model.ControlRequest
+import com.kardinal.vpncontrol.model.ControlResult
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopDiagnosticsCliTest {
+    @Test
+    fun timedOutOrNonExportOperationWaitNeverWritesAndRetainsItsOperationIdentity() {
+        fun response(code: ControlCode, final: Boolean, data: Map<String, com.kardinal.vpncontrol.model.ControlValue> = emptyMap()): DesktopCliResponse {
+            val result = ControlResult("owner", "request", code, 0, final = final,
+                operationId = "operation-identity", data = data)
+            return DesktopCliResponse(result.ok, com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
+        }
+        fun invoke(output: String, response: DesktopCliResponse): Triple<Int?, List<String>, ByteArray> {
+            val lines = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+            val bytes = java.io.ByteArrayOutputStream()
+            val arguments = if (output == "-") arrayOf("operations", "wait", "operation-identity", "--output", output)
+                else arrayOf("--json", "operations", "wait", "operation-identity", "--output", output)
+            val code = DesktopCli.handleArgs(arguments, lines::add,
+                requestCommand = { command ->
+                    val request = (command as DesktopCliCommand.ControlSubmit).request
+                    val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(response.message)
+                    response.copy(message = com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(
+                        result.copy(requestId = request.requestId)))
+                }, startHeadlessController = { error("Must not replace owner") },
+                writeOutput = { _, _ -> error("Timed-out/non-export result must not write a file") },
+                writeBinaryOutput = { _, chunk -> bytes.write(chunk); Result.success(Unit) }, printProgress = errors::add)
+            return Triple(code, lines + errors, bytes.toByteArray())
+        }
+        val fileTimeout = invoke("report.txt", response(ControlCode.TIMEOUT, final = false))
+        assertEquals(2, fileTimeout.first)
+        val timeoutResult = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(fileTimeout.second.single())
+        assertEquals(ControlCode.TIMEOUT, timeoutResult.code)
+        assertEquals("operation-identity", timeoutResult.operationId)
+        val rawTimeout = invoke("-", response(ControlCode.TIMEOUT, final = false))
+        assertEquals(2, rawTimeout.first)
+        assertTrue(rawTimeout.second.single().contains("operationId=operation-identity"))
+        assertTrue(rawTimeout.third.isEmpty())
+        val nonExport = invoke("report.txt", response(ControlCode.OK, final = true))
+        assertEquals(1, nonExport.first)
+        assertEquals(ControlCode.INVALID_ARGUMENT, com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
+            nonExport.second.single()).code)
+    }
+
+    @Test
+    fun publicAsyncDiagnosticsUsesWaitForExactClientSideExportAndDoesNotReplay() = runBlocking {
+        val directory = Files.createTempDirectory("vpn-control-async-diagnostics-cli")
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var reports = 0
+        val report = "VPN Control Desktop Diagnostics\nretained report\n"
+        val session = DesktopHeadlessSession(scope, { com.kardinal.vpncontrol.MainUiState() }, executeCommand = {
+            assertEquals(DesktopCliCommand.DiagnosticsExport, it)
+            reports++
+            started.complete(Unit)
+            finish.await()
+            DesktopCliResponse.success(report)
+        }, refresh = {})
+        val endpoint = directory.resolve("activation.port")
+        val server = assertNotNull(DesktopActivationServer.start(
+            onShowWindow = { DesktopActivationShowResult.HEADLESS },
+            onCliCommand = { runBlocking { session.execute(it) } }, portFile = endpoint, controllerId = session.controllerId))
+        try {
+            val acceptedOutput = mutableListOf<String>()
+            lateinit var submission: DesktopCliCommand.ControlSubmit
+            assertEquals(0, DesktopCli.handleArgs(arrayOf("--json", "--async", "diagnostics", "export"), acceptedOutput::add,
+                requestCommand = { command ->
+                    submission = command as DesktopCliCommand.ControlSubmit
+                    DesktopActivationServer.requestCliCommand(command, endpoint)
+                }, startHeadlessController = { error("Must reuse owner") }))
+            val accepted = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(acceptedOutput.single())
+            assertEquals(ControlCode.ACCEPTED, accepted.code)
+            assertFalse(accepted.final)
+            val operationId = assertNotNull(accepted.operationId)
+            started.await()
+            assertEquals(1, reports)
+            assertEquals(ControlCode.ACCEPTED, com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
+                DesktopActivationServer.requestCliCommand(submission.copy(request = submission.request.copy(
+                    controllerId = session.controllerId)), endpoint).message).code)
+            assertEquals(1, reports)
+            assertEquals(1, DesktopCli.handleArgs(arrayOf("--json", "--async", "diagnostics", "export", "--output", "ignored.txt"), {},
+                requestCommand = { error("Invalid async output dispatched") }, startHeadlessController = { error("Invalid async output started owner") }))
+            finish.complete(Unit)
+            val destination = directory.resolve("diagnostics.txt")
+            val completedOutput = mutableListOf<String>()
+            assertEquals(0, DesktopCli.handleArgs(arrayOf("--json", "operations", "wait", operationId, "--output", destination.toString()),
+                completedOutput::add, requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                startHeadlessController = { error("Must not replace operation owner") }))
+            assertEquals(report, Files.readString(destination))
+            val completed = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(completedOutput.single())
+            assertEquals(ControlCode.OK, completed.code)
+            assertEquals(report.toByteArray().size.toLong(),
+                (completed.data.getValue("bytes") as com.kardinal.vpncontrol.model.ControlValue.IntegerValue).value)
+            assertFalse(completed.data.containsKey("content"))
+        } finally {
+            server.close()
+            session.close()
+            scope.cancel()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun asyncDiagnosticsExportRetainsExactReportForOperationWait() = runBlocking {
+        val report = "VPN Control Desktop Diagnostics\nredacted report\n"
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        val session = DesktopHeadlessSession(scope, { com.kardinal.vpncontrol.MainUiState() }, executeCommand = {
+            assertEquals(DesktopCliCommand.DiagnosticsExport, it)
+            DesktopCliResponse.success(report)
+        }, refresh = {})
+        try {
+            val request = ControlRequest("diagnostics-request", ControlCommand(ControlOperationId.DIAGNOSTICS_EXPORT),
+                controllerId = session.controllerId, asynchronous = true)
+            val accepted = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
+                session.execute(DesktopCliCommand.ControlSubmit(request)).message)
+
+            assertEquals(ControlCode.ACCEPTED, accepted.code)
+            assertFalse(accepted.final)
+            assertNotNull(accepted.operationId)
+            assertNull(accepted.data["content"])
+
+            val completed = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(
+                session.execute(DesktopCliCommand.ControlSubmit(ControlRequest("wait-request",
+                    ControlCommand(ControlOperationId.OPERATIONS_WAIT, mapOf("id" to
+                        com.kardinal.vpncontrol.model.ControlValue.Text(accepted.operationId!!))),
+                    controllerId = session.controllerId))).message)
+            assertEquals(ControlCode.OK, completed.code)
+            assertTrue(completed.final)
+            assertEquals(accepted.operationId, completed.operationId)
+            assertEquals(report, (completed.data.getValue("content") as com.kardinal.vpncontrol.model.ControlValue.Text).value)
+        } finally {
+            session.close()
+            scope.cancel()
+        }
+    }
+
     @Test
     fun logsAndReportsRedactStructuredSecretsAndStatsUseRealCounters() {
         val directory = Files.createTempDirectory("vpn-control-diagnostics-cli")

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import json
 import hashlib
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).parent))
 from windows_native_helpers import fixture_transfer_target, validate_guest_destination, runtime_authority
@@ -91,6 +93,49 @@ class WindowsNativeHelpersTest(unittest.TestCase):
             data = json.loads((root / "sources.json").read_text())
             self.assertEqual(data["inputs"][0]["path"], str(source.resolve()))
             self.assertEqual(len(data["fingerprint"]), 64)
+
+    def test_installer_session_source_changes_the_preparation_inventory(self):
+        repository = Path(__file__).parents[1]
+        producer = (repository / "scripts/prepare_windows_native_helpers.ps1").read_text(encoding="utf-8")
+        required_block = producer.split("$required = @(", 1)[1].split("\n)\nforeach", 1)[0]
+        inputs = []
+        for base, relative in re.findall(r"\(Join-Path \$(root|native) '([^']+)'\)", required_block):
+            prefix = Path() if base == "root" else Path("desktopApp/native/windows")
+            inputs.append(prefix.joinpath(*relative.split("\\")))
+
+        session_source = Path("desktopApp/src/main/resources/windows-install-helper-sessions.cs")
+        builder = (repository / "scripts/test_windows_native_helper_builder.ps1").read_text(encoding="utf-8")
+        fixture_block = builder.split("$inputs = @(", 1)[1].split("\n    )\n    foreach", 1)[0]
+        fixture_inputs = {Path(*source.split("\\")) for source in re.findall(r"'([^']+)'", fixture_block)}
+        project = ElementTree.parse(repository / "desktopApp/native/windows/InstallHelper/InstallHelper.csproj")
+        compiled_sources = {
+            Path("desktopApp/native/windows/InstallHelper").joinpath(*entry.attrib["Include"].split("\\"))
+            for entry in project.findall(".//Compile")
+        }
+        self.assertIn(session_source, {path.resolve().relative_to(repository) for path in
+                                      (repository / path for path in inputs)})
+        self.assertTrue(set(inputs).issubset(fixture_inputs),
+                        "The Windows builder fixture omits a producer input")
+        self.assertIn(session_source, {
+            path.resolve().relative_to(repository) for path in compiled_sources
+        })
+
+        with tempfile.TemporaryDirectory() as scratch:
+            fixture = Path(scratch)
+            for relative in [*inputs, session_source]:
+                destination = fixture / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((repository / relative).read_bytes())
+            inventory = fixture / "inventory.json"
+            first = self.run_tool("sources", "--output", inventory, *(fixture / path for path in inputs))
+            self.assertEqual(0, first.returncode, first.stderr)
+            before = json.loads(inventory.read_text(encoding="utf-8"))["fingerprint"]
+            with (fixture / session_source).open("ab") as source:
+                source.write(b"// changed dependency\n")
+            second = self.run_tool("sources", "--output", inventory, *(fixture / path for path in inputs))
+            self.assertEqual(0, second.returncode, second.stderr)
+            after = json.loads(inventory.read_text(encoding="utf-8"))["fingerprint"]
+            self.assertNotEqual(before, after)
 
     def test_windows_checkout_preserves_byte_bound_producer_inputs(self):
         repository = Path(__file__).parents[1]

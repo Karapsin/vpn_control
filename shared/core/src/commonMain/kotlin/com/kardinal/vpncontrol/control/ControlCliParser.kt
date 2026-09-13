@@ -53,7 +53,8 @@ object ControlCliParser {
         LOGS -> ControlArgumentSchema(valuedOptions = setOf("--limit"), flags = setOf("--follow"))
         SOURCE_SET -> ControlArgumentSchema(listOf("source", "subscription-id"), 1)
         SUBSCRIPTIONS_SHOW, SUBSCRIPTIONS_DELETE, SUBSCRIPTIONS_REFRESH,
-        OPERATIONS_STATUS, OPERATIONS_WAIT, OPERATIONS_CANCEL -> ControlArgumentSchema(listOf("id"))
+        OPERATIONS_STATUS, OPERATIONS_CANCEL -> ControlArgumentSchema(listOf("id"))
+        OPERATIONS_WAIT -> ControlArgumentSchema(listOf("id"), valuedOptions = setOf("--output"))
         SUBSCRIPTIONS_ADD -> ControlArgumentSchema(valuedOptions = input + setOf("--source", "--name"))
         SUBSCRIPTIONS_UPDATE -> ControlArgumentSchema(listOf("id"), valuedOptions = setOf("--source", "--input", "--name"))
         LOCATIONS_SHOW, LOCATIONS_DELETE, LOCATIONS_SELECT, LOCATIONS_BENCHMARK -> ControlArgumentSchema(listOf("selector"))
@@ -184,8 +185,12 @@ object ControlCliParser {
                 if (inputCount != 1) return invalid("Exactly one input is required.")
             SUBSCRIPTIONS_UPDATE ->
                 if (inputCount > 1 || (inputCount == 0 && "--name" !in options)) return invalid("Provide a name or one input to update.")
-            LOCATIONS_EXPORT, ROUTING_EXPORT, DIAGNOSTICS_EXPORT ->
+            LOCATIONS_EXPORT, ROUTING_EXPORT ->
                 if ("--output" !in options) return invalid("An output destination is required.")
+            DIAGNOSTICS_EXPORT -> when {
+                client.asynchronous && "--output" in options -> return invalid("Use operations wait --output after asynchronous diagnostics acceptance.")
+                !client.asynchronous && "--output" !in options -> return invalid("An output destination is required.")
+            }
             SOURCE_SET -> {
                 val source = normalizedPositionals.first()
                 if (source !in setOf("current-locations", "subscription", "all") ||

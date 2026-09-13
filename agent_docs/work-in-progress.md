@@ -22,6 +22,80 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+- Checkpoint34 is pushed as `9e99027c009d0e16749a3c599e569ea38b9b4681`
+  (version2.1.8, three Unreleased notes). All15 managed prepush checks passed;
+  actual pinned-.NET entrypoint JUnit passed under SYSTEM and the limited Windows
+  user. Root reviewed the diff and independent review approved the bounded repair.
+  All five required exact-SHA workflows succeeded; managed monitor session25148
+  completed0. Receipt: checkpoint34/commit-result.json.
+- The next dirty batch intentionally contains the Windows original-user adapter,
+  its causal/native fixture work, Android TLS lifecycle ordering regression and
+  desktop fixture transfer regressions. The first Windows adapter draft failed
+  independent review: unknown lifetime retention, package ancestor binding and
+  tests that did not instantiate the adapter require correction before delivery.
+  No production Windows MSI cutover or scoped VPN completion is claimed.
+- Root independently read the current packaged macOS USER_LOCAL recovered status:
+  job `e92c6836-51bb-4474-bd6a-0e5baa2900b5`, original operation
+  `068a505b-f82e-4497-9b85-64abebbfe627`, now reports succeeded/OK, installed=true,
+  cleanup=OK from replacement controller `497e7073-149d-4a24-bb82-012c741acfc5`.
+  Base2.3.1 and target2.3.2 share source62d and code fingerprint
+  `6f24ceca16fcf8310bdb1bbc0fb3373921d1fc623f1c8fffd4a2da29c6ec7239`.
+  Installed target main JAR and downloaded DMG match the frozen fixture receipt;
+  strict signing passes. Evidence: checkpoint34/macos-root-recovered-status.json,
+  recovered-operation.json, installed-hashes.txt and installed-codesign.txt.
+  The target serve process remains owned by this fixture. Machine installation,
+  GUI return and remaining failure/recovery scenarios are still separate gates.
+- Linux access was restored on September13 using the existing gateway identity
+  and the user's authorized nested-key unlock. Earlier authentication diagnoses
+  are superseded. Root reidentified and started only task VM1918327 from
+  `/home/kardinal/vpn-control-install-vm-9540bc92/task.qcow2`; guest is Ubuntu24.04.4
+  x86_64 with32GiB free, old installed2.0.18-1 and no VPN/installer processes.
+  A short-lived worker owns the exact9e source fixture pair build inside this guest.
+  Temporary authenticated SSH multiplexing expires after two hours; credentials
+  are not saved in source or evidence. Root owns connection cleanup.
+
+| Task | Active owner | Exclusive source/environment | Next handoff |
+| --- | --- | --- | --- |
+| Checkpoint35 freeze/delivery | root | All tracked content frozen for review/checks | Version metadata, prepush, reviewed push/exact-SHA CI |
+| Windows final JUnit | windows_final_junit | Frozen compiled bundle; Windows VM | Actual SYSTEM/limited-user five-method results |
+| Linux manifest retry | linux_tls_manifest_retry | Ubuntu guest; separate frozen diagnostic fixture server | Public trusted manifest response |
+| Android confirmation resume | android_confirmation_resume_native | API29 AVD5584; verified2.3.5 target | Independent confirmation/session recovery |
+| macOS return diagnosis | completed handoff | Read-only checkpoint36 guest evidence | Next slice needs early-startup stderr/exit observation |
+
+Checkpoint35 focused evidence and remaining review:
+
+- Desktop fixture regression suite passes33 tests, including rejection of an extra
+  stale MainKt JAR. The Linux worker established the stale installed JAR was unowned,
+  archived exact bytes with matching SHA256, and removed only that file before
+  retrying image admission. This is fixture cleanup, not proof of a packaging defect.
+- Android TLS lifecycle ordering suite passes22 tests. Removing the actual cold-app
+  step causally fails the new test. Desktop file response regression causally fails
+  with the old `len(Path)` mistake. RED evidence is retained under checkpoint35.
+- Android cold process25460 exported12,488,469 bytes and56,008 domains through the
+  public nondebuggable API29 adapter. Semantic SHA256 matches the earlier golden
+  `0ef2ce70d306e71d44a899d52a56a375022cb194cc534fab005934fb83bdaaa7`.
+  Public status stayed responsive afterward. The host CLI is a compatible component,
+  not a current installed CLI package; its final generated request ID was not retained.
+  Export: `/private/tmp/vpn-api29-cold-readback.YAouBm/routing-v7.json`.
+- Windows first actual adapter JUnit run failed3 methods at compilation (CS0050).
+  Root corrected ParseReceipt accessibility; immutable corrected resource manifest
+  SHA256 `17b6b41f36e791496cd88267214bfe37e467ca770edaec8c006281352005d058`
+  passed the entrypoint case but adapter fixtures failed compilation (private nested
+  queue access and unused field). Root corrected those test compilation issues.
+  Further review found same-sequence INSTALLING could bypass the deadline; a finite
+  fake-clock regression and fix now await actual Windows causal RED/GREEN execution.
+- macOS worker reports a second USER_LOCAL2.3.1→2.3.2 success, job
+  `645b70d0-2bcf-4cd8-a3fe-1fdbc623574d`, with target GUI visible after `gui show`.
+  Root read its receipt; pre-show process/window evidence confirms the GUI did NOT
+  return automatically. Request frontend identity was not retained, so missing intent
+  and return failure remain indistinguishable. An unproven Launch Services change was
+  rejected and reverted; a fresh native run will retain that evidence. Manual gui-show
+  success does not close this gate. Runtime was off.
+
+Workers are replaced after bounded slices per the user's context-lifetime request;
+live native operations are transferred with their identities, never killed to retire
+a worker. Completed worker names are historical and do not indicate active ownership.
+
 - Checkpoint33 is pushed as `62d307725c3a122ef5595a25ff9f3dddcef7b18c`
   (version2.1.8, two Unreleased notes). All15 managed prepush checks passed.
   Required exact-SHA Windows package CI failed: its native entrypoint JUnit test
@@ -677,3 +751,86 @@ The previous contradictory checkpoint ledger is preserved verbatim in
 [parity-checkpoint-history.md](parity-checkpoint-history.md). Earlier evidence is in
 [parity-native-history.md](parity-native-history.md) and [parity-history.md](parity-history.md).
 Those are historical retrieval aids, not current completion or process authority.
+
+### Checkpoint35 Additional Evidence Limits
+
+- API29 log-follow closed-output run returned130 and preserved its owner, but used
+  an older checkpoint32 desktop client and did not durably retain stderr. Treat it
+  as limited mixed-component observation, not final current-package stream proof.
+- Diagnostics async causal RED (checkpoint35/diagnostics-async-causal-red-v2.log)
+  compiled and failed expected ACCEPTED versus INVALID_ARGUMENT. Earlier attempts
+  failed test compilation or controller-epoch setup and are not causal evidence.
+  The proposed retained-result fix still needs public output/retry regressions.
+- Windows producer and builder fixture now both include helper sessions in their
+  source input sets. The quick22-test suite passes, including a real changed-source
+  fingerprint check. Windows builder execution remains a separate native check.
+
+- Windows adapter causal VM RED/GREEN is now verified against current source
+  hashes. Historical reconciliation failed PAUSE_CAP and advanced-receipt CONFLICT;
+  current loop passed all4 cases. Both variants compiled with pinned SDK10.0.400,
+  warnings-as-errors, zero warnings/errors. Evidence: checkpoint35/
+  windows-adapter-causal-native/{manifest.json,guest-artifacts-v3.txt}. This is x64
+  C# under ARM64 Windows, not actual JUnit/Main/admission/installed MSI evidence.
+  Independent component review found no new code blocker; production coordinator
+  binding and full entrypoint resource lifetime remain explicit acceptance gaps.
+- Linux exact four unowned dependency JARs were archived and removed after the
+  quick regression. Public installed2.3.1 updates-check now reaches the fixture but
+  fails before manifest delivery. Expected JVM proxy/trust properties were present;
+  the server discarded the failing TLS/request stage. A bounded redacted fixture
+  diagnostic regression is being added before any transport repair. Owner17373
+  remains untouched; its cleaned fixture truststore must not be reused.
+- Android installer resume requires a newer source-matched APK than installed
+  2.3.4/code17280. Immutable2.3.5 target preparation is assigned; no device mutation
+  was attempted without an eligible artifact. Latest public fixture reads returned
+  UNAVAILABLE, so earlier responsive owner observations are historical, not live proof.
+
+### Checkpoint35 Content Freeze
+
+Desktop diagnostics async now retains exact owner-generated output across retry and
+operation wait; wait supports private client-side delivery and raw stdout. Final
+focused GREEN is checkpoint35/diagnostics-async-green-v5.log: diagnostics4/0 and
+parser9/0, no skips. Failed intermediate runs exposed test-envelope/import mistakes,
+not further product defects. Android async diagnostics/wait-output remain explicitly
+unsupported and are still a full-plan parity gap.
+
+Canonical fixture diagnostics pass34 tests after explicit TLS-socket closure;
+checkpoint35/fixture-stage-causal-red.log removes the added stage fields in memory
+and fails the actual canonical-path assertions. Current GREEN and native transport
+results are separate evidence. Windows source-input checks22/0 and Android TLS-order
+checks22/0 passed. Full managed prepush is still required after metadata.
+
+Root built and verified Android2.3.5/code17300 nondebug target from exact62d source:
+APK SHA256 `cae5975acad6ca9e171a6e789b299c46ddfaeb5560251c931888a3f64a01ce71`,
+signer matches installed2.3.4. Receipt and immutable APK are under checkpoint35/
+android-installer-resume-gate-20260913T1929Z; this unblocks the assigned native gate.
+
+macOS checkpoint36 captured frontend identity in job67fd57f2-612f-4803-b1be-36041bb9d63e
+before cleanup. Installed receipt succeeded; unified logs prove relaunch PID24950
+started then exited in about350ms before frontend registration. No watcher/app
+remained66seconds after the receipt. Cause is not yet isolated: stderr was discarded
+and no child exit handle retained. Do not treat direct exec or Launch Services as
+proven cause. Current macOS production source is unchanged.
+
+Checkpoint35 prepush attempt1 passed hygiene but found the missing diagnostics
+metadata-observation warning (desktop suite1023 tests,1 failure,86 platform skips).
+Root preserved that existing regression and added malformed synchronous-export
+coverage before correcting both file/raw error classifications. Focused final
+export+diagnostics GREEN:8 tests, no failures; evidence export-regression-{red,green}.log.
+The full managed tier must rerun after the final metadata update.
+
+Windows actual JUnit now passes5 methods under SYSTEM and limited visualagent,
+both exits0 and no skips; exact scheduled task removed. Frozen manifest
+`25c963dac1426001300d0c904027e01dc31b3088739305beca2d97d6d9ebe780` matches the
+unchanged Windows adapter/test sources. Later CLI-only corrections do not extend
+this limited native evidence to the full current package.
+
+Linux fresh owner18943/server18853 successfully fetched the public update manifest.
+Missing truststore password is NOT established as cause of the older failure:
+same-store JVM initialization succeeded both with and without it. The assigned
+worker proceeds through the already accepted fixture using the successful owner;
+old owner17373 remains preserved.
+
+macOS exact direct C relaunch argv succeeds with GUI25488/owner25489 and runtimeOFF.
+An earlier probe incorrectly added --frontend-owner and is harness-mismatch evidence
+only. Automatic watcher return remains unproven under its original launch conditions;
+do not weaken pinned-owner safety or claim an argv fix.

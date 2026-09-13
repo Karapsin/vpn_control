@@ -284,17 +284,19 @@ internal class DesktopOperationRunner(
         retainSubscriptionIdentity: Boolean = false,
         retainLocationIdentity: Boolean = false,
         retainConfigurationValues: Boolean = false,
+        retainExportContent: Boolean = false,
         mutates: Boolean = true,
         completionMetadata: () -> DesktopControlMetadata? = { null },
         action: suspend () -> DesktopCliResponse,
     ): DesktopCliResponse {
-        require(mutates || operation == ControlOperationId.UPDATES_CANCEL)
+        require(mutates || operation in setOf(ControlOperationId.UPDATES_CANCEL, ControlOperationId.DIAGNOSTICS_EXPORT))
         require(!retainConfigurationValues || operation in DesktopConfigurationResultData.operations)
         require(!retainSettingsValues || operation in setOf(ControlOperationId.SETTINGS_SET, ControlOperationId.SETTINGS_APPLY))
         require(!retainSubscriptionIdentity || operation in setOf(ControlOperationId.SUBSCRIPTIONS_ADD, ControlOperationId.SUBSCRIPTIONS_UPDATE,
             ControlOperationId.SUBSCRIPTIONS_DELETE, ControlOperationId.SOURCE_SET))
         require(!retainLocationIdentity || operation in setOf(ControlOperationId.LOCATIONS_ADD, ControlOperationId.LOCATIONS_UPDATE,
             ControlOperationId.LOCATIONS_SELECT, ControlOperationId.LOCATIONS_DELETE))
+        require(!retainExportContent || operation == ControlOperationId.DIAGNOSTICS_EXPORT)
         if (requestId.isBlank()) return DesktopCliResponse.failure("INVALID_ARGUMENT")
         if (expectedControllerId != null && expectedControllerId != ledger.controllerId)
             return DesktopCliResponse.failure("CONFLICT")
@@ -350,7 +352,7 @@ internal class DesktopOperationRunner(
             catch (_: Exception) { DesktopCliResponse.failure("RUNTIME_FAILED") }
             uncertainResponseCode(response, progress.hasRetainedInputs)?.let(progress::pending)
             complete(id, requestId, response, retainSettingsValues, completionMetadata(), retainSubscriptionIdentity || retainLocationIdentity,
-                operation.takeIf { retainConfigurationValues })
+                operation.takeIf { retainConfigurationValues }, retainExportContent)
             reply.complete(response)
         }
         // Includes cancellation before the dispatched coroutine gets its first instruction.
@@ -406,7 +408,8 @@ internal class DesktopOperationRunner(
 
     private fun complete(id: String, requestId: String, response: DesktopCliResponse,
         retainSettingsValues: Boolean = false, committedMetadata: DesktopControlMetadata? = null,
-        retainSubscriptionIdentity: Boolean = false, configurationOperation: ControlOperationId? = null) = synchronized(guard) {
+        retainSubscriptionIdentity: Boolean = false, configurationOperation: ControlOperationId? = null,
+        retainExportContent: Boolean = false) = synchronized(guard) {
         val operation = ledger.get(id, now()) ?: return@synchronized
         if (operation.phase.terminal) return@synchronized
         uncertainResponseCode(response, inputOwners[id]?.hasRetainedInputs == true)?.let { code ->
@@ -427,7 +430,8 @@ internal class DesktopOperationRunner(
             else terminalInputOwners.add(id)
         }
         val actionData = runCatching { DesktopActionResultData.decode(operation.operation, response) }
-        val values = if (response.success && configurationOperation != null) runCatching {
+        val values = if (response.success && retainExportContent) Result.success(mapOf("content" to ControlValue.Text(response.message)))
+        else if (response.success && configurationOperation != null) runCatching {
             DesktopConfigurationResultData.decode(configurationOperation, response.message)
         } else if (response.success && (retainSettingsValues || retainSubscriptionIdentity)) runCatching {
             com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeValues(response.message).also { values ->
@@ -445,7 +449,8 @@ internal class DesktopOperationRunner(
             restartRequired = metadata.restartRequired, operationId = id, message = code.wireName,
             data = actionData.getOrNull() ?: values.getOrDefault(emptyMap()),
             warnings = DesktopConfigurationResultData.warnings(values.getOrDefault(emptyMap())) +
-                if (actionData.isFailure) listOf("RESULT_DATA_UNAVAILABLE") else emptyList()), now())
+                (if (retainExportContent) listOf("METADATA_OBSERVED_AFTER_REPORT") else emptyList()) +
+                (if (actionData.isFailure) listOf("RESULT_DATA_UNAVAILABLE") else emptyList())), now())
         changed()
     }
 

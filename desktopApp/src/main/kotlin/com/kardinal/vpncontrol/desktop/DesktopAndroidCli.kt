@@ -29,10 +29,14 @@ internal object DesktopAndroidCli {
                 ControlOperationId.SERVE, ControlOperationId.GUI_SHOW, ControlOperationId.GUI_HIDE, ControlOperationId.QUIT)) {
             return fail(ControlCode.UNSUPPORTED)
         }
+        if (invocation.client.asynchronous && invocation.operation == ControlOperationId.DIAGNOSTICS_EXPORT)
+            return fail(ControlCode.UNSUPPORTED)
         val controlRequest = com.kardinal.vpncontrol.control.ControlCliRequestBuilder.build(
             invocation, requestId, readInput, readQrImage).getOrElse {
                 return fail(if (it is OutOfMemoryError) ControlCode.UNAVAILABLE else ControlCode.INVALID_ARGUMENT)
             }
+        if (invocation.operation == ControlOperationId.OPERATIONS_WAIT && "--output" in invocation.options)
+            return fail(ControlCode.UNSUPPORTED)
         val response = desktopCliJsonResponse(controlRequest,
             request(controlRequest, invocation.client.serial, invocation.client.timeoutSeconds))
         if (invocation.operation in DesktopControlExports.operations) {

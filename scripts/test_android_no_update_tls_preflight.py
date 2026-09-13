@@ -304,6 +304,79 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual({}, fake.reverse_map)
             self.assertEqual('null', fake.proxy)
 
+    def test_tls_fixture_cold_action_follows_ca_bind_public_adbd_and_transport(self):
+        """The public probe must see the fixture only after its complete cold-start setup."""
+        class OrderedAdb(FakeAdb):
+            def __init__(self):
+                super().__init__()
+                self.events = []
+
+            def shell_id(self):
+                self.events.append('public-adbd-check')
+                return 'uid=0' if self.rooted else 'uid=2000'
+
+            def unroot(self):
+                super().unroot()
+                self.events.append('public-adbd-restored')
+
+            def reverse(self, device, host):
+                super().reverse(device, host)
+                self.events.append('transport-reverse')
+
+            def set_global_proxy(self, value):
+                super().set_global_proxy(value)
+                self.events.append('transport-proxy')
+
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                if args[:5] == ('nsenter', '-t', '177', '-m', '--') and args[-4:] == (
+                    'mount', '--bind', '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'
+                ):
+                    self.events.append('ca-bind')
+                if args == ('am', 'force-stop', 'com.kardinal.vpncontrol'):
+                    self.events.append('cold-app')
+                return super().shell(*args)
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = OrderedAdb()
+
+            def public_action(_args, adb, _receipt):
+                self.assertFalse(adb.rooted)
+                self.assertEqual({45390: 61000}, adb.reverse_map)
+                self.assertEqual('127.0.0.1:45390', adb.proxy)
+                adb.events.append('public-action')
+                return {'checked': True}
+
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                preflight.run_fixture_lifecycle(args, public_action)
+
+            ordered = ('ca-bind', 'public-adbd-restored', 'transport-reverse', 'transport-proxy', 'cold-app', 'public-action')
+            for event in ordered:
+                self.assertIn(event, fake.events, f"Missing required fixture step: {event}")
+            positions = [fake.events.index(event) for event in ordered]
+            self.assertEqual(positions, sorted(positions))
+            self.assertEqual('null', fake.proxy)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertFalse(fake.rooted)
+
     def test_main_recovers_route_after_setup_rollback_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'

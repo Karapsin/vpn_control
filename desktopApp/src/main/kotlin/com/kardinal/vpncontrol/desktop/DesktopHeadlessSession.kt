@@ -171,16 +171,12 @@ internal class DesktopHeadlessSession(
             }
         }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.DIAGNOSTICS_EXPORT) {
-            if (request.interactive || request.asynchronous || request.ifRevision != null || request.command.arguments.isNotEmpty())
+            if (request.interactive || request.ifRevision != null || request.command.arguments.isNotEmpty())
                 return DesktopCliResponse.failure("INVALID_ARGUMENT")
-            val report = executeCommand(DesktopCliCommand.DiagnosticsExport)
-            val metadata = metadataProvider()
-            val code = if (report.success) com.kardinal.vpncontrol.model.ControlCode.OK else com.kardinal.vpncontrol.model.ControlCode.RUNTIME_FAILED
-            val result = com.kardinal.vpncontrol.model.ControlResult(controllerId, request.requestId, code,
-                metadata.configurationRevision, restartRequired = metadata.restartRequired,
-                data = if (report.success) mapOf("content" to com.kardinal.vpncontrol.model.ControlValue.Text(report.message)) else emptyMap(),
-                warnings = listOf("METADATA_OBSERVED_AFTER_REPORT"))
-            return DesktopCliResponse(result.ok, com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
+            return operations.execute(request.command.operation, DesktopCliCommand.ControlSubmit(request),
+                requestId = request.requestId, asynchronous = request.asynchronous,
+                expectedControllerId = request.controllerId, resultEnvelope = true, mutates = false,
+                retainExportContent = true) { executeCommand(DesktopCliCommand.DiagnosticsExport) }
         }
         if (request.command.operation in DesktopControlInspection.operations) {
             if (request.interactive || request.asynchronous || request.ifRevision != null)

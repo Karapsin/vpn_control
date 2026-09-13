@@ -7,6 +7,22 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class DesktopJsonExportTest {
+    @Test fun missingSynchronousExportContentIsAProtocolFailure() {
+        for (destination in listOf("report.txt", "-")) {
+            val raw = destination == "-"
+            val args = (if (raw) emptyList() else listOf("--json")) +
+                listOf("diagnostics", "export", "--output", destination)
+            val code = DesktopCli.handleArgs(args.toTypedArray(), printLine = {}, printProgress = {},
+                requestCommand = { command ->
+                    val request = assertIs<DesktopCliCommand.ControlSubmit>(command).request
+                    DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner", request.requestId,
+                        ControlCode.OK, 0)))
+                }, writeOutput = { _, _ -> error("Missing content must not publish") },
+                writeBinaryOutput = { _, _ -> error("Missing content must not publish") })
+            assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL.exitCode, code, destination)
+        }
+    }
+
     @Test fun oversizedQrFailsWithoutWritingAndJsonCannotMixWithRawStdout() {
         val lines = mutableListOf<String>()
         assertEquals(1, DesktopCli.handleArgs(arrayOf("--json", "locations", "export", "--output", "qr.png", "--format", "qr-png"),

@@ -62,6 +62,26 @@ public static class VpnInstallHelperProtocol {
         return new UTF8Encoding(false,true).GetBytes(json);
     }
 
+    // These records are exchanged only through the already admitted private input
+    // directory.  They deliberately carry no paths, commands, or caller authority.
+    public static byte[] EncodeWorkerResult(string job,uint exitCode) {
+        Job(job);
+        return new UTF8Encoding(false,true).GetBytes("{\"version\":1,\"jobId\":\""+job+
+            "\",\"exitCode\":"+exitCode.ToString(CultureInfo.InvariantCulture)+"}");
+    }
+
+    internal static VpnInstallHelperRoles.Receipt ParseReceipt(byte[] bytes) {
+        Dictionary<string,object> record=Record(bytes,4096);
+        Fields(record,"version","jobId","sequence","phase","code");
+        if (Integer(record,"version")!=1) throw Invalid();
+        string job=Text(record,"jobId"), phase=Text(record,"phase"), code=Text(record,"code");
+        long sequence=Integer(record,"sequence");
+        Job(job);
+        VpnInstallHelperRoles.Phase state;
+        if (!Enum.TryParse<VpnInstallHelperRoles.Phase>(phase,false,out state) || state.ToString()!=phase) throw Invalid();
+        return new VpnInstallHelperRoles.Receipt(job,sequence,state,code);
+    }
+
     public sealed class Request {
         public readonly string JobId, PrincipalSid, Launcher, PackageFile, PackageSha256, StateDirectory;
         public readonly uint OwnerPid;

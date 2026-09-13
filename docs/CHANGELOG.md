@@ -8,6 +8,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep completed check failures terminal while retaining uncertain native operation inputs.
 - Preserve Android CLI operation waits and benchmark diagnostics, and harden Windows native cleanup and installer input ownership.
 - Run Windows installer admission regressions with the pinned compiler and valid private fixtures.
+- Retain asynchronous diagnostic exports and harden installer recovery and fixture validation.
+- Preserve diagnostic metadata warnings and malformed-export protocol errors.
 
 ## 2.1.8 - 2026-09-09
 

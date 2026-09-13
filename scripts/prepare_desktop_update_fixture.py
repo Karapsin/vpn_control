@@ -619,6 +619,80 @@ def load_resources(directory):
     return manifest, resources
 
 
+def read_request_header(request):
+    data = bytearray()
+    while not data.endswith(b"\r\n\r\n"):
+        value = request.recv(1)
+        if not value:
+            raise EOFError
+        data.extend(value)
+        require(len(data) <= 16384, "Oversized fixture request header")
+    lines = data.decode("ascii").split("\r\n")
+    method, target, protocol = lines[0].split(" ")
+    require(protocol == "HTTP/1.1", "Unsupported fixture HTTP version")
+    hosts = [line.split(":", 1)[1].strip() for line in lines[1:] if line.lower().startswith("host:")]
+    require(len(hosts) == 1, "Expected one Host header")
+    return method, target, hosts[0]
+
+
+def write_resource_response(request, resource, manifest, resources, manifest_body):
+    if resource == "manifest":
+        length = len(manifest_body)
+        request.sendall(("HTTP/1.1 200 OK\r\nContent-Length: " + str(length) +
+                         "\r\nConnection: close\r\n\r\n").encode() + manifest_body)
+        return length
+    # Recheck immutable inputs before each request, then stream from the same
+    # open file. Production length/hash verification stays active.
+    asset = next(value for value in manifest["assets"] if value["fileName"] == resource)
+    path = resources[resource]
+    require(file_hash(path) == asset["sha256"], "Frozen package changed")
+    with path.open("rb") as source:
+        length = os.fstat(source.fileno()).st_size
+        require(length == asset["sizeBytes"], "Frozen package length changed")
+        request.sendall(("HTTP/1.1 200 OK\r\nContent-Length: " + str(length) +
+                         "\r\nConnection: close\r\n\r\n").encode())
+        for chunk in iter(lambda: source.read(65536), b""):
+            request.sendall(chunk)
+    return length
+
+
+def fixture_failure_diagnostic(stage, error):
+    """Return the sole permitted failure record for a fixture connection."""
+    return {"request": "closed-or-rejected", "stage": stage,
+            "exceptionType": type(error).__name__}
+
+
+def serve_connection(request, tls, manifest, resources, manifest_body, emit):
+    """Serve one canonical HTTPS-proxy connection with bounded failure evidence."""
+    stage = "connect-admission"
+    tunneled = None
+    try:
+        method, target, host = read_request_header(request)
+        if method != "CONNECT" or target.lower() != "github.com:443" or host.lower() != "github.com:443":
+            request.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+            raise ValueError("Rejected fixture CONNECT admission")
+        request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        stage = "tls-handshake"
+        tunneled = tls.wrap_socket(request, server_side=True)
+        stage = "tunneled-get"
+        resource = select_resource(*read_request_header(tunneled), manifest)
+        if resource is None:
+            tunneled.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            return
+        length = write_resource_response(tunneled, resource, manifest, resources, manifest_body)
+        print(json.dumps({"served": resource, "bytes": length}), flush=True)
+    except (OSError, EOFError, ValueError) as error:
+        # Deliberately retain only the stage and type: exception text can contain
+        # client requests, certificate paths, or other owner-private values.
+        emit(fixture_failure_diagnostic(stage, error))
+    finally:
+        if tunneled is not None:
+            try:
+                tunneled.close()
+            except OSError:
+                pass
+
+
 def serve(directory, certificate, private_key, ready_file, confirmed):
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
     directory = directory.resolve(strict=True)
@@ -629,54 +703,10 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
     tls.load_cert_chain(certificate, private_key)
 
     class Handler(socketserver.BaseRequestHandler):
-        def header(self):
-            data = bytearray()
-            while not data.endswith(b"\r\n\r\n"):
-                value = self.request.recv(1)
-                if not value:
-                    raise EOFError
-                data.extend(value)
-                require(len(data) <= 16384, "Oversized fixture request header")
-            lines = data.decode("ascii").split("\r\n")
-            method, target, protocol = lines[0].split(" ")
-            require(protocol == "HTTP/1.1", "Unsupported fixture HTTP version")
-            hosts = [line.split(":", 1)[1].strip() for line in lines[1:] if line.lower().startswith("host:")]
-            require(len(hosts) == 1, "Expected one Host header")
-            return method, target, hosts[0]
-
         def handle(self):
             self.request.settimeout(30)
-            try:
-                method, target, host = self.header()
-                if method != "CONNECT" or target.lower() != "github.com:443" or host.lower() != "github.com:443":
-                    self.request.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
-                    return
-                self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                self.request = tls.wrap_socket(self.request, server_side=True)
-                resource = select_resource(*self.header(), manifest)
-                if resource is None:
-                    self.request.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                    return
-                if resource == "manifest":
-                    length = len(body)
-                    self.request.sendall(("HTTP/1.1 200 OK\r\nContent-Length: " + str(length) +
-                                          "\r\nConnection: close\r\n\r\n").encode() + body)
-                else:
-                    # Recheck immutable inputs before each request, then stream from the
-                    # same open file. Production length/hash verification stays active.
-                    asset = next(value for value in manifest["assets"] if value["fileName"] == resource)
-                    path = resources[resource]
-                    require(file_hash(path) == asset["sha256"], "Frozen package changed")
-                    with path.open("rb") as source:
-                        length = os.fstat(source.fileno()).st_size
-                        require(length == asset["sizeBytes"], "Frozen package length changed")
-                        self.request.sendall(("HTTP/1.1 200 OK\r\nContent-Length: " + str(length) +
-                                              "\r\nConnection: close\r\n\r\n").encode())
-                        for chunk in iter(lambda: source.read(65536), b""):
-                            self.request.sendall(chunk)
-                print(json.dumps({"served": resource, "bytes": length}), flush=True)
-            except (OSError, EOFError, ValueError):
-                print('{"request":"closed-or-rejected"}', flush=True)
+            serve_connection(self.request, tls, manifest, resources, body,
+                             lambda value: print(json.dumps(value, separators=(",", ":")), flush=True))
 
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True

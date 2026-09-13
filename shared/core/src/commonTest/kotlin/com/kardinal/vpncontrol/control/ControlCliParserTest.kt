@@ -101,7 +101,7 @@ class ControlCliParserTest {
             listOf("settings", "languages"), listOf("ssh", "key", "status"), listOf("ssh", "key", "import", "--input", "-"),
             listOf("stats", "--watch"), listOf("logs", "--follow", "--limit", "10"),
             listOf("diagnostics", "export", "--output", "-"), listOf("operations", "list"),
-            listOf("operations", "status", "id"), listOf("operations", "wait", "id"), listOf("operations", "cancel", "id"),
+            listOf("operations", "status", "id"), listOf("operations", "wait", "id", "--output", "report.txt"), listOf("operations", "cancel", "id"),
             listOf("updates", "status"), listOf("updates", "check"), listOf("updates", "download"),
             listOf("updates", "install"), listOf("updates", "cancel"), listOf("updates", "dismiss"),
             listOf("serve"), listOf("gui", "show"), listOf("gui", "hide"), listOf("quit"), listOf("capabilities"),
@@ -122,6 +122,7 @@ class ControlCliParserTest {
             listOf("source", "set", "all", "SECRET"),
             listOf("routing", "set", "rule-sets", "SECRET"),
             listOf("routing", "export", "--output", "-", "--json"),
+            listOf("diagnostics", "export", "--async", "--output", "report.txt"),
             listOf("locations", "export", "--output", "secret", "--format", "bad"),
             listOf("locations", "add", "--input", "--json"),
             listOf("locations", "add", "--input", "secret", "--input", "other"),
@@ -131,6 +132,12 @@ class ControlCliParserTest {
             val error = assertIs<ControlCliParseResult.Invalid>(ControlCliParser.parse(args))
             assertFalse(error.reason.contains("SECRET"))
         }
+    }
+
+    @Test
+    fun asyncDiagnosticsUsesOperationWaitForClientSideExportDelivery() {
+        assertEquals(ControlOperationId.DIAGNOSTICS_EXPORT, parse("--async", "diagnostics", "export").operation)
+        assertEquals("report.txt", parse("operations", "wait", "operation", "--output", "report.txt").options["--output"])
     }
 
     private fun parse(vararg args: String) = assertIs<ControlCliParseResult.Invocation>(ControlCliParser.parse(args.toList()))

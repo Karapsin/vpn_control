@@ -180,18 +180,24 @@ internal object DesktopCli {
         val response = if (first.isDesktopAppNotRunning && request.controllerId == null &&
             request.command.operation !in noStartupOperations) startHeadlessController(submit) else first
         val formatted = desktopCliJsonResponse(request, response)
-        if (request.command.operation in DesktopControlExports.operations) {
+        if (request.command.operation in DesktopControlExports.operations && "--output" in invocation.options ||
+            request.command.operation == ControlOperationId.OPERATIONS_WAIT && "--output" in invocation.options) {
+            val missingContentCode = if (request.command.operation == ControlOperationId.OPERATIONS_WAIT)
+                ControlCode.INVALID_ARGUMENT else ControlCode.INCOMPATIBLE_PROTOCOL
             val output = requireNotNull(invocation.options["--output"])
-            val format = invocation.options["--format"] ?: if (request.command.operation == ControlOperationId.DIAGNOSTICS_EXPORT) "text" else "json"
+            val format = invocation.options["--format"] ?: if (request.command.operation in setOf(
+                    ControlOperationId.DIAGNOSTICS_EXPORT, ControlOperationId.OPERATIONS_WAIT)) "text" else "json"
             if (output == "-") {
                 val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(formatted.message)
                 val content = (result.data["content"] as? ControlValue.Text)?.value
-                val code = if (!result.ok) result.code else if (!result.final || result.code != ControlCode.OK || content == null)
-                    ControlCode.INCOMPATIBLE_PROTOCOL else DesktopControlExports.writeRaw(content, format, writeBinaryOutput)
-                if (code != ControlCode.OK) printProgress(code.wireName)
+                val code = if (!result.ok) result.code else if (!result.final || result.code != ControlCode.OK) ControlCode.INCOMPATIBLE_PROTOCOL
+                else if (content == null) missingContentCode
+                else DesktopControlExports.writeRaw(content, format, writeBinaryOutput)
+                if (code != ControlCode.OK) printProgress(listOf(code.wireName,
+                    result.operationId?.let { "operationId=$it" }).filterNotNull().joinToString(" "))
                 return code.exitCode
             }
-            return desktopCliRender(DesktopControlExports.write(formatted, output, format, writeOutput, writeBinaryOutput),
+            return desktopCliRender(DesktopControlExports.write(formatted, output, format, writeOutput, writeBinaryOutput, missingContentCode),
                 invocation.client.json, printLine, printProgress)
         }
         return desktopCliRender(formatted, invocation.client.json, printLine, printProgress)

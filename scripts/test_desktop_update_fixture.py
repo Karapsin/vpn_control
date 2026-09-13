@@ -8,12 +8,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import ssl
 
 from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
     desktop_install_arguments, require_selected_location, require_active_runtime, fixture_proxy_arguments,
+    serve_connection, write_resource_response,
 )
 from test_fixture_environment import symlink_probe_available
 
@@ -315,6 +317,36 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertEqual(image_identity(base, "2.1.2")["codeFingerprint"],
                              image_identity(target, "2.1.3")["codeFingerprint"])
 
+    def test_installed_image_rejects_a_stale_unlisted_main_jar(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = self.make_image(root / "installed", "2.3.1")
+            stale = self.make_image(root / "old-fixture", "1.0.0")
+            stale_main = None
+            for path in (stale / "lib/app").glob("*.jar"):
+                with zipfile.ZipFile(path) as jar:
+                    if MAIN_CLASS in jar.namelist():
+                        stale_main = path
+                        break
+            self.assertIsNotNone(stale_main)
+            extra = image / "lib/app/stale-main.jar"
+            extra.write_bytes(stale_main.read_bytes())
+            with self.assertRaisesRegex(ValueError, "Packaged version resource disagrees"):
+                image_identity(image, "2.3.1")
+            extra.unlink()
+            self.assertTrue(image_identity(image, "2.3.1")["codeFingerprint"])
+
+    def test_installed_image_rejects_unlisted_legacy_dependency_jar(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = self.make_image(Path(temporary) / "installed", "2.3.1")
+            extra = image / "lib/app/old-core-desktop.jar"
+            with zipfile.ZipFile(extra, "w") as jar:
+                jar.writestr("example/Legacy.class", b"old dependency")
+            with self.assertRaisesRegex(ValueError, "classpath must reference every JAR exactly once"):
+                image_identity(image, "2.3.1")
+            extra.unlink()
+            self.assertTrue(image_identity(image, "2.3.1")["codeFingerprint"])
+
     def test_jpackage_repacked_jars_keep_logical_identity_after_filename_hash_was_chosen(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -531,6 +563,106 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                                          ("GET", path + "?anything", "github.com")):
                 self.assertIsNone(select_resource(method, target, host, manifest))
             self.assertEqual("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", asset["sha256"])
+
+    def test_canonical_fixture_response_preserves_body_lengths_and_rejects_mutated_packages(self):
+        class CapturedConnection:
+            def __init__(self):
+                self.data = bytearray()
+
+            def sendall(self, value):
+                self.data.extend(value)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary) / "fixture.deb"
+            package_bytes = b"fixture package bytes\x00with a non-text tail"
+            package.write_bytes(package_bytes)
+            asset = package_asset(package, "linux", "x86_64", "2.1.3")
+            manifest = {"assets": [asset]}
+            manifest_body = json.dumps(manifest, separators=(",", ":")).encode()
+
+            manifest_response = CapturedConnection()
+            self.assertEqual(len(manifest_body), write_resource_response(
+                manifest_response, "manifest", manifest, {asset["fileName"]: package}, manifest_body))
+            manifest_headers, manifest_sent_body = bytes(manifest_response.data).split(b"\r\n\r\n", 1)
+            self.assertIn(b"Content-Length: " + str(len(manifest_body)).encode(), manifest_headers)
+            self.assertEqual(manifest_body, manifest_sent_body)
+
+            package_response = CapturedConnection()
+            self.assertEqual(len(package_bytes), write_resource_response(
+                package_response, asset["fileName"], manifest, {asset["fileName"]: package}, manifest_body))
+            package_headers, package_sent_body = bytes(package_response.data).split(b"\r\n\r\n", 1)
+            self.assertIn(b"Content-Length: " + str(len(package_bytes)).encode(), package_headers)
+            self.assertEqual(package_bytes, package_sent_body)
+
+            # A writer that reads a changed file after computing Content-Length
+            # would produce a truncated or mismatched response. The canonical
+            # writer rechecks both immutable identity values before writing.
+            package.write_bytes(package_bytes + b" changed")
+            with self.assertRaisesRegex(ValueError, "Frozen package changed"):
+                write_resource_response(CapturedConnection(), asset["fileName"], manifest,
+                                        {asset["fileName"]: package}, manifest_body)
+            package.write_bytes(package_bytes)
+            changed_asset = {**asset, "sizeBytes": len(package_bytes) + 1}
+            with self.assertRaisesRegex(ValueError, "Frozen package length changed"):
+                write_resource_response(CapturedConnection(), asset["fileName"], {"assets": [changed_asset]},
+                                        {asset["fileName"]: package}, manifest_body)
+
+    def test_canonical_fixture_failure_diagnostics_bound_each_https_stage(self):
+        """The actual server path names its failed stage without logging request data."""
+        connect = b"CONNECT github.com:443 HTTP/1.1\r\nHost: github.com:443\r\n\r\n"
+
+        class Connection:
+            def __init__(self, chunks):
+                self.chunks = iter(chunks)
+                self.sent = bytearray()
+                self.closed = 0
+
+            def settimeout(self, value):
+                self.timeout = value
+
+            def recv(self, size):
+                return next(self.chunks, b"")
+
+            def sendall(self, value):
+                self.sent.extend(value)
+
+            def close(self):
+                self.closed += 1
+
+        class HandshakeFailure:
+            def wrap_socket(self, request, server_side):
+                raise ssl.SSLError("private fixture detail must not be logged")
+
+        class TunnelingTls:
+            def __init__(self, tunneled):
+                self.tunneled = tunneled
+
+            def wrap_socket(self, request, server_side):
+                return self.tunneled
+
+        tunneled_connection = Connection([b""])
+        cases = (
+            (Connection([b"CONNECT rejected.invalid:443 HTTP/1.1\r\nHost: rejected.invalid:443\r\n\r\n"]),
+             HandshakeFailure(), "connect-admission", "ValueError", None),
+            (Connection([connect]), HandshakeFailure(), "tls-handshake", "SSLError", None),
+            (Connection([connect]), TunnelingTls(tunneled_connection), "tunneled-get", "EOFError",
+             tunneled_connection),
+        )
+        for connection, tls, stage, exception_type, tunneled in cases:
+            with self.subTest(stage=stage):
+                diagnostics = []
+                serve_connection(connection, tls, {"assets": []}, {}, b"{}",
+                                 diagnostics.append)
+                self.assertEqual([{
+                    "request": "closed-or-rejected", "stage": stage,
+                    "exceptionType": exception_type,
+                }], diagnostics)
+                if stage == "connect-admission":
+                    self.assertIn(b"403 Forbidden", connection.sent)
+                if tunneled is not None:
+                    self.assertEqual(1, tunneled.closed)
+                self.assertNotIn("private fixture detail", json.dumps(diagnostics))
+
 
 
 class ArchFixturePlanTest(unittest.TestCase):

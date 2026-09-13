@@ -64,10 +64,10 @@ ssh key status
 ssh key import --input PATH|-
 stats [--watch]
 logs [--follow] [--limit N]
-diagnostics export --output PATH|-
+diagnostics export [--output PATH|-]
 operations list
 operations status <id>
-operations wait <id>
+operations wait <id> [--output PATH|-]
 operations cancel <id>
 updates status
 updates check
@@ -281,6 +281,9 @@ open. Desktop QR image imports and PNG exports are implemented, as are JSON file
 exports for locations/routing/diagnostics; content is not echoed in the final
 envelope and success follows client file writing. CLI stdout is
 explicit UTF-8 on every OS, independent of the JVM/console default encoding.
+Desktop asynchronous diagnostics export accepts without `--output`; use its
+operation ID with `operations wait <id> --output PATH|-` to retrieve and write
+the retained report. The original export destination is never sent to the owner.
 
 ## Action Semantics And Existing Owners
 
