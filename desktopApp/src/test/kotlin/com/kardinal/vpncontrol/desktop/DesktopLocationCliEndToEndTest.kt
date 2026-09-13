@@ -29,6 +29,7 @@ class DesktopLocationCliEndToEndTest {
                 val lines = mutableListOf<String>()
                 val code = DesktopCli.handleArgs(args.toList().toTypedArray(), lines::add,
                     requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                    requestExport = { command, output -> DesktopActivationServer.requestCliExport(command, output, endpoint) },
                     startHeadlessController = { error("Existing owner must be reused") })
                 return code to lines.joinToString("\n")
             }

@@ -69,7 +69,7 @@ object ControlOperationRegistry {
         product(DIAGNOSTICS_EXPORT, "diagnostics export --output PATH|-", "diagnostics.export", mutates = false, async = true),
         inspect(OPERATIONS_LIST, "operations list"),
         inspect(OPERATIONS_STATUS, "operations status <id>"),
-        inspect(OPERATIONS_WAIT, "operations wait <id>"),
+        inspect(OPERATIONS_WAIT, "operations wait <id> [--output PATH|-]"),
         product(OPERATIONS_CANCEL, "operations cancel <id>", "operation.cancel"),
         inspect(UPDATES_STATUS, "updates status"),
         product(UPDATES_CHECK, "updates check", "updates.check", async = true),

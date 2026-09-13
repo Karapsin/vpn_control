@@ -39,7 +39,7 @@ class DesktopDiagnosticsCliTest {
                     val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(response.message)
                     response.copy(message = com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(
                         result.copy(requestId = request.requestId)))
-                }, startHeadlessController = { error("Must not replace owner") },
+                }, enableDirectFileExport = false, startHeadlessController = { error("Must not replace owner") },
                 writeOutput = { _, _ -> error("Timed-out/non-export result must not write a file") },
                 writeBinaryOutput = { _, chunk -> bytes.write(chunk); Result.success(Unit) }, printProgress = errors::add)
             return Triple(code, lines + errors, bytes.toByteArray())
@@ -103,6 +103,7 @@ class DesktopDiagnosticsCliTest {
             val completedOutput = mutableListOf<String>()
             assertEquals(0, DesktopCli.handleArgs(arrayOf("--json", "operations", "wait", operationId, "--output", destination.toString()),
                 completedOutput::add, requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                requestExport = { command, output -> DesktopActivationServer.requestCliExport(command, output, endpoint) },
                 startHeadlessController = { error("Must not replace operation owner") }))
             assertEquals(report, Files.readString(destination))
             val completed = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(completedOutput.single())

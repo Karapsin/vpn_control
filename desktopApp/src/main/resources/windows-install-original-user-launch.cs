@@ -117,6 +117,27 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
             } finally { if (current!=IntPtr.Zero) CloseHandle(current); }
         }
         internal bool Wait(uint milliseconds) { return WaitForSingleObject(process,milliseconds)==0; }
+        // This is used only before the coordinator has admitted the child or
+        // created any protected installation state.  Once admission succeeds,
+        // the worker may own an MSI attempt and must be reconciled by receipt,
+        // never terminated by its parent.
+        internal void StopBeforeCoordinatorAdmission() {
+            if (process==IntPtr.Zero) throw new ObjectDisposedException("StartedHelper");
+            if (!Wait(0) && !TerminateProcess(process,1) && !Wait(0)) {
+                // A failed terminate request has no completed outcome. Retain
+                // this exact child until it exits instead of returning through
+                // a finally block that would abandon its only process witness.
+            }
+            WaitForExactExit();
+        }
+        internal void ReconcileAfterCoordinatorAdmission() {
+            if (process==IntPtr.Zero) throw new ObjectDisposedException("StartedHelper");
+            // Retain the exact process/generation handle until this child has
+            // exited.  Closing a live handle here would let Main abandon a
+            // worker whose protected receipt is still the only outcome record.
+            WaitForExactExit();
+        }
+        void WaitForExactExit() { while (!Wait(UInt32.MaxValue)) System.Threading.Thread.Sleep(50); }
         public void Dispose() { if (process!=IntPtr.Zero) { CloseHandle(process); process=IntPtr.Zero; } }
     }
     // The caller owns this retained identity and must reconcile/close it; an
@@ -153,7 +174,7 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
         return image;
     }
     static long ProcessCreation(IntPtr process) { FILETIME creation,exit,kernel,user; if (!GetProcessTimes(process,out creation,out exit,out kernel,out user)) throw Error("UNAVAILABLE"); return ((long)creation.high<<32)|creation.low; }
-    static int TokenScalar(IntPtr source,int kind) { IntPtr value=Marshal.AllocHGlobal(8); try { int size; if (!GetTokenInformation(source,kind,value,8,out size) || size!=4) throw Error("UNAVAILABLE"); return Marshal.ReadInt32(value); } finally { Marshal.FreeHGlobal(value); } }
+    static int TokenScalar(IntPtr source,int kind) { IntPtr value=Marshal.AllocHGlobal(4); try { int size; if (!GetTokenInformation(source,kind,value,4,out size) || size!=4) throw Error("UNAVAILABLE"); return Marshal.ReadInt32(value); } finally { Marshal.FreeHGlobal(value); } }
     static string TokenSid(IntPtr source) { using (WindowsIdentity identity=new WindowsIdentity(source)) { if (identity.User==null) throw new IOException("UNAVAILABLE"); return identity.User.Value; } }
     static string ProcessImage(IntPtr process) { var text=new System.Text.StringBuilder(32768); int length=text.Capacity; if (!QueryFullProcessImageNameW(process,0,text,ref length) || length<1 || length>=text.Capacity) throw Error("UNAVAILABLE"); return text.ToString(); }
     static string Quote(string value) { if (String.IsNullOrEmpty(value)) return "\"\""; string result="\""; int slashes=0; foreach(char c in value) { if(c=='\\') { slashes++; continue; } if(c=='\"') result+=new String('\\',slashes*2+1); else result+=new String('\\',slashes); result+=c; slashes=0; } return result+new String('\\',slashes*2)+"\""; }

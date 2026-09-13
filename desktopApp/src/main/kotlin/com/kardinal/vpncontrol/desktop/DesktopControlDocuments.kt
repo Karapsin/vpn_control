@@ -10,6 +10,10 @@ import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 
+internal data class DesktopExportDownload(val byteCount: Long, val acknowledged: Boolean)
+internal class DesktopExportWriteException(cause: Throwable) : java.io.IOException("PERSISTENCE_FAILED", cause)
+internal class DesktopExportTransportException(cause: Throwable) : java.io.IOException("OUTCOME_UNKNOWN", cause)
+
 /** Called only after endpoint authentication. References never name a filesystem path. */
 internal class DesktopControlDocuments(private val owner: String) : AutoCloseable {
     private val store = ControlTransferStore(owner, { DesktopControlTransferSpool.create() },
@@ -142,6 +146,17 @@ internal class DesktopControlDocuments(private val owner: String) : AutoCloseabl
         reference(owner, context, kind, manifest)
     }
 
+    /** Keep export payload bytes separate from the normal control-result envelope. */
+    fun publishExport(response: DesktopCliResponse, context: String, onAcknowledged: () -> Unit): String? {
+        val result = runCatching { ControlDocumentCodec.decodeResult(response.message) }.getOrNull() ?: return null
+        if (!result.ok || !result.final || result.code != ControlCode.OK) return null
+        val content = (result.data["content"] as? ControlValue.Text)?.value ?: return null
+        val reference = publish(content, "export", context, onAcknowledged)
+        val metadata = result.copy(data = result.data - "content" + ("exportReference" to ControlValue.Text(reference)))
+        return DesktopCliProtocol.encodeResponse(DesktopCliResponse(metadata.ok,
+            ControlDocumentCodec.encodeResult(metadata), metadata.exitCode))
+    }
+
     private fun envelope(document: String, field: String): Map<String, ControlValue> {
         val values = ControlProtocolCodec.decodeValues(document)
         require(values.keys == setOf("owner", "context", "kind", field))
@@ -166,7 +181,7 @@ internal class DesktopControlDocuments(private val owner: String) : AutoCloseabl
         const val TRANSFER = "vpn-control-transfer-v1\t"
         const val REFERENCE = "vpn-control-document-v1\t"
         const val CONTEXT = "vpn-control-context-v1\t"
-        private val KINDS = setOf("command", "response", "snapshot", "presentation")
+        private val KINDS = setOf("command", "response", "snapshot", "presentation", "export")
         private fun validContext(context: String) { require(UUID.fromString(context).toString() == context) }
         private fun Map<String, ControlValue>.text(key: String) = (getValue(key) as ControlValue.Text).value
         private fun fields(owner: String, context: String, kind: String, field: String, value: String) =
@@ -227,6 +242,54 @@ internal class DesktopControlDocuments(private val owner: String) : AutoCloseabl
                 return document
             } finally { runCatching { exchange(command(owner, context, expectedKind, ControlTransferCommand.Discard(manifest.id))) } }
         }
+
+        /** Verify the authenticated manifest before private publication; wrapper bytes are never exported. */
+        fun downloadExport(owner: String, reference: String, context: String, output: String,
+                           exchange: (String) -> String): Result<DesktopExportDownload> = runCatching {
+            val values = protocol { ControlProtocolCodec.decodeValues(reference.removePrefix(REFERENCE)) }
+            protocol(reference.startsWith(REFERENCE) && values.keys == setOf("owner", "context", "kind", "manifest"))
+            protocol { values.text("owner") == owner && values.text("kind") == "export" && values.text("context") == context }
+            val manifest = protocol { ControlTransferCodec.decodeManifest(values.text("manifest")) }
+            val expectedHash = manifest.sha256 ?: throw DesktopControlProtocolException()
+            val digest = MessageDigest.getInstance("SHA-256")
+            var count = 0L
+            try {
+                DesktopPrivateExportWriter.writeChunks(output) { emit ->
+                    while (count < manifest.byteCount) {
+                        val length = minOf(manifest.chunkBytes.toLong(), manifest.byteCount - count).toInt()
+                        val frame = try { exchange(command(owner, context, "export", ControlTransferCommand.Read(manifest.id, count, length))) }
+                        catch (error: Exception) { throw DesktopExportTransportException(error) }
+                        val chunk = protocol { ControlTransferCodec.decodeChunk(frame) }
+                        protocol(chunk.id == manifest.id && chunk.offset == count && chunk.bytes.size == length)
+                        try {
+                            digest.update(chunk.bytes)
+                            var start = 0
+                            while (start < chunk.bytes.size) {
+                                val size = minOf(DesktopExportUtf8.CHUNK_BYTES, chunk.bytes.size - start)
+                                emit(chunk.bytes.copyOfRange(start, start + size), size)
+                                start += size
+                            }
+                            count += chunk.bytes.size
+                        }
+                        finally { chunk.bytes.fill(0) }
+                    }
+                    protocol(count == manifest.byteCount && digest.digest().joinToString("") { "%02x".format(it) } == expectedHash)
+                }.getOrElse { error ->
+                    if (error is DesktopControlProtocolException || error is DesktopExportTransportException) throw error
+                    throw DesktopExportWriteException(error)
+                }
+                val acknowledged = runCatching {
+                    exchange(TRANSFER + fields(owner, context, "export", "command", "ack:${manifest.id}:$expectedHash")) == "ACKNOWLEDGED"
+                }.getOrDefault(false)
+                DesktopExportDownload(count, acknowledged)
+            } finally { runCatching { exchange(command(owner, context, "export", ControlTransferCommand.Discard(manifest.id))) } }
+        }
+
+        private fun protocol(condition: Boolean) {
+            if (!condition) throw DesktopControlProtocolException()
+        }
+
+        private fun <T> protocol(block: () -> T): T = try { block() } catch (_: Exception) { throw DesktopControlProtocolException() }
 
         private fun readText(manifest: ControlTransferManifest, readChunk: (Long, Int) -> ByteArray): String {
             var offset = 0L

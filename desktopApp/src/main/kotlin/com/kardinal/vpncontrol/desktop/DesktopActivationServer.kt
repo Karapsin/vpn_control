@@ -105,7 +105,8 @@ internal class DesktopActivationServer private constructor(
                                         } else {
                                             val result = DesktopCliProtocol.decodeCommandDocument(command).fold(
                                                 onSuccess = { decoded ->
-                                                    require(context == null || context.second == documentKind(decoded))
+                                                    require(context == null || context.second == documentKind(decoded) ||
+                                                        context.second == "export" && isFileExportCommand(decoded))
                                                     if (decoded.bypassesMutationAdmission) {
                                                         commandInvoked = true
                                                         admittedCommand = decoded
@@ -128,9 +129,12 @@ internal class DesktopActivationServer private constructor(
                                             if (completedCommand != null && completedResponse != null)
                                                 onCliResponseFlushed(completedCommand, completedResponse)
                                         }
-                                        if (DesktopControlFrames.fits(response)) {
-                                            DesktopControlFrames.write(output, response)
-                                            flushed()
+                                        val exportResponse = if (context?.second == "export" && completedResponse != null)
+                                            documents.publishExport(completedResponse, context.first, flushed) else null
+                                        val responseToWrite = exportResponse ?: response
+                                        if (DesktopControlFrames.fits(responseToWrite)) {
+                                            DesktopControlFrames.write(output, responseToWrite)
+                                            if (exportResponse == null) flushed()
                                         } else if (context == null) {
                                             DesktopControlFrames.write(output, DesktopCliProtocol.encodeResponse(
                                                 DesktopCliResponse.failure("INCOMPATIBLE_PROTOCOL", 2)))
@@ -168,7 +172,8 @@ internal class DesktopActivationServer private constructor(
             request(payload, DesktopControlEndpoint.read(portFile), responseTimeout, documentKind, payloadForController)
 
         private fun request(payload: String, endpoint: DesktopControlEndpoint, responseTimeout: Long, documentKind: String? = null,
-            payloadForController: ((String) -> String)? = null): String {
+            payloadForController: ((String) -> String)? = null, downloadResponse: Boolean = true,
+            context: String = java.util.UUID.randomUUID().toString()): String {
             val bound = payloadForController?.invoke(endpoint.controllerId) ?: payload
             fun exchange(value: String) = exchange(endpoint, value, responseTimeout)
             if (documentKind == null) return exchange(bound)
@@ -176,7 +181,6 @@ internal class DesktopActivationServer private constructor(
                 if (!DesktopControlFrames.fits(bound)) throw DesktopControlProtocolException()
                 return exchange(bound)
             }
-            val context = java.util.UUID.randomUUID().toString()
             var discard: (() -> Unit)? = null
             try {
                 val outgoing = if (DesktopControlFrames.fits(bound)) bound else {
@@ -186,7 +190,8 @@ internal class DesktopActivationServer private constructor(
                 }
                 val response = exchange(endpoint, outgoing, responseTimeout,
                     DesktopControlDocuments.context(endpoint.controllerId, context, documentKind))
-                return DesktopControlDocuments.download(endpoint.controllerId, response, documentKind, context, ::exchange)
+                return if (downloadResponse) DesktopControlDocuments.download(endpoint.controllerId, response, documentKind, context, ::exchange)
+                    else response
             } finally { discard?.let { runCatching(it) } }
         }
 
@@ -216,6 +221,35 @@ internal class DesktopActivationServer private constructor(
         fun requestCliCommand(command: DesktopCliCommand, portFile: Path = defaultPortFile): DesktopCliResponse =
             requestCliCommandUsing(command, null) { DesktopControlEndpoint.read(portFile) }
 
+        fun requestCliExport(command: DesktopCliCommand, output: String, portFile: Path = defaultPortFile): DesktopCliResponse {
+            return try {
+                val endpoint = DesktopControlEndpoint.read(portFile)
+                if (!endpoint.documentTransfers) return DesktopCliResponse.failure("INCOMPATIBLE_PROTOCOL", 2)
+                val timeout = (command as? DesktopCliCommand.ControlSubmit)?.clientTimeoutSeconds?.times(1000) ?: 600_000L
+                val context = java.util.UUID.randomUUID().toString()
+                val response = request("", endpoint, timeout, "export", { controllerId ->
+                val bound = if (command is DesktopCliCommand.ControlSubmit && command.request.controllerId == null)
+                    command.copy(request = command.request.copy(controllerId = controllerId)) else command
+                DesktopCliProtocol.encodeCommandDocument(bound)
+                }, downloadResponse = false, context = context)
+                if (response == "PERMISSION_DENIED") return DesktopCliResponse.failure(response)
+                val decoded = DesktopCliProtocol.decodeResponse(response)
+                val result = runCatching { com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(decoded.message) }.getOrNull()
+                    ?: return decoded
+                val reference = (result.data["exportReference"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
+                    ?: return decoded
+                val written = DesktopControlDocuments.downloadExport(endpoint.controllerId, reference, context, output) { frame ->
+                    exchange(endpoint, frame, timeout)
+                }
+                val completed = completeExportDownload(result, written)
+                DesktopCliResponse(completed.ok, com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(completed), completed.exitCode)
+            } catch (_: NoSuchFileException) { DesktopCliResponse.notRunning() }
+            catch (_: ConnectException) { DesktopCliResponse.notRunning() }
+            catch (_: SocketTimeoutException) { DesktopCliResponse.failure("TIMEOUT", 2) }
+            catch (_: DesktopControlProtocolException) { DesktopCliResponse.failure("INCOMPATIBLE_PROTOCOL", 2) }
+            catch (_: Exception) { DesktopCliResponse.failure("OUTCOME_UNKNOWN", 2) }
+        }
+
         internal fun requestCliCommandAtEndpoint(command: DesktopCliCommand, endpoint: DesktopControlEndpoint,
             responseTimeoutMillis: Long): DesktopCliResponse = requestCliCommandUsing(command, responseTimeoutMillis) { endpoint }
 
@@ -224,7 +258,7 @@ internal class DesktopActivationServer private constructor(
             val timeoutMillis = responseTimeoutMillis ?: if (command is DesktopCliCommand.ControlFrontendLease || command is DesktopCliCommand.ControlFrontendIdentityRead) 3_000L
                 else if (command is DesktopCliCommand.ControlSnapshotRead || command is DesktopCliCommand.ControlPresentationRead) 10_000L
                 else (command as? DesktopCliCommand.ControlSubmit)?.clientTimeoutSeconds?.times(1000) ?: 600_000L
-            val response = request("", endpoint(), timeoutMillis, documentKind(command)) { controllerId ->
+            val response = request("", endpoint(), timeoutMillis, documentKind(command), payloadForController = { controllerId ->
                 val bound = when {
                     command is DesktopCliCommand.ControlSubmit && command.request.controllerId == null ->
                         command.copy(request = command.request.copy(controllerId = controllerId))
@@ -235,7 +269,7 @@ internal class DesktopActivationServer private constructor(
                     else -> command
                 }
                 DesktopCliProtocol.encodeCommandDocument(bound)
-            }
+            })
             if (response == "PERMISSION_DENIED") DesktopCliResponse.failure(response)
             else DesktopCliProtocol.decodeResponse(response)
         } catch (_: NoSuchFileException) {
@@ -254,6 +288,35 @@ internal class DesktopActivationServer private constructor(
             is DesktopCliCommand.ControlSnapshotRead -> "snapshot"
             is DesktopCliCommand.ControlPresentationRead -> "presentation"
             else -> "response"
+        }
+
+        private fun isFileExportCommand(command: DesktopCliCommand): Boolean = command is DesktopCliCommand.ControlSubmit &&
+            (command.request.command.operation in DesktopControlExports.operations ||
+                command.request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_WAIT)
+
+        internal fun completeExportDownload(result: com.kardinal.vpncontrol.model.ControlResult,
+                                           download: Result<DesktopExportDownload>): com.kardinal.vpncontrol.model.ControlResult {
+            val data = result.data - "exportReference"
+            val completed = download.getOrNull()
+            if (completed != null) return result.copy(data = data + ("exportBytes" to
+                com.kardinal.vpncontrol.model.ControlValue.IntegerValue(completed.byteCount)),
+                warnings = if (completed.acknowledged) result.warnings else result.warnings + "EXPORT_ACK_UNCONFIRMED")
+            val failure = download.exceptionOrNull()
+            val transportCause = (failure as? DesktopExportTransportException)?.cause
+            val code = when (failure) {
+                is DesktopControlProtocolException -> com.kardinal.vpncontrol.model.ControlCode.INCOMPATIBLE_PROTOCOL
+                is DesktopExportTransportException -> when (transportCause) {
+                    is SocketTimeoutException -> com.kardinal.vpncontrol.model.ControlCode.TIMEOUT
+                    is NoSuchFileException, is ConnectException -> com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE
+                    else -> com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN
+                }
+                is DesktopExportWriteException -> com.kardinal.vpncontrol.model.ControlCode.PERSISTENCE_FAILED
+                else -> com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN
+            }
+            return result.copy(code = code, message = if (code == com.kardinal.vpncontrol.model.ControlCode.PERSISTENCE_FAILED)
+                "Could not write export output." else code.wireName, data = data,
+                final = if (code in setOf(com.kardinal.vpncontrol.model.ControlCode.TIMEOUT,
+                        com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN)) false else result.final)
         }
     }
 }

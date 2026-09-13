@@ -25,25 +25,20 @@ assignments, one writer per file and one operator per native environment.
 
 ## Delivered Checkpoint And Current Dirty Work
 
-Checkpoint37 is pushed as `a4a5b74350e76c3f5706b29bce601713a6a39e13`, version2.1.8,
-seven Unreleased notes. All15 managed prepush commands passed; 27 reviewed paths
-were committed. Exact-SHA Fast Checks, Android Release APK and macOS Desktop
-Package and Linux34776528312 have passed. Windows34776528323 failed NativeAOT
-compilation: IL3050 on Marshal.SizeOf(Type) in the original-user launcher. A causal
-analyzer regression reproduced IL3050, then passed with the generic-overload correction; this push is
-not CI-complete. Advisory VPN Integration passed.
+Checkpoint38 is pushed as `da81c52df0b5f45ea59189f586e8e77d47045006`, version2.1.8,
+eight Unreleased notes. All15 managed prepush checks and all five exact-SHA required
+workflows passed. Required run IDs: Fast34778462577, Android34778462664,
+Linux34778462616, Windows34778462624, macOS34778462593. Advisory VPN also passed.
+Evidence: checkpoint38/{prepush-result,commit-request,commit-result}.json.
+The previous a4a5b743 checkpoint failed Windows IL3050; the generic marshaling
+fix and routine NativeAOT analyzer regression are in this verified checkpoint.
 
-Evidence: checkpoint37/{prepush-result,commit-request,commit-result}.json and
-checkpoint37/commit.log. The commit monitor may not publish its result until CI
-is terminal. Older checkpoint36 `064adbbd7df81cc7928b920e77b12da22ccdf312` failed
-Windows fixture portability; the repair has current native Windows evidence.
-
-The next dirty slice intentionally covers Android CA staged-filename admission,
-its causal tests, an assumption-aware native JUnit evidence gate, and Windows
-fixture runtime-root forwarding and NativeAOT compatibility. Reviewed focused
-checks pass; it needs version_bump, a new full
-prepush receipt and its own reviewed push. No prototype helper activation or full
-parity completion is claimed by these changes.
+The next intentional dirty slice covers desktop direct file-export transport and
+its real constrained-client regression, Windows native coordinator bootstrap/child
+lifecycle and scalar-token regression, plus macOS test-fixture build recovery, Android credential reopen coverage and a
+regression retaining the existing6GiB Linux build-VM capacity.
+These changes are uncommitted; version metadata has rolled to2.1.9 and requires new full prepush
+and a separate exact-SHA push. Native helper activation in the JVM remains pending.
 
 ## Implemented And Locally Tested
 
@@ -113,13 +108,27 @@ recovered runtime-off. An older task owner17373 was first verified runtime-off a
 stopped through public quit to release its gate. Guest authentication was restored
 and TLS resources removed. No installer/package manager was killed.
 
+Current Linux package acceptance now includes Fedora44 direct RPM replacement
+2.1.4→2.1.8 and Arch archive replacement2.1.4→2.1.8, plus static installed CLI
+checks without runtime/workspace creation. Evidence: checkpoint39/
+linux-rpm-replacement-34776528312/receipt.json and linux-arch-package-gate/receipt.json.
+These are package acceptance, not same-source public update/recovery. Owned guests
+2316/2317 were shut down normally. A malformed read-only hop exposed the Arch host
+runtime inventory; no host mutation was performed; keep exact guest identity checks.
+
 Native JUnitCore exit0/OK is insufficient proof: assumptions can skip execution.
 Earlier Windows interactive receipts were invalidated for this reason. The
 assumption-aware retry first exposed missing fixture DOTNET_ROOT forwarding, then
-an ineligible SYSTEM/session0 actor. Neither establishes a product token-capture
-failure. A subsequent eligible visualagent/session1 run with shell handle65782
-and zero assumptions also failed Capture with UNAVAILABLE; that failure now needs
-precise native diagnosis. Evidence: checkpoint38/windows-executed-junit/interactive-completion.json.
+an ineligible SYSTEM/session0 actor. Neither established a product token-capture
+failure. Root's later direct apphost probe proves session1/WinSta0/shell65782 and
+identifies the actual failure in TokenScalar: TOKEN_ELEVATION rejects an eight-byte
+buffer with ERROR_BAD_LENGTH24; four bytes succeeds. Earlier source-line inference
+that GetShellWindow failed was incorrect. Evidence:
+checkpoint39/windows-token-diagnosis/root-{direct-completion,token-size}.result.json.
+The new routine current-token fixture reproduced ERROR_BAD_LENGTH24 with the old
+eight-byte buffer and passed with four bytes (zero compiler warnings/errors).
+Immutable evidence: checkpoint40/token-scalar-{red,green}/{manifest,run.result}.json.
+This is real Windows ARM64/x64 component evidence, not MSI/UAC acceptance.
 
 Current macOS CI DMG inspection passed for exact source a4a5b743: DMG SHA256
 7e60d2a704fe1c06aea73da24e1288860e2054763b4096e51d574c0df5967a34.
@@ -132,16 +141,14 @@ The exact test DMG was detached and removed from the VM; pending job inputs rema
 
 ## Active Ownership And Fixtures
 
-| Owner | Files or environment | Next handoff |
+| Owner | Files or environment | Current check / next handoff |
 | --- | --- | --- |
-| root | Shared integration, WIP, metadata, host Gradle, delivery | Review dirty slice; finish exact-SHA CI |
-| android29_large_document_current38 | Only emulator5594 and ignored evidence | Current APK watch/follow/owner-loss slice; large document chain handed off |
-| windows_token_diagnosis39 | Windows QGA VM and ignored diagnostic harness | Identify eligible-actor Capture failure; coordinate analyzer execution |
-| windows_aot_regression39 | Original-user launcher C# and its Kotlin compiler test | Causal NativeAOT regression and IL3050 fix; no VM ownership |
-| linux_remaining_gates39 | Owned Linux guests and ignored evidence | Preserve current DEB receipt; prepare RPM/Arch native gate |
-| mac_recovery_gate39 | Owned Tart guest; read-only recovery diagnosis | Preserve current DMG evidence; identify safe pending-job reconciliation |
-| android35_tls_diagnosis38 | CA trust/preflight helpers and dedicated tests; slice handed off | Root review and routine checks |
-| native_junit_evidence_guard38 | New Java test gate/tests and test-matrix text; slice handed off | Root review and native harness adoption |
+| root | WIP, shared build/delivery; exclusive Windows VM | Actual scalar RED/GREEN; export focused tests; native proof review |
+| desktop_export_failure_audit39 | DesktopControlDocuments, ActivationServer, Cli, Exports, PublicCliClient startup and focused tests | Real 64MiB public-client export regression; native metadata/publication review |
+| windows_aot_regression39 | Native helper sessions/original-user launch and focused fixtures/tests | Bootstrap lifetime fix; current-token regression; no JVM activation |
+| mac_fixture_recovery40 | Owned Tart guest; prepare_desktop_update_fixture and focused tests | Preserve successful base, recover target packaging after terminal ENOSPC |
+| windows_token_diagnosis39 | Exclusive Ubuntu2311 Linux fixture/recovery operator; no shared fixture script edits | Revalidate existing authenticated Arch hop; prepare immutable same-source DEB pair |
+| windows_apphost_desktop39 | AndroidSshCredentialVersionsInstrumentedTest only; handed off | Positive fresh-store/new-epoch credential test added; root compile passed; native verification pending |
 
 - Windows VM: `.runtime/visual-vms/windows/qga.sock`; ARM64 guest/x64 emulation.
   Preserve unrelated processes. QGA PID status can be stale after PID reuse; use
@@ -153,7 +160,10 @@ The exact test DMG was detached and removed from the VM; pending job inputs rema
   e4c4d691-a967-4902-96cc-bf77cccfebfc remains PREPARING; never replay it.
   Verified backups are in checkpoint37/mac-capacity-backup and
   checkpoint37/mac-capacity-backup-current. Free space was1,623,840KiB after exact
-  inactive-artifact cleanup; the2GiB capacity target is not met.
+  inactive-artifact cleanup. The new a4a source fixture base2.3.3 built and was
+  captured; target2.3.4 failed terminally in jpackage temporary-image creation with
+  ENOSPC. No target/final receipt exists. Recovery owner must preserve source,
+  runtime, base completion, and signing policy; no build is live from that failed run.
 - Linux SSH route: port228 kardinal@ssh.karapsin.com, then archlinux, then the
   owned guest. Current gateway socket is recorded in
   checkpoint37/linux-gateway-control.json; revalidate sockets before use.
@@ -200,3 +210,43 @@ Keep each distinct native/manual/integration failure's causal quick regression i
 routine checks and retain the native scenario. Never label a skipped test,
 compile-only test, older launcher plus new classes, or a mounted app image as a
 successful current installed-package acceptance run.
+
+## Checkpoint40 Integration Evidence
+
+- Direct file export now passes the real cold-owner 64MiB CLI regression with
+  500,000 domains; selected export tests:24 total, zero failures, one platform
+  skip (`checkpoint40/export-green9.log`). Review also added acknowledgment-loss
+  success retention, non-content metadata preservation, and protocol-error
+  classification. Causal acknowledgment-loss and cold-start OOM REDs were reproduced in
+  checkpoint40/export-{ack,cold}-red; the tested fixes are restored.
+- Positive Android credential commit/fresh-store/new-epoch test compiles
+  (`checkpoint40/android-ssh-reopen-compile.log`); native execution still pending.
+- macOS same-source fixture build recovery completed with both base and target
+  restored, not an updater installation. Final receipt SHA256
+  `751dd0a6acc485c074a4b84b5607768df900ec10b4fc5cb0a9cfeef8254f27d6`,
+  target2.3.4 DMG SHA256
+  `2bb3df3b623c0e3853e17fc6eb59a2ccdc39c530feeeb143c69a6d23351db0ee`.
+  Fixture regression suite37 passed; actual replacement requires sufficient
+  disposable guest storage and preservation of the older pending job.
+- Linux Ubuntu2311 failed terminally when its stale2GiB guest OOM-killed the
+  build. Current setup already uses6GiB; a deterministic argv regression failed
+  at2GiB and passed after restoring6GiB. Owned retry2318 has6GiB and preserved
+  da81/runtime provenance. No installer/update acceptance claimed.
+
+- Windows coordinator sources compile natively after qualifying the wait helper
+  namespace. The native test then exposed a positive-case gate retained into a
+  negative case; the fixture now resets only its unique test directory between
+  cases. Final native execution is pending unreliable QGA observation; QMP
+  confirms the VM running, so no process or VM restart is authorized by timeout.
+  Latest immutable bundle: checkpoint40/coordinator-native-bootstrap-5c25debe69ef43dc9e37cb9484405acb.
+  The production JVM installer still uses the existing adapter and does not
+  activate the new native bootstrap. Full UAC/MSI acceptance remains required.
+
+- macOS user-local actual same-source public updater and next-owner recovery passed
+  on frozen a4a pair2.3.3→2.3.4. Job48ccc0a5-97d5-4dc0-833e-4c7d195a1f80
+  reached SUCCEEDED/OK seq4; relaunched target reported installed=true and
+  cleanupCode=OK with original controller/request/operation correlation. Fresh
+  user-local path did not overlap the preserved old pending machine job. Runtime
+  remained off; owned owner/server and temporary TLS materials were cleaned.
+  This is headless user-local evidence; machine-owned authorization and GUI
+  return remain separate acceptance gates. Root receipt review is in progress.

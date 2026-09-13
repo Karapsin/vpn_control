@@ -3,6 +3,13 @@ using System.Security.Principal;
 
 public static class InstallerOriginalUserLaunchFixtures {
     static readonly string Job="00000000-0000-0000-0000-00000000000a";
+    // This has no shell, process-launch, privilege, or filesystem side effect.
+    // Run it before the opt-in interactive fixture so TokenElevation's exact
+    // GetTokenInformation buffer contract is routine Windows CI coverage.
+    public static string ProbeCurrentTokenScalars() {
+        VpnInstallOriginalUserLaunch.CurrentTokenElevated();
+        return "ORIGINAL_USER_CURRENT_TOKEN_SCALARS_OK";
+    }
     public static string Run() {
         foreach(string[] invalid in new string[][] {
             new string[] { "-Command",Job,"1","1" }, new string[] { "install-user",Job,"01","1" },

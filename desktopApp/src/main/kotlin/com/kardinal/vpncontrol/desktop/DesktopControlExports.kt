@@ -50,4 +50,18 @@ internal object DesktopControlExports {
         if (written.isFailure) return finish(ControlCode.PERSISTENCE_FAILED, "Could not write export output.")
         return finish(ControlCode.OK, data = mapOf("format" to ControlValue.Text(format), "bytes" to ControlValue.IntegerValue(size)))
     }
+
+    fun completeStreamed(response: DesktopCliResponse, format: String, missingContentCode: ControlCode): DesktopCliResponse {
+        val result = ControlDocumentCodec.decodeResult(response.message)
+        val bytes = (result.data["exportBytes"] as? ControlValue.IntegerValue)?.value
+        if (bytes == null) {
+            if (!result.ok) return response
+            val failed = result.copy(code = missingContentCode, message = missingContentCode.wireName,
+                data = result.data - "exportReference")
+            return DesktopCliResponse(failed.ok, ControlDocumentCodec.encodeResult(failed), failed.exitCode)
+        }
+        val completed = result.copy(data = result.data - "exportBytes" + mapOf(
+            "format" to ControlValue.Text(format), "bytes" to ControlValue.IntegerValue(bytes)))
+        return DesktopCliResponse(completed.ok, ControlDocumentCodec.encodeResult(completed), completed.exitCode)
+    }
 }

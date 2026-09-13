@@ -118,7 +118,10 @@ internal object DesktopCli {
         args: Array<String>,
         printLine: (String) -> Unit = ::desktopCliPrintLine,
         requestCommand: (DesktopCliCommand) -> DesktopCliResponse = DesktopPublicCliClient::request,
+        requestExport: (DesktopCliCommand, String) -> DesktopCliResponse = DesktopActivationServer::requestCliExport,
+        enableDirectFileExport: Boolean = true,
         startHeadlessController: (DesktopCliCommand) -> DesktopCliResponse = DesktopPublicCliClient::start,
+        startHeadlessExport: (DesktopCliCommand, String) -> DesktopCliResponse = DesktopPublicCliClient::startExport,
         readInput: (String) -> Result<String> = DesktopAndroidCli::readInput,
         writeOutput: (String, String) -> Result<Unit> = DesktopPrivateExportWriter::writeText,
         readQrImage: (String) -> Result<String> = DesktopQrImage::read,
@@ -176,17 +179,22 @@ internal object DesktopCli {
         if (request.command.operation in DesktopControlMutations.operations && DesktopControlMutations.command(request.command) == null)
             return fail(ControlCode.INVALID_ARGUMENT)
         val submit = DesktopCliCommand.ControlSubmit(request, invocation.client.timeoutSeconds)
-        val first = requestCommand(submit)
+        val output = invocation.options["--output"]
+        val format = invocation.options["--format"] ?: if (request.command.operation in setOf(
+            ControlOperationId.DIAGNOSTICS_EXPORT, ControlOperationId.OPERATIONS_WAIT)) "text" else "json"
+        val directFileExport = enableDirectFileExport && output != null && output != "-" && format != "qr-png" &&
+            (request.command.operation in DesktopControlExports.operations || request.command.operation == ControlOperationId.OPERATIONS_WAIT)
+        val first = if (directFileExport) requestExport(submit, output) else requestCommand(submit)
         val response = if (first.isDesktopAppNotRunning && request.controllerId == null &&
-            request.command.operation !in noStartupOperations) startHeadlessController(submit) else first
+            request.command.operation !in noStartupOperations) {
+            if (directFileExport) startHeadlessExport(submit, requireNotNull(output)) else startHeadlessController(submit)
+        } else first
         val formatted = desktopCliJsonResponse(request, response)
         if (request.command.operation in DesktopControlExports.operations && "--output" in invocation.options ||
             request.command.operation == ControlOperationId.OPERATIONS_WAIT && "--output" in invocation.options) {
             val missingContentCode = if (request.command.operation == ControlOperationId.OPERATIONS_WAIT)
                 ControlCode.INVALID_ARGUMENT else ControlCode.INCOMPATIBLE_PROTOCOL
-            val output = requireNotNull(invocation.options["--output"])
-            val format = invocation.options["--format"] ?: if (request.command.operation in setOf(
-                    ControlOperationId.DIAGNOSTICS_EXPORT, ControlOperationId.OPERATIONS_WAIT)) "text" else "json"
+            val output = requireNotNull(output)
             if (output == "-") {
                 val result = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeResult(formatted.message)
                 val content = (result.data["content"] as? ControlValue.Text)?.value
@@ -197,7 +205,9 @@ internal object DesktopCli {
                     result.operationId?.let { "operationId=$it" }).filterNotNull().joinToString(" "))
                 return code.exitCode
             }
-            return desktopCliRender(DesktopControlExports.write(formatted, output, format, writeOutput, writeBinaryOutput, missingContentCode),
+            val exported = if (directFileExport) DesktopControlExports.completeStreamed(formatted, format, missingContentCode)
+                else DesktopControlExports.write(formatted, output, format, writeOutput, writeBinaryOutput, missingContentCode)
+            return desktopCliRender(exported,
                 invocation.client.json, printLine, printProgress)
         }
         return desktopCliRender(formatted, invocation.client.json, printLine, printProgress)

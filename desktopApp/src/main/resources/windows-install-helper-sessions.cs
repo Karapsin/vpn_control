@@ -15,20 +15,145 @@ internal interface VpnInstallHelperSessionFactory {
     int Run(VpnInstallHelperProtocol.Invocation invocation);
 }
 
+// The coordinator alone owns the elevated-to-original-user handoff.  The child
+// exposes only its retained OS identity; no test or caller can supply an image,
+// token, command, package, or arbitrary worker implementation.
+internal interface CoordinatorOriginalUserChild : IDisposable {
+    uint ProcessId { get; }
+    long CreationFileTime { get; }
+    string PrincipalSid { get; }
+    bool Exited { get; }
+    void ReconcileBeforeAdmission();
+    void ReconcileAfterAdmission();
+}
+
+internal static class CoordinatorOriginalUserBootstrap {
+    sealed class NativeChild : CoordinatorOriginalUserChild {
+        readonly VpnInstallOriginalUserLaunch.StartedHelper child;
+        readonly VpnInstallOriginalUserLaunch.ChildIdentity identity;
+        internal NativeChild(VpnInstallOriginalUserLaunch.StartedHelper started) {
+            if (started==null) throw new ArgumentNullException("started");
+            child=started; identity=child.Observe();
+            if (identity.ProcessId==0 || identity.CreationFileTime<=0 || identity.Elevated ||
+                String.IsNullOrEmpty(identity.Sid)) throw new IOException("CONFLICT");
+        }
+        public uint ProcessId { get { return identity.ProcessId; } }
+        public long CreationFileTime { get { return identity.CreationFileTime; } }
+        public string PrincipalSid { get { return identity.Sid; } }
+        public bool Exited { get { return child.Wait(0); } }
+        public void ReconcileBeforeAdmission() { child.StopBeforeCoordinatorAdmission(); }
+        public void ReconcileAfterAdmission() { child.ReconcileAfterCoordinatorAdmission(); }
+        public void Dispose() { child.Dispose(); }
+    }
+
+    internal static CoordinatorOriginalUserChild Start(VpnInstallHelperProtocol.Invocation invocation,string ownerPrincipal) {
+        if (invocation==null || String.IsNullOrEmpty(ownerPrincipal)) throw new IOException("CONFLICT");
+        using (VpnInstallOriginalUserLaunch original=VpnInstallOriginalUserLaunch.Capture()) {
+            if (!String.Equals(original.PrincipalSid,ownerPrincipal,StringComparison.Ordinal)) throw new IOException("CONFLICT");
+            VpnInstallOriginalUserLaunch.StartedHelper started=null;
+            try {
+                try {
+                    started=original.StartSameHelper(new string[] { "install-user",invocation.JobId,
+                        invocation.OwnerPid.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        invocation.OwnerCreationFileTime.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+                } catch (VpnInstallOriginalUserLaunch.UncertainChild uncertain) {
+                    // StartSameHelper retained this exact pre-admission child;
+                    // it cannot escape through the exception path.
+                    try { uncertain.Child.StopBeforeCoordinatorAdmission(); }
+                    finally { uncertain.Dispose(); }
+                    throw;
+                }
+                NativeChild child=null;
+                try { child=new NativeChild(started); }
+                catch { started.StopBeforeCoordinatorAdmission(); throw; }
+                started=null;
+                if (!String.Equals(child.PrincipalSid,ownerPrincipal,StringComparison.Ordinal)) {
+                    child.ReconcileBeforeAdmission(); child.Dispose(); throw new IOException("CONFLICT");
+                }
+                return child;
+            } finally { if (started!=null) { started.StopBeforeCoordinatorAdmission(); started.Dispose(); } }
+        }
+    }
+}
+
+// This lease is the sole coordinator bootstrap ordering.  It retains the exact
+// original-user process from launch through parser admission and later role
+// cleanup.  A failed parser is still before any gate/job/receipt/MSI phase, so
+// the owned child is stopped and observed; after admission it is only observed.
+internal sealed class CoordinatorOriginalUserBootstrapLease : IDisposable {
+    readonly CoordinatorOriginalUserChild child;
+    readonly CoordinatorSessionAdapter coordinator;
+    readonly OwnerInputAdmission admission;
+    bool disposed;
+    internal CoordinatorSessionAdapter Coordinator { get { return coordinator; } }
+    internal CoordinatorOriginalUserBootstrapLease(VpnInstallHelperProtocol.Invocation invocation,OwnerInputAdmission retainedAdmission) :
+        this(invocation,retainedAdmission,null,null,null) { }
+    // Same-assembly regression seam. It may inject only the already-started OS
+    // child observations and monotonic wait source; parser/admission stays real.
+    internal CoordinatorOriginalUserBootstrapLease(VpnInstallHelperProtocol.Invocation invocation,OwnerInputAdmission retainedAdmission,
+        Func<VpnInstallHelperProtocol.Invocation,string,CoordinatorOriginalUserChild> startForTest,
+        CoordinatorWorkerReadyWait waitForTest,Func<string> machineDirectoryForTest) {
+        if (invocation==null || retainedAdmission==null) throw new IOException("CONFLICT");
+        admission=retainedAdmission;
+        try {
+            child=startForTest==null ? CoordinatorOriginalUserBootstrap.Start(invocation,admission.Owner.Principal) :
+                startForTest(invocation,admission.Owner.Principal);
+            if (child==null) throw new IOException("RUNTIME_FAILED");
+            coordinator=new CoordinatorSessionAdapter(admission,child,waitForTest,machineDirectoryForTest);
+        } catch {
+            if (child!=null) {
+                // No protected job can exist before the adapter is constructed.
+                // Do not release the handle until the exact child exit is known.
+                child.ReconcileBeforeAdmission();
+                child.Dispose();
+            }
+            throw;
+        }
+    }
+    public void Dispose() {
+        if (disposed) return;
+        Exception failure=null;
+        // Successful construction is the no-termination fence: RunCoordinator
+        // may have published INSTALLING or invoked MSI before it returns.
+        try { child.ReconcileAfterAdmission(); } catch (Exception error) { failure=error; }
+        try { child.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
+        try { coordinator.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
+        disposed=true;
+        if (failure!=null) throw new IOException("OUTCOME_UNKNOWN",failure);
+    }
+}
+
+internal interface CoordinatorWorkerReadyWait {
+    bool DeadlineReached { get; }
+    bool CancellationRequested { get; }
+    void Pause();
+}
+
+internal sealed class NativeCoordinatorWorkerReadyWait : CoordinatorWorkerReadyWait {
+    readonly Stopwatch stopwatch=Stopwatch.StartNew();
+    readonly OwnerInputAdmission admission;
+    internal NativeCoordinatorWorkerReadyWait(OwnerInputAdmission retainedAdmission) { admission=retainedAdmission; }
+    public bool DeadlineReached { get { return stopwatch.ElapsedMilliseconds>=30000; } }
+    // The retained owner process is the only admitted pre-job cancellation
+    // authority until a protected job/cancel leaf exists.
+    public bool CancellationRequested { get { return admission.Owner.Exited; } }
+    public void Pause() { Thread.Sleep(50); }
+}
+
 internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFactory {
     public int Run(VpnInstallHelperProtocol.Invocation invocation) {
         if (invocation==null) throw new ArgumentException("INVALID_ARGUMENT");
         bool originalUser=invocation.Operation==VpnInstallHelperProtocol.Role.OriginalUser;
         OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,originalUser);
         OriginalUserSessionAdapter session=null;
-        CoordinatorSessionAdapter coordinator=null;
+        CoordinatorOriginalUserBootstrapLease bootstrap=null;
         try {
             if (originalUser) {
                 session=new OriginalUserSessionAdapter(admission);
                 return VpnInstallHelperRoles.RunOriginalUser(session);
             }
-            coordinator=new CoordinatorSessionAdapter(admission);
-            VpnInstallHelperRoles.RunCoordinator(coordinator);
+            bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission);
+            VpnInstallHelperRoles.RunCoordinator(bootstrap.Coordinator);
             return 0;
         } catch (VpnInstallHelperRoles.WorkerFailure failure) {
             // Main would otherwise immediately end the process and release every
@@ -47,9 +172,13 @@ internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFa
         } finally {
             // A failed retained close keeps the whole admitted chain alive for
             // its explicit retry; do not discard the owner witness underneath it.
-            if (coordinator!=null) coordinator.Dispose();
-            if (session!=null) session.Dispose();
-            admission.Dispose();
+            Exception cleanup=null;
+            try { if (session!=null) session.Dispose(); } catch (Exception error) { cleanup=error; }
+            // Bootstrap reconciliation runs while admission still retains the
+            // owner/input witnesses. Cleanup failures cannot skip this step.
+            try { if (bootstrap!=null) bootstrap.Dispose(); } catch (Exception error) { if (cleanup==null) cleanup=error; }
+            try { admission.Dispose(); } catch (Exception error) { if (cleanup==null) cleanup=error; }
+            if (cleanup!=null) throw new IOException("PERSISTENCE_FAILED",cleanup);
         }
     }
 }
@@ -84,15 +213,25 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         fixture=facilities; fixtureReceiptWriter=writer;
     }
 
-    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission) : this(retainedAdmission,null) { }
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission) : this(retainedAdmission,null,null) { }
 
-    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,Func<string> machineDirectoryForTest) {
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,CoordinatorOriginalUserChild originalUserChild) :
+        this(retainedAdmission,originalUserChild,null,null) { }
+
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,Func<string> machineDirectoryForTest) :
+        this(retainedAdmission,null,null,machineDirectoryForTest) { }
+
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,CoordinatorOriginalUserChild originalUserChild,
+        Func<string> machineDirectoryForTest) : this(retainedAdmission,originalUserChild,null,machineDirectoryForTest) { }
+
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,CoordinatorOriginalUserChild originalUserChild,
+        CoordinatorWorkerReadyWait waitForTest,Func<string> machineDirectoryForTest) {
         if (retainedAdmission==null || retainedAdmission.Request==null) throw new IOException("CONFLICT");
         admission=retainedAdmission;
         testMachineDirectory=machineDirectoryForTest;
         precommitDeadline=DateTime.UtcNow.AddMinutes(3);
         exitDeadline=precommitDeadline;
-        try { AdmitWorker(); }
+        try { AdmitWorker(originalUserChild,waitForTest); }
         catch { Dispose(); throw; }
     }
 
@@ -200,9 +339,11 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         VpnInstallNative.Inspect(machineDirectory,true,false,null);
         return machine;
     }
-    void AdmitWorker() {
-        VpnInstallHelperProtocol.WorkerReady ready=VpnInstallHelperProtocol.ParseWorkerReady(admission.ReadPrivateLeaf("worker-ready.json",false));
+    void AdmitWorker(CoordinatorOriginalUserChild originalUserChild,CoordinatorWorkerReadyWait waitForTest) {
+        VpnInstallHelperProtocol.WorkerReady ready=ReadWorkerReady(originalUserChild,waitForTest);
         if (ready.JobId!=JobId || ready.PrincipalSid!=admission.Owner.Principal) throw new IOException("CONFLICT");
+        if (originalUserChild!=null && (ready.Pid!=originalUserChild.ProcessId || ready.CreationFileTime!=originalUserChild.CreationFileTime ||
+            !String.Equals(ready.PrincipalSid,originalUserChild.PrincipalSid,StringComparison.Ordinal))) throw new IOException("CONFLICT");
         worker=new VpnInstallNative.ProcessPin(ready.Pid);
         workerGeneration=new VpnInstallNative.ProcessImagePin(ready.Pid);
         VpnInstallNative.ProcessImageObservation observed=workerGeneration.Observe();
@@ -230,6 +371,23 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
             if (frontend.Exited || frontend.Principal!=admission.Owner.Principal ||
                 frontend.StartedAtEpochMillis!=admission.Request.FrontendStartedAtEpochMillis.Value ||
                 !String.Equals(frontend.Image,admission.Request.Launcher,StringComparison.OrdinalIgnoreCase)) throw new IOException("CONFLICT");
+        }
+    }
+    VpnInstallHelperProtocol.WorkerReady ReadWorkerReady(CoordinatorOriginalUserChild originalUserChild,CoordinatorWorkerReadyWait waitForTest) {
+        if (originalUserChild==null) return VpnInstallHelperProtocol.ParseWorkerReady(admission.ReadPrivateLeaf("worker-ready.json",false));
+        CoordinatorWorkerReadyWait wait=waitForTest ?? new NativeCoordinatorWorkerReadyWait(admission);
+        for (;;) {
+            if (originalUserChild.Exited) throw new IOException("RUNTIME_FAILED");
+            byte[] record=admission.ReadPrivateLeaf("worker-ready.json",true);
+            if (record!=null) return VpnInstallHelperProtocol.ParseWorkerReady(record);
+            // An exact committed handoff wins over owner exit, matching the
+            // coordinator role's later commit-before-exit ordering. It is read
+            // through the retained private input directory, never an argv path.
+            byte[] commit=admission.ReadPrivateLeaf("commit.json",true);
+            bool committed=commit!=null && VpnInstallHelperProtocol.IsCommit(commit,JobId);
+            if (wait.CancellationRequested && !committed) throw new IOException("CANCELLED");
+            if (wait.DeadlineReached) throw new IOException("TIMEOUT");
+            wait.Pause();
         }
     }
     public void Dispose() {

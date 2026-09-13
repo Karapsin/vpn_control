@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -12,7 +13,8 @@ import ssl
 
 from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
-    native_build, package_asset, prepare, runtime_identity, select_resource, source_entries,
+    native_build, recover_macos_target_package, package_asset, prepare, runtime_identity, select_resource, source_entries,
+    verified_offloaded_base_record,
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
     desktop_install_arguments, require_selected_location, require_active_runtime, fixture_proxy_arguments,
     serve_connection, write_resource_response,
@@ -504,6 +506,104 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertTrue((output / "completed-base.json").is_file())
             self.assertFalse((output / "completed-target.json").exists())
             self.assertFalse((output / "fixture-receipt.json").exists())
+
+    def test_macos_target_package_recovery_requires_verified_base_then_uses_packaged_task_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, plan = self.prepared(root)
+            plan["platform"] = "macos"
+            plan["stages"][1]["command"] = ["./gradlew", "--no-daemon", "-PvpnControlVersion=2.1.3",
+                                               ":desktopApp:createDistributable", ":desktopApp:packageDmg"]
+            (output / "build-plan.json").write_text(json.dumps(plan))
+            base, target = plan["stages"]
+            base_output = output / "packages/base"
+            base_image = base_output / "vpn-control.app"
+            self.make_image(base_image, base["version"])
+            (base_image / "Contents").mkdir(exist_ok=True)
+            (base_image / "lib/app").rename(base_image / "Contents/app")
+            (base_image / "lib").rmdir()
+            base_dmg = base_output / "vpn-control-2.1.2.dmg"
+            base_dmg.write_bytes(b"base-dmg")
+            base_dmg.chmod(0o400)
+            base_identity = image_identity(base_image, base["version"])
+            base_record = {**base, **base_identity, "image": "packages/base/vpn-control.app",
+                           "assets": [package_asset(base_dmg, "macos", "x86_64", base["version"])],
+                           "sourceFingerprint": plan["sourceFingerprint"]}
+            (base_output / "TEST-ONLY-INSTALL-FIXTURE.json").write_text(json.dumps({
+                "testOnly": True, "productionTrustChanged": False, "sameSourceBuild": True,
+                "version": base["version"], **base_identity, "sourceFingerprint": plan["sourceFingerprint"]}))
+            (output / "completed-base.json").write_text(json.dumps({"schemaVersion": 1, "record": base_record}))
+            checkout = output / "build-target"
+            shutil.copytree(output / "source", checkout)
+            checkout.chmod(0o700)
+            (checkout / "desktopApp").mkdir()
+            for path in checkout.rglob("*"):
+                if path.is_dir() and not path.is_symlink():
+                    path.chmod(0o700)
+            image = checkout / "desktopApp/build/compose/binaries/main/app/vpn-control.app"
+            self.make_image(image, target["version"])
+            (image / "Contents").mkdir(exist_ok=True)
+            (image / "lib/app").rename(image / "Contents/app")
+            (image / "lib").rmdir()
+            calls = []
+            def package(command, *, cwd, stdout, stderr, check):
+                calls.append(command)
+                dmg = cwd / "desktopApp/build/compose/binaries/main/dmg/vpn-control-2.1.3.dmg"
+                dmg.parent.mkdir(parents=True, exist_ok=True)
+                dmg.write_bytes(b"target-dmg")
+                return subprocess.CompletedProcess(command, 0)
+            identity = {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}
+            with patch("platform.system", return_value="Darwin"), patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.runtime_identity", return_value=identity), \
+                    patch.dict(os.environ, {"JAVA_HOME": temporary}), \
+                    patch("prepare_desktop_update_fixture.require_macos_packaging_jdk"):
+                stale = checkout / "desktopApp/build/compose/binaries/main/dmg/stale.dmg"
+                stale.parent.mkdir(parents=True)
+                stale.write_bytes(b"stale-output")
+                with self.assertRaisesRegex(ValueError, "stale native dmg"):
+                    recover_macos_target_package(output, True,
+                                                 lambda *args, **kwargs: self.fail("stale package must not run"))
+                stale.unlink()
+                receipt = recover_macos_target_package(output, True, package)
+                (output / "fixture-receipt.json").unlink()
+                with self.assertRaisesRegex(ValueError, "terminal target result"):
+                    recover_macos_target_package(output, True,
+                                                 lambda *args, **kwargs: self.fail("completed target must not run"))
+                (output / "fixture-receipt.json").write_text(json.dumps(receipt))
+                (output / "completed-target.json").unlink()
+                with self.assertRaisesRegex(ValueError, "terminal target result"):
+                    recover_macos_target_package(output, True,
+                                                 lambda *args, **kwargs: self.fail("receipt target must not run"))
+            self.assertEqual(":desktopApp:packageDmg", calls[0][-1])
+            self.assertNotIn(":desktopApp:createDistributable", calls[0])
+            self.assertEqual(base_record["codeFingerprint"], receipt["builds"][1]["codeFingerprint"])
+            self.assertTrue((output / "fixture-receipt.json").is_file())
+
+    def test_macos_target_package_recovery_rejects_missing_base_completion_before_running(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _, _, output, plan = self.prepared(Path(temporary))
+            plan["platform"] = "macos"
+            (output / "build-plan.json").write_text(json.dumps(plan))
+            identity = {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}
+            with patch("platform.system", return_value="Darwin"), patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.runtime_identity", return_value=identity):
+                with self.assertRaisesRegex(ValueError, "Completed stage evidence"):
+                    recover_macos_target_package(output, True, lambda *args, **kwargs: self.fail("must not package"))
+
+    def test_offloaded_base_requires_durable_record_bound_to_completion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            record = {"label": "base", "directory": "build-base", "version": "2.1.2", "buildNumber": 16440}
+            plan = {"stages": [record, {"label": "target"}]}
+            (root / "base-offload.json").write_text(json.dumps({"schemaVersion": 1, "record": {
+                "schemaVersion": 1, "baseRecord": record, "hostBackupSha256": "a" * 64}}))
+            with patch("prepare_desktop_update_fixture.completed_stage_record", return_value=record):
+                self.assertEqual(record, verified_offloaded_base_record(root, plan))
+            (root / "base-offload.json").write_text(json.dumps({"schemaVersion": 1, "record": {
+                "schemaVersion": 1, "baseRecord": {**record, "version": "2.1.3"}, "hostBackupSha256": "a" * 64}}))
+            with patch("prepare_desktop_update_fixture.completed_stage_record", return_value=record):
+                with self.assertRaisesRegex(ValueError, "does not match"):
+                    verified_offloaded_base_record(root, plan)
 
     def test_cleanup_path_defense_rejects_noncanonical_stage(self):
         with tempfile.TemporaryDirectory() as temporary:

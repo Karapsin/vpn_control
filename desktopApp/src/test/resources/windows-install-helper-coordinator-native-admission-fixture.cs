@@ -51,6 +51,13 @@ public static class CoordinatorNativeAdmissionFixtures {
                 RejectsBeforeOutput(invocation,local,input,job,(uint)worker.Id,workerCreated,foreignSid,digest,machine,"SID");
                 RejectsBeforeOutput(invocation,local,input,job,(uint)worker.Id,checked(workerCreated+1),sid,digest,machine,"GENERATION");
                 RejectsBeforeOutput(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,new string('0',64),machine,"DIGEST");
+                RejectsBootstrapMismatch(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,digest,machine);
+                AdmitsMatchingBootstrapChild(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,digest,machine);
+                // The positive admission deliberately reserves a gate. Give the
+                // following no-output regressions a fresh protected root so
+                // they detect only output produced by their own failed wait.
+                DeleteDirectory(machine); CreateMachine(machine,MachineAcl);
+                RejectsBoundedBootstrapWait(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,machine);
 
                 DeleteDirectory(machine); CreateMachine(machine,UnsafeMachineAcl);
                 WriteReady(input,job,(uint)worker.Id,workerCreated,sid,digest);
@@ -96,6 +103,103 @@ public static class CoordinatorNativeAdmissionFixtures {
         throw new IOException(name+" readiness was admitted");
     }
 
+    // This calls the production bootstrap lease and its retained-input parser.
+    // Only OS child observations are injected: malformed or dead original-user children
+    // must fail before the coordinator can reserve a gate or reach installation.
+    static void RejectsBootstrapMismatch(VpnInstallHelperProtocol.Invocation invocation,string local,string input,string job,uint pid,long created,string sid,string digest,string machine) {
+        WriteReady(input,job,pid,created,sid,digest);
+        foreach (BootstrapChild child in new BootstrapChild[] {
+            new BootstrapChild(pid,created,sid,true),
+            new BootstrapChild(checked(pid+1),created,sid,false),
+            new BootstrapChild(pid,checked(created+1),sid,false),
+            new BootstrapChild(pid,created,sid=="S-1-5-18" ? "S-1-5-19" : "S-1-5-18",false),
+        }) {
+            try {
+                using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+                using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+                    delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },new ImmediateWait(false,false),delegate { return machine; })) { }
+            } catch (IOException) {
+                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || !child.Exited)
+                    throw new IOException("Bootstrap mismatch did not reconcile its exact rejected child");
+                if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext()) throw new IOException("Bootstrap mismatch reached gate or job output");
+                continue;
+            }
+            throw new IOException("Bootstrap mismatch was admitted");
+        }
+    }
+
+    static void AdmitsMatchingBootstrapChild(VpnInstallHelperProtocol.Invocation invocation,string local,string input,string job,uint pid,long created,string sid,string digest,string machine) {
+        WriteReady(input,job,pid,created,sid,digest);
+        BootstrapChild child=new BootstrapChild(pid,created,sid,false);
+        using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+        using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+            delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },new ImmediateWait(false,false),delegate { return machine; })) {
+            bootstrap.Coordinator.ReserveInstallation();
+            if (!Directory.EnumerateFiles(machine,"gate-*").GetEnumerator().MoveNext()) throw new IOException("Matching bootstrap child did not reach coordinator admission");
+        }
+        if (child.BeforeAdmissionStops!=0 || child.AfterAdmissionReconciliations!=1)
+            throw new IOException("Admitted child crossed the pre-admission termination fence");
+    }
+
+    // This calls the same bootstrap lease used by the production factory. Only
+    // child observations and the monotonic wait are injected; retained-input
+    // parsing and coordinator admission remain native production code.
+    static void RejectsBoundedBootstrapWait(VpnInstallHelperProtocol.Invocation invocation,string local,string input,string job,uint pid,long created,string sid,string machine) {
+        string ready=Path.Combine(input,"worker-ready.json"); if (File.Exists(ready)) File.Delete(ready);
+        foreach (ImmediateWait wait in new ImmediateWait[] { new ImmediateWait(true,false),new ImmediateWait(false,true) }) {
+            BootstrapChild child=new BootstrapChild(pid,created,sid,false);
+            try {
+                using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+                using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+                    delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },wait,delegate { return machine; })) { }
+            } catch (IOException) {
+                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || !child.Exited)
+                    throw new IOException("Rejected bootstrap child was not exactly reconciled before admission");
+                if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext()) throw new IOException("Bounded wait reached gate or job output");
+                continue;
+            }
+            throw new IOException("Bounded bootstrap wait was admitted");
+        }
+        // A committed exact handoff is read before owner-exit cancellation. The
+        // wait still reaches its injected deadline, proving it did not turn an
+        // already committed handoff into a pre-admission stop.
+        WriteCommit(input,job,sid);
+        BootstrapChild committedChild=new BootstrapChild(pid,created,sid,false);
+        bool committedTimedOut=false;
+        try {
+            using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+            using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+                delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return committedChild; },new ImmediateWait(true,true),delegate { return machine; })) { }
+        } catch (IOException error) {
+            if (error.Message!="TIMEOUT") throw new IOException("Committed handoff was cancelled before its exact record was read",error);
+            committedTimedOut=true;
+            if (committedChild.BeforeAdmissionStops!=1 || !committedChild.Exited)
+                throw new IOException("Timed-out committed handoff did not reconcile its child");
+        } finally { string commit=Path.Combine(input,"commit.json"); if (File.Exists(commit)) File.Delete(commit); }
+        if (!committedTimedOut) throw new IOException("Committed handoff bootstrap was admitted without readiness");
+    }
+
+    sealed class BootstrapChild : CoordinatorOriginalUserChild {
+        internal readonly uint Pid; internal readonly long Created; internal readonly string Sid; bool dead;
+        internal int BeforeAdmissionStops,AfterAdmissionReconciliations;
+        internal BootstrapChild(uint pid,long created,string sid,bool exited) { Pid=pid; Created=created; Sid=sid; dead=exited; }
+        public uint ProcessId { get { return Pid; } }
+        public long CreationFileTime { get { return Created; } }
+        public string PrincipalSid { get { return Sid; } }
+        public bool Exited { get { return dead; } }
+        public void ReconcileBeforeAdmission() { BeforeAdmissionStops++; dead=true; }
+        public void ReconcileAfterAdmission() { AfterAdmissionReconciliations++; dead=true; }
+        public void Dispose() { }
+    }
+
+    sealed class ImmediateWait : CoordinatorWorkerReadyWait {
+        readonly bool deadline,cancel;
+        internal ImmediateWait(bool deadlineReached,bool cancellationRequested) { deadline=deadlineReached; cancel=cancellationRequested; }
+        public bool DeadlineReached { get { return deadline; } }
+        public bool CancellationRequested { get { return cancel; } }
+        public void Pause() { throw new IOException("Bounded wait unexpectedly slept"); }
+    }
+
     static void RejectsReserve(VpnInstallHelperProtocol.Invocation invocation,string local,string machine,string name) {
         try {
             using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
@@ -122,6 +226,10 @@ public static class CoordinatorNativeAdmissionFixtures {
             using (FileStream file=VpnInstallNative.CreateFile(path,PrivateAcl(identity.User.Value),
                 VpnInstallHelperProtocol.EncodeWorkerReady(job,pid,created,sid,digest))) { }
         }
+    }
+    static void WriteCommit(string input,string job,string sid) {
+        string path=Path.Combine(input,"commit.json"); if (File.Exists(path)) File.Delete(path);
+        using (FileStream file=VpnInstallNative.CreateFile(path,PrivateAcl(sid),System.Text.Encoding.UTF8.GetBytes("{\"version\":1,\"jobId\":\""+job+"\"}"))) { }
     }
     static void CreatePrivateInputs(string inputRoot,string input,string job,uint pid,long created,string sid) {
         if (!Directory.Exists(inputRoot)) VpnInstallNative.CreateDirectory(inputRoot,PrivateAcl(sid));

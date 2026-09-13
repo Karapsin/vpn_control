@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Verify retained-operation and location exports against their authenticated controller endpoints.
+
+## 2.1.9 - 2026-09-13
+
 - Keep completed check failures terminal while retaining uncertain native operation inputs.
 - Preserve Android CLI operation waits and benchmark diagnostics, and harden Windows native cleanup and installer input ownership.
 - Run Windows installer admission regressions with the pinned compiler and valid private fixtures.
@@ -13,6 +17,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Recover Android installation receipts and retain uncertain native installer outcomes with focused regression coverage.
 - Preserve Android stream summaries and harden installer admission, recovery, and fixture validation.
 - Fix Windows NativeAOT installer compilation and reject invalid Android trust staging and skipped native evidence.
+- Stream large desktop file exports through cold startup, preserve published results after acknowledgment loss, and strengthen native installer and fixture regressions.
+- Document retained-operation file output in generated CLI help.
 
 ## 2.1.8 - 2026-09-09
 

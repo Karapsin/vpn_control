@@ -97,6 +97,7 @@ class LinuxInstallVmPlanTest(unittest.TestCase):
         command = qemu_command(directory, "/usr/bin/qemu-system-x86_64", None, 2307, "kvm")
         self.assertEqual("kvm", command[command.index("-accel") + 1])
         self.assertEqual("host", command[command.index("-cpu") + 1])
+        self.assertEqual("6144", command[command.index("-m") + 1])
         self.assertFalse(any("pflash" in value or "libvirt" in value for value in command))
         drives = [command[index + 1] for index, value in enumerate(command) if value == "-drive"]
         self.assertEqual(2, len(drives))

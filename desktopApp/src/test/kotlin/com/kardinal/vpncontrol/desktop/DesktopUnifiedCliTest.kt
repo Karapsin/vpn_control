@@ -64,6 +64,7 @@ class DesktopUnifiedCliTest {
             assertTrue(help.contains(descriptor.grammar), descriptor.id.wireName)
             descriptor.aliases.forEach { assertTrue(help.contains(it)) }
         }
+        assertTrue(help.contains("operations wait <id> [--output PATH|-]"))
         assertTrue(help.contains("--timeout-seconds"))
     }
 }

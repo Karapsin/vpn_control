@@ -26,6 +26,7 @@ class DesktopRoutingCliEndToEndTest {
                 val lines = mutableListOf<String>()
                 return DesktopCli.handleArgs(arrayOf(*args), lines::add,
                     requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                    requestExport = { command, output -> DesktopActivationServer.requestCliExport(command, output, endpoint) },
                     startHeadlessController = { error("Reuse owner") }) to lines.joinToString("\n")
             }
             assertEquals(0, invoke("routing", "set", "direct-domains", "*.Example.COM.\n.local").first)

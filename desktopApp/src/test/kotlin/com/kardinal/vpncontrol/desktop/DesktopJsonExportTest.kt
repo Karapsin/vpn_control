@@ -17,7 +17,7 @@ class DesktopJsonExportTest {
                     val request = assertIs<DesktopCliCommand.ControlSubmit>(command).request
                     DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner", request.requestId,
                         ControlCode.OK, 0)))
-                }, writeOutput = { _, _ -> error("Missing content must not publish") },
+                }, enableDirectFileExport = false, writeOutput = { _, _ -> error("Missing content must not publish") },
                 writeBinaryOutput = { _, _ -> error("Missing content must not publish") })
             assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL.exitCode, code, destination)
         }
@@ -49,7 +49,7 @@ class DesktopJsonExportTest {
                 assertTrue(request.command.arguments.isEmpty())
                 DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult("owner", request.requestId,
                     ControlCode.OK, 17, restartRequired = true, data = mapOf("content" to ControlValue.Text("private content")))))
-            }, writeOutput = { _, _ -> Result.failure(java.io.IOException("secret path")) }))
+            }, enableDirectFileExport = false, writeOutput = { _, _ -> Result.failure(java.io.IOException("secret path")) }))
         val result = ControlProtocolCodec.decodeResult(lines.single())
         assertEquals(ControlCode.PERSISTENCE_FAILED, result.code)
         assertEquals(17L, result.configurationRevision)
@@ -78,7 +78,8 @@ class DesktopJsonExportTest {
                 fun invoke(): ControlResult {
                     val lines = mutableListOf<String>()
                     val exit = DesktopCli.handleArgs(args.toTypedArray(), printLine = lines::add,
-                        requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) })
+                        requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                        requestExport = { command, path -> DesktopActivationServer.requestCliExport(command, path, endpoint) })
                     val result = ControlProtocolCodec.decodeResult(lines.single())
                     assertEquals(exit, result.exitCode)
                     return result

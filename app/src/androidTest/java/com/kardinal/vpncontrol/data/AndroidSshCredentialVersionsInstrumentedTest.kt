@@ -101,6 +101,36 @@ class AndroidSshCredentialVersionsInstrumentedTest {
         } finally { reopenedJob.cancelAndJoin() }
     }
 
+    @Test fun committedCredentialResolvesAfterFreshDataStoreAndControllerEpoch() = fixture { root ->
+        val credentials = File(root, "credentials").apply { check(mkdir()) }
+        val metadata = File(root, "metadata").apply { check(mkdir()) }
+        val target = File(metadata, "configuration.preferences_pb")
+        fun open(scope: CoroutineScope, epoch: String) = AndroidConfigurationStore(
+            PreferenceDataStoreFactory.create(scope = scope) { target },
+            { prefs -> PersistedState(homeSshRouteSettings = HomeSshRouteSettings(credentialVersion = prefs[versionKey] ?: 0)) },
+            epoch,
+        )
+
+        val firstJob = SupervisorJob()
+        val committedVersion: Long
+        try {
+            val owner = open(CoroutineScope(firstJob + Dispatchers.IO), UUID.randomUUID().toString())
+            val committed = owner.edit(owner.controllerId, 0) { prefs ->
+                prefs[versionKey] = AndroidSshCredentialVersions(credentials).stage(key("committed"), prefs[versionKey] ?: 0)
+            }
+            committedVersion = committed.value.homeSshRouteSettings.credentialVersion
+            assertTrue(committedVersion > 0)
+        } finally { firstJob.cancelAndJoin() }
+
+        val reopenedJob = SupervisorJob()
+        try {
+            val reopened = open(CoroutineScope(reopenedJob + Dispatchers.IO), UUID.randomUUID().toString())
+            assertEquals(committedVersion, reopened.snapshot().value.homeSshRouteSettings.credentialVersion)
+            val resolved = requireNotNull(AndroidSshCredentialVersions(credentials).path(committedVersion))
+            assertEquals(key("committed"), File(resolved).readText())
+        } finally { reopenedJob.cancelAndJoin() }
+    }
+
     @Test fun directorySyncFailureLeavesLegacyResolutionAndMetadataUnchanged() = fixture { root ->
         val credentials = File(root, "credentials").apply { check(mkdir()) }
         val legacy = File(credentials, "home-ssh-private-key").apply { writeText(key("old")) }

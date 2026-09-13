@@ -57,6 +57,9 @@ class DesktopWindowsOriginalUserLaunchTest {
                 internal static class OriginalUserLaunchProbe {
                   public static void Main(string[] arguments) {
                     if (arguments.Length==4) { Thread.Sleep(1000); return; }
+                    if (arguments.Length==1 && arguments[0]=="--current-token") {
+                      Console.WriteLine(InstallerOriginalUserLaunchFixtures.ProbeCurrentTokenScalars()); return;
+                    }
                     Console.WriteLine(InstallerOriginalUserLaunchFixtures.Run());
                   }
                 }
@@ -80,6 +83,10 @@ class DesktopWindowsOriginalUserLaunchTest {
             }
             assertEquals(sdk["version"]!!.jsonPrimitive.content, run(listOf(dotnet, "--version"), 30).trim())
             run(listOf(dotnet, "build", "OriginalUserLaunchProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"), 90)
+            // This ordinary current-token probe runs on every Windows compiler
+            // runner and must precede the separately authorized interactive VM.
+            assertTrue(run(listOf(dotnet, directory.resolve("bin/Release/net10.0-windows/OriginalUserLaunchProbe.dll").toString(), "--current-token"), 30)
+                .contains("ORIGINAL_USER_CURRENT_TOKEN_SCALARS_OK"))
             // Hosted Windows runners have no interactive shell token. They still compile the
             // actual source; only an owned interactive fixture opts into token/process proof.
             assumeTrue("Requires an explicit interactive Windows fixture",

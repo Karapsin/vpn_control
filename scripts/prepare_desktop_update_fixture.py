@@ -483,6 +483,226 @@ def discard_completed_stage_directory(directory, stage):
     require(not checkout.exists() and not checkout.is_symlink(), "Completed generated checkout was not removed")
 
 
+def completed_stage_record(directory, stage):
+    """Read one durable completion record without permitting a replacement."""
+    path = directory / ("completed-" + stage["label"] + ".json")
+    require(path.parent == directory and path.is_file() and not path.is_symlink(),
+            "Completed stage evidence is missing or unsafe")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    require(data.get("schemaVersion") == 1 and isinstance(data.get("record"), dict),
+            "Completed stage evidence is malformed")
+    record = data["record"]
+    require(all(record.get(key) == stage[key] for key in ("label", "directory", "version", "buildNumber")),
+            "Completed stage evidence disagrees with the build plan")
+    return record
+
+
+def base_offload_evidence_path(directory):
+    path = directory / "base-offload.json"
+    require(path.parent == directory and not path.is_symlink() and not path.exists(),
+            "Base offload evidence already exists or is unsafe")
+    return path
+
+
+def authorize_macos_base_offload(directory, confirmed, host_backup_manifest):
+    """Durably bind a verified guest base to an immutable, operator-verified backup."""
+    require(confirmed, "Explicit owned-disposable-guest confirmation required")
+    directory = directory.resolve(strict=True)
+    plan = json.loads((directory / "build-plan.json").read_text())
+    require(plan.get("platform") == "macos" and plan.get("testOnly") is True and
+            plan.get("productionTrustChanged") is False, "Not a recoverable macOS fixture build plan")
+    base = plan.get("stages", [{}])[0]
+    require(base.get("label") == "base", "Fixture must contain a base stage")
+    record = completed_stage_record(directory, base)
+    verify_captured_stage(directory, plan, record)
+    manifest = json.loads(Path(host_backup_manifest).read_text(encoding="utf-8"))
+    require(manifest.get("schemaVersion") == 1 and manifest.get("baseRecord") == record and
+            isinstance(manifest.get("hostBackupSha256"), str) and
+            re.fullmatch(r"[0-9a-f]{64}", manifest["hostBackupSha256"]) is not None,
+            "Host backup manifest does not bind the verified base")
+    evidence = {"schemaVersion": 1, "baseRecord": record,
+                "hostBackupSha256": manifest["hostBackupSha256"]}
+    write_durable_completion_evidence(base_offload_evidence_path(directory), evidence)
+    return evidence
+
+
+def verified_offloaded_base_record(directory, plan):
+    """Admit an absent guest base only after the durable, verified offload record."""
+    base = plan["stages"][0]
+    record = completed_stage_record(directory, base)
+    packages = directory / "packages/base"
+    if packages.exists():
+        verify_captured_stage(directory, plan, record)
+        return record
+    path = directory / "base-offload.json"
+    require(path.is_file() and not path.is_symlink(), "Verified base artifacts are unavailable")
+    data = json.loads(path.read_text(encoding="utf-8")).get("record", {})
+    require(data.get("schemaVersion") == 1 and data.get("baseRecord") == record and
+            isinstance(data.get("hostBackupSha256"), str) and
+            re.fullmatch(r"[0-9a-f]{64}", data["hostBackupSha256"]) is not None,
+            "Base offload evidence does not match durable completion")
+    return record
+
+
+def macos_package_command(stage):
+    """Keep recovery on the Compose packageDmg task and its signing policy."""
+    command = stage["command"]
+    expected = ["./gradlew", "--no-daemon", "-PvpnControlVersion=" + stage["version"],
+                ":desktopApp:createDistributable", ":desktopApp:packageDmg"]
+    require(command == expected, "Unexpected macOS fixture package command")
+    return ["bash", "-e", "-c", 'source ./scripts/setup_macos_signing.sh; exec "$@"',
+            "fixture-macos", *command[:3], ":desktopApp:packageDmg"]
+
+
+def recover_macos_target_package(directory, confirmed, run_command=None, package_only=False):
+    """Finish only a failed macOS target package after verified base capture.
+
+    This deliberately never rebuilds a stage or resumes an installer fixture. It
+    admits one existing target app image, invokes Compose's original packageDmg
+    task, then writes the normal immutable target capture and fixture receipt.
+    """
+    import platform as host_platform
+    require(confirmed, "Explicit owned-disposable-guest confirmation required")
+    directory = directory.resolve(strict=True)
+    plan = json.loads((directory / "build-plan.json").read_text())
+    snapshot = json.loads((directory / "snapshot.json").read_text())
+    require(plan["platform"] == "macos" and plan["packageFamily"] == "default" and
+            plan["testOnly"] is True and plan["productionTrustChanged"] is False,
+            "Not a recoverable macOS fixture build plan")
+    require(snapshot["sourceFingerprint"] == plan["sourceFingerprint"] == json_hash(snapshot["files"]),
+            "Source fingerprint mismatch")
+    require(host_platform.system() == "Darwin", "Build only on the native target OS")
+    host_arch = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x86_64"}.get(host_platform.machine())
+    require(host_arch == plan["architecture"], "Native build architecture mismatch; do not spoof os.arch")
+    runtime = directory / plan["runtime"]["file"]
+    require(runtime_identity(runtime, "macos", plan["architecture"]) ==
+            {key: plan["runtime"][key] for key in ("sha256", "sizeBytes")}, "Frozen runtime mismatch")
+    require([stage.get("label") for stage in plan["stages"]] == ["base", "target"],
+            "Fixture must contain exactly the base and target stages")
+    base, target = plan["stages"]
+    base_record = verified_offloaded_base_record(directory, plan)
+    require(not (directory / "fixture-receipt.json").exists() and not (directory / "completed-target.json").exists(),
+            "Fixture already has a terminal target result")
+    verify_sources(directory / "source", snapshot["files"])
+    checkout = generated_stage_directory(directory, target, require_existing=True)
+    verify_sources(checkout, snapshot["files"])
+    image = checkout / "desktopApp/build/compose/binaries/main/app/vpn-control.app"
+    before = image_identity(image, target["version"])
+    require(before["codeFingerprint"] == base_record["codeFingerprint"],
+            "Target app executable content differs from verified base")
+    root = checkout / "desktopApp/build/compose/binaries/main"
+    require(not list(root.glob("**/*.dmg")), "Recovered target has a stale native dmg")
+    java_home = os.environ.get("JAVA_HOME")
+    if not java_home:
+        selected_java = shutil.which("java")
+        require(selected_java is not None, "Select a macOS packaging JDK with JAVA_HOME or PATH")
+        java_home = Path(selected_java).resolve().parent.parent
+    require_macos_packaging_jdk(Path(java_home), plan["architecture"])
+    run_command = run_command or subprocess.run
+    with (directory / "target-recovery-package.log").open("xb") as log:
+        result = run_command(macos_package_command(target), cwd=checkout, stdout=log,
+                             stderr=subprocess.STDOUT, check=False)
+    require(result.returncode == 0, "Native target package recovery failed; retain log and inputs")
+    verify_sources(directory / "source", snapshot["files"])
+    after = image_identity(image, target["version"])
+    require(after == before, "packageDmg changed the admitted target app image")
+    candidates = list(root.glob("**/*.dmg"))
+    require(len(candidates) == 1, "Expected exactly one native dmg package")
+    if package_only:
+        package = candidates[0]
+        evidence = {"schemaVersion": 1, "baseRecord": base_record, "targetIdentity": after,
+                    "package": {"path": str(package.relative_to(directory)),
+                                "asset": package_asset(package, "macos", plan["architecture"], target["version"])},
+                    "sourceFingerprint": snapshot["sourceFingerprint"]}
+        write_durable_completion_evidence(directory / "target-recovery-package.json", evidence)
+        return evidence
+    product = directory / "packages"
+    require(product.is_dir() and not product.is_symlink() and product.resolve(strict=True).parent == directory,
+            "Fixture packages root escaped the fixture")
+    output = product / "target"
+    require(not output.exists() and not output.is_symlink(), "Target package output already exists")
+    output.mkdir(mode=0o700)
+    exported_image = output / image.name
+    shutil.copytree(image, exported_image, symlinks=True)
+    package = candidates[0]
+    exported_package = output / package.name
+    shutil.copyfile(package, exported_package)
+    require(file_hash(exported_package) == file_hash(package), "Package changed during fixture capture")
+    exported_package.chmod(0o400)
+    assets = [package_asset(exported_package, "macos", plan["architecture"], target["version"])]
+    record = {**target, **after, "image": str(exported_image.relative_to(directory)), "assets": assets,
+              "sourceFingerprint": snapshot["sourceFingerprint"]}
+    write_json(output / "TEST-ONLY-INSTALL-FIXTURE.json", {"testOnly": True, "productionTrustChanged": False,
+               "sameSourceBuild": True, "version": target["version"], **after,
+               "sourceFingerprint": snapshot["sourceFingerprint"]})
+    verify_captured_stage(directory, plan, record)
+    write_durable_completion_evidence(completion_evidence_path(directory, target), record)
+    manifest = {"schemaVersion": 1, "buildNumber": target["buildNumber"], "releaseTag": RELEASE,
+                "releaseNotesUrl": "https://github.com/Karapsin/vpn_control/releases/tag/" + RELEASE,
+                "assets": assets}
+    receipt = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False,
+               "sourceFingerprint": snapshot["sourceFingerprint"], "nativeOs": host_platform.platform(),
+               "architecture": host_arch, "builds": [base_record, record], "manifest": manifest}
+    write_json(directory / "fixture-receipt.json", receipt)
+    return receipt
+
+
+def finalize_macos_target_package_recovery(directory, confirmed):
+    """Capture a package-only recovery after the original verified base is restored."""
+    require(confirmed, "Explicit owned-disposable-guest confirmation required")
+    directory = directory.resolve(strict=True)
+    plan = json.loads((directory / "build-plan.json").read_text())
+    snapshot = json.loads((directory / "snapshot.json").read_text())
+    require(plan.get("platform") == "macos" and plan.get("testOnly") is True and
+            plan.get("productionTrustChanged") is False and
+            snapshot.get("sourceFingerprint") == plan.get("sourceFingerprint") == json_hash(snapshot["files"]),
+            "Not a recoverable macOS fixture build plan")
+    base, target = plan["stages"]
+    base_record = verified_offloaded_base_record(directory, plan)
+    path = directory / "target-recovery-package.json"
+    require(path.is_file() and not path.is_symlink(), "Target package recovery evidence is missing")
+    evidence = json.loads(path.read_text(encoding="utf-8")).get("record", {})
+    require(evidence.get("schemaVersion") == 1 and evidence.get("baseRecord") == base_record and
+            evidence.get("sourceFingerprint") == snapshot["sourceFingerprint"],
+            "Target package recovery evidence is invalid")
+    checkout = generated_stage_directory(directory, target, require_existing=True)
+    verify_sources(directory / "source", snapshot["files"])
+    verify_sources(checkout, snapshot["files"])
+    image = checkout / "desktopApp/build/compose/binaries/main/app/vpn-control.app"
+    identity = image_identity(image, target["version"])
+    require(identity == evidence.get("targetIdentity") and identity["codeFingerprint"] == base_record["codeFingerprint"],
+            "Recovered target app identity changed")
+    package = directory / evidence.get("package", {}).get("path", "")
+    asset = evidence.get("package", {}).get("asset")
+    require(package.parent.is_relative_to(directory) and package_asset(package, "macos", plan["architecture"], target["version"]) == asset,
+            "Recovered target package changed")
+    product, output = directory / "packages", directory / "packages/target"
+    require(product.is_dir() and not product.is_symlink() and not output.exists() and not output.is_symlink(),
+            "Target package output already exists or is unsafe")
+    output.mkdir(mode=0o700)
+    exported_image = output / image.name
+    shutil.copytree(image, exported_image, symlinks=True)
+    exported_package = output / package.name
+    shutil.copyfile(package, exported_package)
+    require(file_hash(exported_package) == file_hash(package), "Package changed during fixture capture")
+    exported_package.chmod(0o400)
+    record = {**target, **identity, "image": str(exported_image.relative_to(directory)), "assets": [asset],
+              "sourceFingerprint": snapshot["sourceFingerprint"]}
+    write_json(output / "TEST-ONLY-INSTALL-FIXTURE.json", {"testOnly": True, "productionTrustChanged": False,
+               "sameSourceBuild": True, "version": target["version"], **identity,
+               "sourceFingerprint": snapshot["sourceFingerprint"]})
+    verify_captured_stage(directory, plan, record)
+    write_durable_completion_evidence(completion_evidence_path(directory, target), record)
+    manifest = {"schemaVersion": 1, "buildNumber": target["buildNumber"], "releaseTag": RELEASE,
+                "releaseNotesUrl": "https://github.com/Karapsin/vpn_control/releases/tag/" + RELEASE,
+                "assets": [asset]}
+    receipt = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False,
+               "sourceFingerprint": snapshot["sourceFingerprint"], "nativeOs": "recovered-macos-package",
+               "architecture": plan["architecture"], "builds": [base_record, record], "manifest": manifest}
+    write_json(directory / "fixture-receipt.json", receipt)
+    return receipt
+
+
 def native_build(directory, confirmed, run_command=None, discard_completed_builds=False):
     import platform as host_platform
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
@@ -739,6 +959,17 @@ def main():
     build_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
     build_parser.add_argument("--discard-completed-builds", action="store_true",
                               help="discard only verified build-base/build-target trees after capture")
+    recover_parser = commands.add_parser("recover-macos-target-package")
+    recover_parser.add_argument("--directory", type=Path, required=True)
+    recover_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
+    recover_parser.add_argument("--package-only", action="store_true")
+    offload_parser = commands.add_parser("authorize-macos-base-offload")
+    offload_parser.add_argument("--directory", type=Path, required=True)
+    offload_parser.add_argument("--host-backup-manifest", type=Path, required=True)
+    offload_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
+    finalize_parser = commands.add_parser("finalize-macos-target-package-recovery")
+    finalize_parser.add_argument("--directory", type=Path, required=True)
+    finalize_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
     serve_parser = commands.add_parser("serve")
     serve_parser.add_argument("--directory", type=Path, required=True)
     serve_parser.add_argument("--certificate", type=Path, required=True)
@@ -755,6 +986,14 @@ def main():
     elif args.action == "build":
         result = native_build(args.directory, args.confirm_owned_disposable_guest, None,
                               args.discard_completed_builds)
+    elif args.action == "recover-macos-target-package":
+        result = recover_macos_target_package(args.directory, args.confirm_owned_disposable_guest,
+                                              package_only=args.package_only)
+    elif args.action == "authorize-macos-base-offload":
+        result = authorize_macos_base_offload(args.directory, args.confirm_owned_disposable_guest,
+                                              args.host_backup_manifest)
+    elif args.action == "finalize-macos-target-package-recovery":
+        result = finalize_macos_target_package_recovery(args.directory, args.confirm_owned_disposable_guest)
     else:
         serve(args.directory, args.certificate, args.private_key, args.ready_file, args.confirm_owned_disposable_guest)
         return

@@ -19,6 +19,9 @@ internal object DesktopPublicCliClient {
 
     fun start(command: DesktopCliCommand): DesktopCliResponse =
         DesktopHeadlessController.startForCliCommand(command, requestCommand = ::request)
+
+    fun startExport(command: DesktopCliCommand, output: String): DesktopCliResponse =
+        DesktopHeadlessController.startForCliCommand(command, requestCommand = { DesktopActivationServer.requestCliExport(it, output) })
 }
 
 /** Pins one authenticated owner and retains only our terminal agent until protected handoff. */
