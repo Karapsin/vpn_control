@@ -4,8 +4,9 @@ import tempfile
 import unittest
 import subprocess
 
-from linux_gui_fixture_guard import (collect_window_pids, main, observe, proc_starttime,
-                                    require_fresh_gui_frontend, write_failure_receipt)
+from linux_gui_fixture_guard import (collect_window_pids, graceful_close, main, observe,
+                                    proc_starttime, require_fresh_gui_frontend,
+                                    require_mutable_fixture_source, write_failure_receipt)
 
 
 class Completed:
@@ -89,6 +90,23 @@ class LinuxGuiFixtureGuardTest(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertFalse(failure["ok"])
             self.assertIn("disappeared", failure["error"])
+
+    def test_graceful_close_uses_windowquit_not_destructive_x11_commands(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            return Completed(0, "")
+        graceful_close(4194308, run)
+        self.assertEqual(["xdotool", "windowquit", "4194308"], calls[0])
+        self.assertNotIn("windowclose", calls[0])
+        self.assertNotIn("windowkill", calls[0])
+        with self.assertRaisesRegex(ValueError, "positive"):
+            graceful_close(0, run)
+
+    def test_fixture_source_precondition_rejects_all_before_mutation(self):
+        require_mutable_fixture_source("current-locations")
+        with self.assertRaisesRegex(RuntimeError, "current-locations"):
+            require_mutable_fixture_source("all")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,12 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import com.kardinal.vpncontrol.model.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class DesktopOwnerExitGateTest {
@@ -71,6 +76,90 @@ class DesktopOwnerExitGateTest {
         assertFalse(gate.exitRequested)
         assertNotNull(release).invoke()
         assertTrue(gate.exitRequested)
+    }
+
+    @Test fun flushedPublicUpdateStatusAcknowledgesTheExactWaitingInstallerExit() = runBlocking {
+        var release: (() -> Unit)? = null
+        val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> release = ready })
+        val job = "00000000-0000-0000-0000-000000000001"
+        val correlation = DesktopInstallCorrelation("owner", "install", "operation")
+        gate.requestInstallExitAfterResponse(correlation, job)
+        val request = ControlRequest("status", ControlCommand(ControlOperationId.UPDATES_STATUS), controllerId = "owner")
+        val response = updateStatusResponse(request, correlation, job)
+        val actual = ControlProtocolCodec.decodeResult(response.message)
+        assertEquals(ControlCode.OK, actual.code)
+        assertTrue(actual.final, "updates status is a completed inspection envelope")
+
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(request), response)
+
+        assertNotNull(release).invoke()
+        assertTrue(gate.exitRequested)
+    }
+
+    @Test fun publicUpdateStatusRejectsEveryNonExactCorrelationAndNonReadyState() = runBlocking {
+        val job = "00000000-0000-0000-0000-000000000001"
+        val correlation = DesktopInstallCorrelation("owner", "install", "operation")
+        val request = ControlRequest("status", ControlCommand(ControlOperationId.UPDATES_STATUS), controllerId = "owner")
+        val actual = ControlProtocolCodec.decodeResult(updateStatusResponse(request, correlation, job).message)
+        val base = ((actual.data.getValue("installations") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        val mismatches = listOf(
+            "job" to (base + ("jobId" to ControlValue.Text("00000000-0000-0000-0000-000000000002"))),
+            "owner" to (base + ("originControllerId" to ControlValue.Text("other-owner"))),
+            "request" to (base + ("originRequestId" to ControlValue.Text("other-request"))),
+            "operation" to (base + ("operationId" to ControlValue.Text("other-operation"))),
+            "code" to (base + ("code" to ControlValue.Text(ControlCode.OUTCOME_UNKNOWN.wireName))),
+            "final" to (base + ("final" to ControlValue.BooleanValue(true))),
+            "installed" to (base + ("installed" to ControlValue.BooleanValue(false))),
+            "installed-true" to (base + ("installed" to ControlValue.BooleanValue(true))),
+        )
+        val phaseMismatches = (DesktopInstallJobPhase.entries - DesktopInstallJobPhase.WAITING_FOR_EXIT).map { phase ->
+            "phase-${phase.name.lowercase()}" to (base + ("phase" to ControlValue.Text(phase.name.lowercase())))
+        }
+        (mismatches + phaseMismatches).forEach { (name, values) ->
+            var released = false
+            val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> released = true; ready() })
+            gate.requestInstallExitAfterResponse(correlation, job)
+            val response = actual.copy(data = mapOf("installations" to ControlValue.ArrayValue(
+                listOf(ControlValue.ObjectValue(values))))).let { result ->
+                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(result))
+            }
+            gate.responseFlushed(DesktopCliCommand.ControlSubmit(request), response)
+            assertFalse(released, name)
+            assertFalse(gate.exitRequested, name)
+        }
+        for (outer in listOf(actual.copy(requestId = "other-status"), actual.copy(controllerId = "other-owner"),
+            actual.copy(final = false), actual.copy(code = ControlCode.OUTCOME_UNKNOWN))) {
+            var released = false
+            val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> released = true; ready() })
+            gate.requestInstallExitAfterResponse(correlation, job)
+            gate.responseFlushed(DesktopCliCommand.ControlSubmit(request),
+                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(outer)))
+            assertFalse(released)
+            assertFalse(gate.exitRequested)
+        }
+        var released = false
+        val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> released = true; ready() })
+        gate.requestInstallExitAfterResponse(correlation, job)
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(request),
+            DesktopCliResponse(false, ControlProtocolCodec.encodeResult(actual), 0))
+        assertFalse(released)
+        assertFalse(gate.exitRequested)
+    }
+
+    private suspend fun updateStatusResponse(request: ControlRequest, correlation: DesktopInstallCorrelation,
+        job: String): DesktopCliResponse {
+        val receipt = DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.WAITING_FOR_EXIT, ControlCode.OK)
+        val recovery = DesktopInstallCorrelationRecovery(DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            receipt, ControlCode.ACCEPTED)
+        val session = DesktopHeadlessSession(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined), { MainUiState() },
+            { error("updates status must remain an inspection") }, {}, controllerId = correlation.controllerId,
+            inspectRead = { command ->
+                assertEquals(ControlOperationId.UPDATES_STATUS, command.operation)
+                DesktopControlReadSnapshot(DesktopControlMetadata(0, false), Result.success(mapOf(
+                    "installations" to DesktopRecoveredInstallPresentation.values(listOf(recovery)),
+                )))
+            })
+        return try { session.execute(DesktopCliCommand.ControlSubmit(request)) } finally { session.close() }
     }
 
     @Test fun terminalFailureRevokesOnlyItsOwnUnflushedInstallExitPermit() {

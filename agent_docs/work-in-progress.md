@@ -23,24 +23,83 @@ and inputs until authoritative reconciliation. Only root owns shared Gradle,
 version metadata, staging, commits, pushes and exact-SHA CI. Workers use bounded
 assignments, one writer per file and one operator per native environment.
 
-## Delivered Checkpoint And Current Dirty Work
+## Current Delivery And Work (Checkpoint45)
 
-Checkpoint38 is pushed as `da81c52df0b5f45ea59189f586e8e77d47045006`, version2.1.8,
-eight Unreleased notes. All15 managed prepush checks and all five exact-SHA required
-workflows passed. Required run IDs: Fast34778462577, Android34778462664,
-Linux34778462616, Windows34778462624, macOS34778462593. Advisory VPN also passed.
-Evidence: checkpoint38/{prepush-result,commit-request,commit-result}.json.
-The previous a4a5b743 checkpoint failed Windows IL3050; the generic marshaling
-fix and routine NativeAOT analyzer regression are in this verified checkpoint.
+Latest pushed commit is `92cab1953c53cf07094964613b550ea130bada2c`, version
+2.1.9 with seven Unreleased notes. Managed prepush passed. All five required
+exact-SHA workflows passed: Fast34788786719, Android34788786718,
+Linux34788786741, Windows34788786755, macOS34788786730. Advisory VPN also passed.
+Evidence: checkpoint44/{prepush-result,commit-request,commit-result}.json.
+Earlier checkpoint failures below are historical and superseded by verified
+checkpoint43 `dabd111d466373467bdc2bd58787d39df1eee6f8` and checkpoint44.
+They do not prove that the remaining native acceptance matrix is complete.
 
-Checkpoint40 is pushed as `bb79fc8850b478d407e52b42c53a36b8546434f6`,
-version2.1.9 with one Unreleased note. All15 managed prepush checks passed.
-Exact-SHA Windows Desktop Package run34782234297 failed: three native compiler
-fixtures omitted the newly required original-user launcher source. The push is
-not fully verified. Evidence: checkpoint40/{commit,prepush-retry}-result.json.
-The intentional next dirty slice fixes those fixture dependencies and the macOS
-late-authorization recovery defect described below. Native helper activation in
-the JVM remains pending. Root will version, prepush and verify a new exact SHA.
+Current dirty scope: desktop installer response acknowledgement and its causal
+regressions; Linux graceful GUI-close/source fixture guards; Windows exact
+original-user/session fixture guard; this evidence/ownership document. These
+changes still need integrated checks, version metadata, prepush and delivery.
+Android custom-configuration handoff and ordinary-reference comparison are also
+included in this reviewed slice.
+
+| Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / artifact | Current check / next handoff |
+| --- | --- | --- | --- | --- | --- |
+| Integration/delivery | Root | WIP, metadata, reviewed fixture scripts | All shared protocol/model/build files | Host Gradle; checkpoint45 | Review focused tests, freeze, prepush/push/CI |
+| Android readiness | android_readiness45 | Runtime observation/prepared connections, VpnManager, BenchmarkOrchestrator, AndroidVpnService and focused tests | ApplicationOwner/settings remain root | Current nondebuggable 92cab APK2.3.9; no emulator ownership | Handed off; root reviewed/fixed ordinary reference comparison; native rerun next |
+| macOS late exit | mac_late_exit45 | DesktopOwnerExitGate and its tests | Other desktop owners remain root | dabd package native waiting job; code-only worker | Handed off; 41 focused desktop tests passed; packaged native rerun next |
+| Windows runtime | windows_public_runtime45 | Ignored native fixture/evidence only | No tracked writes | Exclusive owned QGA guest; installed dabd2.1.9 | Diagnostic exited normally; correct empty-result fixture wrapper, then proxy proof |
+| Linux lifecycle | Root after linux_lifecycle45 handoff | Ignored Fedora harness/evidence | Guard source remains root | Fedora2316 older installed2.1.8 | Proxy token traffic passed; GUI window absence needs diagnosis |
+
+Native facts requiring precise classification:
+
+- Android current APK SHA `fdb929f3d350e8212e63c99a298a9e4342047b3d60dfca2415fd655c3ffc440b`
+  is fixture-signed, nondebuggable2.3.9, source92cab. API35 selection/on succeeded
+  but running status lost selected/active configuration metadata and returned
+  UNAVAILABLE. No Find Best started. The attempted `off --interactive` was invalid
+  syntax, so this does not establish plain `off` failure. GUI Disconnect and exact
+  fixture cleanup succeeded. Evidence: checkpoint45/android-current/.
+- Earlier API35 cancellation proves a gated candidate TLS probe was cancelled
+  without changing recorded actual A/pending B. Its host SOCKS curl is not Android
+  tunnel traffic. Active verification/replacement and current-APK parity remain open.
+- macOS fixture43 job `49a33fcf-cecd-4d19-a233-47b6cc1dcf69` reached protected
+  waiting_for_exit after one native authorization grant. Owner888 remained alive;
+  no manual quit, worker replay or runtime kill was used. The proposed exit-gate
+  fix must still pass tests and native validation in a newly frozen package.
+  VNC disconnect caused automatic screen locking, not demonstrated bad credentials.
+- Windows dabd2.1.9 MSI was installed as the verified original interactive user;
+  public version/help/capabilities passed. The earlier SYSTEM per-user installation
+  was removed by its exact product code. This is initial-install evidence, not
+  public update replacement. Exact actor guard executed on Windows (six rejected
+  cases plus one accepted case); host Python skips that Windows-only execution.
+- Linux harness used `xdotool windowclose`, which destroys an X window and caused
+  the earlier crash; normal close must use `windowquit`. Do not label that crash
+  a demonstrated product close defect. The corrected exact runtime-config.json
+  path and fresh mixed-in port produced token-peer traffic. Public gui show then
+  returned success without a fresh owned window; full GUI lifecycle is unproven.
+  Guest receipt: /home/vpnfixture/lifecycle45-7687617b18/result.json.
+
+Focused checkpoint45 evidence (not final prepush):
+
+- `desktop-exit-red.log`: original gate fails the public update-status acknowledgement
+  regression. `integrated-focused-green.log`: 41 desktop tests passed, no skips.
+  The test uses recovered-install presentation plus the actual headless inspection
+  adapter; outer final=true and inner final=false have distinct meanings.
+- `android-custom-red.log`: original prepared handoff rejects CUSTOM without a URL.
+  `android-ordinary-red.log`: first patch incorrectly preferred stored JSON over
+  the ordinary raw URL and reported pending restart. Root preserved the ordinary
+  reference and added CUSTOM fallback. `android-final-focused-green.log`: 40 tests
+  passed, no skips, covering prepared handoff, observer, connection and Find Best.
+- Linux guard: 11 tests passed. Windows guard: three host tests passed, one
+  Windows-only test skipped locally; its actual generated classifier separately
+  passed on the owned Windows guest (`checkpoint45/windows-actor/result.json`).
+- Windows QGA diagnostic4376 exited0 and guest-ping responded; no termination was
+  needed. The first ordinary task's empty results array was a fixture wrapper bug,
+  so its exit0 does not establish public CLI behavior.
+
+## Historical Checkpoint Evidence
+
+The following sections retain prior evidence and limits. Current ownership,
+delivery status and corrected classifications above supersede their progress
+statements; an old open item is not automatically a current implementation gap.
 
 ## Implemented And Locally Tested
 

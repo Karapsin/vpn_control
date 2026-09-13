@@ -53,6 +53,24 @@ def collect_window_pids(run=subprocess.run):
     return mapping
 
 
+def graceful_close(window_id, run=subprocess.run):
+    """Request a normal WM close; never destroy the X window or kill its client."""
+    if not isinstance(window_id, int) or isinstance(window_id, bool) or window_id <= 0:
+        raise ValueError("GUI fixture window ID must be a positive integer")
+    try:
+        result = run(["xdotool", "windowquit", str(window_id)], text=True,
+                     capture_output=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("GUI fixture cannot request graceful window close") from error
+    if result.returncode != 0:
+        raise RuntimeError("GUI fixture graceful window close was rejected")
+
+
+def require_mutable_fixture_source(source_id):
+    if source_id != "current-locations":
+        raise RuntimeError("GUI fixture requires source current-locations before mutations")
+
+
 def observe(*, expected_pid, expected_starttime, baseline_windows, proc_starttime, proc_alive,
             window_pid, crash_reports):
     if not proc_alive(expected_pid) or proc_starttime(expected_pid) != expected_starttime:

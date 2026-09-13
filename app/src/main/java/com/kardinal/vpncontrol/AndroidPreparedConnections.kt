@@ -3,8 +3,10 @@ package com.kardinal.vpncontrol
 import com.kardinal.vpncontrol.control.ControlRuntimeConfiguration
 import com.kardinal.vpncontrol.data.AndroidPersistedDomainSuffixes
 import com.kardinal.vpncontrol.data.AndroidDirectDomainRuleSetStore
+import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.PersistedState
+import com.kardinal.vpncontrol.model.ProxyProtocol
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
 import java.util.UUID
@@ -36,8 +38,14 @@ internal class AndroidPreparedConnections(
     fun remember(selection: ProfileSelection, state: PersistedState, ruleSetLease: AndroidDirectDomainRuleSetStore.Lease? = null) {
         // Generated SSH configurations use the exact captured credential version,
         // just like other runtime inputs. Uncaptured legacy JSON remains unknown.
-        if (selection.profile.rawLink.isBlank()) { ruleSetLease?.close(); return }
-        remember(selection, ControlRuntimeConfiguration(selection.profile.rawLink, selection.sourceUrl,
+        if (selection.profile.rawLink.isBlank() && selection.profile.protocol != ProxyProtocol.CUSTOM) {
+            ruleSetLease?.close()
+            return
+        }
+        val locationReference = selection.profile.rawLink.ifBlank {
+            LocationConfigs.encodeStoredLocation(selection.profile)
+        }
+        remember(selection, ControlRuntimeConfiguration(locationReference, selection.sourceUrl,
             state.appMode, state.routingRules, state.dnsSettings, state.homeSshRouteSettings), ruleSetLease)
     }
 

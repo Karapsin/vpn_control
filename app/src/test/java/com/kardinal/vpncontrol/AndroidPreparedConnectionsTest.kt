@@ -90,6 +90,46 @@ class AndroidPreparedConnectionsTest {
         assertNull(prepared.dispatch(legacy))
     }
 
+    @Test fun ordinarySelectionWithBothPersistedRepresentationsHasNoPendingRestart() {
+        val prepared = AndroidPreparedConnections()
+        val selection = selection()
+        val state = PersistedState(
+            selectedProfileRawLink = selection.profile.rawLink,
+            selectedProfileJson = LocationConfigs.encodeStoredLocation(selection.profile),
+            selectedProfileSourceUrl = selection.sourceUrl,
+        )
+        prepared.remember(selection, state)
+        val descriptor = requireNotNull(prepared.consume(prepared.dispatch(selection), selection.runtimeConfigJson))
+        val observer = AndroidRuntimeObserver()
+        observer.started(Any(), state.appMode, selection.runtimeConfigJson, descriptor)
+        assertEquals(false, observer.pendingRestart(state))
+        val status = observer.controlStatus(state)
+        assertTrue(status.authoritative)
+        assertEquals(status.data["selectedLocationId"], status.data["activeLocationId"])
+    }
+
+    @Test fun customSelectionRetainsItsStoredReferenceForAuthoritativeRuntimeReadiness() {
+        val prepared = AndroidPreparedConnections()
+        val profile = LocationConfigs.parseLocationInput("""{"log":{"level":"warn"},"outbounds":[{"type":"direct","tag":"direct"}]}""")
+        assertEquals(com.kardinal.vpncontrol.model.ProxyProtocol.CUSTOM, profile.protocol)
+        assertEquals("", profile.rawLink)
+        val selection = ProfileSelection(profile,
+            ProfileBenchmark(profile, "manual", "manual", null, null, 0.0, "fixture"), "private-runtime-config")
+        val stored = LocationConfigs.encodeStoredLocation(profile)
+        val state = PersistedState(selectedProfileJson = stored)
+
+        prepared.remember(selection, state)
+        val descriptor = requireNotNull(prepared.consume(prepared.dispatch(selection), selection.runtimeConfigJson))
+        assertEquals(stored, descriptor.locationReference)
+
+        val observer = AndroidRuntimeObserver()
+        observer.started(Any(), com.kardinal.vpncontrol.model.AppMode.VPN, selection.runtimeConfigJson, descriptor)
+        assertEquals(false, observer.pendingRestart(state))
+        val status = observer.controlStatus(state)
+        assertTrue(status.authoritative)
+        assertEquals(status.data["selectedLocationId"], status.data["activeLocationId"])
+    }
+
     @Test fun delayedServiceStartUsesPreparedInputsNotLaterCommittedSettings() {
         val prepared = AndroidPreparedConnections()
         val selection = selection()

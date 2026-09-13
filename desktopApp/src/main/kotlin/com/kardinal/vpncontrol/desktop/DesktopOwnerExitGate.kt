@@ -35,14 +35,7 @@ internal class DesktopOwnerExitGate(
         }.getOrNull() ?: return
         install.get()?.let { expected ->
             val identity = expected.correlation
-            if (result.requestId == request.requestId && result.controllerId == request.controllerId &&
-                request.controllerId == identity.controllerId && result.operationId == identity.operationId &&
-                !result.final && result.code == com.kardinal.vpncontrol.model.ControlCode.ACCEPTED &&
-                response.exitCode == 0 && result.data["jobId"] == com.kardinal.vpncontrol.model.ControlValue.Text(expected.jobId) &&
-                result.data["handoffReady"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true) &&
-                (request.requestId == identity.requestId && request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL ||
-                    request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS &&
-                        request.command.arguments["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.operationId)))
+            if (matchesInstallAcknowledgement(request, response, result, expected))
                 if (notified.compareAndSet(null, expected)) {
                     try {
                         releaseInstall(identity, expected.jobId) {
@@ -64,6 +57,35 @@ internal class DesktopOwnerExitGate(
         if (result.requestId == request.requestId && result.controllerId == request.controllerId &&
             result.final && result.code == com.kardinal.vpncontrol.model.ControlCode.OK && response.exitCode == 0)
             released.set(true)
+    }
+
+    private fun matchesInstallAcknowledgement(request: com.kardinal.vpncontrol.model.ControlRequest,
+        response: DesktopCliResponse, result: com.kardinal.vpncontrol.model.ControlResult, expected: InstallExit): Boolean {
+        val identity = expected.correlation
+        if (result.requestId != request.requestId || result.controllerId != request.controllerId ||
+            request.controllerId != identity.controllerId || response.exitCode != 0) return false
+        val readyOperation = result.operationId == identity.operationId && !result.final &&
+            result.code == com.kardinal.vpncontrol.model.ControlCode.ACCEPTED &&
+            result.data["jobId"] == com.kardinal.vpncontrol.model.ControlValue.Text(expected.jobId) &&
+            result.data["handoffReady"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true) &&
+            (request.requestId == identity.requestId && request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL ||
+                request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS &&
+                    request.command.arguments["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.operationId))
+        if (readyOperation) return true
+        if (request.command.operation != com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_STATUS ||
+            !result.final || result.code != com.kardinal.vpncontrol.model.ControlCode.OK) return false
+        return (result.data["installations"] as? com.kardinal.vpncontrol.model.ControlValue.ArrayValue)?.values?.any { value ->
+            val installation = (value as? com.kardinal.vpncontrol.model.ControlValue.ObjectValue)?.values ?: return@any false
+            installation["jobId"] == com.kardinal.vpncontrol.model.ControlValue.Text(expected.jobId) &&
+                installation["originControllerId"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.controllerId) &&
+                installation["originRequestId"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.requestId) &&
+                installation["operationId"] == com.kardinal.vpncontrol.model.ControlValue.Text(identity.operationId) &&
+                installation["phase"] == com.kardinal.vpncontrol.model.ControlValue.Text("waiting_for_exit") &&
+                installation["code"] == com.kardinal.vpncontrol.model.ControlValue.Text(
+                    com.kardinal.vpncontrol.model.ControlCode.ACCEPTED.wireName) &&
+                installation["final"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(false) &&
+                installation["installed"] == com.kardinal.vpncontrol.model.ControlValue.Null
+        } == true
     }
 
     /** Arm only after the retained worker acknowledged protected WAITING_FOR_EXIT. */

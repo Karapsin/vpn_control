@@ -155,9 +155,9 @@ internal class AndroidRuntimeObserver(
     @Synchronized fun pendingRestart(committed: PersistedState): Boolean? = when (mutableState.value.knowledge) {
         AndroidRuntimeKnowledge.UNKNOWN -> null
         AndroidRuntimeKnowledge.STOPPED -> false
-        AndroidRuntimeKnowledge.RUNNING -> activeConfiguration?.hasPendingChanges(
-            MainUiStateProjector.committedState(committed),
-        )
+        AndroidRuntimeKnowledge.RUNNING -> activeConfiguration?.let {
+            it != committedRuntimeConfiguration(committed)
+        }
     }
 
     /** One monitor captures actual runtime identity, its prepared inputs and pending comparison. */
@@ -181,7 +181,7 @@ internal class AndroidRuntimeObserver(
 
     @Synchronized fun controlStatus(committed: PersistedState): AndroidControlStatus {
         val observed = mutableState.value
-        val selected = ControlRuntimeConfiguration.committed(MainUiStateProjector.committedState(committed))
+        val selected = committedRuntimeConfiguration(committed)
         val pending = pendingRestart(committed)
         fun identity(configuration: ControlRuntimeConfiguration?): ControlValue {
             if (configuration == null || configuration.locationReference.isBlank()) return ControlValue.Null
@@ -209,6 +209,13 @@ internal class AndroidRuntimeObserver(
             "runtimeObservation" to ControlValue.Text(observed.knowledge.name.lowercase()),
         ), pending, observed.knowledge != AndroidRuntimeKnowledge.UNKNOWN && pending != null)
     }
+
+    private fun committedRuntimeConfiguration(state: PersistedState): ControlRuntimeConfiguration =
+        ControlRuntimeConfiguration(
+            state.selectedProfileRawLink.ifBlank { state.selectedProfileJson },
+            state.selectedProfileSourceUrl, state.appMode, state.routingRules, state.dnsSettings,
+            state.homeSshRouteSettings,
+        )
 }
 
 internal class AndroidRuntimeRestorePoint(val observation: AndroidRuntimeObservation,
