@@ -3,7 +3,9 @@
   "roles": {
     "vpn-control-install-helper.exe": {
       "operations": [
-        "validate-only"
+        "validate-only",
+        "install-user",
+        "install-coordinator"
       ],
       "minimumWindowsBuild": 14393,
       "dependentLoadFlags": 2048,

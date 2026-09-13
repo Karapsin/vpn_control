@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Exercise validated autostart ownership in GUI and CLI parity checks.
 - Preserve pre-install runtime failures through cancellation recovery and validate Windows helper fixture output names.
 - Bind the Windows native probe invocation to its checked assembly output.
+- Use the packaged native Windows installer coordinator and language-independent autostart inspection.
 
 ## 2.1.9 - 2026-09-13
 

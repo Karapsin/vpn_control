@@ -22,7 +22,7 @@ class DesktopAutostartParityTest {
             commandRunner = { command ->
                 osCalls++
                 val missing = DesktopAutostartCommandResult(1, "ERROR: The system cannot find the file specified.")
-                when (command.take(2)) {
+                if (command.first() == "powershell.exe") DesktopAutostartCommandResult(0, "ABSENT") else when (command.take(2)) {
                     listOf("schtasks", "/Query") -> if (!enabled) missing else DesktopAutostartCommandResult(0, """
                         <Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
                           <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>

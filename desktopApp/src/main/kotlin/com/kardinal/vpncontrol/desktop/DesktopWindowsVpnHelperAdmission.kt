@@ -5,16 +5,53 @@ import java.nio.file.Path
 import java.nio.charset.CodingErrorAction
 import kotlinx.serialization.json.*
 
-/** No path, principal or machine setting supplied by a controller can choose privileged code. */
+/** Admission for the fixed authenticated runtime broker; no caller chooses privileged code. */
 internal object DesktopWindowsVpnHelperAdmission {
     const val HELPER = "vpn-control-vpn-broker.exe"
+    internal const val MAX_HELPER_BYTES = DesktopWindowsPackagedHelperAdmission.MAX_HELPER_BYTES
+    internal const val MAX_MANIFEST_BYTES = DesktopWindowsPackagedHelperAdmission.MAX_MANIFEST_BYTES
+
+    fun retain(runtimeSha256: String, runtimeSize: Long,
+               native: WindowsVpnHelperNative = JnaWindowsVpnHelperNative()): DesktopWindowsVpnHelperLease {
+        val admitted = DesktopWindowsPackagedHelperAdmission.retain(HELPER, listOf("authenticated-runtime-channel"),
+            DesktopWindowsPackagedHelperAdmission.RuntimeAuthority(runtimeSha256, runtimeSize), native)
+        return object : DesktopWindowsVpnHelperLease {
+            override val executable get() = admitted.executable
+            override val owner get() = admitted.owner
+            override fun parameters(pipeName: String): String {
+                admitted.assertOpen()
+                val arguments = arguments(pipeName, owner, runtimeSha256)
+                if (windowsInstallArgument(executable).length.toLong() + arguments.length + 2 > 32767)
+                    throw DesktopWindowsRuntimeFailure("RESOURCE_EXHAUSTED")
+                return arguments
+            }
+            override fun verifyStartedProcess(process: WinNT.HANDLE) = admitted.verifyStartedProcess(process)
+            override fun close() = admitted.close()
+            override fun toString() = "Packaged Windows VPN helper (<redacted>)"
+        }
+    }
+
+    internal fun arguments(pipe: String, owner: DesktopWindowsRuntimeResourceNativeOwner, digest: String): String {
+        val prefix = "vpn-control-vpn-"
+        require(pipe.startsWith(prefix) && java.util.UUID.fromString(pipe.removePrefix(prefix)).toString() == pipe.removePrefix(prefix))
+        require(digest.matches(Regex("[a-f0-9]{64}")))
+        return listOf(pipe, owner.processId.toString(), owner.creationFileTime.toString(), owner.sid, digest)
+            .joinToString(" ", transform = ::windowsInstallArgument)
+    }
+}
+
+internal object DesktopWindowsPackagedHelperAdmission {
     internal const val MAX_HELPER_BYTES = 64L * 1024 * 1024
     internal const val MAX_MANIFEST_BYTES = 65536
     private const val CURRENT_OWNER = "S-1-5-32-544"
 
-    fun retain(runtimeSha256: String, runtimeSize: Long,
-               native: WindowsVpnHelperNative = JnaWindowsVpnHelperNative()): DesktopWindowsVpnHelperLease {
-        require(runtimeSha256.matches(Regex("[a-f0-9]{64}")) && runtimeSize in 64..201326592)
+    internal data class RuntimeAuthority(val sha256: String, val size: Long)
+
+    fun retain(helperName: String, expectedOperations: List<String>, runtime: RuntimeAuthority? = null,
+               native: WindowsVpnHelperNative = JnaWindowsVpnHelperNative()): DesktopWindowsPackagedHelperLease {
+        require((helperName == "vpn-control-vpn-broker.exe" && expectedOperations == listOf("authenticated-runtime-channel")) ||
+            (helperName == "vpn-control-install-helper.exe" && expectedOperations == listOf("validate-only", "install-user", "install-coordinator")))
+        runtime?.let { require(it.sha256.matches(Regex("[a-f0-9]{64}")) && it.size in 64..201326592) }
         val handles = mutableListOf<WindowsInstallNative.Handle>()
         var originalImage: WindowsInstallNative.Handle? = null
         var application: AutoCloseable? = null
@@ -30,6 +67,7 @@ internal object DesktopWindowsVpnHelperAdmission {
             }
         }
         var ready = false
+        var closing = false
         var closed = false
         fun release() {
             var failed: Throwable? = null
@@ -60,7 +98,12 @@ internal object DesktopWindowsVpnHelperAdmission {
             closed = true
         }
         val pending = object : AutoCloseable {
-            @Synchronized override fun close() { if (!closed) release() }
+            @Synchronized override fun close() {
+                if (!closed) {
+                    closing = true
+                    release()
+                }
+            }
         }
         try {
             val process = native.currentProcess()
@@ -133,12 +176,12 @@ internal object DesktopWindowsVpnHelperAdmission {
                 path += "\\" + component
                 parent = pin(path, directory = true, parent = parent)
             }
-            val helperPath = "$path\\$HELPER"
+            val helperPath = "$path\\$helperName"
             val helper = pin(helperPath, false, parent)
             trusted(helper, false, false)
             val manifest = pin("$path\\native-helpers.json", false, parent)
             trusted(manifest, false, false)
-            val record = manifest(native.read(manifest, MAX_MANIFEST_BYTES), runtimeSha256, runtimeSize)
+            val record = manifest(native.read(manifest, MAX_MANIFEST_BYTES), helperName, expectedOperations, runtime)
             val actual = native.executable(helper, MAX_HELPER_BYTES)
             require(actual.size == record.size && actual.sha256 == record.sha256 && actual.machine == 0x8664 &&
                 !actual.clrHeader && actual.dependentLoadFlags == 0x800) { "PERMISSION_DENIED" }
@@ -149,18 +192,12 @@ internal object DesktopWindowsVpnHelperAdmission {
             require(current.image == process.image && current.owner.processId == owner.processId &&
                 current.owner.creationFileTime == owner.creationFileTime && current.owner.sid == owner.sid) { "PERMISSION_DENIED" }
             ready = true
-            return object : DesktopWindowsVpnHelperLease {
+            return object : DesktopWindowsPackagedHelperLease {
                 override val executable = helperPath
                 override val owner = process.owner
-                override fun parameters(pipeName: String): String {
-                    check(ready && !closed)
-                    val arguments = arguments(pipeName, owner, runtimeSha256)
-                    if (windowsInstallArgument(executable).length.toLong() + arguments.length + 2 > 32767)
-                        throw DesktopWindowsRuntimeFailure("RESOURCE_EXHAUSTED")
-                    return arguments
-                }
+                override fun assertOpen() = check(ready && !closing && !closed)
                 @Synchronized override fun verifyStartedProcess(process: WinNT.HANDLE) {
-                    check(ready && !closed)
+                    assertOpen()
                     // This path comes from the retained ShellExecute process, not a PID lookup.
                     val peer = native.openDirectory(native.processImage(process))
                     handles += peer
@@ -170,7 +207,7 @@ internal object DesktopWindowsVpnHelperAdmission {
                     }
                 }
                 @Synchronized override fun close() { pending.close() }
-                override fun toString() = "Packaged Windows VPN helper (<redacted>)"
+                override fun toString() = "Packaged Windows helper (<redacted>)"
             }
         } catch (failure: Throwable) {
             try { pending.close() }
@@ -179,16 +216,8 @@ internal object DesktopWindowsVpnHelperAdmission {
         }
     }
 
-    internal fun arguments(pipe: String, owner: DesktopWindowsRuntimeResourceNativeOwner, digest: String): String {
-        val prefix = "vpn-control-vpn-"
-        require(pipe.startsWith(prefix) && java.util.UUID.fromString(pipe.removePrefix(prefix)).toString() == pipe.removePrefix(prefix))
-        require(digest.matches(Regex("[a-f0-9]{64}")))
-        return listOf(pipe, owner.processId.toString(), owner.creationFileTime.toString(), owner.sid, digest)
-            .joinToString(" ", transform = ::windowsInstallArgument)
-    }
-
     private data class Artifact(val sha256: String, val size: Long)
-    private fun manifest(bytes: ByteArray, digest: String, size: Long): Artifact {
+    private fun manifest(bytes: ByteArray, helperName: String, expectedOperations: List<String>, runtime: RuntimeAuthority?): Artifact {
         require(bytes.isNotEmpty() && bytes.size <= MAX_MANIFEST_BYTES) { "UNAVAILABLE" }
         val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
@@ -222,23 +251,26 @@ internal object DesktopWindowsVpnHelperAdmission {
         require(root.string("policySha256").matches(Regex("[a-f0-9]{64}")))
         val authority = root.getValue("runtimeAuthority").jsonObject
         require(authority.keys == setOf("runtimeSha256", "runtimeSizeBytes", "authoritySourceSha256"))
-        require(authority.string("runtimeSha256") == digest && authority.number("runtimeSizeBytes") == size) {
+        val authorityDigest = authority.string("runtimeSha256")
+        val authoritySize = authority.number("runtimeSizeBytes")
+        require(authorityDigest.matches(Regex("[a-f0-9]{64}")) && authoritySize > 0)
+        runtime?.let { require(authorityDigest == it.sha256 && authoritySize == it.size) {
             "PERMISSION_DENIED"
-        }
+        } }
         // The producer checks this provenance against its exact generated source. It is not
         // proof of compiled code; the native entry point enforces its compiled runtime hash.
         require(authority.string("authoritySourceSha256").matches(Regex("[a-f0-9]{64}")))
         val records = root.getValue("artifacts").jsonArray
         require(records.size == 2)
         val artifacts = records.map { it.jsonObject }
-        require(artifacts.map { it.string("name") }.toSet() == setOf(HELPER, "vpn-control-install-helper.exe"))
-        val broker = artifacts.single { it.string("name") == HELPER }
-        require(broker.string("machine") == "AMD64" && !broker.boolean("clrHeader") &&
-            broker.number("dependentLoadFlags") == 0x800L &&
-            broker["operations"]?.jsonArray?.map { it.jsonPrimitive.let { value -> require(value.isString); value.content } } == listOf("authenticated-runtime-channel"))
-        val helperSize = broker.number("sizeBytes")
+        require(artifacts.map { it.string("name") }.toSet() == setOf("vpn-control-vpn-broker.exe", "vpn-control-install-helper.exe"))
+        val helper = artifacts.single { it.string("name") == helperName }
+        require(helper.string("machine") == "AMD64" && !helper.boolean("clrHeader") &&
+            helper.number("dependentLoadFlags") == 0x800L &&
+            helper["operations"]?.jsonArray?.map { it.jsonPrimitive.let { value -> require(value.isString); value.content } } == expectedOperations)
+        val helperSize = helper.number("sizeBytes")
         require(helperSize in 64..MAX_HELPER_BYTES) { "RESOURCE_EXHAUSTED" }
-        val helperDigest = broker.string("sha256")
+        val helperDigest = helper.string("sha256")
         require(helperDigest.matches(Regex("[a-f0-9]{64}")))
         return Artifact(helperDigest, helperSize)
     }
@@ -249,6 +281,13 @@ internal data class DesktopWindowsNativeOwnerImage(val image: String, val owner:
 }
 internal data class DesktopWindowsPinnedExecutable(val sha256: String, val size: Long, val machine: Int,
     val clrHeader: Boolean, val dependentLoadFlags: Int)
+internal interface DesktopWindowsPackagedHelperLease : AutoCloseable {
+    val executable: String
+    val owner: DesktopWindowsRuntimeResourceNativeOwner
+    fun assertOpen()
+    fun verifyStartedProcess(process: WinNT.HANDLE)
+}
+
 internal interface DesktopWindowsVpnHelperLease : AutoCloseable {
     val executable: String
     val owner: DesktopWindowsRuntimeResourceNativeOwner

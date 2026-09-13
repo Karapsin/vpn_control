@@ -207,8 +207,48 @@ class DesktopWindowsVpnHelperAdmissionTest {
         assertFalse(fake.adapterClosed)
         lease.close()
         lease.close()
+        assertFails { lease.parameters(PIPE) }
         assertTrue(fake.admission.handles.all { it.closed })
         assertTrue(fake.adapterClosed)
+    }
+
+    @Test fun installerAdmissionSelectsOnlyTheFixedCoordinatorAndCanonicalOwner() {
+        val fake = Fake().apply { peerImage = INSTALL_HELPER_PATH }
+        DesktopWindowsInstallHelperAdmission.retain(fake).use { lease ->
+            assertEquals(INSTALL_HELPER_PATH, lease.executable)
+            assertEquals(123, lease.owner.processId)
+            assertEquals(456, lease.owner.creationFileTime)
+            assertEquals(SID, lease.owner.sid)
+            assertEquals("\"install-coordinator\" \"00000000-0000-0000-0000-000000000042\" \"123\" \"456\"", lease.parameters(JOB))
+            lease.verifyStartedProcess(WinNT.HANDLE(Pointer.createConstant(902)))
+        }
+        assertTrue(fake.admission.handles.all { it.closed })
+        assertTrue(fake.adapterClosed)
+    }
+
+    @Test fun installerAdmissionRejectsChangedManifestArtifactOrPhysicalHelperAndRetainsCleanupForRetry() {
+        val hostile = listOf(
+            Fake().apply { manifest = manifest().replace("\"install-coordinator\"", "\"arbitrary-command\"").encodeToByteArray() },
+            Fake().apply { manifest = manifest().replace("\"sha256\":\"$INSTALL_DIGEST\"", "\"sha256\":\"${"d".repeat(64)}\"").encodeToByteArray() },
+            Fake().apply { manifest = manifest().replace(RUNTIME, "not-a-digest").encodeToByteArray() },
+            Fake().apply { machine = 0xaa64 },
+            Fake().apply { transform = { path, info -> if (path.endsWith("vpn-control-install-helper.exe")) info.copy(reparseTag = 1) else info } },
+        )
+        for (fake in hostile) {
+            assertFails { DesktopWindowsInstallHelperAdmission.retain(fake) }
+            assertTrue(fake.admission.handles.all { it.closed })
+        }
+        val fake = Fake()
+        val lease = DesktopWindowsInstallHelperAdmission.retain(fake)
+        val helper = fake.admission.handles.single { it.path == INSTALL_HELPER_PATH }
+        fake.admission.closeFailure = helper
+        assertFailsWith<WindowsInstallNativeFailure> { lease.close() }
+        assertFalse(helper.closed)
+        assertTrue(fake.admission.handles.any { it.gate && !it.closed })
+        assertFails { lease.parameters(JOB) }
+        lease.close()
+        assertFails { lease.parameters(JOB) }
+        assertTrue(fake.admission.handles.all { it.closed })
     }
 
     @Test fun rejectedExistingAdmissionWitnessStaysOwnedAfterRepeatedCloseFailure() {
@@ -239,6 +279,7 @@ class DesktopWindowsVpnHelperAdmissionTest {
         var processReads = 0
         var adapterClosed = false
         var peerHandle: WinNT.HANDLE? = null
+        var peerImage = HELPER_PATH
         var peerIdentityChanged = false
         var witnessCloseFailures = 0
         var identityTransform: (String) -> String = { it }
@@ -253,7 +294,7 @@ class DesktopWindowsVpnHelperAdmissionTest {
             processReads++
             return DesktopWindowsNativeOwnerImage(image, if (processReads > 1) ownerAfterFirstRead ?: owner() else owner())
         }
-        override fun processImage(process: WinNT.HANDLE): String { peerHandle = process; return HELPER_PATH }
+        override fun processImage(process: WinNT.HANDLE): String { peerHandle = process; return peerImage }
         override fun openDirectory(path: String): WindowsInstallNative.Handle {
             onOpen(path)
             return admission.openDirectory(path)
@@ -276,11 +317,14 @@ class DesktopWindowsVpnHelperAdmissionTest {
     companion object {
         private const val SID = "S-1-5-21-1-2-3-1001"
         private const val PIPE = "vpn-control-vpn-00000000-0000-0000-0000-000000000041"
+        private const val JOB = "00000000-0000-0000-0000-000000000042"
         private const val OWNER_IMAGE = "C:\\Apps\\VPN\\vpn-control-cli.exe"
         private const val SHORT_IMAGE = "C:\\Apps\\VPN\\vpn-co~1.exe"
         private const val HELPER_PATH = "C:\\Apps\\VPN\\app\\native\\windows-amd64\\vpn-control-vpn-broker.exe"
+        private const val INSTALL_HELPER_PATH = "C:\\Apps\\VPN\\app\\native\\windows-amd64\\vpn-control-install-helper.exe"
         private val RUNTIME = "a".repeat(64)
         private val HELPER_DIGEST = "b".repeat(64)
+        private val INSTALL_DIGEST = HELPER_DIGEST
         private fun owner(pid: Long = 123, created: Long = 456, sid: String = SID) =
             DesktopWindowsRuntimeResourceNativeOwner(pid, created, sid)
         private fun manifest(): String = buildJsonObject {
@@ -292,7 +336,12 @@ class DesktopWindowsVpnHelperAdmissionTest {
                 put("authoritySourceSha256", "f".repeat(64))
             }
             putJsonArray("artifacts") {
-                add(buildJsonObject { put("name", "vpn-control-install-helper.exe") })
+                add(buildJsonObject {
+                    put("name", "vpn-control-install-helper.exe")
+                    put("machine", "AMD64"); put("clrHeader", false); put("dependentLoadFlags", 2048)
+                    putJsonArray("operations") { add("validate-only"); add("install-user"); add("install-coordinator") }
+                    put("sizeBytes", 4096); put("sha256", INSTALL_DIGEST)
+                })
                 add(buildJsonObject {
                     put("name", "vpn-control-vpn-broker.exe")
                     put("machine", "AMD64"); put("clrHeader", false); put("dependentLoadFlags", 2048)

@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol.desktop
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -61,7 +63,10 @@ class DesktopAutostartManagerTest {
                 workspaceDirectory = workspace,
                 commandRunner = { command ->
                     commands += command
-                    DesktopAutostartCommandResult(if (command[1] == "/Create") 0 else 1, missingRegistration())
+                    DesktopAutostartCommandResult(
+                        if (command[1] == "/Create" || command.first() == "powershell.exe") 0 else 1,
+                        if (command.first() == "powershell.exe") "ABSENT" else missingRegistration(),
+                    )
                 },
             )
             assertTrue(manager.setEnabled(true).isSuccess)
@@ -73,7 +78,7 @@ class DesktopAutostartManagerTest {
                 "\"C:\\Program Files\\VPN 東京\\vpn-control.exe\" --autostart --state-dir \"$expectedDirectory\"",
                 create[create.indexOf("/TR") + 1],
             )
-            assertTrue(commands.none { it.first() !in setOf("schtasks", "reg") })
+            assertTrue(commands.none { it.first() !in setOf("schtasks", "reg", "powershell.exe") })
         }
     }
 
@@ -490,6 +495,7 @@ class DesktopAutostartManagerTest {
             commandRunner = { command ->
                 commands += command
                 when {
+                    command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> {
                         DesktopAutostartCommandResult(if (taskEnabled) 0 else 1,
@@ -563,6 +569,7 @@ class DesktopAutostartManagerTest {
             commandRunner = { command ->
                 commands += command
                 when {
+                    command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> {
                         DesktopAutostartCommandResult(if (taskEnabled) 0 else 1,
@@ -588,11 +595,11 @@ class DesktopAutostartManagerTest {
         assertTrue(manager.inspectEnabled())
         assertFalse(taskEnabled)
         assertTrue(legacyRunEnabled)
-        assertTrue(commands.all { it.take(2) in listOf(listOf("schtasks", "/Query"), listOf("reg", "query")) })
+        assertTrue(commands.all { it.first() == "powershell.exe" || it.take(2) in listOf(listOf("schtasks", "/Query"), listOf("reg", "query")) })
         assertTrue(manager.isEnabled())
         assertFalse(taskEnabled)
         assertTrue(legacyRunEnabled)
-        assertTrue(commands.all { it.take(2) in listOf(listOf("schtasks", "/Query",), listOf("reg", "query")) })
+        assertTrue(commands.all { it.first() == "powershell.exe" || it.take(2) in listOf(listOf("schtasks", "/Query",), listOf("reg", "query")) })
     }
 
     @Test
@@ -668,6 +675,7 @@ class DesktopAutostartManagerTest {
             commandRunner = { command ->
                 commands += command
                 when {
+                    command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(1, missingRegistration())
                     command.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(0,
                         "VPN Control    REG_SZ    \"C:\\other\\tool.exe\" --autostart")
@@ -687,6 +695,117 @@ class DesktopAutostartManagerTest {
             commandRunner = { DesktopAutostartCommandResult(5, "Access is denied.") },
         )
         assertTrue(manager.setEnabled(true).isFailure)
+    }
+
+    @Test
+    fun localizedMissingWindowsRegistrationsRequireReadOnlyNativeAbsenceProof() {
+        val commands = mutableListOf<List<String>>()
+        var taskEnabled = false
+        val localizedMissing = "ОШИБКА: Не удается найти указанный файл."
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(1, localizedMissing)
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(
+                        if (taskEnabled) 0 else 1,
+                        if (taskEnabled) windowsTaskXml(runLevel = "LeastPrivilege") else localizedMissing,
+                    )
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskEnabled = true
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> error("Unexpected OS action: $command")
+                }
+            },
+        )
+
+        assertTrue(manager.setEnabled(true).isSuccess)
+        val create = commands.single { it.take(2) == listOf("schtasks", "/Create") }
+        assertFalse("/F" in create)
+        assertTrue(commands.count { it.first() == "powershell.exe" } >= 3)
+        assertTrue(commands.none { it.take(2) == listOf("reg", "delete") })
+    }
+
+    @Test
+    fun windowsReadOnlyProbesKeepTheVerifiedNativeAbsenceBoundaries() {
+        val taskScript = WindowsAutostartReadOnlyProbe.taskAbsenceScript
+        assertTrue(taskScript.contains("${'$'}ProgressPreference='SilentlyContinue'"))
+        assertTrue(taskScript.contains("${'$'}folder.GetTask('VPN Control')"))
+        assertTrue(taskScript.contains("try { ${'$'}task=${'$'}folder.GetTask('VPN Control')"))
+        assertTrue(taskScript.contains("System.IO.FileNotFoundException"))
+        assertTrue(taskScript.contains("-2147024894"))
+        var taskCommand: List<String>? = null
+        assertTrue(WindowsAutostartReadOnlyProbe.taskAbsent {
+            taskCommand = it
+            DesktopAutostartCommandResult(0, "ABSENT")
+        })
+        assertEquals(listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"),
+            requireNotNull(taskCommand).dropLast(1))
+        assertTrue(requireNotNull(taskCommand).last().contains("GetTask('VPN Control')"))
+        assertFalse(WindowsAutostartReadOnlyProbe.taskAbsent { DesktopAutostartCommandResult(0, "ABSENT\n") })
+        assertFalse(WindowsAutostartReadOnlyProbe.taskAbsent { DesktopAutostartCommandResult(1, "ABSENT") })
+
+        val runScript = WindowsAutostartReadOnlyProbe.runValueAbsenceScript
+        assertTrue(runScript.contains("GetValueNames()"))
+        assertTrue(runScript.contains("OrdinalIgnoreCase"))
+        var runCommand: List<String>? = null
+        assertTrue(WindowsAutostartReadOnlyProbe.runValueAbsent {
+            runCommand = it
+            DesktopAutostartCommandResult(0, "ABSENT")
+        })
+        assertTrue(requireNotNull(runCommand).last().contains("Software\\Microsoft\\Windows\\CurrentVersion\\Run"))
+        // An empty named REG_SZ is present according to GetValueNames, so only the native
+        // probe's exact ABSENT marker can permit a migration.
+        assertFalse(WindowsAutostartReadOnlyProbe.runValueAbsent { DesktopAutostartCommandResult(0, "PRESENT") })
+    }
+
+    @Test
+    fun localizedQueryFailureStaysUnavailableWhenNativeAbsenceIsNotProven() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                if (command.first() == "powershell.exe") DesktopAutostartCommandResult(0, "ERROR")
+                else DesktopAutostartCommandResult(1, "ОШИБКА: Не удается найти указанный файл.")
+            },
+        )
+
+        assertTrue(manager.setEnabled(true).isFailure)
+        assertTrue(commands.any { it.first() == "powershell.exe" })
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Create"), listOf("schtasks", "/Delete"), listOf("reg", "delete")) })
+    }
+
+    @Test
+    fun windowsNativeTaskAbsenceClassifierAcceptsOnlyVerifiedMissingMappings() {
+        assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
+        val script = """
+            ${'$'}ErrorActionPreference='Stop'
+            ${'$'}ProgressPreference='SilentlyContinue'
+            ${WindowsAutostartReadOnlyProbe.taskMissingClassifierScript}
+            ${'$'}cases=@(
+                [System.IO.FileNotFoundException]::new('missing'),
+                [System.Exception]::new('wrapper', [System.IO.FileNotFoundException]::new('missing')),
+                [System.Runtime.InteropServices.COMException]::new('missing', -2147024894),
+                [System.Runtime.InteropServices.COMException]::new('denied', -2147024891),
+                [System.IO.IOException]::new('generic')
+            )
+            foreach (${ '$' }case in ${ '$' }cases) {
+                if (Test-MissingTask ${ '$' }case) { [Console]::Out.Write('1') } else { [Console]::Out.Write('0') }
+            }
+        """.trimIndent()
+        val process = ProcessBuilder(
+            "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script,
+        ).redirectErrorStream(true).start()
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS))
+        assertEquals(0, process.exitValue())
+        assertEquals("11100", process.inputStream.bufferedReader().use { it.readText() })
     }
 
     private fun createExecutableLauncher(tempDir: Path): String {

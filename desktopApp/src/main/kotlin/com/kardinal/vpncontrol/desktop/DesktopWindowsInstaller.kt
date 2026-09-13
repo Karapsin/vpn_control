@@ -1,15 +1,9 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.UpdateAsset
-import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import com.kardinal.vpncontrol.model.ControlCode
-import com.kardinal.vpncontrol.model.ControlValue
-import com.sun.jna.Memory
-import com.sun.jna.Native
-import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.*
 import com.sun.jna.ptr.PointerByReference
-import com.sun.jna.win32.StdCallLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -17,9 +11,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
-/** Creates private immutable input and launches only the bundled captured workers through trusted OS images. */
+/** Creates private immutable input and launches the admitted packaged native coordinator. */
 internal class DesktopWindowsInstaller(private val workspaceDirectory: Path = DesktopWorkspacePaths.root()) {
     // Once a worker exists, even a lost authorization result must not admit an unrelated installation.
     private var pending: DesktopPreparedInstall? = null
@@ -45,15 +38,16 @@ internal class DesktopWindowsInstaller(private val workspaceDirectory: Path = De
         val native = JnaWindowsInstallNative()
         val pins = mutableListOf<AutoCloseable>()
         var launched = false
-        var originalWorker: Process? = null
         var coordinatorAttempted = false
         var coordinatorDenied = false
-        var workerExitedBeforeReady = false
         var recordedJobId: String? = null
         try {
             correlations.requireNew(correlation)
-            val sid = JnaWindowsInstallAdmission().currentSid()
+            val helper = DesktopWindowsInstallHelperAdmission.retain()
+            pins += helper
+            val sid = helper.owner.sid
             val owner = ProcessHandle.current()
+            require(owner.pid() == helper.owner.processId) { "CONFLICT" }
             val started = requireNotNull(owner.info().startInstant().orElse(null)).toEpochMilli()
             val jobId = UUID.randomUUID().toString()
             val local = localAppData()
@@ -124,64 +118,23 @@ internal class DesktopWindowsInstaller(private val workspaceDirectory: Path = De
             )
             val prepared = DesktopWindowsUnstartedCancellation(receiptPrepared,
                 canProveNotStarted = {
-                    if (!coordinatorAttempted || coordinatorDenied) {
-                        // This exact owned worker cannot run MSI without a coordinator's
-                        // INSTALLING receipt. Stop it, then require observed exit.
-                        originalWorker?.takeIf { it.isAlive }?.let { worker ->
-                            worker.destroy()
-                            worker.waitFor(5, TimeUnit.SECONDS)
-                        }
-                    }
-                    windowsInstallDefinitelyNotStarted(coordinatorAttempted, coordinatorDenied, originalWorker?.isAlive)
+                    windowsInstallDefinitelyNotStarted(coordinatorAttempted, coordinatorDenied, null)
                 },
                 recordNotStarted = { correlations.markNotStarted(correlation, jobId,
-                    if (workerExitedBeforeReady) ControlCode.RUNTIME_FAILED else ControlCode.CANCELLED) },
+                    ControlCode.CANCELLED) },
                 onCancellationConfirmed = { pending = null; onCancellationConfirmed() },
             )
-            val powershell = trustedPowerShell()
-            // Persist exact owner-operation/job correlation before any worker can exist.
-            // Recovery reads the protected receipt; it never replays this launch.
+            // Correlation and retained witnesses precede ShellExecute. Only native ERROR_CANCELLED
+            // proves this attempt did not create a coordinator; an uncertain reply is never replayed.
             correlations.record(correlation, jobId)
             recordedJobId = jobId
-            val worker = ProcessBuilder(listOf(powershell) + DesktopWindowsCapturedInstallWorker.arguments(
-                DesktopWindowsCapturedInstallWorker.Role.ORIGINAL_USER, jobId, owner.pid()))
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
-            originalWorker = worker
-            launched = true
             pending = prepared
-            worker.outputStream.close()
-            // This record is input, not authorization. The elevated coordinator independently pins its process/token.
-            val deadline = System.nanoTime() + 30_000_000_000L
-            val ready = "$input\\worker-ready.json"
-            while (!Files.exists(Path.of(ready))) {
-                if (!worker.isAlive) {
-                    workerExitedBeforeReady = true
-                    error(ControlCode.RUNTIME_FAILED.name)
-                }
-                check(System.nanoTime() < deadline) { "OUTCOME_UNKNOWN" }
-                delay(50)
-            }
-            val recordHandle = native.open(ready, WindowsInstallNative.PINNED_READ, false)
-            try {
-                val record = ControlProtocolCodec.decodeValues(native.read(recordHandle, 4097).also { require(it.size <= 4096) }.decodeToString())
-                require(record.keys == setOf("version", "jobId", "pid", "startedAtEpochMillis"))
-                require(record["version"] == ControlValue.IntegerValue(1) && record["jobId"] == ControlValue.Text(jobId))
-                require(record["pid"] == ControlValue.IntegerValue(worker.pid()))
-                require(record["startedAtEpochMillis"] == ControlValue.IntegerValue(
-                    requireNotNull(worker.info().startInstant().orElse(null)).toEpochMilli()))
-            } finally { native.close(recordHandle) }
+            launched = true
             coordinatorAttempted = true
             try {
-                launchCoordinator(powershell, DesktopWindowsCapturedInstallWorker.arguments(
-                    DesktopWindowsCapturedInstallWorker.Role.COORDINATOR, jobId, owner.pid()))
+                launchWindowsInstallCoordinator(helper, jobId)
             } catch (denied: IllegalStateException) {
-                if (denied.message == "CANCELLED") {
-                    coordinatorDenied = true // ShellExecuteEx returned native ERROR_CANCELLED.
-                    // Native ERROR_CANCELLED proves no coordinator was launched. This exact worker
-                    // cannot start MSI without an administrator-owned INSTALLING receipt.
-                    worker.destroy()
-                    worker.waitFor(5, TimeUnit.SECONDS)
-                }
+                if (denied.message == "CANCELLED") coordinatorDenied = true
                 throw denied
             }
             // Protected job creation is asynchronous. Missing files are retried only during this bounded readiness phase.
@@ -198,11 +151,11 @@ internal class DesktopWindowsInstaller(private val workspaceDirectory: Path = De
             Result.success(prepared)
         } catch (failure: Exception) {
             var reportedFailure = failure
-            if (windowsInstallDefinitelyNotStarted(coordinatorAttempted, coordinatorDenied, originalWorker?.isAlive)) {
+            if (windowsInstallDefinitelyNotStarted(coordinatorAttempted, coordinatorDenied, null)) {
                 launched = false
                 val retired = recordedJobId?.let { job -> runCatching {
                     correlations.markNotStarted(correlation, job,
-                        if (workerExitedBeforeReady) ControlCode.RUNTIME_FAILED else ControlCode.CANCELLED)
+                        ControlCode.CANCELLED)
                 } }
                 if (retired == null || retired.isSuccess) {
                     pending = null
@@ -225,34 +178,7 @@ internal class DesktopWindowsInstaller(private val workspaceDirectory: Path = De
         return try { requireNotNull(pointer.value).getWideString(0) } finally { Ole32.INSTANCE.CoTaskMemFree(pointer.value) }
     }
 
-    private fun trustedPowerShell(): String {
-        val api = Native.load("kernel32", SystemDirectoryApi::class.java)
-        return Memory(32768L * 2).use { buffer ->
-            val length = api.GetSystemDirectoryW(buffer, 32768)
-            require(length in 1 until 32768)
-            String(CharArray(length) { buffer.getShort(it.toLong() * 2).toInt().toChar() }) +
-                "\\WindowsPowerShell\\v1.0\\powershell.exe"
-        }
-    }
 
-    private interface SystemDirectoryApi : StdCallLibrary {
-        fun GetSystemDirectoryW(output: Pointer, capacity: Int): Int
-    }
-
-    private fun launchCoordinator(executable: String, arguments: List<String>) {
-        val info = ShellAPI.SHELLEXECUTEINFO()
-        info.fMask = 0x00000040 // SEE_MASK_NOCLOSEPROCESS
-        info.lpVerb = "runas"
-        info.lpFile = executable
-        info.lpParameters = arguments.joinToString(" ", transform = ::windowsInstallArgument)
-        info.nShow = 0
-        check(info.lpParameters.length + executable.length < 32760) { "INVALID_ARGUMENT" }
-        if (!Shell32.INSTANCE.ShellExecuteEx(info)) {
-            val error = Kernel32.INSTANCE.GetLastError()
-            error(if (error == 1223) "CANCELLED" else "UNAVAILABLE")
-        }
-        info.hProcess?.let { Kernel32.INSTANCE.CloseHandle(it) }
-    }
 }
 
 /** Null worker means ProcessBuilder never returned a process; attempted unknown coordinators remain blocking. */
@@ -310,3 +236,30 @@ internal fun desktopWindowsUpdateLauncher(command: String,
     val launcher = canonical.substringBeforeLast('\\') + "\\vpn-control.exe"
     launcher.takeIf(exists)
 }.getOrNull()
+
+/** Retain the native process handle through image verification; never terminate an uncertain launch. */
+internal fun launchWindowsInstallCoordinator(
+    helper: DesktopWindowsInstallHelperLease,
+    jobId: String,
+    launch: (String, String) -> WinNT.HANDLE = ::shellExecuteWindowsInstallCoordinator,
+    closeProcess: (WinNT.HANDLE) -> Unit = { Kernel32.INSTANCE.CloseHandle(it); Unit },
+) {
+    val process = launch(helper.executable, helper.parameters(jobId))
+    try { helper.verifyStartedProcess(process) }
+    finally { closeProcess(process) }
+}
+
+private fun shellExecuteWindowsInstallCoordinator(executable: String, parameters: String): WinNT.HANDLE {
+    val info = ShellAPI.SHELLEXECUTEINFO()
+    info.fMask = 0x00000040 // SEE_MASK_NOCLOSEPROCESS
+    info.lpVerb = "runas"
+    info.lpFile = executable
+    info.lpParameters = parameters
+    info.nShow = 0
+    check(parameters.length + executable.length < 32760) { "INVALID_ARGUMENT" }
+    if (!Shell32.INSTANCE.ShellExecuteEx(info)) {
+        val code = Kernel32.INSTANCE.GetLastError()
+        error(if (code == 1223) "CANCELLED" else "UNAVAILABLE")
+    }
+    return info.hProcess ?: error("OUTCOME_UNKNOWN")
+}

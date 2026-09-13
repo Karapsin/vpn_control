@@ -394,7 +394,7 @@ internal class DesktopAutostartManager(
 
     private fun inspectWindowsTaskOwnership(command: String): WindowsTaskOwnership {
         val result = commandRunner(listOf("schtasks", "/Query", "/TN", WINDOWS_TASK_NAME, "/XML"))
-        if (result.exitCode != 0) return if (missingWindowsRegistration(result)) WindowsTaskOwnership.Absent
+        if (result.exitCode != 0) return if (WindowsAutostartReadOnlyProbe.taskAbsent(commandRunner)) WindowsTaskOwnership.Absent
         else WindowsTaskOwnership.Unknown("UNAVAILABLE")
         val sid = currentWindowsUserSid()
             ?: return WindowsTaskOwnership.Unknown("UNAVAILABLE")
@@ -403,7 +403,7 @@ internal class DesktopAutostartManager(
 
     private fun inspectWindowsRunOwnership(command: String): WindowsRunOwnership {
         val result = commandRunner(listOf("reg", "query", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE))
-        if (result.exitCode != 0) return if (missingWindowsRegistration(result)) WindowsRunOwnership.Absent
+        if (result.exitCode != 0) return if (WindowsAutostartReadOnlyProbe.runValueAbsent(commandRunner)) WindowsRunOwnership.Absent
         else WindowsRunOwnership.Unknown("UNAVAILABLE")
         val values = result.output.lineSequence().map(String::trim).filter { it.isNotEmpty() }
             .mapNotNull { WINDOWS_RUN_ENTRY.matchEntire(it)?.groupValues?.get(1) }.toList()
@@ -414,9 +414,6 @@ internal class DesktopAutostartManager(
             else -> WindowsRunOwnership.Owned
         }
     }
-
-    private fun missingWindowsRegistration(result: DesktopAutostartCommandResult): Boolean =
-        result.exitCode == 1 && result.output.trim().contains("cannot find", ignoreCase = true)
 
     private fun currentWindowsUserSid(): String? {
         val result = commandRunner(listOf("whoami.exe", "/user", "/fo", "csv", "/nh"))
@@ -726,6 +723,73 @@ internal data class DesktopAutostartCommandResult(
     val exitCode: Int,
     val output: String,
 )
+
+/**
+ * Fixed Windows-native absence checks used only after a localized CLI query fails.
+ * Any result other than the exact marker remains unavailable; the probes never establish
+ * ownership, alter a registration, or receive caller-controlled input.
+ */
+internal object WindowsAutostartReadOnlyProbe {
+    private const val ABSENT = "ABSENT"
+    private val powershellPrefix = listOf(
+        "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+    )
+
+    fun taskAbsent(commandRunner: (List<String>) -> DesktopAutostartCommandResult): Boolean =
+        run(commandRunner, taskAbsenceScript)
+
+    fun runValueAbsent(commandRunner: (List<String>) -> DesktopAutostartCommandResult): Boolean =
+        run(commandRunner, runValueAbsenceScript)
+
+    private fun run(commandRunner: (List<String>) -> DesktopAutostartCommandResult, script: String): Boolean {
+        val result = commandRunner(powershellPrefix + script)
+        return result.exitCode == 0 && result.output == ABSENT
+    }
+
+    // Actual Windows Task Scheduler evidence maps a missing GetTask result to
+    // FileNotFoundException/HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND). The inner try scopes
+    // that classification to GetTask only, so Connect/GetFolder failures remain unavailable.
+    internal val taskMissingClassifierScript = """
+        function Test-MissingTask([System.Exception]${'$'}exception) {
+            ${'$'}current=${'$'}exception
+            for (${ '$' }depth=0; ${ '$' }depth -lt 8 -and ${ '$' }null -ne ${ '$' }current; ${ '$' }depth+=1) {
+                if ((${ '$' }current -is [System.IO.FileNotFoundException] -or ${ '$' }current -is [System.Runtime.InteropServices.COMException]) -and ${ '$' }current.HResult -eq -2147024894) { return ${ '$' }true }
+                ${'$'}current=${'$'}current.InnerException
+            }
+            return ${'$'}false
+        }
+    """.trimIndent()
+
+    internal val taskAbsenceScript = """
+        ${'$'}ErrorActionPreference='Stop'
+        ${'$'}ProgressPreference='SilentlyContinue'
+        $taskMissingClassifierScript
+        try {
+            ${'$'}service=New-Object -ComObject 'Schedule.Service'
+            ${'$'}service.Connect()
+            ${'$'}folder=${'$'}service.GetFolder('\')
+            try { ${'$'}task=${'$'}folder.GetTask('VPN Control'); [Console]::Out.Write('PRESENT') }
+            catch { if (Test-MissingTask ${'$'}_.Exception) { [Console]::Out.Write('ABSENT') } else { [Console]::Out.Write('ERROR') } }
+        } catch { [Console]::Out.Write('ERROR') }
+    """.trimIndent()
+
+    // Value names distinguish a missing Run registration from an empty REG_SZ and from value
+    // kinds whose GetValue result is null. A present value is intentionally not inspected here.
+    internal val runValueAbsenceScript = """
+        ${'$'}ErrorActionPreference='Stop'
+        ${'$'}ProgressPreference='SilentlyContinue'
+        ${'$'}key=${'$'}null
+        try {
+            ${'$'}key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run',${'$'}false)
+            if (${ '$' }null -eq ${ '$' }key) { [Console]::Out.Write('ABSENT') }
+            else {
+                ${'$'}present=${'$'}key.GetValueNames() | Where-Object { [string]::Equals(${ '$' }_, 'VPN Control', [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+                if (${ '$' }null -eq ${ '$' }present) { [Console]::Out.Write('ABSENT') } else { [Console]::Out.Write('PRESENT') }
+            }
+        } catch { [Console]::Out.Write('ERROR') }
+        finally { if (${ '$' }null -ne ${ '$' }key) { try { ${'$'}key.Dispose() } catch {} } }
+    """.trimIndent()
+}
 
 internal fun currentAutostartPlatform(): DesktopAutostartPlatform {
     val osName = System.getProperty("os.name").lowercase(Locale.ROOT)

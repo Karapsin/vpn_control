@@ -12,7 +12,9 @@
       "minimumWindowsBuild": 14393,
       "name": "vpn-control-install-helper.exe",
       "operations": [
-        "validate-only"
+        "validate-only",
+        "install-user",
+        "install-coordinator"
       ],
       "sections": 1,
       "sha256": "fce157b1f0acb8ec8c028bdfd02d7cd60b831f160356574c7d29b574346af5d6",
@@ -37,7 +39,7 @@
       "sizeBytes": 4096
     }
   ],
-  "policySha256": "d0d9a2a53bf4ce60c3d8c35104597dfba8dc52a9ff4fbd348c46812937f98707",
+  "policySha256": "bf253b300c0d6c83ca5d89fadd5c6a8c6eca236d1e6c35f8d44328280de5cd7e",
   "runtimeAuthority": {
     "authoritySourceSha256": "a32b2ca5a10a8d44812125ece2ed6304d9fe00fd6f0e86c5fd8967d8e30d2376",
     "runtimeSha256": "bd6562a768d5c903d50b2d065888bb64e093ef1bd123a705935863618b23a1b4",

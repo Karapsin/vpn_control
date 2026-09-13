@@ -379,3 +379,44 @@ coordinator loss is unproven. Preserve this fixture without replay/manual cleanu
 Non-English Windows autostart absence detection is a confirmed remaining defect;
 English message matching must be replaced with language-neutral absence evidence,
 without treating generic query failure as absence.
+
+
+## Checkpoint43 Windows Integration In Progress
+
+Checkpoint42 pushed `aee113bd1918a75cb363e1e8d29ed74ad741830a` after full
+managed prepush. Exact-SHA CI is still being monitored; do not call it verified
+until all five required workflows succeed.
+
+| Task | Owner | Owned files | Evidence and next gate |
+| --- | --- | --- | --- |
+| Native MSI public binding | Root | DesktopWindowsInstaller, coordinator launch test, WIP/version | Sole native coordinator launch; frozen package/UAC/MSI recovery still required |
+| Fixed helper admission | mac_failure_result42, finished slice | Helper admission wrappers/common lease, admission tests, import policy | Focused GREEN; physical identity, manifest and failed-cleanup launch rejection |
+| Autostart locale queries | windows_autostart_locale42, finished slice | Autostart manager and tests | Causal localized query RED, focused GREEN, compiled read-only scripts ran in owned Windows guest |
+
+The new installer binding retains the packaged native helper, creates the exact
+correlation before launch, passes the native owner FILETIME, and verifies the
+returned ShellExecute process image before releasing its process handle. The
+native coordinator creates its original-user child; the JVM no longer starts
+legacy PowerShell workers. Protected receipt/commit/recovery remain authoritative.
+No whole-GUI elevation or VPN production-enablement change is included.
+
+The shared helper admission preserves exact application/helper pins, PE and
+manifest checks, and cleanup ownership. Review found that partial cleanup could
+leave launch parameters usable. Its quick regression failed before the closing
+state fix; cleanup retry remains possible but launch is blocked from first close.
+
+Autostart failed queries now require exact language-neutral ABSENT evidence,
+never an English error substring or generic exit1. Native evidence mapped missing
+GetTask to FileNotFoundException, so only that call's matching HRESULT establishes
+absence; connection/folder errors remain unavailable. The compiled task and Run
+scripts both returned exit0/ABSENT with empty stderr in the owned Windows guest's
+SYSTEM context. This is read-only component proof, not original-user enable or
+migration acceptance. A routine Windows test executes the real classifier on
+missing/wrapped-missing/COM-denied/generic exception cases.
+
+Focused union:55 tests executed, zero failures, one Windows-native classifier test
+skipped on macOS. Evidence is in ignored `checkpoint43`; two initial fixture
+assertions were corrected (identity fields instead of object equality, and exact
+Windows quoting). Full prepush, privileged-helper review, current package native
+MSI grant/denial/elevated-owner/other-admin/recovery, and final-source parity matrix
+remain required. Old unknown native jobs stay preserved without replay or kills.
