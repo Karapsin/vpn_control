@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve pre-install runtime failures through cancellation recovery and validate Windows helper fixture output names.
 - Bind the Windows native probe invocation to its checked assembly output.
 - Use the packaged native Windows installer coordinator and language-independent autostart inspection.
+- Guard Linux GUI lifecycle fixtures against stale windows, reused processes and crashes.
 
 ## 2.1.9 - 2026-09-13
 

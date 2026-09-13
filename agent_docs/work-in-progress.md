@@ -381,11 +381,13 @@ English message matching must be replaced with language-neutral absence evidence
 without treating generic query failure as absence.
 
 
-## Checkpoint43 Windows Integration In Progress
+## Checkpoint43 Windows Integration Delivered
 
-Checkpoint42 pushed `aee113bd1918a75cb363e1e8d29ed74ad741830a` after full
-managed prepush. Exact-SHA CI is still being monitored; do not call it verified
-until all five required workflows succeed.
+Checkpoint42 (`aee113bd1918a75cb363e1e8d29ed74ad741830a`) and checkpoint43
+(`dabd111d466373467bdc2bd58787d39df1eee6f8`) both passed managed prepush and
+all five required exact-SHA workflows after pushing to origin/dev. Checkpoint43
+uses version 2.1.9 with six Unreleased notes. Its managed receipt is in
+`.runtime/parity-evidence/checkpoint43/commit-result.json`.
 
 | Task | Owner | Owned files | Evidence and next gate |
 | --- | --- | --- | --- |
@@ -417,6 +419,57 @@ missing/wrapped-missing/COM-denied/generic exception cases.
 Focused union:55 tests executed, zero failures, one Windows-native classifier test
 skipped on macOS. Evidence is in ignored `checkpoint43`; two initial fixture
 assertions were corrected (identity fields instead of object equality, and exact
-Windows quoting). Full prepush, privileged-helper review, current package native
-MSI grant/denial/elevated-owner/other-admin/recovery, and final-source parity matrix
-remain required. Old unknown native jobs stay preserved without replay or kills.
+Windows quoting). Full prepush and privileged-helper review passed. Current
+package native MSI grant/denial/elevated-owner/other-admin/recovery and the
+final-source parity matrix remain required. Old unknown native jobs stay preserved without replay or kills.
+
+
+## Checkpoint44 Native Verification In Progress
+
+| Task | Agent | Owned files/subsystem | Environment/artifact | Current check and next handoff |
+| --- | --- | --- | --- | --- |
+| Delivery and package freeze | Root | WIP, routine hygiene wiring, metadata | Host build only; frozen dabd macOS pair | Both builds passed; review fixture regressions before next prepush |
+| Android candidate cancellation | android_remaining_native43 | Ignored relay and native evidence | Exclusive API35 emulator5596; historical signed 2.3.8 APK | Controlled validation HTTP request marker; active-verification recovery remains separate |
+| Linux GUI observation | linux_package_native43 | linux_gui_fixture_guard.py and its tests; ignored native harness | Exclusive Fedora2316, display :97; older da81 RPM2.1.8 | Bind windows to fresh live process; native X11 crash remains unresolved |
+| macOS replacement | mac_next_fixture43 | Guest fixture/evidence only | New vpn-control-machine-fixture43; same-source dabd base2.1.8/target2.1.9 | Embedded versions, arm64 and signatures passed; public replacement/recovery next |
+| Windows prerequisites | windows_token_diagnosis39 | Read-only tool inventory | Exclusive disposable Windows QGA guest | Locate actual x64 JDK/AOT/WiX; return environment ownership before installation |
+
+Both macOS DMGs were built with the task-owned Temurin17 arm64 JDK and explicit
+Gradle version properties. The initial Homebrew-JDK attempt failed the packaging
+vendor guard and did not produce an accepted base package. Frozen hashes and logs
+live under `.runtime/parity-evidence/checkpoint44/macos-pair`. Guest inspection
+confirmed matching logical code, distinct 2.1.8/2.1.9 metadata, arm64 launchers and
+packaged native workers, and strict/deep ad-hoc signatures. Root-owned base app is
+installed only in the new disposable guest. Public replacement is not yet proven.
+Old macOS uncertain installation journals and owners remain untouched.
+
+Android relay attempts exposed fixture defects: relay lifetime, unsupported
+probe destinations, and completion before cancellation observation. None proves
+mid-probe cancellation. A controlled HTTP validation target is being used to
+hold a real candidate request; this cannot certify active-runtime replacement
+recovery. The earlier unintended inventory force-stop on5596 was reported to the
+user and recorded in checkpoint43/android-inventory/force-stop-incident.txt.
+
+Fedora's older installed package passed proxy traffic and stable runtime identity
+checks, but its software-rendered GUI crashed in libX11 XVisualIDFromVisual via
+Skiko/AWT drawing-surface lookup. A stale window might have received automation,
+so attach/hide/show/close/crash acceptance is explicitly withheld. The new quick
+fixture regression must reject foreign windows, PID reuse, dead frontends and
+crash reports before lifecycle probes. Keep the native crash scenario: this
+guard fixes evidence admission, not the rendering defect.
+
+Current-source inspection also confirms DesktopAppServiceFactory enables scoped
+Windows runtime through isPotentiallyEligible; the constructor's false default
+is not proof that production is disabled. Native TUN/UAC/traffic evidence is
+still required. The existing HighestAvailable migration helper remains inactive
+because its two-read ownership guard is not an atomic replacement operation;
+do not wire it into a public action without addressing that race.
+
+The Linux guard's nine injected boundary tests pass, including process-stat
+parsing, missing-process races, zombie/PID reuse, X11 query failures and failure
+receipts. Routine release hygiene invokes them. A guarded renderer-only guest
+launch identified a fresh window on PID10294/starttime731820 and cleaned its
+exact GUI/controller afterward. That native receipt used the guard before its
+final error-reporting hardening, and does not prove the full lifecycle sequence
+or resolve the earlier renderer crash. The final guard was copied with matching
+SHA-256; evidence remains under the owned Fedora GUI fixture.

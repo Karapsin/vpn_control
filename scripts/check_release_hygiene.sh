@@ -40,6 +40,7 @@ python3 scripts/test_linux_package_postinst.py
 python3 scripts/test_package_linux_deb.py
 python3 scripts/test_package_linux_rpm.py
 python3 scripts/test_linux_public_install_harness.py
+python3 scripts/test_linux_gui_fixture_guard.py
 python3 scripts/test_prepare_linux_install_vm.py
 python3 scripts/test_prepare_android_native_tools.py
 python3 scripts/test_android_update_fixture.py
