@@ -60,6 +60,77 @@ class DesktopControlInstallSessionTest {
         advanceTimeBy(300); runCurrent()
         assertEquals(0, resumes)
     }
+
+    @Test fun precommitLateAuthorizationFailureSurvivesCancelledWorkerSettlement() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        lateinit var correlation: DesktopInstallCorrelation
+        var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+        var settles = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {},
+            controllerId = "owner", install = DesktopControlInstallActions(
+                prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                recover = { Result.success(recovered) },
+                cancel = { error("The runner must not issue a second cancellation") },
+                resumeLateAuthorization = { _, _ ->
+                    recovered = listOf(DesktopInstallCorrelationRecovery(
+                        DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+                        DesktopInstallJobReceipt(job, 2, DesktopInstallJobPhase.CANCELLED, ControlCode.CANCELLED),
+                        ControlCode.CANCELLED))
+                    DesktopInstallHandoffResult(ControlCode.RUNTIME_FAILED,
+                        primaryFailureCode = ControlCode.RUNTIME_FAILED)
+                },
+                settle = { _, _ -> settles++; Result.success(Unit) },
+            ))
+        session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner")))
+        recovered = listOf(DesktopInstallCorrelationRecovery(
+            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+            DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+
+        advanceTimeBy(600); runCurrent()
+
+        val operation = session.operationSnapshot().single()
+        assertEquals(ControlOperationPhase.FAILED, operation.phase)
+        assertEquals(ControlCode.RUNTIME_FAILED, operation.result?.code)
+        assertEquals(1, settles)
+    }
+
+    @Test fun authoritativeNoncancelledTerminalReceiptOverridesPrecommitFailure() = runTest {
+        for ((phase, code, expectedPhase) in listOf(
+            Triple(DesktopInstallJobPhase.SUCCEEDED, ControlCode.OK, ControlOperationPhase.SUCCEEDED),
+            Triple(DesktopInstallJobPhase.FAILED, ControlCode.PERSISTENCE_FAILED, ControlOperationPhase.FAILED),
+        )) {
+            val job = "00000000-0000-0000-0000-000000000001"
+            lateinit var correlation: DesktopInstallCorrelation
+            var recovered = emptyList<DesktopInstallCorrelationRecovery>()
+            val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {},
+                controllerId = "owner-$phase", install = DesktopControlInstallActions(
+                    prepare = { value, _ -> correlation = value; DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) },
+                    recover = { Result.success(recovered) },
+                    cancel = { error("The runner must not cancel an acknowledged receipt") },
+                    resumeLateAuthorization = { _, _ ->
+                        recovered = listOf(DesktopInstallCorrelationRecovery(
+                            DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+                            DesktopInstallJobReceipt(job, 2, phase, code), code))
+                        DesktopInstallHandoffResult(ControlCode.RUNTIME_FAILED,
+                            primaryFailureCode = ControlCode.RUNTIME_FAILED)
+                    },
+                    settle = { _, _ -> Result.success(Unit) },
+                ))
+            session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+                "install-$phase", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner-$phase")))
+            recovered = listOf(DesktopInstallCorrelationRecovery(
+                DesktopInstallCorrelationRecord(correlation, job, "0".repeat(64)),
+                DesktopInstallJobReceipt(job, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK), ControlCode.ACCEPTED))
+
+            advanceTimeBy(600); runCurrent()
+
+            val operation = session.operationSnapshot().single()
+            assertEquals(expectedPhase, operation.phase)
+            assertEquals(code, operation.result?.code)
+        }
+    }
+
     @Test fun unixAdmissionNeverLoadsWindowsTokenApisAndUnsupportedPlatformsHaveNoSideEffects() {
         assertEquals(null, desktopControlInstallPlatform("Linux") { error("Windows token API on Linux") })
         assertEquals(null, desktopControlInstallPlatform("Mac OS X") { error("Windows token API on macOS") })
@@ -294,7 +365,8 @@ class DesktopControlInstallSessionTest {
                 cancel = { cancellations++; DesktopInstallHandoffResult(ControlCode.CANCELLED, job) },
                 resumeLateAuthorization = { _, _ ->
                     resumes++
-                    DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job, cancellationRetryAllowed = true)
+                    DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job, cancellationRetryAllowed = true,
+                        primaryFailureCode = ControlCode.RUNTIME_FAILED)
                 },
             ))
         val install = ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
@@ -308,7 +380,8 @@ class DesktopControlInstallSessionTest {
         assertTrue(session.execute(DesktopCliCommand.OperationCancel(requireNotNull(install.operationId))).success)
         advanceTimeBy(300); runCurrent()
         assertEquals(1, resumes); assertEquals(1, cancellations)
-        assertEquals(ControlOperationPhase.CANCELLED, session.operationSnapshot().single().phase)
+        assertEquals(ControlOperationPhase.FAILED, session.operationSnapshot().single().phase)
+        assertEquals(ControlCode.RUNTIME_FAILED, session.operationSnapshot().single().result?.code)
     }
 
     @Test fun ambiguousLateCommitDoesNotReopenCancellationOrReplayTheExactWorker() = runTest {

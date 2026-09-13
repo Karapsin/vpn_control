@@ -16,6 +16,27 @@ import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 
 class DesktopWindowsOriginalUserLaunchTest {
+    @Test fun fixtureInvocationMatchesCompiledAssembly() {
+        val project = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(fixtureProject().byteInputStream())
+        val assembly = project.getElementsByTagName("AssemblyName").item(0).textContent
+        assertEquals("$assembly.dll", fixtureAssemblyFile())
+        assertEquals("$assembly.exe", fixtureExecutableFile())
+    }
+
+    private val fixtureAssemblyName = "vpn-control-install-helper"
+    private fun fixtureAssemblyFile() = "$fixtureAssemblyName.dll"
+    private fun fixtureExecutableFile() = "$fixtureAssemblyName.exe"
+    private fun fixtureProject() = """
+                <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
+                  <TargetFramework>net10.0-windows</TargetFramework><OutputType>Exe</OutputType>
+                  <AssemblyName>$fixtureAssemblyName</AssemblyName><StartupObject>OriginalUserLaunchProbe</StartupObject>
+                  <UseAppHost>true</UseAppHost><InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable>
+                  <ImplicitUsings>disable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  <EnableAotAnalyzer>true</EnableAotAnalyzer>
+                </PropertyGroup></Project>
+            """.trimIndent()
+
     @Test fun originalUserLauncherUsesAotSafeStartupInfoSize() {
         val source = javaClass.getResource("/windows-install-original-user-launch.cs")!!.readText()
 
@@ -43,15 +64,7 @@ class DesktopWindowsOriginalUserLaunchTest {
                   <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
                 </packageSources></configuration>
             """.trimIndent())
-            Files.writeString(directory.resolve("OriginalUserLaunchProbe.csproj"), """
-                <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
-                  <TargetFramework>net10.0-windows</TargetFramework><OutputType>Exe</OutputType>
-                  <AssemblyName>vpn-control-install-helper</AssemblyName><StartupObject>OriginalUserLaunchProbe</StartupObject>
-                  <UseAppHost>true</UseAppHost><InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable>
-                  <ImplicitUsings>disable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-                  <EnableAotAnalyzer>true</EnableAotAnalyzer>
-                </PropertyGroup></Project>
-            """.trimIndent())
+            Files.writeString(directory.resolve("OriginalUserLaunchProbe.csproj"), fixtureProject())
             Files.writeString(directory.resolve("ProbeMain.cs"), """
                 using System; using System.Threading;
                 internal static class OriginalUserLaunchProbe {
@@ -85,7 +98,7 @@ class DesktopWindowsOriginalUserLaunchTest {
             run(listOf(dotnet, "build", "OriginalUserLaunchProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"), 90)
             // This ordinary current-token probe runs on every Windows compiler
             // runner and must precede the separately authorized interactive VM.
-            assertTrue(run(listOf(dotnet, directory.resolve("bin/Release/net10.0-windows/OriginalUserLaunchProbe.dll").toString(), "--current-token"), 30)
+            assertTrue(run(listOf(dotnet, directory.resolve("bin/Release/net10.0-windows").resolve(fixtureAssemblyFile()).toString(), "--current-token"), 30)
                 .contains("ORIGINAL_USER_CURRENT_TOKEN_SCALARS_OK"))
             // Hosted Windows runners have no interactive shell token. They still compile the
             // actual source; only an owned interactive fixture opts into token/process proof.
@@ -98,7 +111,7 @@ class DesktopWindowsOriginalUserLaunchTest {
             protectedStage = stage
             native.createDirectory(stage.toString(), "O:BAG:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;GRGX;;;BU)", false)
             copyFixtureImage(outputDirectory, stage)
-            val executable = stage.resolve("vpn-control-install-helper.exe")
+            val executable = stage.resolve(fixtureExecutableFile())
             require(Files.isRegularFile(executable, LinkOption.NOFOLLOW_LINKS))
             val output = run(listOf(executable.toString()), 30)
             assertTrue(output.contains("ORIGINAL_INTERACTIVE_USER_LAUNCH_OK"), output)

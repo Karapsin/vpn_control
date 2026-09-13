@@ -56,7 +56,8 @@ internal class DesktopOperationRunner(
     private data class ExternalInstall(val correlation: DesktopInstallCorrelation, val actions: DesktopControlInstallActions,
         var outcome: DesktopInstallHandoffResult = DesktopInstallHandoffResult(ControlCode.ACCEPTED),
         var ready: Boolean = false, var cancelRequested: Boolean = false, var lateAuthorizationResumed: Boolean = false,
-        var lateAuthorizationCommitted: Boolean = false, var lateAuthorizationCancellationRetryAllowed: Boolean = false)
+        var lateAuthorizationCommitted: Boolean = false, var lateAuthorizationCancellationRetryAllowed: Boolean = false,
+        var lateAuthorizationPrecommitFailure: ControlCode? = null)
     private val installs = mutableMapOf<String, ExternalInstall>()
     private val mutableChanges = kotlinx.coroutines.flow.MutableStateFlow(0L)
     val changes: kotlinx.coroutines.flow.StateFlow<Long> = mutableChanges
@@ -230,7 +231,8 @@ internal class DesktopOperationRunner(
                         val cancellation = try { actions.cancel() } catch (_: Exception) {
                             DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, external.outcome.jobId)
                         }
-                        if (cancellation.code == ControlCode.CANCELLED) completeInstall(external, ControlCode.CANCELLED)
+                        if (cancellation.code == ControlCode.CANCELLED) completeInstall(external,
+                            synchronized(guard) { external.lateAuthorizationPrecommitFailure ?: ControlCode.CANCELLED })
                     }
                     val recovered = try { actions.recover().getOrNull()?.singleOrNull {
                         it.binding?.correlation == external.correlation &&
@@ -241,7 +243,11 @@ internal class DesktopOperationRunner(
                         if (recovered.notStarted) completeInstall(external, recovered.code)
                         else recovered.receipt?.takeIf { it.phase.terminal }?.let { receipt ->
                             if (runCatching { actions.settle(external.correlation, receipt).getOrThrow() }.isSuccess)
-                                completeInstall(external, recovered.code)
+                                completeInstall(external, synchronized(guard) {
+                                    if (receipt.phase == DesktopInstallJobPhase.CANCELLED)
+                                        external.lateAuthorizationPrecommitFailure ?: recovered.code
+                                    else recovered.code
+                                })
                         }
                         val jobId = recovered.binding?.jobId
                         val resume = synchronized(guard) {
@@ -261,6 +267,9 @@ internal class DesktopOperationRunner(
                             val resumed = runCatching {
                                 actions.resumeLateAuthorization(external.correlation, exactJob)
                             }.getOrElse { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, jobId) }
+                            synchronized(guard) {
+                                resumed.primaryFailureCode?.let { external.lateAuthorizationPrecommitFailure = it }
+                            }
                             if (resumed.code == ControlCode.OK && resumed.jobId == exactJob) synchronized(guard) {
                                 // Commit succeeded. Exit acknowledgement may be retried, but the
                                 // native handoff must never be replayed or made cancellable again.

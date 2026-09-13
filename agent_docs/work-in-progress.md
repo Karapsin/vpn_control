@@ -336,3 +336,46 @@ No release or whole-GUI elevation removal is part of this checkpoint.
   It cannot certify the new source and remains an unresolved native fixture gate.
 - Arch2317 public authorization attempt failed; exact authentication/terminal
   correlation is being rechecked before any new attempt. Preserve unknown work.
+
+
+## Checkpoint42 Follow-up
+
+Checkpoint41 was pushed as `11bb41d657f66a7f927dedc993539ebf4bef9ce4` after
+managed prepush passed. Exact-SHA Windows CI failed because the original-user
+fixture invoked `OriginalUserLaunchProbe.dll` while its configured assembly name
+was `vpn-control-install-helper`. Android, Fast Checks, Linux and macOS passed. This is not a verified delivery.
+
+| Task | Owner | Exclusive files | Check and next handoff |
+| --- | --- | --- | --- |
+| Primary installer failure | mac_failure_result42 | DesktopOperationRunner, DesktopInstallHandoff and their session/handoff tests | Causal RED retained; focused GREEN; authority boundary review |
+| Windows fixture and delivery | Root | DesktopWindowsOriginalUserLaunchTest, WIP, metadata | Cross-platform causal RED retained; shared assembly/output naming GREEN; final prepush/push pending |
+
+The macOS failure regression reproduced a known precommit runtime-stop failure
+being replaced by CANCELLED after protected worker settlement. Internal primary
+failure metadata now preserves that failure through cancellation cleanup. Receipt
+success and other authoritative terminal outcomes retain precedence. Both causal
+RED and focused GREEN evidence are under ignored `checkpoint42`; no new native
+macOS acceptance is claimed.
+
+The Windows fixture regression parses the actual generated project and compares
+its assembly identity with the paths used by the native invocation. It runs on
+all hosts before the Windows-only probe. The old naming mismatch failed locally;
+the fixed fixture derives project, DLL and executable names from one value.
+Windows native execution and exact-SHA CI remain required.
+
+Arch2317 subsequently completed a fresh single public update and exact replacement
+owner recovery: job `8b8609bd-9152-4cf4-9d87-1c7cb847f151`, operation
+`85123384-21a4-49f6-ab65-2b97f4d13b3d`, protected SUCCEEDED/OK sequence4,
+installed version2.1.8. Root verified all five local evidence hashes in ignored
+`checkpoint41/LinuxArch` (repository root). The new owner exited through public
+quit; fixture TLS service/materials were removed. This proves frozen da81 source,
+not current11bb. The earlier live-owner guard failure occurred before replacement;
+it does not prove rollback. Old watcher1621 for an unrelated-to-success retained
+fixture job had no terminal receipt and was left untouched for its own timeout.
+
+Root also verified all eight hashes of the retained Mac unknown-cancellation
+bundle. It proves cancel=1/AUTHORIZED and absent coordinator only; the cause of
+coordinator loss is unproven. Preserve this fixture without replay/manual cleanup.
+Non-English Windows autostart absence detection is a confirmed remaining defect;
+English message matching must be replaced with language-neutral absence evidence,
+without treating generic query failure as absence.

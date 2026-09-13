@@ -109,10 +109,41 @@ class DesktopInstallHandoffTest {
         )
 
         assertEquals(ControlCode.OUTCOME_UNKNOWN, handoff.prepare("request").code)
-        assertEquals(DesktopInstallHandoffResult(ControlCode.RUNTIME_FAILED),
-            handoff.resumeLateAuthorization("request", prepared.jobId))
+        val result = handoff.resumeLateAuthorization("request", prepared.jobId)
+        assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+        assertEquals(ControlCode.RUNTIME_FAILED, result.primaryFailureCode)
         assertEquals(listOf("stop", "cancel", "close"), events)
         assertEquals(ControlCode.NOT_FOUND, handoff.retryCancellation().code)
+    }
+
+    @Test fun lateAuthorizationPrecommitFailureSurvivesUncertainCancellationUntilRetry() = runBlocking {
+        val events = mutableListOf<String>()
+        var cancellationAttempts = 0
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> = Result.success(Unit)
+            override fun cancel(): Result<Unit> {
+                events += "cancel"
+                return if (++cancellationAttempts == 1) Result.failure(IllegalStateException("UNAVAILABLE")) else Result.success(Unit)
+            }
+            override fun close() { events += "close" }
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = { throw DesktopInstallPreparationFailure(prepared, IllegalStateException("OUTCOME_UNKNOWN"),
+                retainsLateAuthorization = true) },
+            stopRuntime = { events += "stop"; Result.failure(IllegalStateException("RUNTIME_FAILED")) },
+            requestExit = { fail("Stop failure must not request exit") },
+        )
+
+        handoff.prepare("request")
+        val pending = handoff.resumeLateAuthorization("request", prepared.jobId)
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, pending.code)
+        assertTrue(pending.cancellationRetryAllowed)
+        assertEquals(ControlCode.RUNTIME_FAILED, pending.primaryFailureCode)
+        val cancelled = handoff.retryCancellation()
+        assertEquals(ControlCode.CANCELLED, cancelled.code)
+        assertEquals(ControlCode.RUNTIME_FAILED, cancelled.primaryFailureCode)
+        assertEquals(listOf("stop", "cancel", "cancel", "close"), events)
     }
 
     @Test fun lateAuthorizationAmbiguousCommitDoesNotCancelOrReplayTheExactWorker() = runBlocking {

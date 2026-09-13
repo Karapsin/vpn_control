@@ -8,6 +8,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Verify retained-operation and location exports against their authenticated controller endpoints.
 - Recover delayed installer authorization safely and preserve original-user launch and autostart ownership.
 - Exercise validated autostart ownership in GUI and CLI parity checks.
+- Preserve pre-install runtime failures through cancellation recovery and validate Windows helper fixture output names.
+- Bind the Windows native probe invocation to its checked assembly output.
 
 ## 2.1.9 - 2026-09-13
 

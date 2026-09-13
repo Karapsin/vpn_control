@@ -14,7 +14,9 @@ internal interface DesktopPreparedInstall : AutoCloseable {
 
 internal data class DesktopInstallHandoffResult(val code: ControlCode, val jobId: String? = null,
     /** The exact retained worker never observed commit, so owner-local cancellation may retry. */
-    val cancellationRetryAllowed: Boolean = false)
+    val cancellationRetryAllowed: Boolean = false,
+    /** A known failure before commit caused cancellation of the retained exact worker. */
+    val primaryFailureCode: ControlCode? = null)
 
 /** A worker exists even though readiness failed; its identity and cancellation must remain owned. */
 internal class DesktopInstallPreparationFailure(val prepared: DesktopPreparedInstall, cause: Throwable,
@@ -40,6 +42,7 @@ internal class DesktopInstallHandoff(
     private var uncertainCancellation = false
     private var lateAuthorizationRetained = false
     private var lateAuthorizationResumed = false
+    private var lateAuthorizationPrecommitFailure: ControlCode? = null
     private var validatedJobId: String? = null
 
     suspend fun prepare(requestId: String): DesktopInstallHandoffResult {
@@ -114,18 +117,21 @@ internal class DesktopInstallHandoff(
             if (!commitAttempted) {
                 // Runtime shutdown failed before the worker could observe a commit. This is
                 // still an owned cancellation boundary, unlike an interrupted commit.
+                lateAuthorizationPrecommitFailure = code(failure)
                 val cancelled = abandon()
                 if (cancelled) {
                     lateAuthorizationRetained = false
                     lateAuthorizationResumed = false
-                    return DesktopInstallHandoffResult(code(failure), null)
+                    return DesktopInstallHandoffResult(lateAuthorizationPrecommitFailure!!,
+                        primaryFailureCode = lateAuthorizationPrecommitFailure)
                 }
             }
             // A failed resumed handoff has crossed an uncertain external boundary. Keep the
             // retained job blocked and never make a second commit/cancellation claim.
             uncertainCancellation = true
             return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId,
-                cancellationRetryAllowed = !commitAttempted)
+                cancellationRetryAllowed = !commitAttempted,
+                primaryFailureCode = lateAuthorizationPrecommitFailure)
         } finally { admission.unlock() }
     }
 
@@ -144,10 +150,11 @@ internal class DesktopInstallHandoff(
             if (committed) return DesktopInstallHandoffResult(ControlCode.BUSY, validatedJobId)
             if (closed) return DesktopInstallHandoffResult(
                 if (uncertainCancellation) ControlCode.OUTCOME_UNKNOWN else ControlCode.NOT_FOUND,
-                validatedJobId.takeIf { uncertainCancellation })
+                validatedJobId.takeIf { uncertainCancellation },
+                primaryFailureCode = lateAuthorizationPrecommitFailure)
             if (worker == null) return DesktopInstallHandoffResult(ControlCode.NOT_FOUND)
-            return DesktopInstallHandoffResult(
-                if (abandon()) ControlCode.CANCELLED else ControlCode.OUTCOME_UNKNOWN, validatedJobId)
+            return DesktopInstallHandoffResult(if (abandon()) ControlCode.CANCELLED else ControlCode.OUTCOME_UNKNOWN,
+                validatedJobId, primaryFailureCode = lateAuthorizationPrecommitFailure)
         } finally { admission.unlock() }
     }
 
@@ -166,6 +173,7 @@ internal class DesktopInstallHandoff(
         uncertainCancellation = false
         lateAuthorizationRetained = false
         lateAuthorizationResumed = false
+        lateAuthorizationPrecommitFailure = null
         validatedJobId = null
     }
 
