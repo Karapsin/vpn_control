@@ -11,10 +11,20 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 
 class DesktopWindowsOriginalUserLaunchTest {
+    @Test fun originalUserLauncherUsesAotSafeStartupInfoSize() {
+        val source = javaClass.getResource("/windows-install-original-user-launch.cs")!!.readText()
+
+        assertFalse(
+            Regex("""Marshal\.SizeOf\s*\(\s*typeof\s*\(""").containsMatchIn(source),
+            "Original-user launcher must not use the NativeAOT-incompatible Marshal.SizeOf(Type) overload",
+        )
+    }
+
     @Test fun nativeShellHandleLaunchRetainsOriginalInteractiveTokenAndRejectsUnfixedArguments() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-install-original-user-launch-")
@@ -28,13 +38,18 @@ class DesktopWindowsOriginalUserLaunchTest {
             val sdk = Json.parseToJsonElement(pin.decodeToString()).jsonObject["sdk"]!!.jsonObject
             assertEquals("disable", sdk["rollForward"]!!.jsonPrimitive.content)
             Files.write(directory.resolve("global.json"), pin)
-            Files.writeString(directory.resolve("NuGet.Config"), "<configuration><packageSources><clear /></packageSources></configuration>")
+            Files.writeString(directory.resolve("NuGet.Config"), """
+                <configuration><packageSources><clear />
+                  <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                </packageSources></configuration>
+            """.trimIndent())
             Files.writeString(directory.resolve("OriginalUserLaunchProbe.csproj"), """
                 <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
                   <TargetFramework>net10.0-windows</TargetFramework><OutputType>Exe</OutputType>
                   <AssemblyName>vpn-control-install-helper</AssemblyName><StartupObject>OriginalUserLaunchProbe</StartupObject>
                   <UseAppHost>true</UseAppHost><InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable>
                   <ImplicitUsings>disable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  <EnableAotAnalyzer>true</EnableAotAnalyzer>
                 </PropertyGroup></Project>
             """.trimIndent())
             Files.writeString(directory.resolve("ProbeMain.cs"), """
@@ -51,6 +66,10 @@ class DesktopWindowsOriginalUserLaunchTest {
                 val process = ProcessBuilder(command).directory(directory.toFile()).redirectErrorStream(true).also { launcher ->
                     launcher.environment().putAll(mapOf("DOTNET_CLI_HOME" to directory.resolve("dotnet-home").toString(),
                         "DOTNET_SKIP_FIRST_TIME_EXPERIENCE" to "1", "DOTNET_CLI_TELEMETRY_OPTOUT" to "1", "DOTNET_MULTILEVEL_LOOKUP" to "0", "DOTNET_NOLOGO" to "1"))
+                    System.getenv("VPN_CONTROL_TEST_DOTNET_ROOT")?.takeIf(String::isNotBlank)?.let { runtimeRoot ->
+                        launcher.environment()["DOTNET_ROOT"] = runtimeRoot
+                        launcher.environment()["DOTNET_ROOT_X64"] = runtimeRoot
+                    }
                 }.start()
                 try {
                     assertTrue(process.waitFor(timeout, TimeUnit.SECONDS), "Original-user launch probe timed out")

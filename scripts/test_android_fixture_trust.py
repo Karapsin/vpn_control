@@ -8,6 +8,7 @@ from unittest.mock import patch
 from android_fixture_transport import parse_reverse_inventory
 from android_fixture_trust import (
     android_ca_store_filename,
+    require_android_ca_store_entry,
     certificate_validity_epochs,
     require_android_certificate_store_layout,
     require_device_time_within_certificates,
@@ -72,6 +73,27 @@ class AndroidFixtureTrustTest(unittest.TestCase):
             ).stdout.strip()
             self.assertNotEqual(current_hash, old_hash)
             self.assertEqual(f"{old_hash}.0", android_ca_store_filename(certificate))
+
+    def test_staged_ca_entry_rejects_current_hash_before_mount(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            certificate, _ = self.create_certificate_pair(directory)
+            old_hash = subprocess.run(
+                ["openssl", "x509", "-in", str(certificate), "-noout", "-subject_hash_old"],
+                check=True, text=True, capture_output=True,
+            ).stdout.strip()
+            current_hash = subprocess.run(
+                ["openssl", "x509", "-in", str(certificate), "-noout", "-hash"],
+                check=True, text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertNotEqual(current_hash, old_hash)
+            staging = "/data/local/tmp/vpn-control-test"
+            self.assertEqual(
+                f"{staging}/{old_hash}.0",
+                require_android_ca_store_entry(certificate, staging, f"{staging}/{old_hash}.0"),
+            )
+            with self.assertRaisesRegex(RuntimeError, "legacy subject hash"):
+                require_android_ca_store_entry(certificate, staging, f"{staging}/{current_hash}.0")
 
     def test_device_time_must_be_within_both_certificate_windows(self):
         with tempfile.TemporaryDirectory() as temporary:

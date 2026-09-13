@@ -243,6 +243,7 @@ class PreflightScriptTest(unittest.TestCase):
                  patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
                  patch.object(preflight, 'require_android_certificate_store_layout'), \
                  patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
                  patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
                 with self.assertRaisesRegex(RuntimeError, 'ACTION_FAILED'):
                     preflight.run_fixture_lifecycle(
@@ -287,6 +288,7 @@ class PreflightScriptTest(unittest.TestCase):
                  patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
                  patch.object(preflight, 'require_android_certificate_store_layout'), \
                  patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
                  patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
                 with self.assertRaisesRegex(RuntimeError, 'ACTION_FAILED'):
                     preflight.run_fixture_lifecycle(args, failed_action, target_install=True)
@@ -365,6 +367,7 @@ class PreflightScriptTest(unittest.TestCase):
                  patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
                  patch.object(preflight, 'require_android_certificate_store_layout'), \
                  patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
                  patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
                 preflight.run_fixture_lifecycle(args, public_action)
 
@@ -396,6 +399,7 @@ class PreflightScriptTest(unittest.TestCase):
                  patch.object(preflight, 'device_label', return_value='label'), \
                  patch.object(preflight, 'require_android_certificate_store_layout'), \
                  patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
                  patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
                 with self.assertRaises(OSError):
                     preflight.main()
@@ -423,8 +427,54 @@ class PreflightScriptTest(unittest.TestCase):
                  patch.object(preflight, 'device_label', side_effect=['expected', 'expected', 'wrong']), \
                  patch.object(preflight, 'require_android_certificate_store_layout'), \
                  patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
                  patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
                 with self.assertRaisesRegex(RuntimeError, 'certificate'):
+                    preflight.main()
+            saved = json.loads(receipt.read_text())
+            self.assertEqual('RuntimeError', saved['failure']['type'])
+            self.assertNotIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                              '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
+            self.assertFalse(fake.rooted)
+
+    def test_main_rejects_current_hash_staged_ca_filename_before_bind(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base')
+            subprocess.run([
+                'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                '-keyout', str(root / 'fixture.key'), '-out', str(cert), '-days', '1',
+                '-subj', '/CN=vpn-control-preflight.test',
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            leaf.write_bytes(cert.read_bytes())
+            legacy_hash = subprocess.run(
+                ['openssl', 'x509', '-in', str(cert), '-noout', '-subject_hash_old'],
+                check=True, text=True, capture_output=True,
+            ).stdout.strip()
+            current_hash = subprocess.run(
+                ['openssl', 'x509', '-in', str(cert), '-noout', '-hash'],
+                check=True, text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertNotEqual(legacy_hash, current_hash)
+            fake = FakeAdb()
+            argv = ['tool', '--adb', 'adb', '--serial', 'serial', '--cli', str(root / 'cli.py'),
+                    '--certificate', str(cert), '--leaf-certificate', str(leaf), '--fixture-parent', str(root),
+                    '--server-log', str(root / 'server.log'), '--probe-output', str(root / 'probe.txt'), '--device-port', '45390', '--host-port', '61000',
+                    '--staging', '/data/local/tmp/vpn-control-test', '--receipt', str(receipt),
+                    '--expected-avd', 'avd', '--expected-api', '29', '--expected-version', '2.2.19', '--expected-code', '17180',
+                    '--base-apk', str(base), '--base-sha256', hashlib.sha256(b'base').hexdigest()]
+            staged = f'/data/local/tmp/vpn-control-test/{current_hash}.0'
+            with patch.object(sys, 'argv', argv), patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='label'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value=f'{current_hash}.0'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=[staged]), \
+                 patch.object(preflight, 'public_no_update_probe', return_value={}):
+                with self.assertRaisesRegex(RuntimeError, 'filename'):
                     preflight.main()
             saved = json.loads(receipt.read_text())
             self.assertEqual('RuntimeError', saved['failure']['type'])

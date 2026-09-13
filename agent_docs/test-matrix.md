@@ -186,6 +186,14 @@ For an owned JRE-only guest, `VPN_CONTROL_NATIVE_JVM_PROBE_CLASSES` may point to
 the hash-verified frozen probe directory to run the three actual Java checks;
 record compilation on the build host separately from execution in the guest.
 
+For a native JUnit 4 selection, export `VPN_CONTROL_NATIVE_TEST_CLASSPATH` from the
+verified frozen host test bundle (including its test classes and JUnit dependency),
+then run `"$JAVA_HOME/bin/java" -cp "$VPN_CONTROL_NATIVE_TEST_CLASSPATH"
+com.kardinal.vpncontrol.desktop.NativeExecutionJUnitGate <fully.qualified.TestClass>`.
+The test-only gate emits JSON counts plus `NATIVE_JUNIT_EXECUTION_GATE_OK` only when
+at least one test ran and there were zero ignored tests, assumption failures, and
+failures; any other result has a nonzero exit and cannot certify native execution.
+
 `scripts/test_android_ssh_fixture.py` checks the actual fixture log consumer:
 fresh log/receipt claims before spawn, startup marker and same-read authentication,
 replacement/truncation/missing log rejection, retained child identity on unknown
@@ -481,7 +489,11 @@ an input. Native installer/UAC/recovery scenarios remain separate acceptance req
 On Windows, `DesktopWindowsCoordinatorNativeAdmissionTest` and
 `DesktopWindowsOriginalUserLaunchTest` always compile their actual C# fixtures with
 the repository-pinned `.NET` SDK in `native/windows/global.json` under the selected
-JDK test run. The coordinator's ProgramData ACL/process-authority probe additionally
+JDK test run. The original-user fixture enables the NativeAOT analyzer with warnings
+as errors, catching unsupported marshaling APIs before full package publication.
+Its clean restore uses only the official NuGet feed for the pinned SDK's analyzer
+package; an unavailable dependency is a failed prerequisite, not a skipped pass.
+The coordinator's ProgramData ACL/process-authority probe additionally
 requires `VPN_CONTROL_NATIVE_COORDINATOR_ADMISSION=1` in an owned disposable admin
 VM. The original interactive-token proof additionally requires
 `VPN_CONTROL_NATIVE_ORIGINAL_USER_LAUNCH=1` in an owned interactive VM (or JVM property

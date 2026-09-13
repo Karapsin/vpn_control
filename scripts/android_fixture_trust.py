@@ -25,6 +25,16 @@ def android_ca_store_filename(certificate: Path) -> str:
     return f"{subject_hash.lower()}.0"
 
 
+def require_android_ca_store_entry(certificate: Path, staging: str, staged_path: str) -> str:
+    """Require that the exact staged CA entry uses Android's legacy hash name."""
+    if not isinstance(staging, str) or not isinstance(staged_path, str):
+        raise ValueError("Android CA-store staging paths must be text")
+    expected = f"{staging}/{android_ca_store_filename(certificate)}"
+    if staged_path != expected:
+        raise RuntimeError("Staged Android CA certificate filename is not the legacy subject hash")
+    return staged_path
+
+
 def certificate_validity_epochs(certificate: Path) -> tuple[int, int]:
     """Read a certificate's UTC validity interval without exposing its contents."""
     result = subprocess.run(

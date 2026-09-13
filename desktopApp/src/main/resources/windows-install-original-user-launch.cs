@@ -61,7 +61,7 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
         if (arguments[0]!="install-user") throw new IOException("INVALID_ARGUMENT");
         using (VpnInstallNative.ImageObjectPin selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf()) {
         string image=SelfImage();
-        STARTUPINFO startup=new STARTUPINFO(); startup.cb=Marshal.SizeOf(typeof(STARTUPINFO));
+        STARTUPINFO startup=new STARTUPINFO(); startup.cb=Marshal.SizeOf<STARTUPINFO>();
         PROCESS_INFORMATION child;
         System.Text.StringBuilder command=new System.Text.StringBuilder(Quote(image)+" "+String.Join(" ",Array.ConvertAll(arguments,Quote)));
         if (!CreateProcessWithTokenW(token,LOGON_WITH_PROFILE,image,command,CREATE_SUSPENDED,IntPtr.Zero,null,ref startup,out child))

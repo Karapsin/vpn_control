@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve diagnostic metadata warnings and malformed-export protocol errors.
 - Recover Android installation receipts and retain uncertain native installer outcomes with focused regression coverage.
 - Preserve Android stream summaries and harden installer admission, recovery, and fixture validation.
+- Fix Windows NativeAOT installer compilation and reject invalid Android trust staging and skipped native evidence.
 
 ## 2.1.8 - 2026-09-09
 

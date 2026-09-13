@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from android_fixture_transport import cleanup_fixture_transport, establish_fixture_transport, parse_reverse_inventory
 from android_fixture_trust import (
     android_ca_store_filename,
+    require_android_ca_store_entry,
     require_android_certificate_store_layout,
     require_device_time_within_certificates,
     secure_private_fixture_files,
@@ -334,6 +335,7 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         adb.shell("chmod", "0755", args.staging)
         adb.shell("chmod", "0644", staged_certificate)
         staged_files = relabel_staged_ca_store(adb, args.staging, target_label)
+        require_android_ca_store_entry(args.certificate, args.staging, staged_certificate)
         if staged_certificate not in staged_files:
             raise RuntimeError("Staged Android CA certificate is not a validated regular file")
         require_android_certificate_store_layout(
