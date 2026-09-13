@@ -11,6 +11,9 @@ object DesktopAppServiceFactory {
             runtimeConfigStore = store,
             baseDir = store.runtimeDirectory(),
             directProbeRouting = DesktopDirectProbeRouting.forValidationDirectory(validationDirectory),
+            // JNA reports the actual Windows process. Do not infer this from os.arch: an
+            // AMD64 application running under Windows-on-ARM emulation is supported.
+            windowsScopedRuntimeEnabled = DesktopWindowsVpnBroker.isPotentiallyEligible(),
         )
         return DesktopAppService(
             desktopStore = store,

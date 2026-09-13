@@ -22,6 +22,86 @@ inputs and correlation records until authoritative reconciliation.
 
 ## Repository And Current Validation
 
+Checkpoint37 active state (September13, 18:09 UTC): checkpoint36 is pushed as
+`064adbbd7df81cc7928b920e77b12da22ccdf312`, version2.1.8/six Unreleased notes.
+All15 managed prepush commands passed and all39 reviewed paths were committed.
+Windows CI34773530315 then failed the Android supervisor fixture portability test
+before packaging; other required workflows are still being observed. This push is
+not CI-complete. Evidence: checkpoint36/{prepush-result,commit-result}.json and
+windows-ci-failed.log. No release is authorized.
+
+Current checkpoint37 ownership (September13, 18:37 UTC) supersedes older tables:
+
+| Task | Owner | Exclusive files/environment | Next handoff |
+| --- | --- | --- | --- |
+| Integration/delivery | root | WIP, metadata, host Gradle, shared integration | Review, full prepush and corrected exact-SHA push |
+| Android certificate regression | android_fresh_receipt_api29 | Fixture supervisor and Python tests | SAN admission plus script/module entry checks |
+| Android API35 recovery | android_fresh_receipt_api35 | Fresh owned emulator5596 | Temporary namespace CA, current APK independent confirmation resume |
+| Linux public replacement | linux_package_clean_recovery | Remote owned Ubuntu guest, port2307 | Controlled-terminal authorization and exact receipt recovery |
+| macOS native follow-up | mac_native | Owned Tart guest; preserve pending job | Current artifact requirements and inert coordinator-exit proof |
+| Windows coordinator native gate | windows_coordinator_native_gate | sessions.cs, dedicated fixture, Windows VM | Actual constructor/admission/gate execution |
+| Windows original-user security | windows_msi_coordinator_slice | Original-user primitive, native image pin, dedicated tests | Retained image and uncertain-child ownership |
+| Windows build registration/review | windows_msi_native_cutover | InstallHelper project and build inventory checks | Primitive review and source inclusion |
+| CLI public adapter audit | cli_public_gap_audit37 | Read-only dispatch/stream sources | Concrete remaining gaps and causal test selection |
+
+Checkpoint37 evidence updates:
+
+- Required CI for064: Fast Checks, Android, Linux and macOS succeeded; Windows
+  failed the supervisor portability regression. The repaired supervisor was tested
+  natively on Windows; the later SAN admission change still needs current validation.
+- API29 fresh5594 passed current-source064 base2.3.7 to target2.3.8 after HOME,
+  application process loss and explicit same-session resume. Receipt13fb4f9d-720f-4ae6-b363-264af20b9fea,
+  session1269035325 reconciled installed=true. Temporary CA/proxy/reverse were removed.
+  Evidence: checkpoint37/android-api29-native/android-current-source-api29-20260913T2115Z/066-native-api29-receipt-summary.json.
+  The host CLI was a verified compiled component, not an installed CLI package.
+- Root focused DesktopMacInstallerTest, DesktopProxyRuntimeManagerTest and
+  DesktopWindowsVpnAdmissionTest passed after the readiness review fixes;
+  checkpoint37/desktop-reviewed-green.log. Full final prepush remains outstanding.
+- macOS capacity rose to1.41GiB after verified backups of two inactive task-generated
+  package directories. Restore manifest and archives are under checkpoint37/mac-capacity-backup.
+  Pending job e4c4d691-a967-4902-96cc-bf77cccfebfc and live owners remain unchanged.
+- Linux independent SSH access and controlling guest terminal are restored.
+  Prior installation is cancelled/not-started; a new authorized public operation
+  must retain its own identity. Temporary guest authentication setup must restore
+  the original credential and never expose it in evidence.
+
+- Windows supervisor SAN/CONNECT/TLS and bounded stop passed in one native Python
+  scenario on the ARM64 Windows guest; exact current fixture hash04d6c2517a7dac2dbebaddb07dd8cb4b740ad433c305f700ecc281ded61ae3c1.
+  Evidence: checkpoint37-windows-tls/{completion,cleanup}.json. This fixes the
+  observed portability/SAN failures; it is not MSI or VPN evidence.
+- Android human watch metadata regression failed causally without the renderer
+  branch, then the Android stream, shared stream and Mac installer selection passed.
+  Evidence: checkpoint37/android-human-stream-{red,green}.log.
+- Mac current compiled adapter passed a real exited-process/in-memory PREPARING
+  receipt scenario: one read/check and zero commit/cancel/release. Component-only
+  evidence: checkpoint37/macos-dead-coordinator-adapter/result.json; current packaged
+  replacement/recovery remains open.
+- Linux older same-source2.3.1→2.3.2 public DEB replacement/recovery succeeded,
+  job240efb62-fbfd-4209-8bfd-e746acbd41ac, after public quit of the verified runtime-off
+  old task owner17373 released its gate. Next owner89494 is off. Credential restoration
+  and TLS cleanup were verified. Host redacted receipt:
+  checkpoint37/linux-public-recovery/terminal-receipt.txt. This is older pair evidence,
+  not certification of current-source packages or fresh dependency acquisition.
+- API35 current-base check reached terminal RUNTIME_FAILED even with the SAN leaf
+  and temporary zygote apex CA mount. No download/install was accepted. Prior setup
+  was cleaned; fresh worker android35_tls_diagnosis38 owns5596 for causal TLS diagnosis.
+  Evidence: checkpoint37/android-api35-native/terminal-receipt-recovery.json.
+- The original-interactive-user Windows native launcher remains unbound to production
+  bootstrap. Its image admission and uncertain-child ownership are under review;
+  native compilation and actual interactive/different-administrator proof remain gates.
+
+- Current Windows C# compilation and the real coordinator protected-stage constructor
+  passed under the pinned x64 JVM/SDK in the ARM64 guest. The compile regression
+  caught the missing Process qualification before delivery. Receipt:
+  checkpoint37/windows-native-compile/final-receipt.json; native source hash
+  4a227082cd71501fca840d1fb99eb8f1ad53175508b011316a2687f1760ce779.
+  Original-user interactive execution remains untested and production bootstrap unbound.
+- A separate fresh Ubuntu24.04 guest is ready on remote Arch port2311, independent
+  of recovered2307: /home/kardinal/vpn-control-install-vm-20260913-deps-2311,
+  QEMU3185756, 2vCPU/2GiB. Baseline has no xdg-utils, desktop-directories or VPN Control,
+  and a clean package audit. It awaits the next current-source DEB.
+
+
 Checkpoint36 active state (September13, 17:24 UTC) supersedes the historical notes below:
 
 - Checkpoint35 pushed `898f8e89b2e1b55c22c7b629e872fd517ff38656`, version2.1.8,

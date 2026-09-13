@@ -100,6 +100,9 @@ class WindowsNativeHelpersTest(unittest.TestCase):
     def test_installer_inventory_source_changes_the_preparation_inventory(self):
         self.assert_installer_source_changes_inventory("windows-install-helper-inventory.cs")
 
+    def test_installer_original_user_launcher_source_changes_the_preparation_inventory(self):
+        self.assert_installer_source_changes_inventory("windows-install-original-user-launch.cs")
+
     def assert_installer_source_changes_inventory(self, source_name):
         repository = Path(__file__).parents[1]
         producer = (repository / "scripts/prepare_windows_native_helpers.ps1").read_text(encoding="utf-8")

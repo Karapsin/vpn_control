@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Retain asynchronous diagnostic exports and harden installer recovery and fixture validation.
 - Preserve diagnostic metadata warnings and malformed-export protocol errors.
 - Recover Android installation receipts and retain uncertain native installer outcomes with focused regression coverage.
+- Preserve Android stream summaries and harden installer admission, recovery, and fixture validation.
 
 ## 2.1.8 - 2026-09-09
 

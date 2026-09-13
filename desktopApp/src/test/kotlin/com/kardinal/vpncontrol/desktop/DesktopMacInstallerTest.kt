@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.UpdateAsset
 import com.kardinal.vpncontrol.UpdatePackageType
 import com.kardinal.vpncontrol.UpdatePlatform
+import com.kardinal.vpncontrol.model.ControlCode
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
@@ -57,5 +58,36 @@ class DesktopMacInstallerTest {
         assertFails { prepared.close() }
         prepared.close()
         assertEquals(2, closes)
+    }
+
+    @Test fun exitedCoordinatorAfterAuthoritativePreparingReceiptChecksOnceAndPreservesTheJob() = runBlocking {
+        val job = "00000000-0000-0000-0000-000000000051"
+        var reads = 0
+        var commits = 0
+        var cancellations = 0
+        var releases = 0
+        var coordinatorChecks = 0
+        val prepared = DesktopReceiptPreparedInstall(
+            jobId = job,
+            readReceipt = {
+                reads++
+                DesktopInstallJobReceipt(job, 0, DesktopInstallJobPhase.PREPARING, ControlCode.OK)
+            },
+            publishCommit = { commits++ },
+            requestCancellation = { cancellations++ },
+            release = { releases++ },
+            timeoutMillis = 0,
+            nonterminalReceiptFailure = {
+                coordinatorChecks++
+                IllegalStateException(ControlCode.OUTCOME_UNKNOWN.name)
+            },
+        )
+
+        assertEquals(ControlCode.OUTCOME_UNKNOWN.name, prepared.awaitAuthorization().exceptionOrNull()?.message)
+        assertEquals(1, reads)
+        assertEquals(1, coordinatorChecks)
+        assertEquals(0, commits)
+        assertEquals(0, cancellations)
+        assertEquals(0, releases)
     }
 }

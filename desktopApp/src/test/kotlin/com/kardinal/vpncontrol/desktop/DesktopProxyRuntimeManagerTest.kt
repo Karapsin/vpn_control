@@ -354,42 +354,66 @@ class DesktopProxyRuntimeManagerTest {
     }
 
     @Test
-    fun windowsVpnCapabilityRequiresAdministratorPrivileges() {
+    fun windowsVpnCapabilityUsesScopedReadinessWithoutGuiAdministratorProbe() {
         val tempDir = Files.createTempDirectory("vpn-control-windows-vpn-not-admin")
         try {
+            var readinessCalls = 0
             val manager = DesktopProxyRuntimeManager(
                 runtimeConfigStore = InMemoryRuntimeConfigStore(),
                 baseDir = tempDir,
                 runtimeOsNameOverride = "Windows 11",
-                windowsAdministratorOverride = false,
+                windowsScopedRuntimeEnabled = true,
+                windowsScopedRuntimeReadiness = {
+                    readinessCalls++
+                    DesktopPreflightCheck("fixture", DesktopPreflightStatus.PASS, "fixture admitted")
+                },
             )
 
-            assertContains(
-                manager.desktopVpnCapabilityStatus(),
-                "Windows VPN mode needs Administrator privileges",
-            )
+            assertEquals(RuntimeStatusMessages.desktopVpnCapabilityReady(), manager.desktopVpnCapabilityStatus())
+            assertEquals(1, readinessCalls)
         } finally {
             tempDir.toFile().deleteRecursively()
         }
     }
 
     @Test
-    fun windowsVpnCapabilityPassesWhenAdministratorPrivilegesAreAvailable() {
+    fun windowsVpnCapabilityFailsWhenScopedBrokerIsDisabledWithoutReadingReadiness() {
         val tempDir = Files.createTempDirectory("vpn-control-windows-vpn-admin")
         try {
+            var readinessCalls = 0
             val manager = DesktopProxyRuntimeManager(
                 runtimeConfigStore = InMemoryRuntimeConfigStore(),
                 baseDir = tempDir,
                 runtimeOsNameOverride = "Windows 11",
-                windowsAdministratorOverride = true,
+                windowsScopedRuntimeEnabled = false,
+                windowsScopedRuntimeReadiness = {
+                    readinessCalls++
+                    error("Disabled broker must not inspect readiness")
+                },
             )
 
-            assertEquals(
-                RuntimeStatusMessages.desktopVpnCapabilityReady(),
-                manager.desktopVpnCapabilityStatus(),
-            )
+            assertContains(manager.desktopVpnCapabilityStatus(), "Windows scoped VPN broker is unavailable")
+            assertEquals(0, readinessCalls)
         } finally {
             tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun proxyOnlyNativeFixtureDoesNotConsultWindowsVpnReadiness() = runBlocking {
+        val directory = Files.createTempDirectory("vpn-control-proxy-only-fixture-")
+        val native = FakeRuntimeManagerNative()
+        val manager = DesktopProxyRuntimeManager(InMemoryRuntimeConfigStore(), directory.resolve("runtime"), native)
+        try {
+            val result = manager.start(
+                com.kardinal.vpncontrol.data.LocationConfigs.decodeStoredLocation("socks://127.0.0.1:1080#Fixture"),
+                RoutingRules(), DnsSettings(), AppMode.PROXY_ONLY, null, HomeSshRouteSettings(),
+            )
+            assertTrue(result.isSuccess)
+            assertEquals(1, native.prepares)
+            assertEquals(1, native.started.size)
+        } finally {
+            manager.stop()
+            directory.toFile().deleteRecursively()
         }
     }
 

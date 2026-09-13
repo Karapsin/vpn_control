@@ -15,6 +15,7 @@ internal class DesktopReceiptPreparedInstall(
     private val timeoutMillis: Long = 30_000,
     private val onCancellationConfirmed: () -> Unit = {},
     private val authorizationFailure: () -> Throwable? = { null },
+    private val nonterminalReceiptFailure: () -> Throwable? = { null },
 ) : DesktopPreparedInstall {
     private val tracker = DesktopInstallJobReceiptTracker(jobId)
     private var closed = false
@@ -53,6 +54,9 @@ internal class DesktopReceiptPreparedInstall(
             if (receipt.phase.terminal) return Result.failure(IllegalStateException(
                 if (receipt.phase == DesktopInstallJobPhase.SUCCEEDED) ControlCode.OUTCOME_UNKNOWN.name else receipt.code.name))
             if (receipt.phase.ordinal > expected.ordinal) return Result.failure(IllegalStateException(ControlCode.OUTCOME_UNKNOWN.name))
+            // A protected nonterminal receipt proves this job exists, but an exited coordinator
+            // cannot establish what happened after that write. Keep the correlation recoverable.
+            nonterminalReceiptFailure()?.let { return Result.failure(it) }
             if (System.nanoTime() >= deadline) return Result.failure(IllegalStateException(ControlCode.OUTCOME_UNKNOWN.name))
             delay(50)
         }

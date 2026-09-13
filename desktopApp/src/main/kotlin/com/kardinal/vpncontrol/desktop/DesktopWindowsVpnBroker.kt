@@ -21,6 +21,76 @@ import java.util.concurrent.TimeUnit
 
 /** Actual Windows-only scoped child transport. Public standard-token readiness remains separately gated. */
 internal object DesktopWindowsVpnBroker {
+    private val readinessCleanup = DesktopWindowsReadinessCleanup()
+    /** Broad candidate only; exact AMD64 package admission remains in [readiness]. */
+    internal fun isPotentiallyEligible(): Boolean = com.sun.jna.Platform.isWindows() && Native.POINTER_SIZE == 8
+
+    /** Read-only package/admission gate. It must not request UAC or create a runtime child. */
+    @Synchronized internal fun readiness(): DesktopPreflightCheck = runCatching {
+        if (!readinessCleanup.retry()) throw DesktopWindowsReadinessCleanupFailure()
+        require(isPotentiallyEligible()) { "UNSUPPORTED" }
+        val runtime = bundledRuntime()
+        val digest = MessageDigest.getInstance("SHA-256").digest(runtime).joinToString("") { "%02x".format(it) }
+        withNativeOwnerReadOnlyAdmission(JnaWindowsInstallAdmission()) {
+            closeReadinessHelperLease(DesktopWindowsVpnHelperAdmission.retain(digest, runtime.size.toLong()))
+        }
+        DesktopPreflightCheck("scoped Windows broker", DesktopPreflightStatus.PASS,
+            "Packaged Windows VPN broker and bundled runtime are ready")
+    }.getOrElse(::readinessFailure)
+
+    internal fun readinessFailure(failure: Throwable): DesktopPreflightCheck {
+        val original = (failure as? DesktopWindowsAdmissionCleanupFailure)?.originalFailure ?: failure
+        val retained = listOfNotNull(
+            (failure as? DesktopWindowsAdmissionCleanupFailure)?.retained,
+            (failure as? DesktopWindowsRuntimeFailure)?.retainedAdmission,
+        ).distinct()
+        if (retained.isNotEmpty()) readinessCleanup.retain(
+            if (retained.size == 1) retained.single() else object : AutoCloseable {
+                private val leases = retained.toMutableList()
+                @Synchronized override fun close() {
+                    var rejected: Throwable? = null
+                    for (index in leases.indices.reversed()) {
+                        try { leases[index].close(); leases.removeAt(index) }
+                        catch (error: Throwable) { rejected = rejected ?: error }
+                    }
+                    rejected?.let { throw it }
+                }
+            },
+        )
+        val code = if (retained.isNotEmpty()) "CLEANUP_FAILED" else readinessCode(original)
+        return DesktopPreflightCheck("scoped Windows broker", DesktopPreflightStatus.FAIL,
+            "Packaged Windows VPN broker is not ready ($code)")
+    }
+
+    /** A failed helper close retains the lease; [readinessFailure] gives it broker-owned retry. */
+    internal fun closeReadinessHelperLease(lease: AutoCloseable) {
+        try {
+            lease.close()
+        } catch (failure: Throwable) {
+            throw DesktopWindowsRuntimeFailure(readinessCode(failure), retainedAdmission = lease)
+        }
+    }
+
+    private fun readinessCode(failure: Throwable): String =
+        (failure as? DesktopWindowsRuntimeFailure)?.code ?: when (failure) {
+            is DesktopWindowsReadinessCleanupFailure -> failure.code
+            is IllegalArgumentException -> when (failure.message) {
+                "PERMISSION_DENIED", "UNSUPPORTED", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "CANCELLED" -> failure.message!!
+                else -> "UNAVAILABLE"
+            }
+            is SecurityException, is WindowsInstallNativeFailure -> "PERMISSION_DENIED"
+            is OutOfMemoryError -> "RESOURCE_EXHAUSTED"
+            else -> "UNAVAILABLE"
+        }
+
+    private fun bundledRuntime(): ByteArray = requireNotNull(
+        javaClass.getResourceAsStream("/bin/windows-amd64/sing-box.exe"),
+    ) { "UNAVAILABLE" }.use { input ->
+        input.readNBytes(192 * 1024 * 1024 + 1).also { runtime ->
+            require(runtime.size in 1..192 * 1024 * 1024)
+            requireAmd64Executable(runtime)
+        }
+    }
     fun start(config: String, logFile: Path): DesktopRuntimeProcess = prepare(config, logFile).use { it.commit() }
 
     fun prepare(
@@ -126,6 +196,25 @@ internal object DesktopWindowsVpnBroker {
         }
     }
 
+    /** Mirrors ordinary-owner admission for preflight without manufacturing a child. */
+    internal fun <T> withNativeOwnerReadOnlyAdmission(native: WindowsAdmissionNative, inspect: () -> T): T {
+        val pins = try {
+            native.currentSid()
+            DesktopWindowsProtectedAncestors.retain(native)
+        } catch (failure: Throwable) {
+            throw admissionFailure(failure)
+        }
+        try {
+            val result = inspect()
+            try { pins.close() } catch (failure: Throwable) { throw admissionFailure(failure) }
+            return result
+        } catch (failure: Throwable) {
+            val retained = if (runCatching { pins.close() }.isFailure) pins else null
+            if (retained != null) throw admissionFailure(failure, retained)
+            throw failure
+        }
+    }
+
     private fun prepareCaptured(config: String, resources: List<DesktopWindowsCapturedResource>, logFile: Path,
                                 onProgress: (DesktopWindowsRuntimePreparationStage) -> Unit,
                                 mutableResources: List<DesktopWindowsRuntimeResource> = emptyList(),
@@ -138,11 +227,7 @@ internal object DesktopWindowsVpnBroker {
         check(Native.POINTER_SIZE == 8) { "UNSUPPORTED" }
         // The retained native owner image and runtime PE establish architecture; JVM properties
         // and an extraction cache cannot select either the executable or its elevated authority.
-        val runtime = requireNotNull(javaClass.getResourceAsStream("/bin/windows-amd64/sing-box.exe")) {
-            "UNAVAILABLE"
-        }.use { it.readNBytes(192 * 1024 * 1024 + 1) }
-        require(runtime.size in 1..192 * 1024 * 1024)
-        requireAmd64Executable(runtime)
+        val runtime = bundledRuntime()
         require(config.isNotEmpty()) { "INVALID_ARGUMENT" }
         val digest = MessageDigest.getInstance("SHA-256").digest(runtime).joinToString("") { "%02x".format(it) }
         return withNativeOwnerAdmission(JnaWindowsInstallAdmission()) { _ ->
@@ -470,3 +555,24 @@ internal object DesktopWindowsVpnBroker {
         fun CancelIoEx(pipe: WinNT.HANDLE, overlapped: WinBase.OVERLAPPED): Boolean
     }
 }
+
+/** One failed read-only admission lease is retained by the broker until it closes. */
+internal class DesktopWindowsReadinessCleanup {
+    private var retained: AutoCloseable? = null
+
+    @Synchronized fun retain(lease: AutoCloseable) {
+        check(retained == null) { "CLEANUP_FAILED" }
+        retained = lease
+    }
+
+    @Synchronized fun retry(): Boolean {
+        val lease = retained ?: return true
+        return runCatching { lease.close() }.onSuccess { retained = null }.isSuccess
+    }
+
+    @Synchronized fun pendingForTesting(): Boolean = retained != null
+}
+
+internal class DesktopWindowsReadinessCleanupFailure(
+    val code: String = "CLEANUP_FAILED",
+) : java.io.IOException(code)

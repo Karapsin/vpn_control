@@ -136,6 +136,11 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
                         authorizationRejected = authorizationCollector?.poll()
                     }
                     authorizationRejected?.let { IllegalStateException(it.name) }
+                },
+                nonterminalReceiptFailure = {
+                    coordinator?.takeIf { !it.isAlive }?.let {
+                        IllegalStateException(ControlCode.OUTCOME_UNKNOWN.name)
+                    }
                 })
             val prepared = DesktopMacUnstartedCancellation(receiptPrepared,
                 canProveNotStarted = {

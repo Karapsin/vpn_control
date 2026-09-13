@@ -441,6 +441,60 @@ public static class VpnInstallNative {
         if (first==null || second==null || first.IsInvalid || second.IsInvalid) throw new ArgumentException("Installer object identity rejected");
         return String.Equals(ObjectIdentity(first,false),ObjectIdentity(second,false),StringComparison.Ordinal);
     }
+    // Retains an executable and its complete ancestry with no delete/write sharing.
+    // A child created while this pin is live cannot load a replacement at this
+    // canonical path; comparison is object identity, never path text alone.
+    public sealed class ImageObjectPin : IDisposable {
+        readonly List<SafeFileHandle> ancestors=new List<SafeFileHandle>();
+        readonly SafeFileHandle parent, image;
+        readonly string path;
+        bool disposed;
+        public static ImageObjectPin CaptureSelf() {
+            string self=System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+            if (String.IsNullOrEmpty(self) || !String.Equals(Path.GetFileName(self),"vpn-control-install-helper.exe",StringComparison.OrdinalIgnoreCase))
+                throw new IOException("CONFLICT");
+            return new ImageObjectPin(self);
+        }
+        ImageObjectPin(string value) {
+            if (String.IsNullOrEmpty(value)) throw new ArgumentException("Installer image path rejected");
+            path=value;
+            string directory=Path.GetDirectoryName(value);
+            if (String.IsNullOrEmpty(directory)) throw new ArgumentException("Installer image parent rejected");
+            string root=Path.GetPathRoot(directory);
+            if (String.IsNullOrEmpty(root)) throw new ArgumentException("Installer image root rejected");
+            SafeFileHandle current=OpenDirectory(root); ancestors.Add(current);
+            try {
+                string currentPath=root.TrimEnd('\\');
+                foreach(string part in directory.Substring(root.Length).Split(new char[] {'\\'},StringSplitOptions.RemoveEmptyEntries)) {
+                    currentPath=currentPath+"\\"+part;
+                    SafeFileHandle child=OpenDirectory(currentPath);
+                    // The retained child proves this ancestor is nonempty, allowing
+                    // legitimate create rights without allowing replacement of the
+                    // admitted path. Each parent is checked before any launch.
+                    try { InspectLinkedAncestor(current,child,null); }
+                    catch { child.Dispose(); throw; }
+                    ancestors.Add(child); current=child;
+                }
+                parent=current;
+                image=OpenRead(value,false);
+                try { InspectLinkedAncestor(parent,image,null); Inspect(image,false,false,null); }
+                catch { image.Dispose(); throw; }
+            } catch { for (int index=ancestors.Count-1;index>=0;index--) ancestors[index].Dispose(); throw; }
+        }
+        public bool MatchesProcessImage(IntPtr process) {
+            if (disposed || process==IntPtr.Zero) throw new IOException("CONFLICT");
+            StringBuilder text=new StringBuilder(32768); uint length=(uint)text.Capacity;
+            if (!QueryFullProcessImageNameW(process,0,text,ref length) || length<1 || length>=text.Capacity)
+                throw new IOException("CONFLICT");
+            string loaded=text.ToString();
+            if (!String.Equals(loaded,path,StringComparison.OrdinalIgnoreCase)) return false;
+            using (SafeFileHandle candidate=OpenRead(loaded,false)) {
+                InspectLinkedAncestor(parent,candidate,null); Inspect(candidate,false,false,null);
+                return SameFileObject(image,candidate);
+            }
+        }
+        public void Dispose() { if (disposed) return; disposed=true; image.Dispose(); for (int index=ancestors.Count-1;index>=0;index--) ancestors[index].Dispose(); }
+    }
     public static SafeFileHandle OpenReceipt(string path) {
         // Protected status is atomically replaced; a retained reader keeps its old
         // object. Private input/package reads above must continue denying deletion.

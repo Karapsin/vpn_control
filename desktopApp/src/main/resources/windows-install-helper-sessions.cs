@@ -60,6 +60,10 @@ internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFa
 internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.CoordinatorSession, IDisposable {
     readonly CoordinatorSessionAdapterFacilities fixture;
     readonly OwnerInputAdmission admission;
+    // Same-assembly test seam for a unique, direct child of the real ProgramData
+    // directory. Production never supplies this and remains bound to its fixed
+    // vpn-control-install-jobs path.
+    readonly Func<string> testMachineDirectory;
     readonly DateTime precommitDeadline, exitDeadline;
     readonly CoordinatorReceiptWriter fixtureReceiptWriter;
     CoordinatorReceiptWriter receiptWriter;
@@ -80,9 +84,12 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         fixture=facilities; fixtureReceiptWriter=writer;
     }
 
-    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission) {
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission) : this(retainedAdmission,null) { }
+
+    internal CoordinatorSessionAdapter(OwnerInputAdmission retainedAdmission,Func<string> machineDirectoryForTest) {
         if (retainedAdmission==null || retainedAdmission.Request==null) throw new IOException("CONFLICT");
         admission=retainedAdmission;
+        testMachineDirectory=machineDirectoryForTest;
         precommitDeadline=DateTime.UtcNow.AddMinutes(3);
         exitDeadline=precommitDeadline;
         try { AdmitWorker(); }
@@ -172,7 +179,8 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     }
     public void Pause() { if (fixture==null) Thread.Sleep(100); else fixture.Pause(); }
     string OpenProtectedMachineDirectory() {
-        if (machineDirectory!=null) return Path.Combine(VpnInstallNative.ProgramData(),"vpn-control-install-jobs");
+        if (machineDirectory!=null) return testMachineDirectory==null ?
+            Path.Combine(VpnInstallNative.ProgramData(),"vpn-control-install-jobs") : testMachineDirectory();
         string programData=VpnInstallNative.ProgramData();
         programDataDirectory=VpnInstallNative.OpenDirectory(programData);
         try { VpnInstallNative.Inspect(programDataDirectory,true,true,null); }
@@ -181,7 +189,9 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
             // a nonempty exact child witness rather than trusting a path lookup.
             programDataWitness=VpnInstallNative.PinNonEmptyAncestor(programDataDirectory,null);
         }
-        string machine=Path.Combine(programData,"vpn-control-install-jobs");
+        string machine=testMachineDirectory==null ? Path.Combine(programData,"vpn-control-install-jobs") : testMachineDirectory();
+        if (!String.Equals(Path.GetDirectoryName(machine),programData,StringComparison.OrdinalIgnoreCase))
+            throw new IOException("CONFLICT");
         const string machineAcl="O:BAG:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;GRGX;;;BU)";
         try { VpnInstallNative.CreateDirectory(machine,machineAcl); }
         catch (Win32Exception error) { if (error.NativeErrorCode!=183) throw; }
@@ -501,6 +511,10 @@ internal sealed class OwnerInputAdmission : IDisposable {
     internal readonly WindowsIdentity Caller;
     internal VpnInstallHelperProtocol.Request Request { get; private set; }
     internal SafeFileHandle InputDirectory { get; private set; }
+    // The exact local root whose ancestry was retained during request admission.
+    // Production records Owner.LocalAppData(); the same-assembly fixture supplies
+    // an owned equivalent. Later private leaves must never resolve a fresh path.
+    string admittedLocalDirectory;
 
     OwnerInputAdmission(VpnInstallNative.ProcessPin owner,VpnInstallNative.ProcessImagePin generation,
         WindowsIdentity caller) {
@@ -571,6 +585,7 @@ internal sealed class OwnerInputAdmission : IDisposable {
             requestHandle=null;
             retained.Add(requestStream);
             Request=VpnInstallHelperProtocol.ParseRequest(ReadBounded(requestStream,65536));
+            admittedLocalDirectory=local;
             // The stream remains retained after parsing. A later leaf replacement cannot
             // alter the already admitted request or free its no-delete input witness.
         } catch (Exception readFailure) {
@@ -594,7 +609,8 @@ internal sealed class OwnerInputAdmission : IDisposable {
         if (InputDirectory==null || InputDirectory.IsInvalid) throw new IOException("CONFLICT");
         if (leaf!="worker-ready.json" && leaf!="commit.json" && leaf!="worker-result.json")
             throw new IOException("INVALID_ARGUMENT");
-        string local=Owner.LocalAppData();
+        string local=admittedLocalDirectory;
+        if (String.IsNullOrEmpty(local)) throw new IOException("CONFLICT");
         string path=Path.Combine(local,"vpn-control-install-inputs",Request.JobId,leaf);
         try {
             using (SafeFileHandle file=VpnInstallNative.OpenRead(path,false)) {

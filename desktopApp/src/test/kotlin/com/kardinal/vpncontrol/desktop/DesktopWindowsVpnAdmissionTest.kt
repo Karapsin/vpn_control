@@ -30,6 +30,69 @@ class DesktopWindowsVpnAdmissionTest {
         assertTrue(native.handles.all { it.closed })
     }
 
+    @Test fun readOnlyAdmissionUsesTheSameOrdinaryOwnerFenceWithoutPreparingAChild() {
+        val native = Fake()
+        var inspected = false
+        val result = DesktopWindowsVpnBroker.withNativeOwnerReadOnlyAdmission(native) {
+            inspected = true
+            assertEquals(setOf("C:\\", "C:\\ProgramData", "C:\\ProgramData\\witness"),
+                native.handles.map { it.path }.toSet())
+            "ready"
+        }
+        assertTrue(inspected)
+        assertEquals("ready", result)
+        assertTrue(native.handles.all { it.closed })
+    }
+
+    @Test fun failedReadOnlyCleanupRemainsBrokerOwnedUntilTheNextRetrySucceeds() {
+        var closes = 0
+        val cleanup = DesktopWindowsReadinessCleanup()
+        cleanup.retain(AutoCloseable {
+            if (++closes == 1) throw java.io.IOException("fixture close failure")
+        })
+        assertFalse(cleanup.retry())
+        assertTrue(cleanup.pendingForTesting(), "Failed close lost the retained owner pin")
+        assertTrue(cleanup.retry())
+        assertFalse(cleanup.pendingForTesting())
+        assertEquals(2, closes)
+    }
+
+    @Test fun failedHelperAndOwnerReadOnlyCleanupRetainsBothForRetry() {
+        val native = Fake().apply { rejectClose = true }
+        var helperCloses = 0
+        val helper = AutoCloseable {
+            if (++helperCloses == 1) throw java.io.IOException("fixture helper close failure")
+        }
+        val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {
+            DesktopWindowsVpnBroker.withNativeOwnerReadOnlyAdmission(native) {
+                DesktopWindowsVpnBroker.closeReadinessHelperLease(helper)
+            }
+        }
+        val retained = assertNotNull(failure.retainedAdmission,
+            "A failed helper close and failed owner-pin close must remain jointly owned")
+        assertEquals(1, helperCloses)
+        assertTrue(native.handles.any { !it.closed }, "Failed owner-pin close lost the ordinary-owner fence")
+
+        native.rejectClose = false
+        val cleanup = DesktopWindowsReadinessCleanup()
+        cleanup.retain(retained)
+        assertTrue(cleanup.retry(), "Broker cleanup did not retry the composite lease")
+        assertFalse(cleanup.pendingForTesting())
+        assertEquals(2, helperCloses, "Retained helper lease was not retried")
+        assertTrue(native.handles.all { it.closed }, "Retained ordinary-owner pins were not retried")
+    }
+
+    @Test fun readinessFailurePreservesExplicitAdmissionCodes() {
+        assertContains(
+            DesktopWindowsVpnBroker.readinessFailure(IllegalArgumentException("PERMISSION_DENIED")).detail,
+            "(PERMISSION_DENIED)",
+        )
+        assertContains(
+            DesktopWindowsVpnBroker.readinessFailure(IllegalArgumentException("UNSUPPORTED")).detail,
+            "(UNSUPPORTED)",
+        )
+    }
+
     @Test fun failedAdmissionRetainsUnclosedHandlesForExplicitRetry() {
         val native = Fake().apply { childNames = emptyList(); rejectClose = true }
         val failure = assertFailsWith<DesktopWindowsRuntimeFailure> {

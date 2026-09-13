@@ -31,6 +31,26 @@ class DesktopAndroidStreamTest {
         }
     }
 
+    @Test fun androidHumanWatchKeepsOwnerMetadataWarningsAndDataOnStderr() {
+        val stdout = mutableListOf<String>()
+        val stderr = mutableListOf<String>()
+        var reads = 0
+        assertEquals(130, DesktopCli.handleArgs(arrayOf("--android", "status", "--watch"),
+            printLine = stdout::add, printProgress = stderr::add, androidRequest = { request, _, _ ->
+                assertEquals(if (reads++ == 0) null else "android-owner", request.controllerId)
+                val result = ControlResult("android-owner", request.requestId, ControlCode.OK, 8,
+                    final = true, data = mapOf("running" to ControlValue.Null), warnings = listOf("STALE_DATA"))
+                DesktopCliResponse.success(ControlDocumentCodec.encodeResult(result))
+            }, streamPause = {}, streamActive = { reads < 1 }))
+        assertTrue(stdout.isEmpty(), "Human stream records belong on stderr")
+        assertTrue(stderr.first().contains("Controller: android-owner"))
+        assertTrue(stderr.first().contains("Request:"))
+        assertTrue(stderr.first().contains("Revision: 8"))
+        assertTrue(stderr.first().contains("Completion: pending"))
+        assertTrue(stderr.first().contains("Warnings:\n  - STALE_DATA"))
+        assertTrue(stderr.first().contains("Data:\n  running: unknown"))
+    }
+
     @Test fun androidFollowKeepsDuplicateMessagesAndUsesTailCursorAfterLimitZero() {
         var reads = 0
         val output = mutableListOf<String>()

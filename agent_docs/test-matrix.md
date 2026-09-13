@@ -478,11 +478,28 @@ The producer hashes the prepared bundled AMD64 runtime into generated build outp
 the broker project fails without that authority, and Gradle tracks the runtime as
 an input. Native installer/UAC/recovery scenarios remain separate acceptance requirements.
 
+On Windows, `DesktopWindowsCoordinatorNativeAdmissionTest` and
+`DesktopWindowsOriginalUserLaunchTest` always compile their actual C# fixtures with
+the repository-pinned `.NET` SDK in `native/windows/global.json` under the selected
+JDK test run. The coordinator's ProgramData ACL/process-authority probe additionally
+requires `VPN_CONTROL_NATIVE_COORDINATOR_ADMISSION=1` in an owned disposable admin
+VM. The original interactive-token proof additionally requires
+`VPN_CONTROL_NATIVE_ORIGINAL_USER_LAUNCH=1` in an owned interactive VM (or JVM property
+`vpn.control.native.interactiveOriginalUser=true` when invoking JUnit directly). Both
+opt-ins skip by default; neither proves the distinct administrator case, which
+remains a manual required check.
+
 `test_android_fixture_preflight.py` runs in release hygiene. It reproduces the
 fixture inspection that cleared an uncaptured selection and requires a final,
 authoritatively stopped, explicitly unselected state before switching source scope.
 The helper returns the observed controller/revision for the actual mutation guard;
 it does not authorize replay after owner replacement or restore a lost selection.
+
+`scripts/test_android_update_fixture.py` imports
+`AndroidUpdateFixtureCertificateSanTest`, so its existing release-hygiene entry also
+runs the Android update-fixture certificate-SAN regressions: a CN-only leaf is
+rejected before evidence creation, while a DNS-SAN leaf serves the hostname-verifying
+client.
 
 `DesktopWindowsBrokerEntrypointTest` runs three native compiler fixtures for missing,
 mismatched and matching compiled runtime authority without launching a runtime.

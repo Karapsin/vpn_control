@@ -17,6 +17,9 @@ internal object DesktopCliStream {
         var previous: ControlResult? = null
         fun emit(result: ControlResult) {
             if (invocation.client.json) output(ControlDocumentCodec.encodeResult(result))
+            // Android's documented human protocol is the complete redacted envelope summary.
+            // Streams are repeated reads, so preserve that metadata for every published poll.
+            else if (invocation.client.android) progress(desktopAndroidHumanOutput(result))
             else if (result.code != ControlCode.OK) progress(result.code.wireName)
             else if (logs) {
                 if ("LOG_HISTORY_GAP" in result.warnings) progress("LOG_HISTORY_GAP")

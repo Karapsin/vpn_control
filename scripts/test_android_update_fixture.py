@@ -1,10 +1,11 @@
 import json
 import os
 from pathlib import Path
-import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -12,6 +13,7 @@ from scripts.integration.android_update_fixture import (
     APK_PATH, MANIFEST_PATH, FixtureReadinessError, fixture_environment,
     launch_supervised_fixture, make_manifest, select_resource,
 )
+from scripts.test_android_update_fixture_certificate_san import AndroidUpdateFixtureCertificateSanTest
 
 
 class AndroidUpdateFixtureTest(unittest.TestCase):
@@ -20,7 +22,8 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
         private_key = directory / "private.pem"
         subprocess.run([
             "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
-            "-subj", "/CN=github.com", "-keyout", str(private_key), "-out", str(certificate),
+            "-subj", "/CN=github.com", "-addext", "subjectAltName=DNS:github.com",
+            "-keyout", str(private_key), "-out", str(certificate),
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return certificate, private_key
 
@@ -32,6 +35,17 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+
+    def wait_for_listener_to_close(self, port: int):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                    pass
+            except OSError:
+                return
+            time.sleep(0.05)
+        self.fail("bounded fixture listener did not close")
 
     def test_fixture_serves_only_exact_trusted_paths_without_forwarding(self):
         self.assertEqual("manifest", select_resource("GET", MANIFEST_PATH, "github.com"))
@@ -57,28 +71,35 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
             root = Path(directory)
             apk = root / "update.apk"; apk.write_bytes(b"fixture")
             certificate, private_key = self.create_certificate_pair(root)
-            ready, log, receipt = root / "ready.json", root / "fixture.log", root / "receipt.json"
+            ready, log, receipt, stop = (root / "ready.json", root / "fixture.log",
+                                         root / "receipt.json", root / "stop")
             command = [
                 sys.executable, str(Path(__file__).resolve().parent / "integration/android_update_fixture.py"),
                 "--apk", str(apk), "--version", "2.3.5", "--build-number", "17300",
                 "--certificate", str(certificate), "--private-key", str(private_key), "--ready-file", str(ready),
                 "--supervise", "--log-file", str(log), "--receipt-file", str(receipt),
+                "--serve-for-seconds", "30", "--stop-file", str(stop),
             ]
             environment = dict(os.environ)
             environment.pop("DYLD_INSERT_LIBRARIES", None)
             completed = subprocess.run(command, capture_output=True, text=True, env=environment)
-            try:
-                self.assertEqual(0, completed.returncode, completed.stderr)
-                self.assertTrue(ready.is_file())
-                recorded = json.loads(receipt.read_text())
-                self.assertEqual("ready", recorded["state"])
-                os.kill(recorded["pid"], 0)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertTrue(ready.is_file())
+            recorded = json.loads(receipt.read_text())
+            self.assertEqual("ready", recorded["state"])
+            # A socket connection proves that the child retained by the supervisor
+            # still owns a live listener after the CLI process returned.  PID probes
+            # are not a safe Windows liveness check and can observe a reused PID.
+            with socket.create_connection(("127.0.0.1", recorded["port"]), timeout=5):
+                pass
+            if os.name == "posix":
                 self.assertEqual(0o600, ready.stat().st_mode & 0o777)
                 self.assertEqual(0o600, log.stat().st_mode & 0o777)
                 self.assertEqual(0o600, receipt.stat().st_mode & 0o777)
-            finally:
-                if receipt.exists():
-                    os.kill(json.loads(receipt.read_text())["pid"], signal.SIGTERM)
+            # The test owns this shutdown signal; no PID is targeted after its creating
+            # process has returned, because Windows can recycle PID values.
+            stop.write_text("stop\n", encoding="utf-8")
+            self.wait_for_listener_to_close(recorded["port"])
 
     def test_supervisor_child_environment_removes_host_injection_and_normalizes_path(self):
         environment = fixture_environment({"DYLD_INSERT_LIBRARIES": "host-only", "PATH": "/host-tools"})

@@ -80,11 +80,12 @@ class DesktopProxyRuntimeManager(
     private val singBoxResolver: DesktopSingBoxResolver = DesktopSingBoxResolver(baseDir.resolve("tools")),
     private val directProbeRouting: DesktopDirectProbeRouting = DesktopDirectProbeRouting(),
     private val runtimeOsNameOverride: String? = null,
-    private val windowsAdministratorOverride: Boolean? = null,
     private val homeSshCredentialStore: DesktopHomeSshCredentialStore = DesktopHomeSshCredentialStore(
         baseDir.parent ?: baseDir,
     ),
     private val windowsScopedRuntimeEnabled: Boolean = false,
+    private val windowsScopedRuntimeReadiness: () -> DesktopPreflightCheck =
+        DesktopWindowsVpnBroker::readiness,
 ) : DesktopRuntimeController {
     internal constructor(runtimeConfigStore: RuntimeConfigStore, baseDir: Path,
                          nativeOperations: DesktopRuntimeManagerNative) : this(runtimeConfigStore, baseDir) {
@@ -598,28 +599,6 @@ class DesktopProxyRuntimeManager(
         )
     }
 
-    private fun hasWindowsAdministratorPrivileges(): Boolean {
-        windowsAdministratorOverride?.let { return it }
-        val principalCheck = runCommand(
-            command = listOf(
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
-            ),
-            timeoutSeconds = 3,
-        )
-        if (principalCheck.exitCode == 0 && principalCheck.output.trim().equals("true", ignoreCase = true)) {
-            return true
-        }
-        val netSessionCheck = runCommand(
-            command = listOf("cmd.exe", "/c", "net session >nul 2>nul"),
-            timeoutSeconds = 3,
-        )
-        return netSessionCheck.exitCode == 0
-    }
-
     private fun vpnOperatingSystemCheck(os: DesktopRuntimeOs): DesktopPreflightCheck {
         return when (os) {
             DesktopRuntimeOs.LINUX ->
@@ -658,7 +637,7 @@ class DesktopProxyRuntimeManager(
                 DesktopPreflightCheck(
                     name = "TUN device",
                     status = DesktopPreflightStatus.PASS,
-                    detail = "Windows Wintun backend is created by sing-box when running as Administrator",
+                    detail = "Windows Wintun backend is created by the scoped broker after UAC approval",
                 )
             DesktopRuntimeOs.MACOS ->
                 DesktopPreflightCheck(
@@ -689,16 +668,13 @@ class DesktopProxyRuntimeManager(
                     )
                 }
             }
-            DesktopRuntimeOs.WINDOWS -> {
-                if (hasWindowsAdministratorPrivileges()) {
-                    DesktopPreflightCheck("network privileges", DesktopPreflightStatus.PASS, "Windows Administrator token available")
-                } else {
-                    DesktopPreflightCheck(
-                        name = "network privileges",
-                        status = DesktopPreflightStatus.FAIL,
-                        detail = "Windows VPN mode needs Administrator privileges. Relaunch VPN Control and accept the UAC prompt.",
-                    )
-                }
+            DesktopRuntimeOs.WINDOWS -> if (!windowsScopedRuntimeEnabled) {
+                DesktopPreflightCheck("network privileges", DesktopPreflightStatus.FAIL,
+                    "Windows scoped VPN broker is unavailable in this application image")
+            } else {
+                // This confirms only package admission. UAC remains in broker preparation,
+                // after candidate B is retained and before actual A is retired.
+                windowsScopedRuntimeReadiness().copy(name = "network privileges")
             }
             DesktopRuntimeOs.MACOS ->
                 DesktopPreflightCheck(

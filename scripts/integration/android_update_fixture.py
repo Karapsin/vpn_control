@@ -63,6 +63,21 @@ def fixture_environment(environment=None):
     return result
 
 
+def require_github_dns_subject_alt_name(certificate: Path) -> None:
+    """Require the fixture leaf to pass hostname verification for its only tunnel host."""
+    try:
+        decoded = ssl._ssl._test_decode_cert(str(certificate))
+    except (OSError, ssl.SSLError) as error:
+        raise ValueError("Fixture certificate could not be decoded") from error
+    subject_alt_names = decoded.get("subjectAltName", ())
+    if not any(
+        isinstance(entry, tuple) and len(entry) == 2
+        and entry[0] == "DNS" and entry[1].lower() == "github.com"
+        for entry in subject_alt_names
+    ):
+        raise ValueError("Fixture certificate requires DNS subjectAltName github.com")
+
+
 def read_ready_file(path: Path, manifest: dict):
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -86,12 +101,15 @@ def _write_receipt(path: Path, receipt: dict):
 
 
 def publish_ready_file(path: Path, manifest: dict, port: int):
-    """Atomically publish one complete, private ready record without replacing evidence."""
+    """Atomically publish one complete ready record without replacing evidence."""
     directory = path.parent
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=directory)
     temporary_path = Path(temporary)
     try:
-        os.fchmod(descriptor, 0o600)
+        # Windows does not implement POSIX file modes.  Its default inherited ACL is
+        # intentionally not represented as a Unix privacy guarantee here.
+        if os.name == "posix":
+            os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
             json.dump({"port": port, "manifest": manifest}, output)
             output.flush()
@@ -115,7 +133,8 @@ def _stop_fixture(process):
 
 def launch_supervised_fixture(apk: Path, version: str, build_number: int, certificate: Path, private_key: Path,
                               ready_file: Path, log_file: Path, receipt_file: Path, timeout_seconds: float = 15,
-                              environment=None, fixture_script: Path | None = None):
+                              environment=None, fixture_script: Path | None = None,
+                              serve_for_seconds: float | None = None, stop_file: Path | None = None):
     """Launch a retained fixture and certify its exact ready record before device setup.
 
     Any failure writes a terminal receipt with the child exit status and retained log path.
@@ -123,6 +142,7 @@ def launch_supervised_fixture(apk: Path, version: str, build_number: int, certif
     """
     if timeout_seconds <= 0:
         raise ValueError("Fixture readiness timeout must be positive")
+    require_github_dns_subject_alt_name(certificate)
     for path in (ready_file, log_file, receipt_file):
         if path.exists():
             raise ValueError("Fixture evidence path already exists")
@@ -133,6 +153,10 @@ def launch_supervised_fixture(apk: Path, version: str, build_number: int, certif
         "--build-number", str(build_number), "--certificate", str(certificate),
         "--private-key", str(private_key), "--ready-file", str(ready_file),
     ]
+    if serve_for_seconds is not None:
+        command.extend(["--serve-for-seconds", str(serve_for_seconds)])
+    if stop_file is not None:
+        command.extend(["--stop-file", str(stop_file)])
     log_descriptor = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(log_descriptor, "wb") as log:
         process = subprocess.Popen(
@@ -192,13 +216,24 @@ def main():
     parser.add_argument("--log-file", type=Path)
     parser.add_argument("--receipt-file", type=Path)
     parser.add_argument("--ready-timeout-seconds", type=float, default=15)
+    parser.add_argument("--serve-for-seconds", type=float,
+                        help="test-only bounded fixture lifetime")
+    parser.add_argument("--stop-file", type=Path,
+                        help="test-only graceful shutdown signal")
     args = parser.parse_args()
+    if args.serve_for_seconds is not None and args.serve_for_seconds <= 0:
+        parser.error("--serve-for-seconds must be positive")
+    try:
+        require_github_dns_subject_alt_name(args.certificate)
+    except ValueError as error:
+        parser.error(str(error))
     if args.supervise:
         if args.log_file is None or args.receipt_file is None:
             parser.error("--supervise requires --log-file and --receipt-file")
         try:
             launch_supervised_fixture(args.apk, args.version, args.build_number, args.certificate, args.private_key,
-                                      args.ready_file, args.log_file, args.receipt_file, args.ready_timeout_seconds)
+                                      args.ready_file, args.log_file, args.receipt_file, args.ready_timeout_seconds,
+                                      serve_for_seconds=args.serve_for_seconds, stop_file=args.stop_file)
         except (FixtureReadinessError, ValueError) as error:
             if isinstance(error, FixtureReadinessError):
                 print(json.dumps(error.receipt, sort_keys=True))
@@ -262,7 +297,15 @@ def main():
 
     with Server(("127.0.0.1", 0), Handler) as server:
         publish_ready_file(args.ready_file, manifest, server.server_address[1])
-        server.serve_forever()
+        if args.serve_for_seconds is None:
+            server.serve_forever()
+        else:
+            deadline = time.monotonic() + args.serve_for_seconds
+            server.timeout = 0.05
+            while time.monotonic() < deadline:
+                if args.stop_file is not None and args.stop_file.exists():
+                    break
+                server.handle_request()
 
 
 if __name__ == "__main__":
