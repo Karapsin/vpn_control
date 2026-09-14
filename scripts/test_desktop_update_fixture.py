@@ -1,9 +1,11 @@
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -11,6 +13,7 @@ from unittest.mock import patch
 import zipfile
 import ssl
 
+import prepare_desktop_update_fixture
 from prepare_desktop_update_fixture import (
     MAIN_CLASS, MANIFEST_PATH, VERSION_RESOURCE, file_hash, image_identity, load_resources,
     native_build, recover_macos_target_package, package_asset, prepare, runtime_identity, select_resource, source_entries,
@@ -385,6 +388,31 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
     def test_native_build_requires_confirmation_before_reading_any_input(self):
         with self.assertRaisesRegex(ValueError, "confirmation"):
             native_build(Path("/never-read"), False)
+
+    def test_build_cli_accepts_guest_or_native_host_confirmation(self):
+        for confirmation in ("--confirm-owned-disposable-guest", "--confirm-owned-native-host-build"):
+            with self.subTest(confirmation=confirmation), \
+                    patch.object(sys, "argv", ["fixture", "build", "--directory", "fixture", confirmation]), \
+                    patch("prepare_desktop_update_fixture.native_build", return_value={"ok": True}) as build, \
+                    unittest.mock.patch("sys.stdout", new_callable=io.StringIO):
+                prepare_desktop_update_fixture.main()
+                build.assert_called_once_with(Path("fixture"), True, None, False)
+
+    def test_native_host_build_confirmation_cannot_unlock_guest_only_actions(self):
+        commands = (
+            ["recover-macos-target-package", "--directory", "fixture"],
+            ["authorize-macos-base-offload", "--directory", "fixture", "--host-backup-manifest", "base.json"],
+            ["finalize-macos-target-package-recovery", "--directory", "fixture"],
+            ["serve", "--directory", "fixture", "--certificate", "cert.pem", "--private-key", "key.pem",
+             "--ready-file", "ready.json"],
+        )
+        for command in commands:
+            with self.subTest(command=command[0]), \
+                    patch.object(sys, "argv", ["fixture", *command, "--confirm-owned-native-host-build"]), \
+                    patch("sys.stderr", new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as error:
+                    prepare_desktop_update_fixture.main()
+            self.assertEqual(2, error.exception.code)
 
     @unittest.skipUnless(os.name == "posix", "Physical Linux tar fixture requires POSIX file modes")
     def test_two_property_builds_capture_equal_code_and_original_source(self):

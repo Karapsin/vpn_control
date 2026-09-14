@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Await graphical frontend detach on normal close so immediate reopening reuses the live controller.
 - Keep diagnostics export regressions on their fixture owner instead of the host workspace.
 - Run frontend cleanup before process exit, keep Windows GUI unelevated, and strengthen native fixture regressions.
+- Allow isolated build-only update fixtures on native hosts while preserving guest-only installation and trust gates.
 
 ## 2.1.10 - 2026-09-14
 

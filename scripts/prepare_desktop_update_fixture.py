@@ -705,7 +705,9 @@ def finalize_macos_target_package_recovery(directory, confirmed):
 
 def native_build(directory, confirmed, run_command=None, discard_completed_builds=False):
     import platform as host_platform
-    require(confirmed, "Explicit owned-disposable-guest confirmation required")
+    # This path only creates and inspects test-only package artifacts. Serving,
+    # recovery, and installer/trust actions have separate guest-only gates.
+    require(confirmed, "Explicit owned build confirmation required")
     directory = directory.resolve(strict=True)
     plan = json.loads((directory / "build-plan.json").read_text())
     snapshot = json.loads((directory / "snapshot.json").read_text())
@@ -957,6 +959,8 @@ def main():
     build_parser = commands.add_parser("build")
     build_parser.add_argument("--directory", type=Path, required=True)
     build_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
+    build_parser.add_argument("--confirm-owned-native-host-build", action="store_true",
+                              help="confirm an owned native host for build-only package capture")
     build_parser.add_argument("--discard-completed-builds", action="store_true",
                               help="discard only verified build-base/build-target trees after capture")
     recover_parser = commands.add_parser("recover-macos-target-package")
@@ -984,7 +988,8 @@ def main():
         extract_readonly_archive(args.archive, args.output)
         result = {"extracted": str(args.output)}
     elif args.action == "build":
-        result = native_build(args.directory, args.confirm_owned_disposable_guest, None,
+        result = native_build(args.directory, args.confirm_owned_disposable_guest or
+                              args.confirm_owned_native_host_build, None,
                               args.discard_completed_builds)
     elif args.action == "recover-macos-target-package":
         result = recover_macos_target_package(args.directory, args.confirm_owned_disposable_guest,

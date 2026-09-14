@@ -557,3 +557,16 @@ Compose application still reads screen configuration, so Linux hosts without
 when the prerequisite is missing. Fast Checks installs both packages. This quick
 regression belongs to ordinary desktop tests and prepush; retain the packaged
 normal-close/immediate-show traffic scenario as separate native evidence.
+
+### Isolated native update package builds
+
+The desktop fixture builder's `build --confirm-owned-native-host-build` permits
+build-only package capture on an authorized native build host. It preserves the
+same clean source snapshot, runtime identity, native architecture, package hash
+and base/target executable-content checks as the guest build path. The original
+`--confirm-owned-disposable-guest` build option remains supported. Host build
+confirmation is not accepted by serving, recovery, offload authorization or
+finalization commands; it does not authorize host installation or test CA trust.
+Use `--discard-completed-builds` only through the builder, which verifies retained
+artifacts before discarding each generated stage. The option is covered by the
+routine desktop update fixture test suite.

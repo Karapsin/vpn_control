@@ -23,6 +23,59 @@ and inputs until authoritative reconciliation. Only root owns shared Gradle,
 version metadata, staging, commits, pushes and exact-SHA CI. Workers use bounded
 assignments, one writer per file and one operator per native environment.
 
+## Current Delivery And Work (Checkpoint50)
+
+Checkpoint49 `bbb7b0460a7d65904586845a6843dd2aacc359e4` is pushed with full
+prepush and all five exact-SHA workflows successful: Fast34797565252,
+Android34797565224, Linux34797565219, Windows34797565222 and macOS34797565251.
+Product version remains2.1.10. Earlier checkpoint49 descriptions below retain
+history; this section supersedes their pending delivery/native statements.
+
+The next implementation slice adds explicit build-only native-host confirmation
+to the existing isolated desktop update fixture builder. It cannot unlock guest
+serving/recovery/trust workflows. Focused parser tests passed; full delivery of
+this small fixture-only slice remains pending.
+
+The clean macOS base2.1.10/target2.1.11 build succeeded with identical executable
+fingerprint bfb60629266d1050c2f66e44746112d3cfaf7f638f04ec4183670e0f7daeac0a.
+Snapshot e6ba62fe731b6a655659647b97452b4f72545fe731ceb995954e1ee3b5ed121d includes
+bbb product code and the fixture-only confirmation changes. Base DMG SHA
+23d0fe05cd764fc8c8c49f8a35d3f73702c27df1fe230b25a44c9b2251b24dfa;
+target b73cd188fbd2b0d4c01126355bceedb603796697943baf18d4a21179f97f7cd7.
+Both signatures and public versions passed. Root retains the pair at
+/private/tmp/vpn-control-macos-pair-bbb7b046. Mac installation awaits host capacity;
+seven specifically reviewed cold fixture copies are being archived with complete
+restore manifests and remote hash verification before relocation. No VM disks,
+unknown jobs or current pair inputs are in the relocation set.
+
+Android accepted cancellation bdfc03ea-c549-43fd-82ac-242fc9a4b891, committed=false,
+RUNTIME_NOT_CHANGED: exact active A/runtime and pending B survived. Root reviewed
+before/cancel/wait/after/cleanup JSON in checkpoint50/android. The earlier public
+benchmark measured1289ms with actual HTTPS traffic. These are installed fixture APK
+source33e2/code2.3.10, not a new exact-SHA APK certificate. Diagnostics export also
+passed on a retained operation to a private temporary path (297752 bytes); the
+prior failed repo destination inherited a0777 writable ancestor, not an Android
+failure or a rejection of ordinary0755 directories. Redacted receipt:
+checkpoint50/android-diagnostics/receipt.md. The report was removed after hashing.
+
+Windows bootstrap component passed three real tests with zero failures/skips or
+assumptions after UAC approval of the elevated test coordinator. Original-user
+child identity/non-elevation and cleanup were asserted. Evidence:
+checkpoint49/windows-msi-handoff.json. This remains ARM64/x64-emulation component
+evidence, not full MSI replacement. The remote native AMD64 guest now has an active
+ordinary parityagent session; verified MSI transfer/initial installation and public
+CLI acceptance are assigned there. Old tasks and clean base remain untouched.
+
+| Task | Owner | Files / exclusive environment | Dependency and next evidence |
+| --- | --- | --- | --- |
+| Integration/delivery | Root | Fixture builder/tests, test matrix, WIP; sole host Gradle | Validate and push fixture-only slice |
+| Linux lifecycle | linux_reopen49 | Fedora2316; ignored native harness/evidence | Exactbbb RPM available; immediate reopen/traffic/crash replay |
+| Windows native | windows_login50 | Remote nativeAMD64 MSI VM, ignored harness | Ordinary login proven; staged MSI installation/public CLI |
+| Windows bootstrap | windows_msi_bootstrap49 | Local ARM64 VM, private apphost | Component passed; preserve evidence and reconcile fixture cleanup |
+| macOS installation | mac_install50 | Tart fixture43, new private workspace | Current pair verified; capacity before copy/install |
+| Capacity | fixture_capacity50 | Seven approved cold host paths, Arch artifact-relay storage | Full remote verification/restore pointers before relocation |
+| Android diagnostics | Completed android_diagnostics50 | AVD5596 now idle/off | Redacted successful export receipt retained |
+
 ## Current Delivery And Work (Checkpoint49)
 
 Checkpoint48 is pushed as `1b062af83f737077e17fd08b655b1c60a6c405e7`, version
