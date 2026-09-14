@@ -319,6 +319,182 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertFalse(probe["ready"])
         self.assertIn("vpn-control-visual-api35", probe["detail"])
 
+    def test_android_task_avd_override_requires_a_complete_safe_pair(self) -> None:
+        for environment in (
+            {"VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled"},
+            {"VPN_CONTROL_VISUAL_ANDROID_PORT": "5600"},
+            {
+                "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+                "VPN_CONTROL_VISUAL_ANDROID_PORT": "5580",
+            },
+            {
+                "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "personal-avd",
+                "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+            },
+            {
+                "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+                "VPN_CONTROL_VISUAL_ANDROID_PORT": "5601",
+            },
+        ):
+            with self.subTest(environment=environment), mock.patch.dict(os.environ, environment, clear=True):
+                with self.assertRaisesRegex(visual_platform.VisualPlatformError, "Android visual task override"):
+                    visual_platform.android_local_config()
+
+    def test_android_task_avd_override_admits_an_isolated_even_port(self) -> None:
+        environment = {
+            "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+            "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            config = visual_platform.android_local_config()
+        self.assertEqual("vpn-control-visual-task-cancelled", config["avd_name"])
+        self.assertEqual(5600, config["emulator_port"])
+
+    def test_android_task_avd_override_flows_through_probe_and_bootstrap(self) -> None:
+        environment = {
+            "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+            "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+        }
+        with (
+            mock.patch.dict(os.environ, environment, clear=True),
+            mock.patch.object(visual_platform, "_android_tool", return_value="/sdk/tool"),
+            mock.patch.object(
+                visual_platform,
+                "_android_avds",
+                return_value={"vpn-control-visual-task-cancelled"},
+            ),
+        ):
+            probe = visual_platform.local_probe("android")
+            commands = visual_platform.bootstrap_commands("android")
+        self.assertTrue(probe["ready"])
+        self.assertIn("vpn-control-visual-task-cancelled", commands[1])
+
+    def test_android_start_does_not_adopt_a_foreign_avd_on_the_task_port(self) -> None:
+        probe = {
+            "ready": True,
+            "backend": "android-emulator",
+            "capabilities": ["app", "native"],
+            "detail": "",
+        }
+        environment = {
+            "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+            "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+        }
+        with (
+            mock.patch.dict(os.environ, environment, clear=True),
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_android_tool", side_effect=lambda name: f"/sdk/{name}"),
+            mock.patch.object(
+                visual_platform,
+                "_running_android_avds",
+                return_value={"personal-avd": "emulator-5600"},
+            ),
+        ):
+            result = visual_platform.start_platform("android", dry_run=True)
+        self.assertTrue(result["started_by_agent"])
+        self.assertIn("-avd vpn-control-visual-task-cancelled", result["command"])
+        self.assertIn("-port 5600", result["command"])
+        self.assertNotIn("personal-avd", result["command"])
+
+    def test_android_capture_resolves_isolation_before_selecting_adb(self) -> None:
+        script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("android-local-config", script)
+        self.assertLess(script.index("android-local-config"), script.index("command -v adb"))
+        self.assertIn('adb emu avd name', script)
+        self.assertIn('"$expected_avd_name"', script)
+        self.assertIn('"$adb_bin" -s "$emulator_serial"', script)
+
+    def test_android_capture_binds_gradle_and_cleanup_to_verified_task_device(self) -> None:
+        script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
+            encoding="utf-8",
+        )
+        guard = script.index('[[ "$avd_name" == "$expected_avd_name" ]]')
+        trap = script.index("trap restore_system_ui EXIT")
+        gradle = script.index("./gradlew :app:connectedDebugAndroidTest")
+        self.assertLess(guard, trap)
+        self.assertIn('ANDROID_SERIAL="$emulator_serial" ./gradlew', script)
+        self.assertLess(trap, gradle)
+
+    def test_android_capture_preserves_hosted_serial_selection(self) -> None:
+        script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('VPN_CONTROL_VISUAL_PROVIDER:-local', script)
+        self.assertIn('emulator_serial="${ANDROID_SERIAL:?Android hosted visual capture requires ANDROID_SERIAL}"', script)
+        self.assertIn('if [[ "$provider" == "hosted" ]]; then', script)
+
+    def test_android_capture_rejects_a_foreign_avd_before_any_device_mutation(self) -> None:
+        script = visual_platform.ROOT / "scripts/capture_visual_android.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            log = temporary_path / "adb.log"
+            fake_adb = temporary_path / "adb"
+            fake_adb.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n"
+                "if [ \"$3 $4 $5\" = 'emu avd name' ]; then\n"
+                "  printf 'foreign-avd\\nOK\\n'\n"
+                "fi\n",
+                encoding="utf-8",
+            )
+            fake_adb.chmod(0o755)
+            environment = dict(os.environ)
+            environment.update({
+                "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
+                "ADB_LOG": str(log),
+                "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+                "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+            })
+            completed = subprocess.run(
+                ["bash", str(script), str(temporary_path / "output"), "update-install-session-cancelled"],
+                cwd=visual_platform.ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertEqual(["-s emulator-5600 emu avd name"], log.read_text(encoding="utf-8").splitlines())
+            self.assertFalse((temporary_path / "output").exists())
+
+    def test_android_capture_rejects_hosted_without_a_serial_before_adb(self) -> None:
+        script = visual_platform.ROOT / "scripts/capture_visual_android.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            log = temporary_path / "adb.log"
+            fake_adb = temporary_path / "adb"
+            fake_adb.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n",
+                encoding="utf-8",
+            )
+            fake_adb.chmod(0o755)
+            environment = dict(os.environ)
+            environment.update({
+                "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
+                "ADB_LOG": str(log),
+                "VPN_CONTROL_VISUAL_PROVIDER": "hosted",
+            })
+            environment.pop("ANDROID_SERIAL", None)
+            environment.pop("VPN_CONTROL_VISUAL_ANDROID_AVD_NAME", None)
+            environment.pop("VPN_CONTROL_VISUAL_ANDROID_PORT", None)
+            completed = subprocess.run(
+                ["bash", str(script), str(temporary_path / "output"), "update-install-session-cancelled"],
+                cwd=visual_platform.ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("requires ANDROID_SERIAL", completed.stderr)
+            self.assertFalse(log.exists())
+            self.assertFalse((temporary_path / "output").exists())
+
     def test_android_start_never_reuses_unrelated_emulator(self) -> None:
         probe = {
             "ready": True,

@@ -27,6 +27,16 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Delivery And Current Integration
 
+Latest checkpoint `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e` is pushed with
+full prepush passed; managed exact-SHA CI session13899 remains live. The preceding
+`1bb881bc5067350d7d04cffda7a33604550d4144` passed all five required workflows.
+Current uncommitted work adds isolated Android visual task-AVD selection; root
+review required exact Gradle/ADB serial binding and no cleanup on rejected foreign
+AVDs. Native captures remain pending. Windows autostart migration implementation
+is assigned to linux_reopen49 (manager and tests only), with selective run-level
+change and cooperating-app serialization; no host task mutation is permitted.
+
+
 Last delivered commit: `fc82b28eab7b42dadbb9bdd04443e2c66e8b3dec`, version2.1.10.
 Managed prepush and all five exact-SHA workflows passed: Fast34799568186,
 Android34799568195, Linux34799568182, Windows34799568212 and macOS34799568197.
@@ -197,6 +207,19 @@ terminal input cleanup removed only inputs. The partial stage remains under
 Underlying I/O cause is unproven; do not infer host capacity as its cause.
 Receipt checkpoint50/macos/receipt.json retains the native log and identities.
 Older job49a33fcf-cecd-4d19-a233-47b6cc1dcf69 and its base remain untouched.
+
+The fresh machine-install retry is now successful on the frozen fc82-compatible
+pair: job9d328c5c-3bc8-4da5-9b91-6f6ee7e6e14f, operation
+57b93ace-d01a-468d-a7ff-98659d09ecfb. Protected receipt seq4 is SUCCEEDED/OK;
+public target recovery reports installed=true and cleanupCode=OK. Target2.1.11
+main JAR SHA86425c0aa6d970798410bd631de5124f20651bf6adda41ca835980b62af70ef4
+matches the frozen target. Root copied and hash-verified summary and three raw
+public responses under checkpoint51/macos-success; summary SHA
+2109ccbcf2fd923292d2ea91122b9b6f375a36c4bc41aaac5b19a39736cafb9d.
+No stage/backup remains for this successful job. Old failed and unknown evidence
+remains. Guest-only Tart Automation permission was test setup, not a product
+requirement. This closes this machine replacement/recovery scenario, not local
+installation, denial, rollback, GUI-return or final-delivered-helper coverage.
 
 ## Capacity And Artifact Preservation
 

@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Exercise macOS copy-failure receipt preservation through the production staging helper.
 - Cover cancelled Android installer sessions in the visual scene inventory.
 - Reject missing DEB and RPM packaging tools before immutable fixture builds.
+- Migrate owned Windows autostart tasks to ordinary privileges and isolate Android visual captures.
 
 ## 2.1.10 - 2026-09-14
 

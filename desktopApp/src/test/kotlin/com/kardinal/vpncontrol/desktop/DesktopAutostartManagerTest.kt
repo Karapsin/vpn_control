@@ -603,7 +603,7 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
-    fun explicitMigrationReplacesOnlyRevalidatedOwnedHighestTask() {
+    fun explicitMigrationChangesOnlyRunLevelOfRevalidatedOwnedHighestTask() {
         val commands = mutableListOf<List<String>>()
         var taskXml = windowsTaskXml(runLevel = "HighestAvailable")
         val manager = DesktopAutostartManager(
@@ -614,7 +614,7 @@ class DesktopAutostartManagerTest {
                 when {
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
-                    command.take(2) == listOf("schtasks", "/Create") -> {
+                    command.take(2) == listOf("schtasks", "/Change") -> {
                         taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
                         DesktopAutostartCommandResult(0, "ok")
                     }
@@ -624,8 +624,102 @@ class DesktopAutostartManagerTest {
         )
 
         assertTrue(manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().isSuccess)
+        assertEquals(3, commands.count { it.take(2) == listOf("schtasks", "/Query") })
+        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
+            commands.single { it.take(2) == listOf("schtasks", "/Change") })
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Create"), listOf("schtasks", "/Delete")) })
+    }
+
+    @Test
+    fun enablingRecognizedOwnedHighestTaskMigratesItWithoutReplacement() {
+        val commands = mutableListOf<List<String>>()
+        var taskXml = windowsTaskXml(runLevel = "HighestAvailable")
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(1, missingRegistration())
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
+                    command.take(2) == listOf("schtasks", "/Change") -> {
+                        taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertTrue(manager.setEnabled(true).isSuccess)
+        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
+            commands.single { it.take(2) == listOf("schtasks", "/Change") })
+        assertTrue(commands.none { it.take(2) == listOf("schtasks", "/Create") })
+    }
+
+    @Test
+    fun migrationChangeFailureDoesNotReportSuccess() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, windowsTaskXml(runLevel = "HighestAvailable"))
+                    command.take(2) == listOf("schtasks", "/Change") -> DesktopAutostartCommandResult(1, "denied")
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertTrue(manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().isFailure)
         assertEquals(2, commands.count { it.take(2) == listOf("schtasks", "/Query") })
-        assertTrue(commands.single { it.take(2) == listOf("schtasks", "/Create") }.contains("LIMITED"))
+        assertTrue(commands.none { it.take(2) == listOf("schtasks", "/Create") })
+    }
+
+    @Test
+    fun migrationRejectsWrongPostChangeOwnership() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, windowsTaskXml(runLevel = "HighestAvailable"))
+                    command.take(2) == listOf("schtasks", "/Change") -> DesktopAutostartCommandResult(0, "ok")
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        val result = manager.migrateOwnedWindowsHighestTaskToOrdinaryUser()
+
+        assertTrue(result.isFailure)
+        assertEquals("CONFLICT", result.exceptionOrNull()?.message)
+        assertEquals(3, commands.count { it.take(2) == listOf("schtasks", "/Query") })
+    }
+
+    @Test
+    fun windowsAutostartMutationReturnsBusyWithoutOsCommandsWhenTaskLockIsHeld() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command -> commands += command; DesktopAutostartCommandResult(1, "unexpected") },
+            windowsTaskLockAcquirer = { null },
+        )
+
+        val result = manager.migrateOwnedWindowsHighestTaskToOrdinaryUser()
+
+        assertTrue(result.isFailure)
+        assertEquals("BUSY", result.exceptionOrNull()?.message)
+        assertTrue(commands.isEmpty())
     }
 
     @Test

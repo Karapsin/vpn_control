@@ -24,10 +24,58 @@ MANIFEST_PATH = ROOT / "visual-tests" / "scenes.json"
 ENVIRONMENTS_PATH = ROOT / "visual-tests" / "environments.json"
 RUNTIME_ROOT = ROOT / ".runtime" / "visual-vms"
 PLATFORMS = ("android", "linux", "windows", "macos")
+ANDROID_TASK_AVD_NAME_ENV = "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME"
+ANDROID_TASK_AVD_PORT_ENV = "VPN_CONTROL_VISUAL_ANDROID_PORT"
+ANDROID_TASK_AVD_PREFIX = "vpn-control-visual-task-"
+ANDROID_TASK_AVD_PORT_MIN = 5600
+ANDROID_TASK_AVD_PORT_MAX = 5698
 
 
 class VisualPlatformError(ValueError):
     pass
+
+
+def android_local_config() -> dict[str, Any]:
+    """Return the Android environment, optionally redirected to an owned task AVD."""
+    local = dict(_read_json(ENVIRONMENTS_PATH)["platforms"]["android"]["local"])
+    avd_name = os.environ.get(ANDROID_TASK_AVD_NAME_ENV, "").strip()
+    raw_port = os.environ.get(ANDROID_TASK_AVD_PORT_ENV, "").strip()
+    if bool(avd_name) != bool(raw_port):
+        raise VisualPlatformError(
+            "Android visual task override requires both "
+            f"{ANDROID_TASK_AVD_NAME_ENV} and {ANDROID_TASK_AVD_PORT_ENV}",
+        )
+    if not avd_name:
+        return local
+    if (
+        not avd_name.startswith(ANDROID_TASK_AVD_PREFIX)
+        or len(avd_name) == len(ANDROID_TASK_AVD_PREFIX)
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in avd_name)
+    ):
+        raise VisualPlatformError(
+            "Android visual task override requires an owned AVD name beginning "
+            f"{ANDROID_TASK_AVD_PREFIX}",
+        )
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise VisualPlatformError(
+            "Android visual task override requires an even emulator port from "
+            f"{ANDROID_TASK_AVD_PORT_MIN} through {ANDROID_TASK_AVD_PORT_MAX}",
+        ) from exc
+    if (
+        str(port) != raw_port
+        or port < ANDROID_TASK_AVD_PORT_MIN
+        or port > ANDROID_TASK_AVD_PORT_MAX
+        or port % 2
+    ):
+        raise VisualPlatformError(
+            "Android visual task override requires an even emulator port from "
+            f"{ANDROID_TASK_AVD_PORT_MIN} through {ANDROID_TASK_AVD_PORT_MAX}",
+        )
+    local["avd_name"] = avd_name
+    local["emulator_port"] = port
+    return local
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -254,7 +302,7 @@ def local_probe(platform: str) -> dict[str, Any]:
     detail = ""
     if platform == "android":
         required = (_android_tool("adb"), _android_tool("emulator"), _android_tool("avdmanager"))
-        avd_name = str(config["local"]["avd_name"])
+        avd_name = str(android_local_config()["avd_name"])
         if all(required) and avd_name in _android_avds():
             backend = "android-emulator"
             capabilities.update(("app", "native"))
@@ -353,7 +401,7 @@ def bootstrap_commands(platform: str) -> list[list[str]]:
     if platform == "android":
         sdkmanager = _android_tool("sdkmanager") or "sdkmanager"
         avdmanager = _android_tool("avdmanager") or "avdmanager"
-        local = config["local"]
+        local = android_local_config()
         system_image = str(
             local["system_image_arm64"]
             if host_platform.machine().lower() in {"arm64", "aarch64"}
@@ -409,7 +457,11 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     if not probe["ready"]:
         raise VisualPlatformError(f"local visual environment is not ready: {probe['detail']}")
     backend = str(probe["backend"])
-    config = _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+    config = (
+        android_local_config()
+        if platform == "android"
+        else _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+    )
     command: list[str] | None = None
     started_by_agent = False
     identifier = backend
@@ -846,6 +898,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     for action in ("probe", "plan"):
         command = subparsers.add_parser(action)
         command.add_argument("--platform", required=True, choices=PLATFORMS)
+    subparsers.add_parser("android-local-config")
     command = subparsers.add_parser("bootstrap")
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--dry-run", action="store_true")
@@ -887,6 +940,8 @@ def main(argv: list[str] | None = None) -> int:
             result = local_probe(args.platform)
         elif args.action == "plan":
             result = capture_plan(args.platform)
+        elif args.action == "android-local-config":
+            result = android_local_config()
         elif args.action == "bootstrap":
             result = bootstrap(args.platform, dry_run=args.dry_run)
         elif args.action == "start":

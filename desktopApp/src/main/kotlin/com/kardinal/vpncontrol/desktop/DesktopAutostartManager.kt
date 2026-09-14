@@ -17,6 +17,8 @@ internal class DesktopAutostartManager(
     private val executableChecker: (Path) -> Boolean = Files::isExecutable,
     private val environment: () -> Map<String, String> = System::getenv,
     private val workspaceDirectory: Path? = DesktopWorkspacePaths.overrideDirectory(),
+    private val windowsTaskLockFile: Path = configHome.resolve("vpn-control-windows-autostart.lock"),
+    private val windowsTaskLockAcquirer: (Path) -> AutoCloseable? = { DesktopSingleInstanceLock.acquire(it) },
 ) {
     private val autostartFile = configHome
         .resolve("autostart")
@@ -59,25 +61,14 @@ internal class DesktopAutostartManager(
         }
     }
 
-    /**
-     * Explicit repair only. Startup inspection deliberately never calls this: task replacement
-     * needs a final ownership recheck and is not safe to infer from a task name alone.
-     */
+    /** Explicit enable/repair only. Startup inspection deliberately never changes an existing task. */
     internal fun migrateOwnedWindowsHighestTaskToOrdinaryUser(): Result<Boolean> = runCatching {
         check(platform == DesktopAutostartPlatform.WINDOWS) { "Windows autostart is unavailable on this platform." }
-        val command = commandResolver()?.takeIf(String::isNotBlank)
-            ?: error("Could not resolve the desktop app launcher path.")
-        val first = inspectWindowsTaskOwnership(command)
-        check(first is WindowsTaskOwnership.OwnedHighest) { first.reason }
-        // schtasks has no compare-and-swap registration. This narrows, but cannot eliminate, a
-        // concurrent replacement race; the caller must keep this explicit repair inactive until
-        // a coordinator supplies an atomic Task Scheduler operation.
-        val second = inspectWindowsTaskOwnership(command)
-        check(second is WindowsTaskOwnership.OwnedHighest && second.xml == first.xml) {
-            "CONFLICT"
+        withWindowsTaskLock {
+            val command = commandResolver()?.takeIf(String::isNotBlank)
+                ?: error("Could not resolve the desktop app launcher path.")
+            migrateOwnedWindowsHighestTaskToOrdinaryUserLocked(command)
         }
-        createWindowsTask(command, replaceOwned = true)
-        true
     }
 
     private fun isLinuxAutostartEnabled(): Boolean {
@@ -341,7 +332,7 @@ internal class DesktopAutostartManager(
         }
     } ?: false
 
-    private fun setWindowsTaskEnabled(enabled: Boolean): Boolean {
+    private fun setWindowsTaskEnabled(enabled: Boolean): Boolean = withWindowsTaskLock {
         if (enabled) {
             val command = commandResolver()?.takeIf(String::isNotBlank)
                 ?: error("Could not resolve the desktop app launcher path.")
@@ -354,42 +345,64 @@ internal class DesktopAutostartManager(
             when (val ownership = inspectWindowsTaskOwnership(command)) {
                 is WindowsTaskOwnership.Absent -> createWindowsTask(command)
                 is WindowsTaskOwnership.OwnedOrdinary -> Unit
-                is WindowsTaskOwnership.OwnedHighest -> error("CONFLICT")
+                is WindowsTaskOwnership.OwnedHighest -> migrateOwnedWindowsHighestTaskToOrdinaryUserLocked(command)
                 is WindowsTaskOwnership.Unknown -> error(ownership.reason)
             }
             deleteWindowsRunEntryIfPresent()
-            return true
-        }
-
-        val command = commandResolver()?.takeIf(String::isNotBlank)
-            ?: error("Could not resolve the desktop app launcher path.")
-        when (val ownership = inspectWindowsTaskOwnership(command)) {
-            is WindowsTaskOwnership.Absent -> Unit
-            is WindowsTaskOwnership.OwnedOrdinary, is WindowsTaskOwnership.OwnedHighest -> {
-            val result = commandRunner(
-                listOf("schtasks", "/Delete", "/TN", WINDOWS_TASK_NAME, "/F"),
-            )
-            if (result.exitCode != 0) {
-                error(result.output.ifBlank { "Failed to delete Windows startup scheduled task." })
+            true
+        } else {
+            val command = commandResolver()?.takeIf(String::isNotBlank)
+                ?: error("Could not resolve the desktop app launcher path.")
+            when (val ownership = inspectWindowsTaskOwnership(command)) {
+                is WindowsTaskOwnership.Absent -> Unit
+                is WindowsTaskOwnership.OwnedOrdinary, is WindowsTaskOwnership.OwnedHighest -> {
+                    val result = commandRunner(
+                        listOf("schtasks", "/Delete", "/TN", WINDOWS_TASK_NAME, "/F"),
+                    )
+                    if (result.exitCode != 0) {
+                        error(result.output.ifBlank { "Failed to delete Windows startup scheduled task." })
+                    }
+                }
+                is WindowsTaskOwnership.Unknown -> error(ownership.reason)
             }
-            }
-            is WindowsTaskOwnership.Unknown -> error(ownership.reason)
+            deleteWindowsRunEntryIfPresent()
+            false
         }
-        deleteWindowsRunEntryIfPresent()
-        return false
     }
 
-    private fun createWindowsTask(command: String, replaceOwned: Boolean = false) {
-        val arguments = mutableListOf(
+    private fun migrateOwnedWindowsHighestTaskToOrdinaryUserLocked(command: String): Boolean {
+        val first = inspectWindowsTaskOwnership(command)
+        check(first is WindowsTaskOwnership.OwnedHighest) { first.reason }
+        val second = inspectWindowsTaskOwnership(command)
+        check(second is WindowsTaskOwnership.OwnedHighest && second.xml == first.xml) { "CONFLICT" }
+        changeWindowsTaskRunLevelToLimited()
+        check(inspectWindowsTaskOwnership(command) is WindowsTaskOwnership.OwnedOrdinary) { "CONFLICT" }
+        // Native Windows evidence must verify the task DACL is preserved; XML inspection cannot do that.
+        return true
+    }
+
+    private fun <T> withWindowsTaskLock(action: () -> T): T {
+        val lock = windowsTaskLockAcquirer(windowsTaskLockFile) ?: error("BUSY")
+        lock.use { return action() }
+    }
+
+    private fun createWindowsTask(command: String) {
+        val arguments = listOf(
             "schtasks", "/Create", "/TN", WINDOWS_TASK_NAME, "/SC", "ONLOGON",
             "/TR", windowsScheduledTaskCommand(command, workspaceDirectory),
             "/RL", "LIMITED",
         )
-        if (replaceOwned) arguments += "/F"
         val result = commandRunner(
             arguments,
         )
         if (result.exitCode != 0) error(result.output.ifBlank { "Failed to create Windows startup scheduled task." })
+    }
+
+    private fun changeWindowsTaskRunLevelToLimited() {
+        val result = commandRunner(
+            listOf("schtasks", "/Change", "/TN", WINDOWS_TASK_NAME, "/RL", "LIMITED"),
+        )
+        if (result.exitCode != 0) error(result.output.ifBlank { "Failed to reduce Windows startup task privileges." })
     }
 
     private fun inspectWindowsTaskOwnership(command: String): WindowsTaskOwnership {

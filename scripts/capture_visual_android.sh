@@ -5,6 +5,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${1:-$repo_root/build/visual-actual/android}"
 scene_csv="${2:-}"
 device_dir="/data/local/tmp/vpn-control-visual"
+provider="${VPN_CONTROL_VISUAL_PROVIDER:-local}"
+android_config="$(python3 "$repo_root/scripts/visual_platform.py" android-local-config)" || exit $?
+read -r expected_avd_name emulator_port < <(python3 -c '
+import json
+import sys
+result = json.load(sys.stdin)["result"]
+print(result["avd_name"], result["emulator_port"])
+' <<< "$android_config")
+if [[ "$provider" == "hosted" ]]; then
+  emulator_serial="${ANDROID_SERIAL:?Android hosted visual capture requires ANDROID_SERIAL}"
+else
+  emulator_serial="emulator-$emulator_port"
+fi
 sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 if [[ -z "$sdk_root" && -f "$repo_root/local.properties" ]]; then
   sdk_root="$(sed -n 's/^sdk\.dir=//p' "$repo_root/local.properties" | head -n 1)"
@@ -14,11 +27,21 @@ if [[ -z "$adb_bin" && -n "$sdk_root" && -x "$sdk_root/platform-tools/adb" ]]; t
   adb_bin="$sdk_root/platform-tools/adb"
 fi
 [[ -n "$adb_bin" ]] || { echo "Android adb was not found." >&2; exit 1; }
+adb() {
+  "$adb_bin" -s "$emulator_serial" "$@"
+}
 
+if [[ "$provider" != "hosted" ]]; then
+  avd_name="$(adb emu avd name 2>/dev/null | sed '/^OK$/d' | head -n 1 | tr -d '\r')"
+  [[ "$avd_name" == "$expected_avd_name" ]] || {
+    echo "Local Android visual capture refuses non-isolated device: ${avd_name:-unknown}." >&2
+    exit 1
+  }
+fi
 cd "$repo_root"
 mkdir -p "$output_dir"
 restore_system_ui() {
-  "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+  adb shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
 }
 trap restore_system_ui EXIT
 while IFS= read -r scene; do
@@ -33,18 +56,11 @@ for scene in json.load(open(sys.argv[1], encoding="utf-8"))["scenes"]:
         print(scene["id"])
 PY
 )
-if [[ "${VPN_CONTROL_VISUAL_PROVIDER:-local}" != "hosted" ]]; then
-  avd_name="$($adb_bin emu avd name 2>/dev/null | sed '/^OK$/d' | head -n 1 | tr -d '\r')"
-  [[ "$avd_name" == "vpn-control-visual-api35" ]] || {
-    echo "Local Android visual capture refuses non-isolated device: ${avd_name:-unknown}." >&2
-    exit 1
-  }
-fi
-"$adb_bin" shell settings put global sysui_demo_allowed 1
-"$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
-"$adb_bin" shell rm -rf "$device_dir"
-"$adb_bin" uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
-"$adb_bin" uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
+adb shell settings put global sysui_demo_allowed 1
+adb shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+adb shell rm -rf "$device_dir"
+adb uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
+adb uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
 app_scenes="$(python3 scripts/select_visual_scenes.py \
   --manifest visual-tests/scenes.json --platform android --kind app --requested "$scene_csv")"
 native_scenes="$(python3 scripts/select_visual_scenes.py \
@@ -52,14 +68,14 @@ native_scenes="$(python3 scripts/select_visual_scenes.py \
 
 run_gradle_capture() {
   local selected_scenes="$1"
-  ./gradlew :app:connectedDebugAndroidTest \
+  ANDROID_SERIAL="$emulator_serial" ./gradlew :app:connectedDebugAndroidTest \
     -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.VisualCaptureInstrumentedTest \
     -Pandroid.testInstrumentationRunnerArguments.visualManifest="$repo_root/visual-tests/scenes.json" \
     -Pandroid.testInstrumentationRunnerArguments.visualScenes="$selected_scenes"
 }
 
 pull_device_capture() {
-  "$adb_bin" pull "$device_dir/." "$output_dir/"
+  adb pull "$device_dir/." "$output_dir/"
 }
 
 if [[ -n "$app_scenes" ]]; then
@@ -72,7 +88,7 @@ if [[ -n "$native_scenes" ]]; then
   for native_scene in "${native_scene_ids[@]}"; do
     # The instrumentation fixture owns the complete demo-mode state. Leave any prior
     # invocation first so SystemUI cannot accumulate duplicate Wi-Fi/status icons.
-    "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+    adb shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
     if [[ "$native_scene" == "android-system-bars" ]]; then
       run_gradle_capture "$native_scene"
       pull_device_capture
@@ -94,7 +110,7 @@ if [[ -n "$native_scenes" ]]; then
     native_window_ready=false
     for capture_attempt in $(seq 1 "$max_capture_attempts"); do
       rm -f "$framebuffer_capture"
-      "$adb_bin" shell rm -f \
+      adb shell rm -f \
         "$device_dir/$native_scene.ready" \
         "$device_dir/$native_scene.captured" \
         "$device_dir/$native_scene.png" >/dev/null 2>&1 || true
@@ -105,20 +121,20 @@ if [[ -n "$native_scenes" ]]; then
         # DocumentsUI and other preceding native activities can leave an asynchronous
         # SystemUI visibility transaction queued for the scanner. Start each QR attempt
         # from a stopped app and exited demo mode; the activity then converges fullscreen.
-        "$adb_bin" shell am force-stop com.kardinal.vpncontrol >/dev/null 2>&1 || true
-        "$adb_bin" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+        adb shell am force-stop com.kardinal.vpncontrol >/dev/null 2>&1 || true
+        adb shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
         sleep 1
       fi
       run_gradle_capture "$native_scene" &
       gradle_pid=$!
       native_window_ready=false
       for _ in $(seq 1 600); do
-        capture_ready="$($adb_bin shell "test -f '$device_dir/$native_scene.ready' && echo ready || true" 2>/dev/null | tr -d '\r')"
-        current_focus="$($adb_bin shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
+        capture_ready="$(adb shell "test -f '$device_dir/$native_scene.ready' && echo ready || true" 2>/dev/null | tr -d '\r')"
+        current_focus="$(adb shell dumpsys window 2>/dev/null | grep 'mCurrentFocus' || true)"
         if [[ "$capture_ready" == "ready" ]] && grep -q "$focus_pattern" <<< "$current_focus"; then
-          "$adb_bin" exec-out screencap -p > "$framebuffer_capture"
+          adb exec-out screencap -p > "$framebuffer_capture"
           if [[ -s "$framebuffer_capture" ]]; then
-            "$adb_bin" shell touch "$device_dir/$native_scene.captured"
+            adb shell touch "$device_dir/$native_scene.captured"
             native_window_ready=true
             break
           fi
@@ -178,7 +194,6 @@ if missing:
 PY
 
 target_sha="${VPN_CONTROL_VISUAL_TARGET_SHA:-$(git rev-parse HEAD)}"
-provider="${VPN_CONTROL_VISUAL_PROVIDER:-local}"
 stamp=(python3 scripts/visual_platform.py stamp --platform android --target-sha "$target_sha" --provider "$provider" --output "$output_dir")
 if [[ -n "$scene_csv" ]]; then
   IFS=',' read -r -a scenes <<< "$scene_csv"
