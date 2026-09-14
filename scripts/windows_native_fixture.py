@@ -65,3 +65,39 @@ def original_recipient_actor_guard(expected_sid: str, expected_session_id: int) 
         "$actualSession=(Get-Process -Id $PID).SessionId\n"
         "Assert-VpnFixtureOriginalRecipientActor -ActualSid $actualSid -ActualSession $actualSession\n"
     )
+
+
+FIXTURE_READ_COMMAND = "Read-VpnFixtureExact"
+
+
+def fixture_stream_reader() -> str:
+    """Exact-byte reader shared by the native SOCKS fixture and its quick check."""
+    return f"function {FIXTURE_READ_COMMAND} " + r"""{
+    param([System.IO.Stream]$Stream, [int]$Count)
+    if ($Count -lt 0) { throw 'negative fixture read length' }
+    $bytes = New-Object byte[] $Count
+    $offset = 0
+    while ($offset -lt $Count) {
+        $read = $Stream.Read($bytes, $offset, $Count - $offset)
+        if ($read -le 0) { throw 'fixture stream ended early' }
+        $offset += $read
+    }
+    return ,$bytes
+}
+"""
+
+
+def fixture_proxy_port_selector() -> str:
+    """Select the public listener, excluding the separate management listener."""
+    return r"""function Get-VpnFixtureProxyPort {
+    param([object]$Configuration)
+    $public = @($Configuration.inbounds | Where-Object {
+        $_.type -eq 'mixed' -and $_.tag -eq 'mixed-in' -and $_.listen -eq '127.0.0.1'
+    })
+    if ($public.Count -ne 1) { throw 'public fixture listener count' }
+    $port = $public[0].listen_port
+    if ($port -isnot [int] -and $port -isnot [long]) { throw 'invalid fixture port type' }
+    if ($port -lt 1 -or $port -gt 65535) { throw 'invalid fixture port range' }
+    return $port
+}
+"""

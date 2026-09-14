@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Use the packaged native Windows installer coordinator and language-independent autostart inspection.
 - Guard Linux GUI lifecycle fixtures against stale windows, reused processes and crashes.
 - Preserve Android custom runtime readiness, acknowledge delayed installer exit, and guard native fixture identity and graceful closure.
+- Add causal Windows native fixture checks for exact stream reads and public proxy listener selection.
 
 ## 2.1.9 - 2026-09-13
 
