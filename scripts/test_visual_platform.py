@@ -736,6 +736,170 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("vpn-control-visual-macos", result["command"])
         self.assertNotIn("--vnc", result["command"])
 
+    def test_resource_denial_happens_before_tart_configuration_or_process_start(self) -> None:
+        probe = {
+            "ready": True,
+            "backend": "tart-macos",
+            "capabilities": ["app", "native", "secure_desktop"],
+            "detail": "",
+        }
+        stopped = mock.Mock(returncode=0, stdout="vpn-control-visual-macos stopped\n", stderr="")
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_run", return_value=stopped) as run,
+            mock.patch.object(visual_platform, "_tart_memory_mib", return_value=8192),
+            mock.patch.object(
+                visual_platform,
+                "_admit_visual_start",
+                side_effect=visual_platform.VisualPlatformError("visual VM start deferred: slot limit"),
+            ),
+            mock.patch.object(visual_platform.subprocess, "Popen") as popen,
+        ):
+            with self.assertRaisesRegex(visual_platform.VisualPlatformError, "slot limit"):
+                visual_platform.start_platform("macos")
+        popen.assert_not_called()
+        self.assertFalse(any(call.args and call.args[0][:2] == ["tart", "set"] for call in run.call_args_list))
+
+    def test_resource_parsers_accept_native_tart_and_libvirt_formats(self) -> None:
+        self.assertEqual(8192, visual_platform._memory_mib("8388608 KiB"))
+        self.assertEqual(4, visual_platform._memory_mib("4096 kB"))
+
+        def tart_run(command, **_kwargs):
+            if command[:3] == ["tart", "list", "--format"]:
+                return mock.Mock(returncode=0, stdout='[{"Name":"fixture","State":"running"}]', stderr="")
+            self.assertEqual(["tart", "get", "fixture", "--format", "json"], command)
+            return mock.Mock(returncode=0, stdout='{"Memory":4096}', stderr="")
+
+        with mock.patch.object(visual_platform, "_run", side_effect=tart_run):
+            self.assertEqual([4096], visual_platform._tart_running_allocations())
+        with mock.patch.object(
+            visual_platform,
+            "_run",
+            return_value=mock.Mock(returncode=0, stdout="Max memory:     8388608 KiB\nUsed memory:    1048576 KiB\n", stderr=""),
+        ):
+            self.assertEqual(8192, visual_platform._libvirt_memory_mib("vpn-control-win11"))
+
+    def test_malformed_resource_policy_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            policy = Path(temporary) / "resource-policy.json"
+            for value, message in (('{"max_local_vms":"unbounded"}', "invalid max_local_vms"), ("[]", "JSON object"), ("null", "JSON object"), ('"bad"', "JSON object")):
+                with self.subTest(value=value):
+                    policy.write_text(value, encoding="utf-8")
+                    with (
+                        mock.patch.object(visual_platform, "RESOURCE_POLICY_PATH", policy),
+                        mock.patch.dict(os.environ, {"VPN_CONTROL_VM_RESOURCE_POLICY": ""}, clear=False),
+                    ):
+                        with self.assertRaisesRegex(visual_platform.VisualPlatformError, message):
+                            visual_platform._resource_policy()
+            missing = Path(temporary) / "missing.json"
+            with mock.patch.dict(os.environ, {"VPN_CONTROL_VM_RESOURCE_POLICY": str(missing)}, clear=False):
+                with self.assertRaisesRegex(visual_platform.VisualPlatformError, "does not exist"):
+                    visual_platform._resource_policy()
+
+    def test_resource_reservation_rejects_same_platform_and_malformed_top_level(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reservations = root / "reservations.json"
+            with (
+                mock.patch.object(visual_platform, "RUNTIME_ROOT", root),
+                mock.patch.object(visual_platform, "RESOURCE_RESERVATIONS_PATH", reservations),
+                mock.patch.object(visual_platform, "RESOURCE_LOCK_PATH", root / "reservation.lock"),
+                mock.patch.object(visual_platform, "_resource_lock", side_effect=contextlib.nullcontext),
+                mock.patch.object(visual_platform.host_platform, "system", return_value="Linux"),
+                mock.patch.object(visual_platform, "_host_memory_snapshot", return_value={
+                    "physical_mib": 32768, "available_mib": 20000, "swap_used_mib": 0, "pressure_critical": False,
+                }),
+            ):
+                visual_platform._admit_visual_start("windows", 4096)
+                with self.assertRaisesRegex(visual_platform.VisualPlatformError, "already has a live or pending"):
+                    visual_platform._admit_visual_start("windows", 4096)
+                for invalid in ("[]", "null", '"bad"'):
+                    reservations.write_text(invalid, encoding="utf-8")
+                    with self.assertRaisesRegex(visual_platform.VisualPlatformError, "malformed VM reservations"):
+                        visual_platform._read_reservations()
+
+    def test_low_available_memory_denies_before_visual_start(self) -> None:
+        probe = {"ready": True, "backend": "tart-macos", "capabilities": ["app"], "detail": ""}
+        stopped = mock.Mock(returncode=0, stdout="vpn-control-visual-macos stopped\n", stderr="")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                mock.patch.object(visual_platform, "RUNTIME_ROOT", root),
+                mock.patch.object(visual_platform, "RESOURCE_POLICY_PATH", root / "policy.json"),
+                mock.patch.object(visual_platform, "RESOURCE_RESERVATIONS_PATH", root / "reservations.json"),
+                mock.patch.object(visual_platform, "RESOURCE_LOCK_PATH", root / "reservation.lock"),
+                mock.patch.object(visual_platform, "_resource_lock", side_effect=contextlib.nullcontext),
+                mock.patch.object(visual_platform, "local_probe", return_value=probe),
+                mock.patch.object(visual_platform, "_run", return_value=stopped) as run,
+                mock.patch.object(visual_platform, "_tart_memory_mib", return_value=8192),
+                mock.patch.object(visual_platform, "_tart_running_allocations", return_value=[]),
+                mock.patch.object(visual_platform.host_platform, "system", return_value="Darwin"),
+                mock.patch.object(visual_platform, "_host_memory_snapshot", return_value={
+                    "physical_mib": 32768, "available_mib": 1024, "swap_used_mib": 0, "pressure_critical": False,
+                }),
+                mock.patch.object(visual_platform.subprocess, "Popen") as popen,
+            ):
+                with self.assertRaisesRegex(visual_platform.VisualPlatformError, "available host memory"):
+                    visual_platform.start_platform("macos")
+            popen.assert_not_called()
+            self.assertFalse(any(call.args and call.args[0][:2] == ["tart", "set"] for call in run.call_args_list))
+
+    def test_unsupported_lock_host_fails_before_reservation_or_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reservations = root / "reservations.json"
+            with (
+                mock.patch.object(visual_platform, "RUNTIME_ROOT", root),
+                mock.patch.object(visual_platform, "RESOURCE_RESERVATIONS_PATH", reservations),
+                mock.patch.object(visual_platform, "RESOURCE_LOCK_PATH", root / "reservation.lock"),
+                mock.patch.object(visual_platform, "fcntl", None),
+                mock.patch.object(visual_platform, "_host_memory_snapshot", return_value={
+                    "physical_mib": 32768, "available_mib": 20000, "swap_used_mib": 0, "pressure_critical": False,
+                }),
+                mock.patch.object(visual_platform.host_platform, "system", return_value="Linux"),
+            ):
+                with self.assertRaisesRegex(visual_platform.VisualPlatformError, "locking is supported only"):
+                    visual_platform._admit_visual_start("windows", 4096)
+            self.assertFalse(reservations.exists())
+
+    def test_macos_snapshot_uses_inactive_availability_estimate_and_exported_pressure_bits(self) -> None:
+        physical = mock.Mock(returncode=0, stdout=str(32 * 1024 * 1024 * 1024) + "\n", stderr="")
+        stats = mock.Mock(returncode=0, stdout=(
+            "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n"
+            "Pages free: 500.\nPages inactive: 999999.\nPages speculative: 500.\nPages throttled: 0.\n"
+        ), stderr="")
+        swap = mock.Mock(returncode=0, stdout="total = 4096.00M  used = 5.00M  free = 4091.00M\n", stderr="")
+        normal = mock.Mock(returncode=0, stdout="1\n", stderr="")
+        with (
+            mock.patch.object(visual_platform.host_platform, "system", return_value="Darwin"),
+            mock.patch.object(visual_platform, "_run", side_effect=(physical, stats, swap, normal)),
+        ):
+            snapshot = visual_platform._host_memory_snapshot()
+        self.assertEqual(15632, snapshot["available_mib"])
+        self.assertEqual(5, snapshot["swap_used_mib"])
+        self.assertFalse(snapshot["pressure_critical"])
+        critical = mock.Mock(returncode=0, stdout="4\n", stderr="")
+        with (
+            mock.patch.object(visual_platform.host_platform, "system", return_value="Darwin"),
+            mock.patch.object(visual_platform, "_run", side_effect=(physical, stats, swap, critical)),
+        ):
+            self.assertTrue(visual_platform._host_memory_snapshot()["pressure_critical"])
+
+    def test_record_failure_after_popen_retains_provisional_reservation(self) -> None:
+        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        process = mock.Mock(pid=1234)
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "_disk_user_pids", return_value=[]),
+            mock.patch.object(visual_platform, "_admit_visual_start", return_value={}),
+            mock.patch.object(visual_platform, "_bind_visual_reservation", side_effect=OSError("record failed")),
+            mock.patch.object(visual_platform, "_release_visual_reservation") as release,
+            mock.patch.object(visual_platform.subprocess, "Popen", return_value=process),
+        ):
+            with self.assertRaisesRegex(OSError, "record failed"):
+                visual_platform.start_platform("windows")
+        release.assert_not_called()
+
     def test_windows_qemu_disk_is_not_ready_without_agent_marker(self) -> None:
         real_is_file = Path.is_file
 

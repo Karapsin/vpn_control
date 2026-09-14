@@ -117,6 +117,17 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   for its proven source and scope. Keep every distinct TEST-001 quick regression and
   the original native scenario. Use existing long waits/event notifications and back
   off unchanged remote observations; never restart work because a poll timed out.
+- Admit VM starts centrally using host physical memory, current pressure/swap,
+  configured memory of running guests, and build/test headroom. A low current VM
+  RSS or a favorable memory-pressure percentage alone does not establish capacity:
+  guests may consume their full configured allocation later. Record reservations
+  before starting guests and recheck pressure before overlapping heavy work. Never
+  stop unrelated VMs or uncertain installers to recover capacity.
+- For the parity task on the 24GiB macOS host, allow at most one local test VM at a
+  time, reserving it for the4GiB macOS fixture; do not overlap local Android
+  emulators with that guest. Use authorized owned Arch-host Windows, Android and
+  Linux guests for additional native work after checking remote capacity. A stopped
+  guest must be inspected on normal restart before replaying any prior operation.
 
 Measure savings from available task usage over comparable accepted changes; do not
 invent percentages or treat a cheaper model as proof of fewer total tokens.

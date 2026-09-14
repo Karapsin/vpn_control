@@ -7,6 +7,54 @@ import tarfile
 from pathlib import Path
 
 
+def vm_admission_reason(*, physical_mib, available_mib, swap_used_mib, pressure_critical,
+                        running_allocations_mib, requested_mib, build_headroom_mib,
+                        minimum_available_mib, max_local_vms):
+    """Return a recoverable VM-capacity denial, or ``None`` when admission is safe.
+
+    This deliberately uses configured guest allocations rather than process RSS.
+    Callers collect platform-specific measurements and keep the reservation lock;
+    the decision itself stays deterministic enough for the regression suite.
+    """
+    values = {
+        "physical memory": physical_mib,
+        "available memory": available_mib,
+        "swap used": swap_used_mib,
+        "requested guest memory": requested_mib,
+        "build headroom": build_headroom_mib,
+        "minimum available memory": minimum_available_mib,
+        "local VM limit": max_local_vms,
+    }
+    if any(type(value) is not int for value in values.values()):
+        return "resource admission needs complete integer host and guest memory measurements"
+    if physical_mib <= 0 or available_mib < 0 or swap_used_mib < 0 or requested_mib <= 0:
+        return "resource admission received invalid host or guest memory measurements"
+    if build_headroom_mib < 0 or minimum_available_mib < 0 or max_local_vms <= 0:
+        return "resource admission received an invalid local resource policy"
+    if type(pressure_critical) is not bool:
+        return "resource admission cannot determine current host memory pressure"
+    if not isinstance(running_allocations_mib, (list, tuple)) or any(
+        type(value) is not int or value <= 0 for value in running_allocations_mib
+    ):
+        return "resource admission needs configured memory for every running guest"
+    if pressure_critical:
+        return "host memory pressure is elevated; stop or finish owned work before starting another guest"
+    if len(running_allocations_mib) >= max_local_vms:
+        return "local VM slot limit is already reserved by a running guest"
+    configured_total = sum(running_allocations_mib) + requested_mib + build_headroom_mib
+    if configured_total > physical_mib:
+        return (
+            "configured guest memory plus build headroom exceeds physical host memory "
+            f"({configured_total}MiB > {physical_mib}MiB)"
+        )
+    if available_mib < requested_mib + minimum_available_mib:
+        return (
+            "current available host memory cannot retain the requested guest and minimum headroom "
+            f"({available_mib}MiB < {requested_mib + minimum_available_mib}MiB)"
+        )
+    return None
+
+
 def require_jdk17(java=None, runner=subprocess.run, environment=None):
     """Validate the JVM Gradle will use, preferring JAVA_HOME over PATH."""
     environment = os.environ if environment is None else environment

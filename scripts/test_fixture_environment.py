@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from fixture_environment import extract_readonly_archive, require_jdk17, validate_qemu_argv
+from fixture_environment import extract_readonly_archive, require_jdk17, validate_qemu_argv, vm_admission_reason
 
 
 def symlink_probe_available(directory):
@@ -52,6 +52,55 @@ class FixtureEnvironmentTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "file:"):
             validate_qemu_argv(["qemu", "-serial", "file=x"])
         validate_qemu_argv(["qemu", "-serial", "file:x"])
+
+    def test_vm_admission_uses_configured_allocations_and_rejects_unknown_inputs(self):
+        # RED before the admission helper: a low RSS/current pressure reading
+        # would permit a second guest even though the 4GiB fixture owns the only
+        # local slot.  Configured allocation, not 175MiB process RSS, is causal.
+        self.assertIn("slot limit", vm_admission_reason(
+            physical_mib=24 * 1024,
+            available_mib=22 * 1024,
+            swap_used_mib=0,
+            pressure_critical=False,
+            running_allocations_mib=[4096],
+            requested_mib=8192,
+            build_headroom_mib=9216,
+            minimum_available_mib=2048,
+            max_local_vms=1,
+        ))
+        self.assertIn("exceeds physical", vm_admission_reason(
+            physical_mib=24 * 1024,
+            available_mib=20 * 1024,
+            swap_used_mib=0,
+            pressure_critical=False,
+            running_allocations_mib=[4096],
+            requested_mib=12288,
+            build_headroom_mib=9216,
+            minimum_available_mib=2048,
+            max_local_vms=3,
+        ))
+        self.assertIn("complete", vm_admission_reason(
+            physical_mib=None,
+            available_mib=20 * 1024,
+            swap_used_mib=0,
+            pressure_critical=False,
+            running_allocations_mib=[],
+            requested_mib=6144,
+            build_headroom_mib=8192,
+            minimum_available_mib=2048,
+            max_local_vms=3,
+        ))
+        self.assertIsNone(vm_admission_reason(
+            physical_mib=24 * 1024,
+            available_mib=20 * 1024,
+            swap_used_mib=256,
+            pressure_critical=False,
+            running_allocations_mib=[],
+            requested_mib=6144,
+            build_headroom_mib=8192,
+            minimum_available_mib=2048,
+            max_local_vms=1,
+        ))
 
     def test_old_extractall_signature_is_red_but_safe_extraction_remains_available(self):
         with tempfile.TemporaryDirectory() as temporary:

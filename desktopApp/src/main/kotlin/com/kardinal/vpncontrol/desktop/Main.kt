@@ -184,15 +184,16 @@ fun main(rawArgs: Array<String>) {
     visibility.ownerId = connection.session.snapshots.value.controllerId
     visibility.available = { connection.failure.value == null }
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
-    try {
-        runDesktopFrontendApplication {
+    runDesktopFrontendProcess(
+        content = {
             DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, quitExit, ::exitApplication)
-        }
-    } finally {
-        kotlinx.coroutines.runBlocking { connection.closeAndDetach() }
-        frontendRegistration.close()
-        frontendScope.coroutineContext[Job]?.cancel()
-    }
+        },
+        teardown = {
+            kotlinx.coroutines.runBlocking { connection.closeAndDetach() }
+            frontendRegistration.close()
+            frontendScope.coroutineContext[Job]?.cancel()
+        },
+    )
 }
 
 @Composable

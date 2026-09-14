@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Preserve uncertain installer handoffs and reject invalid Android visual geometry and Windows CRLF device identifiers.
 - Guard Android visual captures against ANR overlays and normalize Windows scene arguments; record installer state baselines.
+- Exit desktop frontends after teardown and check memory reservations before managed visual VM starts.
 
 ## 2.1.11 - 2026-09-14
 

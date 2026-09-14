@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import locale
@@ -18,11 +19,26 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fixture_environment import vm_admission_reason
+
+try:
+    import fcntl
+except ImportError:  # Windows uses the equivalent byte-range lock below.
+    fcntl = None
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "visual-tests" / "scenes.json"
 ENVIRONMENTS_PATH = ROOT / "visual-tests" / "environments.json"
 RUNTIME_ROOT = ROOT / ".runtime" / "visual-vms"
+RESOURCE_POLICY_PATH = RUNTIME_ROOT / "resource-policy.json"
+RESOURCE_RESERVATIONS_PATH = RUNTIME_ROOT / "resource-reservations.json"
+RESOURCE_LOCK_PATH = RUNTIME_ROOT / "resource-reservations.lock"
+DEFAULT_RESOURCE_POLICY = {
+    "max_local_vms": 1,
+    "build_headroom_mib": 8192,
+    "minimum_available_mib": 2048,
+}
 PLATFORMS = ("android", "linux", "windows", "macos")
 ANDROID_TASK_AVD_NAME_ENV = "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME"
 ANDROID_TASK_AVD_PORT_ENV = "VPN_CONTROL_VISUAL_ANDROID_PORT"
@@ -139,6 +155,256 @@ def _read_state(platform: str) -> dict[str, Any]:
         return {}
     value = _read_json(path)
     return value if value.get("platform") == platform else {}
+
+
+def _resource_policy() -> tuple[dict[str, int], str]:
+    configured = os.environ.get("VPN_CONTROL_VM_RESOURCE_POLICY", "").strip()
+    path = Path(configured).expanduser() if configured else RESOURCE_POLICY_PATH
+    if not path.exists():
+        if configured:
+            raise VisualPlatformError("configured local VM resource policy does not exist")
+        return dict(DEFAULT_RESOURCE_POLICY), "built-in conservative policy"
+    if not path.is_file() or path.is_symlink():
+        raise VisualPlatformError("local VM resource policy must be a regular JSON file")
+    try:
+        raw = _read_json(path)
+    except VisualPlatformError as error:
+        raise VisualPlatformError("local VM resource policy must be a JSON object") from error
+    except (OSError, json.JSONDecodeError) as error:
+        raise VisualPlatformError("could not read local VM resource policy") from error
+    if not isinstance(raw, dict):
+        raise VisualPlatformError("local VM resource policy must be a JSON object")
+    policy = dict(DEFAULT_RESOURCE_POLICY)
+    for key in DEFAULT_RESOURCE_POLICY:
+        if key in raw:
+            policy[key] = raw[key]
+        if type(policy[key]) is not int or policy[key] < (1 if key == "max_local_vms" else 0):
+            raise VisualPlatformError(f"local VM resource policy has invalid {key}")
+    return policy, str(path)
+
+
+def _memory_mib(value: str) -> int | None:
+    match = __import__("re").fullmatch(r"\s*(\d+)\s*(?:Mi?B|Ki?B|kB)?\s*", value)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    suffix = value.strip().lower()
+    return amount // 1024 if suffix.endswith(("kb", "kib")) else amount
+
+
+def _host_memory_snapshot() -> dict[str, int | bool]:
+    system = host_platform.system()
+    if system == "Linux":
+        try:
+            values = {}
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+                key, raw = line.split(":", 1)
+                values[key] = _memory_mib(raw)
+            physical = values["MemTotal"]
+            available = values["MemAvailable"]
+            swap_total = values["SwapTotal"]
+            swap_free = values["SwapFree"]
+            if None in (physical, available, swap_total, swap_free):
+                raise ValueError("unparseable meminfo")
+            return {"physical_mib": physical, "available_mib": available,
+                    "swap_used_mib": swap_total - swap_free, "pressure_critical": False}
+        except (OSError, KeyError, ValueError):
+            raise VisualPlatformError("resource admission cannot read Linux host memory measurements")
+    if system == "Darwin":
+        physical_result = _run(["sysctl", "-n", "hw.memsize"], timeout=30)
+        stats_result = _run(["vm_stat"], timeout=30)
+        swap_result = _run(["sysctl", "-n", "vm.swapusage"], timeout=30)
+        pressure_result = _run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"], timeout=30)
+        if physical_result.returncode or stats_result.returncode or swap_result.returncode or pressure_result.returncode:
+            raise VisualPlatformError("resource admission cannot read macOS host memory measurements")
+        page_size_match = __import__("re").search(r"page size of (\d+)", stats_result.stdout)
+        pages = {
+            match.group(1).lower(): int(match.group(2))
+            for match in __import__("re").finditer(r"Pages ([^:]+):\s+(\d+)", stats_result.stdout)
+        }
+        swap_match = __import__("re").search(r"used = ([0-9.]+)([MG])", swap_result.stdout)
+        try:
+            pressure_level = int(pressure_result.stdout.strip())
+        except ValueError:
+            pressure_level = -1
+        # The exported sysctl is a userspace notification bit, not XNU's
+        # internal 0..3 enum: NORMAL=1, WARN=2, CRITICAL=4.
+        if not page_size_match or not swap_match or pressure_level not in {1, 2, 4}:
+            raise VisualPlatformError("resource admission cannot parse macOS host memory measurements")
+        page_size = int(page_size_match.group(1))
+        # This is an availability *estimate*, not a guarantee: established
+        # macOS accounting treats inactive pages as reclaimable cache. Avoid
+        # adding speculative too, because it overlaps that accounting. The
+        # kernel pressure level remains a separate safety gate.
+        available_pages = pages.get("free", 0) + pages.get("inactive", 0)
+        if not available_pages:
+            raise VisualPlatformError("resource admission cannot determine macOS available memory")
+        swap_value = float(swap_match.group(1))
+        swap_mib = int(swap_value * (1024 if swap_match.group(2) == "G" else 1))
+        return {
+            "physical_mib": int(physical_result.stdout.strip()) // (1024 * 1024),
+            "available_mib": available_pages * page_size // (1024 * 1024),
+            "swap_used_mib": swap_mib,
+            "pressure_critical": pressure_level == 4 or pages.get("throttled", 0) > 0,
+        }
+    raise VisualPlatformError("resource admission supports only macOS and Linux hosts")
+
+
+def _tart_running_allocations() -> list[int]:
+    listing = _run(["tart", "list", "--format", "json"], timeout=30)
+    if listing.returncode:
+        raise VisualPlatformError("resource admission cannot inspect Tart guests")
+    try:
+        guests = json.loads(listing.stdout)
+    except json.JSONDecodeError as error:
+        raise VisualPlatformError("resource admission cannot parse Tart guest list") from error
+    allocations = []
+    for guest in guests:
+        if not isinstance(guest, dict) or str(guest.get("State", "")).lower() != "running":
+            continue
+        name = str(guest.get("Name", ""))
+        detail = _run(["tart", "get", name, "--format", "json"], timeout=30)
+        try:
+            memory = json.loads(detail.stdout).get("Memory") if detail.returncode == 0 else None
+        except json.JSONDecodeError:
+            memory = None
+        if type(memory) is not int or memory <= 0:
+            raise VisualPlatformError("resource admission needs configured memory for every running Tart guest")
+        allocations.append(memory)
+    return allocations
+
+
+def _tart_memory_mib(vm_name: str) -> int:
+    detail = _run(["tart", "get", vm_name, "--format", "json"], timeout=30)
+    try:
+        memory = json.loads(detail.stdout).get("Memory") if detail.returncode == 0 else None
+    except json.JSONDecodeError:
+        memory = None
+    if type(memory) is not int or memory <= 0:
+        raise VisualPlatformError("resource admission needs configured memory for the Tart guest")
+    return memory
+
+
+def _libvirt_memory_mib(vm_name: str) -> int:
+    detail = _run(["virsh", "dominfo", vm_name], timeout=30)
+    if detail.returncode:
+        raise VisualPlatformError("resource admission cannot inspect configured libvirt memory")
+    for line in detail.stdout.splitlines():
+        if line.strip().lower().startswith("max memory:"):
+            memory = _memory_mib(line.split(":", 1)[1])
+            if memory and memory > 0:
+                return memory
+    raise VisualPlatformError("resource admission needs configured libvirt memory")
+
+
+def _qemu_windows_memory_mib() -> int:
+    return 3072 if host_platform.machine().lower() in {"arm64", "aarch64"} else 8192
+
+
+def _android_memory_mib(avd_name: str) -> int:
+    avd_root = Path(os.environ.get("ANDROID_AVD_HOME", Path.home() / ".android" / "avd"))
+    config = avd_root / f"{avd_name}.avd" / "config.ini"
+    try:
+        values = dict(
+            line.split("=", 1) for line in config.read_text(encoding="utf-8").splitlines() if "=" in line
+        )
+        memory = int(values["hw.ramSize"])
+    except (OSError, KeyError, ValueError):
+        raise VisualPlatformError("resource admission needs the owned Android AVD hw.ramSize")
+    if memory <= 0:
+        raise VisualPlatformError("resource admission needs a positive Android AVD hw.ramSize")
+    return memory
+
+
+@contextlib.contextmanager
+def _resource_lock():
+    RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    with RESOURCE_LOCK_PATH.open("a+", encoding="utf-8") as lock:
+        if fcntl is None:
+            raise VisualPlatformError("resource admission locking is supported only on macOS and Linux hosts")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _read_reservations() -> dict[str, dict[str, int]]:
+    if not RESOURCE_RESERVATIONS_PATH.exists():
+        return {}
+    try:
+        raw = _read_json(RESOURCE_RESERVATIONS_PATH)
+        if not isinstance(raw, dict):
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        reservations = raw.get("reservations", {})
+    except FileNotFoundError:
+        return {}
+    except VisualPlatformError as error:
+        raise VisualPlatformError("resource admission found malformed VM reservations") from error
+    except (OSError, json.JSONDecodeError):
+        raise VisualPlatformError("resource admission cannot read prior VM reservations")
+    if not isinstance(reservations, dict):
+        raise VisualPlatformError("resource admission found malformed VM reservations")
+    result = {}
+    for platform, value in reservations.items():
+        if not isinstance(platform, str) or not isinstance(value, dict):
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        memory, pid = value.get("memory_mib"), value.get("pid", 0)
+        if type(memory) is not int or memory <= 0 or type(pid) is not int or pid < 0:
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        result[platform] = {"memory_mib": memory, "pid": pid}
+    return result
+
+
+def _write_reservations(reservations: dict[str, dict[str, int]]) -> None:
+    RESOURCE_RESERVATIONS_PATH.write_text(
+        json.dumps({"schema_version": 1, "reservations": reservations}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _admit_visual_start(platform: str, requested_mib: int) -> dict[str, Any]:
+    policy, policy_source = _resource_policy()
+    with _resource_lock():
+        reservations = _read_reservations()
+        reservations = {name: item for name, item in reservations.items() if not item["pid"] or _pid_running(item["pid"])}
+        if platform in reservations:
+            raise VisualPlatformError("visual VM start deferred: this platform already has a live or pending reservation")
+        allocations = [
+            item["memory_mib"] for name, item in reservations.items()
+            if name not in {"linux", "macos"} or not item["pid"]
+        ]
+        if host_platform.system() == "Darwin":
+            allocations.extend(_tart_running_allocations())
+        snapshot = _host_memory_snapshot()
+        reason = vm_admission_reason(
+            **snapshot,
+            running_allocations_mib=allocations,
+            requested_mib=requested_mib,
+            **policy,
+        )
+        if reason:
+            raise VisualPlatformError("visual VM start deferred: " + reason)
+        reservations[platform] = {"memory_mib": requested_mib, "pid": 0}
+        _write_reservations(reservations)
+    return {"policy_source": policy_source, "policy": policy, "memory_mib": requested_mib}
+
+
+def _bind_visual_reservation(platform: str, pid: int) -> None:
+    with _resource_lock():
+        reservations = _read_reservations()
+        if platform not in reservations:
+            raise VisualPlatformError("resource admission reservation disappeared before VM launch")
+        reservations[platform]["pid"] = pid
+        _write_reservations(reservations)
+
+
+def _release_visual_reservation(platform: str) -> None:
+    with _resource_lock():
+        reservations = _read_reservations()
+        if platform in reservations:
+            del reservations[platform]
+            _write_reservations(reservations)
 
 
 def _which_any(*names: str) -> str | None:
@@ -467,6 +733,8 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     identifier = backend
     process_id = 0
     process: subprocess.Popen[bytes] | None = None
+    requested_mib = 0
+    tart_display = ""
     if backend == "android-emulator":
         adb = _android_tool("adb") or "adb"
         avd_name = str(config["avd_name"])
@@ -488,15 +756,7 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         running = _run(["tart", "list"], timeout=30)
         if vm_name not in "\n".join(line for line in running.stdout.splitlines() if "running" in line.lower()):
             display = str(config.get("display", "")).strip()
-            if display and not dry_run:
-                configured = _run(
-                    ["tart", "set", vm_name, "--display", display, "--no-display-refit"],
-                    timeout=30,
-                )
-                if configured.returncode != 0:
-                    raise VisualPlatformError(
-                        configured.stderr.strip() or f"could not configure {vm_name} at {display}"
-                    )
+            tart_display = display
             command = [
                 "tart", "run", "--no-graphics", "--dir", f"vpn-control:{ROOT}", vm_name,
             ]
@@ -534,23 +794,50 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             "started_by_agent": started_by_agent,
             "command": shlex.join(command) if command else "",
         }
+    admission: dict[str, Any] | None = None
     if command:
+        if backend == "android-emulator":
+            requested_mib = _android_memory_mib(str(config["avd_name"]))
+        elif backend.startswith("tart-"):
+            requested_mib = _tart_memory_mib(identifier)
+        elif backend == "libvirt-windows":
+            requested_mib = _libvirt_memory_mib(identifier)
+        elif backend == "qemu-windows":
+            requested_mib = _qemu_windows_memory_mib()
+        admission = _admit_visual_start(platform, requested_mib)
+        if tart_display:
+            configured = _run(
+                ["tart", "set", identifier, "--display", tart_display, "--no-display-refit"], timeout=30,
+            )
+            if configured.returncode != 0:
+                _release_visual_reservation(platform)
+                raise VisualPlatformError(configured.stderr.strip() or f"could not configure {identifier} at {tart_display}")
         if backend in {"android-emulator", "qemu-windows"} or backend.startswith("tart-"):
             log_dir = RUNTIME_ROOT / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log = (log_dir / f"{platform}.log").open("ab")
-            process = subprocess.Popen(
-                command,
-                cwd=ROOT,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-            process_id = process.pid
-            log.close()
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=ROOT,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+                process_id = process.pid
+            except Exception:
+                _release_visual_reservation(platform)
+                raise
+            finally:
+                log.close()
+            # Popen already created a guest.  If updating the record fails, keep
+            # its provisional reservation rather than admit another guest into an
+            # uncertain live start.
+            _bind_visual_reservation(platform, process_id)
         else:
             completed = _run(command, timeout=120)
             if completed.returncode != 0:
+                _release_visual_reservation(platform)
                 raise VisualPlatformError(completed.stderr.strip() or f"could not start {backend}")
     if backend == "qemu-windows":
         qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
@@ -563,6 +850,7 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             if process is not None and process.poll() is None:
                 process.terminate()
                 process.wait(timeout=15)
+            _release_visual_reservation(platform)
             raise VisualPlatformError("managed Windows VM did not expose a ready QMP socket within 60 seconds")
     if backend == "android-emulator":
         adb = _android_tool("adb") or "adb"
@@ -577,6 +865,7 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         if not booted:
             if started_by_agent:
                 _run([adb, "-s", identifier, "emu", "kill"], timeout=30)
+                _release_visual_reservation(platform)
             raise VisualPlatformError(f"Android visual emulator did not boot: {identifier}")
         for setting in (
             ("global", "window_animation_scale", "0"),
@@ -597,6 +886,9 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         "started_at_epoch": int(time.time()),
     }
     _write_state(platform, state)
+    if admission is not None:
+        state["resource_admission"] = admission
+        _write_state(platform, state)
     return state
 
 
@@ -642,6 +934,7 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         if completed.returncode != 0:
             raise VisualPlatformError(completed.stderr.strip() or f"could not stop {backend}")
     _state_path(platform).unlink(missing_ok=True)
+    _release_visual_reservation(platform)
     return {"platform": platform, "stopped": True, "backend": backend}
 
 

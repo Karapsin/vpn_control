@@ -28,6 +28,22 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 ## Delivery And Current Integration
 
 Last fully verified checkpoint is `3d70d75853dbd2ddb49731999547063d255f3633`: full prepush and all five exact-SHA workflows passed.
+Next checkpoint `651847730584aade13feca8bc2dd16aed1ec97db` is pushed: full local
+prepush and four required workflows passed; macOS failed a frontend-exit test. It contains the ANR
+guard, scene-argument CRLF regression and six reviewed Android installer baselines.
+Evidence: checkpoint53/visual-{prepush,commit}-result.json and ci-macos-65184773-failed.log.
+The failure is reproduced locally with software rendering: cleanup and the runner
+returned, but AWT threads kept the frontend JVM alive. The current dirty product
+boundary explicitly exits only after teardown; three focused tests pass with no
+skips. See compose-exit-diagnostic-software-red.xml and compose-exit-process-green.xml.
+
+Current dirty work also adds managed visual VM admission with configured guest
+memory, live Tart discovery, a one-guest default, capacity estimates and serialized
+reservations.86 focused tests pass; direct shell/remote launcher enforcement remains
+outside this slice. Host RAM exhaustion was reported by the user, who authorized
+using Arch for additional Windows/Android/Linux VMs. Gateway public-key access now
+requires the appropriate key; the question is pending. Keep at most one local4GiB
+macOS fixture and no local Android emulator alongside it.
 The pushed `ff8de90ef22fd7015ceff9620389aae56c545900` (version2.1.11) passed
 full local prepush but Windows CI failed in the executable visual guard test.
 Its richer diagnostics exposed a retained CR in the emulator serial emitted by
@@ -216,8 +232,15 @@ remain required; the earlier package cannot certify the new source.
 Local ARM64 guest / AMD64-emulation component evidence remains separate: scoped
 broker/TUN and UAC denial preserved traffic; original-user bootstrap fixture ran
 three tests with no skips/failures. Current-package/nativeAMD64 broker and full
-MSI adapter scenarios remain required. Old HIGHEST autostart migration is dormant;
-two reads plus unconditional task replacement cannot prove ownership-safe mutation.
+MSI adapter scenarios remain required. The production factory already enables the
+scoped broker on eligible Windows processes; preflight is read-only and UAC occurs
+at explicit VPN preparation. Old HIGHEST autostart migration is active: it checks
+owned XML under a local lock, rechecks, then lowers run level with schtasks /Change
+and validates the result. It does not delete/recreate the task. Native DACL,
+foreign-task rejection and reboot evidence remain open. Task Scheduler offers no
+atomic compare-and-swap against a concurrently replaced same-name task; repeated
+reads do not prove such a guarantee. Preserve this limitation without inventing a
+new privileged service or disabling requested migration as an interim substitute.
 
 ### macOS
 
