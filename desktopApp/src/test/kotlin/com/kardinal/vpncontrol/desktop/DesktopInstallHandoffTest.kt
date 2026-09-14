@@ -16,6 +16,69 @@ class DesktopInstallHandoffTest {
         handoff.close()
     }
 
+    @Test fun acknowledgedCommitExitFailureRetainsExactWorkerWithoutCancellation() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> { events += "commit-ack"; return Result.success(Unit) }
+            override fun cancel(): Result<Unit> { events += "cancel"; return Result.success(Unit) }
+            override fun close() { events += "close" }
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = { events += "authorize"; Result.success(prepared) },
+            stopRuntime = { events += "stop"; Result.success(Unit) },
+            requestExit = { events += "exit:$it"; throw IllegalStateException("RUNTIME_FAILED") },
+        )
+
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId), handoff.prepare("request"))
+        assertEquals(listOf("authorize", "stop", "commit-ack", "exit:request"), events)
+        handoff.close()
+        assertEquals(listOf("authorize", "stop", "commit-ack", "exit:request", "close"), events)
+    }
+
+    @Test fun acknowledgedCommitExitCancellationRetainsExactWorkerWithoutCancellation() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> { events += "commit-ack"; return Result.success(Unit) }
+            override fun cancel(): Result<Unit> { events += "cancel"; return Result.success(Unit) }
+            override fun close() { events += "close" }
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = { events += "authorize"; Result.success(prepared) },
+            stopRuntime = { events += "stop"; Result.success(Unit) },
+            requestExit = { events += "exit:$it"; throw kotlinx.coroutines.CancellationException() },
+        )
+
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId), handoff.prepare("request"))
+        assertEquals(listOf("authorize", "stop", "commit-ack", "exit:request"), events)
+        handoff.close()
+        assertEquals(listOf("authorize", "stop", "commit-ack", "exit:request", "close"), events)
+    }
+
+    @Test fun uncertainCommitFailureRetainsExactWorkerWithoutCancellation() = runBlocking {
+        val events = mutableListOf<String>()
+        val prepared = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000001"
+            override suspend fun commit(): Result<Unit> {
+                events += "commit-attempt"
+                return Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
+            }
+            override fun cancel(): Result<Unit> { events += "cancel"; return Result.success(Unit) }
+            override fun close() { events += "close" }
+        }
+        val handoff = DesktopInstallHandoff(
+            prepare = { events += "authorize"; Result.success(prepared) },
+            stopRuntime = { events += "stop"; Result.success(Unit) },
+            requestExit = { fail("Uncertain commit must not request exit") },
+        )
+
+        assertEquals(DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, prepared.jobId), handoff.prepare("request"))
+        assertEquals(listOf("authorize", "stop", "commit-attempt"), events)
+        handoff.close()
+        assertEquals(listOf("authorize", "stop", "commit-attempt", "close"), events)
+    }
+
     @Test fun interruptedCommitDoesNotClaimCancellationWithoutWorkerAcknowledgment() = runBlocking {
         var confirmed = false
         var closed = 0

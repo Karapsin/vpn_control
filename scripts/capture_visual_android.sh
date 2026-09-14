@@ -12,7 +12,7 @@ import json
 import sys
 result = json.load(sys.stdin)["result"]
 print(result["avd_name"], result["emulator_port"])
-' <<< "$android_config")
+' <<< "$android_config" | tr -d '\r')
 if [[ "$provider" == "hosted" ]]; then
   emulator_serial="${ANDROID_SERIAL:?Android hosted visual capture requires ANDROID_SERIAL}"
 else
@@ -38,6 +38,8 @@ if [[ "$provider" != "hosted" ]]; then
     exit 1
   }
 fi
+# Reject stale first-boot SystemUI geometry before changing any device or capture state.
+adb shell dumpsys window displays | python3 "$repo_root/scripts/android_visual_geometry.py"
 cd "$repo_root"
 mkdir -p "$output_dir"
 restore_system_ui() {

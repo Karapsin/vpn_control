@@ -38,6 +38,8 @@ internal class DesktopInstallHandoff(
     private val admission = Mutex()
     private var worker: DesktopPreparedInstall? = null
     private var committed = false
+    /** A commit call may have published a worker-visible request even if its acknowledgement is lost. */
+    private var externalCommitAttempted = false
     private var closed = false
     private var uncertainCancellation = false
     private var lateAuthorizationRetained = false
@@ -64,6 +66,7 @@ internal class DesktopInstallHandoff(
             require(DesktopInstallJobNames.validJob(jobId))
             validatedJobId = jobId
             stopRuntime().getOrThrow()
+            externalCommitAttempted = true
             prepared.commit().getOrThrow()
             requestExit(requestId)
             committed = true
@@ -72,6 +75,12 @@ internal class DesktopInstallHandoff(
             // Coroutine interruption is not proof that the external worker stopped.
             // Keep the exact job recoverable instead of allowing a caller to infer
             // a terminal CANCELLED outcome from this exception.
+            if (externalCommitAttempted) {
+                // The worker may have observed commit before this caller was interrupted.
+                // Retain its correlation for protected receipt recovery, never cancel it here.
+                uncertainCancellation = true
+                return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId)
+            }
             if (!abandon()) return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId)
             throw cancelled
         } catch (failure: Exception) {
@@ -84,6 +93,12 @@ internal class DesktopInstallHandoff(
                 // worker for its owner-scoped recovery path; never turn that timeout into a
                 // cancellation request that can race a still-live native authorization.
                 lateAuthorizationRetained = true
+                return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId)
+            }
+            if (externalCommitAttempted) {
+                // Commit publication and its protected acknowledgement are one external boundary.
+                // A failure after attempting it is not evidence of cancellation or installation.
+                uncertainCancellation = true
                 return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId)
             }
             val cancelled = abandon()
@@ -100,21 +115,20 @@ internal class DesktopInstallHandoff(
     suspend fun resumeLateAuthorization(requestId: String, jobId: String): DesktopInstallHandoffResult {
         require(requestId.isNotBlank() && requestId.length <= 256)
         if (!admission.tryLock()) return DesktopInstallHandoffResult(ControlCode.BUSY, validatedJobId)
-        var commitAttempted = false
         try {
             if (closed || committed || uncertainCancellation || !lateAuthorizationRetained ||
                 lateAuthorizationResumed || validatedJobId != jobId || worker == null)
                 return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId)
             lateAuthorizationResumed = true
             stopRuntime().getOrThrow()
-            commitAttempted = true
+            externalCommitAttempted = true
             requireNotNull(worker).commit().getOrThrow()
             requestExit(requestId)
             committed = true
             lateAuthorizationRetained = false
             return DesktopInstallHandoffResult(ControlCode.OK, jobId)
         } catch (failure: Exception) {
-            if (!commitAttempted) {
+            if (!externalCommitAttempted) {
                 // Runtime shutdown failed before the worker could observe a commit. This is
                 // still an owned cancellation boundary, unlike an interrupted commit.
                 lateAuthorizationPrecommitFailure = code(failure)
@@ -130,7 +144,7 @@ internal class DesktopInstallHandoff(
             // retained job blocked and never make a second commit/cancellation claim.
             uncertainCancellation = true
             return DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, validatedJobId,
-                cancellationRetryAllowed = !commitAttempted,
+                cancellationRetryAllowed = !externalCommitAttempted,
                 primaryFailureCode = lateAuthorizationPrecommitFailure)
         } finally { admission.unlock() }
     }
@@ -161,6 +175,7 @@ internal class DesktopInstallHandoff(
     private fun releaseWorker() {
         val current = worker ?: return
         worker = null
+        externalCommitAttempted = false
         runCatching { current.close() }
     }
 
@@ -170,6 +185,7 @@ internal class DesktopInstallHandoff(
         require(receipt.phase.terminal && receipt.jobId == validatedJobId)
         releaseWorker()
         committed = false
+        externalCommitAttempted = false
         uncertainCancellation = false
         lateAuthorizationRetained = false
         lateAuthorizationResumed = false
@@ -181,7 +197,7 @@ internal class DesktopInstallHandoff(
         check(!admission.isLocked) { "Installer mutation lane must stop before close" }
         if (closed) return
         closed = true
-        if (!committed && !uncertainCancellation) abandon()
+        if (!committed && !uncertainCancellation && !externalCommitAttempted) abandon()
         // Closing is not a cancellation acknowledgement. Preserve unknown state and identity.
         releaseWorker()
     }

@@ -27,31 +27,34 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Delivery And Current Integration
 
-Last fully verified checkpoint is `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e`:
-full prepush and all five required exact-SHA workflows passed. The next pushed
-checkpoint `98c995155033752ce69efe00998322d73fcb150e` passed full local prepush,
-but Windows CI failed in executable visual-wrapper tests before packaging.
-`checkpoint51/ci98-windows-failed.log` records the exact failure. Do not call that
-checkpoint delivered successfully until the correction's exact-SHA CI passes.
+Last fully verified checkpoint is `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e`.
+The pushed `ff8de90ef22fd7015ceff9620389aae56c545900` (version2.1.11) passed
+full local prepush but Windows CI failed in the executable visual guard test.
+Its richer diagnostics expose a retained CR in the emulator serial emitted by
+native Windows Python. A portable CRLF-emitting regression now reproduces this
+locally; normalization passes all67 visual tests. Other exact-SHA workflows still
+require terminal verification. No checkpoint is fully delivered until all five pass.
 
-Committed at98c9951: selective Windows autostart run-level migration with cooperating
-app serialization (28 tests pass,1 skip; native proof pending), isolated task AVD
-selection and66 visual tests. Current corrections:
+Committed atff8de90: Fedora package selection follows exact distribution ID then
+ordered ID_LIKE, avoiding build-tool dpkg selecting DEB on Fedora. All11 focused
+selection tests pass. Current-source packaged RPM/DEB/Arch recovery remains open.
 
-- Fedora public check chose DEB because build tools supplied dpkg. The protected
-  request proves DEB; absent apt-get caused preparation failure. A causal public
-  selection test failed expectedRPM/actualDEB, then all11 focused tests passed after
-  exact ID/ordered ID_LIKE priority was implemented. Evidence:
-  checkpoint51/fedora-package-selection-{native.json,red2.log,green2.log}.
-- Windows executable visual tests now select Git Bash explicitly, use relative
-  wrapper paths, force LF fake executables and retain launch diagnostics; all66 pass locally, while native Windows CI remains required.
-- Optional test-only dual screenshot capture diagnosed actual API35 status-bar
-  clipping. Both UiDevice and same-scene framebuffer captures cut clock pixels
-  after y62; six installer-dialog baselines remain unapproved. Evidence:
-  checkpoint51/android-statusbar-diagnostic and android-installer-capture.log.
-- Current API35 SSH on/staged setting/restart succeeded with distinct runtime IDs
-  and two recorded SSH authentications; payload relay proof remains pending.
-  Raw receipts: checkpoint51/android-ssh-private/run/retry6-receipt.md.
+Current integration:
+
+- Direct visual preflight rejects stale primary-display statusbar geometry before
+  device/output mutation. Normal reboot of owned5600 restored Pixel6/API35 geometry
+  from cutout128/statusbar63 to128/128; screenshots still require fresh review.
+- Shared installer handoff repair retains exact uncertain external jobs rather than
+  implicitly cancelling after commit attempt. Explicit public cancellation remains
+  supported. Three causal regression failures recorded before repair. This does
+  not establish the exact cause of the earlier macOS native async cancellation.
+- API35 SSH authentication/restart succeeds. Held-live relay fixture resolved the
+  earlier listener-lifetime failure, but payload7 still has no relay traffic proof.
+  Public cleanup restored stopped/default/empty state at revision39.
+
+Evidence resides in checkpoint51: fedora-visual-{prepush,commit}-result.json,
+ci-ff8-windows-failed.log, visual-python-crlf-{red,green}.log,
+install-commit-boundary-{red,green2}.log and android-ssh-private/run/payload7-receipt.md.
 
 One host Gradle operation at a time. Metadata/prepush must follow the last content
 edit; no receipt from a prior content state is reusable. No release is authorized.

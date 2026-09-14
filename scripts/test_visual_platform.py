@@ -455,6 +455,64 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('if [[ "$provider" == "hosted" ]]; then', script)
 
     def test_android_capture_rejects_a_foreign_avd_before_any_device_mutation(self) -> None:
+        self._assert_foreign_avd_guard()
+
+    def test_android_capture_rejects_stale_owned_geometry_before_any_mutation_or_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            log = temporary_path / "adb.log"
+            fake_adb = temporary_path / "adb"
+            fake_adb.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n"
+                "if [ \"$3 $4 $5\" = 'emu avd name' ]; then\n"
+                "  printf 'vpn-control-visual-task-cancelled\\nOK\\n'\n"
+                "elif [ \"$3 $4 $5 $6\" = 'shell dumpsys window displays' ]; then\n"
+                "  cat <<'DUMP'\n"
+                "displayId=0\n"
+                "  mDisplayFrame=Rect(0, 0 - 1080, 2400)\n"
+                "  mDisplayCutout=DisplayCutout{insets=Rect(0, 128 - 0, 0)}\n"
+                "    InsetsSource id=1 type=statusBars frame=[0,0][1080,63] visible=true flags= sideHint=TOP\n"
+                "DUMP\n"
+                "fi\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            fake_adb.chmod(0o755)
+            self.assertNotIn(b"\r\n", fake_adb.read_bytes())
+            output = temporary_path / "output"
+            environment = dict(os.environ)
+            environment.update({
+                "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
+                "ADB_LOG": str(log),
+                "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
+                "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+            })
+            completed = subprocess.run(
+                [_posix_bash(), "scripts/capture_visual_android.sh", str(output), "update-install-session-cancelled"],
+                cwd=visual_platform.ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode, _shell_failure(completed))
+            self.assertIn("shorter than its cutout", completed.stderr, _shell_failure(completed))
+            self.assertEqual(
+                [
+                    "-s emulator-5600 emu avd name",
+                    "-s emulator-5600 shell dumpsys window displays",
+                ],
+                log.read_text(encoding="utf-8").splitlines(),
+                _shell_failure(completed),
+            )
+            self.assertFalse(output.exists())
+
+    def test_android_capture_handles_native_python_crlf_before_any_device_mutation(self) -> None:
+        self._assert_foreign_avd_guard(python_crlf=True)
+
+    def _assert_foreign_avd_guard(self, *, python_crlf: bool = False) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
             log = temporary_path / "adb.log"
@@ -477,6 +535,16 @@ class VisualPlatformTest(unittest.TestCase):
                 "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
                 "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
             })
+            if python_crlf:
+                fake_python = temporary_path / "python3"
+                fake_python.write_text(
+                    '#!/bin/sh\n'
+                    '\"$REAL_PYTHON\" \"$@\" | \"$REAL_PYTHON\" -c '
+                    "'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b\"\\r\\n\", b\"\\n\").replace(b\"\\n\", b\"\\r\\n\"))'\n",
+                    encoding="utf-8", newline="\n",
+                )
+                fake_python.chmod(0o755)
+                environment["REAL_PYTHON"] = Path(sys.executable).as_posix()
             completed = subprocess.run(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(temporary_path / "output"), "update-install-session-cancelled"],
                 cwd=visual_platform.ROOT,

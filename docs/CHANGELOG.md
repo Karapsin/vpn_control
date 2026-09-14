@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Preserve uncertain installer handoffs and reject invalid Android visual geometry and Windows CRLF device identifiers.
+
 ## 2.1.11 - 2026-09-14
 
 - Await graphical frontend detach on normal close so immediate reopening reuses the live controller.

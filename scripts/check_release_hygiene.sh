@@ -75,6 +75,7 @@ python3 scripts/test_user_facing_terminology.py
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py
 python3 scripts/test_visual_platform.py
+python3 scripts/test_android_visual_geometry.py
 python3 scripts/test_visual_review.py
 python3 -m py_compile scripts/visual_platform.py scripts/visual_regression.py scripts/visual_review.py
 python3 scripts/check_release_metadata.py
