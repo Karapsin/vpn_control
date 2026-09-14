@@ -35,6 +35,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class DesktopUpdateCheck(val updateAvailable: Boolean, val asset: UpdateAsset?, val releaseNotesUrl: String)
 
+private val ARCH_LINUX_IDS = setOf("arch", "archlinux")
+private val DEBIAN_LINUX_IDS = setOf("debian", "ubuntu")
+private val RPM_LINUX_IDS = setOf("centos", "fedora", "rhel", "suse")
+
 internal suspend fun readDesktopUpdateManifest(response: CompletableFuture<HttpResponse<InputStream>>): String {
     val caller = currentCoroutineContext()
     return try {
@@ -111,6 +115,8 @@ internal class DesktopUpdateService(
     private val workspaceDirectory: Path = DesktopWorkspacePaths.root(),
     private val linuxInstallerFactory: (Path) -> DesktopLinuxInstallAdapter = { DesktopLinuxInstaller(it) },
     private val macInstallerFactory: (Path) -> DesktopMacInstallAdapter = { DesktopMacInstaller(it) },
+    private val linuxOsReleaseReader: () -> String = { Files.readString(Path.of("/etc/os-release")) },
+    private val linuxCommandExists: ((String) -> Boolean)? = null,
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
@@ -484,13 +490,39 @@ internal class DesktopUpdateService(
     }
 
     private fun linuxPackagePreference(): List<UpdatePackageType> {
-        val osRelease = runCatching { Files.readString(Path.of("/etc/os-release")).lowercase(Locale.ROOT) }.getOrDefault("")
-        return when {
-            "arch" in osRelease || commandExists("pacman") -> listOf(UpdatePackageType.ARCH_BUNDLE)
-            "debian" in osRelease || "ubuntu" in osRelease || commandExists("dpkg") -> listOf(UpdatePackageType.DEB)
-            else -> listOf(UpdatePackageType.RPM)
-        }
+        val osRelease = runCatching { linuxOsReleaseReader().lowercase(Locale.ROOT) }.getOrDefault("")
+        val identities = linuxOsReleaseIdentities(osRelease)
+        return packageTypeForLinuxIdentity(identities.id)
+            ?: identities.idLike.mapNotNull(::packageTypeForLinuxIdentity).firstOrNull()
+            ?: when {
+                hasLinuxCommand("pacman") -> listOf(UpdatePackageType.ARCH_BUNDLE)
+                hasLinuxCommand("dpkg") -> listOf(UpdatePackageType.DEB)
+                else -> listOf(UpdatePackageType.RPM)
+            }
     }
+
+    private fun hasLinuxCommand(command: String): Boolean = linuxCommandExists?.invoke(command) ?: commandExists(command)
+
+    private fun packageTypeForLinuxIdentity(identity: String?): List<UpdatePackageType>? = when (identity) {
+        in ARCH_LINUX_IDS -> listOf(UpdatePackageType.ARCH_BUNDLE)
+        in DEBIAN_LINUX_IDS -> listOf(UpdatePackageType.DEB)
+        in RPM_LINUX_IDS -> listOf(UpdatePackageType.RPM)
+        else -> null
+    }
+
+    private fun linuxOsReleaseIdentities(osRelease: String): LinuxOsReleaseIdentities {
+        val fields = osRelease.lineSequence()
+            .map(String::trim)
+            .filter { it.isNotEmpty() && !it.startsWith('#') }
+            .mapNotNull { line -> line.split('=', limit = 2).takeIf { it.size == 2 } }
+            .associate { (key, value) -> key to value.trim().removeSurrounding("\"").removeSurrounding("'") }
+        return LinuxOsReleaseIdentities(
+            id = fields["id"],
+            idLike = fields["id_like"].orEmpty().split(Regex("\\s+")).filter(String::isNotBlank),
+        )
+    }
+
+    private data class LinuxOsReleaseIdentities(val id: String?, val idLike: List<String>)
 
     private fun launchLinuxHelper(
         packageFile: Path,

@@ -5,6 +5,7 @@ import contextlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,34 @@ assert MACOS_TART_CAPTURE_SPEC is not None and MACOS_TART_CAPTURE_SPEC.loader is
 capture_visual_macos_tart = importlib.util.module_from_spec(MACOS_TART_CAPTURE_SPEC)
 sys.modules[MACOS_TART_CAPTURE_SPEC.name] = capture_visual_macos_tart
 MACOS_TART_CAPTURE_SPEC.loader.exec_module(capture_visual_macos_tart)
+
+
+def _posix_bash() -> str:
+    """Return the Git Bash executable on Windows, never the WSL launcher."""
+    if os.name != "nt":
+        bash = shutil.which("bash")
+        if bash:
+            return bash
+        raise AssertionError("bash is required to exercise the Android visual capture wrapper")
+    candidates = []
+    configured = os.environ.get("BASH", "").strip()
+    if configured:
+        candidates.append(Path(configured))
+    for root_name in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        root = os.environ.get(root_name, "").strip()
+        if root:
+            candidates.extend((Path(root) / "Git" / "bin" / "bash.exe", Path(root) / "Git" / "usr" / "bin" / "bash.exe"))
+    for candidate in candidates:
+        if candidate.is_file() and "git" in str(candidate).lower():
+            return str(candidate)
+    raise AssertionError("Git Bash is required to exercise the Android visual capture wrapper on Windows")
+
+
+def _shell_failure(completed: subprocess.CompletedProcess[str]) -> str:
+    return (
+        f"returncode={completed.returncode}; stdout={completed.stdout!r}; "
+        f"stderr={completed.stderr!r}"
+    )
 
 
 class VisualPlatformTest(unittest.TestCase):
@@ -426,7 +455,6 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('if [[ "$provider" == "hosted" ]]; then', script)
 
     def test_android_capture_rejects_a_foreign_avd_before_any_device_mutation(self) -> None:
-        script = visual_platform.ROOT / "scripts/capture_visual_android.sh"
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
             log = temporary_path / "adb.log"
@@ -438,8 +466,10 @@ class VisualPlatformTest(unittest.TestCase):
                 "  printf 'foreign-avd\\nOK\\n'\n"
                 "fi\n",
                 encoding="utf-8",
+                newline="\n",
             )
             fake_adb.chmod(0o755)
+            self.assertNotIn(b"\r\n", fake_adb.read_bytes())
             environment = dict(os.environ)
             environment.update({
                 "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
@@ -448,7 +478,7 @@ class VisualPlatformTest(unittest.TestCase):
                 "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
             })
             completed = subprocess.run(
-                ["bash", str(script), str(temporary_path / "output"), "update-install-session-cancelled"],
+                [_posix_bash(), "scripts/capture_visual_android.sh", str(temporary_path / "output"), "update-install-session-cancelled"],
                 cwd=visual_platform.ROOT,
                 env=environment,
                 text=True,
@@ -456,12 +486,16 @@ class VisualPlatformTest(unittest.TestCase):
                 stderr=subprocess.PIPE,
                 check=False,
             )
-            self.assertNotEqual(0, completed.returncode)
-            self.assertEqual(["-s emulator-5600 emu avd name"], log.read_text(encoding="utf-8").splitlines())
+            self.assertNotEqual(0, completed.returncode, _shell_failure(completed))
+            self.assertTrue(log.is_file(), _shell_failure(completed))
+            self.assertEqual(
+                ["-s emulator-5600 emu avd name"],
+                log.read_text(encoding="utf-8").splitlines(),
+                _shell_failure(completed),
+            )
             self.assertFalse((temporary_path / "output").exists())
 
     def test_android_capture_rejects_hosted_without_a_serial_before_adb(self) -> None:
-        script = visual_platform.ROOT / "scripts/capture_visual_android.sh"
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
             log = temporary_path / "adb.log"
@@ -470,8 +504,10 @@ class VisualPlatformTest(unittest.TestCase):
                 "#!/bin/sh\n"
                 "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n",
                 encoding="utf-8",
+                newline="\n",
             )
             fake_adb.chmod(0o755)
+            self.assertNotIn(b"\r\n", fake_adb.read_bytes())
             environment = dict(os.environ)
             environment.update({
                 "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
@@ -482,7 +518,7 @@ class VisualPlatformTest(unittest.TestCase):
             environment.pop("VPN_CONTROL_VISUAL_ANDROID_AVD_NAME", None)
             environment.pop("VPN_CONTROL_VISUAL_ANDROID_PORT", None)
             completed = subprocess.run(
-                ["bash", str(script), str(temporary_path / "output"), "update-install-session-cancelled"],
+                [_posix_bash(), "scripts/capture_visual_android.sh", str(temporary_path / "output"), "update-install-session-cancelled"],
                 cwd=visual_platform.ROOT,
                 env=environment,
                 text=True,
@@ -490,8 +526,8 @@ class VisualPlatformTest(unittest.TestCase):
                 stderr=subprocess.PIPE,
                 check=False,
             )
-            self.assertNotEqual(0, completed.returncode)
-            self.assertIn("requires ANDROID_SERIAL", completed.stderr)
+            self.assertNotEqual(0, completed.returncode, _shell_failure(completed))
+            self.assertIn("requires ANDROID_SERIAL", completed.stderr, _shell_failure(completed))
             self.assertFalse(log.exists())
             self.assertFalse((temporary_path / "output").exists())
 

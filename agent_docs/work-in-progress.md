@@ -27,67 +27,44 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Delivery And Current Integration
 
-Latest checkpoint `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e` is pushed with
-full prepush passed; managed exact-SHA CI session13899 remains live. The preceding
-`1bb881bc5067350d7d04cffda7a33604550d4144` passed all five required workflows.
-Current uncommitted work adds isolated Android visual task-AVD selection; root
-review required exact Gradle/ADB serial binding and no cleanup on rejected foreign
-AVDs. Native captures remain pending. Windows autostart migration implementation
-is assigned to linux_reopen49 (manager and tests only), with selective run-level
-change and cooperating-app serialization; no host task mutation is permitted.
+Last fully verified checkpoint is `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e`:
+full prepush and all five required exact-SHA workflows passed. The next pushed
+checkpoint `98c995155033752ce69efe00998322d73fcb150e` passed full local prepush,
+but Windows CI failed in executable visual-wrapper tests before packaging.
+`checkpoint51/ci98-windows-failed.log` records the exact failure. Do not call that
+checkpoint delivered successfully until the correction's exact-SHA CI passes.
 
+Committed at98c9951: selective Windows autostart run-level migration with cooperating
+app serialization (28 tests pass,1 skip; native proof pending), isolated task AVD
+selection and66 visual tests. Current corrections:
 
-Last delivered commit: `fc82b28eab7b42dadbb9bdd04443e2c66e8b3dec`, version2.1.10.
-Managed prepush and all five exact-SHA workflows passed: Fast34799568186,
-Android34799568195, Linux34799568182, Windows34799568212 and macOS34799568197.
-Checkpoint50/commit-result.json records terminal managed delivery. The previous
-bbb7b046 checkpoint also passed all five workflows and included the Compose exit
-fix and removal of whole-GUI Windows elevation.
+- Fedora public check chose DEB because build tools supplied dpkg. The protected
+  request proves DEB; absent apt-get caused preparation failure. A causal public
+  selection test failed expectedRPM/actualDEB, then all11 focused tests passed after
+  exact ID/ordered ID_LIKE priority was implemented. Evidence:
+  checkpoint51/fedora-package-selection-{native.json,red2.log,green2.log}.
+- Windows executable visual tests now select Git Bash explicitly, use relative
+  wrapper paths, force LF fake executables and retain launch diagnostics; all66 pass locally, while native Windows CI remains required.
+- Optional test-only dual screenshot capture diagnosed actual API35 status-bar
+  clipping. Both UiDevice and same-scene framebuffer captures cut clock pixels
+  after y62; six installer-dialog baselines remain unapproved. Evidence:
+  checkpoint51/android-statusbar-diagnostic and android-installer-capture.log.
+- Current API35 SSH on/staged setting/restart succeeded with distinct runtime IDs
+  and two recorded SSH authentications; payload relay proof remains pending.
+  Raw receipts: checkpoint51/android-ssh-private/run/retry6-receipt.md.
 
-Checkpoint51 integration committed and pushed as `1bb881bc5067350d7d04cffda7a33604550d4144`:
-
-Full prepush passed with a valid receipt after capacity restoration. Android, Fast
-Checks and macOS exact-SHA workflows have passed; Linux and Windows remain live
-at the latest observation. Managed delivery session49183 is still running.
-New uncommitted work adds DEB/RPM executable preflight: three causal missing-tool
-failures reproduced before the fix; all44 fixture tests pass afterward. Arch
-packaging remains independent of DEB/RPM tools. Metadata has8/10 Unreleased notes.
-
-- Linux immutable fixture builds reject missing objcopy/binutils before creating
-  stage outputs or starting Gradle. The causal early-admission regression failed
-  before the fix; all42 fixture tests passed afterward. Evidence:
-  checkpoint51/objcopy-red.log and objcopy-green2.log.
-- macOS production staging statements are extracted into a helper without changing
-  the copy flags, error code, parent-path selection, pinning or fsync order. The
-  corrected test injects EIO through that actual helper, verifies the fault occurs
-  once and checks base identity, terminal receipt preservation, gate release and
-  terminal input cleanup. Partial staging evidence is deliberately retained.
-  An isolated mutation ignoring the production copy failure fails the target test
-  with CONFLICT instead of PERSISTENCE_FAILED; normal6/6 pass. Root copied and
-  hash-verified checkpoint51/macos-eio-{green,mutation-red}.log. The earlier probe
-  was invalid because it called real copyfile rather than the injector; do not use
-  its passing result. The corrected test runs in macOS package CI before packaging;
-  ordinary hygiene explicitly skips it outside an assigned macOS fixture.
-- Android cancelled-install presentation is added to the visual test provider and
-  scene inventory. The inventory test was red before the manifest/provider change
-  and now passes. Actual capture, geometry and baseline review remain pending.
-- The failure-to-regression ledger records proven coverage and unresolved gaps.
-
-The checkpoint51 full-prepush attempt ended120 while its ignored wrapper tried to
-save the returned result. stderr reporting also failed; no result file or valid
-receipt exists. The underlying cause remains unproven. Do not call that run a
-pass. Capacity was subsequently restored; the later full managed prepush passed and
-produced checkpoint51/prepush-restored-capacity-result.json. That receipt applies
-to commit1bb, not the subsequent package-tool preflight edits.
+One host Gradle operation at a time. Metadata/prepush must follow the last content
+edit; no receipt from a prior content state is reusable. No release is authorized.
 
 ## Current Environment Ownership
 
 | Task | Owner | Exclusive scope | Next evidence |
 | --- | --- | --- | --- |
 | Integration/delivery | Root | Shared source, scenes.json, docs, sole host Gradle | Final review, metadata, full prepush, push and exact-SHA CI |
-| Linux package pair | linux_pair53 | Fedora2316, ignored fixture/evidence | Reconcile live retry3 build, verify immutable pair, public RPM recovery |
+| Linux native update | Root | Fedora2316, ignored fixture/evidence | Rebuild fixed-source immutable pair, public RPM recovery |
+| Linux selection fix | linux_reopen49 | DesktopUpdateService and Linux update tests | Source ready;11 focused tests passed |
 | Windows public CLI | windows_x64_inventory49 | Native AMD64 MSI VM on Arch | Reliable ordinary InteractiveToken fixture, static/no-owner/lifecycle gate |
-| macOS regression | mac_install50 | Native worker/test script and Tart fixture43 | Corrected synthetic test complete; preserve failed install and prepare next native scenario |
+| macOS native updates | mac_install50 | Tart fixture43 and native evidence | Machine and user-local sync success; trace async cancellation |
 | Android API35 | android_gates51 | AVD5596 | Current-base cold document chain complete; remaining native actions/installer matrix |
 | Android visuals | windows_apphost_desktop39 | Android scene provider/inventory test only | Provider ready; native capture awaits environment/build allocation |
 | Failure ledger | android_api29_52 | New agent doc only; AVD5594 shut down | Reviewed ledger and retained API29 evidence |

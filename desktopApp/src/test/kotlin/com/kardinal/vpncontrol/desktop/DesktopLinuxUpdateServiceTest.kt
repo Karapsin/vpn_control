@@ -92,6 +92,51 @@ class DesktopLinuxUpdateServiceTest {
         assertEquals(AppUpdatePhase.READY, state().appUpdate.phase)
     } }
 
+    @Test fun fedoraUpdateCheckSelectsRpmEvenWhenBuildPrerequisiteDpkgIsPresent() = runBlocking {
+        fixture(
+            osRelease = "ID=fedora\nID_LIKE=\"fedora\"\n",
+            availableCommands = setOf("rpm", "dpkg"),
+        ) { service, state, _, _ ->
+            assertEquals(UpdatePackageType.RPM, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.RPM, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
+    @Test fun debianUpdateCheckSelectsDebEvenWhenRpmIsPresent() = runBlocking {
+        fixture(osRelease = "ID='debian'\nID_LIKE='debian'\n", availableCommands = setOf("rpm")) { service, state, _, _ ->
+            assertEquals(UpdatePackageType.DEB, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.DEB, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
+    @Test fun archUpdateCheckSelectsArchBundleEvenWhenDpkgIsPresent() = runBlocking {
+        fixture(osRelease = "ID=archlinux\nID_LIKE=arch\n", availableCommands = setOf("dpkg")) { service, state, _, _ ->
+            assertEquals(UpdatePackageType.ARCH_BUNDLE, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.ARCH_BUNDLE, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
+    @Test fun explicitIdTakesPriorityOverContradictoryIdLike() = runBlocking {
+        fixture(osRelease = "ID=fedora\nID_LIKE=arch\n", availableCommands = setOf("dpkg", "pacman")) { service, state, _, _ ->
+            assertEquals(UpdatePackageType.RPM, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.RPM, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
+    @Test fun unknownDistroWithArchitectureInIdUsesToolFallbackWithoutSubstringClassification() = runBlocking {
+        fixture(osRelease = "ID=architectureos\n", availableCommands = setOf("dpkg")) { service, state, _, _ ->
+            assertEquals(UpdatePackageType.DEB, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.DEB, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
+    @Test fun unknownDistroWithoutKnownToolsFallsBackToRpm() = runBlocking {
+        fixture(osRelease = "ID=unknown\n") { service, state, _, _ ->
+            assertEquals(UpdatePackageType.RPM, requireNotNull(service.checkedStatus()).asset?.packageType)
+            assertEquals(UpdatePackageType.RPM, state().appUpdate.preparedAsset?.packageType)
+        }
+    }
+
     @Test fun recoveryAndSettlementUseAdapterProofBeforeChangingUpdateState() = runBlocking { fixture { service, state, adapter, _ ->
         assertTrue(service.recoverInstallCorrelations().isSuccess)
         assertEquals(1, adapter.recovered); assertEquals(0, adapter.prepares)
@@ -113,6 +158,8 @@ class DesktopLinuxUpdateServiceTest {
     } }
 
     private suspend fun fixture(preparedPackageType: UpdatePackageType? = null,
+        osRelease: String = "",
+        availableCommands: Set<String> = emptySet(),
         block: suspend (DesktopUpdateService, () -> MainUiState, Adapter, Path) -> Unit) {
         val directory = Files.createTempDirectory("vpn-linux-update-service-").toRealPath()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -120,7 +167,7 @@ class DesktopLinuxUpdateServiceTest {
         val bytes = "synthetic package, never executed".encodeToByteArray()
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         server.createContext("/manifest") { exchange ->
-            val assets = listOf("deb", "rpm").joinToString(",") { type ->
+            val assets = listOf("deb", "rpm", "arch-bundle").joinToString(",") { type ->
                 """{"platform":"linux","architecture":"arm64","packageType":"$type","displayVersion":"1.0.2","fileName":"test.$type","downloadUrl":"$base/package","sha256":"$digest","sizeBytes":${bytes.size}}"""
             }
             val manifest = """{"schemaVersion":1,"buildNumber":2,"releaseTag":"v1.0.2","releaseNotesUrl":"$base/notes","assets":[$assets]}""".encodeToByteArray()
@@ -136,7 +183,8 @@ class DesktopLinuxUpdateServiceTest {
         val service = DesktopUpdateService({ state }, { state = it(state) }, directory,
             DesktopBuildInfo(1, "1.0.1"), osName = "Linux", osArchitecture = "arm64", currentCommand = null,
             manifestUrl = "$base/manifest", trustUrl = { it.startsWith("$base/") }, workspaceDirectory = workspace,
-            linuxInstallerFactory = { assertEquals(workspace, it); adapter })
+            linuxInstallerFactory = { assertEquals(workspace, it); adapter },
+            linuxOsReleaseReader = { osRelease }, linuxCommandExists = { it in availableCommands })
         try {
             service.check().getOrThrow(); service.downloadChecked().getOrThrow()
             // Exercise dispatch independently of the test host's distribution/package preference.

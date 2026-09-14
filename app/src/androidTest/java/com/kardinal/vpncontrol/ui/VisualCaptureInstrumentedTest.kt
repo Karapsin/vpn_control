@@ -115,6 +115,10 @@ class VisualCaptureInstrumentedTest {
                     SystemClock.sleep(500L)
                     val screenshot = File(output, "$sceneId.png")
                     check(device.takeScreenshot(screenshot))
+                    if (InstrumentationRegistry.getArguments().getString("visualCompareFramebuffer") == "true") {
+                        // Preserve the same scene through both capture paths for native artifact diagnosis.
+                        instrumentation.shell("screencap -p $remoteOutput/$sceneId.framebuffer.png")
+                    }
                     val image = requireNotNull(BitmapFactory.decodeFile(screenshot.path))
                     writeGeometry(File(output, "$sceneId.geometry.json"), image, scene)
                     instrumentation.shell("cp ${output.path}/$sceneId.png $remoteOutput/$sceneId.png")

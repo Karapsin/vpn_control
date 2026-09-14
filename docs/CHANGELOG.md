@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.11 - 2026-09-14
 
 - Await graphical frontend detach on normal close so immediate reopening reuses the live controller.
 - Keep diagnostics export regressions on their fixture owner instead of the host workspace.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Cover cancelled Android installer sessions in the visual scene inventory.
 - Reject missing DEB and RPM packaging tools before immutable fixture builds.
 - Migrate owned Windows autostart tasks to ordinary privileges and isolate Android visual captures.
+- Select Linux update packages by distribution identity and make visual safety regressions portable to Windows.
 
 ## 2.1.10 - 2026-09-14
 
