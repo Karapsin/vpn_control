@@ -28,28 +28,38 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 ## Delivery And Current Integration
 
 Last fully verified checkpoint is `3d70d75853dbd2ddb49731999547063d255f3633`: full prepush and all five exact-SHA workflows passed.
-Next checkpoint `651847730584aade13feca8bc2dd16aed1ec97db` is pushed: full local
-prepush and four required workflows passed; macOS failed a frontend-exit test. It contains the ANR
-guard, scene-argument CRLF regression and six reviewed Android installer baselines.
-Evidence: checkpoint53/visual-{prepush,commit}-result.json and ci-macos-65184773-failed.log.
-The failure is reproduced locally with software rendering: cleanup and the runner
-returned, but AWT threads kept the frontend JVM alive. The current dirty product
-boundary explicitly exits only after teardown; three focused tests pass with no
-skips. See compose-exit-diagnostic-software-red.xml and compose-exit-process-green.xml.
+Checkpoint `c0955b7bf05b2016f78a586b81030dcd179b2ebb` is pushed after full
+prepush. Android, Linux, macOS and Fast Checks passed; Windows failed two Python
+stop-routing tests that reached POSIX reservation locking. The dirty test-only
+correction isolates that dependency: full simulated Windows locking-unavailable
+suite77/77 and normal focused suite86/86 pass. Its own prepush and exact-SHA CI
+remain required. Evidence: checkpoint53/ci-windows-c0955b7-failed.log and
+vm-resource-admission/windows-fcntl-none-{pre-fix-red,post-fix-green}.log.
 
-Current dirty work also adds managed visual VM admission with configured guest
-memory, live Tart discovery, a one-guest default, capacity estimates and serialized
-reservations.86 focused tests pass; direct shell/remote launcher enforcement remains
-outside this slice. Host RAM exhaustion was reported by the user, who authorized
-using Arch for additional Windows/Android/Linux VMs. Gateway public-key access now
-requires the appropriate key; the question is pending. Keep at most one local4GiB
-macOS fixture and no local Android emulator alongside it.
-The pushed `ff8de90ef22fd7015ceff9620389aae56c545900` (version2.1.11) passed
-full local prepush but Windows CI failed in the executable visual guard test.
-Its richer diagnostics exposed a retained CR in the emulator serial emitted by
-native Windows Python. The subsequent3d70d75 checkpoint fixed this and passed
-all five workflows. The current uncommitted extension covers scene arguments;
-all69 focused visual tests pass. It still needs its own prepush and exact-SHA CI.
+The checkpoint includes the frontend process-exit repair and managed visual VM
+resource admission. The prior macOS CI failure was reproduced with software
+rendering: cleanup returned but AWT threads kept the JVM alive. Explicit process
+exit follows frontend teardown; fixed macOS workflow34820110381 passed. This is
+separate from native installed-package lifecycle acceptance.
+
+Root investigated fixture43's black screen on user request. Normal and recovery
+boots failed; a clean clone with the same configuration booted. Firmware reset did
+not help. Read-only APFS checking found zeroed object-map blocks and an unreadable
+container keybag. Standard repair on a separate copy failed with exit8. The cause
+of the corruption remains unknown; do not attribute it to RAM exhaustion without
+evidence. Original firmware was restored and all disk attachments detached.
+Original `vpn-control-machine-fixture43`, its full preserved backup
+`vpn-control-machine-fixture43-before-repair53`, and the separate repair copy
+`vpn-control-disk-repair53` remain stopped. Do not replay their unknown installers.
+Replacement `vpn-control-boot-control53` boots macOS15.7.7/24G720, responds to guest
+commands and shows Finder. It needs product fixture setup before native acceptance.
+Evidence: checkpoint53/mac-boot-repair/recovery-result.json and fsck-repair-copy.log.
+
+Keep at most one local4GiB macOS fixture and no local Android alongside it. Arch
+may host additional Windows/Android/Linux guests after current capacity/access
+checks. Gateway public-key access is still blocked pending the appropriate key.
+Managed visual admission covers configured allocations, live Tart discovery and
+serialized reservations; direct shell/remote launches still need coordinator checks.
 
 Committed atff8de90: Fedora package selection follows exact distribution ID then
 ordered ID_LIKE, avoiding build-tool dpkg selecting DEB on Fedora. All11 focused

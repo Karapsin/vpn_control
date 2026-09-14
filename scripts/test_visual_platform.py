@@ -1266,6 +1266,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform, "_qmp_execute") as execute,
             mock.patch.object(visual_platform, "_pid_running", return_value=False),
             mock.patch.object(Path, "unlink"),
+            mock.patch.object(visual_platform, "_release_visual_reservation"),
         ):
             result = visual_platform.stop_platform("windows")
         execute.assert_called_once_with(visual_platform.RUNTIME_ROOT / "windows" / "qmp.sock", "system_powerdown")
@@ -1421,6 +1422,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform, "_read_state", return_value=state),
             mock.patch.object(visual_platform, "_run", return_value=mock.Mock(returncode=0, stderr="")) as run,
             mock.patch.object(Path, "unlink"),
+            mock.patch.object(visual_platform, "_release_visual_reservation"),
         ):
             result = visual_platform.stop_platform("windows")
         run.assert_called_once_with(["virsh", "shutdown", "vpn-control-win11"], timeout=120, input_text=None)
