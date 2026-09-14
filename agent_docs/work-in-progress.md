@@ -27,17 +27,18 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Delivery And Current Integration
 
-Last fully verified checkpoint is `7dbcffb72f3eef67827cdc1b8c1b3297f8e5857e`.
+Last fully verified checkpoint is `3d70d75853dbd2ddb49731999547063d255f3633`: full prepush and all five exact-SHA workflows passed.
 The pushed `ff8de90ef22fd7015ceff9620389aae56c545900` (version2.1.11) passed
 full local prepush but Windows CI failed in the executable visual guard test.
-Its richer diagnostics expose a retained CR in the emulator serial emitted by
-native Windows Python. A portable CRLF-emitting regression now reproduces this
-locally; normalization passes all67 visual tests. Other exact-SHA workflows still
-require terminal verification. No checkpoint is fully delivered until all five pass.
+Its richer diagnostics exposed a retained CR in the emulator serial emitted by
+native Windows Python. The subsequent3d70d75 checkpoint fixed this and passed
+all five workflows. The current uncommitted extension covers scene arguments;
+all69 focused visual tests pass. It still needs its own prepush and exact-SHA CI.
 
 Committed atff8de90: Fedora package selection follows exact distribution ID then
 ordered ID_LIKE, avoiding build-tool dpkg selecting DEB on Fedora. All11 focused
-selection tests pass. Current-source packaged RPM/DEB/Arch recovery remains open.
+selection tests pass. Current-source RPM recovery subsequently passed; DEB and
+Arch acceptance remain open.
 
 Current integration:
 
@@ -48,9 +49,9 @@ Current integration:
   implicitly cancelling after commit attempt. Explicit public cancellation remains
   supported. Three causal regression failures recorded before repair. This does
   not establish the exact cause of the earlier macOS native async cancellation.
-- API35 SSH authentication/restart succeeds. Held-live relay fixture resolved the
-  earlier listener-lifetime failure, but payload7 still has no relay traffic proof.
-  Public cleanup restored stopped/default/empty state at revision39.
+- API35 SSH authentication/restart and payload52 management-SOCKS token transfer
+  succeed. This proves the SSH payload chain, not all-app VPN/TUN traffic.
+  Public cleanup restored stopped/default/empty state at revision44.
 
 Evidence resides in checkpoint51: fedora-visual-{prepush,commit}-result.json,
 ci-ff8-windows-failed.log, visual-python-crlf-{red,green}.log,
@@ -59,22 +60,76 @@ install-commit-boundary-{red,green2}.log and android-ssh-private/run/payload7-re
 One host Gradle operation at a time. Metadata/prepush must follow the last content
 edit; no receipt from a prior content state is reusable. No release is authorized.
 
+## Checkpoint52 Native Continuation
+
+`3d70d75853dbd2ddb49731999547063d255f3633` passed full prepush and all five required exact-SHA workflows (checkpoint51/commit-geometry-commit-result.json). Its immutable
+Linux/macOS pairs share source fingerprint
+`729cbe42350b61e7d8a0bc46ecd63f6bd429dc37ae7c28da06d765a870084d6a`,
+base2.1.11/target2.1.12. Source/runtime capture is host-only; native builds run
+inside the owned guests. Local prepared copies were retired after both archives and guest transfers were hash-verified; retained `/private/tmp/vpn-{linux,macos}-pair-3d70d75.tar.gz` archives restore them. See prepared-copy-capacity-release.json.
+Archive and transfer receipts are checkpoint51/{linux,macos}-pair-3d70d75-{archive,transfer}.json.
+Fedora pair is `/home/vpnfixture/source-3d70d75/vpn-linux-pair-3d70d75`,
+root supervisor40721 with durable root-build-result.json; linux_install52 now owns
+that guest and public replacement gate. mac_install50 owns fixture43 and the new
+verified archive `/private/tmp/vpn-macos-pair-3d70d75.tar.gz`. Prior unknown
+installer jobs and failure evidence remain preserved.
+
+The recaptured six Android scenes at build/visual-actual/android-installer-3d70d75
+are rejected: SystemUI ANR overlay contaminated the frame despite geometry128/128.
+WindowManager and DropBox show boot-time KeyguardService ANR amid high CPU load.
+The normal Wait button dismissed it; no kill/reset. A debug-only primary-window
+ANR guard has causal RED (3 tests,1failure, compilation passes) in
+checkpoint51/android-anr-guard-red.log and GREEN in android-anr-guard-green.log.
+The guarded recapture and six-scene review passed as recorded below.
+
+Root reviewed payload52 raw replies/relay/target transcripts: complete token over
+management SOCKS2081→SSH→selected location succeeds. This is bounded component
+payload proof, not all-app TUN proof. Raw files under android-ssh-private/run/
+payload52-*; public cleanup stopped/default/empty at revision44, temporary forward
+removed. windows_login52 replaces the stopped Windows operator; credentials remain
+private in the owned VM directory, and old login-input uncertainty must be inspected
+before any repeat.
+
+Current continuation evidence:
+
+- Fedora RPM public replacement/recovery passed at the frozen3d70d75 source:
+  installed2.1.12, job96630884-c147-4a4e-815b-eb0eb450ffa5, operation
+  ffd7a8e1-8cb4-45fc-8b8a-ede9f66d2142, protectedSUCCEEDED/OK and replacement
+  owner recovery matching the same correlation. Root independently read the public
+  result and queried installed RPM. Guest raw evidence is
+  /tmp/vpn-public-install-evidence-ugbgdqgr; freshDependencyEvidence remains null,
+  so this does not certify the fresh-DEB dependency gate.
+- Guarded Android capture completed and root opened all six complete frames:
+  no clipping/ANR, legible state/action labels. Six new Android-only baselines were
+  recorded and all six geometry/contrast/comparison checks passed. This is a subset
+  baseline review, not full-platform or release attestation. Evidence:
+  checkpoint51/android-installer-six-{scenes,review}.json, android-installer-six-verify.log,
+  build/visual-actual/android-installer-guarded52. The capture includes the dirty
+  debug-only ANR guard; final delivered-source attestation remains required.
+- Remaining Windows Python CRLF scene arguments are normalized only at trusted text
+  producers. An executable miniature fixture tests real wrapper/selector behavior
+  and exact Gradle/stamp arguments. Binary framebuffer output remains unfiltered.
+
+Windows ordinary-user preflight now passes on the previously installed2.1.10
+(oldsource1b) nativeAMD64 package: help/version/capabilities exit0, missing-owner
+status exit2/UNAVAILABLE without starting an owner. Exact interactive SID ends1000;
+worker windows_login52 retained raw guest outputs and removed only its temporary
+limited tasks. This clears guest login access, not current-source broker/MSI gates.
+
 ## Current Environment Ownership
 
 | Task | Owner | Exclusive scope | Next evidence |
 | --- | --- | --- | --- |
 | Integration/delivery | Root | Shared source, scenes.json, docs, sole host Gradle | Final review, metadata, full prepush, push and exact-SHA CI |
-| Linux native update | Root | Fedora2316, ignored fixture/evidence | Rebuild fixed-source immutable pair, public RPM recovery |
-| Linux selection fix | linux_reopen49 | DesktopUpdateService and Linux update tests | Source ready;11 focused tests passed |
-| Windows public CLI | windows_x64_inventory49 | Native AMD64 MSI VM on Arch | Reliable ordinary InteractiveToken fixture, static/no-owner/lifecycle gate |
-| macOS native updates | mac_install50 | Tart fixture43 and native evidence | Machine and user-local sync success; trace async cancellation |
-| Android API35 | android_gates51 | AVD5596 | Current-base cold document chain complete; remaining native actions/installer matrix |
-| Android visuals | windows_apphost_desktop39 | Android scene provider/inventory test only | Provider ready; native capture awaits environment/build allocation |
-| Failure ledger | android_api29_52 | New agent doc only; AVD5594 shut down | Reviewed ledger and retained API29 evidence |
-| Capacity | fixture_capacity50 | Verified cold-artifact relocation only | Completed restore manifests; no current artifact ownership |
+| Linux review | linux_remaining53 | Read-only Arch/DEB state and harness audit | Reconcile durable receipts; resolve fresh-DEB fixture preconditions |
+| Windows review | windows_remaining53 | Read-only native AMD64 guest/evidence | Reconcile portable build prerequisites and remaining broker/MSI gates |
+| macOS review | mac_remaining53 | Read-only Tart fixture43/evidence | Reconcile cache transfer/build handles before any retry |
+| Android API35 | Root | AVD5596; no current worker operation | Remaining native traffic/actions/installer matrix |
+| Android visuals | Root | AVD5600, guarded captures and six baselines | Reviewed subset awaiting validated checkpoint |
 
-No new Windows worker was created when the agent tool reported its thread limit.
-Reusing an existing worker does not permit a second operator in its VM.
+Prior worker handles are no longer live in this coordinator's agent inventory.
+Fresh bounded read-only reviewers are recovering authoritative process state;
+missing worker handles do not imply guest operations have stopped.
 
 ## Current Native Evidence And Its Limits
 
@@ -154,9 +209,9 @@ f143f6ec821287059fa0c0743fe04072f908e250e1bed96958b485d38162461b.
 This is manual installed-package proof, not public update-adapter recovery.
 Preserve unidentified SYSTEM msiexec8744 until authoritative reconciliation.
 
-Static/no-owner/lifecycle batch dispatch has not yet produced accepted evidence.
-The next fixture uses a fresh ordinary InteractiveToken/LeastPrivilege task and
-user-writable correlated output, avoiding fragile Run-dialog typing.
+Ordinary InteractiveToken/LeastPrivilege static and missing-owner checks passed
+on that older installed package. Current-source lifecycle and runtime evidence
+remain required; the earlier package cannot certify the new source.
 
 Local ARM64 guest / AMD64-emulation component evidence remains separate: scoped
 broker/TUN and UAC denial preserved traffic; original-user bootstrap fixture ran
@@ -218,16 +273,19 @@ proof of sufficient peak capacity.
    protected receipt/lock handling and current nativeAMD64 public lifecycle.
 2. Current-package Windows broker/configuration coverage, denial preserving activeA
    and pendingB, TUN/child cleanup, ordinary GUI/autostart and safe legacy migration.
-3. Current-source DEB/RPM/Arch install/update/recovery/rollback; macOS local/machine
-   successful installation, denial, recovery, rollback, cleanup and GUI return.
+3. Current-source DEB/Arch install/update/recovery/rollback and remaining RPM failure
+   cases; macOS new-source asynchronous recovery, denial, rollback and GUI return.
+   The3d RPM success and earlier macOS local/machine synchronous success are proven
+   only for their recorded artifacts.
 4. Android API29/API35 action/SSH/refresh/consent/foreground-service/process-loss and
    installer permission/cancel/corruption/retention/reconciliation matrix.
 5. Remaining document expiry/principal/owner/hash/interruption/resource/persistence
    failures and GUI/private export paths; cold-read success does not close these.
 6. All desktop one-owner/traffic lifecycle and scheduled-refresh scenarios through
    installed launchers, including missing-owner and transient-owner behavior.
-7. GUI-versus-CLI effect comparison and changed-scene capture/review, including six
-   Android installer states, geometry and intentional baselines.
+7. GUI-versus-CLI effect comparison and remaining changed-scene capture/review.
+   Six Android installer baselines passed local review and checks; their delivered
+   source attestation and the broader platform inventory remain open.
 8. Final metadata, full current prepush, reviewed commits/push and all five required
    workflows for the exact SHA; match final packaged evidence to delivered inputs.
 

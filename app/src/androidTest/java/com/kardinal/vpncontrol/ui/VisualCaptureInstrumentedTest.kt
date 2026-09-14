@@ -114,9 +114,11 @@ class VisualCaptureInstrumentedTest {
                     device.waitForIdle(1_000L)
                     SystemClock.sleep(500L)
                     val screenshot = File(output, "$sceneId.png")
+                    requireNoPrimaryAnrWindow(instrumentation)
                     check(device.takeScreenshot(screenshot))
                     if (InstrumentationRegistry.getArguments().getString("visualCompareFramebuffer") == "true") {
                         // Preserve the same scene through both capture paths for native artifact diagnosis.
+                        requireNoPrimaryAnrWindow(instrumentation)
                         instrumentation.shell("screencap -p $remoteOutput/$sceneId.framebuffer.png")
                     }
                     val image = requireNotNull(BitmapFactory.decodeFile(screenshot.path))
@@ -130,6 +132,7 @@ class VisualCaptureInstrumentedTest {
                     waitForNativeSurface(sceneId, device)
                     device.waitForIdle(3_000L)
                     SystemClock.sleep(NATIVE_SURFACE_SETTLE_MILLIS)
+                    requireNoPrimaryAnrWindow(instrumentation)
                     check(device.takeScreenshot(File(output, "$sceneId.png")))
                     if (sceneId == "android-camera-qr") {
                         assertCameraScannerChrome(File(output, "$sceneId.png"))
@@ -159,6 +162,10 @@ class VisualCaptureInstrumentedTest {
             if (configuredLandscape) device.setOrientationNatural()
             device.unfreezeRotation()
         }
+    }
+
+    private fun requireNoPrimaryAnrWindow(instrumentation: android.app.Instrumentation) {
+        AndroidVisualWindowGuard.requireNoPrimaryAnr(instrumentation.shell("dumpsys window windows"))
     }
 
     private fun openAppScene(sceneId: String) {

@@ -48,7 +48,7 @@ restore_system_ui() {
 trap restore_system_ui EXIT
 while IFS= read -r scene; do
   rm -f "$output_dir/$scene.png" "$output_dir/$scene.geometry.json"
-done < <(python3 - "$repo_root/visual-tests/scenes.json" "$scene_csv" <<'PY'
+done < <(python3 - "$repo_root/visual-tests/scenes.json" "$scene_csv" <<'PY' | tr -d '\r'
 import json
 import sys
 
@@ -64,9 +64,9 @@ adb shell rm -rf "$device_dir"
 adb uninstall com.kardinal.vpncontrol >/dev/null 2>&1 || true
 adb uninstall com.kardinal.vpncontrol.test >/dev/null 2>&1 || true
 app_scenes="$(python3 scripts/select_visual_scenes.py \
-  --manifest visual-tests/scenes.json --platform android --kind app --requested "$scene_csv")"
+  --manifest visual-tests/scenes.json --platform android --kind app --requested "$scene_csv" | tr -d '\r')"
 native_scenes="$(python3 scripts/select_visual_scenes.py \
-  --manifest visual-tests/scenes.json --platform android --kind native --requested "$scene_csv")"
+  --manifest visual-tests/scenes.json --platform android --kind native --requested "$scene_csv" | tr -d '\r')"
 
 run_gradle_capture() {
   local selected_scenes="$1"
@@ -203,7 +203,7 @@ else
   scenes=()
   while IFS= read -r scene; do
     scenes+=("$scene")
-  done < <(python3 - "$repo_root/visual-tests/scenes.json" <<'PY'
+  done < <(python3 - "$repo_root/visual-tests/scenes.json" <<'PY' | tr -d '\r'
 import json
 import sys
 for scene in json.load(open(sys.argv[1], encoding="utf-8"))["scenes"]:

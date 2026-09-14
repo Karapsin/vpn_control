@@ -512,6 +512,84 @@ class VisualPlatformTest(unittest.TestCase):
     def test_android_capture_handles_native_python_crlf_before_any_device_mutation(self) -> None:
         self._assert_foreign_avd_guard(python_crlf=True)
 
+    def test_android_capture_removes_native_python_crlf_from_scene_arguments_after_device_guard(self) -> None:
+        """The Git Bash wrapper must not pass CRLF scene IDs to Gradle or stamping."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "mini-repo"
+            scripts = root / "scripts"
+            visual_tests = root / "visual-tests"
+            scripts.mkdir(parents=True)
+            visual_tests.mkdir()
+            for name in ("capture_visual_android.sh", "select_visual_scenes.py", "android_visual_geometry.py"):
+                shutil.copy2(visual_platform.ROOT / "scripts" / name, scripts / name)
+            (visual_tests / "scenes.json").write_text(json.dumps({"scenes": [
+                {"id": "app-scene", "platforms": ["android"], "geometry_required": True},
+                {"id": "android-system-bars", "platforms": ["android"], "geometry_required": False},
+            ]}), encoding="utf-8")
+            stamp_log = root / "stamp-arguments.bin"
+            gradle_log = root / "gradle-arguments.bin"
+            (scripts / "visual_platform.py").write_text(
+                "import json, os, pathlib, sys\n"
+                "if sys.argv[1] == 'android-local-config':\n"
+                "    print(json.dumps({'result': {'avd_name': 'vpn-control-visual-task-cancelled', 'emulator_port': 5600}}))\n"
+                "elif sys.argv[1] == 'stamp':\n"
+                "    pathlib.Path(os.environ['STAMP_LOG']).write_bytes('\\0'.join(sys.argv[2:]).encode())\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            fake_adb = root / "adb"
+            fake_adb.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$3 $4 $5\" = 'emu avd name' ]; then printf 'vpn-control-visual-task-cancelled\\nOK\\n'; fi\n"
+                "if [ \"$3 $4 $5 $6\" = 'shell dumpsys window displays' ]; then cat <<'DUMP'\n"
+                "displayId=0\n  mDisplayFrame=Rect(0, 0 - 1080, 2400)\n"
+                "  mDisplayCutout=DisplayCutout{insets=Rect(0, 63 - 0, 0)}\n"
+                "    InsetsSource id=1 type=statusBars frame=[0,0][1080,63] visible=true flags= sideHint=TOP\nDUMP\nfi\n"
+                "if [ \"$3\" = pull ]; then mkdir -p \"$5\"; : > \"$5/app-scene.png\"; : > \"$5/app-scene.geometry.json\"; : > \"$5/android-system-bars.png\"; fi\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            fake_gradle = root / "gradlew"
+            fake_gradle.write_text("#!/bin/sh\nprintf '%s\\0' \"$@\" >> \"$GRADLE_LOG\"\n", encoding="utf-8", newline="\n")
+            fake_python = root / "python3"
+            fake_python.write_text(
+                "#!/bin/sh\n"
+                "\"$REAL_PYTHON\" \"$@\" | \"$REAL_PYTHON\" -c "
+                "'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b\"\\r\\n\", b\"\\n\").replace(b\"\\n\", b\"\\r\\n\"))'\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            for executable in (fake_adb, fake_gradle, fake_python):
+                executable.chmod(0o755)
+            output = root / "output"
+            stale_scene_geometry = output / "android-system-bars.geometry.json"
+            output.mkdir()
+            stale_scene_geometry.write_bytes(b"stale")
+            environment = dict(os.environ)
+            environment.update({
+                "PATH": f"{root}{os.pathsep}{environment['PATH']}",
+                "REAL_PYTHON": Path(sys.executable).as_posix(),
+                "GRADLE_LOG": str(gradle_log),
+                "STAMP_LOG": str(stamp_log),
+                "VPN_CONTROL_VISUAL_TARGET_SHA": "a" * 40,
+            })
+            completed = subprocess.run(
+                [_posix_bash(), "scripts/capture_visual_android.sh", str(output)], cwd=root, env=environment,
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(0, completed.returncode, _shell_failure(completed))
+            self.assertFalse(stale_scene_geometry.exists(), _shell_failure(completed))
+            self.assertNotIn(b"\r", gradle_log.read_bytes(), _shell_failure(completed))
+            self.assertNotIn(b"\r", stamp_log.read_bytes(), _shell_failure(completed))
+            gradle_arguments = gradle_log.read_bytes().split(b"\0")
+            for scene in (b"app-scene", b"android-system-bars"):
+                self.assertIn(b"-Pandroid.testInstrumentationRunnerArguments.visualScenes=" + scene, gradle_arguments)
+            stamp_arguments = stamp_log.read_bytes().split(b"\0")
+            self.assertEqual(
+                [b"app-scene", b"android-system-bars"],
+                [stamp_arguments[index + 1] for index, argument in enumerate(stamp_arguments) if argument == b"--scene"],
+            )
+
     def _assert_foreign_avd_guard(self, *, python_crlf: bool = False) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
