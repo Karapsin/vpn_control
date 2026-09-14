@@ -34,7 +34,14 @@ Checkpoint50/commit-result.json records terminal managed delivery. The previous
 bbb7b046 checkpoint also passed all five workflows and included the Compose exit
 fix and removal of whole-GUI Windows elevation.
 
-Current uncommitted integration:
+Checkpoint51 integration committed and pushed as `1bb881bc5067350d7d04cffda7a33604550d4144`:
+
+Full prepush passed with a valid receipt after capacity restoration. Android, Fast
+Checks and macOS exact-SHA workflows have passed; Linux and Windows remain live
+at the latest observation. Managed delivery session49183 is still running.
+New uncommitted work adds DEB/RPM executable preflight: three causal missing-tool
+failures reproduced before the fix; all44 fixture tests pass afterward. Arch
+packaging remains independent of DEB/RPM tools. Metadata has8/10 Unreleased notes.
 
 - Linux immutable fixture builds reject missing objcopy/binutils before creating
   stage outputs or starting Gradle. The causal early-admission regression failed
@@ -59,8 +66,9 @@ Current uncommitted integration:
 The checkpoint51 full-prepush attempt ended120 while its ignored wrapper tried to
 save the returned result. stderr reporting also failed; no result file or valid
 receipt exists. The underlying cause remains unproven. Do not call that run a
-pass. Capacity was subsequently restored; rerun managed validation after the final
-content and metadata edits. Root is reviewing/staging every changed path together.
+pass. Capacity was subsequently restored; the later full managed prepush passed and
+produced checkpoint51/prepush-restored-capacity-result.json. That receipt applies
+to commit1bb, not the subsequent package-tool preflight edits.
 
 ## Current Environment Ownership
 
@@ -68,7 +76,7 @@ content and metadata edits. Root is reviewing/staging every changed path togethe
 | --- | --- | --- | --- |
 | Integration/delivery | Root | Shared source, scenes.json, docs, sole host Gradle | Final review, metadata, full prepush, push and exact-SHA CI |
 | Linux package pair | linux_pair53 | Fedora2316, ignored fixture/evidence | Reconcile live retry3 build, verify immutable pair, public RPM recovery |
-| Windows public CLI | windows_install51 | Native AMD64 MSI VM on Arch | Reliable ordinary InteractiveToken fixture, static/no-owner/lifecycle gate |
+| Windows public CLI | windows_x64_inventory49 | Native AMD64 MSI VM on Arch | Reliable ordinary InteractiveToken fixture, static/no-owner/lifecycle gate |
 | macOS regression | mac_install50 | Native worker/test script and Tart fixture43 | Corrected synthetic test complete; preserve failed install and prepare next native scenario |
 | Android API35 | android_gates51 | AVD5596 | Current-base cold document chain complete; remaining native actions/installer matrix |
 | Android visuals | windows_apphost_desktop39 | Android scene provider/inventory test only | Provider ready; native capture awaits environment/build allocation |
@@ -130,7 +138,12 @@ pinned Linux runtime1.13.4 SHA
 fdf44dd63aa9d04668f37629067aa6bd008e04b993dd3825ea829f17919af765.
 Guest Temurin17 and binutils are installed. Current pair path:
 /home/vpnfixture/fc82-linux-pair-retry3; build PID31868 / Gradle child31888 were
-verified live. Base2.1.10/target2.1.11 DEB/RPM artifacts remain unconfirmed.
+verified live, then terminated with packageDeb rejecting unsupported DEB because
+dpkg-deb/fakeroot/rpmbuild were absent. Guest-only dependencies are now installed;
+retry3 evidence remains intact. The new immutable retry4 produced base2.1.10/target2.1.11 DEB/RPM/Arch artifacts
+and a fixture receipt. Installing an already-present2.1.10 was a package-manager
+no-op, leaving old source inputs; exact frozen-base reinstall is assigned before
+public target recovery. No source identity guard is weakened.
 
 The first build failed because objcopy was absent. A second attempt correctly
 rejected existing immutable stage outputs. A worker then improperly removed the

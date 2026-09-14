@@ -703,11 +703,17 @@ def finalize_macos_target_package_recovery(directory, confirmed):
     return receipt
 
 
-def require_linux_build_tools():
+def require_linux_build_tools(package_family=None):
     # JDK jlink invokes objcopy while stripping the packaged runtime. Check before
     # creating immutable stages, rather than failing after Gradle compilation.
     require(shutil.which("objcopy") is not None,
             "Linux fixture packaging requires objcopy on PATH; install binutils in the build guest")
+    if package_family != "arch":
+        for executable, package in (("dpkg-deb", "dpkg"), ("fakeroot", "fakeroot"),
+                                    ("rpmbuild", "rpm-build")):
+            require(shutil.which(executable) is not None,
+                    f"Linux fixture packaging requires {executable} on PATH; "
+                    f"install {package} in the build guest")
 
 
 def native_build(directory, confirmed, run_command=None, discard_completed_builds=False):
@@ -734,7 +740,7 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
     run_command = run_command or subprocess.run
     if plan["platform"] == "linux":
         require_jdk17()
-        require_linux_build_tools()
+        require_linux_build_tools(plan.get("packageFamily"))
     elif plan["platform"] == "macos":
         java_home = os.environ.get("JAVA_HOME")
         if not java_home:

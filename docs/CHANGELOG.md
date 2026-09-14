@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Reject missing Linux objcopy before building immutable update fixtures.
 - Exercise macOS copy-failure receipt preservation through the production staging helper.
 - Cover cancelled Android installer sessions in the visual scene inventory.
+- Reject missing DEB and RPM packaging tools before immutable fixture builds.
 
 ## 2.1.10 - 2026-09-14
 

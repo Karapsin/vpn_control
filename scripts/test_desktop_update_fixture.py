@@ -129,6 +129,30 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertFalse((output / "build-base").exists())
             self.assertEqual([], calls)
 
+    def test_arch_admission_does_not_require_deb_or_rpm_tools(self):
+        self.tools_patch.stop()
+        with patch("prepare_desktop_update_fixture.shutil.which",
+                   side_effect=lambda tool: "/usr/bin/objcopy" if tool == "objcopy" else None):
+            prepare_desktop_update_fixture.require_linux_build_tools("arch")
+
+    def test_missing_package_tools_fail_before_creating_build_output(self):
+        # Fedora reached jpackage after compilation and rejected DEB because
+        # packaging tools were absent. Each missing tool must fail admission.
+        self.tools_patch.stop()
+        for missing in ("dpkg-deb", "fakeroot", "rpmbuild"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                _, _, output, _ = self.prepared(Path(temporary))
+                calls, runner = self.fake_gradle()
+                with patch("platform.system", return_value="Linux"), \
+                        patch("platform.machine", return_value="x86_64"), \
+                        patch("prepare_desktop_update_fixture.shutil.which",
+                              side_effect=lambda tool: None if tool == missing else "/usr/bin/" + tool):
+                    with self.assertRaisesRegex(ValueError, missing):
+                        native_build(output, True, runner)
+                self.assertFalse((output / "packages").exists())
+                self.assertFalse((output / "build-base").exists())
+                self.assertEqual([], calls)
+
     def test_rejected_macos_packaging_jdk_fails_before_creating_build_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             _, _, output, _ = self.prepared(Path(temporary))
