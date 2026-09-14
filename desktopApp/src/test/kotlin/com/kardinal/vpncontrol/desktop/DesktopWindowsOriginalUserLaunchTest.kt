@@ -51,7 +51,11 @@ class DesktopWindowsOriginalUserLaunchTest {
         val directory = Files.createTempDirectory("vpn-install-original-user-launch-")
         var protectedStage: Path? = null
         var interactiveCompleted = false
-        val sources = listOf("windows-install-native.cs", "windows-install-original-user-launch.cs", "windows-install-original-user-launch-fixture.cs").map { name ->
+        val sources = listOf(
+            "windows-install-native.cs", "windows-install-helper-protocol.cs", "windows-install-helper-roles.cs",
+            "windows-install-helper-msi.cs", "windows-install-helper-sessions.cs", "windows-install-helper-inventory.cs",
+            "windows-install-original-user-launch.cs", "windows-install-original-user-launch-fixture.cs",
+        ).map { name ->
             directory.resolve(name).also { destination -> javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, destination) } }
         }
         try {
@@ -69,7 +73,11 @@ class DesktopWindowsOriginalUserLaunchTest {
                 using System; using System.Threading;
                 internal static class OriginalUserLaunchProbe {
                   public static void Main(string[] arguments) {
-                    if (arguments.Length==4) { Thread.Sleep(1000); return; }
+                    if (arguments.Length==4) {
+                      if (arguments[1]=="00000000-0000-0000-0000-00000000000b") Thread.Sleep(Timeout.Infinite);
+                      else Thread.Sleep(1000);
+                      return;
+                    }
                     if (arguments.Length==1 && arguments[0]=="--current-token") {
                       Console.WriteLine(InstallerOriginalUserLaunchFixtures.ProbeCurrentTokenScalars()); return;
                     }

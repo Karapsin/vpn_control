@@ -71,7 +71,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.application
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
@@ -149,9 +148,6 @@ fun main(rawArgs: Array<String>) {
     DesktopSmokeTest.handleArgs(args)?.let { exitProcess(it) }
     DesktopHeadlessController.handleArgs(args)?.let { exitProcess(it) }
     DesktopCli.handleArgs(args)?.let { exitProcess(it) }
-    val relaunchArgs = (if (requestedFrontendOwner != null) arrayOf(DESKTOP_FRONTEND_OWNER_ARGUMENT, requestedFrontendOwner) else args) +
-        invocation.directory?.let { arrayOf("--state-dir", it.toString()) }.orEmpty()
-    DesktopWindowsElevation.elevateIfRequired(relaunchArgs)?.let { exitProcess(it) }
     DesktopVpnIntegrationTest.handleArgs(args)?.let { exitProcess(it) }
     if (!isDesktopDisplayAvailable()) {
         writeDesktopCliLine(System.err, "VPN Control needs a graphical desktop session; DISPLAY or WAYLAND_DISPLAY is not available.")
@@ -189,7 +185,7 @@ fun main(rawArgs: Array<String>) {
     visibility.available = { connection.failure.value == null }
     val startInTray = args.any { it == "--autostart" || it == "--tray" || it == "--minimized" }
     try {
-        application {
+        runDesktopFrontendApplication {
             DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, quitExit, ::exitApplication)
         }
     } finally {

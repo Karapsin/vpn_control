@@ -546,3 +546,14 @@ Kotlin fixture agreement.
 `DesktopMacAuthorizationLifetimeTest` and `DesktopMacUpdateServiceTest` cover late exact rejection, receipt-authority conflicts,
 retryable cleanup and owner-only maintenance. These are ordinary desktop tests;
 retain packaged late-denial verification separately, including active traffic.
+
+### Compose frontend process exit
+
+`DesktopComposeApplicationExitTest` runs the production frontend application
+boundary in a child JVM and verifies that the enclosing cleanup executes. It
+creates no window, product workspace, controller, or VPN runtime. The actual
+Compose application still reads screen configuration, so Linux hosts without
+`DISPLAY` require `xvfb` and `xauth`; the test uses `xvfb-run -a` and does not skip
+when the prerequisite is missing. Fast Checks installs both packages. This quick
+regression belongs to ordinary desktop tests and prepush; retain the packaged
+normal-close/immediate-show traffic scenario as separate native evidence.

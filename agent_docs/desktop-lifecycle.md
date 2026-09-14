@@ -10,7 +10,7 @@ Authoritative lifecycle behavior is `DESKTOP-001` through `DESKTOP-008` in `cont
 | `DESKTOP-004` | workspace mapper/store, app service startup | `DesktopAppServiceTest`, workspace mapper tests, reboot smoke |
 | `DESKTOP-005` | auto-refresh scheduler and subscription refresh service | `DesktopAutoRefreshSchedulerTest`, `DesktopAppServiceTest` |
 | `DESKTOP-006` | direct-probe routing/runtime, Find Best service | `DesktopDirectProbeRoutingTest`, `DesktopFindBestServiceTest`, shared benchmark tests |
-| `DESKTOP-007` | Windows elevation and connection actions | `DesktopWindowsElevationTest`, Windows VM smoke and visual scenes |
+| `DESKTOP-007` | Ordinary-user GUI/controller; Windows VPN helper elevation | `DesktopWindowsVpnBrokerTest`, runtime preparation/recovery tests, Windows VM ordinary-user GUI and VPN approval/denial smoke |
 | `DESKTOP-008` | headless controller and CLI | `DesktopHeadlessControllerTest`, CLI tests |
 
 ## Patch Procedure

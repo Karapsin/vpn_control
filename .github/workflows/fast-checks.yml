@@ -60,10 +60,14 @@ on:
       - "scripts/test_package_linux_rpm.py"
       - "scripts/test_linux_public_install.py"
       - "scripts/test_linux_public_install_harness.py"
+      - "scripts/linux_gui_fixture_guard.py"
+      - "scripts/test_linux_gui_fixture_guard.py"
       - "scripts/prepare_linux_install_vm.py"
       - "scripts/test_prepare_linux_install_vm.py"
       - "scripts/prepare_linux_public_install_image.py"
       - "scripts/test_android_update_fixture.py"
+      - "scripts/integration/android_benchmark_fixture.py"
+      - "scripts/test_android_benchmark_fixture.py"
       - "scripts/run_android_instrumented_tests.py"
       - "scripts/test_android_instrumented_launcher.py"
       - "scripts/android_instrumentation_signatures.gradle"
@@ -176,6 +180,9 @@ jobs:
 
       - name: Check typed status catalogs
         run: ./scripts/status_catalog_tool.py check
+
+      - name: Install windowless desktop test display
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xauth
 
       - name: Run fast unit tests
         run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures

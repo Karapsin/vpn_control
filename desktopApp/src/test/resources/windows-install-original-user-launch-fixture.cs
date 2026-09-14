@@ -3,6 +3,7 @@ using System.Security.Principal;
 
 public static class InstallerOriginalUserLaunchFixtures {
     static readonly string Job="00000000-0000-0000-0000-00000000000a";
+    static readonly string BootstrapJob="00000000-0000-0000-0000-00000000000b";
     // This has no shell, process-launch, privilege, or filesystem side effect.
     // Run it before the opt-in interactive fixture so TokenElevation's exact
     // GetTokenInformation buffer contract is routine Windows CI coverage.
@@ -41,6 +42,22 @@ public static class InstallerOriginalUserLaunchFixtures {
                 if (identity.ProcessId==0 || identity.CreationFileTime<=0 || identity.Elevated ||
                     identity.Session!=original.ShellSession || identity.Sid!=original.PrincipalSid || !child.Wait(15000))
                     throw new Exception("Original interactive helper identity mismatch");
+            }
+            // Exercise the production coordinator bootstrap rather than calling the
+            // launcher directly. This is deliberately a bootstrap-only component
+            // check: it does not construct an adapter, receipt, package, or MSI
+            // attempt. Full coordinator/original-user-role acceptance remains a
+            // separate native installer scenario.
+            VpnInstallHelperProtocol.Invocation coordinator=new VpnInstallHelperProtocol.Invocation(
+                VpnInstallHelperProtocol.Role.Coordinator,BootstrapJob,1,1);
+            using (CoordinatorOriginalUserChild child=CoordinatorOriginalUserBootstrap.Start(coordinator,original.PrincipalSid)) {
+                if (child.ProcessId==0 || child.CreationFileTime<=0 || child.Exited ||
+                    child.PrincipalSid!=original.PrincipalSid)
+                    throw new Exception("Coordinator original-user bootstrap identity mismatch");
+                // Before coordinator admission this exact child is the only process
+                // that may be stopped.  The fixture never crosses the admission
+                // boundary, so it cannot create an MSI attempt or replay a result.
+                child.ReconcileBeforeAdmission();
             }
             // Force the observed 1314 result through the production orchestration
             // branch. This must still launch the pinned helper under the verified

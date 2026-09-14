@@ -422,6 +422,57 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed"):
                 load_resources(output)
 
+    def test_native_stage_uses_only_frozen_runtime_when_ignored_linux_binary_exists(self):
+        """An ignored host runtime cannot enter a same-source fixture stage."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, runtime = self.source(root)
+            ignored = repository / "desktopApp/src/main/resources/bin/linux-amd64/sing-box"
+            foreign_ignored = repository / "desktopApp/src/main/resources/bin/darwin-arm64/sing-box"
+            ignored.parent.mkdir(parents=True)
+            ignored.write_bytes(b"ignored-host-linux-runtime")
+            foreign_ignored.parent.mkdir(parents=True)
+            foreign_ignored.write_bytes(b"ignored-host-darwin-runtime")
+            with (repository / ".gitignore").open("a") as rules:
+                rules.write("desktopApp/src/main/resources/bin/\n")
+            output = root / "fixture"
+            prepare(repository, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            expected_runtime = file_hash(runtime)
+            _, fake = self.fake_gradle()
+
+            def runner(command, *, cwd, stdout, stderr, check):
+                bundled = cwd / "desktopApp/src/main/resources/bin/linux-amd64/sing-box"
+                self.assertTrue(bundled.is_file())
+                self.assertEqual(expected_runtime, file_hash(bundled))
+                self.assertNotEqual(file_hash(ignored), file_hash(bundled))
+                self.assertFalse((cwd / "desktopApp/src/main/resources/bin/darwin-arm64/sing-box").exists())
+                return fake(command, cwd=cwd, stdout=stdout, stderr=stderr, check=check)
+
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                native_build(output, True, runner)
+
+    def test_native_stage_excludes_stale_desktop_build_output_before_fake_gradle_runs(self):
+        """A host class/resource tree cannot be reused by either isolated stage."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, runtime = self.source(root)
+            stale_class = repository / "desktopApp/build/classes/kotlin/main/Stale.class"
+            stale_resource = repository / "desktopApp/build/resources/main/bin/linux-amd64/sing-box"
+            stale_class.parent.mkdir(parents=True)
+            stale_resource.parent.mkdir(parents=True)
+            stale_class.write_bytes(b"stale-host-class")
+            stale_resource.write_bytes(b"stale-host-resource")
+            output = root / "fixture"
+            prepare(repository, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            _, fake = self.fake_gradle()
+
+            def runner(command, *, cwd, stdout, stderr, check):
+                self.assertFalse((cwd / "desktopApp/build").exists())
+                return fake(command, cwd=cwd, stdout=stdout, stderr=stderr, check=check)
+
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                native_build(output, True, runner)
+
     def test_windows_build_resolves_wrapper_to_its_own_checkout(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

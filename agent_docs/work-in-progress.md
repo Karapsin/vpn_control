@@ -23,14 +23,55 @@ and inputs until authoritative reconciliation. Only root owns shared Gradle,
 version metadata, staging, commits, pushes and exact-SHA CI. Workers use bounded
 assignments, one writer per file and one operator per native environment.
 
-## Current Delivery And Work (Checkpoint48)
+## Current Delivery And Work (Checkpoint49)
 
-Checkpoint47 is pushed as `5f6c2d41fcf428123f6cc512532e57fafce028e2`, version
-2.1.10. Full managed prepush passed. Its five exact-SHA workflows are pending;
-managed follow session42310 remains live. Previous checkpoint46
-`60ed33aabf699c2a437dba5535fdd861e2421e3f` has all five workflows successful,
-including Fast34792865872, Android34792865849, Linux34792865877,
-Windows34792865810 and macOS34792865863 (checkpoint46/commit-result.json).
+Checkpoint48 is pushed as `1b062af83f737077e17fd08b655b1c60a6c405e7`, version
+2.1.10. Full managed prepush and all five exact-SHA workflows passed:
+Fast34794832926, Android34794832925, Linux34794832924,
+Windows34794833181 and macOS34794832939 (checkpoint48/commit-result.json).
+Checkpoint47 `5f6c2d41fcf428123f6cc512532e57fafce028e2` is also fully verified.
+
+Current root-owned implementation removes whole-GUI Windows elevation, retaining
+operation-scoped broker elevation. Focused tests passed43 executed tests, with
+nine Windows-native tests skipped on macOS (checkpoint48/windows-startup-focused.log).
+A newly built Windows package must still prove ordinary-user GUI startup.
+Windows checkpoint47 deliberate restart denial returned CANCELLED/130 while
+retaining actual A, pending B and token traffic; exact cleanup passed
+(windows-denial/receipt.json). This is installed dabd ARM64/x64-emulation evidence.
+
+Current exact1b Linux RPM SHA d463e188d54dd39ab7dc547f2174afdbffc8ab7dd71f1ad7a763e6a777f52ff1
+preserves token traffic and runtime identity through normal GUI close, but immediate
+public gui show still returns UNAVAILABLE. The previous teardown fix therefore
+is not sufficient evidence of native completion. Read-only cause investigation
+is active; checkpoint49/Linux/summary.json retains the failed scenario and cleanup.
+Do not claim reattach/crash gates from this interrupted run.
+
+The cause is Compose's default process exit bypassing Main's finally. A real
+windowless child invoking the product application boundary reproduces missing
+cleanup (checkpoint49/compose-exit-causal-red.xml). The earlier headless attempt
+failed on screen configuration and is not causal evidence. Root now opts out of
+Compose process exit so Main can detach and close the endpoint. Focused green passed25 executed tests with one Windows-native skip
+(checkpoint49/frontend-bootstrap-green.log). A fresh packaged replay remains required. Fast Checks receives an explicit
+Xvfb/xauth prerequisite for the routine Linux subprocess regression.
+
+Android checkpoint49 traced its no-traffic benchmark to a short-lived fixture
+relay. A persistent relay reached the target; a second obsolete fixture assertion
+incorrectly required observing directly routed DNS. Four routine regressions now
+cover relay liveness, bounded readiness, cross-process access and forwarding without
+that assertion. New fixture/tests are wired into release hygiene and Fast Checks.
+Actual benchmark measurement/cancellation evidence remains in progress.
+macOS target2.1.11 was built from clean1b, DMG SHA
+84f1bc1b528fdc7cc03089f87b04a110d157cec698749c9c4896d864bab44737.
+Signature verification and packaged CLI checks passed from a private temporary
+mount. Same-source base/target comparison rejected this manual target: ignored Linux
+runtime resources and generated Compose class bytes differ from CI. Preserve both
+artifacts; use the existing clean snapshot fixture builder for the next pair. Two
+quick tests now cover foreign ignored runtimes and stale desktop build exclusion.
+The owned remote MSI VM is now running and freshly verified as native AMD64
+Windows11 build26200. Exact1b MSI SHA
+1c16fa37459ff95a784c205275e889234d0896dbbc1fa1347ed9b3f1873f7aee is staged;
+ordinary interactive login and installation remain in progress. Retained old tasks
+and clean base are untouched (checkpoint49/windows-x64/launch-and-inventory.json).
 
 Current implementation slice fixes ordinary GUI shutdown losing its queued DETACH
 when Main immediately cancels the frontend scope. A quick deterministic test
@@ -50,7 +91,7 @@ metadata. The existing failing test is retained in
 checkpoint48/diagnostics-prepush-failure.xml and diagnostics-reproduce.log.
 The test now binds export and rejects fallback startup, asserting exactly one
 fixture export. Integrated diagnostics/frontend checks passed; no host workspace
-or product export behavior was changed. Full prepush must be rerun for this edit.
+or product export behavior was changed. Full prepush subsequently passed in checkpoint48/prepush-green-result.json.
 
 Windows checkpoint47 broker component passed actual ordinary-user UAC approval:
 one exact existing test executed, zero skips/failures, child readiness and exact
@@ -62,7 +103,7 @@ Public CLI TUN traffic subsequently passed eight commands, a real TUN adapter
 and unproxied synthetic-address token traffic with RX/TX increments. Public
 off/quit and exact routes/adapters/stages/process cleanup passed. Evidence:
 checkpoint47/windows-tun/receipt.json. The same installed-source/architecture
-limits apply. Current same-source packages and denial-preserves-A remain gates.
+limits apply. Current same-source packages remain a gate; deliberate denial evidence is recorded above.
 
 Previously delivered Linux scope: Linux native GUI guard argument builder, its causal test,
 and the checkpoint47 record. Root independently reran all twelve guard tests successfully.
@@ -75,7 +116,7 @@ Token proxy traffic and stable runtime identity passed before/after GUI attach,
 normal close, reattach and frontend crash. Public off/quit passed, all five task
 roots have no live processes, and display servers were preserved. No-tray hide
 returned UNSUPPORTED with the window accessible. Immediate reattach was
-UNAVAILABLE until the fifteen-second frontend lease expired; the causal regression and normal-teardown fix above address this behavior. This evidence is for
+UNAVAILABLE until the fifteen-second frontend lease expired; the causal regression addresses lost queued DETACH, but checkpoint49 still reproduces immediate reattach failure. This evidence is for
 source33e2, not a claim of current exact-SHA packaged certification.
 
 Windows checkpoint46 proves ordinary-user installed-package proxy token traffic,
@@ -86,12 +127,13 @@ actual Windows red/green evidence and root review are under windows-runtime.
 
 | Task | Agent | Owned files/subsystem | Shared files reserved | Artifact/environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Integration | Root | WIP, reviewed Linux guard/tests, builds/delivery | All shared protocol/model/build files | Host build only | Exact-SHA CI and next checkpoint |
-| Android | linux_tls_manifest_retry | Ignored fixture only | All Android source reserved | Exclusive5596; frozen APK2.3.10 | Correct DNS relay and public owner discovery before cancellation scenario |
-| Windows broker | windows_broker47 | Ignored native fixture/evidence only | No tracked edits | Exclusive owned ARM64 guest, x64 installed dabd | Exact one-test loopback helper gate; frozen tests in checkpoint47/windows-broker/frozen-tests |
-| Linux native | Completed linux_observation46 | Two guard/test files handed to root | No product edits | Fedora2316 source33e2 RPM | Native lifecycle passed with immediate-reattach limitation |
-| Frontend fix | Root after frontend_lease47 | Connection, Main teardown, regression test | All other shared source reserved | Host tests |26 focused tests pass; next prepush/native package |
-| macOS preparation | Root after mac_pair47 | No active edits | Root owns builds and VM | fixture43 old job retained | Guest Tart exec access verified,18GiB virtual free; host physical capacity limits builds. Plan same-SHA CI base plus one version-overridden target; preserve visual evidence |
+| Integration | Root | WIP, Main/elevation removal, builds/delivery | All shared protocol/model/build files | Host build only | Review, version, prepush, checkpoint |
+| Android | android_benchmark49 | Ignored diagnostics/fixture | All Android source reserved | Exclusive5596; APK2.3.10 | Diagnose actual benchmark failure before rerun |
+| Windows MSI | windows_msi_bootstrap49 | Original-user launch/admission tests and fixtures | Request other files before editing | Exclusive local ARM64 Windows VM | Real coordinator/original-user bootstrap acceptance |
+| Windows x64 | windows_x64_inventory49 | Ignored launch/evidence | No tracked edits | Exclusive remote MSI VM task disk | Fresh guest identity; preserve clean base/unknown jobs |
+| Windows review | windows_native_inventory | Read-only current elevation diff | Root owns source | No native effects | Check production scoped-runtime reachability |
+| Linux native | linux_reopen49 | Ignored diagnostics/evidence | Request source ownership before fixes | Exclusive Fedora2316 exact1b RPM | Diagnose immediate show UNAVAILABLE |
+| macOS identity | mac_pair_identity49 | Ignored artifact identity/evidence | Root owns builds and VM | CI base1b / frozen target1b | Compare complete code fingerprints |
 
 Checkpoint45 product fixes have direct causal and passing evidence:
 
@@ -180,10 +222,11 @@ statements; an old open item is not automatically a current implementation gap.
   migration are still pending production native validation.
 - macOS exited-coordinator detection returns OUTCOME_UNKNOWN after a nonterminal
   receipt without committing, cancelling, releasing or replaying the job.
-- Windows coordinator constructor admission and original-user launcher primitives
-  compile. The original-user primitive is included in the helper build inputs but
-  remains unbound to production bootstrap. Identity/admission and failed-child
-  handling require real interactive and adversarial acceptance before activation.
+- Windows coordinator and original-user bootstrap are bound in production: the
+  NativeAOT coordinator captures the shell token, launches its install-user role,
+  and verifies SID/session/image. Only that worker invokes MSI. Native original-user
+  identity, replacement and adversarial acceptance remain gates; no new interface
+  binding is needed (checkpoint49 source audit).
 - The Android update fixture handles Windows publication/lifetime semantics and
   rejects a CN-only leaf before launch. Existing routine hygiene loads the SAN
   tests. Host fixture/native-helper Python selection passed32 tests.
@@ -596,3 +639,10 @@ exact GUI/controller afterward. That native receipt used the guard before its
 final error-reporting hardening, and does not prove the full lifecycle sequence
 or resolve the earlier renderer crash. The final guard was copied with matching
 SHA-256; evidence remains under the owned Fedora GUI fixture.
+
+Checkpoint49 source freeze includes the Windows bootstrap-only test seam, frontend
+exit fix and Windows GUI privilege cleanup, fixture regressions/routine wiring,
+and documentation corrections. Local Windows QGA staging became uncertain before
+native bootstrap test launch; its unique stage and HTTP bridge are retained, and
+no MSI/UAC/test process has been claimed. The bundle manifest classifies its three
+JUnit tests as component evidence only; actual entrypoint/MSI acceptance remains.

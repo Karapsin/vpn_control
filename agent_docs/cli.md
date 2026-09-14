@@ -252,8 +252,12 @@ read-only but their editor still permits configuration inspection/copy. Manual
 selection and selected-row updates stage configuration without reapplying a live
 runtime; the GUI distinguishes actual active rows and displays pending restart.
 Definite failed clicks may capture fresh state on the next explicit click, while
-unknown-outcome retries retain their request identity. Location delete/import and
-their actual-active-aware stop/rollback flow are not implemented in this adapter.
+unknown-outcome retries retain their request identity. Location delete/import use
+the same owner operation path: they capture the active runtime, stop it only when
+the removed configuration is active, commit under the captured revision, and
+restore that exact runtime after a failed commit. Their focused regressions cover
+the guarded stop, commit and recovery paths; native Android acceptance evidence
+for this path remains separate.
 
 Android update check/download/cancel/dismiss now share application-owned commands
 between GUI and ADB. Check fetches only a manifest; download uses its captured
@@ -263,7 +267,10 @@ Async operation status/list expose transfer progress, and both update cancellati
 and cancellation by operation ID await cleanup. Cancellation reserves its target
 before asynchronous waiting, so a later transfer cannot be cancelled by mistake.
 Terminal code/data are captured before releasing the transfer and survive later
-dismissal. CLI installation remains unsupported pending explicit OS handoff.
+dismissal. `updates install --interactive` uses the same owner operation and
+protected OS handoff as the GUI. Its result distinguishes acknowledged installer
+dispatch from confirmed installation; native Android installer acceptance evidence
+remains outstanding.
 
 JSON writes now also cover source/location selection, subscription add/update/delete,
 location add/update/delete/import, routing set/import, SSH-key import and update
@@ -562,63 +569,32 @@ restrictions, process recreation, and disconnected ADB explicitly. Desktop-only
 serve/gui/quit operations remain unsupported instead of simulating an Android
 background daemon.
 
-## Android Location Removal Implementation Gap
+## Android Location Removal Native-Acceptance Gap
 
-DELETE/IMPORT need a dedicated destructive-action executor outside the current
-DataStore ADD/UPDATE/SELECT transaction. Capture committed owner/revision and a
-canonical replacement/removal plan under the mutation lease; resolve selectors
-against visible localized rows and distinguish source ownership. Compare removed
-identities with actual active A separately from pending selected B.
+DELETE/IMPORT use the guarded destructive-action executor shared by GUI and ADB.
+It captures owner, revision and the actual runtime before planning; stops only a
+removed active configuration; commits under that captured revision; and restores
+only the captured runtime if the commit fails. The implementation has focused
+regressions for deletion/import planning, stop failure, stale runtime, commit
+failure and exact recovery. Native Android acceptance still needs to exercise this
+public path on a disposable device without treating a unit regression as evidence
+of a successful device-side stop or restore.
 
-If A must stop, first capture a private exact runtime restore point (actual JSON,
-prepared inputs, mode and runtime ID), then await a runtime-pinned stop outside
-DataStore. The current observer stores only inputs/digest, not enough to restore
-exact A. Existing stop tickets also need expected-runtime identity validation at
-service claim time so a delayed stop cannot affect a replacement runtime.
+## Android Installer Native-Acceptance Gap
 
-Revalidate and commit the original captured revision even when no explicit public
-guard was supplied. Atomically update saved rows, benchmark metadata, selected
-fields and permanent cache invalidation without deleting active runtime artifacts.
-On post-stop commit failure, recover only the captured runtime, never a stale full
-workspace. Existing restoreSnapshot/rehydrateSelection(previousCommitted) and
-startForControl are unsafe substitutes: pending B/settings may differ from A and
-startForControl writes selected/last-profile state. Recovery must respect current
-consent/foreground eligibility and distinguish restored, stopped and unknown results.
+`updates install --interactive` pins and revalidates a verified private APK, enters
+the owner ledger, and uses a protected interaction token for unknown-sources
+permission and installer dispatch. ADB transfers only opaque tokens, not paths.
+Without interactive opt-in it returns INTERACTION_REQUIRED before launching an OS
+surface. The result records acknowledged installer dispatch separately from
+installation confirmation; owner death or a disconnected client never becomes
+installation success or authorizes replay.
 
-GUI and ADB must enter the same owner executor with async DELETE/IMPORT support;
-GUI imports pin revision before opening the picker. Regressions must cover deleting
-pending B versus active A, import preserving/removing each independently, unrelated
-source identity, stop failure, runtime replacement, concurrent settings during stop,
-failed commit/runtime-only recovery, exact retries, picker cancellation and cache
-restart safety. No native stop/rollback is authorized merely by this design note.
-
-## Android Installer Implementation Gap
-
-`AndroidUpdateActionsService.buildInstallIntent` is not a completed control action:
-it currently checks file existence, sets INSTALLING before dispatch and has no
-unknown-sources permission continuation. Do not expose it as installed success.
-The remaining adapter work is to pin/revalidate a unique private verified APK with
-its manifest/hash/package/version/signers, admit installation through the owner
-ledger and prevent download/dismiss from replacing the pinned artifact.
-
-Without interactive opt-in, return INTERACTION_REQUIRED before launching any OS
-surface. Extend the protected interaction registry/activity with authenticated
-install-action stages for unknown-sources permission and installer dispatch; never
-route installation through VPN consent. Recheck permission after returning from
-settings. Preserve action/owner/expiry and recreation binding, foreground/unlocked
-gates and one-shot dispatch/cancellation. ADB transfers only opaque tokens, not paths.
-GUI Install must enter the same owner operation instead of direct startActivity.
-
-Only acknowledged successful dispatch can publish INSTALLING and an explicit
-installer-started/not-installed outcome. Actual installation or process replacement
-requires separate confirmation/reconciliation; owner death is not success and must
-never trigger automatic replay against a new owner. The current service's verified
-download alone is not evidence that the file is still unchanged at installation.
-
-Regressions must cover missing/changed/wrong-signer artifacts, noninteractive no-op,
-permission denial/revocation/return, locked/unfocused activity, recreation, duplicate
-requests, cancel-versus-dispatch, pinned artifact replacement, dispatch failure and
-truthful handoff. These tests must precede any disposable-device installer exercise.
+The remaining work is native acceptance: exercise the public ADB/interactive path
+on a disposable device across permission denial/grant, locked or unfocused activity,
+recreation, cancellation versus dispatch, changed artifacts and installer outcomes.
+This evidence must confirm the truthful handoff semantics and must not treat a
+verified download or installer launch as installed success.
 
 ## Large-Content Transfer
 
