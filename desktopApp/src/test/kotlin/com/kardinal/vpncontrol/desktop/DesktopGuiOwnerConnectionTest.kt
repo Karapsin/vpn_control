@@ -83,6 +83,53 @@ class DesktopGuiOwnerConnectionTest {
         } finally { client.close(); owner.close(); directory.toFile().deleteRecursively() }
     }
 
+    @Test fun normalTeardownDetachesBeforeCancellingItsScopeAndAllowsImmediateReattach() = runTest {
+        val directory = Files.createTempDirectory("gui-owner-normal-teardown")
+        val owner = DesktopControllerOwner(DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory),
+            DesktopWorkspace(PersistedState(), emptyList())), scope = backgroundScope)
+        val clientScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        suspend fun connect(scope: CoroutineScope, frontendId: String) = DesktopGuiOwnerConnection.connect(scope, frontendId,
+            request = owner::execute, startOwner = { error("existing owner must not be replayed") }).getOrThrow()
+        val first = connect(clientScope, UUID.randomUUID().toString())
+        try {
+            first.closeAndDetach()
+            clientScope.cancel()
+            val replacement = connect(backgroundScope, UUID.randomUUID().toString())
+            replacement.closeAndDetach()
+            assertNull(owner.frontends.registration())
+            assertTrue(owner.execute(DesktopCliCommand.ControlSnapshotRead(owner.controllerId)).success)
+        } finally {
+            first.close(); clientScope.cancel(); owner.close(); directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun normalTeardownBoundsUnavailableDetachWithoutOwnerReplay() = runTest {
+        val directory = Files.createTempDirectory("gui-owner-detach-timeout")
+        val owner = DesktopControllerOwner(DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory),
+            DesktopWorkspace(PersistedState(), emptyList())), scope = backgroundScope)
+        var detachRequests = 0
+        var starts = 0
+        val client = DesktopGuiOwnerConnection.connect(backgroundScope, UUID.randomUUID().toString(), request = { command ->
+            if (command is DesktopCliCommand.ControlFrontendLease && command.action == DesktopFrontendLeaseAction.DETACH) {
+                detachRequests++
+                awaitCancellation()
+            } else owner.execute(command)
+        }, startOwner = { starts++; error("existing owner must not be replayed") }).getOrThrow()
+        try {
+            var completed = false
+            val teardown = launch { client.closeAndDetach(); completed = true }
+            runCurrent()
+            assertEquals(1, detachRequests)
+            assertFalse(completed)
+            advanceTimeBy(3_499); runCurrent()
+            assertFalse(completed)
+            advanceTimeBy(1); runCurrent()
+            assertTrue(completed)
+            assertEquals(0, starts)
+            teardown.join()
+        } finally { client.close(); owner.close(); directory.toFile().deleteRecursively() }
+    }
+
     @Test fun rejectedHeartbeatClosesClientWithoutReattachOrOwnerRestart() = runTest {
         val directory = Files.createTempDirectory("gui-owner-lease-loss")
         val ownerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))

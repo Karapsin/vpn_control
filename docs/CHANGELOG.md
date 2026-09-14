@@ -3,6 +3,11 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Await graphical frontend detach on normal close so immediate reopening reuses the live controller.
+- Keep diagnostics export regressions on their fixture owner instead of the host workspace.
+
 ## 2.1.10 - 2026-09-14
 
 - Verify retained-operation and location exports against their authenticated controller endpoints.

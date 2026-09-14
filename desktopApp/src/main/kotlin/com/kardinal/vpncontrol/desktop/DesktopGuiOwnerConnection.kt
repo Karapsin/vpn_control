@@ -40,14 +40,27 @@ internal class DesktopGuiOwnerConnection private constructor(
     }
 
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        heartbeat.cancel()
-        session.close()
+        if (!beginClose()) return
         // Best effort only: process death or scope cancellation falls back to bounded lease expiry.
         scope.launch {
-            runCatching { lease(request, epoch, frontendId, DesktopFrontendLeaseAction.DETACH) }
+            runCatching { detach() }
         }
     }
+
+    /** Normal frontend teardown awaits the bounded detach before cancelling its scope. */
+    suspend fun closeAndDetach() {
+        if (!beginClose()) return
+        withContext(NonCancellable) { runCatching { detach() } }
+    }
+
+    private fun beginClose(): Boolean {
+        if (!closed.compareAndSet(false, true)) return false
+        heartbeat.cancel()
+        session.close()
+        return true
+    }
+
+    private suspend fun detach() = lease(request, epoch, frontendId, DesktopFrontendLeaseAction.DETACH)
 
     companion object {
         suspend fun connect(

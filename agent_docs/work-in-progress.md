@@ -23,18 +23,49 @@ and inputs until authoritative reconciliation. Only root owns shared Gradle,
 version metadata, staging, commits, pushes and exact-SHA CI. Workers use bounded
 assignments, one writer per file and one operator per native environment.
 
-## Current Delivery And Work (Checkpoint47)
+## Current Delivery And Work (Checkpoint48)
 
-Checkpoint46 is pushed as `60ed33aabf699c2a437dba5535fdd861e2421e3f`, version
-2.1.9 with nine Unreleased notes. Full managed prepush passed. Exact-SHA Android
-34792865849 passed; Fast34792865872, Linux34792865877, Windows34792865810 and
-macOS34792865863 remained running at the latest inspection. Managed follow
-session10552 remains live. This is not a complete delivery receipt yet.
-Checkpoint45 `33e2c14adc81d2468309e8747b79753c9a101d87` has all five required
-workflows successful (receipt checkpoint45/commit-result.json).
+Checkpoint47 is pushed as `5f6c2d41fcf428123f6cc512532e57fafce028e2`, version
+2.1.10. Full managed prepush passed. Its five exact-SHA workflows are pending;
+managed follow session42310 remains live. Previous checkpoint46
+`60ed33aabf699c2a437dba5535fdd861e2421e3f` has all five workflows successful,
+including Fast34792865872, Android34792865849, Linux34792865877,
+Windows34792865810 and macOS34792865863 (checkpoint46/commit-result.json).
 
-Current dirty scope: Linux native GUI guard argument builder, its causal test,
-and this record. Root independently reran all twelve guard tests successfully.
+Current implementation slice fixes ordinary GUI shutdown losing its queued DETACH
+when Main immediately cancels the frontend scope. A quick deterministic test
+reproduced replacement ATTACH returning BUSY; a separate virtual-time test caught
+teardown returning before the bounded detach. Evidence:
+checkpoint47/frontend-close-red2.log (8 tests, exactly two expected failures).
+Normal Main teardown now awaits closeAndDetach before endpoint/scope disposal;
+the best-effort AutoCloseable path and crash lease expiry remain intact.
+Focused integrated validation passed26 tests with zero failures/skips
+(checkpoint47/frontend-close-green2.log); new packaged immediate-reattach evidence
+remains pending. Changes belong to root/handed-off frontend_lease47 in connection, Main
+teardown and the connection regression tests. No other product files are assigned.
+
+Full prepush exposed a distinct diagnostics-test isolation failure: normal commands
+were bound to the temporary endpoint while direct export read default host owner
+metadata. The existing failing test is retained in
+checkpoint48/diagnostics-prepush-failure.xml and diagnostics-reproduce.log.
+The test now binds export and rejects fallback startup, asserting exactly one
+fixture export. Integrated diagnostics/frontend checks passed; no host workspace
+or product export behavior was changed. Full prepush must be rerun for this edit.
+
+Windows checkpoint47 broker component passed actual ordinary-user UAC approval:
+one exact existing test executed, zero skips/failures, child readiness and exact
+stop proved; no new staging directories or remaining owned processes/tasks.
+Receipt: checkpoint47/windows-broker/receipt.json. Frozen current test classes
+exercise an installed dabd product copy on Windows ARM64 with x64 emulation;
+this is component evidence, not native x86_64/current-source package certification.
+Public CLI TUN traffic subsequently passed eight commands, a real TUN adapter
+and unproxied synthetic-address token traffic with RX/TX increments. Public
+off/quit and exact routes/adapters/stages/process cleanup passed. Evidence:
+checkpoint47/windows-tun/receipt.json. The same installed-source/architecture
+limits apply. Current same-source packages and denial-preserves-A remain gates.
+
+Previously delivered Linux scope: Linux native GUI guard argument builder, its causal test,
+and the checkpoint47 record. Root independently reran all twelve guard tests successfully.
 The native harness now imports the canonical X11 collector and argument builder;
 the former duplicated regex missed an actual owned window and its empty baseline
 option caused argparse failure. Native result checkpoint46/Linux/summary.json
@@ -44,8 +75,7 @@ Token proxy traffic and stable runtime identity passed before/after GUI attach,
 normal close, reattach and frontend crash. Public off/quit passed, all five task
 roots have no live processes, and display servers were preserved. No-tray hide
 returned UNSUPPORTED with the window accessible. Immediate reattach was
-UNAVAILABLE until the fifteen-second frontend lease expired; a separate review
-will determine whether that behavior requires correction. This evidence is for
+UNAVAILABLE until the fifteen-second frontend lease expired; the causal regression and normal-teardown fix above address this behavior. This evidence is for
 source33e2, not a claim of current exact-SHA packaged certification.
 
 Windows checkpoint46 proves ordinary-user installed-package proxy token traffic,
@@ -57,11 +87,11 @@ actual Windows red/green evidence and root review are under windows-runtime.
 | Task | Agent | Owned files/subsystem | Shared files reserved | Artifact/environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
 | Integration | Root | WIP, reviewed Linux guard/tests, builds/delivery | All shared protocol/model/build files | Host build only | Exact-SHA CI and next checkpoint |
-| Android | Unassigned after completed readiness slice | No active edits | All Android source reserved |5596 stopped connection, empty fixture/reverses | Cancellation/traffic fixture remains incomplete |
+| Android | linux_tls_manifest_retry | Ignored fixture only | All Android source reserved | Exclusive5596; frozen APK2.3.10 | Correct DNS relay and public owner discovery before cancellation scenario |
 | Windows broker | windows_broker47 | Ignored native fixture/evidence only | No tracked edits | Exclusive owned ARM64 guest, x64 installed dabd | Exact one-test loopback helper gate; frozen tests in checkpoint47/windows-broker/frozen-tests |
 | Linux native | Completed linux_observation46 | Two guard/test files handed to root | No product edits | Fedora2316 source33e2 RPM | Native lifecycle passed with immediate-reattach limitation |
-| Frontend review | frontend_lease47 | Read-only lease/detach review | Root owns source | No VM operation | Determine contract and causal regression |
-| macOS preparation | mac_pair47 | Read-only package/disk audit | Root owns builds and VM | fixture43 old job retained | Fresh current-source pair commands and capacity |
+| Frontend fix | Root after frontend_lease47 | Connection, Main teardown, regression test | All other shared source reserved | Host tests |26 focused tests pass; next prepush/native package |
+| macOS preparation | Root after mac_pair47 | No active edits | Root owns builds and VM | fixture43 old job retained | Guest Tart exec access verified,18GiB virtual free; host physical capacity limits builds. Plan same-SHA CI base plus one version-overridden target; preserve visual evidence |
 
 Checkpoint45 product fixes have direct causal and passing evidence:
 

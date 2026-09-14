@@ -193,7 +193,7 @@ fun main(rawArgs: Array<String>) {
             DesktopApplication(startInTray, activationEvents, hideEvents, frontend, visibility, quitExit, ::exitApplication)
         }
     } finally {
-        connection.close()
+        kotlinx.coroutines.runBlocking { connection.closeAndDetach() }
         frontendRegistration.close()
         frontendScope.coroutineContext[Job]?.cancel()
     }

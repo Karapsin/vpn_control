@@ -169,11 +169,17 @@ class DesktopDiagnosticsCliTest {
             onCliCommand = { runBlocking { owner.session.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
         ))
         try {
+            var exports = 0
             fun invoke(vararg args: String): Pair<Int?, String> {
                 val lines = mutableListOf<String>()
                 return DesktopCli.handleArgs(arrayOf(*args), lines::add,
                     requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
-                    startHeadlessController = { error("Reuse owner") }) to lines.joinToString("\n")
+                    requestExport = { command, output ->
+                        exports++
+                        DesktopActivationServer.requestCliExport(command, output, endpoint)
+                    },
+                    startHeadlessController = { error("Reuse owner") },
+                    startHeadlessExport = { _, _ -> error("Reuse fixture owner") }) to lines.joinToString("\n")
             }
             val stats = invoke("stats")
             assertEquals(0, stats.first)
@@ -215,6 +221,7 @@ class DesktopDiagnosticsCliTest {
             val output = directory.resolve("diagnostic report.txt")
             val before = service.state
             assertEquals(0, invoke("diagnostics", "export", "--output", output.toString()).first)
+            assertEquals(1, exports)
             val report = Files.readString(output)
             assertTrue(report.contains("VPN Control Desktop Diagnostics"))
             assertFalse(report.contains("SECRET-TOKEN"))
