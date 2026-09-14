@@ -32,6 +32,10 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
         jdk_patch = patch("prepare_desktop_update_fixture.require_jdk17")
         self.jdk_check = jdk_patch.start()
         self.addCleanup(jdk_patch.stop)
+        tools_patch = patch("prepare_desktop_update_fixture.require_linux_build_tools", create=True)
+        self.tools_check = tools_patch.start()
+        self.addCleanup(tools_patch.stop)
+        self.tools_patch = tools_patch
 
     def test_public_ready_phase_admits_only_expected_downloaded_update(self):
         # Public installed-DMG status observed during the native coordinator run.
@@ -107,6 +111,22 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "JDK 17"):
                     native_build(output, True, runner)
             self.assertFalse((output / "packages").exists())
+            self.assertEqual([], calls)
+
+    def test_missing_objcopy_fails_before_creating_build_output(self):
+        # Fedora jlink failed late with Cannot run program "objcopy": error=2.
+        # Reject the missing executable before consuming either immutable stage.
+        self.tools_patch.stop()
+        with tempfile.TemporaryDirectory() as temporary:
+            _, _, output, _ = self.prepared(Path(temporary))
+            calls, runner = self.fake_gradle()
+            with patch("platform.system", return_value="Linux"), \
+                    patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.shutil.which", return_value=None):
+                with self.assertRaisesRegex(ValueError, "objcopy.*binutils"):
+                    native_build(output, True, runner)
+            self.assertFalse((output / "packages").exists())
+            self.assertFalse((output / "build-base").exists())
             self.assertEqual([], calls)
 
     def test_rejected_macos_packaging_jdk_fails_before_creating_build_output(self):
@@ -871,6 +891,7 @@ class ArchFixtureEmissionTest(unittest.TestCase):
             output=root/"fixture"; prepare(repository, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64", "arch")
             calls, runner=helper.fake_gradle()
             with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"), \
+                    patch("prepare_desktop_update_fixture.require_linux_build_tools"), \
                     patch("prepare_desktop_update_fixture.require_jdk17") as jdk_check:
                 receipt=native_build(output, True, runner)
             jdk_check.assert_called_once_with()

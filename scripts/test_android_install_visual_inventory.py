@@ -10,7 +10,7 @@ class AndroidInstallVisualInventoryTest(unittest.TestCase):
         manifest = json.loads((root / "visual-tests/scenes.json").read_text())
         scenes = {scene["id"]: scene for scene in manifest["scenes"]}
         fixture = (root / "app/src/androidTest/java/com/kardinal/vpncontrol/ui/VisualCaptureInstrumentedTest.kt").read_text()
-        for suffix in ("preparing", "confirmation", "installed", "failed", "unknown"):
+        for suffix in ("preparing", "confirmation", "installed", "failed", "unknown", "cancelled"):
             name = "update-install-session-" + suffix
             self.assertEqual(["android"], scenes[name]["platforms"])
             self.assertIn("update-install-session", scenes[name]["required_elements"])

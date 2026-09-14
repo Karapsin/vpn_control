@@ -107,6 +107,10 @@ package and live-traffic scenarios as separate native acceptance.
 JVM property parsing, selected-launcher arguments, known Homebrew packaging
 rejection, Java major and native architecture. `test_desktop_update_fixture.py`
 verifies rejection precedes build-directory creation and native build execution.
+Its Linux missing-`objcopy` regression also rejects an absent `binutils`
+prerequisite before creating immutable stage outputs or invoking Gradle. This
+covers the Fedora native `jlink` failure; keep the package build replay as native
+evidence alongside the routine script test.
 Compose's own packaging vendor check remains enabled; passing this focused
 preflight is not blanket approval of other JDK distributions.
 
@@ -429,6 +433,11 @@ using its assigned temporary fixture directory. It injects ENOSPC after a partia
 write through the production worker's receipt and package-capture paths, requires
 the original PREPARING receipt to survive, and verifies real admission rejects a
 second attempt with BUSY. A no-fault control exercises successful publication.
+Its copyfile EIO probe calls the same staging helper as the coordinator and proves
+the injector ran once. It verifies base identity, failed receipt bytes/metadata,
+admission release and native input cleanup. An isolated mutation ignoring the
+production copy failure must fail this test; a duplicated fixture predicate is
+not causal coverage. The partial staging tree remains explicit retained evidence.
 These are component persistence tests; they do not replace a full machine install
 or resolve an existing uncertain job. Routine hygiene launches them with explicit
 skips outside an assigned macOS fixture.

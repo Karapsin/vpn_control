@@ -9,6 +9,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep diagnostics export regressions on their fixture owner instead of the host workspace.
 - Run frontend cleanup before process exit, keep Windows GUI unelevated, and strengthen native fixture regressions.
 - Allow isolated build-only update fixtures on native hosts while preserving guest-only installation and trust gates.
+- Reject missing Linux objcopy before building immutable update fixtures.
+- Exercise macOS copy-failure receipt preservation through the production staging helper.
+- Cover cancelled Android installer sessions in the visual scene inventory.
 
 ## 2.1.10 - 2026-09-14
 

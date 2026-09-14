@@ -100,6 +100,7 @@
     {"id":"update-install-session-confirmation","platforms":["android"],"required_elements":["update-install-session","update-install","update-close"]},
     {"id":"update-install-session-installed","platforms":["android"],"required_elements":["update-install-session","update-close"]},
     {"id":"update-install-session-failed","platforms":["android"],"required_elements":["update-install-session","update-close"]},
+    {"id":"update-install-session-cancelled","platforms":["android"],"required_elements":["update-install-session","update-close"]},
     {"id":"update-install-session-unknown","platforms":["android"],"required_elements":["update-install-session","update-close"]},
     {"id":"update-unsupported","platforms":["android","linux","windows","macos"],"required_elements":["update-message","update-retry","update-close"]},
     {"id":"update-failed","platforms":["android","linux","windows","macos"],"required_elements":["update-message","update-retry","update-close"]},

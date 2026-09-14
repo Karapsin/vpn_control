@@ -657,6 +657,7 @@ private fun androidVisualState(sceneId: String): MainUiState {
         "update-install-session-installed" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.INSTALLED))
         "update-install-session-failed" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.FAILED))
         "update-install-session-unknown" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.UNKNOWN))
+        "update-install-session-cancelled" -> state.copy(appUpdate = androidVisualInstallSession(com.kardinal.vpncontrol.AppInstallSessionPhase.CANCELLED))
         "update-unsupported" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.UNSUPPORTED))
         "update-failed" -> state.copy(appUpdate = androidVisualUpdate(AppUpdatePhase.FAILED))
         "stress-narrow-long-german" -> state.copy(appLanguage = AppLanguage.GERMAN)

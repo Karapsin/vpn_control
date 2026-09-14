@@ -596,6 +596,12 @@ struct transaction {
     unsigned int renamed;
 };
 static struct transaction active = {.parent=-1, .old_bundle=-1, .candidate=-1, .gate=-1, .executable=-1};
+static void stage_bundle(const char *source, const char *stage, struct transaction *transaction, uid_t authority, struct pins *pins) {
+    require(copyfile(source, stage, NULL, COPYFILE_ALL|COPYFILE_RECURSIVE|COPYFILE_NOFOLLOW|COPYFILE_EXCL) == 0, "PERSISTENCE_FAILED");
+    size_t entries = 0; tree_verify(stage, stage, 0, &entries, true, authority);
+    transaction->candidate = openat(transaction->parent, transaction->stage, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    retain(pins, transaction->candidate); inspect(transaction->candidate, authority, true, false, false);
+}
 static void transaction_failed(const char *code) {
     bool restored = true;
     if (active.renamed == 2) {
@@ -693,10 +699,7 @@ static void coordinator(struct request *request, int input) {
     snprintf(active.stage, sizeof(active.stage), ".vpn-control-stage-%s.app", request->job);
     snprintf(active.backup, sizeof(active.backup), ".vpn-control-backup-%s.app", request->job);
     join(stage, sizeof(stage), parent_path, active.stage);
-    require(copyfile(source, stage, NULL, COPYFILE_ALL|COPYFILE_RECURSIVE|COPYFILE_NOFOLLOW|COPYFILE_EXCL) == 0, "PERSISTENCE_FAILED");
-    entries = 0; tree_verify(stage, stage, 0, &entries, true, authority);
-    active.candidate = openat(active.parent, active.stage, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
-    retain(&pins, active.candidate); inspect(active.candidate, authority, true, false, false);
+    stage_bundle(source, stage, &active, authority, &pins);
     char *const detach[] = {"/usr/bin/hdiutil", "detach", mountpoint, NULL};
     require(command(detach, NULL, 1024*1024, NULL) == 0, "RUNTIME_FAILED");
     require(fsync(active.parent) == 0, "PERSISTENCE_FAILED");
