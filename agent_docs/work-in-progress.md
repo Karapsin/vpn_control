@@ -23,38 +23,45 @@ and inputs until authoritative reconciliation. Only root owns shared Gradle,
 version metadata, staging, commits, pushes and exact-SHA CI. Workers use bounded
 assignments, one writer per file and one operator per native environment.
 
-## Current Delivery And Work (Checkpoint46)
+## Current Delivery And Work (Checkpoint47)
 
-Checkpoint45 is pushed as `33e2c14adc81d2468309e8747b79753c9a101d87`, version
-2.1.9 with eight Unreleased notes. Full managed prepush passed. All five required exact-SHA workflows passed: Fast34791023635,
-Android34791023642, macOS34791023640, Linux34791023629 and Windows34791023634.
-Managed follow session94113 completed successfully; receipt checkpoint45/commit-result.json.
-This verifies checkpoint delivery, not the full native parity matrix.
+Checkpoint46 is pushed as `60ed33aabf699c2a437dba5535fdd861e2421e3f`, version
+2.1.9 with nine Unreleased notes. Full managed prepush passed. Exact-SHA Android
+34792865849 passed; Fast34792865872, Linux34792865877, Windows34792865810 and
+macOS34792865863 remained running at the latest inspection. Managed follow
+session10552 remains live. This is not a complete delivery receipt yet.
+Checkpoint45 `33e2c14adc81d2468309e8747b79753c9a101d87` has all five required
+workflows successful (receipt checkpoint45/commit-result.json).
 
-Current dirty scope is the Windows fixture exact-stream helper and its causal
-regression, plus this record. The helper's old name R invoked PowerShell's built-in
-Invoke-History alias. The actual routine regression ran on the owned Windows VM:
-QGA2564 exit1 with the original name, QGA5808 exit0 with Read-VpnFixtureExact.
-Host Python ran three checks and skipped three Windows-only checks. The new
-public-port selector also failed against the two mixed-listener native fixture
-with the old type-only predicate (QGA5388 exit1), then passed with the exact
-public-listener selector (QGA2184 exit0). Routine release
-hygiene already invokes this test module. Evidence:
-checkpoint46/windows-runtime/{stream-red,stream-green}-{handle,result}.json and
-matching script copies. Native peer fixture now imports the same helper body. Linux current33e2 RPM
-  installed and passed proxy traffic, but GUI visibility remains unproven; absence
-  after cleanup or discarded frontend logs cannot establish a causal product defect.
-  A fresh stronger-model worker owns the difficult timed observation; no product
-  edits have been made from the earlier worker's withdrawn diagnosis.
-Version metadata, final prepush and delivery for this new slice remain pending.
+Current dirty scope: Linux native GUI guard argument builder, its causal test,
+and this record. Root independently reran all twelve guard tests successfully.
+The native harness now imports the canonical X11 collector and argument builder;
+the former duplicated regex missed an actual owned window and its empty baseline
+option caused argparse failure. Native result checkpoint46/Linux/summary.json
+records installed source33e2 RPM SHA
+b962a3d3add17990549f9af6e8f039f527feaccd5d8db4b0e073bcb2c5f0eb4a.
+Token proxy traffic and stable runtime identity passed before/after GUI attach,
+normal close, reattach and frontend crash. Public off/quit passed, all five task
+roots have no live processes, and display servers were preserved. No-tray hide
+returned UNSUPPORTED with the window accessible. Immediate reattach was
+UNAVAILABLE until the fifteen-second frontend lease expired; a separate review
+will determine whether that behavior requires correction. This evidence is for
+source33e2, not a claim of current exact-SHA packaged certification.
+
+Windows checkpoint46 proves ordinary-user installed-package proxy token traffic,
+public off/quit and no remaining owned processes/listeners. It uses installed
+dabd2.1.9 on ARM64 Windows with x64 emulation, not native x86_64/TUN evidence.
+The fixture uses the committed exact stream reader and mixed-in port selector;
+actual Windows red/green evidence and root review are under windows-runtime.
 
 | Task | Agent | Owned files/subsystem | Shared files reserved | Artifact/environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Integration | Root | WIP, Windows fixture helper/tests, builds/delivery | All shared protocol/model/build files | Host build only | Check exact-SHA CI, review native receipts |
-| Android native | android_readiness45 | Ignored fixture/evidence only | No tracked edits | Exclusive5596; frozen33e2 APK2.3.10 | Readiness/staged-B/plain off verified; cancellation fixture DNS limitation remains |
-| Windows native | windows_public_runtime45 | Ignored fixture/evidence only | No tracked edits | Owned ARM64 guest/x64 package dabd2.1.9 | Root completed ordinary-user token traffic/off/quit; worker retired |
-| Linux | linux_observation46 | Ignored frozen harness/evidence | No product changes justified | Fedora2316 old RPM2.1.8 | Current RPM proxy traffic passed; timed GUI/frontend observer probe pending |
-| macOS | Root after mac_late_exit45 handoff | Retained guest/evidence | No replay of old job | fixture43 running after observed VM stop | Fresh current-package late-ack validation still needed |
+| Integration | Root | WIP, reviewed Linux guard/tests, builds/delivery | All shared protocol/model/build files | Host build only | Exact-SHA CI and next checkpoint |
+| Android | Unassigned after completed readiness slice | No active edits | All Android source reserved |5596 stopped connection, empty fixture/reverses | Cancellation/traffic fixture remains incomplete |
+| Windows broker | windows_broker47 | Ignored native fixture/evidence only | No tracked edits | Exclusive owned ARM64 guest, x64 installed dabd | Exact one-test loopback helper gate; frozen tests in checkpoint47/windows-broker/frozen-tests |
+| Linux native | Completed linux_observation46 | Two guard/test files handed to root | No product edits | Fedora2316 source33e2 RPM | Native lifecycle passed with immediate-reattach limitation |
+| Frontend review | frontend_lease47 | Read-only lease/detach review | Root owns source | No VM operation | Determine contract and causal regression |
+| macOS preparation | mac_pair47 | Read-only package/disk audit | Root owns builds and VM | fixture43 old job retained | Fresh current-source pair commands and capacity |
 
 Checkpoint45 product fixes have direct causal and passing evidence:
 

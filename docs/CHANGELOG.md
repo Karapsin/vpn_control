@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.10 - 2026-09-14
 
 - Verify retained-operation and location exports against their authenticated controller endpoints.
 - Recover delayed installer authorization safely and preserve original-user launch and autostart ownership.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Guard Linux GUI lifecycle fixtures against stale windows, reused processes and crashes.
 - Preserve Android custom runtime readiness, acknowledge delayed installer exit, and guard native fixture identity and graceful closure.
 - Add causal Windows native fixture checks for exact stream reads and public proxy listener selection.
+- Reuse guarded Linux GUI observation for empty and multiple window baselines.
 
 ## 2.1.9 - 2026-09-13
 

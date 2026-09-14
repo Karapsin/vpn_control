@@ -5,7 +5,7 @@ import unittest
 import subprocess
 
 from linux_gui_fixture_guard import (collect_window_pids, graceful_close, main, observe,
-                                    proc_starttime, require_fresh_gui_frontend,
+                                    observation_arguments, proc_starttime, require_fresh_gui_frontend,
                                     require_mutable_fixture_source, write_failure_receipt)
 
 
@@ -66,6 +66,28 @@ class LinuxGuiFixtureGuardTest(unittest.TestCase):
             receipt = Path(directory) / "failure.json"
             write_failure_receipt(receipt, RuntimeError("no fresh window"), {}, [])
             self.assertEqual(False, json.loads(receipt.read_text())["ok"])
+
+    def test_native_observation_arguments_handle_empty_and_multiple_baselines(self):
+        # Raw X11 output from the Fedora native probe. Its old wrapper used a
+        # double-escaped PID regex and emitted an empty --baseline-window-id.
+        def run(command, **kwargs):
+            if command == ["xprop", "-root", "_NET_CLIENT_LIST"]:
+                return Completed(0, "_NET_CLIENT_LIST(WINDOW): window id # 0x400004\n")
+            self.assertEqual(["xprop", "-id", "0x400004", "_NET_WM_PID"], command)
+            return Completed(0, "_NET_WM_PID(CARDINAL) = 23331\n")
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "native.json"
+            for baseline in ([], [17], [17, 18]):
+                with self.subTest(baseline=baseline):
+                    args = observation_arguments(expected_pid=23331, expected_starttime="1277112",
+                        baseline_windows=baseline, receipt=receipt)
+                    code = main(args, collect=lambda: collect_window_pids(run),
+                                start=lambda pid: "1277112", alive=lambda pid: True)
+                    self.assertEqual(0, code)
+                    result = json.loads(receipt.read_text())
+                    self.assertEqual(23331, result["frontendPid"])
+                    self.assertEqual([4194308], result["freshWindows"])
+                    self.assertEqual(len(baseline), args.count("--baseline-window-id"))
 
     def test_x11_adapter_missing_observer_is_a_bounded_failure(self):
         def missing(command, **kwargs):

@@ -94,6 +94,14 @@ def positive_pid(value):
     return pid
 
 
+def observation_arguments(*, expected_pid, expected_starttime, baseline_windows, receipt):
+    """Build the native guard invocation without empty or unpaired repeatable options."""
+    args = ["--expected-pid", str(expected_pid), "--expected-proc-starttime", str(expected_starttime)]
+    for window in baseline_windows:
+        args.extend(("--baseline-window-id", str(window)))
+    return [*args, "--receipt", str(receipt)]
+
+
 def main(argv=None, collect=collect_window_pids, start=proc_starttime, alive=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-pid", type=positive_pid, required=True)
