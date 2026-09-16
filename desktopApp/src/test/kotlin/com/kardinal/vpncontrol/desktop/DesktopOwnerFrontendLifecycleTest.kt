@@ -69,6 +69,16 @@ class DesktopOwnerFrontendLifecycleTest {
         }
     }
 
+    @Test fun failedIdentityProbeRevokesOnlyItsStillRegisteredFrontend() = runTest {
+        val lifecycle = DesktopOwnerFrontendLifecycle("owner", backgroundScope, {}, { DesktopControlMetadata(0, false) })
+        val replacement = UUID.randomUUID().toString()
+        assertEquals(ControlCode.OK, code(lifecycle.execute(command(DesktopFrontendLeaseAction.ATTACH))))
+        assertFalse(lifecycle.revokeIfCurrent(replacement))
+        assertEquals(frontend, lifecycle.registration())
+        assertTrue(lifecycle.revokeIfCurrent(frontend))
+        assertNull(lifecycle.registration())
+    }
+
     @Test fun detachedOrExpiredFrontendNeverOverridesRuntimeOrJobRetention() = runTest {
         var now = 0L
         val lifecycle = DesktopOwnerFrontendLifecycle("owner", backgroundScope, {}, { DesktopControlMetadata(0, false) }, { now })

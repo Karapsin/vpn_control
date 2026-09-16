@@ -32,8 +32,10 @@ stale Linux fixture-marker regression and evidence tracker. The regression
 exercises the existing fail-closed guard; no product implementation repair is
 claimed. Root owns current evidence integration and delivery.
 
-The gateway ssh.karapsin.com:228 currently refuses SSH connections, so remote
-Ubuntu/Windows state must be revalidated before further actions. The completed
+The user changed the gateway to ssh.karapsin.com:2228. Root matched its keys to
+the previously trusted gateway and restored the Arch hop with the task socket
+/home/kardinal/.ssh/vpn-control-arch60.sock. Remote VMs were stopped; Windows
+resumed at6GiB and Ubuntu at4GiB only after current memory/headroom checks. The completed
 Linux builds and macOS installer receipts below remain recorded evidence. The
 Linux marker's installed identity was verified and the prior marker preserved;
 the resumed worker confirmed that neither its atomic replacement nor a new
@@ -43,16 +45,17 @@ only a Windows App Execution Alias exists for Python, so a real interpreter is
 still needed. Both Windows CI artifact downloads terminated with network timeouts.
 
 Local macOS fixture control53 is still running. Its worker revalidated the same
-controller/runtime and fresh proxy token traffic after the interruption. Native
-UI is currently blocked by the locked host Mac; preserve the live guest connection
-and do not start a local Android AVD alongside it. See checkpoint57/macos-traffic
+controller/runtime and fresh proxy token traffic after the interruption. The user unlocked the host Mac. Native screenshots work, but CUA pointer
+actions return noWindowsAvailable and keyboard attempts caused no visible change;
+the actual guest close-button case is not yet certified. Preserve the live guest
+connection and do not start a local Android AVD alongside it. See checkpoint57/macos-traffic
 for current process identities and the next UI step when the host is unlocked.
 
 ## Delivery And Current Integration
 
-Current verified checkpoint: `5acf814f7f4b1591e8b493040e00b73e4de485ee`, version2.1.11
-with five Unreleased bullets. Full managed prepush and all five required exact-SHA
-workflows passed. Receipt: checkpoint58/commit-result.json. Frozen native pairs
+Current verified checkpoint: `9c2e13eed434423771f0bc0d5c3daea84d9abba1`, version2.1.11
+with six Unreleased bullets. Full managed prepush and all five required exact-SHA
+workflows passed. Receipt: checkpoint59/commit-result.json. Frozen native pairs
 still use ae926016 product code; this checkpoint changes tests and documentation. The
 Windows stop-routing test correction is included; its full simulated missing-fcntl
 suite77/77 and normal focused suite86/86 passed. Prior c0955b7 Windows failure is
@@ -180,10 +183,10 @@ limited tasks. This clears guest login access, not current-source broker/MSI gat
 | Task | Owner | Exclusive scope | Next evidence |
 | --- | --- | --- | --- |
 | Integration/delivery | Root | Shared source, docs, sole host Gradle | Windows frozen pair transfer; review native evidence and final delivery |
-| Linux update | Root; worker complete | Ubuntu2307, current paired packages/new private workspace | Public DEB update/recovery; old workspace preserved after verified public quit |
-| Windows tools | Root; worker complete | Windows2314 task tool staging only | Hash-verified JDK17, pinned .NET SDK and WiX; no build yet |
+| Linux next package | linux_arch61 | Ubuntu2307 reconciliation, then owned Arch2317 only after slot handoff | DEB accepted; preserve artifacts before a graceful VM switch |
+| Windows native build | windows_build60 | Windows2314 at6GiB | Python stage verified; reconcile failed interactive setup task before retry/build |
 | macOS traffic | Root; capture workers complete | vpn-control-boot-control53 | Packaged proxy traffic through GUI attach/hide/close/crash; installer slice complete |
-| Android transport tests | Root; worker complete | DesktopAndroidStreamTransportTest only | Focused public fake-ADB document stream validation |
+| Frontend crash recovery | frontend_crash60 | Visibility control, owner lease and constructor integration, focused tests | Causal RED captured; root reviews and runs GREEN before packaging |
 | Android pair | Root | /private/tmp/vpn-android-pair-ae92601 | Both release APKs built and verified; no AVD running |
 | Android native | Root; preparation worker complete | Local task AVDs remain stopped | Execute prepared API29/API35 scenarios after macOS releases local slot |
 
@@ -215,6 +218,38 @@ real foreground-terminal Ctrl-C130. Earlier reconstructed checkpoint58 summaries
 explicitly not raw evidence and must not certify their unrecaptured claims.
 GUI hide/close/crash and owner replacement remain untested in this native slice.
 The host is still locked; preserve the live connection until GUI checks can resume.
+
+## Checkpoint60 Native Progress
+
+- Root reviewed the Linux protected success and exact original operation/job tuple
+  under a distinct replacement controller: operatione53f848d-7fdc-41a1-afd6-c54414da0493,
+  job3f9855f7-edf0-4be3-9fda-3968d916d06b, replacement86ffe18f-350c-4969-8648-b28acfa7e58c.
+  Public target2.1.12 and dpkg2.1.12-1 agree. Raw result/summary and hash verification
+  are under checkpoint60/linux-review. This closes current same-source DEB update
+  recovery, not fresh dependency acquisition. The PTY wrapper hit end-of-stream EIO
+  after durable child success; no installer was replayed.
+- Installed macOS routing/location exports succeeded in private disconnected
+  workspaces with Unicode/space paths, mode600 output and mode700 directories.
+  Existing destinations were preserved; invalid output and JSON/raw combinations
+  rejected. Both export types include timestamps, so separate invocations do not
+  prove byte equality. Root reviewed the saved script and raw results. The first
+  export archive contains an expired private owner token from an overbroad scan:
+  keep it confidential/ignored and never publish it. Later captures avoid that scan.
+- Proxy traffic passed561 requests across public hide/show and205 requests across
+  the second deliberate frontend crash/reopen, with unchanged controller/runtime
+  and revision4. Root inspected raw samples and exact admitted frontend PIDs.
+  The first sampler expired before the first crash and does not certify that event.
+  See checkpoint60/macos-lifecycle/root-review.json and saved scripts/raw captures.
+- Immediate GUI_SHOW returned UNAVAILABLE twice after frontend-only crashes, while
+  a later request succeeded after lease expiry. The causal quick regression records
+  expectedOK/actualUNAVAILABLE before any product edit:
+  checkpoint60/frontend-crash-causal-red.xml. Repair uses a read-only identity probe
+  and exact stale-registration revocation; uncertain visibility actions must not
+  replay. All24 focused tests now pass without skips. Independent review caught raw-OK
+  identity acceptance and lease-expiry races; two causal failures preceded their
+  corrections, and re-review found no remaining issue. Rebuilt installed-package
+  retest remains open. Evidence: checkpoint60/frontend-final-green and
+  frontend-review-causal-red.xml.
 
 ## Checkpoint55 Current Artifacts And Acceptance
 
@@ -437,7 +472,7 @@ proof of sufficient peak capacity.
    protected receipt/lock handling and current nativeAMD64 public lifecycle.
 2. Current-package Windows broker/configuration coverage, denial preserving activeA
    and pendingB, TUN/child cleanup, ordinary GUI/autostart and safe legacy migration.
-3. Current-source DEB/Arch install/update/recovery/rollback and remaining RPM failure
+3. Fresh DEB dependency installation, current-source Arch install/update/recovery/rollback and remaining RPM failure
    cases; macOS rollback, interrupted recovery and GUI return.
    Current ae926016 user-local synchronous/asynchronous and machine grant/denial
    recovery are proven above;

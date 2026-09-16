@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Isolate visual stop-routing tests from platform-specific reservation locking.
 - Add early regression coverage for stale Linux installation fixture metadata.
 - Add public Android stream transport coverage for owner replacement, response loss and log cursors.
+- Recover GUI reopening immediately after a frontend crash without replaying uncertain visibility actions.
 
 ## 2.1.11 - 2026-09-14
 

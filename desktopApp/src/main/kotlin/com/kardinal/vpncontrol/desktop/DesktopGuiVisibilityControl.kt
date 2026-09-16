@@ -18,6 +18,7 @@ internal class DesktopGuiVisibilityControl(
     private val request: (DesktopCliCommand, Path) -> DesktopCliResponse = DesktopActivationServer::requestCliCommand,
     private val pause: suspend () -> Unit = { delay(100) },
     private val attempts: Int = 150,
+    private val revokeRegistration: (String) -> Boolean = { false },
 ) {
     private val mutex = Mutex()
     private val completed = LinkedHashMap<String, Pair<ControlOperationId, ControlResult>>()
@@ -39,9 +40,13 @@ internal class DesktopGuiVisibilityControl(
             }
             var frontend = registration()
             var code = ControlCode.OK
-            if (frontend == null) {
-                if (input.command.operation == ControlOperationId.GUI_HIDE) code = ControlCode.NOT_FOUND
-                else {
+            var recoveredStaleFrontend = false
+            while (code == ControlCode.OK) {
+                if (frontend == null) {
+                    if (input.command.operation == ControlOperationId.GUI_HIDE) {
+                        code = ControlCode.NOT_FOUND
+                        break
+                    }
                     code = withContext(Dispatchers.IO) { launch(directory, ownerId) }
                     if (code == ControlCode.OK) {
                         for (ignored in 0 until attempts) {
@@ -52,9 +57,39 @@ internal class DesktopGuiVisibilityControl(
                         if (frontend == null) code = ControlCode.TIMEOUT
                     }
                 }
-            }
-            if (code == ControlCode.OK) {
+                if (code != ControlCode.OK) break
                 val pinned = requireNotNull(frontend)
+                val probe = DesktopCliCommand.ControlFrontendIdentityRead(java.util.UUID.randomUUID().toString(), pinned)
+                val probeAnswer = withContext(Dispatchers.IO) { request(probe, DesktopFrontendInstance.endpoint(directory)) }
+                val probeCode = desktopFrontendIdentityProbeCode(probe, probeAnswer, pinned)
+                when {
+                    probeCode == ControlCode.OK && registration() == pinned -> Unit
+                    probeCode == ControlCode.OK -> {
+                        code = ControlCode.CONFLICT
+                        break
+                    }
+                    probeAnswer.isDesktopAppNotRunning -> {
+                        // The identity probe has no visibility effect. Only its closed/missing endpoint result may
+                        // retire the exact stale lease before the first UI command is admitted.
+                        if (input.command.operation == ControlOperationId.GUI_SHOW && !recoveredStaleFrontend && revokeRegistration(pinned)) {
+                            recoveredStaleFrontend = true
+                            frontend = null
+                            continue
+                        }
+                        val current = registration()
+                        if (input.command.operation == ControlOperationId.GUI_SHOW && !recoveredStaleFrontend && current == null) {
+                            recoveredStaleFrontend = true
+                            frontend = null
+                            continue
+                        }
+                        code = if (current == pinned) ControlCode.UNAVAILABLE else ControlCode.CONFLICT
+                        break
+                    }
+                    else -> {
+                        code = probeCode
+                        break
+                    }
+                }
                 val command = DesktopCliCommand.ControlSubmit(input.copy(controllerId = pinned,
                     command = ControlCommand(input.command.operation, mapOf("owner" to ControlValue.Text(ownerId)))),
                     DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS / 1000 + 3)
@@ -71,6 +106,7 @@ internal class DesktopGuiVisibilityControl(
                         decoded.ok != answer.success || decoded.code.exitCode != answer.exitCode -> ControlCode.INCOMPATIBLE_PROTOCOL
                     else -> decoded.code
                 }
+                break
             }
             val terminal = result(code)
             // A lost response retries the same admitted action, never a replacement frontend.
@@ -81,6 +117,24 @@ internal class DesktopGuiVisibilityControl(
     }
 
     companion object { val operations = setOf(ControlOperationId.GUI_SHOW, ControlOperationId.GUI_HIDE) }
+}
+
+/** A successful identity reply binds the fixed frontend endpoint without any visibility effect. */
+private fun desktopFrontendIdentityProbeCode(command: DesktopCliCommand.ControlFrontendIdentityRead,
+    answer: DesktopCliResponse, pinned: String): ControlCode {
+    if (answer.isDesktopAppNotRunning) return ControlCode.UNAVAILABLE
+    val decoded = runCatching { ControlProtocolCodec.decodeResult(answer.message) }.getOrNull()
+        ?: return if (!answer.success && answer.exitCode != 0) ControlCode.entries.firstOrNull {
+            it.wireName == answer.message && it.exitCode == answer.exitCode
+        } ?: ControlCode.INCOMPATIBLE_PROTOCOL else ControlCode.INCOMPATIBLE_PROTOCOL
+    if (decoded.controllerId != pinned || decoded.requestId != command.requestId || decoded.code != ControlCode.OK ||
+        !decoded.final || decoded.operationId != null || decoded.configurationRevision != 0L || decoded.restartRequired ||
+        decoded.warnings.isNotEmpty() || !decoded.ok || !answer.success || answer.exitCode != 0 ||
+        decoded.data.keys != setOf("pid", "startedAtEpochMillis") ||
+        (decoded.data["pid"] as? ControlValue.IntegerValue)?.value?.let { it > 0 } != true ||
+        (decoded.data["startedAtEpochMillis"] as? ControlValue.IntegerValue)?.value?.let { it > 0 } != true)
+        return ControlCode.INCOMPATIBLE_PROTOCOL
+    return ControlCode.OK
 }
 
 internal const val DESKTOP_FRONTEND_OWNER_ARGUMENT = "--frontend-owner"

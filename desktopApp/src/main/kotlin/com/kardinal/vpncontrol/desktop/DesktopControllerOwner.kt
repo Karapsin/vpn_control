@@ -85,7 +85,8 @@ internal class DesktopControllerOwner(
         },
     )
     private var installHandoff: DesktopInstallHandoff? = null
-    private val guiVisibility = DesktopGuiVisibilityControl(controllerId, service::controlMetadata, frontends::registration)
+    private val guiVisibility = DesktopGuiVisibilityControl(controllerId, service::controlMetadata,
+        frontends::registration, revokeRegistration = frontends::revokeIfCurrent)
     val exitRequested: Boolean get() = exitGate.exitRequested
     @Volatile var keepAliveRequested: Boolean = false
         private set

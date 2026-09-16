@@ -29,6 +29,10 @@ class DesktopGuiVisibilityControlTest {
     private fun input(operation: ControlOperationId = ControlOperationId.GUI_SHOW) = ControlRequest(
         UUID.randomUUID().toString(), ControlCommand(operation), controllerId = owner)
     private fun decoded(response: DesktopCliResponse) = ControlProtocolCodec.decodeResult(response.message)
+    private fun identityResponse(command: DesktopCliCommand.ControlFrontendIdentityRead) =
+        DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(command.frontendId,
+            command.requestId, ControlCode.OK, 0, data = mapOf(
+                "pid" to ControlValue.IntegerValue(123), "startedAtEpochMillis" to ControlValue.IntegerValue(456)))))
 
     @Test fun acknowledgementWaitsForActualUiAndExpiredQueueCannotActLater() {
         val queued = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
@@ -104,12 +108,18 @@ class DesktopGuiVisibilityControlTest {
             launch = { _, epoch -> assertEquals(owner, epoch); launches++; frontend = registrationId; ControlCode.OK },
             request = { command, _ ->
                 requests++
-                val request = (command as DesktopCliCommand.ControlSubmit).request
-                assertTrue(command.clientTimeoutSeconds * 1000 > DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS)
-                assertEquals(registrationId, request.controllerId)
-                assertEquals(mapOf("owner" to ControlValue.Text(owner)), request.command.arguments)
-                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(registrationId,
-                    request.requestId, ControlCode.OK, 0)))
+                when (command) {
+                    is DesktopCliCommand.ControlFrontendIdentityRead -> identityResponse(command)
+                    is DesktopCliCommand.ControlSubmit -> {
+                        val request = command.request
+                        assertTrue(command.clientTimeoutSeconds * 1000 > DESKTOP_FRONTEND_VISIBILITY_TIMEOUT_MILLIS)
+                        assertEquals(registrationId, request.controllerId)
+                        assertEquals(mapOf("owner" to ControlValue.Text(owner)), request.command.arguments)
+                        DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(registrationId,
+                            request.requestId, ControlCode.OK, 0)))
+                    }
+                    else -> error("unexpected command $command")
+                }
             }, pause = {})
         assertEquals(ControlCode.NOT_FOUND, decoded(control.execute(input(ControlOperationId.GUI_HIDE))).code)
         assertEquals(0, launches)
@@ -121,7 +131,7 @@ class DesktopGuiVisibilityControlTest {
         frontend = UUID.randomUUID().toString()
         assertEquals(first, decoded(control.execute(show)))
         assertEquals(1, launches)
-        assertEquals(1, requests)
+        assertEquals(2, requests)
         assertEquals(ControlCode.CONFLICT, decoded(control.execute(show.copy(
             command = ControlCommand(ControlOperationId.GUI_HIDE)))).code)
         assertEquals(ControlCode.CONFLICT, decoded(control.execute(input().copy(controllerId = "stale"))).code)
@@ -133,38 +143,181 @@ class DesktopGuiVisibilityControlTest {
         val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
             launch = { _, _ -> error("must not launch") }, request = { command, _ ->
                 calls++
-                val request = (command as DesktopCliCommand.ControlSubmit).request
-                frontend = UUID.randomUUID().toString()
-                DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(request.controllerId,
-                    request.requestId, ControlCode.OK, 0)))
+                when (command) {
+                    is DesktopCliCommand.ControlFrontendIdentityRead -> identityResponse(command)
+                    is DesktopCliCommand.ControlSubmit -> {
+                        val request = command.request
+                        frontend = UUID.randomUUID().toString()
+                        DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(request.controllerId,
+                            request.requestId, ControlCode.OK, 0)))
+                    }
+                    else -> error("unexpected command $command")
+                }
             })
         val show = input()
         assertEquals(ControlCode.CONFLICT, decoded(control.execute(show)).code)
         assertEquals(ControlCode.CONFLICT, decoded(control.execute(show)).code)
-        assertEquals(1, calls)
+        assertEquals(2, calls)
         val unavailable = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { null },
             launch = { _, _ -> ControlCode.UNAVAILABLE }, request = { _, _ -> error("must not request") })
         assertEquals(ControlCode.UNAVAILABLE, decoded(unavailable.execute(input())).code)
         val malformed = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
-            launch = { _, _ -> error("must not launch") }, request = { _, _ -> DesktopCliResponse.success("queued") })
+            launch = { _, _ -> error("must not launch") }, request = { command, _ -> when (command) {
+                is DesktopCliCommand.ControlFrontendIdentityRead -> identityResponse(command)
+                else -> DesktopCliResponse.success("queued")
+            } })
         assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL, decoded(malformed.execute(input())).code)
     }
 
-    @Test fun closedFrontendEndpointReportsUnavailableWithoutReplayingAgainstReplacement() = runTest {
-        var frontend = UUID.randomUUID().toString()
-        var calls = 0
+    @Test fun deadRegisteredFrontendIsReplacedAndShownInTheSameRequest() = runTest {
+        val stale = UUID.randomUUID().toString()
+        val replacement = UUID.randomUUID().toString()
+        var frontend: String? = stale
+        var launches = 0
+        var requests = 0
         val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(7, true) }, { frontend },
-            launch = { _, _ -> error("must not launch over a registered frontend") },
-            request = { _, _ -> calls++; DesktopCliResponse.notRunning() })
+            revokeRegistration = { id -> if (frontend == id) { frontend = null; true } else false },
+            launch = { _, epoch ->
+                assertEquals(owner, epoch)
+                assertNull(frontend, "A dead frontend must be released before relaunch")
+                launches++
+                frontend = replacement
+                ControlCode.OK
+            }, request = { command, _ ->
+                requests++
+                when (command) {
+                    is DesktopCliCommand.ControlFrontendIdentityRead -> {
+                        when (command.frontendId) {
+                            stale -> DesktopCliResponse.notRunning()
+                            replacement -> identityResponse(command)
+                            else -> error("unexpected frontend ${command.frontendId}")
+                        }
+                    }
+                    is DesktopCliCommand.ControlSubmit -> {
+                        val request = command.request
+                        when (request.controllerId) {
+                            stale -> DesktopCliResponse.notRunning()
+                            replacement -> DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(replacement,
+                                request.requestId, ControlCode.OK, 0)))
+                            else -> error("unexpected frontend ${request.controllerId}")
+                        }
+                    }
+                    else -> error("unexpected command $command")
+                }
+            }, pause = {})
         val show = input()
-        val first = decoded(control.execute(show))
-        assertEquals(ControlCode.UNAVAILABLE, first.code)
-        assertEquals(owner, first.controllerId)
-        assertEquals(show.requestId, first.requestId)
-        assertTrue(first.final)
-        frontend = UUID.randomUUID().toString()
-        assertEquals(first, decoded(control.execute(show)))
-        assertEquals(1, calls)
+        val result = decoded(control.execute(show))
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(owner, result.controllerId)
+        assertEquals(show.requestId, result.requestId)
+        assertEquals(7, result.configurationRevision)
+        assertTrue(result.restartRequired)
+        assertEquals(1, launches)
+        assertEquals(3, requests)
+    }
+
+    @Test fun rawUnavailableIdentityReplyNeverRevokesOrLaunches() = runTest {
+        val frontend = UUID.randomUUID().toString()
+        var revocations = 0
+        var launches = 0
+        val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
+            revokeRegistration = { revocations++; true }, launch = { _, _ -> launches++; ControlCode.OK },
+            request = { command, _ ->
+                assertIs<DesktopCliCommand.ControlFrontendIdentityRead>(command)
+                DesktopCliResponse.failure("UNAVAILABLE", 2)
+            })
+        assertEquals(ControlCode.UNAVAILABLE, decoded(control.execute(input())).code)
+        assertEquals(0, revocations)
+        assertEquals(0, launches)
+    }
+
+    @Test fun malformedSuccessfulIdentityReplyNeverAdmitsUiAction() = runTest {
+        for (probeAnswer in listOf(DesktopCliResponse.success("OK"), DesktopCliResponse(false, "OK", 0))) {
+            val frontend = UUID.randomUUID().toString()
+            var revocations = 0
+            var submits = 0
+            val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
+                revokeRegistration = { revocations++; true }, request = { command, _ -> when (command) {
+                    is DesktopCliCommand.ControlFrontendIdentityRead -> probeAnswer
+                    is DesktopCliCommand.ControlSubmit -> {
+                        submits++
+                        DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(frontend,
+                            command.request.requestId, ControlCode.OK, 0)))
+                    }
+                    else -> error("unexpected command $command")
+                } })
+            assertEquals(ControlCode.INCOMPATIBLE_PROTOCOL, decoded(control.execute(input())).code)
+            assertEquals(0, revocations)
+            assertEquals(0, submits)
+        }
+    }
+
+    @Test fun leaseExpiryDuringDeadIdentityProbeStillLaunchesOneReplacement() = runTest {
+        var now = 0L
+        val stale = UUID.randomUUID().toString()
+        val replacement = UUID.randomUUID().toString()
+        val lifecycle = DesktopOwnerFrontendLifecycle(owner, backgroundScope, {}, { DesktopControlMetadata(0, false) }, { now })
+        fun attach(id: String) = lifecycle.execute(DesktopCliCommand.ControlFrontendLease(UUID.randomUUID().toString(), owner,
+            id, DesktopFrontendLeaseAction.ATTACH))
+        assertEquals(ControlCode.OK, decoded(attach(stale)).code)
+        var launches = 0
+        var submits = 0
+        val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, lifecycle::registration,
+            launch = { _, _ ->
+                launches++
+                assertEquals(ControlCode.OK, decoded(attach(replacement)).code)
+                ControlCode.OK
+            }, request = { command, _ -> when (command) {
+                is DesktopCliCommand.ControlFrontendIdentityRead -> when (command.frontendId) {
+                    stale -> { now = DesktopOwnerFrontendLifecycle.LEASE_MILLIS; DesktopCliResponse.notRunning() }
+                    replacement -> identityResponse(command)
+                    else -> error("unexpected frontend ${command.frontendId}")
+                }
+                is DesktopCliCommand.ControlSubmit -> {
+                    submits++
+                    assertEquals(replacement, command.request.controllerId)
+                    DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(replacement,
+                        command.request.requestId, ControlCode.OK, 0)))
+                }
+                else -> error("unexpected command $command")
+            } }, pause = {}, revokeRegistration = lifecycle::revokeIfCurrent)
+        assertEquals(ControlCode.OK, decoded(control.execute(input())).code)
+        assertEquals(1, launches)
+        assertEquals(1, submits)
+    }
+
+    @Test fun registrationChangedAfterSuccessfulProbeNeverReceivesUiCommand() = runTest {
+        val stale = UUID.randomUUID().toString()
+        var frontend = stale
+        var submits = 0
+        val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
+            launch = { _, _ -> error("must not launch") }, request = { command, _ -> when (command) {
+                is DesktopCliCommand.ControlFrontendIdentityRead -> {
+                    val response = identityResponse(command)
+                    frontend = UUID.randomUUID().toString()
+                    response
+                }
+                is DesktopCliCommand.ControlSubmit -> { submits++; error("must not submit after registration changes") }
+                else -> error("unexpected command $command")
+            } })
+        assertEquals(ControlCode.CONFLICT, decoded(control.execute(input())).code)
+        assertEquals(0, submits)
+    }
+
+    @Test fun deadFrontendProofNeverReplacesAConcurrentRegistration() = runTest {
+        val stale = UUID.randomUUID().toString()
+        var frontend = stale
+        var launches = 0
+        val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
+            revokeRegistration = { id -> assertEquals(stale, id); frontend == id },
+            launch = { _, _ -> launches++; ControlCode.OK }, request = { command, _ ->
+                assertIs<DesktopCliCommand.ControlFrontendIdentityRead>(command)
+                assertEquals(stale, command.frontendId)
+                frontend = UUID.randomUUID().toString()
+                DesktopCliResponse.notRunning()
+            })
+        assertEquals(ControlCode.CONFLICT, decoded(control.execute(input())).code)
+        assertEquals(0, launches)
     }
 
     @Test fun showStartupIsBoundedAndConcurrentPresentationRequestsAreBusy() = runTest {
@@ -249,10 +402,16 @@ class DesktopGuiVisibilityControlTest {
         var actions = 0
         val control = DesktopGuiVisibilityControl(owner, { DesktopControlMetadata(0, false) }, { frontend },
             request = { command, _ ->
-                actions++
-                val request = (command as DesktopCliCommand.ControlSubmit).request
-                DesktopCliResponse(false, ControlProtocolCodec.encodeResult(ControlResult(frontend,
-                    request.requestId, ControlCode.TIMEOUT, 0, final = false)), 2)
+                when (command) {
+                    is DesktopCliCommand.ControlFrontendIdentityRead -> identityResponse(command)
+                    is DesktopCliCommand.ControlSubmit -> {
+                        actions++
+                        val request = command.request
+                        DesktopCliResponse(false, ControlProtocolCodec.encodeResult(ControlResult(frontend,
+                            request.requestId, ControlCode.TIMEOUT, 0, final = false)), 2)
+                    }
+                    else -> error("unexpected command $command")
+                }
             })
         val show = input()
         val result = decoded(control.execute(show))

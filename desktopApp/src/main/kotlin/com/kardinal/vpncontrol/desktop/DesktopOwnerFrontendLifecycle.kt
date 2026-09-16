@@ -34,6 +34,13 @@ internal class DesktopOwnerFrontendLifecycle(
         return frontend != null || initialization?.isCompleted == false
     }
     @Synchronized fun registration(): String? { expire(); return frontend }
+    /** A failed authenticated identity probe may release only the registration it probed. */
+    @Synchronized fun revokeIfCurrent(frontendId: String): Boolean {
+        expire()
+        if (frontend != frontendId) return false
+        frontend = null
+        return true
+    }
     private fun expire() {
         if (frontend != null && nowMillis() - touched >= leaseMillis) frontend = null
     }
