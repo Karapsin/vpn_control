@@ -27,6 +27,11 @@ def bounded_text(value: str, limit: int = 1024) -> str:
     return value[:limit] + ("…" if len(value) > limit else "")
 
 
+def public_cli_argv(cli: Path) -> list[str]:
+    """Run retained Python fixture adapters through Python, but packaged CLIs directly."""
+    return [sys.executable, str(cli)] if cli.suffix.lower() == ".py" else [str(cli)]
+
+
 class Adb:
     def __init__(self, adb: str, serial: str):
         self.command = [adb, "-s", serial]
@@ -100,7 +105,7 @@ class ProbeFailure(RuntimeError):
 
 def public_no_update_probe(cli: Path, serial: str, server_log: Path, output_path: Path) -> dict:
     result = subprocess.run(
-        [sys.executable, str(cli), "--json", "--android", "--serial", serial,
+        [*public_cli_argv(cli), "--json", "--android", "--serial", serial,
          "--timeout-seconds", "180", "updates", "check"],
         check=False, text=True, capture_output=True,
     )
@@ -250,7 +255,7 @@ def verify_public_baseline(adb: Adb, cli: Path, serial: str, expected_avd: str, 
     api = adb.shell("getprop", "ro.build.version.sdk")
     package = adb.shell("dumpsys", "package", "com.kardinal.vpncontrol")
     status = subprocess.run(
-        [sys.executable, str(cli), "--json", "--android", "--serial", serial, "status"],
+        [*public_cli_argv(cli), "--json", "--android", "--serial", serial, "status"],
         check=True, text=True, capture_output=True,
     )
     response = json.loads(status.stdout)

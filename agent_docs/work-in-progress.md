@@ -28,70 +28,74 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 ## September16 Current Operations
 
 Gateway access is restored through ssh.karapsin.com:2228, then the authenticated
-Arch hop socket /home/kardinal/.ssh/vpn-control-arch60.sock. Ubuntu's current-source
-DEB update and exact next-owner receipt recovery passed; root independently reviewed
-checkpoint60/linux-review. Fresh missing-dependency installation is a separate open
-gate. Its owner was publicly quit, task-local TLS resources cleaned, and guest
-powered off before starting Arch2317 at4GiB. Windows2314 remains reserved at6GiB;
-Fedora2316 stays stopped. Recheck actual memory before any additional guest.
+Arch hop socket /home/kardinal/.ssh/vpn-control-arch60.sock. The earlier failure
+was pre-authentication reachability; no host VPN/network configuration was changed.
 
-Arch's first public update reached a real terminal polkit prompt. The driver did
-not supply a credential; the client reported unknown outcome. A missing GUI agent
-was an incorrect initial diagnosis, disproved by the retained prompt and packaged
-terminal adapter. The owner operation was subsequently reconciled with public
-cancellation after confirming no protected job/worker. Installed version remains
-2.1.11. A distinct interactive attempt succeeded: job4c9e32b9-4bc2-4597-8f90-824766742dcd
-reached protected sequence4 SUCCEEDED/OK, and operation694afeb8-05b4-4aa6-bcf1-c182af76df10
-recovered under a replacement owner with exact origin correlation. Runtime stayed
-off and public quit completed. Root independently retrieved/hash-verified the result and asserted exact correlation; induced
-rollback remains open. Preserve checkpoint61/linux-arch raw evidence and original correlation.
+Ubuntu current-source DEB update/next-owner recovery passed (checkpoint60/linux-review).
+A separate fresh Ubuntu installation now proves acquisition of absent xdg-utils,
+with exactly two added packages and zero upgrades/removals. Root verified all18
+raw file hashes, package inventories, APT output and empty dpkg audit in
+checkpoint63/linux-fresh/root-review.json. The initial desktop-directory absence
+and complete executed command transcript were not captured; status.exit is blank,
+so its numeric exit is not certified. Both Ubuntu guests are stopped.
 
-Windows now has verified Python3.13.15 alongside JDK17, .NET10.0.400 and WiX3.11.2.
-Its ordinary-user corrected-source build wrapper failed before extraction/Gradle;
-causal wrapper diagnostics are in progress. No Windows package acceptance is claimed.
+Arch public update reached protected sequence4 SUCCEEDED/OK for
+job4c9e32b9-4bc2-4597-8f90-824766742dcd. Operation694afeb8-05b4-4aa6-bcf1-c182af76df10
+recovered under a replacement owner with exact origin correlation; root checked
+checkpoint61/linux-arch raw results. The earlier attempt reached a real terminal
+polkit prompt without driver credential input, then was safely cancelled after
+confirming no protected job/worker. A missing GUI agent was an incorrect diagnosis.
+The stopped Arch2317 guest is reserved for induced rollback verification.
 
-The local macOS control53 VM remains running with the controlled proxy fixture.
-The Tart guest-agent transport failed during a JDK transfer; screenshots still show
-the app. Task-only SSH access was recovered; the guest-agent control transport remains
-unavailable after restarting only its daemon. Guest/runtime processes were preserved. One local4GiB VM only;
-do not start Android alongside it. CUA pointer actions remain unavailable, so the
-actual guest close-button case is not certified.
+Windows2314 remains the ordinary-user native package environment at6GiB. The
+corrected-source build passed dependency resolution and reached native helpers,
+then exposed missing dotnet in its task-local PATH. A pinned-tool early preflight
+and process-only PATH repair are prepared; no MSI acceptance is claimed yet.
 
-Corrected macOS/Windows snapshots have fingerprint
-2ad8dcdd49f7f43c28bea04fdf679c05b52451806b734ae4337093b2dc60830e.
-Root compared all1498 snapshot entries to delivered26bba9f; the excluded submodule
-was compared by gitlink. See checkpoint61/source-equivalence.json. The macOS
-base2.1.12/target2.1.13 packages built with a vendor-checksummed Temurin17 JDK,
-matching code fingerprints and verified bundle signatures. Inspection found the
-native helper defaults to this host's macOS26 minimum; guest15 acceptance must wait
-for the tested deployment-target correction (ARM11.0, Intel10.13) and a new
-immutable package snapshot.
-These packages are build evidence only, not native installation evidence.
+The macOS control53 guest is stopped after public off/quit and fixture cleanup.
+Current corrected DMG base2.1.12 passed immediate GUI crash/reopen:32 forced proxy
+traffic samples, zero failures, unchanged controller/runtime, replacement frontend
+within1.45 seconds. Post-reopen hide/show was sampled; initial hide/show preceded
+sampling. Root reviewed checkpoint62/macos-crash63/root-review.json. User-local
+same-source update to2.1.13 recovered the exact successful receipt; root reviewed
+checkpoint62/macos-update64/root-review.json. Explicit reconnect/GUI commands were
+used, so automatic return intent is not certified. Full executed update harness
+transcript is missing; individual outputs/correlations remain. Machine-owned
+installation, rollback/interruption, actual close-button and visual gates remain.
+
+The sole local4GiB slot now belongs to fresh Android API29 emulator5656. Its
+nondebuggable base APK and unchanged Android source inputs were verified. Public
+CLI status succeeds with the correct sanitized invocation. A proposed API29
+fallback defect was disproved: the failing manual probe used malformed grammar;
+the actual content-call document-begin succeeds. The invalid regression was removed
+without a product fix; checkpoint66 retains it only as retracted diagnostic evidence.
+The installer harness separately attempted to run the packaged Mach-O CLI through
+Python. Its launcher now executes packaged binaries directly while retaining
+Python adapters; causal regression and24 focused checks pass. Native retry is
+in progress. API35 and the remaining native matrix are open.
 
 | Task | Owner | Exclusive scope | Current check / next handoff |
 | --- | --- | --- | --- |
-| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | Correct Windows test portability, new exact-SHA CI |
-| Windows pair | windows_build63 | Windows2314 fixture/task wrapper, native packages | Fresh context; resolve actual verified JDK path and build |
-| Linux fresh DEB | linux_fresh63 | Remote Linux4GiB slot only | Preserve completed Arch; fresh absent-xdg dependency proof |
-| Mac lifecycle | mac_crash63 | control53 SSH / new frontend62 workspace | Installed-package crash/reopen with continuous proxy traffic |
-| Mac target | root (worker complete) | Native helper preparation and focused regression | Causal RED/green reviewed; rebuild and guest acceptance next |
+| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | Latest exact-SHA CI all green; integrate tested harness launcher fix |
+| Windows pair | windows_build63 | Windows2314 task wrapper/native packages | Validate pinned dotnet preflight, then preserved fresh build |
+| Linux rollback | linux_rollback66 | Remote Arch2317 disposable guest/evidence | Induced rollback with authoritative receipt |
+| Android API29 | android_api29_65 | Emulator5656; public CLI transport diagnosis | Public status succeeds; rerun installer lifecycle after harness fix |
+| Mac native | root; prior workers complete | Stopped control53 guest and retained evidence | Machine-owned update, rollback, automatic return and visuals remain |
 
 ## Delivery And Current Integration
 
-Latest pushed checkpoint: `794d01e24d8383cd72a7c72623043fcd053c5963`, version2.1.11
-with eight Unreleased bullets. Prepush passed, but Windows CI35083051986 failed:
-the new macOS compiler fixture resolved Windows' WSL launcher. A causal simulated
-Windows regression and POSIX guard now pass locally; corrective delivery is pending.
-Last fully verified checkpoint: `26bba9f56d5e17661aced80652dcdd497ffde256`;
-all five required workflows succeeded (checkpoint60/commit-result.json).
+Latest pushed checkpoint: `2c3aae9f02d735404eb24b9dff0df326fa287590`, version2.1.11
+with nine Unreleased bullets. Prepush and all five required exact-SHA workflows
+succeeded; see checkpoint62/portability-commit-result.json. This supersedes794d01e,
+whose new compiler fixture incorrectly resolved Windows' WSL launcher. A causal
+simulated-Windows regression and POSIX guard prevent that failure in routine checks.
 
 Corrected macOS pair source11efe6f8fe46bcbbde522111caf808250f3a24ff00d39bf80dcfa17fdf595780
-matches794d01e (1499 snapshot entries checked). Both packages have the same code
-fingerprint; embedded ARM helper minos11.0 and deep/strict bundle signatures pass.
-Base2.1.12 was installed from its verified DMG in the owned macOS15 guest at
-/Users/admin/Applications/frontend62/vpn-control.app. The immediate-crash reopen
-traffic test is in progress under mac_crash63; older traffic57 remains preserved.
-The package is not certified for that scenario until raw native results pass.
+matches794d01e (1499 snapshot entries checked); subsequent2c3aae9 changes tests/docs.
+Both packages have identical code fingerprints, ARM helper minos11.0 and verified
+bundle signatures. Base DMG SHA c0e402917d645299da7394efb1f4fad43ee356461d8cdaac7291d668abf4e130;
+target DMG SHA9a188d037673a38f54f5fa025c0a95bdbcb2322ee5aa64d199855a535b14080a.
+The earlier minos26 pair is retained but invalid for the macOS15 guest.
 
 The checkpoint includes the frontend process-exit repair and managed visual VM
 resource admission. The prior macOS CI failure was reproduced with software

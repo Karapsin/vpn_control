@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.12 - 2026-09-16
 
 - Preserve uncertain installer handoffs and reject invalid Android visual geometry and Windows CRLF device identifiers.
 - Guard Android visual captures against ANR overlays and normalize Windows scene arguments; record installer state baselines.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Recover GUI reopening immediately after a frontend crash without replaying uncertain visibility actions.
 - Keep macOS installer helpers compatible with the packaged application's minimum operating system.
 - Run macOS shell fixture checks only on supported POSIX hosts and verify Windows skips them safely.
+- Run packaged CLI executables directly in Android installer verification while retaining Python fixture adapters.
 
 ## 2.1.11 - 2026-09-14
 

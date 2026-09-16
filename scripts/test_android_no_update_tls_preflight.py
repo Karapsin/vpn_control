@@ -104,6 +104,28 @@ class PreflightScriptTest(unittest.TestCase):
             preflight.verify_public_baseline(adb, Path('cli.py'), 'serial', 'avd', '29', '2.2.19', '17180', hashlib.sha256(b'base').hexdigest())
         self.assertNotIn(('root',), adb.calls)
 
+    def test_public_cli_launches_packaged_executables_directly_and_keeps_python_adapters_compatible(self):
+        adb = FakeAdb()
+        status = {'ok': True, 'controllerId': 'owner', 'data': {'runtimeRunning': False}}
+        completed = type('Result', (), {'stdout': json.dumps(status), 'returncode': 0, 'stderr': ''})()
+        digest = hashlib.sha256(b'base').hexdigest()
+        packaged = Path('/private/tmp/vpn-control.app/Contents/MacOS/vpn-control')
+        with patch.object(preflight.subprocess, 'run', return_value=completed) as run:
+            preflight.verify_public_baseline(adb, packaged, 'serial', 'avd', '29', '2.2.19', '17180', digest)
+        self.assertEqual([str(packaged), '--json', '--android', '--serial', 'serial', 'status'], run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / 'fixture.log'; log.write_text('{"served": "manifest"}\n')
+            probe = type('Result', (), {'stdout': json.dumps({'ok': True, 'code': 'OK',
+                'data': {'checked': True, 'available': False}}), 'returncode': 0, 'stderr': ''})()
+            with patch.object(preflight.subprocess, 'run', return_value=probe) as run:
+                preflight.public_no_update_probe(packaged, 'serial', log, Path(temp) / 'packaged-probe.txt')
+            self.assertEqual([str(packaged), '--json', '--android', '--serial', 'serial',
+                              '--timeout-seconds', '180', 'updates', 'check'], run.call_args.args[0])
+            with patch.object(preflight.subprocess, 'run', return_value=probe) as run:
+                preflight.public_no_update_probe(Path('adapter.py'), 'serial', log, Path(temp) / 'probe.txt')
+            self.assertEqual([sys.executable, 'adapter.py', '--json', '--android', '--serial', 'serial',
+                              '--timeout-seconds', '180', 'updates', 'check'], run.call_args.args[0])
+
     def test_artifact_hash_and_safe_leaf_are_enforced(self):
         with tempfile.TemporaryDirectory() as temp:
             p = Path(temp) / 'base.apk'; p.write_bytes(b'base')
