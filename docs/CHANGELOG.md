@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Reject interactive Android installer drivers without terminal input before fixture setup.
+
 ## 2.1.12 - 2026-09-16
 
 - Preserve uncertain installer handoffs and reject invalid Android visual geometry and Windows CRLF device identifiers.

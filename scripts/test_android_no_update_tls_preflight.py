@@ -62,6 +62,15 @@ class FakeAdb:
 
 
 class PreflightScriptTest(unittest.TestCase):
+    def test_interactive_stdin_is_required_before_interactive_fixture_work(self):
+        class ClosedInput:
+            def isatty(self): return False
+        class TtyInput:
+            def isatty(self): return True
+        with self.assertRaisesRegex(RuntimeError, 'INTERACTIVE_STDIN_REQUIRED'):
+            preflight.require_interactive_stdin(ClosedInput())
+        self.assertIsNone(preflight.require_interactive_stdin(TtyInput()))
+
     def test_emulator_identity_accepts_legacy_or_boot_only_and_rejects_missing_or_conflict(self):
         class IdentityAdb:
             def __init__(self, kernel, boot): self.values = {"ro.kernel.qemu.avd_name": kernel, "ro.boot.qemu.avd_name": boot}

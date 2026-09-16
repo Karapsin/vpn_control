@@ -63,30 +63,37 @@ used, so automatic return intent is not certified. Full executed update harness
 transcript is missing; individual outputs/correlations remain. Machine-owned
 installation, rollback/interruption, actual close-button and visual gates remain.
 
-The sole local4GiB slot now belongs to fresh Android API29 emulator5656. Its
-nondebuggable base APK and unchanged Android source inputs were verified. Public
-CLI status succeeds with the correct sanitized invocation. A proposed API29
-fallback defect was disproved: the failing manual probe used malformed grammar;
-the actual content-call document-begin succeeds. The invalid regression was removed
-without a product fix; checkpoint66 retains it only as retracted diagnostic evidence.
-The installer harness separately attempted to run the packaged Mach-O CLI through
-Python. Its launcher now executes packaged binaries directly while retaining
-Python adapters; causal regression and24 focused checks pass. Native retry is
-in progress. API35 and the remaining native matrix are open.
+API29 nondebuggable base-to-target installation now passed in owned emulator5656.
+Exact installed target SHA441dbc8b67bff428b2bb19fdedfc9ff8543c8c9465dd56f0f77f34ce3f29246d
+matches the frozen APK. Public status under replacement controller7a7724e7 reports
+receipt85e5b6ba-ffd3-4124-9d78-4fd5eabe95c9/session357363557 installed=true and no
+recovery unavailability. Root checked checkpoint66/android-install-recovery-root-review.json.
+The earlier permission-denial operation was separately correlated through terminal
+status/wait. Multiple explicit retries reused the same pending session after two
+recorded driver mistakes (non-TTY EOF and a tap outside current dialog bounds).
+The proposed API29 transport defect was retracted: malformed manual command grammar
+caused its rejection; actual public transport succeeds. The packaged-CLI/Python
+harness defect was fixed in d371254. Interactive drivers now have an explicit stdin
+preflight before fixture mutation; isolated causal replay shows the unguarded driver
+reaches fixture launch while the guarded driver rejects without creating output.
+API35, deliberate process-loss cases, confirmation cancellation and remaining action,
+traffic/document/visual gates remain open. API29 shutdown is being reconciled before
+another local4GiB AVD may start.
 
 | Task | Owner | Exclusive scope | Current check / next handoff |
 | --- | --- | --- | --- |
 | Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | Latest exact-SHA CI all green; integrate tested harness launcher fix |
-| Windows pair | windows_build63 | Windows2314 task wrapper/native packages | Validate pinned dotnet preflight, then preserved fresh build |
-| Linux rollback | linux_rollback66 | Remote Arch2317 disposable guest/evidence | Induced rollback with authoritative receipt |
-| Android API29 | android_api29_65 | Emulator5656; public CLI transport diagnosis | Public status succeeds; rerun installer lifecycle after harness fix |
+| Windows pair | windows_execute68 | Windows2314 task wrapper/native packages | Fresh operator; resolve Python alias/preflight then actual v6 build |
+| Linux rollback | linux_trace68 | Remote Arch2317 disposable guest/evidence | Add observable swap/restore trace and next-owner failure recovery |
+| Android API29 | android_api29_65 retiring | Emulator5656 cleanup only | Target and correlated installed receipt verified; release local slot |
 | Mac native | root; prior workers complete | Stopped control53 guest and retained evidence | Machine-owned update, rollback, automatic return and visuals remain |
 
 ## Delivery And Current Integration
 
-Latest pushed checkpoint: `2c3aae9f02d735404eb24b9dff0df326fa287590`, version2.1.11
-with nine Unreleased bullets. Prepush and all five required exact-SHA workflows
-succeeded; see checkpoint62/portability-commit-result.json. This supersedes794d01e,
+Latest pushed checkpoint: `d371254dfa82c2ae8abb04d75a2b609be701f3c1`, version2.1.12.
+Prepush passed; exact-SHA CI is still being watched in checkpoint66/commit-result.json.
+Last fully verified checkpoint2c3aae9 passed all five required workflows; see
+checkpoint62/portability-commit-result.json. That superseded794d01e,
 whose new compiler fixture incorrectly resolved Windows' WSL launcher. A causal
 simulated-Windows regression and POSIX guard prevent that failure in routine checks.
 

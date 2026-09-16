@@ -32,6 +32,13 @@ def public_cli_argv(cli: Path) -> list[str]:
     return [sys.executable, str(cli)] if cli.suffix.lower() == ".py" else [str(cli)]
 
 
+def require_interactive_stdin(stream=None) -> None:
+    """Reject an interactive lifecycle driver before it can create fixture state."""
+    candidate = sys.stdin if stream is None else stream
+    if not callable(getattr(candidate, "isatty", None)) or not candidate.isatty():
+        raise RuntimeError("INTERACTIVE_STDIN_REQUIRED")
+
+
 class Adb:
     def __init__(self, adb: str, serial: str):
         self.command = [adb, "-s", serial]
