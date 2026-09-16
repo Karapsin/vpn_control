@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +35,7 @@ class MacosInstallWorkerTargetTest(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         path.chmod(0o755)
 
+    @unittest.skipUnless(platform.system() in {"Darwin", "Linux"}, "requires POSIX executable fixtures")
     def test_pins_each_worker_to_its_packaged_minimum_despite_host_environment(self):
         for architecture, (resource_architecture, minimum) in TARGETS.items():
             with self.subTest(architecture=architecture):
@@ -76,6 +79,19 @@ Path(arguments[arguments.index('-o') + 1]).touch()
                     recorded["arguments"],
                 )
                 self.assertTrue((root / f"desktopApp/src/main/resources/bin/darwin-{resource_architecture}/vpn-control-install-worker").is_file())
+
+    def test_windows_does_not_launch_posix_fixture(self):
+        with patch.object(platform, "system", return_value="Windows"):
+            namespace = runpy.run_path(str(Path(__file__).resolve()), run_name="mac_target_windows_probe")
+        case = namespace["MacosInstallWorkerTargetTest"](
+            "test_pins_each_worker_to_its_packaged_minimum_despite_host_environment"
+        )
+        result = unittest.TestResult()
+        with patch.object(subprocess, "run", side_effect=AssertionError("Windows must not launch POSIX fixture")) as launch:
+            case.run(result)
+        self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
+        self.assertEqual(1, len(result.skipped))
+        launch.assert_not_called()
 
     @staticmethod
     def macho_minimum(inspection):

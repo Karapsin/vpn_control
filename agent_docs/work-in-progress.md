@@ -43,7 +43,7 @@ cancellation after confirming no protected job/worker. Installed version remains
 2.1.11. A distinct interactive attempt succeeded: job4c9e32b9-4bc2-4597-8f90-824766742dcd
 reached protected sequence4 SUCCEEDED/OK, and operation694afeb8-05b4-4aa6-bcf1-c182af76df10
 recovered under a replacement owner with exact origin correlation. Runtime stayed
-off and public quit completed. Root raw-evidence review is in progress; induced
+off and public quit completed. Root independently retrieved/hash-verified the result and asserted exact correlation; induced
 rollback remains open. Preserve checkpoint61/linux-arch raw evidence and original correlation.
 
 Windows now has verified Python3.13.15 alongside JDK17, .NET10.0.400 and WiX3.11.2.
@@ -70,24 +70,28 @@ These packages are build evidence only, not native installation evidence.
 
 | Task | Owner | Exclusive scope | Current check / next handoff |
 | --- | --- | --- | --- |
-| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | 26bba9f exact-SHA CI pending |
-| Windows pair | windows_pair61 | Windows2314 fixture/task wrapper, native packages | Capture pre-extraction exception, ordinary-user build |
-| Linux Arch | linux_arch61 | Arch2317 fixture/public installer | Terminal credential setup, distinct authorized attempt |
-| Mac access | root (worker complete) | control53 SSH / native acceptance | Task-only SSH restored; preserve live fixture |
+| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | Correct Windows test portability, new exact-SHA CI |
+| Windows pair | windows_build63 | Windows2314 fixture/task wrapper, native packages | Fresh context; resolve actual verified JDK path and build |
+| Linux fresh DEB | linux_fresh63 | Remote Linux4GiB slot only | Preserve completed Arch; fresh absent-xdg dependency proof |
+| Mac lifecycle | mac_crash63 | control53 SSH / new frontend62 workspace | Installed-package crash/reopen with continuous proxy traffic |
 | Mac target | root (worker complete) | Native helper preparation and focused regression | Causal RED/green reviewed; rebuild and guest acceptance next |
 
 ## Delivery And Current Integration
 
-Latest pushed checkpoint: `26bba9f56d5e17661aced80652dcdd497ffde256`, version2.1.11
-with seven Unreleased bullets. Full managed prepush passed; all five exact-SHA
-workflows are pending verification. The frontend crash recovery fix is included.
-Last fully verified checkpoint: `9c2e13eed434423771f0bc0d5c3daea84d9abba1`, version2.1.11
-with six Unreleased bullets. Full managed prepush and all five required exact-SHA
-workflows passed. Receipt: checkpoint59/commit-result.json. Frozen native pairs
-still use ae926016 product code; this checkpoint changes tests and documentation. The
-Windows stop-routing test correction is included; its full simulated missing-fcntl
-suite77/77 and normal focused suite86/86 passed. Prior c0955b7 Windows failure is
-retained at checkpoint53/ci-windows-c0955b7-failed.log.
+Latest pushed checkpoint: `794d01e24d8383cd72a7c72623043fcd053c5963`, version2.1.11
+with eight Unreleased bullets. Prepush passed, but Windows CI35083051986 failed:
+the new macOS compiler fixture resolved Windows' WSL launcher. A causal simulated
+Windows regression and POSIX guard now pass locally; corrective delivery is pending.
+Last fully verified checkpoint: `26bba9f56d5e17661aced80652dcdd497ffde256`;
+all five required workflows succeeded (checkpoint60/commit-result.json).
+
+Corrected macOS pair source11efe6f8fe46bcbbde522111caf808250f3a24ff00d39bf80dcfa17fdf595780
+matches794d01e (1499 snapshot entries checked). Both packages have the same code
+fingerprint; embedded ARM helper minos11.0 and deep/strict bundle signatures pass.
+Base2.1.12 was installed from its verified DMG in the owned macOS15 guest at
+/Users/admin/Applications/frontend62/vpn-control.app. The immediate-crash reopen
+traffic test is in progress under mac_crash63; older traffic57 remains preserved.
+The package is not certified for that scenario until raw native results pass.
 
 The checkpoint includes the frontend process-exit repair and managed visual VM
 resource admission. The prior macOS CI failure was reproduced with software

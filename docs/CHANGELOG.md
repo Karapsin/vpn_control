@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add public Android stream transport coverage for owner replacement, response loss and log cursors.
 - Recover GUI reopening immediately after a frontend crash without replaying uncertain visibility actions.
 - Keep macOS installer helpers compatible with the packaged application's minimum operating system.
+- Run macOS shell fixture checks only on supported POSIX hosts and verify Windows skips them safely.
 
 ## 2.1.11 - 2026-09-14
 
