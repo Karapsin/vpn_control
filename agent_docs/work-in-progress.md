@@ -27,10 +27,10 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## September16 Resume
 
-Startup fetch confirms dev remains at ae926016 with no remote divergence. Dirty
-work is the stale Linux fixture-marker regression plus this evidence tracker and
-its failure ledger. The regression exercises the existing fail-closed guard; no
-product implementation repair is claimed. Root owns these files and delivery.
+Startup fetch confirmed no remote divergence. Checkpoint5acf814 delivered the
+stale Linux fixture-marker regression and evidence tracker. The regression
+exercises the existing fail-closed guard; no product implementation repair is
+claimed. Root owns current evidence integration and delivery.
 
 The gateway ssh.karapsin.com:228 currently refuses SSH connections, so remote
 Ubuntu/Windows state must be revalidated before further actions. The completed
@@ -50,9 +50,10 @@ for current process identities and the next UI step when the host is unlocked.
 
 ## Delivery And Current Integration
 
-Current verified checkpoint: `ae9260168bbb8fb609031a383617071620d97bef`, version2.1.11
-with four Unreleased bullets. Full managed prepush and all five required exact-SHA
-workflows passed. Receipt: checkpoint53/boot-recovery-commit-result.json. The
+Current verified checkpoint: `5acf814f7f4b1591e8b493040e00b73e4de485ee`, version2.1.11
+with five Unreleased bullets. Full managed prepush and all five required exact-SHA
+workflows passed. Receipt: checkpoint58/commit-result.json. Frozen native pairs
+still use ae926016 product code; this checkpoint changes tests and documentation. The
 Windows stop-routing test correction is included; its full simulated missing-fcntl
 suite77/77 and normal focused suite86/86 passed. Prior c0955b7 Windows failure is
 retained at checkpoint53/ci-windows-c0955b7-failed.log.
@@ -81,7 +82,8 @@ Evidence: checkpoint53/mac-boot-repair/recovery-result.json and fsck-repair-copy
 
 Keep at most one local4GiB macOS fixture and no local Android alongside it. Arch
 may host additional Windows/Android/Linux guests after current capacity/access
-checks. SSH gateway and the Arch second hop are restored. Root gracefully stopped
+checks. The following remote state was last verified on September14; September16
+gateway connections are refused. Root gracefully stopped
 idle Arch2317 and Fedora2316 after checking absence of app/VPN/installer work;
 Fedora's old loopback fixture server had no clients. Both QEMU processes exited;
 disks, packages and receipts remain intact. Arch host has about12.7GiB available
@@ -178,9 +180,10 @@ limited tasks. This clears guest login access, not current-source broker/MSI gat
 | Task | Owner | Exclusive scope | Next evidence |
 | --- | --- | --- | --- |
 | Integration/delivery | Root | Shared source, docs, sole host Gradle | Windows frozen pair transfer; review native evidence and final delivery |
-| Linux update | linux_build56 | Ubuntu2307, current paired packages/new private workspace | Public DEB update/recovery; old workspace preserved after verified public quit |
-| Windows tools | windows_stage56 | Windows2314 task tool staging only | Hash-verified JDK17, pinned .NET SDK and WiX; no build yet |
-| macOS traffic | mac_traffic57 | vpn-control-boot-control53 | Packaged proxy traffic through GUI attach/hide/close/crash; installer slice complete |
+| Linux update | Root; worker complete | Ubuntu2307, current paired packages/new private workspace | Public DEB update/recovery; old workspace preserved after verified public quit |
+| Windows tools | Root; worker complete | Windows2314 task tool staging only | Hash-verified JDK17, pinned .NET SDK and WiX; no build yet |
+| macOS traffic | Root; capture workers complete | vpn-control-boot-control53 | Packaged proxy traffic through GUI attach/hide/close/crash; installer slice complete |
+| Android transport tests | Root; worker complete | DesktopAndroidStreamTransportTest only | Focused public fake-ADB document stream validation |
 | Android pair | Root | /private/tmp/vpn-android-pair-ae92601 | Both release APKs built and verified; no AVD running |
 | Android native | Root; preparation worker complete | Local task AVDs remain stopped | Execute prepared API29/API35 scenarios after macOS releases local slot |
 
@@ -188,6 +191,30 @@ All source pairs use ae926016 product code. The Windows docs56 snapshot includes
 the then-current WIP documentation delta and has its own fingerprint; subsequent
 documentation edits do not modify any captured inputs. Completed workers have no ongoing write
 ownership. Native operators may not start unrelated VMs or overwrite frozen stages.
+
+## Checkpoint59 Stream Acceptance
+
+Public Android streams already dispatch before the non-stream adapter. New desktop
+transport tests exercise the actual ADB document client with a fake provider: log
+tail/cursor propagation, owner replacement and post-submission loss. This is a
+coverage addition, not a product defect repair. CLI-004 permits exit2 for both
+unavailable transport and unknown outcomes; observation alone does not justify
+changing that classification. Focused Android stream/ADB/document suites passed
+37 tests with zero failures or skips. The initial new-test assertion incorrectly
+expected exit2 for explicit CONFLICT; corrected to CLI-004 action-failure exit1.
+No production change was necessary. API29/API35 installed tests remain required.
+
+Root reviewed the executed sampler and verbatim installed-package captures under
+checkpoint59/macos-output/guest/output59. JSON status/stats and human status/stats/logs
+clients emitted output, then each exited naturally with130 when its output reader
+closed; no TERM/KILL fallback occurred. Human output stayed on stderr. Forced SOCKS
+token traffic succeeded before and after; controller/runtime, revision4 and all four
+owned process identities remained unchanged. Review: checkpoint59/macos-output/root-review.json.
+Checkpoint58 genuine captures also prove repeated JSON status/stats, logs limit0 and
+real foreground-terminal Ctrl-C130. Earlier reconstructed checkpoint58 summaries are
+explicitly not raw evidence and must not certify their unrecaptured claims.
+GUI hide/close/crash and owner replacement remain untested in this native slice.
+The host is still locked; preserve the live connection until GUI checks can resume.
 
 ## Checkpoint55 Current Artifacts And Acceptance
 
