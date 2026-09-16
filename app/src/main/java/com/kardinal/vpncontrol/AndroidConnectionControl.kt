@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.control.ControlCommitted
+import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -69,8 +70,10 @@ internal class AndroidConnectionControl(
 
     suspend fun execute(request: ControlRequest, operationId: String, awaitingUser: (Boolean) -> Boolean): ControlResult {
         var metadata: ControlCommitted<PersistedState>? = null
+        var initialRevision: Long? = null
         var token: String? = null
         var dispatched = false
+        var committing: ProfileSelection? = null
         fun result(code: ControlCode, warnings: List<String> = emptyList()): ControlResult {
             val committed = metadata
             val pending = committed?.value?.let(pendingRestart)
@@ -80,7 +83,7 @@ internal class AndroidConnectionControl(
                     if (pending == null) listOf("PENDING_RESTART_STATE_UNAVAILABLE") else emptyList())
         }
         return try {
-            val committed = snapshot().also { metadata = it }
+            val committed = snapshot().also { metadata = it; initialRevision = it.revision }
             if (request.controllerId != ownerId || committed.controllerId != ownerId ||
                 request.ifRevision != null && request.ifRevision != committed.revision) return result(ControlCode.CONFLICT)
             preflight(request, committed.value)?.let {
@@ -115,17 +118,38 @@ internal class AndroidConnectionControl(
             }
             if (observation().knowledge != AndroidRuntimeKnowledge.RUNNING)
                 return result(ControlCode.RUNTIME_FAILED, listOf("RUNTIME_OUTCOME_UNKNOWN"))
+            // From this point a thrown response can follow a durable write. Keep
+            // the exact selection so a fresh owner snapshot can reconcile it.
+            committing = selection
             persist(selection)
             metadata = snapshot()
             result(ControlCode.OK)
         } catch (_: Exception) {
-            // The persistence method may have committed before a subsequent step
-            // failed. Under our lease this is the exact current committed metadata.
             metadata = runCatching { snapshot() }.getOrNull()
-            result(if (dispatched) ControlCode.RUNTIME_FAILED else ControlCode.PERSISTENCE_FAILED,
+            val committed = metadata
+            if (dispatched && committed != null && committed.revision != initialRevision && committing?.let {
+                    // Matching an unchanged snapshot could merely describe the
+                    // pre-existing selected runtime. A changed revision is the
+                    // owner-held proof that this persistence transaction landed.
+                    committed.controllerId == ownerId && committed.value.matches(it)
+                } == true) {
+                // A response failure after an exact durable commit must not make
+                // callers retry and replace the already-started runtime.
+                result(ControlCode.OK, listOf("POST_COMMIT_RESULT_UNAVAILABLE"))
+            } else result(if (dispatched) ControlCode.RUNTIME_FAILED else ControlCode.PERSISTENCE_FAILED,
                 if (dispatched) listOf("RUNTIME_STARTED_PERSISTENCE_FAILED") else emptyList())
         } finally {
             token?.let { vpnTokens.remove(it); interactions.finish(it) }
         }
     }
+
+    private fun PersistedState.matches(selection: ProfileSelection): Boolean =
+        selectedProfileName == selection.profile.remarks &&
+            selectedProfileServer == selection.profile.server &&
+            selectedProfileRawLink == selection.profile.rawLink &&
+            selectedProfileJson == LocationConfigs.encodeStoredLocation(selection.profile) &&
+            runtimeConfigJson == selection.runtimeConfigJson &&
+            selectedProfileSourceUrl == selection.sourceUrl &&
+            managementProxyPort == (selection.managementProxyPort?.takeIf { it in 1..65535 } ?: 0) &&
+            lastBenchmarkSummary == selection.benchmark.detail
 }

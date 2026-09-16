@@ -347,14 +347,20 @@ internal class DesktopHeadlessSession(
                 finally { mutations.unlock() }
             }
         }
-        if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK &&
-            "id" in request.command.arguments) {
-            if (request.ifRevision != null || request.interactive) return DesktopCliResponse.failure("UNSUPPORTED")
-            val id = (request.command.arguments["id"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
-            if (request.command.arguments.keys != setOf("id") || id.isNullOrBlank()) return DesktopCliResponse.failure("INVALID_ARGUMENT")
-            val command = DesktopCliCommand.LocationBenchmark("", configurationId = id)
+        if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK) {
+            if (request.interactive || (request.asynchronous && request.command.operation !in DesktopControlSupport.asynchronousOperations))
+                return DesktopCliResponse.failure("UNSUPPORTED")
+            val command = when (request.command.arguments.keys) {
+                setOf("id") -> (request.command.arguments["id"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
+                    ?.takeIf(String::isNotBlank)?.let { DesktopCliCommand.LocationBenchmark("", configurationId = it) }
+                setOf("selector") -> (request.command.arguments["selector"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
+                    ?.takeIf(String::isNotBlank)?.let { DesktopCliCommand.LocationBenchmark(it) }
+                else -> null
+            } ?: return DesktopCliResponse.failure("INVALID_ARGUMENT")
             return operations.execute(request.command.operation, command, request.requestId, request.asynchronous,
-                request.controllerId, resultEnvelope = true) { executeMutation(command) }
+                request.controllerId, expectedRevision = request.ifRevision, resultEnvelope = true) {
+                executeGuardedBenchmark(command, request.ifRevision)
+            }
         }
         if (request.ifRevision != null || request.interactive) return DesktopCliResponse.failure("UNSUPPORTED")
         if (request.command.operation in DesktopControlMutations.operations) {
@@ -419,6 +425,18 @@ internal class DesktopHeadlessSession(
             request.controllerId, resultEnvelope = true) {
             executeMutation(command)
         }
+    }
+
+    /** Check after queued work acquires the mutation lane so a stale benchmark cannot resolve a replacement row. */
+    private suspend fun executeGuardedBenchmark(command: DesktopCliCommand.LocationBenchmark,
+        expectedRevision: Long?): DesktopCliResponse {
+        if (operations.installBarrier()) return DesktopCliResponse.failure("BUSY")
+        if (!mutations.tryLock()) return DesktopCliResponse.failure("BUSY")
+        return try {
+            if (expectedRevision != null && metadataProvider().configurationRevision != expectedRevision)
+                DesktopCliResponse.failure("CONFLICT")
+            else executeCommand(command)
+        } finally { mutations.unlock() }
     }
 
     override fun close() {

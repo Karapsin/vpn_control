@@ -135,6 +135,60 @@ class DesktopHeadlessSessionTest {
     }
 
     @Test
+    fun guardedBenchmarkRejectsStaleOpaqueAndSelectorTargetsBeforeTheyReachTheMutationLane() = runTest {
+        var revision = 7L
+        val executed = mutableListOf<DesktopCliCommand.LocationBenchmark>()
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() },
+            executeCommand = { command ->
+                val benchmark = command as? DesktopCliCommand.LocationBenchmark
+                    ?: error("Unexpected command: $command")
+                executed += benchmark
+                DesktopCliResponse.success("ok")
+            }, refresh = {}, controllerId = "owner",
+            metadataProvider = { DesktopControlMetadata(revision, false) })
+        suspend fun submit(requestId: String, arguments: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+            expectedRevision: Long) = com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(
+                session.execute(DesktopCliCommand.ControlSubmit(com.kardinal.vpncontrol.model.ControlRequest(requestId,
+                    com.kardinal.vpncontrol.model.ControlCommand(
+                        com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK, arguments),
+                    controllerId = "owner", ifRevision = expectedRevision))).message)
+
+        val opaque = submit("opaque-current", mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text("row-a")), revision)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.OK, opaque.code)
+        assertEquals(listOf(DesktopCliCommand.LocationBenchmark("", configurationId = "row-a")), executed)
+        revision++
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.CONFLICT,
+            submit("opaque-stale", mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text("row-a")), revision - 1).code)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.CONFLICT,
+            submit("selector-stale", mapOf("selector" to com.kardinal.vpncontrol.model.ControlValue.Text("row-a")), revision - 1).code)
+        assertEquals(1, executed.size)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.OK,
+            submit("selector-current", mapOf("selector" to com.kardinal.vpncontrol.model.ControlValue.Text("row-a")), revision).code)
+        assertEquals(2, executed.size)
+    }
+
+    @Test
+    fun admittedBenchmarkRechecksRevisionInsideTheMutationLaneBeforeResolvingItsRow() = runTest {
+        var revision = 7L
+        var executed = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() },
+            executeCommand = { executed++; DesktopCliResponse.success("unexpected") }, refresh = {}, controllerId = "owner",
+            metadataProvider = { DesktopControlMetadata(revision, false) })
+        val request = com.kardinal.vpncontrol.model.ControlRequest("queued", com.kardinal.vpncontrol.model.ControlCommand(
+            com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK,
+            mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text("row-a"))),
+            controllerId = "owner", ifRevision = revision, asynchronous = true)
+        val accepted = com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(
+            session.execute(DesktopCliCommand.ControlSubmit(request)).message)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.ACCEPTED, accepted.code)
+        revision++
+        runCurrent()
+        assertEquals(0, executed)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.CONFLICT,
+            session.operationSnapshot().single().result?.code)
+    }
+
+    @Test
     fun explicitCancellationDoesNotReportTerminalUntilCleanupFinishes() = runTest {
         val cleanup = CompletableDeferred<Unit>()
         val runner = DesktopOperationRunner(backgroundScope)

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -30,6 +31,33 @@ def bounded_text(value: str, limit: int = 1024) -> str:
 def public_cli_argv(cli: Path) -> list[str]:
     """Run retained Python fixture adapters through Python, but packaged CLIs directly."""
     return [sys.executable, str(cli)] if cli.suffix.lower() == ".py" else [str(cli)]
+
+
+def public_cli_environment(adb: str, cli: Path, environment=None) -> dict | None:
+    """Pin packaged Android CLI children to this lifecycle's approved ADB binary.
+
+    Python fixture adapters do not execute the packaged Desktop Android client, so
+    they keep their existing inherited execution behavior. Packaged clients resolve
+    a bare ``adb`` at runtime; validate the selected binary before device or fixture
+    work, then put only its resolved parent ahead of the child's inherited PATH.
+    """
+    if cli.suffix.lower() == ".py":
+        return None
+    selected = Path(adb)
+    if not selected.is_absolute():
+        raise ValueError("Fixture packaged CLI requires an absolute ADB binary")
+    try:
+        selected = selected.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("Fixture ADB binary is unavailable") from error
+    if not selected.is_file() or not os.access(selected, os.X_OK):
+        raise ValueError("Fixture ADB binary is not executable")
+    result = dict(os.environ if environment is None else environment)
+    result.pop("DYLD_INSERT_LIBRARIES", None)
+    result["PATH"] = str(selected.parent) + os.pathsep + result.get("PATH", os.defpath)
+    if shutil.which("adb", path=result["PATH"]) != str(selected):
+        raise RuntimeError("Fixture packaged CLI ADB path does not select the approved binary")
+    return result
 
 
 def require_interactive_stdin(stream=None) -> None:
@@ -110,11 +138,12 @@ class ProbeFailure(RuntimeError):
         self.evidence = evidence
 
 
-def public_no_update_probe(cli: Path, serial: str, server_log: Path, output_path: Path) -> dict:
+def public_no_update_probe(cli: Path, serial: str, server_log: Path, output_path: Path,
+                           cli_environment=None) -> dict:
     result = subprocess.run(
         [*public_cli_argv(cli), "--json", "--android", "--serial", serial,
          "--timeout-seconds", "180", "updates", "check"],
-        check=False, text=True, capture_output=True,
+        check=False, text=True, capture_output=True, env=cli_environment,
     )
     output_path.write_text(result.stdout + ("\n--- stderr ---\n" + result.stderr if result.stderr else ""))
     os.chmod(output_path, 0o600)
@@ -257,13 +286,14 @@ def establish_owned_transport(adb: Adb, device_port: int, host_port: int, previo
 
 
 def verify_public_baseline(adb: Adb, cli: Path, serial: str, expected_avd: str, expected_api: str,
-                           expected_version: str, expected_code: str, expected_sha256: str) -> dict:
+                           expected_version: str, expected_code: str, expected_sha256: str,
+                           cli_environment=None) -> dict:
     avd = require_emulator_avd_name(adb)
     api = adb.shell("getprop", "ro.build.version.sdk")
     package = adb.shell("dumpsys", "package", "com.kardinal.vpncontrol")
     status = subprocess.run(
         [*public_cli_argv(cli), "--json", "--android", "--serial", serial, "status"],
-        check=True, text=True, capture_output=True,
+        check=True, text=True, capture_output=True, env=cli_environment,
     )
     response = json.loads(status.stdout)
     data = response.get("data") or {}
@@ -308,6 +338,10 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
     args.target = require_ca_store_target(ca_store_target)
     expected_proxy = require_disconnected_proxy_baseline(expected_proxy)
     require_task_staging(args.staging)
+    cli_environment = getattr(args, "cli_environment", None)
+    if cli_environment is None:
+        cli_environment = public_cli_environment(args.adb, args.cli)
+    args.cli_environment = cli_environment
     frozen_hash = require_artifact_hash(args.base_apk, args.base_sha256)
     adb = Adb(args.adb, args.serial)
     receipt = {"serial": args.serial, "target": args.target, "expectedProxy": expected_proxy,
@@ -317,7 +351,7 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         raise RuntimeError("Public no-update preflight requires an unowned public transport baseline")
     receipt["baseline"] = verify_public_baseline(
         adb, args.cli, args.serial, args.expected_avd, args.expected_api,
-        args.expected_version, args.expected_code, args.base_sha256,
+        args.expected_version, args.expected_code, args.base_sha256, cli_environment,
     )
     receipt["frozenBaseSha256"] = frozen_hash
     secure_private_fixture_files([args.certificate])
@@ -451,7 +485,8 @@ def main() -> None:
     run_fixture_lifecycle(
         args,
         lambda current_args, _adb, _receipt: public_no_update_probe(
-            current_args.cli, current_args.serial, current_args.server_log, current_args.probe_output
+            current_args.cli, current_args.serial, current_args.server_log, current_args.probe_output,
+            current_args.cli_environment,
         ),
     )
 

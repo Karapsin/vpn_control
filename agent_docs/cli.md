@@ -94,7 +94,7 @@ requests never bootstrap a missing owner. The authenticated transport preserves 
 explicit epoch rather than replacing it with the newly discovered owner's identity.
 Desktop `revisionGuardOperations` lists the currently supported guarded writes:
 settings, SSH-key import, subscription/location edits and selection, source changes,
-routing set/import, bulk location import, and quit. Runtime/job guards outside that
+routing set/import, bulk location import, location benchmarks, and quit. Runtime/job guards outside that
 list remain unsupported. Android forwards both guards to its implemented owner
 handlers; this does not make its remaining domain commands implemented.
 Human and JSON desktop commands share the timeout option. Synchronous commands
@@ -352,10 +352,11 @@ GUI/tray connection toggles, explicit restart, Find Best, per-location benchmark
 and subscription refresh now submit through that session. On/off/restart support
 JSON and async CLI submission and appear in operation history; they are not yet
 cancellable. GUI benchmark callbacks capture the rendered configuration's
-owner-local opaque ID, so numeric names and reordered lists do not retarget them.
-Gone/replaced/ambiguous references conflict; public CLI name/index semantics remain
-unchanged. Full atomic commit proposals, stable references for other GUI actions,
-and GUI feedback for pre-admission rejection still need implementation.
+owner-local opaque ID and the rendered owner/revision, so numeric names and
+reordered lists do not retarget them. The owner rechecks the revision inside its
+mutation lane before resolving the benchmark target. Gone/replaced/ambiguous
+references conflict; public CLI name/index semantics remain unchanged. Guarded
+benchmark failures use the same typed GUI feedback as other location actions.
 
 Shared transport DTOs live in `shared/model/.../model/ControlModels.kt`; manual
 JSON codec and `ControlSession` live in `shared/core/.../control/`. Do not serialize

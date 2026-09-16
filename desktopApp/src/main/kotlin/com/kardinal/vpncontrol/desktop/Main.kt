@@ -1034,9 +1034,14 @@ internal fun DesktopVpnControlApp(
                     },
                     onBenchmarkLocation = { index ->
                         if (state.isBusy) return@LocationsScreen
-                        val id = presentationLocations.getOrNull(index)?.id ?: return@LocationsScreen
-                        val command = DesktopCliCommand.LocationBenchmark(target = "", configurationId = id)
-                        coroutineScope.launch { executeCommand(command) }
+                        presentationLocations.getOrNull(index)?.id?.let { id ->
+                            val request = desktopGuiBenchmarkAction(locationActionIdentity, rowRuntime.controllerId,
+                                rowRuntime.configurationRevision, id)
+                            coroutineScope.launch {
+                                val result = frontend.submit(request)
+                                if (!result.ok) dnsOpenFailure = result.code
+                            }
+                        }
                     },
                     onSelectLocation = { index ->
                         presentationLocations.getOrNull(index)?.id?.let { id ->

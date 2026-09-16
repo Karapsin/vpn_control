@@ -53,10 +53,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check release hygiene
-        shell: bash
-        run: ./scripts/check_release_hygiene.sh
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -77,6 +73,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}
+
+      - name: Check release hygiene
+        shell: bash
+        run: ./scripts/check_release_hygiene.sh
 
       - name: Verify Windows admission diagnostic behavior
         run: python scripts/test_windows_install_admission_diagnostic.py

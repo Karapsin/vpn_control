@@ -52,6 +52,12 @@ internal class DesktopInstallHandoff(
         if (!admission.tryLock()) return DesktopInstallHandoffResult(ControlCode.BUSY)
         try {
             if (closed || uncertainCancellation || worker != null) return DesktopInstallHandoffResult(ControlCode.BUSY)
+            // A previous retained worker was conclusively cancelled. Its pre-commit
+            // diagnostic belongs only to that correlation and must not accompany a
+            // later worker's cancellation recovery.
+            lateAuthorizationRetained = false
+            lateAuthorizationResumed = false
+            lateAuthorizationPrecommitFailure = null
             validatedJobId = null
             val prepared = prepare().getOrElse {
                 if (it is DesktopInstallPreparationFailure) {

@@ -28,6 +28,10 @@ internal fun androidRenderedLocationTarget(state: MainUiState, raw: String): And
             else -> state.profileUrl
         }))
 
+/** Resolves a click against the immutable rows that produced the control, never current storage order. */
+internal fun androidRenderedLocationTarget(state: MainUiState, rows: List<SavedLocationRow>, index: Int): AndroidRenderedLocationTarget? =
+    rows.firstOrNull { it.index == index }?.rawLink?.let { androidRenderedLocationTarget(state, it) }
+
 internal fun androidLocationVisualKey(raw: String, source: String): String = java.security.MessageDigest.getInstance("SHA-256")
     .digest((source + "\u0000" + LocationConfigs.normalizeStoredReference(raw)).toByteArray(Charsets.UTF_8))
     .joinToString("") { "%02x".format(it) }

@@ -16,8 +16,8 @@
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
     <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\build\windows-native-helpers\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
-    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\build\windows-native-helpers\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\build\windows-native-helpers\obj\$(MSBuildProjectName)\'))</BaseIntermediateOutputPath>
+    <BaseOutputPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\build\windows-native-helpers\bin\$(MSBuildProjectName)\'))</BaseOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <!-- NativeAOT direct imports are resolved before Main and ignore managed search-path attributes. -->

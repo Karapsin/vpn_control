@@ -20,6 +20,16 @@ internal fun desktopGuiLocationAction(openingId: String, owner: String?, revisio
         .copy(command = com.kardinal.vpncontrol.model.ControlCommand(operation, args))
 }
 
+/** Benchmark the rendered opaque row under the same owner/revision guard as selection and deletion. */
+internal fun desktopGuiBenchmarkAction(openingId: String, owner: String?, revision: Long,
+    id: String): com.kardinal.vpncontrol.model.ControlRequest {
+    val args = mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(id))
+    return frontendSettingsRequest(openingId, owner, revision, args,
+        com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK.wireName + ":" + id)
+        .copy(command = com.kardinal.vpncontrol.model.ControlCommand(
+            com.kardinal.vpncontrol.model.ControlOperationId.LOCATIONS_BENCHMARK, args))
+}
+
 /** Frontend feedback retains a stable code only, never controller response text or private inputs. */
 internal fun desktopGuiCommandFailure(response: DesktopCliResponse): ControlCode? {
     if (response.success) return null

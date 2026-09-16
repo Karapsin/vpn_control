@@ -25,6 +25,40 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Code-First Integration Batch
+
+The user requested completing all known implementation work before the next broad
+native cycle. Finish source gaps in parallel, use cheap causal regressions while
+coding, then freeze one coherent source/package set. Run complete platform scenario
+batches against that freeze, collect independent failures, and fix them together.
+Unknown accepted mutations remain preserved; discovery never authorizes replay or
+unsafe overlapping installers. Existing native results retain their exact identities.
+
+| Task | Owner | Exclusive source scope | Current check / next handoff |
+| --- | --- | --- | --- |
+| Android actions | android_code69 | Connection control; location service/ViewModel/UI callback binding and focused tests | Durable-selection response-loss fix passes15 tests; rendered benchmark target fix passes10 focused tests and Android compilation |
+| Installer reconciliation | installer_code69 complete; root integration | DesktopInstallHandoff and tests | Prior worker diagnostics reset only on clean new admission;18 tests pass |
+| Windows build paths | windows_execute68 complete; root review | Native Directory.Build.props and native helper tests | Canonical output paths; actual pinned-MSBuild evaluation passed, full package build deferred |
+| Android fixture readiness | android_api35_68 complete; root integration | Android TLS preflight script/tests; ignored interactive driver | Exact selected ADB in child PATH before fixture/device mutation; real subprocess and early-admission coverage,29 tests pass |
+| Documents/persistence | documents_code69 complete | Read-only document/spool/export/preferences audit | No established additional implementation defect; native gaps remain |
+| Desktop GUI dispatch | desktop_gui_code69 complete | Desktop GUI commands/Main and HeadlessSession/ControlSupport with tests | Captured benchmark owner/revision checked in frontend and owner mutation lane;16 focused tests pass |
+| Integration | root | Shared boundaries, docs, host Gradle, metadata and delivery | Batch review, final checks, then immutable artifacts and broad native pass |
+
+Windows source audit70 found the previously listed production blockers already
+closed: scoped broker factory binding, prepare-before-stop, captured CUSTOM inputs,
+ordinary GUI/LIMITED autostart and original-user MSI recovery are wired. It found
+no additional reachable source defect; native verification remains mandatory.
+The known code batch is ready for integrated prepush after metadata. Android
+focused counts are15 connection plus10 service/presentation; desktop installer18
+and benchmark/session/capability16. Script suites pass29 Android and25 Windows
+checks (one Windows-only check explicitly skipped on macOS, guest MSBuild probe
+recorded separately). No new native scenario was started during this batch.
+
+Independent review confirmed Android connection mutation admission remains held
+through post-commit reconciliation; the proposed unrelated-revision interleaving
+was retracted after tracing GUI, scheduled-refresh and service writer paths.
+Do not treat missing-API tests or malformed manual probes as causal product REDs.
+
 ## September16 Current Operations
 
 Gateway access is restored through ssh.karapsin.com:2228, then the authenticated
@@ -45,12 +79,14 @@ recovered under a replacement owner with exact origin correlation; root checked
 checkpoint61/linux-arch raw results. The earlier attempt reached a real terminal
 polkit prompt without driver credential input, then was safely cancelled after
 confirming no protected job/worker. A missing GUI agent was an incorrect diagnosis.
-The stopped Arch2317 guest is reserved for induced rollback verification.
+Arch2317 rollback is now independently verified in checkpoint68/linux-rollback/root-review.json: inotify captured original-to-backup, staged replacement, failed replacement removal and exact original restoration. Public next-owner status retained the failed job/operation identity. The guest is stopped and fixture cleanup is recorded.
 
 Windows2314 remains the ordinary-user native package environment at6GiB. The
-corrected-source build passed dependency resolution and reached native helpers,
-then exposed missing dotnet in its task-local PATH. A pinned-tool early preflight
-and process-only PATH repair are prepared; no MSI acceptance is claimed yet.
+corrected-source build passed dependency resolution and reached native helpers.
+Task-local tool discovery was repaired; an actual linker probe then isolated raw
+parent-segment output paths exceeding the native path limit. Canonical output
+paths and a real pinned-MSBuild regression are in this code batch. No MSI
+acceptance is claimed; a new frozen package build follows source integration.
 
 The macOS control53 guest is stopped after public off/quit and fixture cleanup.
 Current corrected DMG base2.1.12 passed immediate GUI crash/reopen:32 forced proxy
@@ -77,25 +113,16 @@ harness defect was fixed in d371254. Interactive drivers now have an explicit st
 preflight before fixture mutation; isolated causal replay shows the unguarded driver
 reaches fixture launch while the guarded driver rejects without creating output.
 API35, deliberate process-loss cases, confirmation cancellation and remaining action,
-traffic/document/visual gates remain open. API29 shutdown is being reconciled before
-another local4GiB AVD may start.
-
-| Task | Owner | Exclusive scope | Current check / next handoff |
-| --- | --- | --- | --- |
-| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | Latest exact-SHA CI all green; integrate tested harness launcher fix |
-| Windows pair | windows_execute68 | Windows2314 task wrapper/native packages | Fresh operator; resolve Python alias/preflight then actual v6 build |
-| Linux rollback | linux_trace68 | Remote Arch2317 disposable guest/evidence | Add observable swap/restore trace and next-owner failure recovery |
-| Android API29 | android_api29_65 retiring | Emulator5656 cleanup only | Target and correlated installed receipt verified; release local slot |
-| Mac native | root; prior workers complete | Stopped control53 guest and retained evidence | Machine-owned update, rollback, automatic return and visuals remain |
+traffic/document/visual gates remain open. API29 is stopped. Owned API35 emulator5658 is the only local VM/emulator,
+configured at2GiB. It is idle before installer admission; native scenarios wait
+for the combined source freeze.
 
 ## Delivery And Current Integration
 
-Latest pushed checkpoint: `d371254dfa82c2ae8abb04d75a2b609be701f3c1`, version2.1.12.
-Prepush passed; exact-SHA CI is still being watched in checkpoint66/commit-result.json.
-Last fully verified checkpoint2c3aae9 passed all five required workflows; see
-checkpoint62/portability-commit-result.json. That superseded794d01e,
-whose new compiler fixture incorrectly resolved Windows' WSL launcher. A causal
-simulated-Windows regression and POSIX guard prevent that failure in routine checks.
+Latest pushed checkpoint: `3f5715f30e5c9337b84b3377e18c850241b5e3ee`, version2.1.12.
+All five exact-SHA required workflows succeeded; managed result:
+checkpoint66/interactive-commit-result.json. Current code-first changes are not
+covered by that receipt and require their own prepush, push and exact-SHA CI.
 
 Corrected macOS pair source11efe6f8fe46bcbbde522111caf808250f3a24ff00d39bf80dcfa17fdf595780
 matches794d01e (1499 snapshot entries checked); subsequent2c3aae9 changes tests/docs.
@@ -514,8 +541,10 @@ proof of sufficient peak capacity.
    protected receipt/lock handling and current nativeAMD64 public lifecycle.
 2. Current-package Windows broker/configuration coverage, denial preserving activeA
    and pendingB, TUN/child cleanup, ordinary GUI/autostart and safe legacy migration.
-3. Fresh DEB dependency installation, current-source Arch install/update/recovery/rollback and remaining RPM failure
-   cases; macOS rollback, interrupted recovery and GUI return.
+3. Finish remaining RPM failure cases and final-source package revalidation. Fresh
+   DEB dependency acquisition and exact Arch replacement/rollback are proven in
+   checkpoint63 and checkpoint68 respectively. macOS rollback, interrupted recovery
+   and automatic GUI return remain open.
    Current ae926016 user-local synchronous/asynchronous and machine grant/denial
    recovery are proven above;
    the3d RPM success and earlier Mac machine success apply only to their artifacts.

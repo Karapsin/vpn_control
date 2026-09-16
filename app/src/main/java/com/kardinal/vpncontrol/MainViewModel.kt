@@ -556,9 +556,7 @@ class MainViewModel internal constructor(
     fun editLocation(target: AndroidRenderedLocationTarget) { locationActions.editLocation(target) }
     fun selectLocation(target: AndroidRenderedLocationTarget) { locationActions.selectLocation(target) }
 
-    fun benchmarkLocation(index: Int) {
-        locationActions.benchmarkLocation(index)
-    }
+    fun benchmarkLocation(target: AndroidRenderedLocationTarget) { locationActions.benchmarkLocation(target) }
 
     fun benchmarkSelectedLocationFromStats() {
         locationActions.benchmarkSelectedLocationFromStats()

@@ -1,6 +1,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -134,6 +136,77 @@ class PreflightScriptTest(unittest.TestCase):
                 preflight.public_no_update_probe(Path('adapter.py'), 'serial', log, Path(temp) / 'probe.txt')
             self.assertEqual([sys.executable, 'adapter.py', '--json', '--android', '--serial', 'serial',
                               '--timeout-seconds', '180', 'updates', 'check'], run.call_args.args[0])
+
+    @unittest.skipUnless(os.name == 'posix', 'executable fixture needs POSIX permissions')
+    def test_packaged_cli_adb_environment_selects_absolute_driver_binary_before_fixture_work(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adb = root / 'sdk' / 'platform-tools' / 'adb'
+            adb.parent.mkdir(parents=True)
+            adb.write_text('#!/bin/sh\nexit 0\n')
+            adb.chmod(0o700)
+            inherited = {'PATH': '/missing', 'DYLD_INSERT_LIBRARIES': '/unsafe/injection.dylib'}
+            self.assertIsNone(shutil.which('adb', path=inherited['PATH']))
+            environment = preflight.public_cli_environment(str(adb), root / 'vpn-control', inherited)
+            self.assertEqual(str(adb.resolve().parent) + os.pathsep + '/missing', environment['PATH'])
+            self.assertEqual(str(adb.resolve()), shutil.which('adb', path=environment['PATH']))
+            self.assertNotIn('DYLD_INSERT_LIBRARIES', environment)
+
+    def test_packaged_cli_adb_environment_rejects_before_device_or_fixture_setup(self):
+        with self.assertRaisesRegex(ValueError, 'absolute ADB'):
+            preflight.public_cli_environment('adb', Path('/private/tmp/vpn-control'))
+
+    @unittest.skipUnless(os.name == 'posix', 'packaged-launcher fixture needs POSIX permissions')
+    def test_packaged_cli_subprocesses_receive_selected_adb_environment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adb = root / 'sdk' / 'platform-tools' / 'adb'
+            adb.parent.mkdir(parents=True)
+            adb.write_text('#!/bin/sh\nexit 0\n')
+            adb.chmod(0o700)
+            launcher = root / 'vpn-control'
+            launcher.write_text(
+                '#!/bin/sh\n'
+                'actual=$(command -v adb || true)\n'
+                '[ "$actual" = "$EXPECTED_ADB" ] || exit 9\n'
+                'case " $* " in\n'
+                '  *" updates check "*) printf \'{"ok":true,"code":"OK","data":{"checked":true,"available":false}}\\n\' ;;\n'
+                '  *) printf \'{"ok":true,"controllerId":"owner","data":{"runtimeRunning":false}}\\n\' ;;\n'
+                'esac\n'
+            )
+            launcher.chmod(0o700)
+            inherited = {'PATH': '/missing', 'EXPECTED_ADB': str(adb.resolve())}
+            omitted = subprocess.run([str(launcher), '--json', '--android', '--serial', 'serial', 'status'],
+                                     text=True, capture_output=True, env=inherited)
+            self.assertEqual(9, omitted.returncode)
+            environment = preflight.public_cli_environment(str(adb), launcher, inherited)
+            digest = hashlib.sha256(b'base').hexdigest()
+            baseline = preflight.verify_public_baseline(
+                FakeAdb(), launcher, 'serial', 'avd', '29', '2.2.19', '17180', digest, environment,
+            )
+            self.assertEqual('owner', baseline['controllerId'])
+            log = root / 'fixture.log'
+            log.write_text('{"served": "manifest"}\n')
+            probe = preflight.public_no_update_probe(launcher, 'serial', log, root / 'probe.txt', environment)
+            self.assertTrue(probe['ok'])
+
+    def test_lifecycle_rejects_invalid_packaged_adb_before_constructing_device_client(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base = root / 'base.apk'
+            base.write_bytes(b'base')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root / 'vpn-control', certificate=root / 'ca.pem',
+                leaf_certificate=root / 'leaf.pem', fixture_parent=root, server_log=root / 'server.log',
+                probe_output=root / 'probe.txt', device_port=45390, host_port=61000,
+                staging='/data/local/tmp/vpn-control-test', receipt=root / 'receipt.json',
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            with patch.object(preflight, 'Adb') as adb_client:
+                with self.assertRaisesRegex(ValueError, 'absolute ADB'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {})
+            adb_client.assert_not_called()
 
     def test_artifact_hash_and_safe_leaf_are_enforced(self):
         with tempfile.TemporaryDirectory() as temp:

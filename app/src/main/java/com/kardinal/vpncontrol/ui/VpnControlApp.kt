@@ -226,7 +226,7 @@ fun VpnControlApp(
     onImportLocationFromFile: () -> Unit,
     onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
-    onBenchmarkLocation: (Int) -> Unit,
+    onBenchmarkLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onCloseLocationDialog: () -> Unit,
@@ -1126,7 +1126,7 @@ private fun HomeTabsScreen(
     onImportLocationFromFile: () -> Unit,
     onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
-    onBenchmarkLocation: (Int) -> Unit,
+    onBenchmarkLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
     onIgnoreRulesChange: (Boolean) -> Unit,
@@ -1876,7 +1876,7 @@ private fun LocationsScreen(
     onImportLocationFromFile: () -> Unit,
     onEditLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onDeleteLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
-    onBenchmarkLocation: (Int) -> Unit,
+    onBenchmarkLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onSelectLocation: (com.kardinal.vpncontrol.AndroidRenderedLocationTarget) -> Unit,
     onToggleSelectedLocationVpn: () -> Unit,
 ) {
@@ -1921,13 +1921,18 @@ private fun LocationsScreen(
         showSubscriptionMismatchWarning = selectedLocationOutsideActiveSubscription,
         onShowAddLocation = onShowAddLocation.takeIf { canMutateLocations },
         onToggleSelectedLocationVpn = onToggleSelectedLocationVpn,
-        onBenchmarkLocation = onBenchmarkLocation,
-        onSelectLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
-            onSelectLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
-        onEditLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
-            onEditLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
-        onDeleteLocation = { index -> locations.firstOrNull { it.index == index }?.rawLink?.let {
-            onDeleteLocation(com.kardinal.vpncontrol.androidRenderedLocationTarget(state, it)) } },
+        onBenchmarkLocation = { index ->
+            com.kardinal.vpncontrol.androidRenderedLocationTarget(state, locations, index)?.let(onBenchmarkLocation)
+        },
+        onSelectLocation = { index ->
+            com.kardinal.vpncontrol.androidRenderedLocationTarget(state, locations, index)?.let(onSelectLocation)
+        },
+        onEditLocation = { index ->
+            com.kardinal.vpncontrol.androidRenderedLocationTarget(state, locations, index)?.let(onEditLocation)
+        },
+        onDeleteLocation = { index ->
+            com.kardinal.vpncontrol.androidRenderedLocationTarget(state, locations, index)?.let(onDeleteLocation)
+        },
         controls = {
             if (locationVisualState?.restartRequired == true) {
                 Text(strings.get(UiText.HOME_SSH_PENDING), color = Color(0xFFFFC46B))

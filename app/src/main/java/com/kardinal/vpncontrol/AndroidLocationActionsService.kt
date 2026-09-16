@@ -183,6 +183,10 @@ internal class AndroidLocationActionsService(
         benchmarkLocationStored(rawLink)
     }
 
+    fun benchmarkLocation(target: AndroidRenderedLocationTarget) {
+        benchmarkLocationStored(target.raw, target)
+    }
+
     fun benchmarkSelectedLocationFromStats() {
         val rawLink = selectedLocationReference().ifBlank {
             stateProvider().currentLocations.firstOrNull {
@@ -330,8 +334,8 @@ internal class AndroidLocationActionsService(
         )
     }
 
-    private fun benchmarkLocationStored(rawLink: String) {
-        ownerBenchmark?.let { it(androidRenderedLocationTarget(stateProvider(), rawLink)); return }
+    private fun benchmarkLocationStored(rawLink: String, renderedTarget: AndroidRenderedLocationTarget? = null) {
+        ownerBenchmark?.let { it(renderedTarget ?: androidRenderedLocationTarget(stateProvider(), rawLink)); return }
         launchTrackedBusyOperation {
             setBusy(true)
             setRefreshing(true)

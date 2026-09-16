@@ -5,7 +5,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import com.kardinal.vpncontrol.model.ControlCode
+import com.kardinal.vpncontrol.model.ControlOperationId
 import com.kardinal.vpncontrol.model.ControlResult
+import com.kardinal.vpncontrol.model.ControlValue
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import kotlinx.coroutines.test.runTest
 
@@ -52,5 +54,18 @@ class DesktopGuiCommandsTest {
             listOf(records[1], records[1].copy(index = 99)))) {
             assertEquals("CONFLICT", resolveDesktopConfigurationReference(reference, changed, id).exceptionOrNull()?.message)
         }
+    }
+
+    @Test
+    fun benchmarkActionKeepsTheRenderedOwnerRevisionAndOpaqueLocationIdentity() {
+        val first = desktopGuiBenchmarkAction("opening", "owner-a", 7, "opaque-row")
+        assertEquals(ControlOperationId.LOCATIONS_BENCHMARK, first.command.operation)
+        assertEquals(mapOf("id" to ControlValue.Text("opaque-row")), first.command.arguments)
+        assertEquals("owner-a", first.controllerId)
+        assertEquals(7, first.ifRevision)
+        assertEquals(first, desktopGuiBenchmarkAction("opening", "owner-a", 7, "opaque-row"))
+        assertNotEquals(first.requestId, desktopGuiBenchmarkAction("opening", "owner-a", 8, "opaque-row").requestId)
+        assertNotEquals(first.requestId, desktopGuiBenchmarkAction("opening", "owner-b", 7, "opaque-row").requestId)
+        assertNotEquals(first.requestId, desktopGuiBenchmarkAction("opening", "owner-a", 7, "replacement-row").requestId)
     }
 }

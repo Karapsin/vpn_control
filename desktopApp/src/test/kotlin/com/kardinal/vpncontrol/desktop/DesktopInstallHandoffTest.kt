@@ -346,6 +346,36 @@ class DesktopInstallHandoffTest {
         assertEquals(listOf("authorize", "cancel", "cancel", "close"), events)
     }
 
+    @Test fun newWorkerDoesNotInheritAResolvedLateAuthorizationFailure() = runBlocking {
+        val first = worker(mutableListOf())
+        var secondCancellationAttempts = 0
+        val second = object : DesktopPreparedInstall {
+            override val jobId = "00000000-0000-0000-0000-000000000002"
+            override suspend fun commit() = Result.success(Unit)
+            override fun cancel() = if (++secondCancellationAttempts == 1)
+                Result.failure<Unit>(IllegalStateException("UNAVAILABLE")) else Result.success(Unit)
+            override fun close() = Unit
+        }
+        var preparations = 0
+        val handoff = DesktopInstallHandoff(
+            prepare = {
+                if (preparations++ == 0) throw DesktopInstallPreparationFailure(first,
+                    IllegalStateException("OUTCOME_UNKNOWN"), retainsLateAuthorization = true)
+                Result.success(second)
+            },
+            stopRuntime = { Result.failure(IllegalStateException("RUNTIME_FAILED")) },
+            requestExit = { fail("No failed stop may request exit") },
+        )
+
+        handoff.prepare("first")
+        assertEquals(ControlCode.RUNTIME_FAILED,
+            handoff.resumeLateAuthorization("first", first.jobId).code)
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, handoff.prepare("second").code)
+        val retry = handoff.retryCancellation()
+        assertEquals(ControlCode.CANCELLED, retry.code)
+        assertNull(retry.primaryFailureCode)
+    }
+
     private fun worker(events: MutableList<String>) = object : DesktopPreparedInstall {
         override val jobId = "00000000-0000-0000-0000-000000000001"
         override suspend fun commit(): Result<Unit> { events += "commit"; return Result.success(Unit) }

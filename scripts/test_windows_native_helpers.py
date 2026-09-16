@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import json
 import hashlib
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -434,6 +436,40 @@ class WindowsNativeHelpersTest(unittest.TestCase):
         self.assertIn('VPN_INSTALL_HELPER_VALIDATE_ONLY_OK', source)
         self.assertNotIn("Process.Start", source)
         self.assertNotIn("msiexec", source.lower())
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows MSBuild path semantics")
+    def test_native_aot_project_paths_are_canonicalized_before_linking(self):
+        dotnet = shutil.which("dotnet")
+        if dotnet is None:
+            if os.environ.get("CI"):
+                self.fail("Windows CI requires a dotnet SDK for NativeAOT path evaluation")
+            self.skipTest("dotnet SDK is unavailable")
+        with tempfile.TemporaryDirectory() as scratch:
+            native = Path(scratch) / ("deep-path-" * 2) / "desktopApp" / "native" / "windows"
+            project = native / "InstallHelper" / "Fixture.csproj"
+            project.parent.mkdir(parents=True)
+            shutil.copyfile(Path(__file__).parents[1] / "desktopApp/native/windows/Directory.Build.props",
+                            native / "Directory.Build.props")
+            shutil.copyfile(Path(__file__).parents[1] / "desktopApp/native/windows/global.json",
+                            native / "global.json")
+            lock = json.loads((Path(__file__).parents[1] / "desktopApp/native/windows/toolchain.lock.json").read_text(encoding="utf-8"))
+            version = subprocess.run([dotnet, "--version"], cwd=native, text=True, capture_output=True)
+            self.assertEqual(0, version.returncode, version.stderr)
+            self.assertEqual(lock["sdkVersion"], version.stdout.strip())
+            project.write_text("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>", encoding="utf-8")
+            result = subprocess.run([dotnet, "msbuild", str(project), "-getProperty:BaseOutputPath",
+                                     "-getProperty:BaseIntermediateOutputPath"], cwd=native, text=True, capture_output=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            values = json.loads(result.stdout)["Properties"]
+            self.assertEqual({"BaseOutputPath", "BaseIntermediateOutputPath"}, set(values), result.stdout)
+            for name, value in values.items():
+                resolved = Path(value)
+                self.assertTrue(resolved.is_absolute(), (name, value))
+                self.assertNotIn("..", resolved.parts, (name, value))
+                self.assertIn("windows-native-helpers", resolved.parts, (name, value))
+                self.assertIn("Fixture", resolved.parts, (name, value))
+            self.assertIn("bin", Path(values["BaseOutputPath"]).parts)
+            self.assertIn("obj", Path(values["BaseIntermediateOutputPath"]).parts)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import com.kardinal.vpncontrol.model.ProfileSelection
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.shared.ui.AppStrings
 import com.kardinal.vpncontrol.shared.storageapi.LocationUpdateResult
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
@@ -153,6 +154,28 @@ class AndroidLocationActionsServiceTest {
         assertFalse(harness.state.isBusy)
     }
 
+    @Test
+    fun renderedBenchmarkTargetDoesNotRetargetAfterRowsReorder() {
+        val first = testProfile("First").rawLink
+        val second = testProfile("Second").rawLink
+        val received = mutableListOf<AndroidRenderedLocationTarget>()
+        val harness = harness(
+            initialState = MainUiState(
+                profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+                currentLocations = listOf(first, second),
+            ),
+            ownerBenchmark = received::add,
+        )
+
+        // Capture First from the rendered state before a later refresh reorders rows.
+        val renderedRows = androidLocationRows(harness.state, AppStrings(harness.state.appLanguage))
+        val rendered = requireNotNull(androidRenderedLocationTarget(harness.state, renderedRows, 0))
+        harness.controller.update { it.copy(currentLocations = listOf(second, first)) }
+        harness.service.benchmarkLocation(rendered)
+
+        assertEquals(first, received.single().raw)
+    }
+
     private data class Harness(
         val service: AndroidLocationActionsService,
         val controller: MainController,
@@ -182,6 +205,7 @@ class AndroidLocationActionsServiceTest {
         benchmarkLocation: suspend (String) -> Result<ProfileBenchmark> = {
             Result.failure(IllegalStateException("not configured"))
         },
+        ownerBenchmark: ((AndroidRenderedLocationTarget) -> Unit)? = null,
     ): Harness {
         val controller = MainController(initialState)
         val service = AndroidLocationActionsService(
@@ -202,6 +226,7 @@ class AndroidLocationActionsServiceTest {
             benchmarkLocation = benchmarkLocation,
             appendLatencyHistory = {},
             launchMutation = launchMutation,
+            ownerBenchmark = ownerBenchmark,
         )
         return Harness(service, controller)
     }

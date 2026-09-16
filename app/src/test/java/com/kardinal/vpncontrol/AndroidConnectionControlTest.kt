@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.control.*
+import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -258,6 +259,48 @@ class AndroidConnectionControlTest {
         assertEquals(2, result.configurationRevision)
         assertTrue("RUNTIME_STARTED_PERSISTENCE_FAILED" in result.warnings)
         assertEquals(AndroidRuntimeKnowledge.RUNNING, f.observer.state.value.knowledge)
+    }
+
+    @Test fun responseLossAfterExactDurableSelectionReportsCommittedSuccess() = runTest {
+        val f = Fixture(AndroidCommandJobs(backgroundScope))
+        val selection = selection()
+        f.afterPersist = {
+            f.state = f.state.copy(revision = 2, value = f.state.value.copy(
+                selectedProfileName = selection.profile.remarks,
+                selectedProfileServer = selection.profile.server,
+                selectedProfileRawLink = selection.profile.rawLink,
+                selectedProfileJson = LocationConfigs.encodeStoredLocation(selection.profile),
+                runtimeConfigJson = selection.runtimeConfigJson,
+                lastBenchmarkSummary = selection.benchmark.detail,
+            ))
+            error("response lost after commit")
+        }
+
+        val result = f.control.execute(request())
+
+        assertEquals(ControlCode.OK, result.code)
+        assertEquals(2, result.configurationRevision)
+        assertTrue("POST_COMMIT_RESULT_UNAVAILABLE" in result.warnings)
+        assertEquals(AndroidRuntimeKnowledge.RUNNING, f.observer.state.value.knowledge)
+    }
+
+    @Test fun unchangedPreexistingSelectionCannotProveAThrownPersistCommitted() = runTest {
+        val f = Fixture(AndroidCommandJobs(backgroundScope))
+        val selection = selection()
+        f.state = f.state.copy(value = f.state.value.copy(
+            selectedProfileName = selection.profile.remarks,
+            selectedProfileServer = selection.profile.server,
+            selectedProfileRawLink = selection.profile.rawLink,
+            selectedProfileJson = LocationConfigs.encodeStoredLocation(selection.profile),
+            runtimeConfigJson = selection.runtimeConfigJson,
+            lastBenchmarkSummary = selection.benchmark.detail,
+        ))
+        f.afterPersist = { error("response lost before a durable write") }
+
+        val result = f.control.execute(request())
+
+        assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+        assertTrue("RUNTIME_STARTED_PERSISTENCE_FAILED" in result.warnings)
     }
 
     private class Fixture(val jobs: AndroidCommandJobs) {

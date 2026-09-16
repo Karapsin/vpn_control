@@ -102,7 +102,7 @@ Run the full local release pass from the repository root:
 
 The script first runs `scripts/check_release_hygiene.sh` to fail fast if generated release/runtime artifacts are tracked by Git. It then runs standalone regression tests, builds Android, Linux, macOS when on macOS, and Windows through the local VM, then prints candidate artifacts and SHA-256 checksums.
 
-GitHub Actions package workflows run the same release hygiene check immediately after checkout, before platform setup or packaging starts.
+GitHub Actions package workflows run the same release hygiene check before packaging. Windows installs the pinned native-helper SDK first so the hygiene suite can evaluate actual MSBuild output paths.
 
 Every successful package set for the current `main` commit is promoted automatically to the latest GitHub Release. The publisher waits for Fast Checks plus Android, Linux, Windows, and macOS packages for that exact commit, then publishes versioned assets, checksums, and `update-manifest.json` for the in-app updater.
 
