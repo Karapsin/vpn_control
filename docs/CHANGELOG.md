@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Guard Android visual captures against ANR overlays and normalize Windows scene arguments; record installer state baselines.
 - Exit desktop frontends after teardown and check memory reservations before managed visual VM starts.
 - Isolate visual stop-routing tests from platform-specific reservation locking.
+- Add early regression coverage for stale Linux installation fixture metadata.
 
 ## 2.1.11 - 2026-09-14
 

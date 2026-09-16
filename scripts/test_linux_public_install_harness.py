@@ -185,6 +185,72 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                             run(launcher, "1.0.5", True, same_source_recovery=True)
             self.assertEqual(["dpkg-query", "--search", str(launcher.resolve())], command.call_args_list[0].args[0])
 
+    def test_same_source_recovery_rejects_stale_marker_version_before_owner_or_update_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "opt/vpn-control"
+            app = image / "lib/app"
+            app.mkdir(parents=True)
+            launcher = image / "bin/vpn-control"
+            launcher.parent.mkdir()
+            launcher.write_bytes(b"\x7fELFfixture-not-executed")
+            launcher.chmod(0o755)
+            installed_version = "2.1.11"
+            main = app / "desktopApp-fixture.jar"
+            with zipfile.ZipFile(main, "w") as jar:
+                jar.writestr(MAIN_CLASS, b"fixture-main")
+                jar.writestr(VERSION_RESOURCE, "displayVersion=" + installed_version + "\nbuildNumber=" +
+                             str(version_build(installed_version)) + "\n")
+            (app / "vpn-control.cfg").write_text("[Application]\napp.classpath=$APPDIR/" + main.name +
+                                                   "\napp.mainclass=" + MAIN_CLASS.removesuffix(".class").replace("/", ".") + "\n")
+            installed_identity = image_identity(image, installed_version)
+            marker = image / "TEST-ONLY-INSTALL-FIXTURE.json"
+
+            def write_marker(version):
+                marker.write_text(json.dumps({
+                    "testOnly": True, "productionTrustChanged": False, "sameSourceBuild": True,
+                    "sourceFingerprint": "0" * 64, "version": version, **installed_identity,
+                }))
+
+            original_stat = Path.stat
+
+            def root_owned(path, *args, **kwargs):
+                info = original_stat(path, *args, **kwargs)
+                return os.stat_result((info.st_mode & ~0o022, info.st_ino, info.st_dev, info.st_nlink, 0, info.st_gid,
+                                       info.st_size, info.st_atime, info.st_mtime, info.st_ctime))
+
+            original_open = open
+
+            def open_tty(path, *args, **kwargs):
+                return io.BytesIO() if path == "/dev/tty" else original_open(path, *args, **kwargs)
+
+            with mock.patch("test_linux_public_install.os", types.SimpleNamespace()):
+                common = dict(return_value=type("Unix", (), {"sysname": "Linux"})(), create=True)
+                with mock.patch("test_linux_public_install.os.uname", **common), \
+                     mock.patch("test_linux_public_install.os.getuid", return_value=1000, create=True), \
+                     mock.patch("builtins.open", open_tty), \
+                     mock.patch("test_linux_public_install.Path.stat", root_owned), \
+                     mock.patch("test_linux_public_install.subprocess.Popen") as owner, \
+                     mock.patch("test_linux_public_install.subprocess.run") as command:
+                    # This models the retained 2.3.1 marker in a 2.1.11 packaged
+                    # image. Admission must reject it before owner/process work.
+                    write_marker("2.3.1")
+                    with self.assertRaisesRegex(ValueError, "Packaged version resource disagrees with build"):
+                        run(launcher, "2.1.12", True, same_source_recovery=True)
+                    owner.assert_not_called()
+                    command.assert_not_called()
+
+                    # A repaired marker gets past identity validation and reaches
+                    # the established package-ownership admission gate.
+                    write_marker(installed_version)
+                    command.side_effect = [
+                        subprocess.CompletedProcess(["dpkg-query"], 1, "", "not owned"),
+                        FileNotFoundError(), FileNotFoundError(),
+                    ]
+                    with self.assertRaisesRegex(RuntimeError, "owned by vpn-control package metadata"):
+                        run(launcher, "2.1.12", True, same_source_recovery=True)
+                    owner.assert_not_called()
+            self.assertEqual(["dpkg-query", "--search", str(launcher.resolve())], command.call_args_list[0].args[0])
+
     def test_same_source_recovery_accepts_debian_owned_launcher(self):
         launcher = Path("/opt/vpn-control/bin/vpn-control")
         with mock.patch("test_linux_public_install.subprocess.run") as command:

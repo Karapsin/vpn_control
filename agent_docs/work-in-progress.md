@@ -25,16 +25,37 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## September16 Resume
+
+Startup fetch confirms dev remains at ae926016 with no remote divergence. Dirty
+work is the stale Linux fixture-marker regression plus this evidence tracker and
+its failure ledger. The regression exercises the existing fail-closed guard; no
+product implementation repair is claimed. Root owns these files and delivery.
+
+The gateway ssh.karapsin.com:228 currently refuses SSH connections, so remote
+Ubuntu/Windows state must be revalidated before further actions. The completed
+Linux builds and macOS installer receipts below remain recorded evidence. The
+Linux marker's installed identity was verified and the prior marker preserved;
+the resumed worker confirmed that neither its atomic replacement nor a new
+public update request occurred before interruption.
+Windows JDK17, .NET10.0.400 and WiX3.11.2 were verified under the ordinary user;
+only a Windows App Execution Alias exists for Python, so a real interpreter is
+still needed. Both Windows CI artifact downloads terminated with network timeouts.
+
+Local macOS fixture control53 is still running. Its worker revalidated the same
+controller/runtime and fresh proxy token traffic after the interruption. Native
+UI is currently blocked by the locked host Mac; preserve the live guest connection
+and do not start a local Android AVD alongside it. See checkpoint57/macos-traffic
+for current process identities and the next UI step when the host is unlocked.
+
 ## Delivery And Current Integration
 
-Last fully verified checkpoint is `3d70d75853dbd2ddb49731999547063d255f3633`: full prepush and all five exact-SHA workflows passed.
-Checkpoint `c0955b7bf05b2016f78a586b81030dcd179b2ebb` is pushed after full
-prepush. Android, Linux, macOS and Fast Checks passed; Windows failed two Python
-stop-routing tests that reached POSIX reservation locking. The dirty test-only
-correction isolates that dependency: full simulated Windows locking-unavailable
-suite77/77 and normal focused suite86/86 pass. Its own prepush and exact-SHA CI
-remain required. Evidence: checkpoint53/ci-windows-c0955b7-failed.log and
-vm-resource-admission/windows-fcntl-none-{pre-fix-red,post-fix-green}.log.
+Current verified checkpoint: `ae9260168bbb8fb609031a383617071620d97bef`, version2.1.11
+with four Unreleased bullets. Full managed prepush and all five required exact-SHA
+workflows passed. Receipt: checkpoint53/boot-recovery-commit-result.json. The
+Windows stop-routing test correction is included; its full simulated missing-fcntl
+suite77/77 and normal focused suite86/86 passed. Prior c0955b7 Windows failure is
+retained at checkpoint53/ci-windows-c0955b7-failed.log.
 
 The checkpoint includes the frontend process-exit repair and managed visual VM
 resource admission. The prior macOS CI failure was reproduced with software
@@ -52,12 +73,22 @@ Original `vpn-control-machine-fixture43`, its full preserved backup
 `vpn-control-machine-fixture43-before-repair53`, and the separate repair copy
 `vpn-control-disk-repair53` remain stopped. Do not replay their unknown installers.
 Replacement `vpn-control-boot-control53` boots macOS15.7.7/24G720, responds to guest
-commands and shows Finder. It needs product fixture setup before native acceptance.
+commands and shows Finder. Current-source user-local synchronous installation and
+exact new-owner recovery now pass, both synchronous and asynchronous. Machine-owned
+authorization denial and successful replacement/recovery also pass on the current
+pair (checkpoint56/macos-machine). The runtime/GUI and rollback matrix remains open.
 Evidence: checkpoint53/mac-boot-repair/recovery-result.json and fsck-repair-copy.log.
 
 Keep at most one local4GiB macOS fixture and no local Android alongside it. Arch
 may host additional Windows/Android/Linux guests after current capacity/access
-checks. Gateway public-key access is still blocked pending the appropriate key.
+checks. SSH gateway and the Arch second hop are restored. Root gracefully stopped
+idle Arch2317 and Fedora2316 after checking absence of app/VPN/installer work;
+Fedora's old loopback fixture server had no clients. Both QEMU processes exited;
+disks, packages and receipts remain intact. Arch host has about12.7GiB available
+and zero recent memory pressure; Windows2314 and Ubuntu2307 remain running.
+Ubuntu old controller89494 was later reconciled off with terminal operations and
+publicly quit; its workspace remains preserved. See checkpoint54/*poweroff.json and
+resource-after-recovery.txt. Recheck capacity before any new guest or heavy build.
 Managed visual admission covers configured allocations, live Tart discovery and
 serialized reservations; direct shell/remote launches still need coordinator checks.
 
@@ -146,18 +177,81 @@ limited tasks. This clears guest login access, not current-source broker/MSI gat
 
 | Task | Owner | Exclusive scope | Next evidence |
 | --- | --- | --- | --- |
-| Integration/delivery | Root | Shared source, scenes.json, docs, sole host Gradle | Final review, metadata, full prepush, push and exact-SHA CI |
-| Linux review | linux_remaining53 | Read-only Arch/DEB state and harness audit | Reconcile durable receipts; resolve fresh-DEB fixture preconditions |
-| Windows review | windows_remaining53 | Read-only native AMD64 guest/evidence | Reconcile portable build prerequisites and remaining broker/MSI gates |
-| macOS review | mac_remaining53 | Read-only Tart fixture43/evidence | Reconcile cache transfer/build handles before any retry |
-| Android API35 | Root | AVD5596; no current worker operation | Remaining native traffic/actions/installer matrix |
-| Android visuals | Root | AVD5600, guarded captures and six baselines | Reviewed subset awaiting validated checkpoint |
+| Integration/delivery | Root | Shared source, docs, sole host Gradle | Windows frozen pair transfer; review native evidence and final delivery |
+| Linux update | linux_build56 | Ubuntu2307, current paired packages/new private workspace | Public DEB update/recovery; old workspace preserved after verified public quit |
+| Windows tools | windows_stage56 | Windows2314 task tool staging only | Hash-verified JDK17, pinned .NET SDK and WiX; no build yet |
+| macOS traffic | mac_traffic57 | vpn-control-boot-control53 | Packaged proxy traffic through GUI attach/hide/close/crash; installer slice complete |
+| Android pair | Root | /private/tmp/vpn-android-pair-ae92601 | Both release APKs built and verified; no AVD running |
+| Android native | Root; preparation worker complete | Local task AVDs remain stopped | Execute prepared API29/API35 scenarios after macOS releases local slot |
 
-Prior worker handles are no longer live in this coordinator's agent inventory.
-Fresh bounded read-only reviewers are recovering authoritative process state;
-missing worker handles do not imply guest operations have stopped.
+All source pairs use ae926016 product code. The Windows docs56 snapshot includes
+the then-current WIP documentation delta and has its own fingerprint; subsequent
+documentation edits do not modify any captured inputs. Completed workers have no ongoing write
+ownership. Native operators may not start unrelated VMs or overwrite frozen stages.
 
-## Current Native Evidence And Its Limits
+## Checkpoint55 Current Artifacts And Acceptance
+
+- macOS pair at guest /private/tmp/vpn-macos-pair-ae92601 built successfully on
+  macOS15.7.7 ARM64 with Temurin17.0.20.1. Base2.1.11 and target2.1.12 have identical
+  code fingerprint4e10547a70bd27121fa8ac2bec715e9d98cdbb5a272256fdc2a41af59dc84bac.
+  Source fingerprint3c89f3a5f543c5dad864fe9895c966251cda1bda6da1dd87d3bdf0c6b05471ac.
+  DMG/package receipt: checkpoint54/macos-pair-ae92601-receipt.json.
+- Installed user-local synchronous update passed from mounted base DMG through the
+  public installed CLI. Job05a3b7df-96e4-47c6-8fed-e8b2126054f1, operation
+  32897df4-2881-4d87-8600-d1e1c9a71f36 recovered under a new owner with the exact
+  original tuple, succeeded/OK, installed=true and cleanupCode=OK. Target2.1.12
+  reports runtime off. Root inspected/copied raw public results under
+  checkpoint55/macos-userlocal. Async installation also passed: joba459debf-4920-412b-b540-a804d00d949c and operation
+  a1f604f9-35ea-4849-9567-ee94e3c41e67 recovered the exact original tuple with
+  installed=true/OK and cleanupCode=OK. Initial async acceptance legitimately had
+  no job yet; the request was not replayed. Root inspected raw async wait/recovery.
+  Fresh-state help/version/capabilities left state absent, and status returned
+  UNAVAILABLE/exit2 without startup. Packaged ARM64 helper hash is in native-helper.json.
+  These close those cases, not the whole Mac matrix.
+- Linux ae92601 archive hash460de0b04408deb51b5dd26eb16fe440ea19f339843e1e047ddc6556a0584fdf
+  is verified in Ubuntu. Ordinary GNU tar could not populate its read-only source
+  directory; that failed tree is preserved. The existing tested
+  extract_readonly_archive helper extracted a new source-ae92601 tree correctly.
+  Both native builds now passed; all six DEB/RPM/Arch hashes and sizes match the
+  receipt, and code fingerprints match a133e6c578f616259760f05cb54dbdc152fc958d3e14cc5788f11eaec88b90ef.
+  Root reviewed checkpoint56/ubuntu-fixture-receipt.json and terminal output.
+  After public off/terminal-state reconciliation and quit of the historical owner,
+  the verified base DEB was installed by explicit fixture downgrade only: one
+  package downgraded, no unrelated install/remove/upgrade. Public update is next.
+- Android pair preparation includes the real tracked AAR/native inputs and excludes
+  the runtime-source gitlink. Source fingerprint0877a6cae1ba2411666a4d2de5f38929f7354339f6eb3faa8d035039a13bb27d;
+  base2.1.11/code16620 and target2.1.12/code16640. Root started sequential release
+  builds with fixture signing, two workers and2GiB heap; both passed. Both APKs are
+  nondebuggable ARM64 with matching signer a43b5330501b02f5558fa381c52e7f7dcdd9db362d6807d449d7bbb5e207c5a0.
+  Base SHA d2a2575de17afe13974af08f6969ca9afb7364641d3a91dd0212fdeec520db5f;
+  target SHA441dbc8b67bff428b2bb19fdedfc9ff8543c8c9465dd56f0f77f34ce3f29246d.
+  The packaged native hash differs from the tracked input because the pinned NDK
+  strips it; root independently reproduced that exact transformation and verified
+  identical packaged bytes in both APKs. Receipt: checkpoint55/android-pair/receipt.json.
+  Native API29/API35 use remains pending; older APK receipts below are not substituted.
+
+Windows docs56 pair is prepared at /private/tmp/vpn-windows-pair-ae92601-docs56,
+source fingerprint baf1a96a1c5c709286aadc169fa99210eaca855ca091753818d650cfef1c93cc.
+Its archive SHA9941fcf905b058d4ffd72c7e0ec19f8d1b34fe1eb153252062868e1266eeb66f
+is recorded in checkpoint56/windows-pair-preparation.json. It captures the verified
+pinned1.13.4 AMD64 runtime; native packages have not yet been built. The first
+Windows CI artifact download ended in a network read timeout; a separate retry
+retains exact workflow34821933061 identity.
+
+Current machine-owned macOS authorization denial returned terminal CANCELLED,
+installed=false and preserved base2.1.11/off. Grant job85c05083-75ca-468a-939e-d1dd5fe19535
+and operationc1359f99-4e9b-4585-afb4-d8f22d517116 recovered the exact origin tuple
+under controller66a5ae1f-fe55-4ceb-b4f1-2ff3c2966a1f with installed=true/OK and
+cleanupCode=OK. Root reviewed the raw envelopes in checkpoint56/macos-machine/raw.
+Target2.1.12 signature/hash/root ownership passed; public quit and fixture/mount
+cleanup passed. No runtime was started in this installer slice.
+
+Android preparation at checkpoint56/android-next separates base no-update TLS
+from target installation and preserves fixture trust through the full action.
+The existing TLS and update fixture suites passed23 and8 tests respectively.
+This is preparation, not current API29/API35 native acceptance.
+
+## Historical Native Evidence And Its Limits
 
 ### Android
 
@@ -191,8 +285,17 @@ export to a private path. Prior export rejection came from a0777 writable ancest
 not rejection of ordinary0755 directories. See checkpoint49/android and
 checkpoint50/android plus android-diagnostics/receipt.md.
 
-Local HTTPS update-fixture trust remains unresolved under the non-root requirement.
-Do not reuse historical privileged CA bindmount setup as compliant evidence.
+Fixture trust provisioning and public app control are separate scopes. CLI-001
+requires nondebuggable app control without root; it does not forbid the explicitly
+authorized disposable guest-only CA setup. The existing driver copies certificates
+to newly created staging, relabels only that staging, temporarily mounts it into
+the guest zygote namespace and restores UID2000 before the public action. It does
+not rewrite original system certificate files, SELinux policy or host trust. Keep
+setup/cleanup privilege explicit in evidence, verify every actual public action
+uses UID2000 without run-as, and require exact mount/proxy/forward cleanup. This
+corrects the earlier tracker interpretation that treated all fixture provisioning
+as forbidden. Historical receipts still cannot certify current APKs or unrecorded
+public caller identity; run current API29/API35 scenarios with complete evidence.
 
 ### Linux
 
@@ -233,7 +336,8 @@ version2.1.10/exit0 passed. Actual launcher is under parityagent LocalAppData.
 Remote checkpoint50-manual-msi-receipt.txt SHA
 f143f6ec821287059fa0c0743fe04072f908e250e1bed96958b485d38162461b.
 This is manual installed-package proof, not public update-adapter recovery.
-Preserve unidentified SYSTEM msiexec8744 until authoritative reconciliation.
+Later read-only reconciliation found SYSTEM msiexec8744 absent; its original outcome
+remains unknown. Preserve the related historical records.
 
 Ordinary InteractiveToken/LeastPrivilege static and missing-owner checks passed
 on that older installed package. Current-source lifecycle and runtime evidence
@@ -307,9 +411,10 @@ proof of sufficient peak capacity.
 2. Current-package Windows broker/configuration coverage, denial preserving activeA
    and pendingB, TUN/child cleanup, ordinary GUI/autostart and safe legacy migration.
 3. Current-source DEB/Arch install/update/recovery/rollback and remaining RPM failure
-   cases; macOS new-source asynchronous recovery, denial, rollback and GUI return.
-   The3d RPM success and earlier macOS local/machine synchronous success are proven
-   only for their recorded artifacts.
+   cases; macOS rollback, interrupted recovery and GUI return.
+   Current ae926016 user-local synchronous/asynchronous and machine grant/denial
+   recovery are proven above;
+   the3d RPM success and earlier Mac machine success apply only to their artifacts.
 4. Android API29/API35 action/SSH/refresh/consent/foreground-service/process-loss and
    installer permission/cancel/corruption/retention/reconciliation matrix.
 5. Remaining document expiry/principal/owner/hash/interruption/resource/persistence
