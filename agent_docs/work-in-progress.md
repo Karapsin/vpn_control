@@ -25,35 +25,63 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## September16 Resume
+## September16 Current Operations
 
-Startup fetch confirmed no remote divergence. Checkpoint5acf814 delivered the
-stale Linux fixture-marker regression and evidence tracker. The regression
-exercises the existing fail-closed guard; no product implementation repair is
-claimed. Root owns current evidence integration and delivery.
+Gateway access is restored through ssh.karapsin.com:2228, then the authenticated
+Arch hop socket /home/kardinal/.ssh/vpn-control-arch60.sock. Ubuntu's current-source
+DEB update and exact next-owner receipt recovery passed; root independently reviewed
+checkpoint60/linux-review. Fresh missing-dependency installation is a separate open
+gate. Its owner was publicly quit, task-local TLS resources cleaned, and guest
+powered off before starting Arch2317 at4GiB. Windows2314 remains reserved at6GiB;
+Fedora2316 stays stopped. Recheck actual memory before any additional guest.
 
-The user changed the gateway to ssh.karapsin.com:2228. Root matched its keys to
-the previously trusted gateway and restored the Arch hop with the task socket
-/home/kardinal/.ssh/vpn-control-arch60.sock. Remote VMs were stopped; Windows
-resumed at6GiB and Ubuntu at4GiB only after current memory/headroom checks. The completed
-Linux builds and macOS installer receipts below remain recorded evidence. The
-Linux marker's installed identity was verified and the prior marker preserved;
-the resumed worker confirmed that neither its atomic replacement nor a new
-public update request occurred before interruption.
-Windows JDK17, .NET10.0.400 and WiX3.11.2 were verified under the ordinary user;
-only a Windows App Execution Alias exists for Python, so a real interpreter is
-still needed. Both Windows CI artifact downloads terminated with network timeouts.
+Arch's first public update reached a real terminal polkit prompt. The driver did
+not supply a credential; the client reported unknown outcome. A missing GUI agent
+was an incorrect initial diagnosis, disproved by the retained prompt and packaged
+terminal adapter. The owner operation was subsequently reconciled with public
+cancellation after confirming no protected job/worker. Installed version remains
+2.1.11. A distinct interactive attempt succeeded: job4c9e32b9-4bc2-4597-8f90-824766742dcd
+reached protected sequence4 SUCCEEDED/OK, and operation694afeb8-05b4-4aa6-bcf1-c182af76df10
+recovered under a replacement owner with exact origin correlation. Runtime stayed
+off and public quit completed. Root raw-evidence review is in progress; induced
+rollback remains open. Preserve checkpoint61/linux-arch raw evidence and original correlation.
 
-Local macOS fixture control53 is still running. Its worker revalidated the same
-controller/runtime and fresh proxy token traffic after the interruption. The user unlocked the host Mac. Native screenshots work, but CUA pointer
-actions return noWindowsAvailable and keyboard attempts caused no visible change;
-the actual guest close-button case is not yet certified. Preserve the live guest
-connection and do not start a local Android AVD alongside it. See checkpoint57/macos-traffic
-for current process identities and the next UI step when the host is unlocked.
+Windows now has verified Python3.13.15 alongside JDK17, .NET10.0.400 and WiX3.11.2.
+Its ordinary-user corrected-source build wrapper failed before extraction/Gradle;
+causal wrapper diagnostics are in progress. No Windows package acceptance is claimed.
+
+The local macOS control53 VM remains running with the controlled proxy fixture.
+The Tart guest-agent transport failed during a JDK transfer; screenshots still show
+the app. Task-only SSH access was recovered; the guest-agent control transport remains
+unavailable after restarting only its daemon. Guest/runtime processes were preserved. One local4GiB VM only;
+do not start Android alongside it. CUA pointer actions remain unavailable, so the
+actual guest close-button case is not certified.
+
+Corrected macOS/Windows snapshots have fingerprint
+2ad8dcdd49f7f43c28bea04fdf679c05b52451806b734ae4337093b2dc60830e.
+Root compared all1498 snapshot entries to delivered26bba9f; the excluded submodule
+was compared by gitlink. See checkpoint61/source-equivalence.json. The macOS
+base2.1.12/target2.1.13 packages built with a vendor-checksummed Temurin17 JDK,
+matching code fingerprints and verified bundle signatures. Inspection found the
+native helper defaults to this host's macOS26 minimum; guest15 acceptance must wait
+for the tested deployment-target correction (ARM11.0, Intel10.13) and a new
+immutable package snapshot.
+These packages are build evidence only, not native installation evidence.
+
+| Task | Owner | Exclusive scope | Current check / next handoff |
+| --- | --- | --- | --- |
+| Delivery | root | Shared integration, docs, metadata, host Gradle, push/CI | 26bba9f exact-SHA CI pending |
+| Windows pair | windows_pair61 | Windows2314 fixture/task wrapper, native packages | Capture pre-extraction exception, ordinary-user build |
+| Linux Arch | linux_arch61 | Arch2317 fixture/public installer | Terminal credential setup, distinct authorized attempt |
+| Mac access | root (worker complete) | control53 SSH / native acceptance | Task-only SSH restored; preserve live fixture |
+| Mac target | root (worker complete) | Native helper preparation and focused regression | Causal RED/green reviewed; rebuild and guest acceptance next |
 
 ## Delivery And Current Integration
 
-Current verified checkpoint: `9c2e13eed434423771f0bc0d5c3daea84d9abba1`, version2.1.11
+Latest pushed checkpoint: `26bba9f56d5e17661aced80652dcdd497ffde256`, version2.1.11
+with seven Unreleased bullets. Full managed prepush passed; all five exact-SHA
+workflows are pending verification. The frontend crash recovery fix is included.
+Last fully verified checkpoint: `9c2e13eed434423771f0bc0d5c3daea84d9abba1`, version2.1.11
 with six Unreleased bullets. Full managed prepush and all five required exact-SHA
 workflows passed. Receipt: checkpoint59/commit-result.json. Frozen native pairs
 still use ae926016 product code; this checkpoint changes tests and documentation. The
@@ -85,8 +113,7 @@ Evidence: checkpoint53/mac-boot-repair/recovery-result.json and fsck-repair-copy
 
 Keep at most one local4GiB macOS fixture and no local Android alongside it. Arch
 may host additional Windows/Android/Linux guests after current capacity/access
-checks. The following remote state was last verified on September14; September16
-gateway connections are refused. Root gracefully stopped
+checks. Historical September14 state follows; the September16 operations above supersede it. Root gracefully stopped
 idle Arch2317 and Fedora2316 after checking absence of app/VPN/installer work;
 Fedora's old loopback fixture server had no clients. Both QEMU processes exited;
 disks, packages and receipts remain intact. Arch host has about12.7GiB available
