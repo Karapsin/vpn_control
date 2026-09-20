@@ -120,7 +120,7 @@ internal class DesktopUpdateService(
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
-    private var checkedUpdate: DesktopUpdateCheck? = null
+    @Volatile private var checkedUpdate: DesktopUpdateCheck? = null
     private val windowsInstaller by lazy { DesktopWindowsInstaller(workspaceDirectory) }
     private val linuxInstaller by lazy { linuxInstallerFactory(workspaceDirectory) }
     private val macInstaller by lazy { macInstallerFactory(workspaceDirectory) }
@@ -210,14 +210,36 @@ internal class DesktopUpdateService(
         } finally { operationMutex.unlock() }
     }
 
+    // Terminal receipts remain in inspection/history. Publish each terminal observation once
+    // per owner so later check/download/dismiss state cannot be replaced by old history.
+    // Cleanup metadata is excluded: cleanup completing is not a new installation outcome.
+    private val presentedTerminalInstalls = mutableSetOf<DesktopInstallCorrelationRecovery>()
+
     /** Read-only previous-owner correlation; journal failures must block new installation admission. */
+    @Synchronized
     fun recoverInstallCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> =
         readInstallCorrelations().map(installInputCleanup::decorate).onSuccess { recovered ->
-            val current = stateProvider().appUpdate
-            val projected = DesktopRecoveredInstallPresentation.project(current, recovered)
-            if (projected != current) updateAppState {
-                DesktopRecoveredInstallPresentation.project(it, recovered)
+            val terminal = recovered.filter { it.binding != null && !it.blocksInstallation }
+                .map { it.copy(cleanupCode = null) }.toSet()
+            presentedTerminalInstalls.retainAll(terminal)
+            val presentation = recovered.filter {
+                it.blocksInstallation || it.copy(cleanupCode = null) !in presentedTerminalInstalls
             }
+            fun projectCurrent(previous: AppUpdateState): AppUpdateState {
+                val newerUpdate = previous.phase in setOf(AppUpdatePhase.CHECKING, AppUpdatePhase.DOWNLOADING,
+                    AppUpdatePhase.VERIFYING, AppUpdatePhase.READY) ||
+                    (checkedUpdate != null && previous.phase != AppUpdatePhase.INSTALLING)
+                // Re-evaluate against the state inside the publication transform. A check
+                // may have started since the earlier snapshot. Unknown/live jobs always win.
+                val visible = if (newerUpdate) presentation.filter { it.blocksInstallation } else presentation
+                return DesktopRecoveredInstallPresentation.project(previous, visible)
+            }
+            val current = stateProvider().appUpdate
+            val projected = projectCurrent(current)
+            if (projected != current) updateAppState {
+                projectCurrent(it)
+            }
+            presentedTerminalInstalls.addAll(terminal)
         }
 
     /** Adapter-only validation for the one exact worker retained after macOS authorization wait expiry. */

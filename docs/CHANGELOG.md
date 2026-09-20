@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Preserve new update attempts and dismissed state while retaining historical installation receipts.
+
 ## 2.1.13 - 2026-09-20
 
 - Reject interactive Android installer drivers without terminal input before fixture setup.

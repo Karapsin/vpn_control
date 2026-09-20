@@ -179,6 +179,40 @@ Windows source/component diagnosis remains open. Bounded worker staging did not
 run a probe; root owns the next direct QGA file-write staging attempt. Existing
 unknown job2946b6ab-1e10-4edd-b045-8f23cc2395bc remains untouched.
 
+Checkpoint84: fc3e0018415b115edce2bd7346ebf1d71ed47b72 was pushed after full
+prepush. Windows package CI35534449946 failed in two pure PowerShell fixture
+probes with30-second timeouts; cause is under bounded investigation, so this
+checkpoint is not fully verified. Checkpoint631d3fb has all five workflows green.
+
+The explicit intact-RPM retry in Fedora2326 reused the terminal-failed workspace.
+A fixture copy first failed read-only package admission before app launch; a new
+private read-only copy then passed check/download. Public status overwrote READY
+with the historical failure. No second installer was launched. Native outputs are
+in checkpoint84/linux/native-retry-failure.json. A new quick regression failed
+before the product change; DesktopUpdateService now publishes each distinct
+terminal observation once per owner while retaining the complete correlation list.
+Cleanup-only metadata changes do not revive old failures; new unknown/terminal jobs
+remain visible. Focused recovery/cleanup/exit tests pass. Current-source native
+retry is still required. The guest's retry owner remains OFF and must be inspected
+before replacement; preserved unknown jobs in other guests remain untouched.
+
+Root restored Windows QGA by stopping only two exact stale task nc transports
+(479948/479968), leaving all guest processes unchanged. windows_probe84 prepared
+an ignored original-user component bundle and then took exclusive ownership of
+scripts/test_windows_native_fixture.py for the CI timeout investigation. The unchanged
+Windows rerun passed hygiene; a speculative -File/-NonInteractive candidate is saved
+only in ignored checkpoint84/windows and not accepted as a proven causal fix. Root owns
+DesktopUpdateService and DesktopRecoveredUpdateStatusTest plus docs/builds/delivery.
+
+Checkpoint84 Windows native AMD64 component checks passed on current frozen helper
+sources: ordinary-user token scalars and same-user UAC original-user child launch.
+SDK10.0.400 managed apphost, ordinary/elevated session1; exact input/output hashes
+are in checkpoint84/windows/native-component-summary.json. This is not NativeAOT
+package or MSI replacement evidence. The old unknown job remains unchanged.
+Independent recovery review found a first-late-observation and publication race;
+a second quick RED reproduces it, and the fix evaluates newer update state inside
+the publication transform while always retaining unknown/live installation blocking.
+
 | Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
 | Integration | root | Desktop lifecycle/cleanup fixes, evidence, docs, host builds and delivery | All shared files | One host Gradle invocation | Final focused union, prepush and checkpoint delivery |
