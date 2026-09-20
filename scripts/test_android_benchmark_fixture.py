@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 import json
+import re
 import socket
 import socketserver
 import subprocess
 import sys
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+from urllib.parse import urlsplit
 
-from scripts.integration.android_benchmark_fixture import AndroidBenchmarkRelay, RelayUnavailable
+from scripts.integration.android_benchmark_fixture import AndroidBenchmarkRelay, RelayUnavailable, SocksHandler
 
 
 FIXTURE = Path(__file__).with_name("integration") / "android_benchmark_fixture.py"
+ANDROID_BENCHMARK_SETTINGS = (
+    Path(__file__).resolve().parents[1]
+    / "shared/model/src/commonMain/kotlin/com/kardinal/vpncontrol/model/Models.kt"
+)
 
 
 def recv_exact(client: socket.socket, count: int) -> bytes:
@@ -23,7 +32,60 @@ def recv_exact(client: socket.socket, count: int) -> bytes:
     return data
 
 
+def android_default_benchmark_host() -> str:
+    source = ANDROID_BENCHMARK_SETTINGS.read_text(encoding="utf-8")
+    match = re.search(r'const val DEFAULT_TEST_URL = "([^"]+)"', source)
+    if match is None:
+        raise AssertionError("Android benchmark default validation URL is missing")
+    host = urlsplit(match.group(1)).hostname
+    if host is None:
+        raise AssertionError("Android benchmark default validation URL has no host")
+    return host
+
+
+def relay_connect(host: str, allowed_hosts: tuple[str, ...]) -> tuple[bytes, list[tuple[str, int]]]:
+    client, request = socket.socketpair()
+    upstream, peer = socket.socketpair()
+    client.settimeout(2)
+    calls: list[tuple[str, int]] = []
+
+    def connect(target: tuple[str, int], timeout: float) -> socket.socket:
+        calls.append(target)
+        return upstream
+
+    server = SimpleNamespace(allowed_hosts=set(allowed_hosts), stall_after_handshake=False, record=lambda *_args, **_kwargs: None)
+    with patch("scripts.integration.android_benchmark_fixture.socket.create_connection", side_effect=connect):
+        handler = threading.Thread(target=SocksHandler, args=(request, ("fixture", 0), server), daemon=True)
+        handler.start()
+        try:
+            client.sendall(b"\x05\x01\x00")
+            if recv_exact(client, 2) != b"\x05\x00":
+                raise AssertionError("relay rejected SOCKS no-authentication greeting")
+            encoded_host = host.encode("ascii")
+            client.sendall(b"\x05\x01\x00\x03" + bytes((len(encoded_host),)) + encoded_host + (443).to_bytes(2, "big"))
+            reply = recv_exact(client, 10)
+        finally:
+            client.close()
+            peer.close()
+            handler.join(timeout=1)
+            request.close()
+            upstream.close()
+            if handler.is_alive():
+                raise AssertionError("relay handler did not stop after fixture sockets closed")
+    return reply, calls
+
+
 class AndroidBenchmarkFixtureTest(unittest.TestCase):
+    def test_default_allowlist_admits_android_benchmark_target_and_rejects_unlisted_egress(self) -> None:
+        allowed_hosts = AndroidBenchmarkRelay().allowed_hosts
+        benchmark_reply, benchmark_calls = relay_connect(android_default_benchmark_host(), allowed_hosts)
+        self.assertEqual(b"\x05\x00", benchmark_reply[:2])
+        self.assertEqual([(android_default_benchmark_host(), 443)], benchmark_calls)
+
+        rejected_reply, rejected_calls = relay_connect("unlisted.fixture.invalid", allowed_hosts)
+        self.assertEqual(b"\x05\x02", rejected_reply[:2])
+        self.assertEqual([], rejected_calls)
+
     def test_ready_guard_rejects_parent_loss_after_ready_record(self) -> None:
         process = subprocess.Popen(
             [sys.executable, str(FIXTURE), "serve", "--port", "0", "--exit-after-ready"],

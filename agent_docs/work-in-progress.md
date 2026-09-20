@@ -25,17 +25,19 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint88
+## Current continuation — checkpoint89
 
-Latest delivered checkpoint is `ee80dcfe019601f9f949e1d9e3b21843760232ba`
-(product2.1.13). Managed checkpoint84/commit-result.json confirms all five required
-exact-SHA workflows succeeded. Full parity remains incomplete.
+Latest pushed checkpoint is `886e60dcec39fc2d0270a1dfd02a721c7f4ce6c0`
+(product2.1.13). Its managed checkpoint88 CI watcher remains active; Fast Checks,
+Android, Linux and macOS have succeeded, with Windows packaging pending at
+this observation. The preceding ee80dcf checkpoint passed all five required
+workflows. Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Windows capture88 | capture_wait88 retired; root integration | scripts/windows_native_fixture.py and its test | Everything else stays with root | Root exclusively operates Windows AMD64 VM | Final native quick regression passes; NativeAOT admission/preflight passes; managed delivery pending |
+| Windows admission89 | root | Ignored native fixtures | Everything else stays with root | Root exclusively operates Windows AMD64 VM | Original pending input admission/preflight passes; synthetic worker readiness publication passes; coordinator handoff remains open |
 | Linux current85 | root | Ignored package/native fixtures | Product integration, docs and delivery | Fresh Fedora2326 only; preserve original Fedora2316 unknown job | Current-source2.1.13 base installed and rpm verification passed; damaged2.1.14 attempt returned unknown before protected handoff; original job preserved |
-| Android native89 | android_arm89 | Ignored comparator fixtures and new AVD only | No tracked source ownership | Sole operator of fresh owned ARM64 API35 emulator5596,2GiB | Exact code73 APK installed; synthetic candidate setup rejected, inspecting public request shape before benchmark |
+| Android fixture90 | android_fixture90 retired; root integration | scripts/test_android_benchmark_fixture.py | Root owns integration and docs | No VM operations; owned5596 retained | Native ARM64 benchmark passes after target alignment;5 routine tests pass including actual-default SOCKS admission and restricted egress |
 
 Linux current pair source fingerprint
 `cf5e2b517284a76c7da7e430dc6f4b83998b3d1bfac635e95ee7e7d65219d738`
@@ -53,6 +55,14 @@ authorization passes both directly and with the same separate owner/tty-agent
 arrangement, including --disable-internal-agent. PAM reported a conversation
 failure on the original attempt; the installer-specific cause remains unproven. Preserve the unknown journal/inputs and do not replay this job.
 
+Checkpoint89 also calls the actual installed Java terminal-agent launcher against
+the same separate-owner fixed /usr/bin/true authorization probe. Registration,
+password exchange and child exit0 pass; only that probe's terminal-agent lease is
+closed after the no-op owner completes. This excludes a general failure of the
+packaged Java launcher, but does not resolve the original installer exchange.
+Evidence: checkpoint89/linux-analysis/java-result.json and retained guest
+/home/vpnfixture/cp89-java-auth. No installer operation was repeated.
+
 Windows checkpoint85 failed before compilation because PowerShell5.1 promoted
 native stderr under `ErrorActionPreference=Stop` with merged redirection.
 The ordinary-user checkpoint87 reproduction independently confirms the warning
@@ -63,6 +73,32 @@ corrected capture and direct-child waiting. Checkpoint88 NativeAOT helper
 validation, owner admission and package preflight all pass with exit0. The
 original unknown MSI job is unchanged; successful MSI replacement remains open.
 See the failure ledger for exact RED/GREEN evidence and superseded candidates.
+
+Checkpoint89's read-only NativeAOT probe admits the original pending Windows job
+2946b6ab-1e10-4edd-b045-8f23cc2395bc, owner8352 and its actual MSI. It returns0
+after package preflight; the request digest is unchanged. A separate synthetic
+job also publishes worker-ready successfully using unchanged production sources,
+then exits0 and removes its own synthetic inputs. Neither probe runs installer
+roles or MSI replacement. Evidence: checkpoint89/windows/result-transport.json,
+ready-progress.json and worker-ready-inputs.json. Elevated coordinator/original-user
+bootstrap and real replacement remain open.
+
+Android5596 now proves one real nondebuggable ARM64 benchmark measurement with
+code73 APK hash74af8c726d625964ba35a5691d2aaa53e88a0377fefe259f76b8dd55fc820330.
+The initial source rejection was correct for the empty subscription selection.
+After selecting current-locations, the initial benchmark failed because the old
+retained relay only allowed github.com while validation defaulted to chatgpt.com.
+Public guarded settings.set temporarily aligned the URL with the relay; operation
+e2f98183-6313-471e-92d8-6cc4ded3fda1 completed OK with secondaryTotalMs1091.471209
+and confirmed github.com:443 relay traffic. The original URL was restored and the
+owned reverse/relay removed. AVC messages did not establish the failure cause;
+no native ARM64 crash occurred. This does not prove the default target or VPN path.
+Evidence: checkpoint89/android/discriminator-evidence.sha256 and diagnosis.md.
+Checkpoint90 adds prevention coverage to the existing routine benchmark fixture
+suite. The tracked relay already permits the product default; the obsolete
+ignored relay caused the failure. The regression derives the real default URL,
+uses no external network, and retains denial of unlisted targets. The extracted
+historical policy fails;5 current tests pass. See the failure ledger.
 
 Root booted the existing owned ARM64 AVD on5594, discovered version2.3.2, and
 preserved its data without installing an older APK. The separate new5596 AVD is
