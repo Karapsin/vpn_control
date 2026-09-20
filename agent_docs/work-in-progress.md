@@ -27,6 +27,15 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Resumed Native Batch — 2026-09-20
 
+Checkpoint77 was pushed as `c8f30e02f54687d662f26e592ff862038211f310` after
+full prepush passed. macOS CI35529722794 exposed an outdated embedded test call;
+its correction preserves terminal-receipt cleanup and adds ordinary local
+compile-only coverage. The corrected full seven-test fault suite passes inside the
+owned Mac VM (checkpoint79/macos-ci). Replacement push and exact-SHA CI are pending.
+The current immutable Mac pair `/private/tmp/vpn-macos-code79` built successfully
+from c8f30e0; subsequent repair changes only the test harness and documentation.
+
+
 The delivered implementation is `94dbd582e0268fb31f4522b3136520efb8c7594c`
 (product2.1.12, five Unreleased notes). All five required workflows succeeded for
 that exact SHA; checkpoint74/commit-alias-result.json contains the managed receipt.

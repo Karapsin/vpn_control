@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Opt-in syscall-fault checks of production macOS installer persistence.
 
-Runs only in an explicitly assigned guest directory. Inputs are inert files; one
-control mounts an 8 MiB task-owned sparse image. No application replacement,
-authorization, or host storage is used.
+The generated probe is compiled during ordinary macOS checks without executing it.
+Fault scenarios run only in an explicitly assigned guest directory. Inputs are
+inert files; one control mounts an 8 MiB task-owned sparse image. No application
+replacement or authorization is performed.
 """
 import hashlib
 import json
@@ -134,7 +135,7 @@ int main(int argc, char **argv) {
     struct pins pins = {0};
     if (!strcmp(argv[2], "copyfile-eio")) { copyfile_eio_fixture(argv[1]); return 9; }
     if (!strcmp(argv[2], "copyfile-cleanup")) {
-        setup_fixture_home(argv[1]); cleanup_input("7e17453b-bc14-4c90-9e3c-05baf2c73841"); return 0;
+        setup_fixture_home(argv[1]); cleanup_input("7e17453b-bc14-4c90-9e3c-05baf2c73841", true); return 0;
     }
     int gate = gate_open(root, &request, &pins);
     if (!strcmp(argv[2], "retry")) return 9;
@@ -177,9 +178,18 @@ int main(int argc, char **argv) {
 }
 ''', encoding="utf-8")
         cls.probe = cls.root / "probe"
-        subprocess.run(["xcrun", "clang", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-Wno-deprecated-declarations", "-framework", "CoreFoundation", str(source),
-                        "-o", str(cls.probe)], check=True, capture_output=True, text=True)
+        compile_probe = subprocess.run(
+            ["xcrun", "clang", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+             "-Wno-deprecated-declarations", "-framework", "CoreFoundation", str(source),
+             "-o", str(cls.probe)],
+            capture_output=True, text=True,
+        )
+        if compile_probe.returncode:
+            raise RuntimeError(
+                "macOS installer ENOSPC probe compilation failed:\n"
+                f"stdout:\n{compile_probe.stdout}\n"
+                f"stderr:\n{compile_probe.stderr}"
+            )
 
     @classmethod
     def tearDownClass(cls):
@@ -306,6 +316,27 @@ int main(int argc, char **argv) {
             receipt = json.loads(next(root.glob("*/status.json")).read_text())
             self.assertEqual("SUCCEEDED", receipt["phase"])
             self.assertEqual(1, receipt["sequence"])
+
+
+@unittest.skipUnless(platform.system() == "Darwin", "Requires the macOS compiler")
+class MacInstallEnospcProbeCompileTest(unittest.TestCase):
+    def test_fault_injection_probe_compiles_without_an_installer_fixture(self):
+        """Keep the generated probe in ordinary macOS pre-push checks without mounting a volume."""
+        previous_root = os.environ.get("VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT")
+        with tempfile.TemporaryDirectory(prefix="vpn-parity-compile-", dir="/private/tmp") as parent:
+            os.environ["VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT"] = parent
+            try:
+                MacInstallEnospcTest.setUpClass()
+                self.assertTrue(MacInstallEnospcTest.probe.is_file())
+            finally:
+                fixture = getattr(MacInstallEnospcTest, "fixture", None)
+                if fixture is not None:
+                    MacInstallEnospcTest.tearDownClass()
+                    delattr(MacInstallEnospcTest, "fixture")
+                if previous_root is None:
+                    del os.environ["VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT"]
+                else:
+                    os.environ["VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT"] = previous_root
 
 
 if __name__ == "__main__":
