@@ -16,6 +16,15 @@ class DesktopMacWorkerLaunchTest {
         assertEquals(4, Regex("quoted form of").findAll(machine[2]).count())
         assertTrue(machine[2].contains("with administrator privileges"))
         assertEquals("--watch", DesktopMacWorkerLaunch.watcher(worker, job, 123)[1])
+        assertFails { DesktopMacWorkerLaunch.cleanupNotStarted(worker, job, 123) }
+    }
+    @Test fun notStartedCleanupUsesTheFreshWorkerWithoutAllowingItToInstall() {
+        val fresh = worker.resolveSibling("vpn-control-install-cleanup-worker")
+        assertEquals(listOf(fresh.toString(), "--cleanup-not-started", job, "123"),
+            DesktopMacWorkerLaunch.cleanupNotStarted(fresh, job, 123))
+        assertFails { DesktopMacWorkerLaunch.watcher(fresh, job, 123) }
+        assertFails { DesktopMacWorkerLaunch.coordinator(fresh, DesktopMacInstallAuthority.MACHINE, job, 123) }
+        assertFails { DesktopMacWorkerLaunch.cleanup(fresh, job, 123) }
     }
     @Test fun launchRequiresExactWorkerLeafCanonicalJobAndBoundedNativePid() {
         assertFails { DesktopMacWorkerLaunch.watcher(worker.resolveSibling("other"), job, 123) }

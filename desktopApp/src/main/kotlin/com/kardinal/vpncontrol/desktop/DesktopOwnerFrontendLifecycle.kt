@@ -16,6 +16,7 @@ internal class DesktopOwnerFrontendLifecycle(
     private val leaseMillis: Long = LEASE_MILLIS,
 ) {
     private var frontend: String? = null
+    private var processIdentity: DesktopFrontendProcessIdentity? = null
     private var touched = 0L
     private var initialization: Deferred<Unit>? = null
     init { require(leaseMillis > 0) }
@@ -38,12 +39,31 @@ internal class DesktopOwnerFrontendLifecycle(
     @Synchronized fun revokeIfCurrent(frontendId: String): Boolean {
         expire()
         if (frontend != frontendId) return false
-        frontend = null
+        clearFrontend()
+        return true
+    }
+    /** Pin the authenticated process generation observed when this lease attached. */
+    @Synchronized fun captureProcessIdentity(frontendId: String, identity: DesktopFrontendProcessIdentity): Boolean {
+        expire()
+        if (frontend != frontendId || identity.registrationId != frontendId) return false
+        val captured = processIdentity
+        if (captured != null && captured != identity) return false
+        processIdentity = identity
+        return true
+    }
+    /** A stale lease may be removed only after its captured generation is proven absent. */
+    @Synchronized fun revokeIfCapturedProcessDead(frontendId: String,
+        isDefinitelyGone: (DesktopFrontendProcessIdentity) -> Boolean = DesktopFrontendProcessIdentity::isDefinitelyGone): Boolean {
+        expire()
+        val identity = processIdentity ?: return false
+        if (frontend != frontendId || identity.registrationId != frontendId || !isDefinitelyGone(identity)) return false
+        clearFrontend()
         return true
     }
     private fun expire() {
-        if (frontend != null && nowMillis() - touched >= leaseMillis) frontend = null
+        if (frontend != null && nowMillis() - touched >= leaseMillis) clearFrontend()
     }
+    private fun clearFrontend() { frontend = null; processIdentity = null }
     fun execute(command: DesktopCliCommand.ControlFrontendLease): DesktopCliResponse {
         val code = when {
             !command.valid() -> ControlCode.INVALID_ARGUMENT
@@ -58,7 +78,7 @@ internal class DesktopOwnerFrontendLifecycle(
                         touched = nowMillis(); ControlCode.OK
                     }
                     DesktopFrontendLeaseAction.DETACH -> if (frontend != null && frontend != command.frontendId) ControlCode.CONFLICT else {
-                        frontend = null; ControlCode.OK
+                        clearFrontend(); ControlCode.OK
                     }
                 }
             }

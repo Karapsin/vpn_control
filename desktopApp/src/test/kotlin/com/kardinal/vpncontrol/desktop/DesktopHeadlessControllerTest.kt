@@ -1,9 +1,12 @@
 package com.kardinal.vpncontrol.desktop
 
+import com.kardinal.vpncontrol.control.ControlDocumentCodec
+import com.kardinal.vpncontrol.model.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
@@ -11,6 +14,43 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class DesktopHeadlessControllerTest {
+    @Test
+    fun duplicateServePromotesExistingOwnerWithoutSupervisingIt() {
+        val directory = Files.createTempDirectory("vpn-duplicate-serve")
+        val previousDirectory = DesktopWorkspacePaths.overrideDirectory()
+        val previousHeadless = System.getProperty("java.awt.headless")
+        var requests = 0
+        val messages = mutableListOf<String>()
+        try {
+            DesktopWorkspacePaths.configure(DesktopWorkspaceInvocation(emptyList(), directory))
+            requireNotNull(DesktopSingleInstanceLock.acquire()).use {
+                requireNotNull(DesktopActivationServer.start(
+                    onShowWindow = { DesktopActivationShowResult.HEADLESS },
+                    onCliCommand = { command ->
+                        requests += 1
+                        if (command is DesktopCliCommand.ControlServe) DesktopCliResponse.success(
+                            ControlDocumentCodec.encodeResult(ControlResult(
+                                controllerId = command.controllerId, requestId = command.requestId,
+                                configurationRevision = 0, code = ControlCode.OK, message = "accepted")))
+                        else DesktopCliResponse.failure("Unexpected supervision request")
+                    },
+                    portFile = directory.resolve("activation.port"),
+                )).use {
+                    val result = DesktopHeadlessController.handleArgs(arrayOf("serve"), messages::add)
+                    assertEquals(1, requests, "A duplicate service may promote the owner but must not supervise it")
+                    assertEquals(0, result)
+                    assertEquals(listOf("VPN Control is already running."), messages)
+                    assertTrue(Files.exists(directory.resolve("activation.port")))
+                }
+            }
+        } finally {
+            DesktopWorkspacePaths.configure(DesktopWorkspaceInvocation(emptyList(), previousDirectory))
+            if (previousHeadless == null) System.clearProperty("java.awt.headless")
+            else System.setProperty("java.awt.headless", previousHeadless)
+            directory.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun publicServeCommandSelectsLongLivedServiceMode() {
         assertEquals(

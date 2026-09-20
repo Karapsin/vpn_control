@@ -216,6 +216,24 @@ static int directory_open(const char *path, uid_t owner, bool private, bool fina
     require(fcntl(fd, F_GETPATH, actual) == 0 && strcmp(actual, path) == 0, "CONFLICT");
     return fd;
 }
+/* Missing is meaningful only after every reachable ancestor was descriptor-validated. */
+static int directory_open_optional(const char *path, uid_t owner, bool private, bool final_ancestry, struct pins *pins) {
+    path_check(path);
+    int fd = open("/", O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    retain(pins, fd); inspect(fd, owner, true, true, false);
+    char components[PATH_MAX]; text_copy(components, sizeof(components), path + 1);
+    char *cursor = components;
+    while (cursor && *cursor) {
+        char *next = strchr(cursor, '/');
+        if (next) *next++ = 0;
+        int child = openat(fd, cursor, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+        if (child < 0 && errno == ENOENT) return -1;
+        retain(pins, child); inspect(child, owner, true, next != NULL || final_ancestry, private);
+        fd = child; cursor = next;
+    }
+    char actual[PATH_MAX]; require(fcntl(fd, F_GETPATH, actual) == 0 && strcmp(actual, path) == 0, "CONFLICT");
+    return fd;
+}
 
 static void join(char *out, size_t size, const char *parent, const char *leaf) {
     require(leaf && *leaf && !strchr(leaf, '/') && strcmp(leaf, ".") && strcmp(leaf, ".."), "INVALID_ARGUMENT");
@@ -550,6 +568,19 @@ static int open_existing_job(const struct request *request, struct pins *pins) {
     int job = openat(parent, request->job, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     retain(pins, job); inspect(job, uid, true, false, !request->machine); return job;
 }
+/* A no-start disposition must still observe the authority root live and exact: missing is safe;
+ * inaccessible, malformed, or any job directory is uncertain and remains retained. */
+static void require_absent_protected_job(const struct request *request, struct pins *pins) {
+    char root[PATH_MAX]; authority_root(request, root, sizeof(root));
+    uid_t uid = request->machine ? 0 : request->owner.uid;
+    int parent = directory_open_optional(root, uid, !request->machine, false, pins);
+    if (parent < 0) return;
+    int job = openat(parent, request->job, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    if (job < 0 && errno == ENOENT) return;
+    require(job >= 0, "UNAVAILABLE"); retain(pins, job);
+    inspect(job, uid, true, false, !request->machine);
+    fail("OUTCOME_UNKNOWN");
+}
 static void relaunch(const struct request *request) {
     if (request->frontend.pid)
         execl(request->launcher, request->launcher, "--state-dir", request->workspace, (char *)NULL);
@@ -754,25 +785,27 @@ static void coordinator(struct request *request, int input) {
     fsync(writer.directory); fsync(active.parent); release(&pins);
 }
 
-/* Called by the unelevated owner only after rereading the exact terminal receipt. */
-static void cleanup_input(const char *job_id) {
+/* Called by the unelevated owner after terminal-receipt or exact no-worker disposition validation. */
+static void cleanup_input(const char *job_id, bool require_terminal_receipt) {
     uid_t uid = getuid(); require(uid > 0 && uid == geteuid(), "PRIVILEGES_REQUIRED");
     char path[PATH_MAX]; input_path(uid, job_id, path, sizeof(path));
     struct pins pins = {0}; int input = directory_open(path, uid, true, false, &pins);
     int request_fd = openat(input, "request", O_RDONLY|O_NOFOLLOW|O_CLOEXEC); require(request_fd >= 0, "UNAVAILABLE");
     inspect(request_fd, uid, false, false, true); struct request request = request_read(request_fd); close(request_fd);
     require(!strcmp(request.job, job_id) && request.owner.uid == uid, "CONFLICT");
-    int job = open_existing_job(&request, &pins); unsigned long long sequence = 0; char phase[32];
-    require(receipt_read(job, request.machine ? 0 : uid, !request.machine, job_id, &sequence, phase) &&
-        (!strcmp(phase, "SUCCEEDED") || !strcmp(phase, "FAILED") || !strcmp(phase, "CANCELLED")), "OUTCOME_UNKNOWN");
-    const char *names[] = {"package.dmg", "commit", "watcher", "request", "vpn-control-install-worker"};
+    if (require_terminal_receipt) {
+        int job = open_existing_job(&request, &pins); unsigned long long sequence = 0; char phase[32];
+        require(receipt_read(job, request.machine ? 0 : uid, !request.machine, job_id, &sequence, phase) &&
+            (!strcmp(phase, "SUCCEEDED") || !strcmp(phase, "FAILED") || !strcmp(phase, "CANCELLED")), "OUTCOME_UNKNOWN");
+    } else require_absent_protected_job(&request, &pins);
+    const char *names[] = {"package.dmg", "commit", "watcher", "request", "vpn-control-install-worker", "vpn-control-install-cleanup-worker"};
     for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); ++i) {
         int fd = openat(input, names[i], O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
         if (fd < 0 && errno == ENOENT) continue;
         require(fd >= 0, "UNAVAILABLE");
         // The executable is 0700; all other captured records must remain 0600.
         struct stat metadata = inspect(fd, uid, false, false, true);
-        require((metadata.st_mode & 0777) == (!strcmp(names[i], "vpn-control-install-worker") ? 0700 : 0600), "INVALID_ARGUMENT");
+        require((metadata.st_mode & 0777) == (!strcmp(names[i], "vpn-control-install-worker") || !strcmp(names[i], "vpn-control-install-cleanup-worker") ? 0700 : 0600), "INVALID_ARGUMENT");
         require(same_inode(fd, input, names[i]) && unlinkat(input, names[i], 0) == 0, "PERSISTENCE_FAILED"); close(fd);
     }
     char parent_path[PATH_MAX]; text_copy(parent_path, sizeof(parent_path), path); *strrchr(parent_path, '/') = 0;
@@ -784,12 +817,12 @@ static void cleanup_input(const char *job_id) {
 }
 
 int main(int argc, char **argv) {
-    require(argc == 4 && (!strcmp(argv[1], "--watch") || !strcmp(argv[1], "--coordinate") || !strcmp(argv[1], "--cleanup")), "INVALID_ARGUMENT");
+    require(argc == 4 && (!strcmp(argv[1], "--watch") || !strcmp(argv[1], "--coordinate") || !strcmp(argv[1], "--cleanup") || !strcmp(argv[1], "--cleanup-not-started")), "INVALID_ARGUMENT");
     job_check(argv[2]); uint64_t requested_pid = number(argv[3], false); require(requested_pid <= INT_MAX, "INVALID_ARGUMENT");
-    if (!strcmp(argv[1], "--cleanup")) {
+    if (!strcmp(argv[1], "--cleanup") || !strcmp(argv[1], "--cleanup-not-started")) {
         struct proc_bsdinfo owner; require(generation_snapshot((pid_t)requested_pid, &owner) &&
             owner.pbi_uid == getuid() && owner.pbi_ruid == getuid() && owner.pbi_svuid == getuid(), "CONFLICT");
-        cleanup_input(argv[2]); return 0;
+        cleanup_input(argv[2], !strcmp(argv[1], "--cleanup")); return 0;
     }
     if (!strcmp(argv[1], "--watch")) {
         struct request request = request_read(STDIN_FILENO);

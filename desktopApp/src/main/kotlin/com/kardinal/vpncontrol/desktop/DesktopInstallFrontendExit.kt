@@ -8,12 +8,25 @@ import java.util.UUID
 internal enum class DesktopFrontendProcessObservation { SAME, GONE, UNKNOWN }
 
 /** Missing process metadata is uncertainty, never authority to release installation. */
-internal fun desktopFrontendProcessObservation(identity: DesktopFrontendProcessIdentity): DesktopFrontendProcessObservation =
+internal data class DesktopFrontendProcessInspection(
+    val present: Boolean,
+    val alive: Boolean,
+    val startedAtEpochMillis: Long?,
+)
+
+internal fun desktopFrontendProcessObservation(
+    identity: DesktopFrontendProcessIdentity,
+    inspect: (Long) -> DesktopFrontendProcessInspection = { pid ->
+        val process = ProcessHandle.of(pid).orElse(null)
+        if (process == null) DesktopFrontendProcessInspection(false, false, null)
+        else DesktopFrontendProcessInspection(true, process.isAlive,
+            process.info().startInstant().orElse(null)?.toEpochMilli())
+    },
+): DesktopFrontendProcessObservation =
     runCatching {
-        val process = ProcessHandle.of(identity.pid).orElse(null)
-            ?: return@runCatching DesktopFrontendProcessObservation.GONE
-        if (!process.isAlive) return@runCatching DesktopFrontendProcessObservation.GONE
-        val started = process.info().startInstant().orElse(null)?.toEpochMilli()
+        val process = inspect(identity.pid)
+        if (!process.present || !process.alive) return@runCatching DesktopFrontendProcessObservation.GONE
+        val started = process.startedAtEpochMillis
             ?: return@runCatching DesktopFrontendProcessObservation.UNKNOWN
         if (started == identity.startedAtEpochMillis) DesktopFrontendProcessObservation.SAME
         else DesktopFrontendProcessObservation.GONE

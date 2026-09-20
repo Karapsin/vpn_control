@@ -17,6 +17,8 @@ class DesktopMacUpdateServiceTest {
         var prepares = 0
         var recoveries = 0
         var released = 0
+        var releasedNotStarted = 0
+        var recovery = emptyList<DesktopInstallCorrelationRecovery>()
         val maintainedOwners = mutableListOf<String>()
         var lateResult: Result<Unit> = Result.success(Unit)
         var confirmLate = false
@@ -38,7 +40,7 @@ class DesktopMacUpdateServiceTest {
             return outcome
         }
         override fun recoverCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> {
-            recoveries++; return Result.success(emptyList())
+            recoveries++; return Result.success(recovery)
         }
         override fun reconcileLateAuthorization(ownerId: String): Result<Unit> {
             maintainedOwners += ownerId
@@ -47,6 +49,11 @@ class DesktopMacUpdateServiceTest {
         }
         override fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> {
             released++; assertEquals(identity, correlation); assertEquals(job, receipt.jobId); return Result.success(Unit)
+        }
+        override fun releaseNotStarted(record: DesktopInstallCorrelationRecovery): Result<Unit> {
+            assertEquals(recovery.single(), record)
+            releasedNotStarted++
+            return Result.success(Unit)
         }
     }
 
@@ -85,6 +92,24 @@ class DesktopMacUpdateServiceTest {
         assertEquals(listOf("owner", "owner"), adapter.maintainedOwners)
         assertEquals(AppUpdatePhase.READY, state().appUpdate.phase)
         assertTrue(state().isVpnRunning)
+    } }
+
+    @Test fun ownerMaintenanceDisposesOnlyTheExactForeignMacNotStartedInput() = runBlocking { fixture { service, _, adapter, _ ->
+        val foreign = DesktopInstallCorrelation("previous-owner", "request", "operation")
+        val binding = DesktopInstallCorrelationRecord(foreign, job, "a".repeat(64),
+            DesktopInstallReceiptAuthority.MACHINE)
+        adapter.recovery = listOf(DesktopInstallCorrelationRecovery(binding, null, ControlCode.PERMISSION_DENIED,
+            notStarted = true))
+
+        service.reconcileTerminalInstallInputs("owner").getOrThrow()
+        service.reconcileTerminalInstallInputs("owner").getOrThrow()
+
+        assertEquals(1, adapter.releasedNotStarted)
+        assertEquals(0, adapter.released)
+        service.reconcileTerminalInstallInputs("previous-owner").getOrThrow()
+        adapter.recovery = listOf(DesktopInstallCorrelationRecovery(binding, null, ControlCode.OUTCOME_UNKNOWN))
+        service.reconcileTerminalInstallInputs("owner").getOrThrow()
+        assertEquals(1, adapter.releasedNotStarted)
     } }
 
     @Test fun changedDmgNeverLaunchesAdapter() = runBlocking { fixture { service, state, adapter, directory ->

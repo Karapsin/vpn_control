@@ -96,10 +96,17 @@ internal class DesktopControllerOwner(
     suspend fun execute(command: DesktopCliCommand): DesktopCliResponse =
         when {
             command is DesktopCliCommand.ControlServe -> serveForControl(command)
-            command is DesktopCliCommand.ControlFrontendLease -> synchronized(this) {
-                if (command.action == DesktopFrontendLeaseAction.ATTACH && session.operationSnapshot().any {
-                        it.operation == ControlOperationId.UPDATES_INSTALL && !it.phase.terminal })
-                    DesktopCliResponse.failure("BUSY") else frontends.execute(command)
+            command is DesktopCliCommand.ControlFrontendLease -> {
+                val response = synchronized(this) {
+                    if (command.action == DesktopFrontendLeaseAction.ATTACH && session.operationSnapshot().any {
+                            it.operation == ControlOperationId.UPDATES_INSTALL && !it.phase.terminal })
+                        DesktopCliResponse.failure("BUSY") else frontends.execute(command)
+                }
+                if (response.success && command.action == DesktopFrontendLeaseAction.ATTACH)
+                    service.controlInstallFrontend(command.frontendId).getOrNull()?.let { identity ->
+                        frontends.captureProcessIdentity(command.frontendId, identity)
+                    }
+                response
             }
             command is DesktopCliCommand.ControlSubmit && command.request.command.operation in DesktopGuiVisibilityControl.operations ->
                 guiVisibility.execute(command.request)
@@ -186,7 +193,10 @@ internal class DesktopControllerOwner(
         }
         val frontend = synchronized(this) { frontends.registration() }?.let { registration ->
             service.controlInstallFrontend(registration).getOrElse {
-                return DesktopControlWriteResponse(DesktopCliResponse.failure("CONFLICT"), service.controlMetadata())
+                // An unavailable or mismatched endpoint remains fail-closed. Only the exact
+                // generation pinned at authenticated attach may be released after it is dead.
+                if (frontends.revokeIfCapturedProcessDead(registration)) null
+                else return DesktopControlWriteResponse(DesktopCliResponse.failure("CONFLICT"), service.controlMetadata())
             }
         }
         val stopped = service.shutdownForExit()

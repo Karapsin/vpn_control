@@ -4,11 +4,81 @@ import com.kardinal.vpncontrol.UpdateAsset
 import com.kardinal.vpncontrol.UpdatePackageType
 import com.kardinal.vpncontrol.UpdatePlatform
 import com.kardinal.vpncontrol.model.ControlCode
+import com.sun.jna.Platform
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class DesktopMacInstallerTest {
+    @Test fun exactPublishedCleanupWorkerAt0600RetriesItsInterruptedChmod() {
+        val directory = Files.createTempDirectory("vpn-mac-cleanup-worker")
+        val worker = directory.resolve("vpn-control-install-cleanup-worker")
+        val bytes = "current packaged worker".encodeToByteArray()
+        try {
+            org.junit.Assume.assumeTrue("macOS descriptor behavior", Platform.isMac() && "posix" in directory.fileSystem.supportedFileAttributeViews())
+            Files.write(worker, bytes)
+            Files.setPosixFilePermissions(worker, PosixFilePermissions.fromString("rw-------"))
+            materializeMacNotStartedCleanupWorker(worker, bytes)
+            assertEquals(PosixFilePermissions.fromString("rwx------"), Files.getPosixFilePermissions(worker))
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
+    @Test fun cleanupWorkerRetryRejectsModifiedModesContentAndLinks() {
+        val directory = Files.createTempDirectory("vpn-mac-cleanup-worker-reject")
+        val worker = directory.resolve("vpn-control-install-cleanup-worker")
+        val bytes = "current packaged worker".encodeToByteArray()
+        try {
+            org.junit.Assume.assumeTrue("macOS descriptor behavior", Platform.isMac() && "posix" in directory.fileSystem.supportedFileAttributeViews())
+            Files.write(worker, bytes)
+            Files.setPosixFilePermissions(worker, PosixFilePermissions.fromString("rw-r-----"))
+            assertFails { materializeMacNotStartedCleanupWorker(worker, bytes) }
+            Files.delete(worker)
+            Files.write(worker, "modified worker".encodeToByteArray())
+            Files.setPosixFilePermissions(worker, PosixFilePermissions.fromString("rwx------"))
+            assertFails { materializeMacNotStartedCleanupWorker(worker, bytes) }
+            Files.delete(worker)
+            Files.createSymbolicLink(worker, directory.resolve("replacement"))
+            assertFails { materializeMacNotStartedCleanupWorker(worker, bytes) }
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
+    @Test fun freshOwnerDoesNotRunCleanupAgainAfterInputsWereReleased() {
+        val input = Files.createTempDirectory("vpn-mac-cleanup-owner")
+        var calls = 0
+        try {
+            releaseMacNotStartedInput(input) {
+                calls++
+                Files.delete(input)
+            }
+            releaseMacNotStartedInput(input) { error("No worker may be staged for an already released input") }
+            assertEquals(1, calls)
+        } finally { input.toFile().deleteRecursively() }
+    }
+
+    @Test fun onlyAnExactMissingNoStartInputIsAnIdempotentCleanupSuccess() {
+        val directory = Files.createTempDirectory("vpn-mac-not-started-input")
+        val input = directory.resolve("input")
+        try {
+            assertTrue(macInstallInputMissing(input))
+            Files.createDirectory(input)
+            assertFalse(macInstallInputMissing(input))
+            Files.writeString(input.resolve("unexpected"), "retain")
+            assertFalse(macInstallInputMissing(input))
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
+    @Test fun danglingPosixLinkIsNotAnAlreadyReleasedInput() {
+        val directory = Files.createTempDirectory("vpn-mac-input-link")
+        try {
+            org.junit.Assume.assumeTrue("POSIX symbolic-link semantics", "posix" in directory.fileSystem.supportedFileAttributeViews())
+            val input = directory.resolve("input")
+            Files.createSymbolicLink(input, directory.resolve("replacement-target"))
+            assertFalse(macInstallInputMissing(input))
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
     @Test fun unsupportedPlatformAndPackageCannotStageOrLaunchNativeWorker() = runBlocking {
         val asset = UpdateAsset(UpdatePlatform.MACOS, "arm64", UpdatePackageType.DMG, "1.0.0", "update.dmg",
             "https://example.invalid/update.dmg", "a".repeat(64), 1)

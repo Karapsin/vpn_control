@@ -8,6 +8,8 @@ internal object DesktopMacWorkerLaunch {
         workerArguments(worker, "--watch", jobId, ownerPid)
     fun cleanup(worker: Path, jobId: String, ownerPid: Long): List<String> =
         workerArguments(worker, "--cleanup", jobId, ownerPid)
+    fun cleanupNotStarted(worker: Path, jobId: String, ownerPid: Long): List<String> =
+        workerArguments(worker, "--cleanup-not-started", jobId, ownerPid)
 
     fun coordinator(worker: Path, authority: DesktopMacInstallAuthority, jobId: String, ownerPid: Long): List<String> {
         val command = workerArguments(worker, "--coordinate", jobId, ownerPid)
@@ -16,7 +18,9 @@ internal object DesktopMacWorkerLaunch {
     }
 
     private fun workerArguments(worker: Path, mode: String, jobId: String, ownerPid: Long): List<String> {
-        require(worker.isAbsolute && worker.normalize() == worker && worker.fileName.toString() == "vpn-control-install-worker")
+        val expectedLeaf = if (mode == "--cleanup-not-started") "vpn-control-install-cleanup-worker"
+            else "vpn-control-install-worker"
+        require(worker.isAbsolute && worker.normalize() == worker && worker.fileName.toString() == expectedLeaf)
         require(worker.toString().length <= 4096 && worker.toString().none { it.code < 32 || it.code == 127 })
         require(DesktopInstallJobNames.validJob(jobId) && ownerPid in 1..Int.MAX_VALUE)
         return listOf(worker.toString(), mode, jobId, ownerPid.toString())

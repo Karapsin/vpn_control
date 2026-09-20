@@ -79,6 +79,30 @@ class DesktopOwnerFrontendLifecycleTest {
         assertNull(lifecycle.registration())
     }
 
+    @Test fun only_a_captured_dead_generation_can_revoke_its_lease() = runTest {
+        val lifecycle = DesktopOwnerFrontendLifecycle("owner", backgroundScope, {}, { DesktopControlMetadata(0, false) })
+        assertEquals(ControlCode.OK, code(lifecycle.execute(command(DesktopFrontendLeaseAction.ATTACH))))
+        val identity = DesktopFrontendProcessIdentity(frontend, 42, 7)
+        lifecycle.captureProcessIdentity(frontend, identity)
+        assertFalse(lifecycle.revokeIfCapturedProcessDead(frontend) { false })
+        assertEquals(frontend, lifecycle.registration())
+        assertTrue(lifecycle.revokeIfCapturedProcessDead(frontend) { true })
+        assertNull(lifecycle.registration())
+    }
+
+    @Test fun duplicate_attach_cannot_replace_the_pinned_process_generation() = runTest {
+        val lifecycle = DesktopOwnerFrontendLifecycle("owner", backgroundScope, {}, { DesktopControlMetadata(0, false) })
+        assertEquals(ControlCode.OK, code(lifecycle.execute(command(DesktopFrontendLeaseAction.ATTACH))))
+        val original = DesktopFrontendProcessIdentity(frontend, 42, 7)
+        val replacement = original.copy(pid = 43, startedAtEpochMillis = 8)
+        assertTrue(lifecycle.captureProcessIdentity(frontend, original))
+        assertFalse(lifecycle.captureProcessIdentity(frontend, replacement))
+        assertFalse(lifecycle.revokeIfCapturedProcessDead(frontend) { it == replacement })
+        assertEquals(frontend, lifecycle.registration())
+        assertTrue(lifecycle.revokeIfCapturedProcessDead(frontend) { it == original })
+        assertNull(lifecycle.registration())
+    }
+
     @Test fun detachedOrExpiredFrontendNeverOverridesRuntimeOrJobRetention() = runTest {
         var now = 0L
         val lifecycle = DesktopOwnerFrontendLifecycle("owner", backgroundScope, {}, { DesktopControlMetadata(0, false) }, { now })

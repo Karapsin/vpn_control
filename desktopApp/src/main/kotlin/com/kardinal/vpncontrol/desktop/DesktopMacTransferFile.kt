@@ -29,6 +29,7 @@ internal object DesktopMacTransferFile {
         fun pread(fd: Int, bytes: ByteArray, size: Long, offset: Long): Long
         fun pwrite(fd: Int, bytes: ByteArray, size: Long, offset: Long): Long
         fun ftruncate(fd: Int, size: Long): Int
+        fun fchmod(fd: Int, mode: Int): Int
     }
     private val api: Api by lazy { Native.load("System", Api::class.java) }
     // Darwin arm64 only has the inode64 ABI. Intel also exports the explicit
@@ -45,17 +46,30 @@ internal object DesktopMacTransferFile {
     }
     private const val DIRECTORY = 0x01100100 // O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
     private const val FILE = 0x01000b02 // O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC
-    private fun inspect(fd: Int, uid: Int, private: Boolean, directory: Boolean = true): Info {
+    private fun inspect(fd: Int, uid: Int, private: Boolean, directory: Boolean = true, executable: Boolean = false): Info {
         val info = stat(fd)
         require(info.mode and 0xf000 == if (directory) 0x4000 else 0x8000)
         require(info.uid == uid || !private && info.uid == 0) { "Untrusted transfer owner" }
-        if (private) require(info.mode and 0x1ff == if (directory) 0x1c0 else 0x180)
+        if (private) {
+            val mode = info.mode and 0x1ff
+            require(if (directory) mode == 0x1c0 else if (executable) mode == 0x180 || mode == 0x1c0 else mode == 0x180)
+        }
         else require(info.mode and 0x12 == 0 || info.mode and 0x200 != 0) { "Untrusted transfer ancestor permissions" }
         require(directory || info.links == 1)
         requireMacTransferAcl(DesktopMacAdmissionAcl.inspect(fd), private, directory)
         return info
     }
-    fun create(parent: Path): DesktopControlTransferFile {
+    fun promoteExactPrivateExecutable(parent: Path, leaf: String, bytes: ByteArray) {
+        require(leaf.isNotBlank() && leaf !in setOf(".", "..") && '/' !in leaf && '\u0000' !in leaf)
+        val transfer = create(parent, privateParent = true)
+        try {
+            transfer.promoteExactPrivateExecutable(leaf, bytes)
+        } finally {
+            try { transfer.channel.close() } finally { transfer.erase() }
+        }
+    }
+
+    fun create(parent: Path, privateParent: Boolean = false): DesktopControlTransferFile {
         val absolute = parent.toAbsolutePath().normalize()
         var prefix = absolute.root
         for (name in absolute) {
@@ -78,11 +92,11 @@ internal object DesktopMacTransferFile {
             check(current >= 0) { "Transfer root unavailable" }
             retained += current
             inspect(current, uid, false)
-            for (part in resolved) {
+            for ((index, part) in resolved.withIndex()) {
                 current = api.openat(current, part.toString(), DIRECTORY, 0)
                 check(current >= 0) { "Transfer ancestor unavailable" }
                 retained += current
-                inspect(current, uid, false)
+                inspect(current, uid, privateParent && index == resolved.nameCount - 1)
             }
             container = current
             check(api.mkdirat(container, name, 0x1c0) == 0) { "Private transfer directory unavailable" }
@@ -118,6 +132,22 @@ internal object DesktopMacTransferFile {
                     // RENAME_EXCL is atomic and refuses even a concurrently-created target.
                     check(api.renameatx_np(pinnedDirectory, "payload", pinnedParent, leaf, 4) == 0) { "Export publication failed" }
                     check(api.fsync(pinnedParent) == 0) { "Export publication synchronization failed" }
+                }
+                override fun promoteExactPrivateExecutable(leaf: String, bytes: ByteArray) {
+                    require(leaf.isNotBlank() && leaf !in setOf(".", "..") && '/' !in leaf && '\u0000' !in leaf)
+                    require(bytes.size in 1..1024 * 1024)
+                    val executable = api.openat(pinnedParent, leaf, 0x01000100, 0)
+                    check(executable >= 0) { "Cleanup worker unavailable" }
+                    try {
+                        val info = inspect(executable, uid, true, directory = false, executable = true)
+                        require(info.size == bytes.size.toLong()) { "Cleanup worker changed" }
+                        val actual = ByteArray(bytes.size)
+                        require(api.pread(executable, actual, actual.size.toLong(), 0) == actual.size.toLong() && actual.contentEquals(bytes)) {
+                            "Cleanup worker changed"
+                        }
+                        check(api.fchmod(executable, 0x1c0) == 0) { "Cleanup worker permissions unavailable" }
+                        check(api.fsync(executable) == 0) { "Cleanup worker synchronization failed" }
+                    } finally { api.close(executable) }
                 }
                 private var erased = false
                 override fun erase() {

@@ -14,7 +14,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DesktopCliProcessTest {
-    @Test fun serveAdoptsAnExistingTransientOwnerWithoutReplacingEpoch() {
+    @Test fun serveAdoptsAnExistingTransientOwnerWithoutReplacingEpoch() = existingOwnerServe(DesktopHeadlessController.ARG)
+
+    @Test fun secondServeReportsExistingPersistentOwnerAndExits() = existingOwnerServe("serve")
+
+    private fun existingOwnerServe(ownerArgument: String) {
         val directory = Files.createTempDirectory("vpn-cli-serve-existing")
         val workspace = directory.resolve("workspace")
         val javaName = if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
@@ -31,17 +35,18 @@ class DesktopCliProcessTest {
             return process to log
         }
         try {
-            val (owner, ownerLog) = start(DesktopHeadlessController.ARG)
+            val (owner, ownerLog) = start(ownerArgument)
             val endpoint = workspace.resolve("activation.port")
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             while (!Files.exists(endpoint) && owner.isAlive && System.nanoTime() < deadline) Thread.sleep(20)
             assertTrue(owner.isAlive && Files.exists(endpoint), Files.readString(ownerLog))
             val original = DesktopControlEndpoint.read(endpoint)
             val (server, serverLog) = start("serve")
-            assertFalse(server.waitFor(3, TimeUnit.SECONDS), Files.readString(serverLog))
+            assertTrue(server.waitFor(10, TimeUnit.SECONDS), "Duplicate serve must return without supervising the existing owner")
+            assertEquals(0, server.exitValue(), Files.readString(serverLog))
             assertTrue(owner.isAlive)
             assertEquals(original.controllerId, DesktopControlEndpoint.read(endpoint).controllerId)
-            assertTrue(Files.readString(serverLog).contains("headless service is ready"))
+            assertTrue(Files.readString(serverLog).contains("already running"))
         } finally {
             // Both exact test-owned processes have an empty, never-connected workspace.
             for (process in processes.reversed()) if (process.isAlive) {

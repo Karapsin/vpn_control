@@ -114,7 +114,7 @@ internal object DesktopHeadlessController {
         System.setProperty("java.awt.headless", "true")
         val lock = acquireLock()
         if (lock == null) {
-            if (persistent) return DesktopExistingService.await(printLine)
+            if (persistent) return DesktopExistingService.adopt(printLine)
             printLine("VPN Control is already running.")
             return DesktopCliResponse.UNAVAILABLE_EXIT_CODE
         }

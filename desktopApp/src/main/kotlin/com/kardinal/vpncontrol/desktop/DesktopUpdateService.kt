@@ -188,7 +188,8 @@ internal class DesktopUpdateService(
             }
         }
 
-    private val installInputCleanup by lazy { DesktopInstallInputCleanup(::readInstallCorrelations, ::releaseInstallInputs) }
+    private val installInputCleanup by lazy { DesktopInstallInputCleanup(::readInstallCorrelations, ::releaseInstallInputs,
+        releaseNotStarted = if (osName.startsWith("Mac", true)) ::releaseMacNotStartedInstallInputs else null) }
 
     private fun readInstallCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> = when {
         osName.startsWith("Windows", true) -> windowsInstaller.recoverCorrelations()
@@ -231,6 +232,12 @@ internal class DesktopUpdateService(
             osName.startsWith("Mac", true) -> macInstaller.releaseCompleted(correlation, receipt).getOrThrow()
             else -> error("UNSUPPORTED")
         }
+    }
+
+    /** Only the macOS adapter may dispose a journal-verified no-worker input. */
+    private fun releaseMacNotStartedInstallInputs(record: DesktopInstallCorrelationRecovery): Result<Unit> = runCatching {
+        check(osName.startsWith("Mac", true))
+        macInstaller.releaseNotStarted(record).getOrThrow()
     }
 
     fun settleVerifiedInstall(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {

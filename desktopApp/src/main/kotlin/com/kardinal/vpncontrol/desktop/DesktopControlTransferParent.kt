@@ -31,6 +31,7 @@ internal interface DesktopControlTransferFile {
     val channel: SeekableByteChannel
     fun force() { (channel as FileChannel).force(false) }
     fun publish(leaf: String) { error("Publication unavailable") }
+    fun promoteExactPrivateExecutable(leaf: String, bytes: ByteArray) { error("Executable promotion unavailable") }
     fun erase()
 }
 

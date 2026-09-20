@@ -27,28 +27,80 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Resumed Native Batch — 2026-09-20
 
-The frozen implementation is `e2e88ada3079371e0a9d0ca72b161aa4a1cf1603`
-(product2.1.12, two Unreleased notes). All five required workflows succeeded for
-that SHA; checkpoint69 contains the managed prepush and delivery receipts.
-The source worktree was clean on resumption. Native completion is still open.
+The delivered implementation is `94dbd582e0268fb31f4522b3136520efb8c7594c`
+(product2.1.12, five Unreleased notes). All five required workflows succeeded for
+that exact SHA; checkpoint74/commit-alias-result.json contains the managed receipt.
+The earlier e2e88ad freeze remains the source of the Windows/Linux/Android fixture
+packages below. Native completion is still open.
 
-Checkpoint74 now contains a focused integration batch awaiting managed delivery:
+Checkpoint74 delivered a focused integration batch:
 desktop cancellation returns promptly when a recovered unknown installer cannot
 be cancelled, and a reusable Android installer driver forwards file-based
 continuation into its action. The desktop causal RED is a virtual-time timeout;
 31 focused desktop tests pass after the fix. The Android driver has original-code
-RED evidence and10 passing quick tests, wired into release hygiene. See the
-failure ledger for exact paths and Windows-mocking limitations. Frozen native
-packages below still describe e2e88ad; fixed-package revalidation is required.
+RED evidence and passing quick tests, wired into release hygiene. Windows CI then
+exposed two fixture portability causes: executable suffix and path spelling.
+Both now have quick regressions; the final selections passed33 preflight and11
+driver tests, and final Windows CI passed. See the failure ledger for exact paths.
+
+The current macOS pair at `/private/tmp/vpn-macos-code75` uses3055e97; subsequent
+94dbd58 edits affect only Android fixture tooling/tests and documentation. Root
+verified its exact DMG hashes, and the guest verified the installed base signature.
+After positively checking runtime OFF, root exercised owner loss and reopened the
+original workspace with the new installed package. Public cancellation returned
+OUTCOME_UNKNOWN/exit2 in0.17 seconds while preserving the exact original unknown
+install job. See checkpoint74/macos/current-package-cancel-root-review.json.
+This closes the cancellation-hang revalidation. Root also reviewed current-package
+machine authorization denial and successful replacement to2.1.14 in a separate
+fixture: jobb7c7c0c1-8855-42e6-b08c-ac25b206715c, operation
+e26dd649-3ac1-42b6-a8d9-295c641b600e. The root-owned protected receipt is sequence4
+SUCCEEDED/OK; the replacement owner recovered the exact original request and
+reports installed=true, cleanupCode=OK. Downloaded target hash matches the frozen
+DMG and the installed target passes strict deep signature verification. See
+checkpoint76/macos-auth76/root-review.json. This ad-hoc signed fixture does not
+prove notarization, rollback, GUI return or traffic continuity.
+
+The separate denied job440b86ce-8db3-4e62-867a-3082f23a2851 is authoritatively
+CANCELLED/not-started but retains approximately141MB of inputs. Production cleanup
+now binds its not-started disposer, stages the current packaged helper for legacy
+inputs, rechecks protected authority and safely retries exact0600 helper promotion.
+Naming, repeated-owner idempotence and interrupted chmod have causal regressions.
+Independent focused review found no blocking defect; integrated-focused-green
+records60 tests,0 failures and1 platform-specific skip. The final expanded union
+passes64 tests with0 failures and1 Windows-only ACL skip on macOS;
+checkpoint77/final-union-green preserves every XML. Native retained-input cleanup
+revalidation remains open; unknown original jobs and evidence must remain preserved.
+
+Installed macOS checks confirm static commands create no workspace, missing-owner
+status exits2, query-created owners are disconnected/transient, and explicit serve
+stays alive while disconnected. Duplicate serve incorrectly supervised an existing
+owner. The corrected implementation preserves authenticated promotion of a transient
+owner but immediately returns with an existing-owner message. Its causal regression
+records an unwanted second polling request before repair; real process coverage
+checks both transient and persistent cases. Native revalidation remains pending.
+
+Installed RPM traffic survived GUI attach, close/reopen and crash with the same
+runtime identity; off succeeded but quit returned CONFLICT for the dead frontend.
+The fix pins authenticated process identity at attach and releases only a proven
+dead generation. Unknown/live/replacement identities remain guarded. A portable
+stdin-gated JVM child exercises the actual owner quit path. See checkpoint77/linux
+for causal RED and native evidence; package revalidation remains pending.
+
+Android checkpoint78 replaces the earlier synthetic HTTP fixture with real SOCKS
+byte forwarding. Foreground-service traffic succeeds, but benchmark subprocesses
+SIGSEGV under ARM64 translation before SOCKS negotiation. Find Best fails without
+changing activeA/pendingB; no real timings or in-flight cancellation are claimed.
+Public off/delete cleanup succeeded. Compare the same source on native ARM64 before
+attributing this to the product; no runtime upgrade or implementation fix was made.
 
 | Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Integration | root | Evidence review, docs, host builds and delivery | All shared files unless explicitly transferred | One host Gradle invocation | Review exact native records; batch proven fixes |
-| Linux RPM | linux_gui74 | Ignored native fixture/evidence | No product edits | One owned Linux guest4GiB maximum; transfer Ubuntu artifacts before Fedora boot | Current RPM installation/recovery, then fresh GUI worker handoff |
-| Windows MSI | windows_install74 | Ignored native installer/evidence | No product edits | Owned Windows AMD64 guest6GiB on Arch | Use verified code72 pair for public installation/recovery |
-| macOS installation | root | Current-package native installer evidence | Shared source remains root-owned | Owned control53 VM, sole local VM,4GiB maximum | Recovered original unknown job after unexpected VM stop; preserve records, no installer replay |
-| Android driver | android_driver74 retired; root integration | Installer driver and quick tests | Root owns routine wiring | No emulator while macOS uses the local slot | New2.1.14 fixture APK built and verified; corrected driver awaits native use |
-| Desktop cancellation | cancel_recovery74 retired; root integration | HeadlessSession and regression | Root owns remaining shared boundaries | Host tests complete |31 passing focused tests; fixed-package revalidation remains |
+| Integration | root | Desktop lifecycle/cleanup fixes, evidence, docs, host builds and delivery | All shared files | One host Gradle invocation | Final focused union, prepush and checkpoint delivery |
+| Windows MSI | windows_install78 | Ignored native installer/evidence | No source edits | Owned Windows AMD64 guest6GiB on Arch | Ordinary-session HTTPS ready; correct keyboard launch, then public update/recovery |
+| macOS | root | Frozen package/native evidence | Root owns source | Owned Tart4GiB guest | New package cleanup and duplicate-serve verification |
+| Linux | root; linux_lifecycle77 retired | Native evidence and accepted shutdown fix | Root owns source | Owned Fedora4GiB guest | New-package crash/quit and remaining RPM failures |
+| Android | android_benchmark78 retired | Completed checkpoint78 evidence | No source edits | Remote2GiB API35 AVD5680 remains live | Native ARM64 comparison; remaining acceptance matrix |
+| Review | serve_review79/mac_cleanup_review79 retired | Read-only bounded reviews complete | No edits | No VM ownership | Serve promotion retained; cleanup review has no blocking finding |
 
 These are fresh bounded Terra/medium assignments. Earlier worker names below are
 historical. The ignored checkpoint70 ownership record tracks current execution;
@@ -61,6 +113,16 @@ protected-success/public-recovery tuple for job1984e6b7-b668-4ab4-95b4-a93af47f8
 operation65da4189-d491-4343-956e-72e0a2347057. A distinct replacement owner recovered
 the original request and installed2.1.13; see checkpoint70/Linux/root-review.json.
 This proves the current DEB update/recovery, not transient startup or GUI traffic.
+
+Linux worker74 reports current-source RPM success for job
+5d3b32f1-fce3-438c-8701-5605dccc786d, operation
+94bfa593-450f-4d5c-a9d3-26bfe79e4956, protected sequence4 SUCCEEDED/OK, and exact
+replacement-owner recovery. A stale out-of-band fixture marker was preserved and
+replaced with the exact frozen marker only after verifying installed base bytes.
+Root verified42 exported text/state artifacts, the exact accepted/protected/recovered
+tuple and seven CLI exits. The RPM binary remains remote with its manifest hash;
+see checkpoint76/linux-rpm/root-review.json. GUI traffic and RPM failure/rollback
+remain separate gates.
 
 API35 public cancellation is confirmed for receipt
 d8672b66-ca34-423f-9a02-58fa754db70f/session657342161. The separate observation124

@@ -13,6 +13,11 @@ internal data class DesktopFrontendProcessIdentity(val registrationId: String, v
         it.isAlive && it.info().startInstant().orElse(null)?.toEpochMilli() == startedAtEpochMillis
     } == true
 
+    /** Uncertainty about a live process never gives an old lease authority to exit. */
+    fun isDefinitelyGone(
+        observe: (DesktopFrontendProcessIdentity) -> DesktopFrontendProcessObservation = ::desktopFrontendProcessObservation,
+    ): Boolean = observe(this) == DesktopFrontendProcessObservation.GONE
+
     override fun toString() = "DesktopFrontendProcessIdentity(registrationId=$registrationId, process=<redacted>)"
 
     companion object {

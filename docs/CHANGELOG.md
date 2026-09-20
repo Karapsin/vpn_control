@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Return promptly when recovered installations cannot be cancelled and preserve Android installer fixture continuation.
 - Exercise Windows executable discovery in Android installer fixture tests.
 - Validate fixture ADB discoveries by file identity across Windows path aliases.
+- Preserve existing desktop owners on serve, recover shutdown after GUI crashes, and clean up cancelled macOS installer inputs.
 
 ## 2.1.12 - 2026-09-16
 

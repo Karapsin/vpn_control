@@ -12,11 +12,38 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+
+/** `exists` suppresses access errors; only a descriptor-free ENOENT is an idempotent cleanup result. */
+internal fun macInstallInputMissing(path: Path): Boolean = try {
+    Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    false
+} catch (_: NoSuchFileException) {
+    true
+}
+
+/** A later owner may see the retained disposition after the previous owner erased the input. */
+internal fun releaseMacNotStartedInput(input: Path, cleanup: () -> Unit) {
+    if (!macInstallInputMissing(input)) cleanup()
+}
+
+/** A published exact worker may be retried if the prior chmod was interrupted. */
+internal fun materializeMacNotStartedCleanupWorker(worker: Path, bytes: ByteArray): Path {
+    require(bytes.size in 1..1024 * 1024)
+    if (Files.exists(worker, NOFOLLOW_LINKS)) {
+        DesktopMacTransferFile.promoteExactPrivateExecutable(requireNotNull(worker.parent), worker.fileName.toString(), bytes)
+    } else {
+        DesktopPrivateExportWriter.write(worker.toString(), bytes).getOrThrow()
+        DesktopMacTransferFile.promoteExactPrivateExecutable(requireNotNull(worker.parent), worker.fileName.toString(), bytes)
+    }
+    return worker
+}
 
 internal interface DesktopMacInstallAdapter {
     suspend fun prepare(packageFile: Path, asset: UpdateAsset, correlation: DesktopInstallCorrelation,
@@ -27,6 +54,9 @@ internal interface DesktopMacInstallAdapter {
         Result.failure(IllegalStateException("OUTCOME_UNKNOWN"))
     fun reconcileLateAuthorization(ownerId: String): Result<Unit> = Result.success(Unit)
     fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit>
+    /** Release only a journal-verified no-worker input; implementations must retain unknown inputs. */
+    fun releaseNotStarted(record: DesktopInstallCorrelationRecovery): Result<Unit> =
+        Result.failure(IllegalStateException("UNSUPPORTED"))
 }
 
 /** Native per-job worker, never the legacy mutable shell helper. Public dispatch waits for native validation. */
@@ -69,6 +99,47 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
             cleanup.outputStream.close()
             check(cleanup.waitFor(30, TimeUnit.SECONDS) && cleanup.exitValue() == 0) { "PERSISTENCE_FAILED" }
         }
+    }
+
+    override fun releaseNotStarted(record: DesktopInstallCorrelationRecovery): Result<Unit> = runCatching {
+        val binding = requireNotNull(record.binding)
+        require(record.receipt == null && record.notStarted && record.code in setOf(
+            ControlCode.CANCELLED, ControlCode.PERMISSION_DENIED, ControlCode.INTERACTION_REQUIRED, ControlCode.RUNTIME_FAILED))
+        // Re-read the descriptor-backed journal and protected receipt authority immediately
+        // before disposal. A stale, copied, current-owner, inaccessible, or newly protected
+        // record never reaches the input worker.
+        val recovered = correlations.recoverAll().single { it.binding == binding }
+        require(recovered == record)
+        pending?.let { require(it.jobId != binding.jobId) }
+        val input = JnaMacInstallAdmission().homeDirectory()
+            .resolve("Library/Application Support/vpn-control-install-inputs").resolve(binding.jobId)
+        // The previous cleanup may already have removed the complete input. The immutable
+        // no-start disposition remains for recovery, so a fresh owner treats only an exact
+        // missing path as success; inaccessible or replacement paths still fail closed.
+        releaseMacNotStartedInput(input) {
+            // A retained input can predate this app and its original worker. Materialize the
+            // current packaged worker in the verified private input instead of assuming that
+            // old executable understands this cleanup disposition.
+            val worker = materializeNotStartedCleanupWorker(input)
+            val cleanup = ProcessBuilder(DesktopMacWorkerLaunch.cleanupNotStarted(worker, binding.jobId,
+                ProcessHandle.current().pid())).redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            cleanup.outputStream.close()
+            check(cleanup.waitFor(30, TimeUnit.SECONDS) && cleanup.exitValue() == 0) { "PERSISTENCE_FAILED" }
+        }
+    }
+
+    private fun materializeNotStartedCleanupWorker(input: Path): Path {
+        val architecture = when (System.getProperty("os.arch").lowercase()) {
+            "aarch64", "arm64" -> "arm64"
+            "amd64", "x86_64" -> "amd64"
+            else -> error("UNSUPPORTED")
+        }
+        val bytes = requireNotNull(javaClass.getResourceAsStream(
+            "/bin/darwin-$architecture/vpn-control-install-worker")) { "Packaged installer worker unavailable" }
+            .use { it.readNBytes(1024 * 1024 + 1) }
+        val worker = input.resolve("vpn-control-install-cleanup-worker")
+        return materializeMacNotStartedCleanupWorker(worker, bytes)
     }
 
     override suspend fun prepare(packageFile: Path, asset: UpdateAsset, correlation: DesktopInstallCorrelation,

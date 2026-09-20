@@ -39,6 +39,27 @@ class DesktopFrontendProcessIdentityTest {
         } finally { instance.close(); directory.toFile().deleteRecursively() }
     }
 
+    @Test fun only_absent_dead_or_reused_processes_are_definitely_gone() {
+        val identity = DesktopFrontendProcessIdentity(UUID.randomUUID().toString(), 42, 7)
+        fun observed(inspection: DesktopFrontendProcessInspection) =
+            desktopFrontendProcessObservation(identity) { inspection }
+        assertEquals(DesktopFrontendProcessObservation.GONE,
+            observed(DesktopFrontendProcessInspection(false, false, null)))
+        assertEquals(DesktopFrontendProcessObservation.GONE,
+            observed(DesktopFrontendProcessInspection(true, false, 7)))
+        assertEquals(DesktopFrontendProcessObservation.SAME,
+            observed(DesktopFrontendProcessInspection(true, true, 7)))
+        assertEquals(DesktopFrontendProcessObservation.GONE,
+            observed(DesktopFrontendProcessInspection(true, true, 8)))
+        assertEquals(DesktopFrontendProcessObservation.UNKNOWN,
+            observed(DesktopFrontendProcessInspection(true, true, null)))
+        assertEquals(DesktopFrontendProcessObservation.UNKNOWN,
+            desktopFrontendProcessObservation(identity) { error("inspection unavailable") })
+        assertTrue(identity.isDefinitelyGone { DesktopFrontendProcessObservation.GONE })
+        assertFalse(identity.isDefinitelyGone { DesktopFrontendProcessObservation.SAME })
+        assertFalse(identity.isDefinitelyGone { DesktopFrontendProcessObservation.UNKNOWN })
+    }
+
     @Test fun decoderRejectsStaleOwnerCorrelationMalformedFieldsAndUnverifiedProcess() {
         val directory = java.nio.file.Path.of("unused-fixture-directory")
         val registration = UUID.randomUUID().toString()
