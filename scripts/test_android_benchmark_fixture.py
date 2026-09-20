@@ -76,6 +76,34 @@ def relay_connect(host: str, allowed_hosts: tuple[str, ...]) -> tuple[bytes, lis
 
 
 class AndroidBenchmarkFixtureTest(unittest.TestCase):
+    def test_stall_keeps_authorized_socks_connection_open_after_initial_tls_bytes(self) -> None:
+        client, request = socket.socketpair()
+        client.settimeout(0.15)
+        events: list[tuple[str, dict[str, object]]] = []
+        server = SimpleNamespace(
+            allowed_hosts={"chatgpt.com"},
+            stall_after_handshake=True,
+            record=lambda event, **fields: events.append((event, fields)),
+        )
+        handler = threading.Thread(target=SocksHandler, args=(request, ("fixture", 0), server), daemon=True)
+        handler.start()
+        try:
+            client.sendall(b"\x05\x01\x00")
+            self.assertEqual(recv_exact(client, 2), b"\x05\x00")
+            host = b"chatgpt.com"
+            client.sendall(b"\x05\x01\x00\x03" + bytes((len(host),)) + host + (443).to_bytes(2, "big"))
+            self.assertEqual(recv_exact(client, 10)[:2], b"\x05\x00")
+            client.sendall(b"\x16\x03\x01\x00\x01")
+            self.assertTrue(handler.is_alive())
+            with self.assertRaises(socket.timeout):
+                client.recv(1)
+            self.assertEqual(events, [("stalled", {"host": "chatgpt.com", "port": 443})])
+        finally:
+            client.close()
+            handler.join(timeout=1)
+            request.close()
+        self.assertFalse(handler.is_alive(), "stalled handler did not close after peer disconnect")
+
     def test_default_allowlist_admits_android_benchmark_target_and_rejects_unlisted_egress(self) -> None:
         allowed_hosts = AndroidBenchmarkRelay().allowed_hosts
         benchmark_reply, benchmark_calls = relay_connect(android_default_benchmark_host(), allowed_hosts)

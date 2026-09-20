@@ -18,6 +18,10 @@ Use one known-good endpoint for each supported non-VLESS protocol:
 - Grant Android VPN permission before VPN-mode checks.
 - If the test uses subscription import, verify the source actually returns the expected protocol links.
 
+## Native Fixture Records And Cleanup
+
+Keep the opening location export and each created location's full record for the duration of a native run. Clean up by the response identity and its source scope, never by a numeric selector carried across an add, benchmark, or delete: visible location order changes as benchmark results arrive. Preserve pre-existing fixtures; restore them from the opening record if a run changes them.
+
 ## Instrumentation Commands
 
 Run all Android instrumentation tests on a connected device or emulator:

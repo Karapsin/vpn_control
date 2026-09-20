@@ -25,19 +25,34 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint93
+## Current continuation — checkpoint94
 
-Latest pushed checkpoint is `cad9aeb6c884a56d6f8f6d363718f11de707582b`
-(product2.1.13); checkpoint92 managed CI watcher remains active. Previous
-`c85c00cc07ffc0ede60d102caa1974f09511e72b` has all five required workflows
-successful (checkpoint90/commit-result.json). Full parity remains incomplete.
+Latest pushed checkpoint is `c880e05275184ed242b611684ab8eacf3a62d97b`
+(product2.1.13). All five required exact-SHA workflows passed; receipt:
+checkpoint93/commit-result.json. Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Windows bootstrap91 | root; windows_inputs91 retired | Windows native fixture input helper/tests; ignored native probes | Root owns all integration | Root exclusively operates Windows AMD64 VM | Protected bootstrap passes; actual per-user self-pin defect reproduced and fixed with native RED/GREEN; current package/MSI validation remains |
-| Linux current85 | root | Ignored package/native fixtures | Product integration, docs and delivery | Fresh Fedora2326 only; preserve original Fedora2316 unknown job | Current-source2.1.13 base installed and rpm verification passed; damaged2.1.14 attempt returned unknown before protected handoff; original job preserved |
-| Linux prompt91 | root; linux_prompt91 retired | Linux public-install harness/tests | Root owns integration and docs | No active worker; Fedora2326 no-op fixture completed | Prompt readiness regression passes; actual packaged Java no-op authorization passes; historical installer cause remains unproven |
-| Android fixture90 | completed | Delivered default-target regression | Root owns integration and docs | No VM operations; owned5596 retained | Native ARM64 benchmark passes after target alignment;5 routine tests pass including actual-default SOCKS admission and restricted egress |
+| Windows package94 | root; windows_build63 retired | Ignored same-source Windows fixture/build scripts | Root owns integration and delivery | Root exclusively operates existing Windows AMD64 VM | Verified source archive bd218828 fingerprint; ordinary-user build wrapper4160 and Python1240 observed live; no MSI replacement yet |
+| Android stall94 | root; android_fixture54 retired | Benchmark relay and Python tests | Root owns docs and delivery | No native operation by this worker | Causal RED captured; corrected relay six-test GREEN; native cancellation rerun remains |
+| Android selector94 | android_dispatch59 | Location presentation/control tests and smoke-android guidance | Root owns product code and delivery | No AVD operations | Focused list/delete and stable-ID tests pass; numeric cleanup was fixture misuse |
+| Android recovery94 | root; fixture_review92 read-only recovery | Ignored restoration evidence | Root alone authorizes emulator mutations | Owned5596 stopped; prior CP89 fixture mistakenly deleted, CP94 B remains | Recover exact original raw record/identity before restoration; native worker retired |
+| macOS traffic94 | mac_resume73 | Ignored native evidence | Root owns integration | Exclusive Tart vpn-control-boot-control53 | Same controller/runtime and five traffic probes through attach/hide/show/close passed; continuous32/32 traffic checks and identified frontend termination passed; native visible-property query gap retained |
+| Linux evidence94 | root; linux_rollback66 retired | Ignored recovered raw receipts | Root owns integration | No VM mutations | Nineteen raw files hash-verified; terminal failed receipt retained; full restored-tree proof still absent |
+
+Windows archive SHA256
+`1df24d3574e853939162aac6337b50872c057674bbf387e1c3a9d451936a0c58`
+was verified after remote and guest transfer. The ordinary-user build preflight
+passed Python/JDK/.NET probes; fresh base2.1.13/target2.1.14 use source fingerprint
+`bd218828827b1662debe41f7a6e2026bc57fb9a272ea5cf1664cc0f8d5bff82e`.
+No original unknown installation was replayed. QEMU memory parking has only been
+reviewed, not executed; no additional VM or freed RAM is claimed.
+
+Android Find Best committed through the tracked default-target relay, with four
+actual chatgpt.com CONNECTs. The cancellation fixture ended prematurely and is
+fixed under its own causal regression. Cleanup then misused stale numeric indices
+after sorting; the prior task fixture must be restored before further native work.
+See checkpoint94/android/receipt.md and parity-failure-regressions.md.
 
 Checkpoint91 proves the original-user bootstrap with the same NativeAOT image
 SHA256 `05510b3c22df1fdd6301dba4f7af9918dce82ff2cfa004ae3dfa3682e459e20a`
@@ -47,10 +62,10 @@ checkpoint91/windows/ordinary-result.json and elevated-progress2.json. This
 protected ProgramData test image does not prove the actual per-user installation
 path, a different approving administrator, or MSI replacement. Checkpoint92's
 read-only image-acl.json confirms the real helper is original-user-owned under
-AppData; its native self-pin currently uses machine-only trust. The same image then fails from an isolated original-user-owned AppData directory
+AppData; its old native self-pin used machine-only trust. The same old image then fails from an isolated original-user-owned AppData directory
 with exit91 / Installer mutation rights rejected (checkpoint92/windows/peruser-result.json).
 This reproduces the self-pin incompatibility without an installer role; the
-production fix and routine causal regression remain next. The original unknown
+production fix and routine causal regression are recorded below. The original unknown
 job is preserved.
 
 Checkpoint93 adds a routine noninteractive apphost/private-user-directory test

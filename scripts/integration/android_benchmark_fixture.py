@@ -19,6 +19,9 @@ class RelayUnavailable(RuntimeError):
     pass
 
 
+STALL_TIMEOUT_SECONDS = 45
+
+
 class AndroidBenchmarkRelay:
     """Owns a relay process and proves it remains live before device work starts."""
 
@@ -98,13 +101,15 @@ class SocksHandler(socketserver.BaseRequestHandler):
                 return
             host = self._host(address_type)
             port = int.from_bytes(self._exact(2), "big")
-            if self.server.stall_after_handshake:
-                self.server.record("stalled", host=host, port=port)
-                self.request.settimeout(45)
-                self.request.recv(1)
-                return
             if host not in self.server.allowed_hosts:
                 self.request.sendall(b"\x05\x02\x00\x01" + b"\0" * 6)
+                return
+            if self.server.stall_after_handshake:
+                self.server.record("stalled", host=host, port=port)
+                self.request.sendall(b"\x05\x00\x00\x01\x7f\0\0\1\0\0")
+                self.request.settimeout(STALL_TIMEOUT_SECONDS)
+                while self.request.recv(65536):
+                    pass
                 return
             with socket.create_connection((host, port), timeout=10) as peer:
                 self.server.record("connected", host=host, port=port)

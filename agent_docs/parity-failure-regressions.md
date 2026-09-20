@@ -164,6 +164,28 @@ no installer/runtime process was terminated to obtain this result.
 
 ## Expected rejections and incomplete evidence
 
+### Android cancellation fixture — checkpoint94
+
+The native cancellation attempt ended before cancellation because the relay's
+stall branch did not complete SOCKS CONNECT and returned after receiving one
+byte. This is a fixture failure, not evidence of broken product cancellation.
+The causal socket-pair regression first fails against the previous source, then
+proves CONNECT acknowledgement, retention after initial TLS bytes, and cleanup
+on peer disconnect. The corrected branch checks the destination allowlist and
+drains bounded chunks without opening an upstream connection; its socket timeout
+remains bounded. `scripts.test_android_benchmark_fixture` is already included in
+routine release hygiene. Checkpoint94/android-stall-fix/red.log and green.log
+retain RED/GREEN evidence (six focused tests pass). Native cancellation must still
+be repeated with the corrected fixture.
+
+Checkpoint94 cleanup also reused numeric positions from before benchmark sorting
+and list changes, deleting a prior task fixture. List and mutation resolution use
+the same current one-based GUI ordering; stale positions do not identify stable
+locations. This is fixture misuse. Preserve opening records and clean up only
+created identities in their original source scope; never reuse numeric positions
+across operations. Recovery and the original native receipts remain tracked in
+checkpoint94/android until the opening fixture is restored and verified.
+
 An unavailable or unsupported response, a missing build prerequisite, a rejected
 unsafe fixture, and a deliberately denied installer action can be correct behavior.
 Record them with their preconditions and do not count them as a defect fix. Likewise,

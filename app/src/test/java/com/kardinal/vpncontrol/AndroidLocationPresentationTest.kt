@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol
 
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
 import com.kardinal.vpncontrol.control.ControlProtocolException
+import com.kardinal.vpncontrol.data.AndroidLocationControl
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.model.*
 import com.kardinal.vpncontrol.shared.ui.AppStrings
@@ -84,5 +85,28 @@ class AndroidLocationPresentationTest {
         }
         assertEquals(ControlValue.Text("BROKEN_SECRET"), inspect(mapOf("selector" to ControlValue.Text(
             strings.get(UiText.INVALID_LOCATION_CONFIG)))).getOrThrow()["configuration"])
+    }
+
+    @Test fun everyPublishedListIndexDeletesThatSameBenchmarkRankedRow() {
+        val opening = location("Opening", 1080)
+        val fast = location("Fast", 1081)
+        val slow = location("Slow", 1082)
+        val persisted = PersistedState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf(opening, slow, fast), savedLocations = listOf(opening, slow, fast),
+            locationBenchmarkDetails = mapOf(fast to "Fast: score=1 tcp=2ms", slow to "Slow: score=10 tcp=90ms"))
+        val strings = AppStrings(AppLanguage.ENGLISH)
+        val state = MainUiStateProjector.mergePersistedState(MainUiState(), persisted)
+        val rows = androidLocationRows(state, strings)
+        assertFalse("Benchmark ranking must differ from storage order", persisted.currentLocations == rows.map { it.rawLink })
+        val listed = AndroidControlLocationInspection.read(state, ControlCommand(ControlOperationId.LOCATIONS_LIST), strings).getOrThrow()
+        val indexes = (listed.getValue("locations") as ControlValue.ArrayValue).values.map { (it as ControlValue.ObjectValue).values.getValue("index") }
+        assertEquals(listOf(ControlValue.IntegerValue(1), ControlValue.IntegerValue(2), ControlValue.IntegerValue(3)), indexes)
+
+        rows.forEachIndexed { visibleIndex, row ->
+            val plan = AndroidLocationControl.plan(persisted, ControlOperationId.LOCATIONS_DELETE,
+                mapOf("selector" to ControlValue.Text((visibleIndex + 1).toString())), "owner", strings)
+            assertEquals(AndroidLocationControl.identity("owner", persisted, row.rawLink), plan.id)
+            assertFalse(requireNotNull(plan.locations).contains(row.rawLink))
+        }
     }
 }

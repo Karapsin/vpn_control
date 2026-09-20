@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Guard Android benchmark fixtures against validation-target mismatches.
 - Guard native test fixture inputs and terminal authorization readiness.
 - Allow Windows installer helper relaunch from verified per-user installations.
+- Keep Android cancellation fixtures connected and cover stable cleanup identities after benchmark reordering.
 
 ## 2.1.13 - 2026-09-20
 

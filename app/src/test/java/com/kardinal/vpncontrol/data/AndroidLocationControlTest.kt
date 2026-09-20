@@ -62,4 +62,17 @@ class AndroidLocationControlTest {
             plan(ControlOperationId.LOCATIONS_IMPORT, pending.copy(profileSourceMode = ProfileSourceMode.SUBSCRIPTION), "input" to a)
         }.exceptionOrNull()?.message)
     }
+
+    @Test fun opaqueDeleteIdentitySurvivesBenchmarkRankingChanges() {
+        val opening = LocationConfigs.normalizeStoredReference("socks://127.0.0.1:1083#Opening")
+        val ranked = LocationConfigs.normalizeStoredReference("socks://127.0.0.1:1084#Ranked")
+        val beforeBenchmark = state.copy(currentLocations = listOf(opening, a, ranked),
+            savedLocations = listOf(opening, a, ranked), locationBenchmarkDetails = emptyMap())
+        val id = AndroidLocationControl.identity("owner", beforeBenchmark, opening)
+        val reordered = beforeBenchmark.copy(
+            locationBenchmarkDetails = mapOf(ranked to "Ranked: score=1 tcp=2ms", a to "A: score=10 tcp=90ms"))
+        val deleted = plan(ControlOperationId.LOCATIONS_DELETE, reordered, "id" to id)
+        assertEquals(id, deleted.id)
+        assertEquals(listOf(a, ranked), deleted.locations)
+    }
 }
