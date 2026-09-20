@@ -101,3 +101,93 @@ def fixture_proxy_port_selector() -> str:
     return $port
 }
 """
+
+
+def fixture_native_process_capture() -> str:
+    """Generate the PS5.1-safe native process capture used by Windows fixtures.
+
+    Native stderr is data, rather than a PowerShell error stream.  A directly
+    owned Process has a stable child handle; its stdout and stderr are copied
+    concurrently into files, and that child's ExitCode decides success.
+    ProcessStartInfo.ArgumentList is unavailable on Windows PowerShell 5.1, so
+    the helper builds a Windows-quoted command line explicitly.
+    """
+    return r'''function ConvertTo-VpnFixtureNativeArgument {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Argument)
+    if ($Argument.Length -eq 0) { return '""' }
+    if ($Argument -notmatch '[\s"]') { return $Argument }
+
+    $quoted = New-Object System.Text.StringBuilder
+    [void]$quoted.Append('"')
+    $backslashes = 0
+    foreach ($character in $Argument.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes++
+        } elseif ($character -eq '"') {
+            [void]$quoted.Append('\', ($backslashes * 2) + 1)
+            [void]$quoted.Append('"')
+            $backslashes = 0
+        } else {
+            if ($backslashes -gt 0) { [void]$quoted.Append('\', $backslashes) }
+            [void]$quoted.Append($character)
+            $backslashes = 0
+        }
+    }
+    if ($backslashes -gt 0) { [void]$quoted.Append('\', $backslashes * 2) }
+    [void]$quoted.Append('"')
+    return $quoted.ToString()
+}
+
+function Invoke-VpnFixtureNativeProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$Arguments = @(),
+        [Parameter(Mandatory = $true)][string]$StandardOutputPath,
+        [Parameter(Mandatory = $true)][string]$StandardErrorPath
+    )
+    if ([string]::IsNullOrWhiteSpace($FilePath)) { throw 'native fixture file path is required' }
+    foreach ($path in @($StandardOutputPath, $StandardErrorPath)) {
+        if ([string]::IsNullOrWhiteSpace($path)) { throw 'native fixture capture path is required' }
+        $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path))
+        if (-not [IO.Directory]::Exists($parent)) { throw "native fixture capture directory is missing: $parent" }
+        if (Test-Path -LiteralPath $path) { throw "native fixture capture path already exists: $path" }
+    }
+    if ([IO.Path]::GetFullPath($StandardOutputPath) -eq [IO.Path]::GetFullPath($StandardErrorPath)) {
+        throw 'native fixture stdout and stderr capture paths must differ'
+    }
+    $argumentLine = (($Arguments | ForEach-Object {
+        if ($null -eq $_) { throw 'native fixture arguments cannot be null' }
+        ConvertTo-VpnFixtureNativeArgument ([string]$_)
+    }) -join ' ')
+
+    $process = New-Object Diagnostics.Process
+    $stdoutFile = $null
+    $stderrFile = $null
+    try {
+        $stdoutFile = [IO.File]::Open($StandardOutputPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        $stderrFile = [IO.File]::Open($StandardErrorPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        $startInfo = New-Object Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $FilePath
+        $startInfo.Arguments = $argumentLine
+        $startInfo.WorkingDirectory = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw 'native fixture process did not start' }
+
+        # Copy both pipes before waiting. Sequential draining can deadlock when
+        # a child fills the other pipe, while CopyToAsync keeps output bounded.
+        $stdoutCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdoutFile)
+        $stderrCopy = $process.StandardError.BaseStream.CopyToAsync($stderrFile)
+        $process.WaitForExit()
+        [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutCopy, $stderrCopy))
+        return [pscustomobject]@{ ExitCode = [int]$process.ExitCode }
+    } finally {
+        if ($null -ne $stdoutFile) { $stdoutFile.Dispose() }
+        if ($null -ne $stderrFile) { $stderrFile.Dispose() }
+        $process.Dispose()
+    }
+}
+'''

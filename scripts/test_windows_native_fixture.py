@@ -13,6 +13,7 @@ from windows_native_fixture import (
     FIXTURE_READ_COMMAND,
     fixture_stream_reader,
     fixture_proxy_port_selector,
+    fixture_native_process_capture,
 )
 
 
@@ -105,6 +106,135 @@ if(-not $installerSentinel){throw 'expected interactive actor did not reach inst
             text=True,
             check=False,
             timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows PowerShell")
+    def test_native_process_capture_keeps_native_stderr_nonterminating_and_uses_real_exit_code(self):
+        script = "$ErrorActionPreference='Stop'\n" + fixture_native_process_capture() + r'''
+$root = Join-Path ([IO.Path]::GetTempPath()) ('vpn native capture ' + [guid]::NewGuid().ToString())
+[IO.Directory]::CreateDirectory($root) | Out-Null
+try {
+  $tool = (Get-Command powershell.exe -CommandType Application -ErrorAction Stop).Source
+  $child = Join-Path $root 'native child script with spaces.ps1'
+  $childSource = @'
+param(
+  [string]$First,
+  [string]$Second,
+  [int]$ExitCode,
+  [AllowEmptyString()][string]$Empty,
+  [int]$PayloadBytes
+)
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'child-cwd.txt'), [Environment]::CurrentDirectory)
+$utf8 = New-Object Text.UTF8Encoding($false)
+$stdoutStream = [Console]::OpenStandardOutput()
+$stderrStream = [Console]::OpenStandardError()
+$stdout = New-Object IO.StreamWriter($stdoutStream, $utf8)
+$stderr = New-Object IO.StreamWriter($stderrStream, $utf8)
+$stdout.AutoFlush = $true
+$stderr.AutoFlush = $true
+$stdout.WriteLine('stdout:' + $First + '|emptyLength:' + $Empty.Length)
+$stderr.WriteLine('stderr:' + $Second)
+$payload = New-Object byte[] 8192
+$remaining = $PayloadBytes
+while ($remaining -gt 0) {
+  $count = [Math]::Min($payload.Length, $remaining)
+  $stdoutStream.Write($payload, 0, $count)
+  $stderrStream.Write($payload, 0, $count)
+  $remaining -= $count
+}
+exit $ExitCode
+'@
+  [IO.File]::WriteAllText($child, $childSource)
+  $stdout = Join-Path $root 'stdout capture with spaces.txt'
+  $stderr = Join-Path $root 'stderr capture with spaces.txt'
+  # 256 KiB on each pipe reliably exceeds the Windows anonymous pipe buffer.
+  # The helper must drain both pipes concurrently and retain the direct child exit.
+  $payloadBytes = 262144
+  $successArguments = @('-NoProfile', '-File', $child, 'argument one with spaces', 'argument two with spaces', '0', '', $payloadBytes)
+
+  $merged = Join-Path $root 'merged capture.txt'
+  $mergedTerminated = $false
+  try {
+    & $tool @successArguments *> $merged
+  } catch {
+    if ($_.ToString() -notmatch 'stderr:argument two with spaces') { throw }
+    $mergedTerminated = $true
+  }
+  if (-not $mergedTerminated) { throw 'merged native stderr did not reproduce the PS5.1 termination' }
+
+  Push-Location -LiteralPath $root
+  try {
+    $success = Invoke-VpnFixtureNativeProcess -FilePath $tool `
+        -Arguments $successArguments `
+        -StandardOutputPath $stdout -StandardErrorPath $stderr
+  } finally { Pop-Location }
+  if ([IO.File]::ReadAllText((Join-Path $root 'child-cwd.txt')) -ne $root) { throw 'native process lost the PowerShell working directory' }
+  if ($success.ExitCode -ne 0) { throw 'exit-0 child was not successful' }
+  $stdoutBytes = [IO.File]::ReadAllBytes($stdout)
+  $stderrBytes = [IO.File]::ReadAllBytes($stderr)
+  $stdoutHeader = [Text.Encoding]::UTF8.GetString($stdoutBytes, 0, ('stdout:argument one with spaces|emptyLength:0' + "`r`n").Length)
+  $stderrHeader = [Text.Encoding]::UTF8.GetString($stderrBytes, 0, ('stderr:argument two with spaces' + "`r`n").Length)
+  if ($stdoutHeader -cne "stdout:argument one with spaces|emptyLength:0`r`n") { throw 'stdout or empty argument was changed' }
+  if ($stderrHeader -cne "stderr:argument two with spaces`r`n") { throw 'stderr argument was changed' }
+  if ($stdoutBytes.Length -ne ($stdoutHeader.Length + $payloadBytes)) { throw 'stdout payload was not fully captured' }
+  if ($stderrBytes.Length -ne ($stderrHeader.Length + $payloadBytes)) { throw 'stderr payload was not fully captured' }
+
+  $failure = Invoke-VpnFixtureNativeProcess -FilePath $tool `
+      -Arguments @('-NoProfile', '-File', $child, 'still spaced', 'warning on stderr', '23', '', 0) `
+      -StandardOutputPath (Join-Path $root 'second stdout with spaces.txt') `
+      -StandardErrorPath (Join-Path $root 'second stderr with spaces.txt')
+  if ($failure.ExitCode -ne 23) { throw 'nonzero child exit was not retained' }
+  if (([IO.File]::ReadAllText((Join-Path $root 'second stderr with spaces.txt'))).Trim() -cne 'stderr:warning on stderr') { throw 'nonzero stderr was not captured' }
+
+  # A descendant waits for an acknowledgement that can only be written after
+  # capture returns. Waiting the entire process tree creates a causal cycle.
+  $descendant = Join-Path $root 'waiting descendant.ps1'
+  [IO.File]::WriteAllText($descendant, @'
+param([string]$Release, [string]$TimedOut)
+$deadline = [DateTime]::UtcNow.AddSeconds(20)
+while (-not [IO.File]::Exists($Release)) {
+  if ([DateTime]::UtcNow -ge $deadline) { [IO.File]::WriteAllText($TimedOut, 'cycle'); exit 0 }
+  Start-Sleep -Milliseconds 20
+}
+'@)
+  $parent = Join-Path $root 'launch descendant.ps1'
+  [IO.File]::WriteAllText($parent, @'
+param([string]$Root)
+$quote = { param($value) '"' + $value + '"' }
+$arguments = @('-NoProfile', '-File', (& $quote (Join-Path $Root 'waiting descendant.ps1')),
+  (& $quote (Join-Path $Root 'release')), (& $quote (Join-Path $Root 'timed-out')))
+$startInfo = New-Object Diagnostics.ProcessStartInfo
+$startInfo.FileName = Join-Path $PSHOME 'powershell.exe'
+$startInfo.Arguments = $arguments -join ' '
+$startInfo.UseShellExecute = $true
+$startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+$child = [Diagnostics.Process]::Start($startInfo)
+[IO.File]::WriteAllText((Join-Path $Root 'descendant.pid'), [string]$child.Id)
+exit 0
+'@)
+  try {
+    $parentResult = Invoke-VpnFixtureNativeProcess -FilePath $tool `
+      -Arguments @('-NoProfile', '-File', $parent, $root) `
+      -StandardOutputPath (Join-Path $root 'parent.stdout') `
+      -StandardErrorPath (Join-Path $root 'parent.stderr')
+    if ($parentResult.ExitCode -ne 0) { throw 'descendant launcher failed' }
+    if ([IO.File]::Exists((Join-Path $root 'timed-out'))) { throw 'capture waited for a descendant instead of the direct child' }
+  } finally {
+    [IO.File]::WriteAllText((Join-Path $root 'release'), 'acknowledged')
+    $pidFile = Join-Path $root 'descendant.pid'
+    if ([IO.File]::Exists($pidFile)) {
+      $ownedChild = Get-Process -Id ([int][IO.File]::ReadAllText($pidFile)) -ErrorAction SilentlyContinue
+      if ($null -ne $ownedChild) { [void]$ownedChild.WaitForExit(5000); $ownedChild.Dispose() }
+    }
+  }
+} finally {
+  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+'''
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, check=False, timeout=30,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 

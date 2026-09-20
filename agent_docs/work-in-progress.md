@@ -25,6 +25,50 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current continuation — checkpoint88
+
+Latest delivered checkpoint is `ee80dcfe019601f9f949e1d9e3b21843760232ba`
+(product2.1.13). Managed checkpoint84/commit-result.json confirms all five required
+exact-SHA workflows succeeded. Full parity remains incomplete.
+
+| Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
+| --- | --- | --- | --- | --- | --- |
+| Windows capture88 | capture_wait88 retired; root integration | scripts/windows_native_fixture.py and its test | Everything else stays with root | Root exclusively operates Windows AMD64 VM | Final native quick regression passes; NativeAOT admission/preflight passes; managed delivery pending |
+| Linux current85 | root | Ignored package/native fixtures | Product integration, docs and delivery | Fresh Fedora2326 only; preserve original Fedora2316 unknown job | Current-source2.1.13 base installed and rpm verification passed; damaged2.1.14 attempt returned unknown before protected handoff; original job preserved |
+| Android native89 | android_arm89 | Ignored comparator fixtures and new AVD only | No tracked source ownership | Sole operator of fresh owned ARM64 API35 emulator5596,2GiB | Exact code73 APK installed; synthetic candidate setup rejected, inspecting public request shape before benchmark |
+
+Linux current pair source fingerprint
+`cf5e2b517284a76c7da7e430dc6f4b83998b3d1bfac635e95ee7e7d65219d738`
+comes from ee80dcf. Both RPMs and their immutable server archive were verified
+before copying to the fresh guest. See checkpoint85/linux-rpm-export.json and
+linux-transfer.json. The running failure fixture is
+`/home/vpnfixture/cp85-rpm-failure`; its durable driver PID4658 has exited. The original public attempt returned
+OUTCOME_UNKNOWN/exit2, handoffReady=false, job
+`bacae2d1-5029-4e39-a69a-6cba7407c64c`, operation
+`55fe0251-14e5-434f-8616-ef8a61ad86f9`. Owner4661 remains alive; no privileged
+worker or package-manager process remains, and no protected job receipt exists.
+Polkit records failed authentication. The private fixture credential matches the
+ordinary guest account and the account is not locked. Isolated fixed /usr/bin/true
+authorization passes both directly and with the same separate owner/tty-agent
+arrangement, including --disable-internal-agent. PAM reported a conversation
+failure on the original attempt; the installer-specific cause remains unproven. Preserve the unknown journal/inputs and do not replay this job.
+
+Windows checkpoint85 failed before compilation because PowerShell5.1 promoted
+native stderr under `ErrorActionPreference=Stop` with merged redirection.
+The ordinary-user checkpoint87 reproduction independently confirms the warning
+becomes a terminating record and leaves a zero-byte capture. Existing unknown
+MSI jobs remain untouched. This is a fixture failure, not evidence of a product
+helper defect. The exact quick regression passed in the ordinary-user AMD64 guest after root
+corrected capture and direct-child waiting. Checkpoint88 NativeAOT helper
+validation, owner admission and package preflight all pass with exit0. The
+original unknown MSI job is unchanged; successful MSI replacement remains open.
+See the failure ledger for exact RED/GREEN evidence and superseded candidates.
+
+Root booted the existing owned ARM64 AVD on5594, discovered version2.3.2, and
+preserved its data without installing an older APK. The separate new5596 AVD is
+the code73 benchmark comparator. Host memory admission was69% free before these
+2GiB starts; the existing4GiB Tart guest and unrelated environments are preserved.
+
 ## Resumed Native Batch — 2026-09-20
 
 Checkpoint77 was pushed as `c8f30e02f54687d662f26e592ff862038211f310` after

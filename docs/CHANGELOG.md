@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Preserve new update attempts and dismissed state while retaining historical installation receipts.
+- Preserve native stderr and exact child exit codes in Windows verification fixtures.
 
 ## 2.1.13 - 2026-09-20
 

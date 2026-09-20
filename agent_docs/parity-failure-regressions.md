@@ -65,6 +65,40 @@ environment limitation is not a product defect unless the record says otherwise.
 | macOS native bundle copy returns EIO before rename | Native installer persistence | Exact guest worker log records copyfile output EIO; the underlying I/O cause is unproven. | `test_copyfile_eio_at_production_staging_helper_preserves_terminal_failure_evidence` in `scripts/test_macos_install_enospc.py`; actual macOS package CI executes it before packaging, with explicit skips elsewhere. | `checkpoint51/macos-eio-mutation-red.log`: ignoring the production check fails the expected error assertion. `macos-eio-green.log`:6 tests pass. Earlier surrogate probe was invalid and is superseded. | Exact job2958cf24 retained its original app, protected FAILED/PERSISTENCE_FAILED receipt and partial stage; input cleanup preserved evidence. | Successful full replacement remains unproven; partial-stage disposal policy and underlying I/O cause still need resolution. |
 | Failed immutable fixture deleted during manual retry | Agent execution mistake | A worker bypassed the existing-stage rejection and removed the failed pair directory. | Existing builder admission rejects stage reuse; no additional code regression can be claimed for the manual bypass. | Remaining outer logs record failure/rejection; the pair-contained log and stage were lost. | No package had been produced. New retry3 uses a unique path and the same verified runtime/source. | Never chmod/delete frozen inputs to bypass admission. Use a new path, or a supported verified recovery/disposal operation; retain exact deletion/evidence-loss records. |
 
+## Windows native capture regressions — checkpoints87/88
+
+The checkpoint85 NativeAOT probe stopped before compilation when Windows
+PowerShell5.1 promoted harmless dotnet stderr into a terminating error under
+ErrorActionPreference=Stop and merged redirection. The independent ordinary-user
+checkpoint87 baseline reproduced the warning and zero-byte log.
+
+The first candidate lost exit23 after a WaitForExit/Refresh sequence. A second
+candidate using Start-Process -Wait passed simple exit checks but retained the
+build wrapper after native publication. The final helper uses a direct
+Diagnostics.Process, concurrent bounded stream-to-file copies, the direct child's
+exit code, and PowerShell's selected filesystem working directory.
+
+The Windows-only routine test in scripts/test_windows_native_fixture.py covers:
+native stderr with exit0 and exit23, spaces and an empty argument, 256KiB on both
+pipes, a descendant waiting for a post-return acknowledgement, and selected
+working-directory preservation. Native RED/GREEN records under checkpoint88/windows
+include wait-red2.json / wait-green2.json and cwd-red.json / cwd-green.json.
+The first descendant fixture itself retained pipes; wait-red.json / wait-green.json
+are superseded and do not prove the fix. The corrected fixture uses a separately
+launched descendant, so waiting for the whole tree creates the tested causal cycle.
+The exact final routine test body passes in the ordinary-user AMD64 guest.
+On macOS the module runs7 tests with4 explicit Windows skips; those skips are not
+native evidence. Windows package hygiene already runs this module.
+
+The corrected capture path also completed the current-source NativeAOT admission
+probe with SDK10.0.400: helper validation, owner-input admission, package preflight
+and child exit0. See checkpoint88/windows/native-summary.json and probe-progress.json.
+The image SHA256 is
+7e6eb6db8cd1b9ad4f933360067b3a60324026345b8f8320134a880b22ba5c8e.
+This is component evidence, not successful MSI replacement or original-job recovery.
+The older checkpoint87 wrapper6488 is preserved pending scoped fixture cleanup;
+no installer/runtime process was terminated to obtain this result.
+
 ## Expected rejections and incomplete evidence
 
 An unavailable or unsupported response, a missing build prerequisite, a rejected
