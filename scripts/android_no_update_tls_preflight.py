@@ -55,7 +55,12 @@ def public_cli_environment(adb: str, cli: Path, environment=None) -> dict | None
     result = dict(os.environ if environment is None else environment)
     result.pop("DYLD_INSERT_LIBRARIES", None)
     result["PATH"] = str(selected.parent) + os.pathsep + result.get("PATH", os.defpath)
-    if shutil.which("adb", path=result["PATH"]) != str(selected):
+    discovered = shutil.which("adb", path=result["PATH"])
+    try:
+        approved = discovered is not None and os.path.samefile(discovered, selected)
+    except OSError:
+        approved = False
+    if not approved:
         raise RuntimeError("Fixture packaged CLI ADB path does not select the approved binary")
     return result
 

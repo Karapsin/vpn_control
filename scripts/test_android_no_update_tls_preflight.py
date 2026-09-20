@@ -156,6 +156,24 @@ class PreflightScriptTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'absolute ADB'):
             preflight.public_cli_environment('adb', Path('/private/tmp/vpn-control'))
 
+    def test_packaged_cli_adb_discovery_compares_file_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            selected = root / 'adb.exe'
+            selected.write_bytes(b'fixture executable')
+            selected.chmod(0o700)
+            alias = root / 'discovered-ADB.EXE'
+            os.link(selected, alias)
+            other = root / 'other.exe'
+            other.write_bytes(b'different executable')
+            with patch.object(preflight.shutil, 'which', return_value=str(alias)):
+                environment = preflight.public_cli_environment(str(selected), root / 'cli')
+            self.assertEqual(str(root.resolve()), environment['PATH'].split(os.pathsep)[0])
+            for rejected in (str(other), str(root / 'missing.exe'), None):
+                with self.subTest(discovered=rejected), patch.object(preflight.shutil, 'which', return_value=rejected):
+                    with self.assertRaisesRegex(RuntimeError, 'approved binary'):
+                        preflight.public_cli_environment(str(selected), root / 'cli')
+
     @unittest.skipUnless(os.name == 'posix', 'packaged-launcher fixture needs POSIX permissions')
     def test_packaged_cli_subprocesses_receive_selected_adb_environment(self):
         with tempfile.TemporaryDirectory() as temporary:
