@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate fixture ADB discoveries by file identity across Windows path aliases.
 - Preserve existing desktop owners on serve, recover shutdown after GUI crashes, and clean up cancelled macOS installer inputs.
 - Compile macOS installer fault-injection probes during routine checks and preserve terminal-receipt cleanup coverage.
+- Reject expired disposable update-fixture certificates before announcing server readiness.
 
 ## 2.1.12 - 2026-09-16
 

@@ -17,6 +17,7 @@ import ssl
 import stat
 import subprocess
 import tarfile
+import time
 import zipfile
 
 from fixture_environment import extract_readonly_archive, require_jdk17
@@ -898,6 +899,24 @@ def fixture_failure_diagnostic(stage, error):
             "exceptionType": type(error).__name__}
 
 
+def require_fixture_certificate_current(certificate, now=None):
+    """Reject a fixture TLS certificate outside its public validity window."""
+    decoder = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
+    require(callable(decoder),
+            "Fixture TLS certificate validity inspection is unavailable in this Python runtime")
+    try:
+        certificate_info = decoder(str(certificate))
+        valid_from = ssl.cert_time_to_seconds(certificate_info["notBefore"])
+        valid_until = ssl.cert_time_to_seconds(certificate_info["notAfter"])
+    except (OSError, KeyError, TypeError, ValueError, ssl.SSLError) as error:
+        raise ValueError("Fixture TLS certificate validity cannot be read") from error
+    current_time = time.time() if now is None else now
+    require(type(current_time) in (int, float), "Fixture TLS certificate admission time is invalid")
+    require(valid_from <= valid_until, "Fixture TLS certificate validity window is invalid")
+    require(current_time >= valid_from, "Fixture TLS certificate is not yet valid")
+    require(current_time <= valid_until, "Fixture TLS certificate is expired")
+
+
 def serve_connection(request, tls, manifest, resources, manifest_body, emit):
     """Serve one canonical HTTPS-proxy connection with bounded failure evidence."""
     stage = "connect-admission"
@@ -931,6 +950,7 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit):
 
 def serve(directory, certificate, private_key, ready_file, confirmed):
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
+    require_fixture_certificate_current(certificate)
     directory = directory.resolve(strict=True)
     manifest, resources = load_resources(directory)
     body = json.dumps(manifest, separators=(",", ":")).encode()

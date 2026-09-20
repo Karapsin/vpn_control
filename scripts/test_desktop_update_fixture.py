@@ -458,6 +458,49 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                     prepare_desktop_update_fixture.main()
             self.assertEqual(2, error.exception.code)
 
+    def test_expired_certificate_refuses_serve_before_fixture_ready(self):
+        """An expired public fixture certificate cannot advertise a usable server."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            expired = {"notBefore": "Sep  1 00:00:00 2026 GMT",
+                       "notAfter": "Sep  9 00:00:00 2026 GMT"}
+            with patch("prepare_desktop_update_fixture.time.time",
+                       return_value=ssl.cert_time_to_seconds("Sep 20 00:00:00 2026 GMT")), \
+                    patch("prepare_desktop_update_fixture.ssl._ssl._test_decode_cert",
+                          return_value=expired) as decode, \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          side_effect=AssertionError("expired certificate reached fixture resources")), \
+                    patch("prepare_desktop_update_fixture.ssl.SSLContext",
+                          side_effect=AssertionError("expired certificate reached TLS setup")):
+                with self.assertRaisesRegex(ValueError, "expired"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key", ready_file, True)
+            decode.assert_called_once_with(str(directory / "server.pem"))
+            self.assertFalse(ready_file.exists())
+
+    def test_current_certificate_validity_window_is_accepted(self):
+        certificate = {"notBefore": "Sep 19 00:00:00 2026 GMT",
+                       "notAfter": "Oct  3 00:00:00 2026 GMT"}
+        with patch("prepare_desktop_update_fixture.ssl._ssl._test_decode_cert",
+                   return_value=certificate):
+            prepare_desktop_update_fixture.require_fixture_certificate_current(
+                "server.pem", now=ssl.cert_time_to_seconds("Sep 20 00:00:00 2026 GMT"))
+
+    def test_not_yet_valid_certificate_is_rejected_deterministically(self):
+        certificate = {"notBefore": "Sep 21 00:00:00 2026 GMT",
+                       "notAfter": "Oct 21 00:00:00 2026 GMT"}
+        with patch("prepare_desktop_update_fixture.ssl._ssl._test_decode_cert",
+                   return_value=certificate):
+            with self.assertRaisesRegex(ValueError, "not yet valid"):
+                prepare_desktop_update_fixture.require_fixture_certificate_current(
+                    "server.pem", now=ssl.cert_time_to_seconds("Sep 20 00:00:00 2026 GMT"))
+
+    def test_certificate_admission_explains_when_stdlib_decoder_is_unavailable(self):
+        with patch.object(ssl, "_ssl", None):
+            with self.assertRaisesRegex(ValueError, "inspection is unavailable"):
+                prepare_desktop_update_fixture.require_fixture_certificate_current("server.pem")
+
     @unittest.skipUnless(os.name == "posix", "Physical Linux tar fixture requires POSIX file modes")
     def test_two_property_builds_capture_equal_code_and_original_source(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -31,14 +31,17 @@ Checkpoint77 was pushed as `c8f30e02f54687d662f26e592ff862038211f310` after
 full prepush passed. macOS CI35529722794 exposed an outdated embedded test call;
 its correction preserves terminal-receipt cleanup and adds ordinary local
 compile-only coverage. The corrected full seven-test fault suite passes inside the
-owned Mac VM (checkpoint79/macos-ci). Replacement push and exact-SHA CI are pending.
+owned Mac VM (checkpoint79/macos-ci). The repair was pushed as
+`be009403669c0a1203c2f767b7ddf3d677a4bbfb`; all five required exact-SHA workflows passed
+(checkpoint79/macos-ci/commit-result.json).
 The current immutable Mac pair `/private/tmp/vpn-macos-code79` built successfully
 from c8f30e0; subsequent repair changes only the test harness and documentation.
 
 
-The delivered implementation is `94dbd582e0268fb31f4522b3136520efb8c7594c`
-(product2.1.12, five Unreleased notes). All five required workflows succeeded for
-that exact SHA; checkpoint74/commit-alias-result.json contains the managed receipt.
+An earlier fully CI-verified checkpoint is
+`94dbd582e0268fb31f4522b3136520efb8c7594c` (product2.1.12).
+All five required workflows succeeded for that exact SHA;
+checkpoint74/commit-alias-result.json contains the managed receipt.
 The earlier e2e88ad freeze remains the source of the Windows/Linux/Android fixture
 packages below. Native completion is still open.
 
@@ -77,8 +80,11 @@ Naming, repeated-owner idempotence and interrupted chmod have causal regressions
 Independent focused review found no blocking defect; integrated-focused-green
 records60 tests,0 failures and1 platform-specific skip. The final expanded union
 passes64 tests with0 failures and1 Windows-only ACL skip on macOS;
-checkpoint77/final-union-green preserves every XML. Native retained-input cleanup
-revalidation remains open; unknown original jobs and evidence must remain preserved.
+checkpoint77/final-union-green preserves every XML. Installed current-package cleanup now passes in checkpoint81/macos: the exact
+140947456-byte denied input was removed, terminal CANCELLED/installed=false and
+disposition digest remained unchanged, and a fresh owner repeated cleanup with OK.
+The unrelated unknown owner remained alive and OFF. Root verified the exported
+raw-evidence hashes; GUI return/rollback remain separate gates.
 
 Installed macOS checks confirm static commands create no workspace, missing-owner
 status exits2, query-created owners are disconnected/transient, and explicit serve
@@ -86,7 +92,11 @@ stays alive while disconnected. Duplicate serve incorrectly supervised an existi
 owner. The corrected implementation preserves authenticated promotion of a transient
 owner but immediately returns with an existing-owner message. Its causal regression
 records an unwanted second polling request before repair; real process coverage
-checks both transient and persistent cases. Native revalidation remains pending.
+checks both transient and persistent cases. Installed DMG proof now passes in
+checkpoint81/macos: duplicate persistent serve returns0 immediately; settings-show
+creates a transient owner, serve promotes the same epoch, and after35 seconds
+without polling the same owner remains alive and OFF. Root verified8 evidence
+hashes; new owners were publicly quit and original unknown owner preserved.
 
 Installed RPM traffic survived GUI attach, close/reopen and crash with the same
 runtime identity; off succeeded but quit returned CONFLICT for the dead frontend.
@@ -102,11 +112,31 @@ changing activeA/pendingB; no real timings or in-flight cancellation are claimed
 Public off/delete cleanup succeeded. Compare the same source on native ARM64 before
 attributing this to the product; no runtime upgrade or implementation fix was made.
 
+Windows cp78 reached update checking but its retained fixture certificate expired
+September9. Root verified public certificate dates, renewed only disposable inputs,
+then confirmed ordinary-user public check/download/READY for target2.1.13 in cp80
+(controller7a39aed3-e5df-44f1-94fd-36c22408ad9d, downloaded130986356 bytes).
+An installation command was launched once before the remote SSH route became
+unreachable. The gateway recovered and the Arch key was unlocked through its normal
+prompt, creating task-owned socket vpn-control-arch81.sock. The original install
+operation/prompt/outcome is being inspected; it must never be replayed on uncertainty.
+The old cp78 owner was verified OFF and quit through public control. Certificate
+admission now has a quick causal regression; no global trust settings changed.
+
+Linux checkpoint79's corrupt-package scenario did not produce RPM failure proof:
+authorization was not completed and the client returned OUTCOME_UNKNOWN.
+Loss of the original PTY is a hypothesis; the exact cause remains under review.
+Preserve UNKNOWN job6bc79509-a517-40b4-89be-ae3f945a47e9, operation
+908be025-d091-4a53-9302-f459773762d3 and workspace under
+/home/vpnfixture/cp79-rpm-failure. Last observation: owner16278 and watcher16518
+remain, no installer/package-manager/runtime; installedRPM2.1.12 verifies clean.
+The corrected fixture must own a durable input channel through terminal handoff.
+
 | Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
 | Integration | root | Desktop lifecycle/cleanup fixes, evidence, docs, host builds and delivery | All shared files | One host Gradle invocation | Final focused union, prepush and checkpoint delivery |
-| Windows MSI | windows_install78 | Ignored native installer/evidence | No source edits | Owned Windows AMD64 guest6GiB on Arch | Ordinary-session HTTPS ready; correct keyboard launch, then public update/recovery |
-| macOS | root | Frozen package/native evidence | Root owns source | Owned Tart4GiB guest | New package cleanup and duplicate-serve verification |
+| Windows MSI | root | Ignored native installer/evidence | No source edits | Owned Windows AMD64 guest6GiB on Arch | Public check/download READY; install accepted as09aa1b2b-94cc-4b64-a6ab-9908014d59c1; SSH restored, inspect original outcome |
+| macOS | root; fixture_cert80 retired | Installed-package evidence reviewed | Root owns source | Owned Tart4GiB guest | Cleanup/repeated-owner, persistent duplicate and transient promotion pass; remaining GUI/traffic/rollback gates |
 | Linux | root; linux_lifecycle77 retired | Native evidence and accepted shutdown fix | Root owns source | Owned Fedora4GiB guest | New-package crash/quit and remaining RPM failures |
 | Android | android_benchmark78 retired | Completed checkpoint78 evidence | No source edits | Remote2GiB API35 AVD5680 remains live | Native ARM64 comparison; remaining acceptance matrix |
 | Review | serve_review79/mac_cleanup_review79 retired | Read-only bounded reviews complete | No edits | No VM ownership | Serve promotion retained; cleanup review has no blocking finding |
