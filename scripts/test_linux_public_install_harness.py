@@ -16,10 +16,46 @@ from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_i
 from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
                                        observe_terminal_process, terminal_password_prompt_seen, terminal_install_handoff,
+                                       terminal_password_input_ready,
                                        timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "requires a private POSIX PTY")
+    def test_password_response_waits_for_terminal_input_flush_and_echo_disable(self):
+        import pty
+        import termios
+        master, slave = pty.openpty()
+        try:
+            prompt = b"Password: "
+            os.write(slave, prompt)
+            observed = os.read(master, len(prompt))
+            self.assertTrue(terminal_password_prompt_seen(observed))
+            # Polkit prints/flushes its prompt before changing terminal attributes
+            # with TCSAFLUSH. A response sent at this point can be discarded.
+            self.assertFalse(terminal_password_input_ready(observed, master))
+            attributes = termios.tcgetattr(slave)
+            # ECHOE/ECHOK are inert while ECHO is disabled and commonly remain
+            # set by terminal programs. They must not block an otherwise safe
+            # post-flush response.
+            attributes[3] |= termios.ECHOE | termios.ECHOK
+            attributes[3] &= ~(termios.ECHO | termios.ECHONL)
+            termios.tcsetattr(slave, termios.TCSAFLUSH, attributes)
+            self.assertTrue(terminal_password_input_ready(observed, master))
+            attributes[3] |= termios.ECHONL
+            termios.tcsetattr(slave, termios.TCSAFLUSH, attributes)
+            self.assertFalse(terminal_password_input_ready(observed, master))
+            attributes[3] &= ~termios.ECHONL
+            termios.tcsetattr(slave, termios.TCSAFLUSH, attributes)
+            self.assertTrue(terminal_password_input_ready(observed, master))
+            self.assertFalse(terminal_password_input_ready(b"trustStorePassword=diagnostic", master))
+            os.write(master, b"synthetic-fixture-response\n")
+            self.assertEqual(b"synthetic-fixture-response\n", os.read(slave, 128))
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertFalse(terminal_password_input_ready(prompt, master))
+
     def test_complete_handoff_survives_terminal_close_race(self):
         job = "b32f0d40-f03f-4af7-8219-808753e05ee8"
         operation = "e0a17c7e-b47c-486e-944c-274e3343e883"

@@ -1,8 +1,10 @@
 import sys
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -14,10 +16,80 @@ from windows_native_fixture import (
     fixture_stream_reader,
     fixture_proxy_port_selector,
     fixture_native_process_capture,
+    native_install_helper_fixture_inputs,
 )
 
 
 class WindowsNativeFixtureTest(unittest.TestCase):
+    def test_install_helper_fixture_inventory_uses_current_project_declarations(self):
+        repository = Path(__file__).parents[1]
+        inputs = native_install_helper_fixture_inputs(repository)
+        self.assertIn("desktopApp/native/windows/InstallHelper/InstallHelper.csproj", inputs)
+        self.assertIn("desktopApp/native/windows/InstallHelper/loader.manifest", inputs)
+        self.assertIn("desktopApp/native/windows/Directory.Build.props", inputs)
+        self.assertIn("desktopApp/native/windows/global.json", inputs)
+        project = ElementTree.parse(
+            repository / "desktopApp/native/windows/InstallHelper/InstallHelper.csproj"
+        )
+        declared_sources = {
+            (repository / "desktopApp/native/windows/InstallHelper" /
+             entry.attrib["Include"].replace("\\", "/")).resolve().relative_to(repository).as_posix()
+            for entry in project.findall(".//Compile")
+        }
+        self.assertTrue(declared_sources.issubset(set(inputs)))
+
+    def test_install_helper_fixture_inventory_follows_renamed_manifest_and_rejects_missing_input(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            helper = root / "desktopApp/native/windows/InstallHelper"
+            source = root / "desktopApp/src/main/resources/renamed-source.cs"
+            helper.mkdir(parents=True)
+            source.parent.mkdir(parents=True)
+            (root / "desktopApp/native/windows/Directory.Build.props").write_text("<Project />", encoding="utf-8")
+            (root / "desktopApp/native/windows/global.json").write_text("{}", encoding="utf-8")
+            (helper / "renamed-loader.manifest").write_text("manifest", encoding="utf-8")
+            source.write_text("class Source {}", encoding="utf-8")
+            project = helper / "InstallHelper.csproj"
+            project.write_text(
+                "<Project><PropertyGroup><ApplicationManifest>renamed-loader.manifest</ApplicationManifest>"
+                "</PropertyGroup><ItemGroup><Compile Include=\"../../../src/main/resources/renamed-source.cs\" />"
+                "</ItemGroup></Project>", encoding="utf-8",
+            )
+            inputs = native_install_helper_fixture_inputs(root)
+            self.assertIn("desktopApp/native/windows/InstallHelper/renamed-loader.manifest", inputs)
+            self.assertIn("desktopApp/src/main/resources/renamed-source.cs", inputs)
+            (helper / "renamed-loader.manifest").unlink()
+            with self.assertRaisesRegex(FileNotFoundError, "renamed-loader.manifest"):
+                native_install_helper_fixture_inputs(root)
+
+    def test_install_helper_fixture_inventory_rejects_escape_before_build(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            helper = root / "desktopApp/native/windows/InstallHelper"
+            helper.mkdir(parents=True)
+            (root / "desktopApp/native/windows/Directory.Build.props").write_text("<Project />", encoding="utf-8")
+            (root / "desktopApp/native/windows/global.json").write_text("{}", encoding="utf-8")
+            (helper / "InstallHelper.csproj").write_text(
+                "<Project><PropertyGroup><ApplicationManifest>../../../../../outside.manifest</ApplicationManifest>"
+                "</PropertyGroup></Project>", encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "escapes repository root"):
+                native_install_helper_fixture_inputs(root)
+
+    def test_install_helper_fixture_inventory_rejects_msbuild_expressions(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            helper = root / "desktopApp/native/windows/InstallHelper"
+            helper.mkdir(parents=True)
+            (root / "desktopApp/native/windows/Directory.Build.props").write_text("<Project />", encoding="utf-8")
+            (root / "desktopApp/native/windows/global.json").write_text("{}", encoding="utf-8")
+            (helper / "InstallHelper.csproj").write_text(
+                "<Project><PropertyGroup><ApplicationManifest>$(ManifestName)</ApplicationManifest>"
+                "</PropertyGroup></Project>", encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "unsupported InstallHelper input expression"):
+                native_install_helper_fixture_inputs(root)
+
     def test_accepts_each_owned_task_prefix_and_derives_exact_private_root(self):
         local = r"C:\Users\visualagent\AppData\Local"
         suffix = "1b1515e2-2fb1-4483-a280-0b2264d058dc"

@@ -25,19 +25,48 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint89
+## Current continuation — checkpoint91
 
-Latest pushed checkpoint is `886e60dcec39fc2d0270a1dfd02a721c7f4ce6c0`
-(product2.1.13). Its managed checkpoint88 CI watcher remains active; Fast Checks,
-Android, Linux and macOS have succeeded, with Windows packaging pending at
-this observation. The preceding ee80dcf checkpoint passed all five required
-workflows. Full parity remains incomplete.
+Latest delivered checkpoint is `c85c00cc07ffc0ede60d102caa1974f09511e72b`
+(product2.1.13). Managed checkpoint90/commit-result.json confirms all five required
+exact-SHA workflows succeeded, as did the preceding886e60d checkpoint.
+Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Windows admission89 | root | Ignored native fixtures | Everything else stays with root | Root exclusively operates Windows AMD64 VM | Original pending input admission/preflight passes; synthetic worker readiness publication passes; coordinator handoff remains open |
+| Windows bootstrap91 | root; windows_inputs91 retired | Windows native fixture input helper/tests; ignored native probes | Root owns all integration | Root exclusively operates Windows AMD64 VM | Ordinary and elevated NativeAOT original-user bootstrap pass from protected fixture; root now compares actual per-user image admission; real MSI job untouched |
 | Linux current85 | root | Ignored package/native fixtures | Product integration, docs and delivery | Fresh Fedora2326 only; preserve original Fedora2316 unknown job | Current-source2.1.13 base installed and rpm verification passed; damaged2.1.14 attempt returned unknown before protected handoff; original job preserved |
-| Android fixture90 | android_fixture90 retired; root integration | scripts/test_android_benchmark_fixture.py | Root owns integration and docs | No VM operations; owned5596 retained | Native ARM64 benchmark passes after target alignment;5 routine tests pass including actual-default SOCKS admission and restricted egress |
+| Linux prompt91 | root; linux_prompt91 retired | Linux public-install harness/tests | Root owns integration and docs | No active worker; Fedora2326 no-op fixture completed | Prompt readiness regression passes; actual packaged Java no-op authorization passes; historical installer cause remains unproven |
+| Android fixture90 | completed | Delivered default-target regression | Root owns integration and docs | No VM operations; owned5596 retained | Native ARM64 benchmark passes after target alignment;5 routine tests pass including actual-default SOCKS admission and restricted egress |
+
+Checkpoint91 proves the original-user bootstrap with the same NativeAOT image
+SHA256 `05510b3c22df1fdd6301dba4f7af9918dce82ff2cfa004ae3dfa3682e459e20a`
+(case-insensitive hex): ordinary and same-user elevated runs return0 with exact
+non-elevated child identity and bounded pre-admission cleanup. See
+checkpoint91/windows/ordinary-result.json and elevated-progress2.json. This
+protected ProgramData test image does not prove the actual per-user installation
+path, a different approving administrator, or MSI replacement. Checkpoint92's
+read-only image-acl.json confirms the real helper is original-user-owned under
+AppData; its native self-pin currently uses machine-only trust. The same image then fails from an isolated original-user-owned AppData directory
+with exit91 / Installer mutation rights rejected (checkpoint92/windows/peruser-result.json).
+This reproduces the self-pin incompatibility without an installer role; the
+production fix and routine causal regression remain next. The original unknown
+job is preserved.
+
+The initial checkpoint91 fixture build omitted loader.manifest and failed CS1926.
+The replacement frozen fixture uses an inventory derived from the actual helper
+project; build and native bootstrap pass. The reusable inventory and four quick
+regressions are pending delivery. They support native probe staging, not a change
+to production package-building behavior.
+
+Linux checkpoint91 adds a PTY response guard that requires both the exact prompt
+and disabled echo after the terminal input flush. Its quick regression passes;
+the actual packaged Java no-op authorization passes with the guard, child/owner
+exit0, and no retained probe processes. See
+checkpoint91/linux-analysis/java-auth-ready-receipt.json. This prevents a fixture
+race but does not establish it as the historical checkpoint85 installer cause.
+The helper is for interactive native fixture drivers; the tracked noninteractive
+public-install harness does not automatically enter credentials.
 
 Linux current pair source fingerprint
 `cf5e2b517284a76c7da7e430dc6f4b83998b3d1bfac635e95ee7e7d65219d738`

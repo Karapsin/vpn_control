@@ -117,11 +117,34 @@ _PASSWORD_PROMPT = re.compile(rb"(?:^|[\r\n])Password:[ \t]*$")
 def terminal_password_prompt_seen(terminal_bytes):
     """Recognize only a current terminal password prompt, never diagnostics.
 
-    Callers retain their rolling PTY buffer and may write a credential exactly
-    once only after this returns true.  In particular, JVM options such as
-    ``trustStorePassword=...`` are not an authorization prompt.
+    This checks prompt text only. Automated callers must additionally use
+    terminal_password_input_ready before writing a response. In particular,
+    JVM options such as ``trustStorePassword=...`` are not a prompt.
     """
     return _PASSWORD_PROMPT.search(_ANSI_TERMINAL_ESCAPE.sub(b"", terminal_bytes)) is not None
+
+
+def terminal_password_input_ready(terminal_bytes, terminal_fd):
+    """Admit a fixture response after polkit's post-prompt input flush.
+
+    Poll this even when no new output arrives. Polkit prints its prompt before
+    TCSAFLUSH disables echo; writing immediately can lose or echo the response.
+    This only inspects terminal attributes and never reads a credential.
+    """
+    if not terminal_password_prompt_seen(terminal_bytes):
+        return False
+    try:
+        import termios
+    except ImportError:
+        return False
+    try:
+        # ECHOE and ECHOK only modify canonical echo behavior when ECHO is
+        # enabled.  Programs commonly leave those inert flags set when they
+        # disable input echo.  ECHONL can still emit the submitted newline.
+        echo_flags = termios.ECHO | termios.ECHONL
+        return termios.tcgetattr(terminal_fd)[3] & echo_flags == 0
+    except (termios.error, OSError, ValueError):
+        return False
 
 
 def terminal_install_handoff(observation):

@@ -1,7 +1,62 @@
 """Shared validation for task-owned Windows native fixture launchers."""
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 import re
 import uuid
+from xml.etree import ElementTree
+
+
+def native_install_helper_fixture_inputs(repository_root: Path) -> tuple[str, ...]:
+    """Return the bounded, declared inputs for an InstallHelper fixture build.
+
+    This is deliberately an inventory reader, not an MSBuild evaluator.  The
+    helper project supports only literal ApplicationManifest and Compile Include
+    declarations, keeping fixture staging tied to the production project without
+    silently accepting expressions or paths outside the repository.
+    """
+    root = Path(repository_root).resolve()
+    project = (root / "desktopApp/native/windows/InstallHelper/InstallHelper.csproj").resolve()
+    try:
+        project_relative = project.relative_to(root)
+    except ValueError as error:
+        raise ValueError("InstallHelper project must remain under the repository root") from error
+    if not project.is_file():
+        raise FileNotFoundError(f"InstallHelper project is missing: {project_relative.as_posix()}")
+
+    try:
+        xml_root = ElementTree.parse(project).getroot()
+    except ElementTree.ParseError as error:
+        raise ValueError("InstallHelper project XML is invalid") from error
+
+    declarations: list[str] = []
+    manifests = [element.text for element in xml_root.findall(".//ApplicationManifest")]
+    if len(manifests) != 1 or not manifests[0] or not manifests[0].strip():
+        raise ValueError("InstallHelper must declare exactly one ApplicationManifest")
+    declarations.append(manifests[0].strip())
+    for element in xml_root.findall(".//Compile"):
+        include = element.get("Include")
+        if include is None or not include.strip():
+            raise ValueError("InstallHelper Compile entries require a literal Include")
+        declarations.append(include.strip())
+
+    inputs = [project, project.parent.parent / "Directory.Build.props", project.parent.parent / "global.json"]
+    for declaration in declarations:
+        if "$" in declaration or "*" in declaration or "?" in declaration:
+            raise ValueError(f"unsupported InstallHelper input expression: {declaration}")
+        candidate = (project.parent / Path(declaration.replace("\\", "/"))).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as error:
+            raise ValueError(f"InstallHelper input escapes repository root: {declaration}") from error
+        inputs.append(candidate)
+
+    relative_inputs: list[str] = []
+    for input_path in inputs:
+        if not input_path.is_file():
+            raise FileNotFoundError(f"InstallHelper fixture input is missing: {input_path.relative_to(root).as_posix()}")
+        relative = input_path.relative_to(root).as_posix()
+        if relative not in relative_inputs:
+            relative_inputs.append(relative)
+    return tuple(relative_inputs)
 
 _TASK_NAME = re.compile(
     r"^VpnInstaller(?:Entry|Close|Preflight)32-"

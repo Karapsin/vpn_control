@@ -66,6 +66,37 @@ environment limitation is not a product defect unless the record says otherwise.
 | macOS native bundle copy returns EIO before rename | Native installer persistence | Exact guest worker log records copyfile output EIO; the underlying I/O cause is unproven. | `test_copyfile_eio_at_production_staging_helper_preserves_terminal_failure_evidence` in `scripts/test_macos_install_enospc.py`; actual macOS package CI executes it before packaging, with explicit skips elsewhere. | `checkpoint51/macos-eio-mutation-red.log`: ignoring the production check fails the expected error assertion. `macos-eio-green.log`:6 tests pass. Earlier surrogate probe was invalid and is superseded. | Exact job2958cf24 retained its original app, protected FAILED/PERSISTENCE_FAILED receipt and partial stage; input cleanup preserved evidence. | Successful full replacement remains unproven; partial-stage disposal policy and underlying I/O cause still need resolution. |
 | Failed immutable fixture deleted during manual retry | Agent execution mistake | A worker bypassed the existing-stage rejection and removed the failed pair directory. | Existing builder admission rejects stage reuse; no additional code regression can be claimed for the manual bypass. | Remaining outer logs record failure/rejection; the pair-contained log and stage were lost. | No package had been produced. New retry3 uses a unique path and the same verified runtime/source. | Never chmod/delete frozen inputs to bypass admission. Use a new path, or a supported verified recovery/disposal operation; retain exact deletion/evidence-loss records. |
 
+## Native probe preparation and prompt guards — checkpoint91
+
+The ignored Windows NativeAOT bootstrap probe omitted the production project's
+ApplicationManifest and failed with CS1926 before any helper execution. The new
+`native_install_helper_fixture_inputs` reads literal manifest/source declarations
+and requires project, SDK and build properties before staging. Routine
+`scripts/test_windows_native_fixture.py` covers the current project, renamed or
+missing manifest, repository escape and unsupported expressions. The old staging
+inventory fails checkpoint91/windows/input-red.log; input-green.log runs11 tests
+with4 Windows-only skips. The replacement frozen native bundle includes all
+inputs and builds successfully (build-complete-progress.json); ordinary and
+same-user elevated bootstrap runs pass. This is ignored probe preparation
+coverage, not a production package-builder repair or MSI installation proof.
+
+The Linux prompt guard previously considered prompt text sufficient to send an
+automated response. Polkit's text listener prints the prompt before TCSAFLUSH
+disables echo. A private-PTY deterministic test now reproduces the interval and
+requires `terminal_password_input_ready` before writing; closed descriptors fail
+closed and polling must continue even without new output. Routine release hygiene
+already executes `scripts/test_linux_public_install_harness.py`.
+Checkpoint91/linux-analysis/prompt-ready-red.log replays the text-only policy;
+prompt-ready-green.log passes19 tests. The isolated packaged Java authorization
+probe using this guard passes with child/owner exit0 and no retained probe
+processes (java-auth-ready-receipt.json). The historical checkpoint85 PAM
+conversation failure remains unexplained; this race is not asserted as its cause.
+Independent checkpoint92 review reproduced a false rejection when ECHOE/ECHOK
+remain set while ECHO/ECHONL are disabled. The guard now checks only effective
+echo flags, and the same routine PTY test retains the inert flags and separately
+rejects ECHONL. checkpoint92/linux-prompt/red.json and green.json preserve
+failing/passing evidence. No credential is retained in terminal logs or regression inputs.
+
 ## Windows native capture regressions — checkpoints87/88
 
 The checkpoint85 NativeAOT probe stopped before compilation when Windows
