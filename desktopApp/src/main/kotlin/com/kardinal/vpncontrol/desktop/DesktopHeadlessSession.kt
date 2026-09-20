@@ -165,8 +165,15 @@ internal class DesktopHeadlessSession(
                     com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_CHECK,
                     com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_DOWNLOAD,
                     com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL) }
-                pending.forEach { operations.cancelResponse(it.id) }
-                pending.forEach { operations.waitResponse(it.id) }
+                val cancellations = pending.map { it to operations.cancelResponse(it.id) }
+                // Recovery can retain an installer whose actual native owner was lost. It must
+                // remain observable and block duplicate installs, but no local job can cancel
+                // it. Wait only for cancellations accepted by this owner so a synchronous
+                // request returns its bounded unknown outcome instead of waiting forever.
+                cancellations.filter { (_, response) -> response.success }
+                    .forEach { (operation, _) -> operations.waitResponse(operation.id) }
+                if (cancellations.any { (_, response) -> !response.success })
+                    return@execute DesktopCliResponse.failure("OUTCOME_UNKNOWN", 2)
                 // Dismiss only after native IO/download cleanup has completed, not when cancellation is merely requested.
                 executeCommand(DesktopCliCommand.UpdatesDismiss)
             }

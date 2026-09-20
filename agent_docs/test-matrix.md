@@ -225,6 +225,12 @@ nondebuggable API29/API35 native scenarios. Relabel only newly created, validate
 staging entries to the captured certificate-store context; never change system
 certificate files, SELinux policy/enforcement, or host trust.
 
+`scripts/test_android_installer_lifecycle.py` runs in release hygiene. Exercise
+the real argument-to-action path so `--continue-file` reaches the installer
+callback without falling back to stdin. Keep artifact identity, private callback
+admission and cleanup coverage alongside it. This tests fixture coordination,
+not OS confirmation or installer recovery; retain the API29/API35 native cases.
+
 `scripts/test_macos_fixture_owner_launch.py` runs in release hygiene. The actual
 launcher checks the active console identity and GUI bootstrap session before an
 ordinary-user owner is launched through `launchctl asuser`; failed preflight must

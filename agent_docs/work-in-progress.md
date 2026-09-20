@@ -25,7 +25,68 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Code-First Integration Batch
+## Resumed Native Batch — 2026-09-20
+
+The frozen implementation is `e2e88ada3079371e0a9d0ca72b161aa4a1cf1603`
+(product2.1.12, two Unreleased notes). All five required workflows succeeded for
+that SHA; checkpoint69 contains the managed prepush and delivery receipts.
+The source worktree was clean on resumption. Native completion is still open.
+
+Checkpoint74 now contains a focused integration batch awaiting managed delivery:
+desktop cancellation returns promptly when a recovered unknown installer cannot
+be cancelled, and a reusable Android installer driver forwards file-based
+continuation into its action. The desktop causal RED is a virtual-time timeout;
+31 focused desktop tests pass after the fix. The Android driver has original-code
+RED evidence and10 passing quick tests, wired into release hygiene. See the
+failure ledger for exact paths and Windows-mocking limitations. Frozen native
+packages below still describe e2e88ad; fixed-package revalidation is required.
+
+| Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
+| --- | --- | --- | --- | --- | --- |
+| Integration | root | Evidence review, docs, host builds and delivery | All shared files unless explicitly transferred | One host Gradle invocation | Review exact native records; batch proven fixes |
+| Linux RPM | linux_gui74 | Ignored native fixture/evidence | No product edits | One owned Linux guest4GiB maximum; transfer Ubuntu artifacts before Fedora boot | Current RPM installation/recovery, then fresh GUI worker handoff |
+| Windows MSI | windows_install74 | Ignored native installer/evidence | No product edits | Owned Windows AMD64 guest6GiB on Arch | Use verified code72 pair for public installation/recovery |
+| macOS installation | root | Current-package native installer evidence | Shared source remains root-owned | Owned control53 VM, sole local VM,4GiB maximum | Recovered original unknown job after unexpected VM stop; preserve records, no installer replay |
+| Android driver | android_driver74 retired; root integration | Installer driver and quick tests | Root owns routine wiring | No emulator while macOS uses the local slot | New2.1.14 fixture APK built and verified; corrected driver awaits native use |
+| Desktop cancellation | cancel_recovery74 retired; root integration | HeadlessSession and regression | Root owns remaining shared boundaries | Host tests complete |31 passing focused tests; fixed-package revalidation remains |
+
+These are fresh bounded Terra/medium assignments. Earlier worker names below are
+historical. The ignored checkpoint70 ownership record tracks current execution;
+capacity measurements from September16 must not authorize new starts. Root restored
+the normal Arch SSH hop on September20 using the authorized key passphrase, without
+changing guest or installer state.
+
+Root independently verified all22 exported Linux evidence hashes and the exact
+protected-success/public-recovery tuple for job1984e6b7-b668-4ab4-95b4-a93af47f817e,
+operation65da4189-d491-4343-956e-72e0a2347057. A distinct replacement owner recovered
+the original request and installed2.1.13; see checkpoint70/Linux/root-review.json.
+This proves the current DEB update/recovery, not transient startup or GUI traffic.
+
+API35 public cancellation is confirmed for receipt
+d8672b66-ca34-423f-9a02-58fa754db70f/session657342161. The separate observation124
+failed with `Can't find service: packageinstaller`; it does **not** prove native
+session disposal. Keep that check open. See
+checkpoint70/android/cancellation-root-review.json. Independent cold-owner
+confirmation redisplay and subsequent exact target installation are separately
+reviewed in the existing checkpoint70 Android root-review records.
+
+Windows code72 already contained complete successful nativeAMD64 builds after the
+interruption. Root verified exported build records and independent guest MSI
+hashes against the same-code pair receipt; checkpoint73/windows/root-review.json.
+The later wrapper's existing-directory failure must not trigger another build.
+Android target2.1.14 is at `/private/tmp/vpn-android-code73`; it reuses the exact
+installed2.1.13 base bytes and compatible signer. Root verified both package
+hashes and unchanged runtime bytes in checkpoint73/android/root-review.json.
+
+macOS operation3d0f4c35-8184-431e-90c7-de57163f1402, job
+33db51ee-dc08-4f6a-81c4-c37ae76a0a02 remains unknown after the VM stopped before a
+confirmed cancellation. Earlier screenshot disappearance was not proof of Cancel:
+the wallpaper gesture can hide the prompt. Root restarted the positively stopped
+owned VM with detached logging and recovered the exact original tuple under a new
+controller. The subsequent public `updates cancel` request exposed the bounded
+response defect now covered by the new regression; no installer was replayed.
+
+## Completed Code-First Integration Batch
 
 The user requested completing all known implementation work before the next broad
 native cycle. Finish source gaps in parallel, use cheap causal regressions while

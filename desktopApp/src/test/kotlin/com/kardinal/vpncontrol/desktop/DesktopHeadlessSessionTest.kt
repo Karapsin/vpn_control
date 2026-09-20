@@ -10,6 +10,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -212,6 +213,40 @@ class DesktopHeadlessSessionTest {
         assertEquals(130, runner.waitResponse(id).exitCode)
         assertTrue(runner.cancelResponse(id).success)
         assertEquals("NOT_FOUND", runner.cancelResponse("missing").message)
+    }
+
+    @Test
+    fun updatesCancelReturnsUnknownWithoutWaitingForAnUncancellableRecoveredInstall() = runTest {
+        val recovered = DesktopInstallCorrelationRecord(
+            DesktopInstallCorrelation("previous-owner", "install-request", "install-operation"),
+            "00000000-0000-0000-0000-000000000001", "0".repeat(64))
+        var dismissals = 0
+        val session = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { command ->
+            assertEquals(DesktopCliCommand.UpdatesDismiss, command)
+            dismissals++
+            DesktopCliResponse.success("")
+        }, {}, controllerId = "replacement-owner", install = DesktopControlInstallActions(
+            prepare = { _, _ -> error("Recovered install must not be replayed") },
+            recover = { Result.success(listOf(DesktopInstallCorrelationRecovery(
+                recovered, null, com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN))) },
+            cancel = { error("Recovered install has no cancellable owner") },
+        ))
+        try {
+            val response = withTimeout(1_000) {
+                session.execute(DesktopCliCommand.ControlSubmit(com.kardinal.vpncontrol.model.ControlRequest(
+                    "cancel-request", com.kardinal.vpncontrol.model.ControlCommand(
+                        com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_CANCEL),
+                    controllerId = "replacement-owner")))
+            }
+            val result = com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(response.message)
+            assertEquals(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN, result.code)
+            assertEquals(false, result.final)
+            assertEquals(2, response.exitCode)
+            assertEquals(0, dismissals)
+            val install = session.operationSnapshot().single { it.id == "install-operation" }
+            assertEquals(com.kardinal.vpncontrol.model.ControlOperationPhase.RUNNING, install.phase)
+            assertEquals(false, install.cancellable)
+        } finally { session.close() }
     }
 
     @Test

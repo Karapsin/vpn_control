@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Reject interactive Android installer drivers without terminal input before fixture setup.
 - Preserve rendered benchmark identity and committed operation outcomes; harden installer retries and native fixture build readiness.
+- Return promptly when recovered installations cannot be cancelled and preserve Android installer fixture continuation.
 
 ## 2.1.12 - 2026-09-16
 
