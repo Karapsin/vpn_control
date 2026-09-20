@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -23,8 +24,8 @@ def record(code, final, operation=None):
     return {"argv": [], "exit": driver.EXIT[code], "response": response, "stderr": ""}
 
 
-def argv(root, output, callback=None):
-    values = ["driver", "--adb", str(root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
+def argv(root, output, callback=None, adb=None):
+    values = ["driver", "--adb", str(adb or root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
         "--device-port", "45635", "--cli", str(root / "cli"), "--ca-certificate", str(root / "ca.pem"),
         "--leaf-certificate", str(root / "leaf.pem"), "--private-key", str(root / "leaf.key"),
         "--output", str(output), "--base-apk", str(root / "base.apk"), "--base-sha256", "base-hash",
@@ -146,10 +147,22 @@ class InstallerLifecycleTest(unittest.TestCase):
             launched.assert_not_called()
 
     def test_driver_pins_packaged_cli_to_absolute_adb_before_fixture_launch(self):
+        self.assert_driver_pins_adb("adb.exe" if os.name == "nt" else "adb")
+
+    def test_driver_pins_adb_with_windows_executable_discovery(self):
+        original_which = shutil.which
+        def windows_lookup(*args, **kwargs):
+            with patch.object(sys, "platform", "win32"), patch.dict(os.environ, {"PATHEXT": ".exe"}), \
+                 patch.object(shutil, "_winapi", SimpleNamespace(NeedCurrentDirectoryForExePath=lambda _: False), create=True):
+                return original_which(*args, **kwargs)
+        with patch.object(driver.tls.shutil, "which", side_effect=windows_lookup):
+            self.assert_driver_pins_adb("adb.exe")
+
+    def assert_driver_pins_adb(self, executable_name):
         class Tty:
             def isatty(self): return True
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary); output = root / "output"; adb = root / "adb"; adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
+            root = Path(temporary); output = root / "output"; adb = root / executable_name; adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
             observed = []
             original = driver.tls.public_cli_environment
             def child_environment(selected, cli):
@@ -157,7 +170,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             with patch.object(driver.tls, "public_cli_environment", side_effect=child_environment), \
                  patch.object(driver.tls, "require_artifact_hash"), \
                  patch.object(driver.fixture, "launch_supervised_fixture", side_effect=RuntimeError("LAUNCHED")), \
-                 patch.object(sys, "argv", argv(root, output)), patch.object(sys, "stdin", Tty()):
+                 patch.object(sys, "argv", argv(root, output, adb=adb)), patch.object(sys, "stdin", Tty()):
                 with self.assertRaisesRegex(RuntimeError, "LAUNCHED"):
                     driver.main()
             self.assertEqual(str(adb.resolve().parent) + os.pathsep + "/missing", observed[0]["PATH"])
