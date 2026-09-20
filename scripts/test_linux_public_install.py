@@ -110,6 +110,20 @@ def launch_fixture_owner(launcher, workspace, log, environment):
                             start_new_session=True)
 
 
+_ANSI_TERMINAL_ESCAPE = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
+_PASSWORD_PROMPT = re.compile(rb"(?:^|[\r\n])Password:[ \t]*$")
+
+
+def terminal_password_prompt_seen(terminal_bytes):
+    """Recognize only a current terminal password prompt, never diagnostics.
+
+    Callers retain their rolling PTY buffer and may write a credential exactly
+    once only after this returns true.  In particular, JVM options such as
+    ``trustStorePassword=...`` are not an authorization prompt.
+    """
+    return _PASSWORD_PROMPT.search(_ANSI_TERMINAL_ESCAPE.sub(b"", terminal_bytes)) is not None
+
+
 def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=None):
     """Observe a single already-started terminal process without replaying it.
 

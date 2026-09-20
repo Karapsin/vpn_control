@@ -15,10 +15,21 @@ import zipfile
 from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_identity, version_build
 from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
-                                       observe_terminal_process, timed_update_command, verify_recovered_install)
+                                       observe_terminal_process, terminal_password_prompt_seen,
+                                       timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_terminal_password_admission_rejects_diagnostics_and_waits_for_fragmented_ansi_prompt(self):
+        # This is the checkpoint79 causal vector: the old ignored driver used
+        # `b"password" in data.lower()`, which admitted a JVM trust-store
+        # diagnostic before polkit had displayed a prompt.
+        received = b"Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStorePassword=fixture\n"
+        self.assertFalse(terminal_password_prompt_seen(received))
+        self.assertFalse(terminal_password_prompt_seen(received + b"Password: diagnostic text\n"))
+        self.assertFalse(terminal_password_prompt_seen(received + b"\x1b[1;31mPass"))
+        self.assertTrue(terminal_password_prompt_seen(received + b"\x1b[1;31mPassword: "))
+
     def test_arch_recovery_rejects_alternate_install_path_before_fixture_or_process_access(self):
         linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)
         with mock.patch("test_linux_public_install.os", linux), \

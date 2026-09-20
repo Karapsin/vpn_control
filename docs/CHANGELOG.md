@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve existing desktop owners on serve, recover shutdown after GUI crashes, and clean up cancelled macOS installer inputs.
 - Compile macOS installer fault-injection probes during routine checks and preserve terminal-receipt cleanup coverage.
 - Reject expired disposable update-fixture certificates before announcing server readiness.
+- Recognize real Linux fixture authorization prompts without mistaking JVM diagnostics for credential requests.
 
 ## 2.1.12 - 2026-09-16
 

@@ -123,14 +123,24 @@ operation/prompt/outcome is being inspected; it must never be replayed on uncert
 The old cp78 owner was verified OFF and quit through public control. Certificate
 admission now has a quick causal regression; no global trust settings changed.
 
-Linux checkpoint79's corrupt-package scenario did not produce RPM failure proof:
-authorization was not completed and the client returned OUTCOME_UNKNOWN.
-Loss of the original PTY is a hypothesis; the exact cause remains under review.
-Preserve UNKNOWN job6bc79509-a517-40b4-89be-ae3f945a47e9, operation
-908be025-d091-4a53-9302-f459773762d3 and workspace under
-/home/vpnfixture/cp79-rpm-failure. Last observation: owner16278 and watcher16518
-remain, no installer/package-manager/runtime; installedRPM2.1.12 verifies clean.
-The corrected fixture must own a durable input channel through terminal handoff.
+Linux checkpoint79's corrupt-package scenario did not produce RPM failure proof.
+The ignored driver matched `password` in Java's `trustStorePassword` diagnostic
+and wrote the credential before the actual polkit prompt. Timeout and PTY loss
+are not established causes. Checkpoint82 adds a strict ANSI-aware current-line
+`Password:` matcher and routine harness regression; causal replay of the exact
+old predicate fails and the17-test harness passes. Durable native authorization
+and corrupt-RPM failure evidence remain open. Preserve UNKNOWN job
+6bc79509-a517-40b4-89be-ae3f945a47e9 and its original workspace/records.
+
+Windows checkpoint82 inspected the original cp80 attempt through the ordinary-user
+public launcher: op09aa1b2b-94cc-4b64-a6ab-9908014d59c1 is CANCELLED/final,
+exit130, installed=false. A subsequent explicit attempt reached visible UAC for
+vpn-control-install-helper.exe. After normal UI approval, op
+48e8e749-5380-447e-b13e-750676217edd / job
+2946b6ab-1e10-4edd-b045-8f23cc2395bc reports OUTCOME_UNKNOWN/nonterminal,
+handoffReady=false, installed=null; public version remains2.1.12. Preserve this
+job and inspect its evidence; no automatic retry or successful replacement claim.
+Raw ordinary-user responses and prompt captures are in checkpoint82/windows.
 
 | Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
