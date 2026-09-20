@@ -15,11 +15,24 @@ import zipfile
 from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_identity, version_build
 from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
-                                       observe_terminal_process, terminal_password_prompt_seen,
+                                       observe_terminal_process, terminal_password_prompt_seen, terminal_install_handoff,
                                        timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_complete_handoff_survives_terminal_close_race(self):
+        job = "b32f0d40-f03f-4af7-8219-808753e05ee8"
+        operation = "e0a17c7e-b47c-486e-944c-274e3343e883"
+        observed = {"childExit": 0, "observationLost": True, "observationErrno": 5,
+                    "envelope": {"code": "ACCEPTED", "final": False,
+                                 "operationId": operation,
+                                 "data": {"jobId": job, "handoffReady": True}}}
+        self.assertEqual((job, operation), terminal_install_handoff(observed))
+        with self.assertRaisesRegex(RuntimeError, "not proven"):
+            terminal_install_handoff({**observed, "childExit": None})
+        with self.assertRaisesRegex(RuntimeError, "not proven"):
+            terminal_install_handoff({**observed, "envelope": None})
+
     def test_terminal_password_admission_rejects_diagnostics_and_waits_for_fragmented_ansi_prompt(self):
         # This is the checkpoint79 causal vector: the old ignored driver used
         # `b"password" in data.lower()`, which admitted a JVM trust-store

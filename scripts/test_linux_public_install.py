@@ -124,6 +124,22 @@ def terminal_password_prompt_seen(terminal_bytes):
     return _PASSWORD_PROMPT.search(_ANSI_TERMINAL_ESCAPE.sub(b"", terminal_bytes)) is not None
 
 
+def terminal_install_handoff(observation):
+    """Validate a complete public handoff response without replaying work."""
+    # PTY EOF can race process reaping. A complete response plus successful
+    # client exit remains authoritative; the observation-loss flag is retained
+    # separately as evidence and never erases an acknowledged handoff.
+    accepted = observation.get("envelope") or {}
+    require(observation.get("childExit") == 0 and accepted.get("code") == "ACCEPTED"
+            and accepted.get("final") is False and accepted.get("data", {}).get("handoffReady") is True,
+            "Installation handoff is not proven; preserve evidence without replay")
+    job, operation = accepted["data"].get("jobId"), accepted.get("operationId")
+    require(isinstance(job, str) and str(uuid.UUID(job)) == job, "Missing durable job identity")
+    require(isinstance(operation, str) and str(uuid.UUID(operation)) == operation,
+            "Missing durable operation identity")
+    return job, operation
+
+
 def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=None):
     """Observe a single already-started terminal process without replaying it.
 
@@ -256,12 +272,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
     ok(*timed_update_command("download", 600), seconds=630)
     require(ok("updates", "status")["data"].get("phase") == "ready", "Download did not become verified/ready")
     exit_code, accepted = invoke(*timed_update_command("install", 240), seconds=270)
-    require(exit_code == 0 and accepted.get("code") == "ACCEPTED" and accepted.get("final") is False
-            and accepted.get("data", {}).get("handoffReady") is True,
-            f"Installation not handed off; preserve evidence and inspect before retry: {accepted}")
-    job = accepted["data"]["jobId"]
-    operation = accepted["operationId"]
-    require(str(uuid.UUID(operation)) == operation, "Missing durable operation identity")
+    job, operation = terminal_install_handoff({"childExit": exit_code, "envelope": accepted})
     owner.wait(timeout=30)
     # Never hold an app admission lock while waiting for replacement, and never kill the installer.
     deadline = time.monotonic() + 600

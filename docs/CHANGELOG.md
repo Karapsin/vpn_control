@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.13 - 2026-09-20
 
 - Reject interactive Android installer drivers without terminal input before fixture setup.
 - Preserve rendered benchmark identity and committed operation outcomes; harden installer retries and native fixture build readiness.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Compile macOS installer fault-injection probes during routine checks and preserve terminal-receipt cleanup coverage.
 - Reject expired disposable update-fixture certificates before announcing server readiness.
 - Recognize real Linux fixture authorization prompts without mistaking JVM diagnostics for credential requests.
+- Preserve acknowledged Linux installer handoffs when terminal EOF races client exit.
 
 ## 2.1.12 - 2026-09-16
 

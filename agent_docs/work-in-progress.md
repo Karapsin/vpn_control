@@ -142,12 +142,49 @@ handoffReady=false, installed=null; public version remains2.1.12. Preserve this
 job and inspect its evidence; no automatic retry or successful replacement claim.
 Raw ordinary-user responses and prompt captures are in checkpoint82/windows.
 
+Checkpoint82 prompt admission was pushed as631d3fb462e01eafdd0ca8c9758282590e389236;
+its exact-SHA CI is being observed. Precedingc19e9b5f37a8e8ba580758552bb22e530849c94e
+has all five required workflows successful. Checkpoint83 extracts terminal handoff
+admission into the routine Linux harness: a complete ACCEPTED/handoffReady response
+plus exit0 survives a PTY EOF/reaping race. The old ignored driver guard fails the
+extracted causal test;18 routine tests pass after repair. Evidence is explicitly
+an extracted fixture regression, not a newly found product protocol defect.
+
+Checkpoint82 Linux reached protected WAITING_FOR_EXIT but the preserved unknown
+owner16278 retained a READ lock on the machine gate. It ended FAILED sequence3;
+a replacement owner recovered exact jobb32f0d40-f03f-4af7-8219-808753e05ee8 /
+op e0a17c7e-b47c-486e-944c-274e3343e883 with cleanupOK and intact base. This proves
+blocked-replacement failure recovery, not corrupt-RPM execution.
+
+For an uncontended RPM scenario, root prepared an independent pinned Fedora44
+cloud image in /home/kardinal/vpn-control-install-vm-cp83-fedora-20260920 on Arch,
+SSH2326,4GiB/2CPU. Resource admission observed13GiB available and zero PSI while
+retaining8GiB minimum headroom. Existing guests/unknown jobs remain untouched.
+Cloud-init completed with only a hostname warning; fresh baseRPM2.1.12 installation
+and verification passed. Fresh fixture-only TLS was used without global trust edits.
+
+Checkpoint83/native-manifest (checkpoint83/linux/native-manifest.json) records the
+frozen package source fingerprint96541f180957219f0cb7fbb5a6bb88b7237fb3c5ef344a2fb16c31b2ec50c567.
+The deliberately corrupted private target passed public download/hash verification
+against its test manifest, reached authenticated handoff and protected FAILED seq4
+(after INSTALLING). Next-owner recovery matched jobdfed9d7a-bf80-46cc-98f7-f574b0d50bfc /
+op82935a95-43a6-418f-a869-c4428874064e, final RUNTIME_FAILED/cleanupOK/installed=null.
+Independent rpm verification reports DIGESTS NOT OK; installed base2.1.12 remains
+clean. Installer stderr was not retained. This closes this frozen RPM failure and
+recovery scenario, not final-source packages, connected intent, GUI lifecycle or
+successful retry. The EOF race occurred again, but the repaired harness retained
+the complete acknowledged handoff instead of discarding it.
+
+Windows source/component diagnosis remains open. Bounded worker staging did not
+run a probe; root owns the next direct QGA file-write staging attempt. Existing
+unknown job2946b6ab-1e10-4edd-b045-8f23cc2395bc remains untouched.
+
 | Task | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
 | Integration | root | Desktop lifecycle/cleanup fixes, evidence, docs, host builds and delivery | All shared files | One host Gradle invocation | Final focused union, prepush and checkpoint delivery |
 | Windows MSI | root | Ignored native installer/evidence | No source edits | Owned Windows AMD64 guest6GiB on Arch | Public check/download READY; install accepted as09aa1b2b-94cc-4b64-a6ab-9908014d59c1; SSH restored, inspect original outcome |
 | macOS | root; fixture_cert80 retired | Installed-package evidence reviewed | Root owns source | Owned Tart4GiB guest | Cleanup/repeated-owner, persistent duplicate and transient promotion pass; remaining GUI/traffic/rollback gates |
-| Linux | root; linux_lifecycle77 retired | Native evidence and accepted shutdown fix | Root owns source | Owned Fedora4GiB guest | New-package crash/quit and remaining RPM failures |
+| Linux | root; linux_auth82 retired | Native evidence and harness fixes | Root owns source | Fedora2316 preserved; fresh Fedora2326 4GiB | Frozen RPM failure/recovery passes; current-package crash/quit, retry and attestation remain |
 | Android | android_benchmark78 retired | Completed checkpoint78 evidence | No source edits | Remote2GiB API35 AVD5680 remains live | Native ARM64 comparison; remaining acceptance matrix |
 | Review | serve_review79/mac_cleanup_review79 retired | Read-only bounded reviews complete | No edits | No VM ownership | Serve promotion retained; cleanup review has no blocking finding |
 
