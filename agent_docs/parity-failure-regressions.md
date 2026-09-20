@@ -66,6 +66,37 @@ environment limitation is not a product defect unless the record says otherwise.
 | macOS native bundle copy returns EIO before rename | Native installer persistence | Exact guest worker log records copyfile output EIO; the underlying I/O cause is unproven. | `test_copyfile_eio_at_production_staging_helper_preserves_terminal_failure_evidence` in `scripts/test_macos_install_enospc.py`; actual macOS package CI executes it before packaging, with explicit skips elsewhere. | `checkpoint51/macos-eio-mutation-red.log`: ignoring the production check fails the expected error assertion. `macos-eio-green.log`:6 tests pass. Earlier surrogate probe was invalid and is superseded. | Exact job2958cf24 retained its original app, protected FAILED/PERSISTENCE_FAILED receipt and partial stage; input cleanup preserved evidence. | Successful full replacement remains unproven; partial-stage disposal policy and underlying I/O cause still need resolution. |
 | Failed immutable fixture deleted during manual retry | Agent execution mistake | A worker bypassed the existing-stage rejection and removed the failed pair directory. | Existing builder admission rejects stage reuse; no additional code regression can be claimed for the manual bypass. | Remaining outer logs record failure/rejection; the pair-contained log and stage were lost. | No package had been produced. New retry3 uses a unique path and the same verified runtime/source. | Never chmod/delete frozen inputs to bypass admission. Use a new path, or a supported verified recovery/disposal operation; retain exact deletion/evidence-loss records. |
 
+## Per-user Windows native image admission — checkpoint93
+
+The public Windows attempt stayed unknown before worker readiness. Read-only
+checkpoint92/windows/image-acl.json shows its actual helper and ancestry are
+original-user-owned under AppData. JVM packaged-helper admission permits that
+exact owner, but native ImageObjectPin used machine-only trust while relaunching
+itself. Identical NativeAOT bytes pass protected ProgramData bootstrap and fail
+from an isolated per-user layout with Installer mutation rights rejected. This
+establishes the self-pin defect; it does not authoritatively resolve the original
+unknown installer job, which is preserved.
+
+`DesktopWindowsOriginalUserLaunchTest` now stages its apphost with a private
+current-user ACL and calls the actual self-pin before the interactive-only test
+gate. The fixture checks matching image identity and rejects an unrelated
+canonical principal without launching any installer or requiring a desktop shell.
+It runs in the ordinary Windows desktop suite. The exact new fixture compiled as
+NativeAOT fails against unchanged product code at checkpoint93/windows/red-result.json
+(exit91, image93f8aba901c4a1667999cd1fbd44983e767549c5a1b5720367e062eec71cd2d8).
+After the fix green-result.json returns0/ORIGINAL_USER_IMAGE_PIN_OK with image
+6a87706ee226b4181dce9403b8fc4ef29afa0b0e280a184ac47fd1e330b4b523.
+Both frozen input manifests and staged ACLs are retained in that directory.
+
+The self-pin retains the canonical SID captured from the OS original interactive
+token, already checked against the authenticated owner by the coordinator. Every
+ancestry/image inspection uses that same principal; file-object comparison,
+retained no-write/no-delete handles, fixed helper image and child SID/session/
+non-elevation checks remain. Machine receipt authority is unchanged. Independent
+review found no blocking defect. Host focused checks pass17 executed tests with7
+Windows-only skips. Rebuilt installed-package MSI replacement/recovery and
+post-fix elevated/different-approver scenarios remain required.
+
 ## Native probe preparation and prompt guards — checkpoint91
 
 The ignored Windows NativeAOT bootstrap probe omitted the production project's

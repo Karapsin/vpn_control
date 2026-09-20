@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve native stderr and exact child exit codes in Windows verification fixtures.
 - Guard Android benchmark fixtures against validation-target mismatches.
 - Guard native test fixture inputs and terminal authorization readiness.
+- Allow Windows installer helper relaunch from verified per-user installations.
 
 ## 2.1.13 - 2026-09-20
 

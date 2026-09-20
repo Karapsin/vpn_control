@@ -506,6 +506,10 @@ On Windows, `DesktopWindowsCoordinatorNativeAdmissionTest` and
 the repository-pinned `.NET` SDK in `native/windows/global.json` under the selected
 JDK test run. The original-user fixture enables the NativeAOT analyzer with warnings
 as errors, catching unsupported marshaling APIs before full package publication.
+Before its interactive opt-in gate, the original-user fixture also runs the actual
+self-image pin from a private current-user apphost directory. It verifies exact
+image identity, permits the bound user and rejects an unrelated principal. This
+requires no desktop shell, UAC, installer role or system-directory mutation.
 Its clean restore uses only the official NuGet feed for the pinned SDK's analyzer
 package; an unavailable dependency is a failed prerequisite, not a skipped pass.
 The coordinator's ProgramData ACL/process-authority probe additionally

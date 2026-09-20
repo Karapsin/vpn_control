@@ -21,6 +21,25 @@ public static class InstallerOriginalUserLaunchFixtures {
             throw new Exception("Original-user current-token fallback was not bounded");
         return "ORIGINAL_USER_CURRENT_TOKEN_SCALARS_OK";
     }
+    // Runs on ordinary Windows CI without an interactive shell or elevation.
+    // The caller stages this exact apphost under a private current-user ACL.
+    public static string ProbeCurrentImagePin() {
+        using (WindowsIdentity current=WindowsIdentity.GetCurrent()) {
+            if (current.User==null) throw new Exception("Current-user image principal unavailable");
+            // The private stage grants mutation only to current.User. Merely
+            // supplying some other canonical principal must not admit its image.
+            bool rejected=false;
+            try {
+                using (VpnInstallNative.ImageObjectPin other=VpnInstallNative.ImageObjectPin.CaptureSelf("S-1-5-21-1-2-3-424242")) { }
+            } catch (System.IO.IOException) { rejected=true; }
+            if (!rejected) throw new Exception("Unrelated image principal accepted");
+            using (VpnInstallNative.ImageObjectPin image=VpnInstallNative.ImageObjectPin.CaptureSelf(current.User.Value))
+            using (System.Diagnostics.Process process=System.Diagnostics.Process.GetCurrentProcess()) {
+                if (!image.MatchesProcessImage(process.Handle)) throw new Exception("Pinned current image changed");
+            }
+        }
+        return "ORIGINAL_USER_IMAGE_PIN_OK";
+    }
     public static string Run() {
         foreach(string[] invalid in new string[][] {
             new string[] { "-Command",Job,"1","1" }, new string[] { "install-user",Job,"01","1" },

@@ -447,17 +447,23 @@ public static class VpnInstallNative {
     public sealed class ImageObjectPin : IDisposable {
         readonly List<SafeFileHandle> ancestors=new List<SafeFileHandle>();
         readonly SafeFileHandle parent, image;
-        readonly string path;
+        readonly string path, originalPrincipal;
         bool disposed;
-        public static ImageObjectPin CaptureSelf() {
+        public static ImageObjectPin CaptureSelf(string originalPrincipal) {
+            // Supplied only by the captured original interactive token. The
+            // coordinator binds it to its admitted owner before reaching here.
+            // Never substitute the approving administrator's ambient identity.
+            if (String.IsNullOrEmpty(originalPrincipal) ||
+                new SecurityIdentifier(originalPrincipal).Value!=originalPrincipal)
+                throw new ArgumentException("Original image principal rejected");
             string self=System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
             if (String.IsNullOrEmpty(self) || !String.Equals(Path.GetFileName(self),"vpn-control-install-helper.exe",StringComparison.OrdinalIgnoreCase))
                 throw new IOException("CONFLICT");
-            return new ImageObjectPin(self);
+            return new ImageObjectPin(self,originalPrincipal);
         }
-        ImageObjectPin(string value) {
+        ImageObjectPin(string value,string principal) {
             if (String.IsNullOrEmpty(value)) throw new ArgumentException("Installer image path rejected");
-            path=value;
+            path=value; originalPrincipal=principal;
             string directory=Path.GetDirectoryName(value);
             if (String.IsNullOrEmpty(directory)) throw new ArgumentException("Installer image parent rejected");
             string root=Path.GetPathRoot(directory);
@@ -471,13 +477,13 @@ public static class VpnInstallNative {
                     // The retained child proves this ancestor is nonempty, allowing
                     // legitimate create rights without allowing replacement of the
                     // admitted path. Each parent is checked before any launch.
-                    try { InspectLinkedAncestor(current,child,null); }
+                    try { InspectLinkedAncestor(current,child,originalPrincipal); }
                     catch { child.Dispose(); throw; }
                     ancestors.Add(child); current=child;
                 }
                 parent=current;
                 image=OpenRead(value,false);
-                try { InspectLinkedAncestor(parent,image,null); Inspect(image,false,false,null); }
+                try { InspectLinkedAncestor(parent,image,originalPrincipal); Inspect(image,false,false,originalPrincipal); }
                 catch { image.Dispose(); throw; }
             } catch { for (int index=ancestors.Count-1;index>=0;index--) ancestors[index].Dispose(); throw; }
         }
@@ -489,7 +495,7 @@ public static class VpnInstallNative {
             string loaded=text.ToString();
             if (!String.Equals(loaded,path,StringComparison.OrdinalIgnoreCase)) return false;
             using (SafeFileHandle candidate=OpenRead(loaded,false)) {
-                InspectLinkedAncestor(parent,candidate,null); Inspect(candidate,false,false,null);
+                InspectLinkedAncestor(parent,candidate,originalPrincipal); Inspect(candidate,false,false,originalPrincipal);
                 return SameFileObject(image,candidate);
             }
         }

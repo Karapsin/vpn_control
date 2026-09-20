@@ -81,6 +81,9 @@ class DesktopWindowsOriginalUserLaunchTest {
                     if (arguments.Length==1 && arguments[0]=="--current-token") {
                       Console.WriteLine(InstallerOriginalUserLaunchFixtures.ProbeCurrentTokenScalars()); return;
                     }
+                    if (arguments.Length==1 && arguments[0]=="--image-pin") {
+                      Console.WriteLine(InstallerOriginalUserLaunchFixtures.ProbeCurrentImagePin()); return;
+                    }
                     Console.WriteLine(InstallerOriginalUserLaunchFixtures.Run());
                   }
                 }
@@ -108,6 +111,16 @@ class DesktopWindowsOriginalUserLaunchTest {
             // runner and must precede the separately authorized interactive VM.
             assertTrue(run(listOf(dotnet, directory.resolve("bin/Release/net10.0-windows").resolve(fixtureAssemblyFile()).toString(), "--current-token"), 30)
                 .contains("ORIGINAL_USER_CURRENT_TOKEN_SCALARS_OK"))
+            // A per-user installation is a supported production layout. Exercise
+            // actual image/ancestry admission before the interactive-only gate.
+            val imageNative = JnaWindowsInstallNative()
+            val currentSid = JnaWindowsInstallAdmission().currentSid()
+            val privateStage = directory.resolve("current-user-image")
+            imageNative.createDirectory(privateStage.toString(),
+                "O:${currentSid}G:${currentSid}D:P(A;OICI;FA;;;${currentSid})(A;OICI;FA;;;SY)", false)
+            copyFixtureImage(directory.resolve("bin/Release/net10.0-windows"), privateStage)
+            assertTrue(run(listOf(privateStage.resolve(fixtureExecutableFile()).toString(), "--image-pin"), 30)
+                .contains("ORIGINAL_USER_IMAGE_PIN_OK"))
             // Hosted Windows runners have no interactive shell token. They still compile the
             // actual source; only an owned interactive fixture opts into token/process proof.
             assumeTrue("Requires an explicit interactive Windows fixture",

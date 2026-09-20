@@ -25,16 +25,16 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint91
+## Current continuation — checkpoint93
 
-Latest delivered checkpoint is `c85c00cc07ffc0ede60d102caa1974f09511e72b`
-(product2.1.13). Managed checkpoint90/commit-result.json confirms all five required
-exact-SHA workflows succeeded, as did the preceding886e60d checkpoint.
-Full parity remains incomplete.
+Latest pushed checkpoint is `cad9aeb6c884a56d6f8f6d363718f11de707582b`
+(product2.1.13); checkpoint92 managed CI watcher remains active. Previous
+`c85c00cc07ffc0ede60d102caa1974f09511e72b` has all five required workflows
+successful (checkpoint90/commit-result.json). Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Dependencies / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Windows bootstrap91 | root; windows_inputs91 retired | Windows native fixture input helper/tests; ignored native probes | Root owns all integration | Root exclusively operates Windows AMD64 VM | Ordinary and elevated NativeAOT original-user bootstrap pass from protected fixture; root now compares actual per-user image admission; real MSI job untouched |
+| Windows bootstrap91 | root; windows_inputs91 retired | Windows native fixture input helper/tests; ignored native probes | Root owns all integration | Root exclusively operates Windows AMD64 VM | Protected bootstrap passes; actual per-user self-pin defect reproduced and fixed with native RED/GREEN; current package/MSI validation remains |
 | Linux current85 | root | Ignored package/native fixtures | Product integration, docs and delivery | Fresh Fedora2326 only; preserve original Fedora2316 unknown job | Current-source2.1.13 base installed and rpm verification passed; damaged2.1.14 attempt returned unknown before protected handoff; original job preserved |
 | Linux prompt91 | root; linux_prompt91 retired | Linux public-install harness/tests | Root owns integration and docs | No active worker; Fedora2326 no-op fixture completed | Prompt readiness regression passes; actual packaged Java no-op authorization passes; historical installer cause remains unproven |
 | Android fixture90 | completed | Delivered default-target regression | Root owns integration and docs | No VM operations; owned5596 retained | Native ARM64 benchmark passes after target alignment;5 routine tests pass including actual-default SOCKS admission and restricted egress |
@@ -53,10 +53,22 @@ This reproduces the self-pin incompatibility without an installer role; the
 production fix and routine causal regression remain next. The original unknown
 job is preserved.
 
+Checkpoint93 adds a routine noninteractive apphost/private-user-directory test
+before the interactive Windows test gate. Its actual NativeAOT fixture first fails
+with the same mutation-rights rejection (red-result.json, image93f8aba9). The fix
+threads only the captured original interactive token SID through the retained
+image/ancestor checks and child image reinspection; the coordinator already binds
+that SID to the authenticated owner. Machine receipt trust is unchanged. Matching
+principal/image admission and rejection of an unrelated principal now pass in the
+same user-owned layout (green-result.json, image6a87706e). Focused host checks run
+17 tests successfully with7 Windows-only skips; independent review found no
+blocking concern. Full MSI replacement and post-fix elevated bootstrap remain
+native acceptance gates, not implied by this image-pin component result.
+
 The initial checkpoint91 fixture build omitted loader.manifest and failed CS1926.
 The replacement frozen fixture uses an inventory derived from the actual helper
 project; build and native bootstrap pass. The reusable inventory and four quick
-regressions are pending delivery. They support native probe staging, not a change
+regressions were pushed in cad9aeb. They support native probe staging, not a change
 to production package-building behavior.
 
 Linux checkpoint91 adds a PTY response guard that requires both the exact prompt

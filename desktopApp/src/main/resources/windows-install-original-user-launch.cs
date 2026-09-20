@@ -68,7 +68,7 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
         if (token==IntPtr.Zero) throw new ObjectDisposedException("VpnInstallOriginalUserLaunch");
         ValidateInvocation(arguments);
         if (arguments[0]!="install-user") throw new IOException("INVALID_ARGUMENT");
-        using (VpnInstallNative.ImageObjectPin selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf()) {
+        using (VpnInstallNative.ImageObjectPin selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf(PrincipalSid)) {
         string image=SelfImage();
         STARTUPINFO startup=new STARTUPINFO(); startup.cb=Marshal.SizeOf<STARTUPINFO>();
         // The fixture may inject the first launch failure. Keep its process record
