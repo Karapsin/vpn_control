@@ -4,6 +4,7 @@
 import hashlib
 import base64
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -134,8 +135,31 @@ def main() -> None:
         special = PayloadFile("red/o'hara$`name.cs", payload.files[0].contents, payload.files[0].sha256)
         payload = FixturePayload((special,) + payload.files[1:], payload.source_hashes)
         destination = r"C:\O'Hara\$stage\`fixture"
-        receiver = render_windows_admission_receiver(payload, str(root / "fake-qga.sock"), destination)
+        try:
+            render_windows_admission_receiver(payload, r"C:\temporary\fake-qga.sock", destination)
+        except ValueError as error:
+            assert "absolute QGA socket" in str(error), "RED: a Windows temporary path is not a QGA Unix socket"
+        else:
+            raise AssertionError("Windows temporary path must be rejected as a QGA Unix socket")
+
+        # Generation and literal safety apply on every host.  The production
+        # receiver deliberately requires a POSIX QGA socket because it runs on
+        # the remote Arch transport host, not on the Windows fixture guest.
+        receiver = render_windows_admission_receiver(payload, "/synthetic/qga.sock", destination)
         assert "__file__" not in receiver and "rglob" not in receiver and "Get-ChildItem" not in receiver
+        compile(receiver, "generated-windows-admission-receiver.py", "exec")
+        generated: dict[str, object] = {"__name__": "generated_receiver"}
+        exec(receiver, generated)
+        assert [base64.b64decode(item["data"], validate=True) for item in generated["PAYLOAD"]] == [item.contents for item in payload.files]
+        powershell_literal = generated["powershell_literal"]
+        assert powershell_literal(destination) == "'C:\\O''Hara\\$stage\\`fixture'"
+        assert powershell_literal("red\\o'hara$`name.cs") == "'red\\o''hara$`name.cs'"
+
+        if os.name == "nt":
+            print("[vpn-control] skipped real QGA AF_UNIX transport on Windows; receiver generation and literals verified")
+            print("[vpn-control] native fixture payload RED/GREEN regression passed")
+            return
+
         socket_path = root / "fake-qga.sock"
         captured: dict[str, bytes] = {}
         powershell_scripts: list[str] = []

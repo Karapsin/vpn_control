@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Reject stale or changed native authorization prompts before fixture credential input.
 - Harden per-user Windows installer admission and verify native installer fixture outcomes.
+- Keep native fixture checks portable and launch trusted Windows test scripts consistently.
 
 ## 2.1.14 - 2026-09-21
 

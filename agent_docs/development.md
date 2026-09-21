@@ -126,6 +126,10 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
 - Stage the desktop update fixture with `prepare_desktop_update_fixture.py
   stage-entrypoint --source-directory scripts --output <fresh-directory>` before
   transfer; it includes sibling modules and checks an isolated import.
+- For trusted Windows fixture files, construct discrete PowerShell arguments with
+  `windows_native_fixture.trusted_powershell_file_arguments`; its execution-policy
+  option applies only to that process. Never change the guest-wide policy merely
+  to run a fixture.
 - Before launching a generated native runner, syntax-check the complete script
   and validate its final deployed helper paths, interpreter, package attributes,
   and fixture tools. A packaged minimal JVM need not include JDK tools such as

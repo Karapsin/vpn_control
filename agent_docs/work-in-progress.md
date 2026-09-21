@@ -25,24 +25,26 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint106
+## Current continuation — checkpoint109
 
-Checkpoint `282c937b1f082c5b32cae7127f0f4688dc3503c1` (product2.1.14)
-is pushed after managed pre-push passed. All five required exact-SHA workflows
-now pass (verified September21 at06:18 Moscow).
-It fixes the Windows permission-test failure from6298ec2; the corrected suite
-passed on the assigned Windows guest (nine tests, one POSIX-only skip).
-Prior93c8b2c passed all five required workflows. The intentional dirty batch adds
-reviewed-prompt freshness checks, certificate serial scope, installer admission
-and handoff regressions, Windows helper pin fixes and agent documentation.
+Checkpoint `027fcc6a2378a8dabb7f1030c1a47cc804498ecf` (product2.1.14)
+was committed and pushed after the complete managed pre-push tier passed.
+Windows CI35560957259 failed because the new real Unix-socket fixture test used
+its Windows temporary path as an Arch QGA endpoint. The correction keeps payload,
+hash and quoting checks portable and limits the real Unix transport roundtrip to
+Unix hosts. Exact-SHA CI verification is incomplete; do not call this checkpoint
+fully verified. Prior282c937 passed all five required workflows.
+The delivered batch includes Windows image admission/pin lifetime fixes, durable
+macOS rollback observation, strict Android installer acceptance, private fixture
+staging, prompt/serial/manifest regressions and their routine wiring.
 Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Delivery102 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed282c937 | Five workflows pass; integrate focused fixes and next checkpoint |
+| Delivery109 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed027fcc6 | Correct Windows fixture portability, validate and push again |
 | Windows image103 | windows_image103 | Coordinator helper image admission, original-user image-pin lifetime and focused tests | No shared Kotlin edits or VM mutation | CP102 read-only evidence | Reviewed fix and RED/GREEN source bundle frozen; native execution pending |
 | macOS native105 | mac_native105 | Private native preparation/evidence | No tracked source edits | Exclusive owned Tart guest | User-local rollback/recovery passed; root verified21 hashes; fixture cleaned |
-| Windows native107 | windows_probe107 | Pure C# RED/GREEN admission evidence | No product/MSI commands | Exclusive CP95 guest | SDK and corrected payload verified; native staging/build/probe assigned |
+| Windows native107 | windows_probe107 | Pure C# RED/GREEN admission evidence | No product/MSI commands | Exclusive CP95 guest | 26 staged files verified; both C# builds pass; ordinary-user probe pending |
 | Manifest104 | manifest_regression104 | Fixture manifest writer and tests | Root owns docs/hygiene | Private temporary fixtures | Manifest/path-safety review and focused checks pass |
 | Certificate scope102 | certificate_scope102 | android_fixture_trust.py and its routine tests | Root owns docs/hygiene | Private temporary OpenSSL fixtures | Causal serial-path regression and helper integration |
 | Android pending | root | Resource allocation and acceptance scheduling | No agent operates AVD | AVD5596 stopped, retained API35 state OFF | Current-pair installed:true acceptance missing on both API levels |

@@ -17,10 +17,29 @@ from windows_native_fixture import (
     fixture_proxy_port_selector,
     fixture_native_process_capture,
     native_install_helper_fixture_inputs,
+    trusted_powershell_file_arguments,
 )
 
 
 class WindowsNativeFixtureTest(unittest.TestCase):
+    def test_trusted_powershell_fixture_file_uses_only_process_scoped_bypass_and_literal_argv(self):
+        script = r"C:\\fixture root\\trusted build 雪.ps1"
+        arguments = ("red green", "ключ", "literal;$HOME|`tick")
+        command = trusted_powershell_file_arguments(script, arguments)
+        self.assertEqual(
+            command,
+            (
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
+                *arguments,
+            ),
+        )
+        self.assertNotIn("Set-ExecutionPolicy", command)
+        self.assertNotIn("-Scope", command)
+        with self.assertRaisesRegex(ValueError, "absolute and end in .ps1"):
+            trusted_powershell_file_arguments(r"fixture\\build.ps1", ())
+        with self.assertRaisesRegex(ValueError, "tuple of strings"):
+            trusted_powershell_file_arguments(script, ["not typed"])  # type: ignore[arg-type]
+
     def test_install_helper_fixture_inventory_uses_current_project_declarations(self):
         repository = Path(__file__).parents[1]
         inputs = native_install_helper_fixture_inputs(repository)

@@ -69,6 +69,25 @@ _INTERACTIVE_USER_SID = re.compile(
 )
 
 
+def trusted_powershell_file_arguments(script_path: str, arguments: tuple[str, ...]) -> tuple[str, ...]:
+    """Build the fixed, process-scoped PowerShell invocation for a trusted fixture file.
+
+    Passing the file path and each argument as discrete argv values keeps spaces
+    and Unicode literal.  ``-ExecutionPolicy Bypass`` applies to this PowerShell
+    process only; this helper must never emit a persistent policy command.
+    """
+    if type(script_path) is not str or "\x00" in script_path:
+        raise ValueError("trusted PowerShell fixture script path must be a string without NUL")
+    path = PureWindowsPath(script_path)
+    if not path.is_absolute() or path.suffix.lower() != ".ps1":
+        raise ValueError("trusted PowerShell fixture script path must be absolute and end in .ps1")
+    if not isinstance(arguments, tuple) or any(type(argument) is not str or "\x00" in argument for argument in arguments):
+        raise ValueError("trusted PowerShell fixture arguments must be a tuple of strings without NUL")
+    return (
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script_path,
+    ) + arguments
+
+
 def private_task_root(task_name: str, local_app_data: str) -> str:
     """Return the exact private LocalAppData root for an allowed task name."""
     if not isinstance(task_name, str) or not isinstance(local_app_data, str):
