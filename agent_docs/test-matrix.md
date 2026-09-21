@@ -38,6 +38,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 
 | Touched Area | Run |
 | --- | --- |
+| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
 | Scheduled-refresh native traffic observer | `python3 scripts/test_desktop_scheduled_refresh_fixture.py` (also included in release hygiene); retain the installed-package scheduled refresh with overlapping traffic evidence. A terminal refresh failure is recorded separately from traffic continuity. |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
 | Shared control DTOs, protocol codec, registry or command grammar | `./gradlew :shared:model:desktopTest :shared:core:desktopTest`; add affected desktop/Android adapter tests when wiring dispatch |

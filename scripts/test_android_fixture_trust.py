@@ -13,6 +13,7 @@ from android_fixture_trust import (
     require_android_certificate_store_layout,
     require_device_time_within_certificates,
     secure_private_fixture_files,
+    sign_fixture_leaf_certificate,
     zygote_bind_mount_argv,
 )
 
@@ -43,17 +44,50 @@ class AndroidFixtureTrustTest(unittest.TestCase):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        subprocess.run(
-            [
-                "openssl", "x509", "-req", "-in", str(directory / "leaf.csr"), "-CA", str(ca),
-                "-CAkey", str(directory / "private.pem"), "-CAcreateserial", "-out", str(leaf),
-                "-days", "1", "-sha256",
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        sign_fixture_leaf_certificate(
+            directory / "leaf.csr", ca, directory / "private.pem", leaf, directory / "ca.srl"
         )
         return ca, leaf
+
+    def test_signing_keeps_serial_in_explicit_private_path_from_foreign_dotted_cwd(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            private = root / "private"
+            outside = root / "foreign"
+            private.mkdir(mode=0o700)
+            outside.mkdir(mode=0o700)
+            ca = outside / ".pem"
+            ca_key = private / "ca.key"
+            request = private / "leaf.csr"
+            leaf = private / "leaf.pem"
+            serial = private / "ca.srl"
+            subprocess.run(
+                [
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                    "-days", "1", "-subj", "/CN=serial-scope-ca",
+                    "-keyout", str(ca_key), "-out", str(ca),
+                ],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                [
+                    "openssl", "req", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                    "-subj", "/CN=serial-scope-leaf", "-keyout", str(private / "leaf.key"),
+                    "-out", str(request),
+                ],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(outside)
+                produced = sign_fixture_leaf_certificate(
+                    request, Path(".pem"), ca_key, leaf, serial
+                )
+            finally:
+                os.chdir(previous_cwd)
+            self.assertEqual(serial, produced)
+            self.assertTrue(serial.is_file())
+            self.assertFalse((outside / ".srl").exists())
 
     def test_android_store_name_uses_openssl_legacy_subject_hash(self):
         with tempfile.TemporaryDirectory() as temporary:

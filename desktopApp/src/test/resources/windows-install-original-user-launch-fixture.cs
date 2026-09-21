@@ -61,6 +61,9 @@ public static class InstallerOriginalUserLaunchFixtures {
                 if (identity.ProcessId==0 || identity.CreationFileTime<=0 || identity.Elevated ||
                     identity.Session!=original.ShellSession || identity.Sid!=original.PrincipalSid || !child.Wait(15000))
                     throw new Exception("Original interactive helper identity mismatch");
+                if (!child.HasLaunchImagePin) throw new Exception("Launch image pin was released before coordinator admission");
+                child.ReleaseLaunchImagePinAfterAdmission();
+                if (child.HasLaunchImagePin) throw new Exception("Launch image pin did not release after coordinator admission");
             }
             // Exercise the production coordinator bootstrap rather than calling the
             // launcher directly. This is deliberately a bootstrap-only component

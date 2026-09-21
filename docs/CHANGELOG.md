@@ -3,6 +3,11 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Reject stale or changed native authorization prompts before fixture credential input.
+- Harden per-user Windows installer admission and verify native installer fixture outcomes.
+
 ## 2.1.14 - 2026-09-21
 
 - Preserve new update attempts and dismissed state while retaining historical installation receipts.

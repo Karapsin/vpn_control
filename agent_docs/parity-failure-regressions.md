@@ -304,3 +304,106 @@ test remains enabled on Unix and explicitly skipped on Windows; a missing-curl
 test verifies fail-before-CLI behavior on every platform. Nine tests pass locally.
 This changes test applicability, not product authorization or executable admission.
 The Windows suite and next exact-SHA CI remain required.
+
+### Stale Windows credential prompt — checkpoints100–102
+
+CP100 captured UAC at05:37:17, retained a not-started marker at05:39:18, and
+sent credential keystrokes at05:40:37. The native result is CANCELLED, not
+successful authorization. The old ignored CP95 login.py sent input without a
+freshness check. windows_prompt_observation.py now guards an injected action with
+a maximum15-second reviewed observation, matching current screenshot hash,
+environment and operation identity, and a nonterminal state. It contains no
+credentials or UI recognition. Nine pure tests cover the decision boundaries;
+the historical unconditional callback is explicitly reconstructed, not claimed
+as a replay of Windows or the original full helper. Routine release hygiene runs
+test_windows_prompt_observation.py. CP102 rejected a changed frame before input,
+then admitted one input at8.664seconds after a new review; its installer outcome
+must still be read separately. Evidence remains in checkpoint102/windows.
+
+### Fixture certificate serial output — checkpoint102
+
+The checkpoint101 OpenSSL fixture signing command created a serial file in the
+repository working directory. The original bytes and hash were preserved before
+removing that exact untracked artifact. `sign_fixture_leaf_certificate` now takes
+an explicit private serial path and the routine Android trust fixture uses it.
+The real OpenSSL regression signs with a dotted relative CA filename from another
+working directory: omitting `-CAserial` recreates the unwanted `.srl`; the corrected
+helper leaves it absent. Twelve tests pass in `test_android_fixture_trust.py`,
+already included in release hygiene. Evidence: checkpoint102/certificate-scope.
+This is fixture coverage, not proof of native update installation.
+
+### Missing asynchronous install acknowledgement — checkpoint102
+
+The macOS rollback harness polled protected WAITING_FOR_EXIT directly after an
+initial public response with `handoffReady:false`. It omitted the later public
+operation/update status acknowledgement required to release the owner exit gate.
+Public quit correctly returned BUSY while installation was pending. Source review
+and the existing exact-correlation exit tests establish the missing fixture step;
+no product exit defect is established. The explicit ordering regression in
+DesktopOwnerExitGateTest passes (ten tests, zero skips). Same-job public operation
+status subsequently returned handoffReady and released the original owner. A
+second fixture lock delayed replacement; final inspection found only the watcher
+alive, with the coordinator absent and a stale nonterminal receipt. No rollback
+acceptance or coordinator exit cause is established. The exact candidate flag
+was cleared after identity verification; all pending inputs remain preserved.
+A durable fixture driver now tracks one lock and this acknowledgement sequence;
+its ten quick tests pass and run in release hygiene. Its native rollback result
+is still pending. Never replace acknowledgement with a kill or a
+second installation against the pending target.
+
+
+### Remote stdin staging traversed the wrong source root — checkpoint106
+
+The ignored Windows staging script was sent to Arch as `python3 -` but derived
+its source directory from `__file__`. That names `<stdin>` remotely; recursive
+input discovery therefore read the remote working tree instead of the frozen
+local fixture. The client held QGA while its RSS grew to approximately5GiB.
+The exact PID/start-time/socket were revalidated before terminating only this
+owned client. QGA accepts connections again; no native fixture, product operation
+or installer ran. The original script is retained under checkpoint103. The new
+`native_fixture_payload.py` generator embeds explicitly enumerated, hash-validated
+local bytes in a standalone remote receiver. Its quick test executes that receiver
+via stdin from a foreign directory through fake QGA and verifies all26 writes.
+PowerShell literals are separately escaped and parent creation is batched before
+file writes. The suite passes and runs in release hygiene. Real guest staging and
+Windows native admission remain separate checks.
+
+
+### Evidence manifest included itself — checkpoint103
+
+Shell redirection created the checksum output before recursive input enumeration,
+so the fixture manifest included itself and a temporary output. Root rejected the
+bundle before transfer. `native_fixture_manifest.py` now explicitly excludes the
+output on first generation and regeneration, hashes bounded chunks, and verifies
+recorded entries. `test_native_fixture_manifest.py` covers stale self-inclusion,
+changed input, newline/Windows path syntax and linked input/output rejection.
+The suite passes and is included in release hygiene. The originally invalid
+manifest was overwritten during correction, so no retained exact-byte historical
+RED is claimed; the causal self-inclusion regression is reconstructed.
+
+
+### Copied update server omitted sibling modules — checkpoint105
+
+The private macOS server failed before readiness with `ModuleNotFoundError:
+fixture_environment` because only its entrypoint had been copied. The error is
+retained in checkpoint105/macos/initial-server-dependency-error.txt. The new
+`stage-entrypoint` command copies its three required modules and imports the
+actual staged entrypoint from a foreign directory in isolated Python. The causal
+incomplete-stage test and complete-stage test run in the existing routine
+`test_desktop_update_fixture.py` suite (50 tests). No server or installer runs
+in those tests. RED/GREEN evidence is in checkpoint106/fixture-dependencies.
+
+
+### Installer observer accepted cancellation without target proof — checkpoint106
+
+Source review found the Android lifecycle driver returned after recording status
+and wait, even when the recorded terminal was CANCELLED. The worker reproduced
+that behavior before editing; its RED is retained only in task tool output, not
+a filesystem evidence file. The driver now has explicit installed/cancelled
+expectations. Installed acceptance requires exact operation, final OK/installed,
+and the target version/code/APK hash; cancelled acceptance requires exact final
+cancellation. Capture mode explicitly marks itself nonacceptance. The17-test
+`test_android_installer_lifecycle.py` suite covers cancellation mistaken for
+success, unknown/wrong operation, wrong package/hash, version-prefix collisions
+and envelope polarity. It already runs in release hygiene. Native process-loss
+recovery and current API29/API35 success remain open.

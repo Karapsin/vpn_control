@@ -18,13 +18,14 @@ class Adb:
     def shell(self, *words): self.calls.append(words); return self.windows
 
 
-def record(code, final, operation=None):
-    response = {"code": code, "final": final}
+def record(code, final, operation=None, data=None, ok=None):
+    response = {"code": code, "final": final, "ok": code in {"OK", "ACCEPTED"} if ok is None else ok}
     if operation: response["operationId"] = operation
+    if data is not None: response["data"] = data
     return {"argv": [], "exit": driver.EXIT[code], "response": response, "stderr": ""}
 
 
-def argv(root, output, callback=None, adb=None):
+def argv(root, output, callback=None, adb=None, expected_terminal=None):
     values = ["driver", "--adb", str(adb or root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
         "--device-port", "45635", "--cli", str(root / "cli"), "--ca-certificate", str(root / "ca.pem"),
         "--leaf-certificate", str(root / "leaf.pem"), "--private-key", str(root / "leaf.key"),
@@ -32,6 +33,7 @@ def argv(root, output, callback=None, adb=None):
         "--base-version", "2.1.13", "--base-code", "16660", "--target-apk", str(root / "target.apk"),
         "--target-sha256", "target-hash", "--target-version", "2.1.14", "--target-code", "16680"]
     if callback is not None: values.extend(["--continue-file", str(callback)])
+    if expected_terminal is not None: values.extend(["--expected-terminal", expected_terminal])
     return values
 
 
@@ -49,6 +51,15 @@ def portable_checkpoint_privacy(checkpoint):
 
 
 class InstallerLifecycleTest(unittest.TestCase):
+    class InstalledAdb(Adb):
+        def shell(self, *words):
+            self.calls.append(words)
+            if words == ("dumpsys", "package", "com.kardinal.vpncontrol"):
+                return "versionName=2.1.14 versionCode=16680"
+            if words == ("pm", "path", "com.kardinal.vpncontrol"):
+                return "package:/data/app/com.kardinal.vpncontrol/base.apk"
+            return self.windows
+
     def test_windows_privacy_mock_preserves_real_missing_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             checkpoint = Path(temporary) / "checkpoint"
@@ -194,6 +205,98 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual(2, sum(call[0][2:] == ("updates", "install") for call in calls))
             self.assertTrue(calls[3][1]["interactive"] and calls[3][1]["asynchronous"])
             self.assertEqual(("operations", "status", "operation"), calls[4][0][2:])
+
+    def acceptance_args(self, directory, expected_terminal="installed"):
+        return SimpleNamespace(
+            cli=Path("cli"), serial="serial", probe_output=Path(directory) / "checkpoint",
+            target_sha256="target-hash", target_version="2.1.14", target_code="16680",
+            expected_terminal=expected_terminal,
+        )
+
+    @staticmethod
+    def accepted_replies(terminal, operation="operation"):
+        terminal_data = {"installPhase": "installed", "installed": True}
+        if terminal == "CANCELLED": terminal_data = {"installPhase": "cancelled", "installed": False}
+        return [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                record("ACCEPTED", False, operation), record(terminal, True, operation, terminal_data),
+                record(terminal, True, operation, terminal_data)]
+
+    def test_installed_acceptance_requires_correlated_terminal_and_target_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary)
+            with portable_checkpoint_privacy(args.probe_output), \
+                 patch.object(driver, "invoke", side_effect=self.accepted_replies("OK")), \
+                 patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash") as hashed, \
+                 patch("builtins.input"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+            self.assertEqual("target-hash", result["installedBaseSha256"])
+            hashed.assert_called_once()
+
+    def test_installed_acceptance_rejects_cancelled_without_replaying_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary)
+            calls = []
+            def invoke(*values, **kwargs):
+                calls.append(values)
+                return self.accepted_replies("CANCELLED")[len(calls) - 1]
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
+                 patch("builtins.input"):
+                with self.assertRaisesRegex(RuntimeError, "confirmed installed"):
+                    driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual(2, sum(values[2:] == ("updates", "install") for values in calls))
+
+    def test_cancelled_acceptance_requires_exact_cancelled_terminal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary, "cancelled")
+            with portable_checkpoint_privacy(args.probe_output), \
+                 patch.object(driver, "invoke", side_effect=self.accepted_replies("CANCELLED")), \
+                 patch.object(driver.tls, "require_installed_base_hash") as hashed, patch("builtins.input"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+            hashed.assert_not_called()
+
+    def test_terminal_rejects_wrong_operation_and_unknown_outcome(self):
+        installed = {"installPhase": "installed", "installed": True}
+        with self.assertRaisesRegex(RuntimeError, "correlation"):
+            driver.correlated_terminal(record("OK", True, "other", installed), "operation", "installed")
+        with self.assertRaisesRegex(RuntimeError, "confirmed installed"):
+            driver.correlated_terminal(record("OUTCOME_UNKNOWN", False, "operation", {}), "operation", "installed")
+        with self.assertRaisesRegex(RuntimeError, "confirmed installed"):
+            driver.correlated_terminal(record("OK", True, "operation", installed, ok=False), "operation", "installed")
+        with self.assertRaisesRegex(RuntimeError, "confirmed cancelled"):
+            driver.correlated_terminal(record("CANCELLED", True, "operation",
+                {"installPhase": "cancelled", "installed": False}, ok=True), "operation", "cancelled")
+
+    def test_target_verification_rejects_wrong_version_or_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary)
+            class WrongVersion(self.InstalledAdb):
+                def shell(self, *words):
+                    if words == ("dumpsys", "package", "com.kardinal.vpncontrol"):
+                        return "versionName=2.1.13 versionCode=16660"
+                    return super().shell(*words)
+            with self.assertRaisesRegex(RuntimeError, "version/code"):
+                driver.verify_installed_target(args, WrongVersion())
+            class SuffixCollision(self.InstalledAdb):
+                def shell(self, *words):
+                    if words == ("dumpsys", "package", "com.kardinal.vpncontrol"):
+                        return "versionName=2.1.140 versionCode=166800"
+                    return super().shell(*words)
+            with self.assertRaisesRegex(RuntimeError, "version/code"):
+                driver.verify_installed_target(args, SuffixCollision())
+            with patch.object(driver.tls, "require_installed_base_hash", side_effect=RuntimeError("hash mismatch")):
+                with self.assertRaisesRegex(RuntimeError, "hash mismatch"):
+                    driver.verify_installed_target(args, self.InstalledAdb())
+
+    def test_capture_mode_is_explicitly_nonacceptance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary, "capture")
+            replies = self.accepted_replies("CANCELLED")
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+                 patch("builtins.input"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual("capture-only-nonacceptance", result["acceptance"])
 
     def test_async_ok_is_not_accepted_and_input_is_not_reached(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -38,6 +39,37 @@ def final(record, expected):
     if (record["exit"] != EXIT[expected] or record["response"].get("code") != expected
             or record["response"].get("final") is not True):
         raise RuntimeError(f"expected final {expected}: {record}")
+
+
+def correlated_terminal(record, operation, expected):
+    response = record["response"]
+    if response.get("operationId") != operation:
+        raise RuntimeError(f"terminal operation correlation changed: {record}")
+    if expected == "installed":
+        if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
+                or response.get("final") is not True
+                or (response.get("data") or {}).get("installPhase") != "installed"
+                or (response.get("data") or {}).get("installed") is not True):
+            raise RuntimeError(f"expected confirmed installed terminal: {record}")
+    elif expected == "cancelled":
+        if (record["exit"] != EXIT["CANCELLED"] or response.get("ok") is not False or response.get("code") != "CANCELLED"
+                or response.get("final") is not True
+                or (response.get("data") or {}).get("installPhase") != "cancelled"
+                or (response.get("data") or {}).get("installed") is not False):
+            raise RuntimeError(f"expected confirmed cancelled terminal: {record}")
+    else:
+        raise ValueError("terminal expectation must be installed or cancelled")
+
+
+def verify_installed_target(args, adb):
+    package = adb.shell("dumpsys", "package", "com.kardinal.vpncontrol")
+    def field(name, value):
+        return re.search(rf"(?:^|\s){re.escape(name)}={re.escape(str(value))}(?=\s|$)", package) is not None
+    if not field("versionName", args.target_version) or not field("versionCode", args.target_code):
+        raise RuntimeError("installed target version/code does not match frozen artifact")
+    return tls.require_installed_base_hash(
+        adb, adb.shell("pm", "path", "com.kardinal.vpncontrol"), args.target_sha256
+    )
 
 
 def focused_dialog_state(adb):
@@ -125,8 +157,18 @@ def action(args, adb, receipt):
     status = invoke(args.cli, args.serial, "operations", "status", operation, environment=environment)
     waited = invoke(args.cli, args.serial, "--timeout-seconds", "0", "operations", "wait", operation,
                     environment=environment)
+    expected_terminal = getattr(args, "expected_terminal", "capture")
     receipt["installerLifecycle"].update({"statusAfterUi": status, "waitOriginalOperation": waited,
-                                            "targetSha256": args.target_sha256})
+                                            "targetSha256": args.target_sha256,
+                                            "terminalExpectation": expected_terminal})
+    if expected_terminal == "capture":
+        receipt["installerLifecycle"]["acceptance"] = "capture-only-nonacceptance"
+        return receipt["installerLifecycle"]
+    correlated_terminal(status, operation, expected_terminal)
+    correlated_terminal(waited, operation, expected_terminal)
+    if expected_terminal == "installed":
+        receipt["installerLifecycle"]["installedBaseSha256"] = verify_installed_target(args, adb)
+    receipt["installerLifecycle"]["acceptance"] = "terminal-confirmed"
     return receipt["installerLifecycle"]
 
 
@@ -140,6 +182,8 @@ def parse_args():
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--continue-file", type=Path)
+    parser.add_argument("--expected-terminal", choices=("capture", "installed", "cancelled"), default="capture",
+                        help="capture records an observation only and is not acceptance evidence")
     for prefix in ("base", "target"):
         parser.add_argument(f"--{prefix}-apk", type=Path, required=True)
         parser.add_argument(f"--{prefix}-sha256", required=True)
@@ -175,6 +219,8 @@ def main():
             expected_avd=args.avd, expected_api=args.api, expected_version=args.base_version,
             expected_code=args.base_code, base_apk=args.base_apk, base_sha256=args.base_sha256,
             target_sha256=args.target_sha256, continue_file=args.continue_file,
+            target_version=args.target_version, target_code=args.target_code,
+            expected_terminal=args.expected_terminal,
             cli_environment=args.cli_environment)
         target = "/apex/com.android.conscrypt/cacerts" if args.api == "35" else "/system/etc/security/cacerts"
         tls.run_fixture_lifecycle(lifecycle, action, target_install=True, ca_store_target=target,

@@ -16,7 +16,9 @@ import socketserver
 import ssl
 import stat
 import subprocess
+import sys
 import tarfile
+import tempfile
 import time
 import zipfile
 
@@ -33,6 +35,54 @@ PLATFORMS = {
     "windows": {"os": "Windows", "tasks": ["packageMsi"], "extension": ("msi",)},
     "macos": {"os": "Darwin", "tasks": ["packageDmg"], "extension": ("dmg",)},
 }
+FIXTURE_ENTRYPOINT_MODULES = (
+    "prepare_desktop_update_fixture.py",
+    "fixture_environment.py",
+    "macos_packaging_jdk_preflight.py",
+)
+
+
+def validate_staged_fixture_entrypoint(directory):
+    """Import the staged command from a foreign working directory only."""
+    directory = Path(directory).resolve(strict=True)
+    entrypoint = directory / FIXTURE_ENTRYPOINT_MODULES[0]
+    require(entrypoint.is_file() and not entrypoint.is_symlink(),
+            "Staged fixture entrypoint is missing or unsafe")
+    # This matches Python's script import path while ensuring neither the source
+    # checkout nor the caller's working directory can satisfy local imports.
+    command = (
+        "import importlib.util, pathlib, sys; "
+        "entrypoint = pathlib.Path(sys.argv[1]); "
+        "sys.path.insert(0, str(entrypoint.parent)); "
+        "spec = importlib.util.spec_from_file_location('staged_fixture_entrypoint', entrypoint); "
+        "module = importlib.util.module_from_spec(spec); "
+        "spec.loader.exec_module(module)"
+    )
+    with tempfile.TemporaryDirectory(prefix="fixture-entrypoint-import-") as foreign_cwd:
+        result = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", command, str(entrypoint)], cwd=foreign_cwd,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": ""},
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+    if result.returncode != 0:
+        diagnostic = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "no diagnostic"
+        raise ValueError("Staged fixture entrypoint import failed: " + diagnostic)
+
+
+def stage_fixture_entrypoint(source_directory, destination):
+    """Copy the fixture entrypoint and its direct local imports, then import-check it."""
+    source_directory = Path(source_directory).resolve(strict=True)
+    destination = Path(destination).absolute()
+    require(source_directory.is_dir(), "Fixture entrypoint source directory is invalid")
+    require(not destination.exists(), "Fixture entrypoint destination must not already exist")
+    destination.mkdir(mode=0o700)
+    for name in FIXTURE_ENTRYPOINT_MODULES:
+        source = source_directory / name
+        target = destination / name
+        require(source.is_file() and not source.is_symlink(), "Fixture entrypoint module is missing or unsafe: " + name)
+        shutil.copy2(source, target)
+    validate_staged_fixture_entrypoint(destination)
+    return {"directory": str(destination), "modules": list(FIXTURE_ENTRYPOINT_MODULES)}
 
 
 def require_install_ready(status, target_version):
@@ -987,6 +1037,9 @@ def main():
     prepare_parser.add_argument("--platform", choices=PLATFORMS, required=True)
     prepare_parser.add_argument("--architecture", choices=("x86_64", "arm64"), required=True)
     prepare_parser.add_argument("--package-family", choices=("default", "arch"), default="default")
+    stage_parser = commands.add_parser("stage-entrypoint")
+    stage_parser.add_argument("--source-directory", type=Path, required=True)
+    stage_parser.add_argument("--output", type=Path, required=True)
     extract_parser = commands.add_parser("extract")
     extract_parser.add_argument("--archive", type=Path, required=True)
     extract_parser.add_argument("--output", type=Path, required=True)
@@ -1015,7 +1068,9 @@ def main():
     serve_parser.add_argument("--ready-file", type=Path, required=True)
     serve_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
     args = parser.parse_args()
-    if args.action == "prepare":
+    if args.action == "stage-entrypoint":
+        result = stage_fixture_entrypoint(args.source_directory, args.output)
+    elif args.action == "prepare":
         result = prepare(args.repository, args.output, args.base_version, args.target_version,
                          args.runtime, args.platform, args.architecture, args.package_family)
     elif args.action == "extract":

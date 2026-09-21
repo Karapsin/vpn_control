@@ -25,40 +25,109 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoints100–101
+## Current continuation — checkpoint106
 
-Checkpoint `93c8b2c339c06c437533aa6405f37363a4d9693e` (product2.1.13)
-is pushed. Managed pre-push and all five required exact-SHA workflows passed;
-receipts are checkpoint99/prepush-result.json and checkpoint99/commit-result.json.
-The earlier3ba018f checkpoint also passed all five. The intentional dirty batch
-contains the scheduled-refresh observer, causal regressions, routine wiring and
-agent documentation. Full parity remains incomplete.
+Checkpoint `282c937b1f082c5b32cae7127f0f4688dc3503c1` (product2.1.14)
+is pushed after managed pre-push passed. All five required exact-SHA workflows
+now pass (verified September21 at06:18 Moscow).
+It fixes the Windows permission-test failure from6298ec2; the corrected suite
+passed on the assigned Windows guest (nine tests, one POSIX-only skip).
+Prior93c8b2c passed all five required workflows. The intentional dirty batch adds
+reviewed-prompt freshness checks, certificate serial scope, installer admission
+and handoff regressions, Windows helper pin fixes and agent documentation.
+Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Delivery101 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed93c8b2c | Review observer, integrate routine tests and validate next batch |
-| Observer100 | scheduled_harness100 | desktop_scheduled_refresh_fixture.py and its test | Root owns docs/hygiene/delivery | Local deterministic fixtures | Reviewed fixes; two reconstructed RED failures and eight GREEN tests; release hygiene passes |
-| Windows update100 | windows_diagnosis100 | Ignored public MSI harness and native evidence | Root owns shared source/delivery | Exclusive CP95 Windows AMD64 guest | CP99 terminal CANCELLED; CP100 setup ready, watched UAC attempt assigned |
-| macOS preparation101 | mac_observer_setup101 | Ignored fixture preparation scripts | No native mutation until root handoff | Tart vpn-control-boot-control53 | Prepare corrected observer run; preserve unknown owner881 |
-| Android pending | root | Resource allocation and acceptance scheduling | No agent currently operates AVD | AVD5596 stopped, retained API35 state OFF | APK pair production inputs attested; SSH/installer matrix remains |
-| Linux pending | root | Resource allocation and acceptance scheduling | No old guest restore | Remote Arch; Fedora2326 parked | Current Linux CI packages downloaded; previous capacity below safe new-guest admission |
+| Delivery102 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed282c937 | Five workflows pass; integrate focused fixes and next checkpoint |
+| Windows image103 | windows_image103 | Coordinator helper image admission, original-user image-pin lifetime and focused tests | No shared Kotlin edits or VM mutation | CP102 read-only evidence | Reviewed fix and RED/GREEN source bundle frozen; native execution pending |
+| macOS native105 | mac_native105 | Private native preparation/evidence | No tracked source edits | Exclusive owned Tart guest | User-local rollback/recovery passed; root verified21 hashes; fixture cleaned |
+| Windows native107 | windows_probe107 | Pure C# RED/GREEN admission evidence | No product/MSI commands | Exclusive CP95 guest | SDK and corrected payload verified; native staging/build/probe assigned |
+| Manifest104 | manifest_regression104 | Fixture manifest writer and tests | Root owns docs/hygiene | Private temporary fixtures | Manifest/path-safety review and focused checks pass |
+| Certificate scope102 | certificate_scope102 | android_fixture_trust.py and its routine tests | Root owns docs/hygiene | Private temporary OpenSSL fixtures | Causal serial-path regression and helper integration |
+| Android pending | root | Resource allocation and acceptance scheduling | No agent operates AVD | AVD5596 stopped, retained API35 state OFF | Current-pair installed:true acceptance missing on both API levels |
+| Linux pending | root | Resource allocation and acceptance scheduling | No old guest restore | Remote Arch; Fedora2326 parked | Current packages ready; remote capacity insufficient for another admitted guest |
 
-CP99c macOS installed-package evidence proves a new scheduled operation and
-terminal RUNTIME_FAILED after Find Best target validation, with the original
-runtime retained. It does not prove traffic continuity: its sampler failed to
-launch. Root verified53 evidence files and public off/quit cleanup in
-checkpoint99/macos/root-review.json. The replacement observer must pass causal
-regressions before repeating the native scenario.
+Checkpoint106 contained an owned Windows fixture staging failure before any guest
+fixture execution. The staging script ran remotely through `python3 -`, interpreted
+`__file__` as the remote working directory, and recursively buffered unrelated
+remote files while holding QGA. Its exact identified Python process reached about
+5GiB RSS. After PID/start-time/socket verification, only that client was terminated;
+QGA accepts connections again. No installer, VM, runtime or guest test was stopped.
+The bounded local-payload regression and corrected standalone receiver now pass;
+do not reuse that old staging script. Native Windows RED/GREEN execution is
+assigned to windows_probe107 and remains pending.
 
-Read-only checkpoint101 Android inventory identifies AVD5594 as API35 with
-VPN Control2.3.2 installed but no app process. A system Legacy VPN is active with
-unproven ownership; preserve this emulator. Ordinary pending installer sessions
-remain uncertain. See checkpoint101/android-capacity/android-capacity-report.md.
+The checkpoint106 Android audit found that the installer lifecycle harness records
+status/wait without asserting successful target installation. The corrected driver
+requires explicit expected outcome, exact correlation, and target version/code/hash
+for success; its17-test suite passes. Existing capture-only or cancelled runs cannot
+certify installed-package acceptance. No emulator was started by this audit.
 
-CP100 Windows setup reports controller8acad9bc-5378-44fe-88d2-2431c2b0980b,
-revision0, update2.1.14 ready with130998644 downloaded bytes. CP99's prior
-CANCELLED result is terminal; the disconnected old owner was publicly quit.
-Neither setup readiness nor the earlier cancellation proves MSI replacement.
+Checkpoint105 closes user-local macOS rollback and next-owner failure recovery
+for the frozen3ba018f base2.1.12/target2.1.13 DMG pair. Root verified21 guest
+evidence hashes and exact controller/request/operation/job correlation. The
+worker published FAILED/PERSISTENCE_FAILED sequence4 after the deliberately
+immutable candidate prevented replacement; the exact original base inode/tree
+and signature were restored. A new controller recovered final failure with
+cleanupCode:OK and installed:null. Observed runtime remained OFF. The driver
+finished in7 seconds; its owner quit publicly and only its verified server was
+stopped. Prior owner881/watcher12320 and their unknown jobs remain preserved.
+Evidence: checkpoint105/macos/root-review.json. Machine rollback, interrupted
+recovery, automatic GUI return and final-source attestation remain separate.
+
+CP102 Windows read-only evidence confirms the worker-ready helper hash matches
+its original-user-owned installed image. Coordinator image inspection still uses
+machine-only ownership checks for that image; this is a causal hypothesis for the
+post-bootstrap failure, pending regression and native execution proof. Protected
+receipt ACLs must remain strict.
+
+The fresh macOS rollback job3bf3b125-8411-42c8-8a1b-ee7ea0d8b232 reached
+WAITING_FOR_EXIT with owner12216 live. A public quit returned BUSY; no owner was
+killed. The temporary candidate immutable flag and fixture lock were removed.
+The fixture omitted a post-readiness public status acknowledgement; raw receipt
+reads cannot release DesktopOwnerExitGate. Same-job continuation through exact
+public operation status is assigned, retaining the staged-candidate rollback
+fault and original owner identity. No product exit defect is established.
+Preserve older owner881. The exact public acknowledgement subsequently returned handoffReady:true and
+the owner exited. The protected receipt remained WAITING_FOR_EXIT during the
+observation window. An additional fixture lock was identified and released.
+PID12320 is the watcher role; the actual coordinator is absent and no exact
+launcher/gate lock holder remains. The receipt is stale/nonterminal; exit cause
+is unproven. Only our staged-candidate immutable flag was removed after
+identity/signature verification. No same-job replay or rollback success is claimed. Native public
+rollback is not yet proven.
+
+CP101 macOS now proves sampled traffic across a fresh scheduled operation on the
+frozen3ba018f target DMG:252/252 successful probes, maximum observed gap1.2206s,
+one fresh application HTTPS request, exact operation wait, same controller/runtime.
+The operation ended RUNTIME_FAILED after Find Best target validation; successful
+Find Best remains unproved. Root verified all301 manifest entries. Public off/quit
+returned OK; only protected owner881 remains. Evidence:
+checkpoint101/macos/cp101-collected and root-manifest-review.json.
+
+CP100 Windows is authoritatively CANCELLED. Its credential sequence followed the
+not-started marker and cannot prove approval. CP102 prepared helpers in advance,
+rejected a changed screenshot without input, then admitted one guarded input
+8.664seconds after fresh review. Public recovery now retains unknown job
+b066a7a6-8016-492d-9e09-476d7288d027, operation
+b5342e30-6290-4408-a68a-82b4fd00dccb, request
+da4446e4-8b4b-419b-9a91-e107df048cf4, controller
+8e027d3b-019e-448f-ba03-ede600624db9. Handoff is unacknowledged and installed
+remains null. Do not replay, cancel, quit or stop this owner/VM without new
+terminal evidence. Base version2.1.13 remains observed. Raw evidence:
+checkpoint102/windows/recovery-result.json and prompt captures.
+
+Read-only Android inventory identifies AVD5594 as API35 with VPN Control2.3.2
+installed but no app process. A system Legacy VPN has unproven ownership;
+preserve the emulator. Ordinary pending installer sessions remain uncertain.
+Remote Arch checkpoint106 reports10442MiB available after staging-client
+containment, just202MiB above the Android threshold. Recheck immediately before
+any start; Linux remains3894MiB below its14336MiB threshold.
+Multiple existing QEMUs are present; preserve them pending ownership/lifecycle
+verification, rather than assuming CP95 is the sole running guest. API29 image is absent there;
+existing API35 environments lack established ownership. Evidence:
+checkpoint101/android-capacity and remote-android-admission.md.
 
 The current-source macOS base2.1.12/target2.1.13 pair is built under
 /private/tmp/vpn-macos-3ba018f-pair. Both package hashes and common code fingerprint
@@ -66,6 +135,20 @@ were independently verified. Source fingerprint:
 2c94f668537f0d73e7858716dea54197f119be1fb3fd2ce0ad6ab29e5f415ab2.
 Evidence: checkpoint98/macos-pair-receipt.json and macos-pair-root-verification.json.
 This is package-build evidence, not native installation or traffic acceptance.
+
+Current source audit confirms Android watch/follow dispatch precedes the legacy
+adapter flag rejection. Shared streams pin owner identity, retain cursors/gaps and
+per-read timeouts. DesktopCliOutputHealth checks idle output pipes each poll;
+DesktopCliStreamPipeTest exercises real child-reader closure for JSON and human
+output. Historical CP25 idle-follow failure is superseded by this implementation.
+Current nondebuggable API29/API35 default-document transport stream execution is
+still required; legacy-provider records do not close that gate.
+
+Linux corrupt-package rejection already has deterministic coverage in
+DesktopLinuxUpdateServiceTest.changedVerifiedPackageNeverReachesNativeAdapter
+(the fixture selects RPM), with exact protected receipt correlation separately
+covered by DesktopLinuxInstallCorrelationTest. Current native RPM preservation
+and recovery remain open; no duplicate test or native success is inferred.
 
 ## Checkpoints95–98 evidence
 
@@ -1007,8 +1090,9 @@ proof of sufficient peak capacity.
    and pendingB, TUN/child cleanup, ordinary GUI/autostart and safe legacy migration.
 3. Finish remaining RPM failure cases and final-source package revalidation. Fresh
    DEB dependency acquisition and exact Arch replacement/rollback are proven in
-   checkpoint63 and checkpoint68 respectively. macOS rollback, interrupted recovery
-   and automatic GUI return remain open.
+   checkpoint63 and checkpoint68 respectively. macOS machine rollback, interrupted recovery
+   and automatic GUI return remain open; user-local rollback/recovery now passes
+   on the checkpoint105 frozen pair.
    Current ae926016 user-local synchronous/asynchronous and machine grant/denial
    recovery are proven above;
    the3d RPM success and earlier Mac machine success apply only to their artifacts.

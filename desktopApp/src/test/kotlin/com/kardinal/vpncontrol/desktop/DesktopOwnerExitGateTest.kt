@@ -96,6 +96,34 @@ class DesktopOwnerExitGateTest {
         assertTrue(gate.exitRequested)
     }
 
+    @Test
+    fun asyncInstallOmissionOfPublicReadyAcknowledgementLeavesOwnerRunning() = runBlocking {
+        var release: (() -> Unit)? = null
+        val gate = DesktopOwnerExitGate(releaseInstall = { _, _, ready -> release = ready })
+        val job = "00000000-0000-0000-0000-000000000001"
+        val correlation = DesktopInstallCorrelation("owner", "install", "operation")
+        val initial = ControlRequest(correlation.requestId, ControlCommand(ControlOperationId.UPDATES_INSTALL),
+            controllerId = correlation.controllerId, asynchronous = true)
+        val accepted = DesktopCliResponse.success(ControlProtocolCodec.encodeResult(ControlResult(
+            correlation.controllerId, correlation.requestId, ControlCode.ACCEPTED, 0, final = false,
+            operationId = correlation.operationId,
+            data = mapOf("handoffReady" to ControlValue.BooleanValue(false)))))
+
+        // The public async reply was already flushed before native readiness became known.
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(initial), accepted)
+        gate.requestInstallExitAfterResponse(correlation, job)
+        assertNull(release, "Raw worker readiness is not a public acknowledgement")
+        assertFalse(gate.exitRequested)
+
+        val status = ControlRequest("status", ControlCommand(ControlOperationId.UPDATES_STATUS),
+            controllerId = correlation.controllerId)
+        gate.responseFlushed(DesktopCliCommand.ControlSubmit(status), updateStatusResponse(status, correlation, job))
+
+        assertNotNull(release, "The corrected fixture must flush public updates status")
+        assertNotNull(release).invoke()
+        assertTrue(gate.exitRequested)
+    }
+
     @Test fun publicUpdateStatusRejectsEveryNonExactCorrelationAndNonReadyState() = runBlocking {
         val job = "00000000-0000-0000-0000-000000000001"
         val correlation = DesktopInstallCorrelation("owner", "install", "operation")

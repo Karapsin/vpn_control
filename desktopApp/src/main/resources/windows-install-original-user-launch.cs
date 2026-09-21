@@ -68,7 +68,9 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
         if (token==IntPtr.Zero) throw new ObjectDisposedException("VpnInstallOriginalUserLaunch");
         ValidateInvocation(arguments);
         if (arguments[0]!="install-user") throw new IOException("INVALID_ARGUMENT");
-        using (VpnInstallNative.ImageObjectPin selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf(PrincipalSid)) {
+        VpnInstallNative.ImageObjectPin selfImage=null;
+        try {
+        selfImage=VpnInstallNative.ImageObjectPin.CaptureSelf(PrincipalSid);
         string image=SelfImage();
         STARTUPINFO startup=new STARTUPINFO(); startup.cb=Marshal.SizeOf<STARTUPINFO>();
         // The fixture may inject the first launch failure. Keep its process record
@@ -101,7 +103,8 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
             VerifyChild(child.hProcess,selfImage);
             if (ResumeThread(child.hThread)==UInt32.MaxValue) throw Error("OUTCOME_UNKNOWN");
             IntPtr process=child.hProcess; child.hProcess=IntPtr.Zero;
-            return new StartedHelper(process,child.dwProcessId);
+            StartedHelper result=new StartedHelper(process,child.dwProcessId,selfImage); selfImage=null;
+            return result;
         } catch (Exception failure) {
             if (child.hProcess!=IntPtr.Zero) {
                 // A failed verification/resume must not leave an unowned suspended
@@ -116,8 +119,11 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
             }
             throw;
         }
-        finally { if (child.hThread!=IntPtr.Zero) CloseHandle(child.hThread); if (child.hProcess!=IntPtr.Zero) CloseHandle(child.hProcess); }
+        finally {
+            if (child.hThread!=IntPtr.Zero) CloseHandle(child.hThread);
+            if (child.hProcess!=IntPtr.Zero) CloseHandle(child.hProcess);
         }
+        } finally { if (selfImage!=null) selfImage.Dispose(); }
     }
 
     void VerifyChild(IntPtr child,VpnInstallNative.ImageObjectPin selfImage) {
@@ -136,8 +142,12 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
 
     internal sealed class StartedHelper : IDisposable {
         IntPtr process;
+        VpnInstallNative.ImageObjectPin launchImage;
         internal readonly uint ProcessId;
-        internal StartedHelper(IntPtr retained,uint pid) { process=retained; ProcessId=pid; }
+        internal StartedHelper(IntPtr retained,uint pid,VpnInstallNative.ImageObjectPin retainedImage=null) {
+            if (retained==IntPtr.Zero) throw new ArgumentException("Original-user process rejected");
+            process=retained; ProcessId=pid; launchImage=retainedImage;
+        }
         internal ChildIdentity Observe() {
             if (process==IntPtr.Zero) throw new ObjectDisposedException("StartedHelper");
             IntPtr current=IntPtr.Zero;
@@ -147,6 +157,7 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
                 return new ChildIdentity(ProcessId,ProcessCreation(process),session,TokenSid(current),TokenScalar(current,TokenElevation)!=0);
             } finally { if (current!=IntPtr.Zero) CloseHandle(current); }
         }
+        internal bool HasLaunchImagePin { get { return launchImage!=null; } }
         internal bool Wait(uint milliseconds) { return WaitForSingleObject(process,milliseconds)==0; }
         // This is used only before the coordinator has admitted the child or
         // created any protected installation state.  Once admission succeeds,
@@ -168,8 +179,18 @@ internal sealed class VpnInstallOriginalUserLaunch : IDisposable {
             // worker whose protected receipt is still the only outcome record.
             WaitForExactExit();
         }
+        // The coordinator owns replacement authority only after it retained and
+        // compared both process image objects. Until then this pin prevents a
+        // current-user path substitution between launch and readiness admission.
+        internal void ReleaseLaunchImagePinAfterAdmission() {
+            VpnInstallNative.ImageObjectPin pin=launchImage;
+            if (pin!=null) { pin.Dispose(); launchImage=null; }
+        }
         void WaitForExactExit() { while (!Wait(UInt32.MaxValue)) System.Threading.Thread.Sleep(50); }
-        public void Dispose() { if (process!=IntPtr.Zero) { CloseHandle(process); process=IntPtr.Zero; } }
+        public void Dispose() {
+            if (process!=IntPtr.Zero) { CloseHandle(process); process=IntPtr.Zero; }
+            ReleaseLaunchImagePinAfterAdmission();
+        }
     }
     // The caller owns this retained identity and must reconcile/close it; an
     // uncertain stop is never silently converted into a completed cancellation.

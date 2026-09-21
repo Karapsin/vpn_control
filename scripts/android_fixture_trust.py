@@ -11,6 +11,28 @@ ANDROID_CACERTS_FILE_MODE = 0o644
 PRIVATE_FIXTURE_DIRECTORY_MODE = 0o700
 
 
+def sign_fixture_leaf_certificate(
+    certificate_request: Path,
+    ca_certificate: Path,
+    ca_private_key: Path,
+    leaf_certificate: Path,
+    serial_file: Path,
+) -> Path:
+    """Sign one disposable leaf and keep OpenSSL's serial in the fixture directory."""
+    subprocess.run(
+        [
+            "openssl", "x509", "-req", "-in", str(certificate_request),
+            "-CA", str(ca_certificate), "-CAkey", str(ca_private_key),
+            "-CAcreateserial", "-CAserial", str(serial_file), "-out", str(leaf_certificate),
+            "-days", "1", "-sha256",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return serial_file
+
+
 def android_ca_store_filename(certificate: Path) -> str:
     """Return the legacy Android CA-store filename for a PEM certificate."""
     result = subprocess.run(

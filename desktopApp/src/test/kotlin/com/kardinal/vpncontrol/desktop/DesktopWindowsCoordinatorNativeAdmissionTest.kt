@@ -14,10 +14,20 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class DesktopWindowsCoordinatorNativeAdmissionTest {
+    @Test fun actualAdmitWorkerBoundaryAdmitsOnlyBoundPrivateUserImage() {
+        runFixture(includeProgramData = false)
+    }
+
     @Test fun actualCoordinatorConstructorAdmitsOnlyPinnedSameImageWorkerAndSafeProgramDataChild() {
+        assumeTrue(System.getenv("VPN_CONTROL_NATIVE_COORDINATOR_ADMISSION") == "1")
+        runFixture(includeProgramData = true)
+    }
+
+    private fun runFixture(includeProgramData: Boolean) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-coordinator-native-admission-")
         var retainEvidence = false
+        var privateImageStage: Path? = null
         try {
             listOf(
                 "windows-install-native.cs", "windows-install-helper-inventory.cs", "windows-install-helper-protocol.cs",
@@ -64,9 +74,26 @@ class DesktopWindowsCoordinatorNativeAdmissionTest {
             }
             assertEquals(sdk["version"]!!.jsonPrimitive.content, run("sdk", listOf(dotnet, "--version")).trim())
             run("build", listOf(dotnet, "build", "CoordinatorNativeAdmissionProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"))
-            // The compiler always validates the native fixture on Windows. Only
-            // its real ProgramData ACL/process authority execution is opt-in.
-            assumeTrue(System.getenv("VPN_CONTROL_NATIVE_COORDINATOR_ADMISSION") == "1")
+            // Routine Windows CI has no ProgramData mutation authority. Stage the
+            // actual apphost beneath a private current-user ACL and call the
+            // production admission helper used by AdmitWorker before the
+            // separately authorized full coordinator scenario.
+            val imageNative = JnaWindowsInstallNative()
+            val currentSid = JnaWindowsInstallAdmission().currentSid()
+            val currentUserImageStage = directory.resolve("current-user-coordinator-image")
+            privateImageStage = currentUserImageStage
+            imageNative.createDirectory(currentUserImageStage.toString(),
+                "O:${currentSid}G:${currentSid}D:P(A;OICI;FA;;;${currentSid})(A;OICI;FA;;;SY)", false)
+            val privateOutput = directory.resolve("bin/Release/net10.0-windows")
+            Files.list(privateOutput).use { entries -> entries.forEach { source ->
+                Files.copy(source, currentUserImageStage.resolve(source.fileName.toString()))
+            } }
+            assertTrue(run("private-image-admission", listOf(
+                currentUserImageStage.resolve("vpn-control.exe").toString(), "--private-image-admission",
+            )).contains("COORDINATOR_PRIVATE_ORIGINAL_USER_IMAGE_ADMISSION_OK"))
+            // The real ProgramData ACL/process-authority execution is opt-in.
+            // The routine assertion above is retained as its own non-skipped test.
+            if (!includeProgramData) return
             val token = UUID.randomUUID().toString().replace("-", "")
             val outputRoot = directory.resolve("bin/Release/net10.0-windows")
             val programData = Path.of(System.getenv("ProgramData") ?: "C:\\ProgramData")
@@ -88,7 +115,10 @@ class DesktopWindowsCoordinatorNativeAdmissionTest {
                 helper.toFile().deleteRecursively()
             }
         } finally {
-            if (!retainEvidence) directory.toFile().deleteRecursively()
+            if (!retainEvidence) {
+                privateImageStage?.toFile()?.deleteRecursively()
+                directory.toFile().deleteRecursively()
+            }
         }
     }
 }

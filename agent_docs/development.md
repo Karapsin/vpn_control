@@ -117,6 +117,15 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   for its proven source and scope. Keep every distinct TEST-001 quick regression and
   the original native scenario. Use existing long waits/event notifications and back
   off unchanged remote observations; never restart work because a poll timed out.
+- Capture explicitly selected local fixture inputs before remote submission. A script
+  sent as `python3 -` cannot locate local inputs through `__file__`; never scan the
+  remote working directory to discover them. Validate payload names and hashes
+  before acquiring an exclusive guest-agent connection. Generate evidence manifests
+  with `scripts/native_fixture_manifest.py` so regeneration excludes the manifest
+  itself, then verify the exact frozen inputs before execution.
+- Stage the desktop update fixture with `prepare_desktop_update_fixture.py
+  stage-entrypoint --source-directory scripts --output <fresh-directory>` before
+  transfer; it includes sibling modules and checks an isolated import.
 - Before launching a generated native runner, syntax-check the complete script
   and validate its final deployed helper paths, interpreter, package attributes,
   and fixture tools. A packaged minimal JVM need not include JDK tools such as
@@ -126,6 +135,19 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   and poll that session. Do not align the inner wait with the outer tool timeout.
   Provider fixtures should durably retain opaque transfer identity before writing
   requests so an interrupted observer can address the exact existing transfer.
+- Prepare credential-input helpers before submitting a native operation. Review
+  the current prompt immediately before input; use windows_prompt_observation.py
+  to reject stale observations, changed screenshots, wrong environment/operation
+  identity and terminal operations. The helper does not recognize UI: a human or
+  agent must first verify the intended visible credential field. A dismissed
+  prompt is not proof of authorization. Preserve the exact terminal receipt.
+- Complete installer fixture preparation before submission and keep one durable
+  driver responsible for its exact lock handles and cleanup. An asynchronous
+  false-ready response requires the later authenticated public ready-status
+  acknowledgement; raw receipt polling does not release the controller. Identify
+  native process roles explicitly: a live receipt watcher does not establish that
+  the installation coordinator is alive. Preserve unknown outcomes when the
+  coordinator disappears without a terminal receipt.
 - Admit VM starts centrally using host physical memory, current pressure/swap,
   configured memory of running guests, and build/test headroom. A low current VM
   RSS or a favorable memory-pressure percentage alone does not establish capacity:

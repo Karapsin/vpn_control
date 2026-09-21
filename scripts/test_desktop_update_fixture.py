@@ -20,7 +20,8 @@ from prepare_desktop_update_fixture import (
     verified_offloaded_base_record,
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
     desktop_install_arguments, require_selected_location, require_active_runtime, fixture_proxy_arguments,
-    serve_connection, write_resource_response,
+    serve_connection, write_resource_response, FIXTURE_ENTRYPOINT_MODULES,
+    stage_fixture_entrypoint, validate_staged_fixture_entrypoint,
 )
 from test_fixture_environment import symlink_probe_available
 
@@ -979,6 +980,28 @@ class FixtureArchiveExtractionTest(unittest.TestCase):
             self.assertEqual("ok", (output/"source/child").read_text())
             self.assertEqual(0o500, (output/"source").stat().st_mode & 0o777)
             self.assertEqual(0o400, (output/"source/child").stat().st_mode & 0o777)
+
+
+class FixtureEntrypointStagingTest(unittest.TestCase):
+    def test_incomplete_stage_reports_the_observed_missing_fixture_environment_module(self):
+        """CP105 copied only the command and could not reach fixture readiness."""
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary) / "stage"
+            stage.mkdir()
+            shutil.copy2(Path(prepare_desktop_update_fixture.__file__),
+                         stage / "prepare_desktop_update_fixture.py")
+            with self.assertRaisesRegex(ValueError, r"ModuleNotFoundError.*fixture_environment"):
+                validate_staged_fixture_entrypoint(stage)
+
+    def test_staging_copies_all_runtime_modules_and_imports_the_actual_entrypoint(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary) / "stage"
+            receipt = stage_fixture_entrypoint(Path(prepare_desktop_update_fixture.__file__).parent, stage)
+            self.assertEqual(list(FIXTURE_ENTRYPOINT_MODULES), receipt["modules"])
+            self.assertEqual(set(FIXTURE_ENTRYPOINT_MODULES), {path.name for path in stage.iterdir()})
+            # A second check exercises the staged command from another temporary
+            # working directory, with no source checkout available on PYTHONPATH.
+            validate_staged_fixture_entrypoint(stage)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,9 @@ internal interface CoordinatorOriginalUserChild : IDisposable {
     bool Exited { get; }
     void ReconcileBeforeAdmission();
     void ReconcileAfterAdmission();
+    // Releases only the launch-time image/ancestry witness after the coordinator
+    // has retained and compared its own exact image handles.
+    void ReleaseLaunchImagePinAfterAdmission();
 }
 
 internal static class CoordinatorOriginalUserBootstrap {
@@ -43,6 +46,7 @@ internal static class CoordinatorOriginalUserBootstrap {
         public bool Exited { get { return child.Wait(0); } }
         public void ReconcileBeforeAdmission() { child.StopBeforeCoordinatorAdmission(); }
         public void ReconcileAfterAdmission() { child.ReconcileAfterCoordinatorAdmission(); }
+        public void ReleaseLaunchImagePinAfterAdmission() { child.ReleaseLaunchImagePinAfterAdmission(); }
         public void Dispose() { child.Dispose(); }
     }
 
@@ -102,8 +106,9 @@ internal sealed class CoordinatorOriginalUserBootstrapLease : IDisposable {
             coordinator=new CoordinatorSessionAdapter(admission,child,waitForTest,machineDirectoryForTest);
         } catch {
             if (child!=null) {
-                // No protected job can exist before the adapter is constructed.
-                // Do not release the handle until the exact child exit is known.
+                // No protected job can exist before the adapter constructor
+                // returns. This includes a launch-pin release failure at the
+                // final admission step, so it is still bounded pre-admission.
                 child.ReconcileBeforeAdmission();
                 child.Dispose();
             }
@@ -199,7 +204,7 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     VpnInstallNative.ProcessPin worker, frontend;
     VpnInstallNative.ProcessImagePin workerGeneration, coordinatorGeneration;
     VpnInstallNative.ExecutableReplacementSet installation;
-    FileStream workerImage, coordinatorImage, gate, cancel;
+    FileStream gate, cancel;
     SafeFileHandle programDataDirectory, programDataWitness, machineDirectory, jobDirectory;
     bool reserved, exclusive;
     bool disposed;
@@ -231,7 +236,10 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         testMachineDirectory=machineDirectoryForTest;
         precommitDeadline=DateTime.UtcNow.AddMinutes(3);
         exitDeadline=precommitDeadline;
-        try { AdmitWorker(originalUserChild,waitForTest); }
+        try {
+            AdmitWorker(originalUserChild,waitForTest);
+            if (originalUserChild!=null) originalUserChild.ReleaseLaunchImagePinAfterAdmission();
+        }
         catch { Dispose(); throw; }
     }
 
@@ -346,31 +354,39 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
             !String.Equals(ready.PrincipalSid,originalUserChild.PrincipalSid,StringComparison.Ordinal))) throw new IOException("CONFLICT");
         worker=new VpnInstallNative.ProcessPin(ready.Pid);
         workerGeneration=new VpnInstallNative.ProcessImagePin(ready.Pid);
-        VpnInstallNative.ProcessImageObservation observed=workerGeneration.Observe();
-        if (worker.Exited || worker.Principal!=admission.Owner.Principal || observed.KernelOnly ||
-            observed.CreationFileTime!=ready.CreationFileTime) throw new IOException("CONFLICT");
-        SafeFileHandle image=VpnInstallNative.OpenRead(observed.Image,false);
-        try {
-            VpnInstallNative.Inspect(image,false,false,null);
-            workerImage=new FileStream(image,FileAccess.Read,1,false); image=null;
-            if (!String.Equals(VpnInstallNative.Sha256(workerImage),ready.HelperSha256,StringComparison.Ordinal)) throw new IOException("CONFLICT");
-        } finally { if (image!=null) image.Dispose(); }
         coordinatorGeneration=new VpnInstallNative.ProcessImagePin((uint)Process.GetCurrentProcess().Id);
-        VpnInstallNative.ProcessImageObservation coordinator=coordinatorGeneration.Observe();
-        if (coordinator.KernelOnly) throw new IOException("CONFLICT");
-        SafeFileHandle coordinatorHandle=VpnInstallNative.OpenRead(coordinator.Image,false);
-        try {
-            VpnInstallNative.Inspect(coordinatorHandle,false,false,null);
-            coordinatorImage=new FileStream(coordinatorHandle,FileAccess.Read,1,false); coordinatorHandle=null;
-            if (!VpnInstallNative.SameFileObject(workerImage.SafeFileHandle,coordinatorImage.SafeFileHandle) ||
-                !String.Equals(VpnInstallNative.Sha256(coordinatorImage),ready.HelperSha256,StringComparison.Ordinal))
-                throw new IOException("CONFLICT");
-        } finally { if (coordinatorHandle!=null) coordinatorHandle.Dispose(); }
+        AdmitSameOriginalUserImages(worker,workerGeneration,coordinatorGeneration,ready,admission.Owner.Principal);
         if (admission.Request.FrontendPid.HasValue) {
             frontend=new VpnInstallNative.ProcessPin(admission.Request.FrontendPid.Value);
             if (frontend.Exited || frontend.Principal!=admission.Owner.Principal ||
                 frontend.StartedAtEpochMillis!=admission.Request.FrontendStartedAtEpochMillis.Value ||
                 !String.Equals(frontend.Image,admission.Request.Launcher,StringComparison.OrdinalIgnoreCase)) throw new IOException("CONFLICT");
+        }
+    }
+    // The single worker-admission boundary retains both concrete process-image
+    // handles only while it checks the original-user SID, generation, ACL,
+    // file-object identity and hash. Its callers retain the process/generation
+    // witnesses; releasing file handles here avoids blocking later replacement.
+    internal static void AdmitSameOriginalUserImages(VpnInstallNative.ProcessPin worker,
+        VpnInstallNative.ProcessImagePin workerGeneration,VpnInstallNative.ProcessImagePin coordinatorGeneration,
+        VpnInstallHelperProtocol.WorkerReady ready,string originalPrincipal) {
+        if (worker==null || workerGeneration==null || coordinatorGeneration==null || ready==null ||
+            String.IsNullOrEmpty(originalPrincipal) || ready.PrincipalSid!=originalPrincipal) throw new IOException("CONFLICT");
+        VpnInstallNative.ProcessImageObservation observed=workerGeneration.Observe();
+        if (worker.Exited || worker.Principal!=originalPrincipal || observed.KernelOnly ||
+            observed.CreationFileTime!=ready.CreationFileTime) throw new IOException("CONFLICT");
+        VpnInstallNative.ProcessImageObservation coordinator=coordinatorGeneration.Observe();
+        if (coordinator.KernelOnly) throw new IOException("CONFLICT");
+        using (SafeFileHandle workerHandle=VpnInstallNative.OpenRead(observed.Image,false))
+        using (SafeFileHandle coordinatorHandle=VpnInstallNative.OpenRead(coordinator.Image,false))
+        using (FileStream workerImage=new FileStream(workerHandle,FileAccess.Read,1,false))
+        using (FileStream coordinatorImage=new FileStream(coordinatorHandle,FileAccess.Read,1,false)) {
+            VpnInstallNative.Inspect(workerImage.SafeFileHandle,false,false,originalPrincipal);
+            VpnInstallNative.Inspect(coordinatorImage.SafeFileHandle,false,false,originalPrincipal);
+            if (!VpnInstallNative.SameFileObject(workerImage.SafeFileHandle,coordinatorImage.SafeFileHandle) ||
+                !String.Equals(VpnInstallNative.Sha256(workerImage),ready.HelperSha256,StringComparison.Ordinal) ||
+                !String.Equals(VpnInstallNative.Sha256(coordinatorImage),ready.HelperSha256,StringComparison.Ordinal))
+                throw new IOException("CONFLICT");
         }
     }
     VpnInstallHelperProtocol.WorkerReady ReadWorkerReady(CoordinatorOriginalUserChild originalUserChild,CoordinatorWorkerReadyWait waitForTest) {
@@ -396,7 +412,7 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         Exception failure=null;
         try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { failure=error; }
         try { if (reserved) { VpnInstallNative.Unlock(gate.SafeFileHandle,16); reserved=false; } } catch (Exception error) { if (failure==null) failure=error; }
-        IDisposable[] resources={ cancel,jobDirectory,machineDirectory,programDataWitness,programDataDirectory,gate,workerImage,coordinatorImage,
+        IDisposable[] resources={ cancel,jobDirectory,machineDirectory,programDataWitness,programDataDirectory,gate,
             workerGeneration,coordinatorGeneration,worker,frontend,installation };
         for (int index=0;index<resources.Length;index++) try { if (resources[index]!=null) resources[index].Dispose(); }
             catch (Exception error) { if (failure==null) failure=error; }

@@ -14,8 +14,43 @@ public static class CoordinatorNativeAdmissionFixtures {
 
     public static int Main(string[] arguments) {
         if (arguments!=null && arguments.Length==1 && arguments[0]=="worker") { Thread.Sleep(15000); return 0; }
+        if (arguments!=null && arguments.Length==1 && arguments[0]=="--private-image-admission") {
+            ProbePrivateOriginalUserImageAdmission(); return 0;
+        }
         string token=arguments!=null && arguments.Length==2 && arguments[0]=="--completion-token" ? arguments[1] : Guid.NewGuid().ToString("N");
         Run(token); return 0;
+    }
+
+    // This is intentionally smaller than the full ProgramData coordinator run.
+    // It invokes the exact two-process admission boundary used by AdmitWorker,
+    // under a current-user-only image ACL. It keeps real worker process and
+    // generation witnesses, rejects a different canonical SID, and requires
+    // the bound SID to pass both image ACL checks without output or elevation.
+    static void ProbePrivateOriginalUserImageAdmission() {
+        using (WindowsIdentity identity=WindowsIdentity.GetCurrent()) {
+            if (identity.User==null) throw new IOException("Fixture caller identity unavailable");
+            string principal=identity.User.Value;
+            string unrelated=principal=="S-1-5-18" ? "S-1-5-19" : "S-1-5-18";
+            Process child=StartWorker();
+            try {
+                uint pid=(uint)child.Id; long created=Creation(pid); string digest=Hash(Environment.ProcessPath);
+                VpnInstallHelperProtocol.WorkerReady ready=VpnInstallHelperProtocol.ParseWorkerReady(
+                    VpnInstallHelperProtocol.EncodeWorkerReady(Guid.NewGuid().ToString("D"),pid,created,principal,digest));
+                bool rejected=false;
+                using (VpnInstallNative.ProcessPin worker=new VpnInstallNative.ProcessPin(pid))
+                using (VpnInstallNative.ProcessImagePin workerGeneration=new VpnInstallNative.ProcessImagePin(pid))
+                using (VpnInstallNative.ProcessImagePin coordinatorGeneration=new VpnInstallNative.ProcessImagePin((uint)Process.GetCurrentProcess().Id)) {
+                    try { CoordinatorSessionAdapter.AdmitSameOriginalUserImages(worker,workerGeneration,coordinatorGeneration,ready,unrelated); }
+                    catch (IOException) { rejected=true; }
+                    if (!rejected) throw new IOException("Unrelated original-user SID admitted private helper image");
+                    CoordinatorSessionAdapter.AdmitSameOriginalUserImages(worker,workerGeneration,coordinatorGeneration,ready,principal);
+                }
+            } finally {
+                if (!child.HasExited) child.Kill();
+                child.WaitForExit(); child.Dispose();
+            }
+        }
+        Console.WriteLine("COORDINATOR_PRIVATE_ORIGINAL_USER_IMAGE_ADMISSION_OK");
     }
 
     static void Run(string token) {
@@ -52,7 +87,9 @@ public static class CoordinatorNativeAdmissionFixtures {
                 RejectsBeforeOutput(invocation,local,input,job,(uint)worker.Id,checked(workerCreated+1),sid,digest,machine,"GENERATION");
                 RejectsBeforeOutput(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,new string('0',64),machine,"DIGEST");
                 RejectsBootstrapMismatch(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,digest,machine);
+                RejectsBadImageBeforeLaunchPinRelease(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,machine);
                 AdmitsMatchingBootstrapChild(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,digest,machine);
+                ReleaseFailureReconcilesBeforeAdmission(invocation,local,input,job,(uint)worker.Id,workerCreated,sid,digest,machine);
                 // The positive admission deliberately reserves a gate. Give the
                 // following no-output regressions a fresh protected root so
                 // they detect only output produced by their own failed wait.
@@ -119,7 +156,7 @@ public static class CoordinatorNativeAdmissionFixtures {
                 using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
                     delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },new ImmediateWait(false,false),delegate { return machine; })) { }
             } catch (IOException) {
-                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || !child.Exited)
+                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || child.LaunchImagePinReleases!=0 || !child.Exited)
                     throw new IOException("Bootstrap mismatch did not reconcile its exact rejected child");
                 if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext()) throw new IOException("Bootstrap mismatch reached gate or job output");
                 continue;
@@ -137,8 +174,46 @@ public static class CoordinatorNativeAdmissionFixtures {
             bootstrap.Coordinator.ReserveInstallation();
             if (!Directory.EnumerateFiles(machine,"gate-*").GetEnumerator().MoveNext()) throw new IOException("Matching bootstrap child did not reach coordinator admission");
         }
-        if (child.BeforeAdmissionStops!=0 || child.AfterAdmissionReconciliations!=1)
-            throw new IOException("Admitted child crossed the pre-admission termination fence");
+        if (child.BeforeAdmissionStops!=0 || child.AfterAdmissionReconciliations!=1 || child.LaunchImagePinReleases!=1)
+            throw new IOException("Admitted child did not release its launch image pin after admission");
+    }
+
+    // A matching child still cannot release its launch image pin until both
+    // process images are admitted. A bad digest reaches that final two-image
+    // boundary, then proves the constructor takes bounded pre-admission cleanup
+    // and leaves the pin release untouched.
+    static void RejectsBadImageBeforeLaunchPinRelease(VpnInstallHelperProtocol.Invocation invocation,string local,string input,string job,uint pid,long created,string sid,string machine) {
+        WriteReady(input,job,pid,created,sid,new string('0',64));
+        BootstrapChild child=new BootstrapChild(pid,created,sid,false);
+        bool rejected=false;
+        try {
+            using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+            using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+                delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },new ImmediateWait(false,false),delegate { return machine; })) { }
+        } catch (IOException) { rejected=true; }
+        if (!rejected || child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || child.LaunchImagePinReleases!=0 || !child.Exited)
+            throw new IOException("Failed image admission released a launch pin or crossed its termination fence");
+        if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext())
+            throw new IOException("Failed image admission reached gate or job output");
+    }
+
+    // A transferred launch-image pin releases at the final adapter-admission
+    // step, after both image handles and optional frontend have been checked but
+    // before the constructor returns. A release failure therefore remains a
+    // bounded pre-admission rejection: no job, receipt or MSI authority exists.
+    static void ReleaseFailureReconcilesBeforeAdmission(VpnInstallHelperProtocol.Invocation invocation,string local,string input,string job,uint pid,long created,string sid,string digest,string machine) {
+        WriteReady(input,job,pid,created,sid,digest);
+        BootstrapChild child=new BootstrapChild(pid,created,sid,false); child.FailLaunchImagePinRelease=true;
+        bool failed=false;
+        try {
+            using (OwnerInputAdmission admission=OwnerInputAdmission.Open(invocation,false,delegate { return local; }))
+            using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
+                delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },new ImmediateWait(false,false),delegate { return machine; })) { }
+        } catch (IOException) { failed=true; }
+        if (!failed || child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || child.LaunchImagePinReleases!=1 || !child.Exited)
+            throw new IOException("Launch image pin release escaped bounded pre-admission cleanup");
+        if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext())
+            throw new IOException("Launch image pin release failure reached gate or job output");
     }
 
     // This calls the same bootstrap lease used by the production factory. Only
@@ -153,7 +228,7 @@ public static class CoordinatorNativeAdmissionFixtures {
                 using (CoordinatorOriginalUserBootstrapLease bootstrap=new CoordinatorOriginalUserBootstrapLease(invocation,admission,
                     delegate(VpnInstallHelperProtocol.Invocation ignored,string owner) { return child; },wait,delegate { return machine; })) { }
             } catch (IOException) {
-                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || !child.Exited)
+                if (child.BeforeAdmissionStops!=1 || child.AfterAdmissionReconciliations!=0 || child.LaunchImagePinReleases!=0 || !child.Exited)
                     throw new IOException("Rejected bootstrap child was not exactly reconciled before admission");
                 if (Directory.EnumerateFileSystemEntries(machine).GetEnumerator().MoveNext()) throw new IOException("Bounded wait reached gate or job output");
                 continue;
@@ -181,7 +256,8 @@ public static class CoordinatorNativeAdmissionFixtures {
 
     sealed class BootstrapChild : CoordinatorOriginalUserChild {
         internal readonly uint Pid; internal readonly long Created; internal readonly string Sid; bool dead;
-        internal int BeforeAdmissionStops,AfterAdmissionReconciliations;
+        internal int BeforeAdmissionStops,AfterAdmissionReconciliations,LaunchImagePinReleases;
+        internal bool FailLaunchImagePinRelease;
         internal BootstrapChild(uint pid,long created,string sid,bool exited) { Pid=pid; Created=created; Sid=sid; dead=exited; }
         public uint ProcessId { get { return Pid; } }
         public long CreationFileTime { get { return Created; } }
@@ -189,6 +265,10 @@ public static class CoordinatorNativeAdmissionFixtures {
         public bool Exited { get { return dead; } }
         public void ReconcileBeforeAdmission() { BeforeAdmissionStops++; dead=true; }
         public void ReconcileAfterAdmission() { AfterAdmissionReconciliations++; dead=true; }
+        public void ReleaseLaunchImagePinAfterAdmission() {
+            LaunchImagePinReleases++;
+            if (FailLaunchImagePinRelease) throw new IOException("Fixture launch image pin release failure");
+        }
         public void Dispose() { }
     }
 
