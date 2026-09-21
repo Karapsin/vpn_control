@@ -25,21 +25,31 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoints95–96
+## Current continuation — checkpoints98–99
 
-Checkpoint `bdaa57de79d27fab7eb35abe782e4372c6ece5c3` (product2.1.13)
-is pushed and all five required workflows passed. Managed receipt:
-checkpoint94/commit-result.json. Subsequent fixture edits are a new uncommitted
-batch; that receipt does not validate the new contents. Full parity is incomplete.
+Checkpoint `3ba018fbdc0461f5f8015e7ed14ba1efd45bc07b` (product2.1.13)
+is pushed. All managed local pre-push checks and all five required exact-SHA
+workflows passed. Receipts: checkpoint98/prepush-result.json and
+checkpoint98/commit-result.json. The previous bdaa57 checkpoint also passed all five.
+New fixture regressions and this work record form the next intentional dirty batch.
+Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Android provider96 | root; android_fixture54 complete | Public-provider fixture and focused tests; native evidence | Root owns hygiene/docs/delivery | Exclusive owned5596, API35 nondebuggable APK | Eleven focused tests pass; cleanup confirmed; endpoint preflight has not yet proved relay delivery, cancellation remains unproven |
-| macOS relay96 | root; mac_ci79 implementation complete | SOCKS forwarding fixture and focused tests | Root owns hygiene/docs/delivery | mac_resume73 exclusively operates existing Tart guest | Fourteen tests pass, including drained EOF and backpressure; scheduled HTTPS refresh succeeded; evidence boundary review underway |
-| Windows MSI95 | root; windows_fixture97 staging | New guest staging and ignored reviewed install harness | Root owns public installation and UI | Fresh CP95 Windows AMD64 guest,4GiB/2CPU | Immutable base verified; standard user/Python and private TLS inputs verified; immutable fixture staging in progress; no MSI replacement claimed |
-| Linux preservation95 | root | Memory save/restore receipts | Root alone restores guest | Fedora2326 parked; other guests untouched | Round-trip retained boot/controller/owner identities; final memory and paired disk hashes preserved |
-| Scheduled operations96 | fixture_review92 | DesktopHeadlessSession, refresh service, AppService/factory, owner, result adapter/runner and focused tests | Root owns delivery and host Gradle | No native activity | Seventy focused tests pass; scheduled identity/cancellation and typed unknown/committed results implemented; rebuilt native evidence pending |
-| Combined fixture96 | mac_ci79 | New HTTPS subscription/relay runner and focused test | Root owns hygiene/docs | Loopback component tests only | Four root-verified tests pass; actual listener-derived endpoints, trusted TLS and bounded idle peers; routine wired |
+| Delivery99 | root | Shared integration, docs, metadata, checkpoint delivery | Host Gradle and all shared product files | Pushed3ba018f | Pre-push and all five exact-SHA workflows green |
+| Android runner99 | android_acceptance99 | android_public_control_fixture.py and its test | Root owns docs/hygiene/delivery | AVD5596 stopped by root; API35 nondebuggable2.1.13 retained | Seventeen fixture tests pass; native preflight confirmed revision22 OFF/CP89/no SSH key; SSH scenario awaits resource allocation |
+| Windows update99 | windows_update99 | Ignored reviewed public MSI harness/staging | Root owns shared source/delivery | Exclusive fresh CP95 Windows AMD64 guest,4GiB/2CPU | Base MSI terminal0; correcting missing staged harness before first public update; no update intent yet |
+| macOS native99 | mac_native99 | Ignored current-package scheduled-refresh evidence | Root owns source/delivery | Exclusive Tart vpn-control-boot-control53 | New current-source DMG pair verified; perform isolated installed-launcher operation/traffic acceptance, preserving old unknown owner881 |
+| Linux native99 | linux_native99 | Read-only resource/template and RPM preparation | Root allocates any new VM; no old guest restore | Remote Arch; Fedora2326 remains parked | Preparation identified; remote9.6GiB available is below14GiB admission; no new guest started |
+
+The current-source macOS base2.1.12/target2.1.13 pair is built under
+/private/tmp/vpn-macos-3ba018f-pair. Both package hashes and common code fingerprint
+were independently verified. Source fingerprint:
+2c94f668537f0d73e7858716dea54197f119be1fb3fd2ce0ad6ab29e5f415ab2.
+Evidence: checkpoint98/macos-pair-receipt.json and macos-pair-root-verification.json.
+This is package-build evidence, not native installation or traffic acceptance.
+
+## Checkpoints95–98 evidence
 
 The Windows same-source base2.1.13 and target2.1.14 MSIs built successfully and
 were exported with verified hashes (checkpoint94/msi-export-result.json).

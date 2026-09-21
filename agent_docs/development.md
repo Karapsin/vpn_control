@@ -117,6 +117,15 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   for its proven source and scope. Keep every distinct TEST-001 quick regression and
   the original native scenario. Use existing long waits/event notifications and back
   off unchanged remote observations; never restart work because a poll timed out.
+- Before launching a generated native runner, syntax-check the complete script
+  and validate its final deployed helper paths, interpreter, package attributes,
+  and fixture tools. A packaged minimal JVM need not include JDK tools such as
+  keytool; prepare fixture trust with the verified build JDK. Keep scripts in files
+  rather than nesting generated heredocs across shells. Start long commands with
+  a short initial tool yield (for example1000ms), retain the returned live session,
+  and poll that session. Do not align the inner wait with the outer tool timeout.
+  Provider fixtures should durably retain opaque transfer identity before writing
+  requests so an interrupted observer can address the exact existing transfer.
 - Admit VM starts centrally using host physical memory, current pressure/swap,
   configured memory of running guests, and build/test headroom. A low current VM
   RSS or a favorable memory-pressure percentage alone does not establish capacity:

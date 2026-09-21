@@ -11,16 +11,19 @@ UUIDs.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 
 URI = "content://com.kardinal.vpncontrol.control"
 MAX_FRAME_BYTES = 1_048_576
+SUPPORTS_DIRECTORY_FSYNC = os.name != "nt"
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 _BUNDLE = re.compile(r"Result: Bundle\[\{([^{}\r\n]*)}]\s*")
 _RESULT_KEYS = {
@@ -46,6 +49,7 @@ class FixtureOutcomeUnknown(RuntimeError):
 
 
 Content = Callable[[Sequence[str], bytes, bool], bytes | str]
+TransferRetainer = Callable[["FixtureTransferIdentity"], None]
 
 
 @dataclass(frozen=True)
@@ -213,6 +217,57 @@ class FixtureResponse:
             self._cleaned = True
 
 
+@dataclass(frozen=True)
+class FixtureTransferIdentity:
+    """Opaque identity retained before a request can become externally visible.
+
+    Native runner code supplies a synchronous retainer that durably records this
+    tuple before it performs another provider call.  It contains no request
+    payload and lets an interrupted observer recover or discard the exact
+    transfer without replaying the request.
+    """
+
+    request_id: str
+    controller_id: str
+    transfer_id: str
+
+
+class DurableTransferRetainer:
+    """Append one opaque transfer identity and flush it before provider write.
+
+    This is deliberately only a crash/observer handoff record.  It does not
+    schedule, replay, or inspect requests; the runner still owns the exact
+    follow-up read or discard.
+    """
+
+    def __init__(self, path: Path):
+        self._path = Path(path)
+
+    def __call__(self, identity: FixtureTransferIdentity) -> None:
+        encoded = (json.dumps({
+            "requestId": identity.request_id,
+            "controllerId": identity.controller_id,
+            "transferId": identity.transfer_id,
+        }, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        descriptor = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            remaining = memoryview(encoded)
+            while remaining:
+                count = os.write(descriptor, remaining)
+                if count <= 0 or count > len(remaining):
+                    raise OSError("ledger write made no progress")
+                remaining = remaining[count:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if SUPPORTS_DIRECTORY_FSYNC:
+            parent = os.open(self._path.parent, os.O_RDONLY)
+            try:
+                os.fsync(parent)
+            finally:
+                os.close(parent)
+
+
 class AndroidPublicControlFixture:
     """One legacy small-frame exchange over an authenticated provider runner."""
 
@@ -236,7 +291,7 @@ class AndroidPublicControlFixture:
         if self._call("discard", transfer_id, cleanup=True) != {}:
             raise FixtureProtocolError("discard returned unexpected bundle")
 
-    def exchange(self, request: Mapping[str, object]) -> FixtureResponse:
+    def exchange(self, request: Mapping[str, object], *, retain_transfer: TransferRetainer | None = None) -> FixtureResponse:
         """Submit once and expose its verified response before caller-directed cleanup.
 
         Any failure after ``write`` is an unknown outcome.  The client never
@@ -260,6 +315,15 @@ class AndroidPublicControlFixture:
         except Exception:
             self._discard_safely(transfer_id)
             raise
+        identity = FixtureTransferIdentity(
+            request_id=bound["requestId"], controller_id=owner, transfer_id=transfer_id,
+        )
+        if retain_transfer is not None:
+            try:
+                retain_transfer(identity)
+            except Exception as error:
+                self._discard_safely(transfer_id)
+                raise FixtureProtocolError("transfer retention failed before write") from error
         written = False
         try:
             # A transport exception cannot distinguish a rejected write from one

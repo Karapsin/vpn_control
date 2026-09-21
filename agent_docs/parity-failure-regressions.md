@@ -252,3 +252,22 @@ launch had lost its relay between preflight and work; its cause was not establis
 CP98 used the persistent context and achieved native accepted/stalled/cancel/wait
 CANCELLED with exact cleanup. Ten routine tests pass; raw evidence remains under
 checkpoint97/android-endpoint-preflight and checkpoint98/android-cancel.
+
+
+### Interrupted Android fixture observer — checkpoint99
+
+An inline multi-read preflight crossed the outer tool observation window before
+returning a live session handle. The read-only sequence did not change settings
+or runtime, but its opaque transfer IDs were not surfaced for exact cleanup.
+Original input and RED outputs exist only in task-tool history; the evidence
+boundary is recorded in checkpoint99/android-public-control-orchestration/receipt.md.
+The fixture now offers a durable opaque-identity retainer before provider write.
+Routine test_android_public_control_fixture.py verifies a real child survives an
+observer timeout, keeps a readable identity, and completes/cleans without replay.
+Further causal tests reject zero-progress ledger writes and complete partial
+writes before provider mutation. File sync is universal; directory sync is POSIX
+only, with no Windows directory power-loss guarantee. Seventeen tests pass.
+This tests fixture child/ledger behavior, not the outer agent-tool implementation.
+Native runners must use a short initial yield, retain the live session, and poll
+that same session. The API35 SSH scenario remains unexecuted; root stopped the
+positively identified idle5596 emulator to restore local memory headroom.
