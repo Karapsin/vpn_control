@@ -271,3 +271,27 @@ This tests fixture child/ledger behavior, not the outer agent-tool implementatio
 Native runners must use a short initial yield, retain the live session, and poll
 that same session. The API35 SSH scenario remains unexecuted; root stopped the
 positively identified idle5596 emulator to restore local memory headroom.
+
+### Scheduled-refresh traffic observation — checkpoints99–101
+
+CP99c refreshed through the installed macOS launcher and retained its runtime,
+but a wrong configuration-path search and a non-executable shell sampler left
+traffic continuity unproved. Its generic shell result is not acceptance evidence.
+The reusable desktop_scheduled_refresh_fixture.py observer reads the exact named
+mixed inbound, invokes curl directly, rejects unavailable executables before CLI
+reads, and preserves timeout output. It pins controller/runtime identity and
+requires a fresh scheduled operation plus HTTP evidence bracketed by traffic.
+The operation's terminal code is recorded separately: RUNTIME_FAILED can coexist
+with passing traffic samples, but cannot prove successful Find Best.
+
+Review also found that successful edge samples could mask intervening failures,
+and that a wait response was not checked against the selected operation ID.
+Root reran the full observer with exactly these two fixes reversed and reproduced
+both false-positive failures (root-reconstructed-red.log). This is a reconstructed
+pre-fix run, not a retained historical snapshot. Eight fixed-observer tests and
+release hygiene pass. The
+routine suite is scripts/test_desktop_scheduled_refresh_fixture.py, included in
+release hygiene. Evidence lives in checkpoint100/scheduled-harness; prose case
+lists are design notes, not failing test output. Sampling intervals and gaps must
+remain visible; successful samples cannot prove the absence of shorter outages.
+The corrected installed-package native run remains required.

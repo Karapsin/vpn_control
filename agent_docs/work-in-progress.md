@@ -25,22 +25,40 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoints98–99
+## Current continuation — checkpoints100–101
 
-Checkpoint `3ba018fbdc0461f5f8015e7ed14ba1efd45bc07b` (product2.1.13)
-is pushed. All managed local pre-push checks and all five required exact-SHA
-workflows passed. Receipts: checkpoint98/prepush-result.json and
-checkpoint98/commit-result.json. The previous bdaa57 checkpoint also passed all five.
-New fixture regressions and this work record form the next intentional dirty batch.
-Full parity remains incomplete.
+Checkpoint `93c8b2c339c06c437533aa6405f37363a4d9693e` (product2.1.13)
+is pushed. Managed pre-push and all five required exact-SHA workflows passed;
+receipts are checkpoint99/prepush-result.json and checkpoint99/commit-result.json.
+The earlier3ba018f checkpoint also passed all five. The intentional dirty batch
+contains the scheduled-refresh observer, causal regressions, routine wiring and
+agent documentation. Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Delivery99 | root | Shared integration, docs, metadata, checkpoint delivery | Host Gradle and all shared product files | Pushed3ba018f | Pre-push and all five exact-SHA workflows green |
-| Android runner99 | android_acceptance99 | android_public_control_fixture.py and its test | Root owns docs/hygiene/delivery | AVD5596 stopped by root; API35 nondebuggable2.1.13 retained | Seventeen fixture tests pass; native preflight confirmed revision22 OFF/CP89/no SSH key; SSH scenario awaits resource allocation |
-| Windows update99 | windows_update99 | Ignored reviewed public MSI harness/staging | Root owns shared source/delivery | Exclusive fresh CP95 Windows AMD64 guest,4GiB/2CPU | Base MSI terminal0; correcting missing staged harness before first public update; no update intent yet |
-| macOS native99 | mac_native99 | Ignored current-package scheduled-refresh evidence | Root owns source/delivery | Exclusive Tart vpn-control-boot-control53 | New current-source DMG pair verified; perform isolated installed-launcher operation/traffic acceptance, preserving old unknown owner881 |
-| Linux native99 | linux_native99 | Read-only resource/template and RPM preparation | Root allocates any new VM; no old guest restore | Remote Arch; Fedora2326 remains parked | Preparation identified; remote9.6GiB available is below14GiB admission; no new guest started |
+| Delivery101 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed93c8b2c | Review observer, integrate routine tests and validate next batch |
+| Observer100 | scheduled_harness100 | desktop_scheduled_refresh_fixture.py and its test | Root owns docs/hygiene/delivery | Local deterministic fixtures | Reviewed fixes; two reconstructed RED failures and eight GREEN tests; release hygiene passes |
+| Windows update100 | windows_diagnosis100 | Ignored public MSI harness and native evidence | Root owns shared source/delivery | Exclusive CP95 Windows AMD64 guest | CP99 terminal CANCELLED; CP100 setup ready, watched UAC attempt assigned |
+| macOS preparation101 | mac_observer_setup101 | Ignored fixture preparation scripts | No native mutation until root handoff | Tart vpn-control-boot-control53 | Prepare corrected observer run; preserve unknown owner881 |
+| Android pending | root | Resource allocation and acceptance scheduling | No agent currently operates AVD | AVD5596 stopped, retained API35 state OFF | APK pair production inputs attested; SSH/installer matrix remains |
+| Linux pending | root | Resource allocation and acceptance scheduling | No old guest restore | Remote Arch; Fedora2326 parked | Current Linux CI packages downloaded; previous capacity below safe new-guest admission |
+
+CP99c macOS installed-package evidence proves a new scheduled operation and
+terminal RUNTIME_FAILED after Find Best target validation, with the original
+runtime retained. It does not prove traffic continuity: its sampler failed to
+launch. Root verified53 evidence files and public off/quit cleanup in
+checkpoint99/macos/root-review.json. The replacement observer must pass causal
+regressions before repeating the native scenario.
+
+Read-only checkpoint101 Android inventory identifies AVD5594 as API35 with
+VPN Control2.3.2 installed but no app process. A system Legacy VPN is active with
+unproven ownership; preserve this emulator. Ordinary pending installer sessions
+remain uncertain. See checkpoint101/android-capacity/android-capacity-report.md.
+
+CP100 Windows setup reports controller8acad9bc-5378-44fe-88d2-2431c2b0980b,
+revision0, update2.1.14 ready with130998644 downloaded bytes. CP99's prior
+CANCELLED result is terminal; the disconnected old owner was publicly quit.
+Neither setup readiness nor the earlier cancellation proves MSI replacement.
 
 The current-source macOS base2.1.12/target2.1.13 pair is built under
 /private/tmp/vpn-macos-3ba018f-pair. Both package hashes and common code fingerprint

@@ -36,6 +36,7 @@ python3 scripts/test_assemble_update_release.py
 python3 scripts/test_version_metadata.py
 python3 scripts/test_vpn_integration_fixture.py
 python3 scripts/test_https_subscription_relay_fixture.py
+python3 scripts/test_desktop_scheduled_refresh_fixture.py
 python3 scripts/test_packaged_cli_harness.py
 python3 scripts/test_linux_package_postinst.py
 python3 scripts/test_package_linux_deb.py

@@ -38,6 +38,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 
 | Touched Area | Run |
 | --- | --- |
+| Scheduled-refresh native traffic observer | `python3 scripts/test_desktop_scheduled_refresh_fixture.py` (also included in release hygiene); retain the installed-package scheduled refresh with overlapping traffic evidence. A terminal refresh failure is recorded separately from traffic continuity. |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
 | Shared control DTOs, protocol codec, registry or command grammar | `./gradlew :shared:model:desktopTest :shared:core:desktopTest`; add affected desktop/Android adapter tests when wiring dispatch |
 | GUI/CLI controller lifecycle, authentication or launchers | Shared control and affected platform tests, then public-CLI tests from each affected native package in disposable environments; see `cli.md` |

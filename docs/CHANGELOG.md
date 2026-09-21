@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep Android cancellation fixtures connected and cover stable cleanup identities after benchmark reordering.
 - Track scheduled refresh operations and preserve uncertain outcomes, with verified cancellation and hardened native test fixtures.
 - Retain Android fixture transfer identities across observer interruption and incomplete ledger writes.
+- Validate scheduled-refresh traffic evidence with pinned operation identity and complete sample results.
 
 ## 2.1.13 - 2026-09-20
 
