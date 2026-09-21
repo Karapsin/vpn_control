@@ -295,3 +295,12 @@ release hygiene. Evidence lives in checkpoint100/scheduled-harness; prose case
 lists are design notes, not failing test output. Sampling intervals and gaps must
 remain visible; successful samples cannot prove the absence of shorter outages.
 The corrected installed-package native run remains required.
+
+Windows package CI for6298ec2 exposed a fixture-test portability failure: Windows
+does not enforce POSIX executable mode bits, so a plain temporary file passed
+os.access(X_OK) and the test reached the unrelated missing-config check. The raw
+failure is checkpoint100/windows-ci-failure.log, run35555037549. The POSIX mode
+test remains enabled on Unix and explicitly skipped on Windows; a missing-curl
+test verifies fail-before-CLI behavior on every platform. Nine tests pass locally.
+This changes test applicability, not product authorization or executable admission.
+The Windows suite and next exact-SHA CI remain required.

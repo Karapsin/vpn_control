@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.14 - 2026-09-21
 
 - Preserve new update attempts and dismissed state while retaining historical installation receipts.
 - Preserve native stderr and exact child exit codes in Windows verification fixtures.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Track scheduled refresh operations and preserve uncertain outcomes, with verified cancellation and hardened native test fixtures.
 - Retain Android fixture transfer identities across observer interruption and incomplete ledger writes.
 - Validate scheduled-refresh traffic evidence with pinned operation identity and complete sample results.
+- Keep scheduled-refresh fixture checks portable across Windows and Unix executable permissions.
 
 ## 2.1.13 - 2026-09-20
 

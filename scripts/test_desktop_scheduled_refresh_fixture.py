@@ -26,6 +26,13 @@ class ScheduledRefreshFixtureTest(unittest.TestCase):
                 (state / "runtime-config.json").write_text(json.dumps(document), encoding="utf-8")
                 with self.assertRaises(subject.ObservationError): subject.mixed_loopback_port(state)
 
+    def test_missing_sampler_makes_zero_cli_calls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); calls = []
+            receipt = subject.observe(self.args(root, root / "missing-curl"), run=lambda *a, **k: calls.append(a) or response({}))
+            self.assertIn("curl executable", receipt["failure"]); self.assertEqual([], calls)
+
+    @unittest.skipIf(os.name == "nt", "Windows does not enforce POSIX executable mode bits")
     def test_nonexecutable_sampler_makes_zero_cli_calls(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); curl = root / "curl"; curl.write_text("x", encoding="utf-8"); calls = []
