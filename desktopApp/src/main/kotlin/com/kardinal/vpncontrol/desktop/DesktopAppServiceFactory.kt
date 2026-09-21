@@ -31,9 +31,7 @@ object DesktopAppServiceFactory {
                 ),
             ),
             autostartManager = DesktopAutostartManager.default(),
-            autoRefreshBestSelectionAction = { service ->
-                service.findBestLocation(refreshSubscriptionsFirst = false)
-            },
+            autoRefreshBestSelectionAction = { service -> service.findBestLocation(refreshSubscriptionsFirst = false) },
             initialWorkspace = store.loadWorkspace(defaultDesktopWorkspace()),
         ).installShutdownHook()
     }
@@ -53,7 +51,7 @@ object DesktopAppServiceFactory {
         autostartManager: DesktopAutostartManager = DesktopAutostartManager(
             platform = DesktopAutostartPlatform.UNSUPPORTED,
         ),
-        autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit = { service ->
+        autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Result<Unit> = { service ->
             service.findBestLocation(refreshSubscriptionsFirst = false)
         },
         forceRunningState: Boolean? = null,

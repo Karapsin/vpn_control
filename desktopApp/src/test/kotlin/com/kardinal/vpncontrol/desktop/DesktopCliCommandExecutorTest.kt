@@ -53,6 +53,17 @@ class DesktopCliCommandExecutorTest {
     }
 
     @Test
+    fun manualRefreshPreservesOutcomeUnknownForRecovery() {
+        val response = desktopSubscriptionRefreshResponse(
+            Result.failure(IllegalStateException("OUTCOME_UNKNOWN")),
+        )
+
+        assertFalse(response.success)
+        assertEquals("OUTCOME_UNKNOWN", response.message)
+        assertEquals(2, response.exitCode)
+    }
+
+    @Test
     fun statusReportsReachableHeadlessServiceWithoutChangingReconnectIntent() = runTest {
         val tempDir = Files.createTempDirectory("vpn-control-cli-status")
         try {

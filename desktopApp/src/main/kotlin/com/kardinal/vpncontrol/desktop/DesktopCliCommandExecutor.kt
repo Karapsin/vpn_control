@@ -6,6 +6,48 @@ import com.kardinal.vpncontrol.control.ControlLocationSelection
 import com.kardinal.vpncontrol.data.LocationConfigs
 import kotlinx.serialization.json.JsonPrimitive
 
+private fun refreshCode(refreshed: DesktopSubscriptionRefreshPayload): String {
+    val failed = refreshed.outcomes.count { !it.ok }
+    return if (failed == 0) "OK" else if (refreshed.refreshedCount > 0) "PARTIAL_FAILURE" else "REFRESH_FAILED"
+}
+
+private fun refreshOutput(refreshed: DesktopSubscriptionRefreshPayload, code: String = refreshCode(refreshed),
+    postRefreshCode: String? = null): String = kotlinx.serialization.json.buildJsonObject {
+            put("code", JsonPrimitive(code))
+            if (postRefreshCode != null) {
+                put("refreshCode", JsonPrimitive(refreshCode(refreshed)))
+                put("postRefreshCode", JsonPrimitive(postRefreshCode))
+            }
+            put("sources", kotlinx.serialization.json.JsonArray(refreshed.outcomes.map { outcome ->
+                kotlinx.serialization.json.buildJsonObject {
+                    put("id", JsonPrimitive(outcome.id))
+                    put("ok", JsonPrimitive(outcome.ok))
+                    put("locationCount", JsonPrimitive(outcome.locationCount))
+                }
+            }))
+        }.toString()
+
+internal fun desktopSubscriptionRefreshResponse(
+    result: Result<DesktopSubscriptionRefreshPayload>,
+): DesktopCliResponse = result.fold(
+    onSuccess = { refreshed ->
+        val output = refreshOutput(refreshed)
+        if (refreshCode(refreshed) == "OK") DesktopCliResponse.success(output) else DesktopCliResponse.failure(output)
+    },
+    onFailure = { it.toConnectionFailureResponse() },
+)
+
+internal fun desktopAutoRefreshResponse(result: Result<DesktopAutoRefreshResult>): DesktopCliResponse = result.fold(
+    onSuccess = { outcome ->
+        val failure = outcome.postRefreshFailure
+        val output = refreshOutput(outcome.refreshed, code = failure?.message ?: refreshCode(outcome.refreshed),
+            postRefreshCode = failure?.message)
+        if (failure == null && refreshCode(outcome.refreshed) == "OK") DesktopCliResponse.success(output)
+        else DesktopCliResponse.failure(output, failure?.exitCode ?: 1)
+    },
+    onFailure = { it.toConnectionFailureResponse() },
+)
+
 internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliCommand): DesktopCliResponse {
     if (state.isBusy && !command.bypassesMutationAdmission) {
         return DesktopCliResponse.failure("VPN Control is busy.")
@@ -80,25 +122,7 @@ internal suspend fun DesktopAppService.executeCliCommand(command: DesktopCliComm
         DesktopCliCommand.FindBest -> cliFindBest()
         is DesktopCliCommand.Select -> cliSelect(command.target)
         is DesktopCliCommand.SubscriptionDelete -> deleteSubscription(command.id).toDeleteResponse()
-        is DesktopCliCommand.SubscriptionRefresh -> refreshControlSubscriptions(command.target).fold(
-            onSuccess = { refreshed ->
-                val failed = refreshed.outcomes.count { !it.ok }
-                val output = kotlinx.serialization.json.buildJsonObject {
-                    put("code", JsonPrimitive(if (failed == 0) "OK" else if (refreshed.refreshedCount > 0) "PARTIAL_FAILURE" else "REFRESH_FAILED"))
-                    put("sources", kotlinx.serialization.json.JsonArray(refreshed.outcomes.map { outcome ->
-                        kotlinx.serialization.json.buildJsonObject {
-                            put("id", JsonPrimitive(outcome.id))
-                            put("ok", JsonPrimitive(outcome.ok))
-                            put("locationCount", JsonPrimitive(outcome.locationCount))
-                        }
-                    }))
-                }.toString()
-                if (failed == 0) DesktopCliResponse.success(output) else DesktopCliResponse.failure(output)
-            },
-            onFailure = { DesktopCliResponse.failure(it.message?.takeIf { code ->
-                code in setOf("BUSY", "NOT_FOUND", "PERSISTENCE_FAILED", "ROLLBACK_FAILED")
-            } ?: "REFRESH_FAILED") },
-        )
+        is DesktopCliCommand.SubscriptionRefresh -> desktopSubscriptionRefreshResponse(refreshControlSubscriptions(command.target))
         is DesktopCliCommand.LocationDelete -> {
             val location = resolveCliLocation(command.target).getOrElse {
                 return DesktopCliResponse.failure(it.message ?: "NOT_FOUND")
@@ -273,6 +297,7 @@ private suspend fun DesktopAppService.cliFindBest(): DesktopCliResponse {
 }
 
 internal fun Throwable.toConnectionFailureResponse(): DesktopCliResponse {
+    if (this is kotlinx.coroutines.CancellationException) return DesktopCliResponse.failure("CANCELLED", 130)
     if (message == "OUTCOME_UNKNOWN") return DesktopCliResponse.failure("OUTCOME_UNKNOWN", 2)
     val code = message?.takeIf { it in setOf(
         "CANCELLED", "BUSY", "NOT_RUNNING", "NOT_FOUND", "INVALID_ARGUMENT", "CONFLICT",

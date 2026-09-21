@@ -30,6 +30,20 @@ class DesktopUnifiedCliTest {
         }
     }
 
+    @Test fun androidHumanAndJsonSynchronousReadsUseTheSameTimeout() {
+        for (json in listOf(false, true)) {
+            var requests = 0
+            assertEquals(0, DesktopCli.handleArgs((listOf("--android", "settings", "show", "--timeout-seconds", "7") +
+                if (json) listOf("--json") else emptyList()).toTypedArray(), printLine = {}, printProgress = {},
+                requestCommand = { error("Desktop request") }, androidRequest = { request, _, timeout ->
+                    requests++
+                    assertEquals(7L, timeout)
+                    response(request)
+                }))
+            assertEquals(1, requests)
+        }
+    }
+
     @Test fun humanFailuresAndPendingOperationIdentityUseStderr() {
         for (android in listOf(false, true)) for ((code, final) in listOf(ControlCode.INVALID_ARGUMENT to true,
             ControlCode.TIMEOUT to false, ControlCode.ACCEPTED to false)) {

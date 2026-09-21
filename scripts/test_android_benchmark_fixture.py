@@ -5,14 +5,23 @@ import socket
 import socketserver
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from scripts.integration.android_benchmark_fixture import AndroidBenchmarkRelay, RelayUnavailable, SocksHandler
+from scripts.integration.android_benchmark_fixture import (
+    AndroidBenchmarkRelay,
+    RelayUnavailable,
+    SocksHandler,
+    android_shell_socks_probe_command,
+    run_android_shell_socks_probe,
+    socks5_connect_frame,
+)
 
 
 FIXTURE = Path(__file__).with_name("integration") / "android_benchmark_fixture.py"
@@ -76,6 +85,46 @@ def relay_connect(host: str, allowed_hosts: tuple[str, ...]) -> tuple[bytes, lis
 
 
 class AndroidBenchmarkFixtureTest(unittest.TestCase):
+    def test_retained_stdin_socks_probe_frames_connect_without_q_early_exit(self) -> None:
+        frame = socks5_connect_frame("chatgpt.com", 443)
+        self.assertEqual(frame, b"\x05\x01\x00\x05\x01\x00\x03\x0bchatgpt.com\x01\xbb")
+
+        command = android_shell_socks_probe_command("chatgpt.com", 19111)
+        self.assertEqual(
+            command,
+            "{ printf '\\005\\001\\000\\005\\001\\000\\003\\013\\143\\150\\141\\164\\147\\160\\164"
+            "\\056\\143\\157\\155\\001\\273'; sleep 2; } | toybox nc -W 3 -w 3 127.0.0.1 19111",
+        )
+        encoded_frame = command.split("printf '", 1)[1].split("';", 1)[0]
+        decoded_frame = bytes(
+            int(encoded_frame[index + 1:index + 4], 8)
+            for index in range(0, len(encoded_frame), 4)
+        )
+        self.assertEqual(decoded_frame, socks5_connect_frame("chatgpt.com", 443))
+        self.assertTrue(command.endswith("127.0.0.1 19111"))
+        self.assertNotIn("-q", command)
+
+    def test_public_adb_probe_executes_retained_stdin_command(self) -> None:
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"\x05\x00", stderr=b"")
+        with patch("scripts.integration.android_benchmark_fixture.subprocess.run", return_value=completed) as run:
+            result = run_android_shell_socks_probe("adb", "emulator-5596", "chatgpt.com", 19111)
+
+        self.assertIs(result, completed)
+        self.assertEqual(run.call_args.kwargs, {"capture_output": True, "timeout": 7})
+        command = run.call_args.args[0]
+        self.assertEqual(command[:5], ["adb", "-s", "emulator-5596", "exec-out", "sh"])
+        self.assertIn("sleep 2", command[-1])
+        self.assertNotIn("-q", command[-1])
+
+    def test_shell_probe_cli_exposes_the_retained_stdin_builder(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(FIXTURE), "shell-probe", "--host", "chatgpt.com", "--port", "19111"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(result.stdout.strip(), android_shell_socks_probe_command("chatgpt.com", 19111))
+
     def test_stall_keeps_authorized_socks_connection_open_after_initial_tls_bytes(self) -> None:
         client, request = socket.socketpair()
         client.settimeout(0.15)
@@ -136,6 +185,44 @@ class AndroidBenchmarkFixtureTest(unittest.TestCase):
             result = subprocess.run([sys.executable, "-c", probe, str(relay.port)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             relay.assert_live()
+
+    def test_relay_context_survives_delay_and_second_socks_exchange_then_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            events = Path(temporary_directory) / "events.ndjson"
+            command = [
+                sys.executable,
+                str(FIXTURE),
+                "serve",
+                "--port",
+                "0",
+                "--allow-host",
+                "chatgpt.com",
+                "--events",
+                str(events),
+                "--stall-after-handshake",
+            ]
+            relay = AndroidBenchmarkRelay(command=command)
+            owned_process: subprocess.Popen[str] | None = None
+            with relay:
+                assert relay.process is not None
+                owned_process = relay.process
+                frame = socks5_connect_frame("chatgpt.com", 443)
+                for _ in range(2):
+                    with socket.create_connection(("127.0.0.1", relay.port), timeout=1) as client:
+                        client.sendall(frame)
+                        self.assertEqual(
+                            recv_exact(client, 12),
+                            b"\x05\x00\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00",
+                        )
+                    if _ == 0:
+                        time.sleep(0.05)
+                        relay.assert_live()
+            assert owned_process is not None
+            self.assertIsNotNone(owned_process.poll())
+            self.assertEqual(
+                [json.loads(line)["event"] for line in events.read_text(encoding="utf-8").splitlines()],
+                ["stalled", "stalled"],
+            )
 
     def test_ready_guard_rejects_process_that_stalls_before_ready(self) -> None:
         relay = AndroidBenchmarkRelay(

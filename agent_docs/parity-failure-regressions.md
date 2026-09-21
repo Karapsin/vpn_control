@@ -192,3 +192,63 @@ Record them with their preconditions and do not count them as a defect fix. Like
 component, compile-only, older-source, mounted-image, or skipped-test evidence does
 not close a current packaged native gate. The current WIP remains the owner and
 delivery ledger; this file only maps documented failure modes to prevention evidence.
+
+
+### Provider timing and TLS forwarding fixtures — checkpoints95–96
+
+The Android document wrapper used eight separate `content` processes, each about
+1.2 seconds on the owned API35 emulator. A persistent ADB shell did not remove
+that guest process cost. The bounded legacy public-provider fixture exposes its
+response before cleanup and retains request/controller/transfer identities after
+uncertain writes. Its routine suite checks accepted-result/cancel sequencing,
+strict input/result JSON, public UID attestation, bounded ADB calls and exact
+cleanup acknowledgement. These deterministic checks do not promise a wall-clock
+cancellation window or certify the default CLI document transport. CP96 failed
+without an observed relay connection; cancellation is still unproven. Native
+fixture setup must verify the actual endpoint, not infer reachability from a
+READY file or an unrelated ADB reverse mapping.
+
+The macOS scheduled refresh used the active proxy correctly, but the fixed-HTTP
+SOCKS fixture responded to TLS with plaintext. The opt-in forwarding fixture now
+admits only its exact loopback destination and preserves bytes in both directions.
+Review exposed partial-write/backpressure, already-drained EOF, and failed-connect
+socket cleanup defects. Causal tests reproduced the EOF timeout and leaked socket
+before repair, then verified bounded queued bytes and full transfer under a slow
+receiver. All14 fixture tests pass and remain in routine release hygiene. The
+native rerun must use the permitted HTTPS endpoint for both subscription refresh
+and traffic sampling; fixed-HTTP or arbitrary-target probes are not substitutes.
+
+### Scheduled operation visibility — checkpoint96
+
+The installed macOS scenario completed automatic subscription refresh and retained
+the runtime, but source review found the scheduler invoked its refresh callback
+directly under the mutation lock, bypassing DesktopOperationRunner. Consequently
+the operation list could not represent this long work or its cancellation/result.
+This is a product gap under CLI-003/005, independent of fixture TLS corrections.
+The focused session regression first failed because the operation list was empty.
+The fix tracks scheduled work and preserves typed refresh/Find Best outcomes.
+Further causal tests exposed raw unknown outcomes flattened to REFRESH_FAILED in
+both manual and scheduled refresh. They now retain OUTCOME_UNKNOWN/exit2.
+Structured post-refresh unknowns stay nonterminal and retain committed source data;
+post-refresh cancellation also retains that data after cleanup. Seventy focused
+tests pass without skips (checkpoint98/refresh-final-focused-xml); rebuilt native
+operation-history evidence remains required.
+
+The combined HTTPS subscription/relay runner derives its published source URL,
+subscription profile and relay target from actual bound listeners. Its routine
+test fetches the advertised source using certificate-verified TLS through a SOCKS
+domain request, preventing a passing IPv4-only probe from masking a hostname
+mismatch. Review also corrected the profile scheme to the product-supported
+socks scheme, retained loopback-only binding, and bounded handshake/HTTP waits.
+Four focused tests pass, including idle TLS cleanup and no-overwrite readiness.
+The CP96 native receipt still applies to its original fixture; this reusable
+runner has component evidence until used in the next native scenario.
+
+CP97 probe review separated the loopback relay port from the SOCKS destination
+port, and the routine benchmark fixture suite now verifies chatgpt.com:443 framing
+while connecting to a different relay port. It also exercises the actual relay
+Popen context across preflight and delayed traffic. A separate short-lived shell
+launch had lost its relay between preflight and work; its cause was not established.
+CP98 used the persistent context and achieved native accepted/stalled/cancel/wait
+CANCELLED with exact cleanup. Ten routine tests pass; raw evidence remains under
+checkpoint97/android-endpoint-preflight and checkpoint98/android-cancel.

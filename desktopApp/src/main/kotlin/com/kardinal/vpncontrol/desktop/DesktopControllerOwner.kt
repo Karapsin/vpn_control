@@ -22,7 +22,9 @@ internal class DesktopControllerOwner(
     init { service.bindRuntimeResourceOwner(controllerId) }
 
     val session = DesktopHeadlessSession(scope, { service.state }, service::executeCliCommand,
-        service::runAutoRefreshCycle, controllerId = controllerId, metadataProvider = service::controlMetadata,
+        refresh = {}, prepareAutoRefresh = service::prepareAutoRefreshCycle, hasAutoRefresh = service::hasAutoRefreshCycle,
+        controllerId = controllerId,
+        metadataProvider = service::controlMetadata,
         applySettings = service::applyControlSettingsResponse, inspectSettings = service::controlSettingsSnapshot,
         importSshKey = service::importControlSshKey,
         saveSubscription = service::saveControlSubscriptionResponse,

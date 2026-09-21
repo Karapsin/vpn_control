@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -353,6 +354,126 @@ class DesktopHeadlessSessionTest {
             advanceTimeBy(2 * 60 * 60 * 1_000L)
             runCurrent()
             assertEquals(1, refreshes)
+        } finally { session.close() }
+    }
+
+    @Test
+    fun scheduledRefreshHasAnOwnerOperationAndRetainsItsTerminalOutcome() = runTest {
+        var state = MainUiState(
+            profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            subscriptions = listOf(SubscriptionSource(id = "test", url = "https://example.test/sub")),
+            activeSubscriptionId = "test",
+            subscriptionRefreshPolicy = SubscriptionRefreshPolicy.EVERY_HOUR,
+        )
+        val finishRefresh = CompletableDeferred<Unit>()
+        val session = DesktopHeadlessSession(backgroundScope, { state },
+            executeCommand = { DesktopCliResponse.success("readable") },
+            refresh = {}, nowMillis = { testScheduler.currentTime }, controllerId = "owner",
+            hasAutoRefresh = { true },
+            prepareAutoRefresh = {
+                suspend {
+                    finishRefresh.await()
+                    DesktopCliResponse.success("{\"code\":\"OK\",\"sources\":[]}")
+                }
+            })
+        try {
+            session.start()
+            runCurrent()
+
+            val running = session.operationSnapshot().single()
+            assertEquals(com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_REFRESH, running.operation)
+            assertFalse(running.phase.terminal)
+            assertTrue(running.requestId.isNotBlank())
+            assertEquals("BUSY", session.execute(DesktopCliCommand.Off).message)
+
+            session.close()
+            finishRefresh.complete(Unit)
+            runCurrent()
+
+            val completed = session.operationSnapshot().single()
+            assertTrue(completed.phase.terminal)
+            assertEquals(com.kardinal.vpncontrol.model.ControlCode.OK, completed.result?.code)
+            assertEquals("owner", completed.result?.controllerId)
+        } finally { session.close() }
+    }
+
+    @Test
+    fun scheduledRefreshRetainsPartialRefreshAndPostRefreshFailureData() = runTest {
+        val state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            subscriptions = listOf(SubscriptionSource(id = "test", url = "https://example.test/sub")),
+            activeSubscriptionId = "test", subscriptionRefreshPolicy = SubscriptionRefreshPolicy.EVERY_HOUR)
+        val response = """{"code":"OUTCOME_UNKNOWN","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"OUTCOME_UNKNOWN","sources":[{"id":"test","ok":true,"locationCount":1},{"id":"other","ok":false,"locationCount":null}]}"""
+        val session = DesktopHeadlessSession(backgroundScope, { state }, { DesktopCliResponse.success("readable") }, {},
+            nowMillis = { testScheduler.currentTime }, hasAutoRefresh = { true },
+            prepareAutoRefresh = { suspend { DesktopCliResponse.failure(response, 2) } })
+        try {
+            session.start()
+            runCurrent()
+
+            val pending = session.operationSnapshot().single()
+            assertFalse(pending.phase.terminal)
+            val inspected = com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(session.execute(
+                DesktopCliCommand.ControlSubmit(com.kardinal.vpncontrol.model.ControlRequest("inspect",
+                    com.kardinal.vpncontrol.model.ControlCommand(com.kardinal.vpncontrol.model.ControlOperationId.OPERATIONS_STATUS,
+                        mapOf("id" to com.kardinal.vpncontrol.model.ControlValue.Text(pending.id))),
+                    controllerId = session.controllerId))).message)
+            assertFalse(inspected.final)
+            assertEquals(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN, inspected.code)
+            assertEquals(com.kardinal.vpncontrol.model.ControlValue.Text("PARTIAL_FAILURE"), inspected.data["refreshCode"])
+            assertEquals(com.kardinal.vpncontrol.model.ControlValue.Text("OUTCOME_UNKNOWN"), inspected.data["postRefreshCode"])
+        } finally { session.close() }
+    }
+
+    @Test
+    fun scheduledRefreshCancellationWaitsForCleanupWhileReadsStayResponsive() = runTest {
+        val state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            subscriptions = listOf(SubscriptionSource(id = "test", url = "https://example.test/sub")),
+            activeSubscriptionId = "test", subscriptionRefreshPolicy = SubscriptionRefreshPolicy.EVERY_HOUR)
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val session = DesktopHeadlessSession(backgroundScope, { state }, { DesktopCliResponse.success("readable") }, {},
+            nowMillis = { testScheduler.currentTime }, hasAutoRefresh = { true },
+            prepareAutoRefresh = {
+                suspend {
+                    try { kotlinx.coroutines.awaitCancellation() }
+                    finally {
+                        cleanupStarted.complete(Unit)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { releaseCleanup.await() }
+                    }
+                }
+            })
+        try {
+            session.start()
+            runCurrent()
+            val id = session.operationSnapshot().single().id
+
+            assertTrue(session.execute(DesktopCliCommand.OperationCancel(id)).success)
+            cleanupStarted.await()
+            runCurrent()
+            assertEquals(com.kardinal.vpncontrol.model.ControlOperationPhase.CANCELLING,
+                session.operationSnapshot().single().phase)
+            assertTrue(session.execute(DesktopCliCommand.Status).success)
+
+            releaseCleanup.complete(Unit)
+            runCurrent()
+            val completed = session.operationSnapshot().single()
+            assertEquals(com.kardinal.vpncontrol.model.ControlOperationPhase.CANCELLED, completed.phase)
+            assertEquals(com.kardinal.vpncontrol.model.ControlCode.CANCELLED, completed.result?.code)
+        } finally { session.close() }
+    }
+
+    @Test
+    fun ineligibleScheduledRefreshDoesNotCreateAnOperation() = runTest {
+        val state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            subscriptions = listOf(SubscriptionSource(id = "test", url = "https://example.test/sub")),
+            activeSubscriptionId = "test", subscriptionRefreshPolicy = SubscriptionRefreshPolicy.EVERY_HOUR)
+        val session = DesktopHeadlessSession(backgroundScope, { state }, { DesktopCliResponse.success("readable") }, {},
+            nowMillis = { testScheduler.currentTime }, hasAutoRefresh = { false },
+            prepareAutoRefresh = { error("ineligible schedule must not prepare work") })
+        try {
+            session.start()
+            runCurrent()
+            assertTrue(session.operationSnapshot().isEmpty())
         } finally { session.close() }
     }
 }

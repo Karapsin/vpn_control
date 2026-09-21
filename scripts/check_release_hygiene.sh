@@ -35,6 +35,7 @@ python3 scripts/test_arch_update_permissions.py
 python3 scripts/test_assemble_update_release.py
 python3 scripts/test_version_metadata.py
 python3 scripts/test_vpn_integration_fixture.py
+python3 scripts/test_https_subscription_relay_fixture.py
 python3 scripts/test_packaged_cli_harness.py
 python3 scripts/test_linux_package_postinst.py
 python3 scripts/test_package_linux_deb.py
@@ -45,6 +46,7 @@ python3 scripts/test_prepare_linux_install_vm.py
 python3 scripts/test_prepare_android_native_tools.py
 python3 scripts/test_android_update_fixture.py
 python3 -m unittest scripts.test_android_benchmark_fixture
+python3 -m unittest scripts.test_android_public_control_fixture
 python3 scripts/test_android_fixture_preflight.py
 python3 scripts/test_android_fixture_transport.py
 python3 scripts/test_android_fixture_trust.py

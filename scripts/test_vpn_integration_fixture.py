@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 import socket
+import socketserver
 import re
 import shlex
 import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
-from integration.socks_http_fixture import FixtureServer
+from integration.socks_http_fixture import RELAY_MAX_PENDING_BYTES, FixtureServer, SocksHttpFixtureHandler
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -104,6 +106,199 @@ class SocksHttpFixtureTest(unittest.TestCase):
                 self.assertIn({"event": "methods", "offered": [0]}, read_transcript(transcript))
             finally:
                 stop_fixture(server, thread)
+
+    def test_fixture_forwards_tls_bytes_only_to_its_owned_loopback_destination(self) -> None:
+        received = bytearray()
+
+        class EchoHandler(socketserver.BaseRequestHandler):
+            def handle(self) -> None:
+                payload = self.request.recv(4096)
+                received.extend(payload)
+                self.request.sendall(payload)
+
+        upstream = socketserver.ThreadingTCPServer(("127.0.0.1", 0), EchoHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        server = FixtureServer(
+            "127.0.0.1",
+            0,
+            "fixture-token",
+            forward_host="127.0.0.1",
+            forward_port=upstream.server_address[1],
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        tls_bytes = b"\x16\x03\x03\x00\x05hello"
+        try:
+            with socket.create_connection(server.server_address, timeout=3) as client:
+                client.sendall(b"\x05\x01\x00")
+                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                client.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + upstream.server_address[1].to_bytes(2, "big"))
+                self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(client, 10))
+                client.sendall(tls_bytes)
+                self.assertEqual(tls_bytes, receive_exact(client, len(tls_bytes)))
+            with socket.create_connection(server.server_address, timeout=3) as client:
+                client.sendall(b"\x05\x01\x00")
+                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                denied_port = 1 if upstream.server_address[1] == 65_535 else upstream.server_address[1] + 1
+                client.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + denied_port.to_bytes(2, "big"))
+                self.assertEqual(b"\x05\x02\x00\x01\x00\x00\x00\x00\x00\x00", receive_exact(client, 10))
+            self.assertEqual(tls_bytes, bytes(received))
+        finally:
+            stop_fixture(server, thread)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=3)
+
+    def test_fixture_drains_large_duplex_transfer_after_client_half_close(self) -> None:
+        payload = b"\x16\x03\x03" + b"x" * (2 * 1024 * 1024)
+        ready = b"upstream-ready"
+
+        class SlowEchoHandler(socketserver.BaseRequestHandler):
+            def handle(self) -> None:
+                self.request.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+                self.request.sendall(ready)
+                received = bytearray()
+                while True:
+                    chunk = self.request.recv(4096)
+                    if not chunk:
+                        break
+                    received.extend(chunk)
+                    time.sleep(0.0005)
+                for start in range(0, len(received), 4096):
+                    self.request.sendall(received[start:start + 4096])
+                    time.sleep(0.0005)
+
+        upstream = socketserver.ThreadingTCPServer(("127.0.0.1", 0), SlowEchoHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        server = FixtureServer("127.0.0.1", 0, "fixture-token", forward_host="127.0.0.1", forward_port=upstream.server_address[1])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with socket.create_connection(server.server_address, timeout=10) as client:
+                client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+                client.sendall(b"\x05\x01\x00")
+                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                client.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + upstream.server_address[1].to_bytes(2, "big"))
+                self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(client, 10))
+                self.assertEqual(ready, receive_exact(client, len(ready)))
+                client.sendall(payload)
+                client.shutdown(socket.SHUT_WR)
+                self.assertEqual(payload, receive_until_close(client))
+        finally:
+            stop_fixture(server, thread)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=3)
+
+    def test_fixture_propagates_upstream_eof_after_its_response_has_already_drained(self) -> None:
+        response = b"upstream-response"
+        release_eof = threading.Event()
+
+        class ResponseThenEofHandler(socketserver.BaseRequestHandler):
+            def handle(self) -> None:
+                self.request.sendall(response)
+                if not release_eof.wait(3):
+                    raise AssertionError("test did not release the upstream EOF")
+                self.request.shutdown(socket.SHUT_WR)
+
+        upstream = socketserver.ThreadingTCPServer(("127.0.0.1", 0), ResponseThenEofHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        server = FixtureServer("127.0.0.1", 0, "fixture-token", forward_host="127.0.0.1", forward_port=upstream.server_address[1])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with socket.create_connection(server.server_address, timeout=3) as client:
+                client.sendall(b"\x05\x01\x00")
+                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                client.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + upstream.server_address[1].to_bytes(2, "big"))
+                self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(client, 10))
+                self.assertEqual(response, receive_exact(client, len(response)))
+                release_eof.set()
+                client.settimeout(0.5)
+                self.assertEqual(b"", client.recv(1), "upstream EOF must promptly half-close the client")
+        finally:
+            stop_fixture(server, thread)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=3)
+
+    def test_fixture_bounds_pending_bytes_when_the_upstream_stalls_then_completes(self) -> None:
+        release_read = threading.Event()
+        received = bytearray()
+        received_complete = threading.Event()
+        payload = b"\x16\x03\x03" + b"x" * (8 * RELAY_MAX_PENDING_BYTES)
+
+        class StalledUpstreamHandler(socketserver.BaseRequestHandler):
+            def handle(self) -> None:
+                if not release_read.wait(3):
+                    raise AssertionError("test did not release the stalled upstream")
+                while True:
+                    chunk = self.request.recv(65_536)
+                    if not chunk:
+                        received_complete.set()
+                        return
+                    received.extend(chunk)
+
+        upstream = socketserver.ThreadingTCPServer(("127.0.0.1", 0), StalledUpstreamHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        server = FixtureServer("127.0.0.1", 0, "fixture-token", forward_host="127.0.0.1", forward_port=upstream.server_address[1])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        sender_errors: list[BaseException] = []
+        try:
+            with socket.create_connection(server.server_address, timeout=3) as client:
+                client.sendall(b"\x05\x01\x00")
+                self.assertEqual(b"\x05\x00", receive_exact(client, 2))
+                client.sendall(b"\x05\x01\x00\x01\x7f\x00\x00\x01" + upstream.server_address[1].to_bytes(2, "big"))
+                self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(client, 10))
+
+                def send_payload() -> None:
+                    try:
+                        client.sendall(payload)
+                    except BaseException as error:
+                        sender_errors.append(error)
+
+                sender = threading.Thread(target=send_payload, daemon=True)
+                sender.start()
+                deadline = time.monotonic() + 3
+                while server.maximum_relay_pending_bytes < RELAY_MAX_PENDING_BYTES and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertLessEqual(server.maximum_relay_pending_bytes, RELAY_MAX_PENDING_BYTES)
+                self.assertEqual(RELAY_MAX_PENDING_BYTES, server.maximum_relay_pending_bytes)
+                release_read.set()
+                sender.join(timeout=5)
+                self.assertFalse(sender.is_alive(), "bounded relay must resume the paused reader")
+                self.assertEqual([], sender_errors)
+                client.shutdown(socket.SHUT_WR)
+                self.assertEqual(b"", receive_until_close(client))
+            self.assertTrue(received_complete.wait(3))
+            self.assertEqual(payload, bytes(received))
+        finally:
+            release_read.set()
+            stop_fixture(server, thread)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=3)
+
+    def test_forward_connect_failure_closes_the_unconnected_upstream_socket(self) -> None:
+        client, request = socket.socketpair()
+        handler = SocksHttpFixtureHandler.__new__(SocksHttpFixtureHandler)
+        handler.request = request
+        upstream = mock.Mock()
+        upstream.connect.side_effect = OSError("fixture connect failure")
+        try:
+            with mock.patch.object(SocksHttpFixtureHandler, "_owned_loopback_address", return_value=(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 1))), \
+                    mock.patch("integration.socks_http_fixture.socket.socket", return_value=upstream):
+                handler._forward_to_owned_destination("127.0.0.1", 1)
+            self.assertEqual(b"\x05\x05\x00\x01" + b"\x00" * 6, receive_exact(client, 10))
+            upstream.close.assert_called_once_with()
+        finally:
+            client.close()
+            request.close()
 
     def test_fixture_records_partial_greeting_without_authentication_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

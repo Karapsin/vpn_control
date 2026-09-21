@@ -29,6 +29,28 @@ class DesktopActionResultDataTest {
         assertFails { DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH, DesktopCliResponse.success(json)) }
     }
 
+    @Test fun scheduledRefreshRetainsCommittedSourcesWhenPostRefreshSelectionFails() {
+        val json = """{"code":"ROLLBACK_FAILED","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"ROLLBACK_FAILED","sources":[{"id":"a","ok":true,"locationCount":2},{"id":"b","ok":false,"locationCount":null}]}"""
+        val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH,
+            DesktopCliResponse.failure(json)))
+        assertEquals(ControlValue.Text("ROLLBACK_FAILED"), values["postRefreshCode"])
+        assertEquals(ControlValue.Text("PARTIAL_FAILURE"), values["refreshCode"])
+        for ((code, exitCode) in listOf("BUSY" to 1, "CONFLICT" to 1, "NOT_FOUND" to 1, "NOT_RUNNING" to 1,
+            "INVALID_ARGUMENT" to 1, "PERMISSION_DENIED" to 1, "UNSUPPORTED" to 1,
+            "PERSISTENCE_FAILED" to 1, "ROLLBACK_FAILED" to 1, "RUNTIME_FAILED" to 1,
+            "OUTCOME_UNKNOWN" to 2, "CANCELLED" to 130)) {
+            val typed = json.replace("ROLLBACK_FAILED", code)
+            assertEquals(ControlValue.Text(code), DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH,
+                DesktopCliResponse.failure(typed, exitCode))?.get("postRefreshCode"))
+        }
+        for (invalid in listOf(json.replace("ROLLBACK_FAILED\",\"refreshCode", "PRIVATE\",\"refreshCode"),
+            json.replace("\"refreshCode\":\"PARTIAL_FAILURE\"", "\"refreshCode\":\"OK\""),
+            json.replace("\"sources\"", "\"private\""))) {
+            assertFails { DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH,
+                DesktopCliResponse.failure(invalid)) }
+        }
+    }
+
     @Test fun benchmarkRetainsMeasuredFailureWithoutProfileContentOrInventedTiming() {
         val json = """{"code":"BENCHMARK_FAILED","committed":true,"id":"opaque","primaryStatus":"ok","secondaryStatus":"timeout","primaryTotalMs":12.5,"secondaryTotalMs":null}"""
         val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.LOCATIONS_BENCHMARK,

@@ -603,11 +603,11 @@ class DesktopAppServiceTest {
                         subscription.url to "socks://user:pass@127.0.0.1:1080#Auto%20Refresh",
                     ),
                 ),
-                autoRefreshBestSelectionAction = { postRefreshSelections += 1 },
+                autoRefreshBestSelectionAction = { postRefreshSelections += 1; Result.success(Unit) },
                 forceRunningState = true,
             )
 
-            service.runAutoRefreshCycle()
+            service.prepareAutoRefreshCycle()!!.invoke()
 
             assertEquals(1, postRefreshSelections)
             assertEquals(1, service.state.subscriptions.single().cachedLocations.size)
@@ -648,8 +648,8 @@ class DesktopAppServiceTest {
                 subscriptionContentFetcher = fetcher,
             )
 
-            service.runAutoRefreshCycle()
-            service.runAutoRefreshCycle()
+            service.prepareAutoRefreshCycle()!!.invoke()
+            service.prepareAutoRefreshCycle()!!.invoke()
 
             val hwid = fetcher.subscriptionHwids.distinct().single()
             assertTrue(hwid.isNotBlank())
@@ -731,11 +731,11 @@ class DesktopAppServiceTest {
                         subscription.url to "socks://user:pass@127.0.0.1:1080#New%20Location",
                     ),
                 ),
-                autoRefreshBestSelectionAction = { postRefreshSelections += 1 },
+                autoRefreshBestSelectionAction = { postRefreshSelections += 1; Result.success(Unit) },
                 forceRunningState = true,
             )
 
-            service.runAutoRefreshCycle()
+            service.prepareAutoRefreshCycle()!!.invoke()
 
             assertEquals(1, postRefreshSelections)
             assertTrue(service.state.isVpnRunning)

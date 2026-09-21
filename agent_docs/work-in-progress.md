@@ -25,7 +25,64 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint94
+## Current continuation — checkpoints95–96
+
+Checkpoint `bdaa57de79d27fab7eb35abe782e4372c6ece5c3` (product2.1.13)
+is pushed and all five required workflows passed. Managed receipt:
+checkpoint94/commit-result.json. Subsequent fixture edits are a new uncommitted
+batch; that receipt does not validate the new contents. Full parity is incomplete.
+
+| Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
+| --- | --- | --- | --- | --- | --- |
+| Android provider96 | root; android_fixture54 complete | Public-provider fixture and focused tests; native evidence | Root owns hygiene/docs/delivery | Exclusive owned5596, API35 nondebuggable APK | Eleven focused tests pass; cleanup confirmed; endpoint preflight has not yet proved relay delivery, cancellation remains unproven |
+| macOS relay96 | root; mac_ci79 implementation complete | SOCKS forwarding fixture and focused tests | Root owns hygiene/docs/delivery | mac_resume73 exclusively operates existing Tart guest | Fourteen tests pass, including drained EOF and backpressure; scheduled HTTPS refresh succeeded; evidence boundary review underway |
+| Windows MSI95 | root; windows_fixture97 staging | New guest staging and ignored reviewed install harness | Root owns public installation and UI | Fresh CP95 Windows AMD64 guest,4GiB/2CPU | Immutable base verified; standard user/Python and private TLS inputs verified; immutable fixture staging in progress; no MSI replacement claimed |
+| Linux preservation95 | root | Memory save/restore receipts | Root alone restores guest | Fedora2326 parked; other guests untouched | Round-trip retained boot/controller/owner identities; final memory and paired disk hashes preserved |
+| Scheduled operations96 | fixture_review92 | DesktopHeadlessSession, refresh service, AppService/factory, owner, result adapter/runner and focused tests | Root owns delivery and host Gradle | No native activity | Seventy focused tests pass; scheduled identity/cancellation and typed unknown/committed results implemented; rebuilt native evidence pending |
+| Combined fixture96 | mac_ci79 | New HTTPS subscription/relay runner and focused test | Root owns hygiene/docs | Loopback component tests only | Four root-verified tests pass; actual listener-derived endpoints, trusted TLS and bounded idle peers; routine wired |
+
+The Windows same-source base2.1.13 and target2.1.14 MSIs built successfully and
+were exported with verified hashes (checkpoint94/msi-export-result.json).
+The fresh Windows standard user parity95 now has verified per-user Python3.13.15
+AMD64 with a non-elevated token (checkpoint95/windows-fresh/python-verification-result.json).
+The installer succeeded; a separate inline PowerShell/Python verification quoting
+error was resolved using a script file without rerunning installation.
+The source-to-bdaa57 delta contains Android tests/fixtures and documentation only;
+this does not itself prove a native installation outcome. Earlier unknown Windows
+and Linux jobs remain preserved and must not be replayed.
+
+Android CP89 was restored using its exact compiled-parser identity, and CP94 B
+was removed by stable ID (checkpoint94/android/restoration-summary.json).
+CP96 cleanup leaves only CP89, runtime off, revision18. The small-frame fixture
+uses the supported legacy public provider, not the default desktop CLI document
+transport; its evidence must retain that distinction. The document wrapper's
+roughly ten-second overhead came from eight separate guest `content` processes;
+a persistent shell did not remove that cost.
+
+macOS CP94 continuous GUI lifecycle passed32/32 traffic requests. CP95c passed
+335/335 requests and scheduled refresh fired twice, but refresh TLS failed because
+the fixed-response SOCKS fixture answered TLS with plaintext HTTP. This is a
+fixture defect, not proof of a scheduler or product TLS defect. The new exact
+loopback forwarding mode has causal EOF, cleanup and backpressure regressions;
+CP96 then captured an application HTTPS GET and SUBSCRIPTION_REFRESHED after
+AUTO_REFRESHING_SUBSCRIPTION, retaining the same controller and active runtime.
+Its subsequent Find Best failed target validation and restored the previous
+connection; this does not prove successful scheduled Find Best. The sampler has
+seven early fixture-port failures among326 requests, so it is not an all-pass run.
+The corrected interval from00:44:40Z has319/319 successful requests. Root verified
+the corrected manifest; the original self-including manifest is preserved as invalid.
+Audit confirms automatic refresh bypasses DesktopOperationRunner; its missing
+operation identity/history is a product gap under CLI-003/005. The implementation now tracks scheduled refresh, retains committed source outcomes
+after post-refresh failures, and preserves unknown outcomes for recovery. Seventy
+focused tests pass with no skips. Native TLS success predates this change and does
+not close the rebuilt operation-visibility scenario.
+
+CP96 Android cleanup is confirmed by its original receipt listing all11 transfers.
+A later discard correctly returned NOT_FOUND. One fresh UID2000 create/discard
+probe returned the expected empty bundle and both commands exited0; no parser
+fix is warranted (checkpoint96/android-cancel/21-cleanup-probe-*).
+
+## Checkpoint94 evidence (historical)
 
 Latest pushed checkpoint is `c880e05275184ed242b611684ab8eacf3a62d97b`
 (product2.1.13). All five required exact-SHA workflows passed; receipt:
@@ -941,3 +998,33 @@ proof of sufficient peak capacity.
 
 Do not label skipped native checks, component-only tests, older launchers with new
 JARs, mounted images or in-progress jobs as full installed-package acceptance.
+
+Checkpoint97 Android shell preflight now proves fast and stalled SOCKS replies
+through an owned ADB reverse mapping, using device127.0.0.1. The earlier probe
+used nc -q1 and could end after stdin EOF before proving a handshake; it did not
+prove a broken reverse route. Exact runnable probe scripts and a self-excluding
+manifest are retained in checkpoint97/android-endpoint-preflight. A single
+subsequent cancellation attempt is assigned to android_cancel97 with frozen
+fixture copies; no result is claimed yet.
+
+Checkpoint98 Android cancellation is now proven on the frozen nondebuggable
+API35 ARM64 APK through the public legacy provider: operation
+178ed42b-f3d8-4281-9c00-167930ffc2ac was accepted nonfinal, produced a new
+benchmark-side stalled SOCKS event, then cancelled and waited as CANCELLED.
+The relay stayed owned by one persistent Python context throughout. Cleanup
+leaves revision22, only CP89, runtime OFF/unselected, no owned reverse or relay,
+and all10 transfers discarded. Root verified its evidence manifest. This does
+not certify the default desktop CLI document transport or API29 cancellation.
+
+Checkpoint98 source freeze: scheduled/manual refresh outcome regressions retain
+causal RED XML/logs and the70-test GREEN selection in checkpoint98. Final narrow
+independent review found no blocking concern. Python focused selections pass:
+provider11, SOCKS14, combined HTTPS/relay4, benchmark/probe10. Full pre-push,
+metadata and a new checkpoint push remain required.
+
+Windows CP95 base installation completed through the ordinary parity95 desktop
+with MSI exit0 and the expected per-user directory. Original installer process
+10172 is terminal; the Windows Installer service process1952 remains owned by
+Windows and is preserved. The immutable same-source fixture and reviewed base
+launcher were verified by hash/ACL. This is base installation, not public update
+replacement or next-owner recovery. Evidence: checkpoint95/windows-fresh/base97-result.json.

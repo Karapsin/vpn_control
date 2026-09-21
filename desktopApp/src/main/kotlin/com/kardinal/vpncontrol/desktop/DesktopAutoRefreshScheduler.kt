@@ -18,15 +18,6 @@ class DesktopAutoRefreshScheduler(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val logger: (String) -> Unit = {},
 ) {
-    constructor(
-        service: DesktopAppService,
-        scope: CoroutineScope,
-    ) : this(
-        scope = scope,
-        runAutoRefreshCycle = service::runAutoRefreshCycle,
-        logger = { message -> println("[vpn-control] $message") },
-    )
-
     private data class Config(
         val enabled: Boolean,
         val intervalMillis: Long,

@@ -32,6 +32,7 @@ internal class DesktopOperationRunner(
     private val guard = Any()
     private val jobs = mutableMapOf<String, Job>()
     private val pendingOutcomes = mutableMapOf<String, ControlCode>()
+    private val pendingActionData = mutableMapOf<String, Map<String, ControlValue>>()
     // Keep exact cleanup owners even if an unconfirmed native action loses its coroutine.
     // These are retained inputs, never commands to replay an uncertain operation.
     private val inputOwners = mutableMapOf<String, DesktopOperationProgress>()
@@ -64,7 +65,13 @@ internal class DesktopOperationRunner(
     private fun changed() { synchronized(mutableChanges) { mutableChanges.value++ } }
 
     fun snapshot(): List<ControlOperation> {
-        val local = synchronized(guard) { ledger.list(now()) }
+        val local = synchronized(guard) {
+            ledger.list(now()).also { retained ->
+                val ids = retained.mapTo(mutableSetOf()) { it.id }
+                pendingActionData.keys.retainAll(ids)
+                pendingOutcomes.keys.retainAll(ids)
+            }
+        }
         val ids = local.mapTo(mutableSetOf()) { it.id }
         return local + recoveredOperations().filter { it.id !in ids }
     }
@@ -165,7 +172,8 @@ internal class DesktopOperationRunner(
                 return ControlResult(ledger.controllerId, requestId, code,
                     metadata.configurationRevision, final = false, operationId = operation.id,
                     restartRequired = metadata.restartRequired,
-                    data = com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeValues(summary(operation).toString()))
+                    data = synchronized(guard) { pendingActionData[id] }
+                        ?: com.kardinal.vpncontrol.control.ControlDocumentCodec.decodeValues(summary(operation).toString()))
             }
             kotlinx.coroutines.delay(50)
         }
@@ -484,7 +492,12 @@ internal class DesktopOperationRunner(
         retainExportContent: Boolean = false) = synchronized(guard) {
         val operation = ledger.get(id, now()) ?: return@synchronized
         if (operation.phase.terminal) return@synchronized
-        uncertainResponseCode(response, inputOwners[id]?.hasRetainedInputs == true)?.let { code ->
+        val actionData = runCatching { DesktopActionResultData.decode(operation.operation, response) }
+        val pendingStructuredPostRefreshCode = (actionData.getOrNull()?.get("postRefreshCode") as? ControlValue.Text)?.value
+        val pendingCode = uncertainResponseCode(response, inputOwners[id]?.hasRetainedInputs == true)
+            ?: ControlCode.entries.firstOrNull { it.wireName == pendingStructuredPostRefreshCode && it == ControlCode.OUTCOME_UNKNOWN }
+        pendingCode?.let { code ->
+            actionData.getOrNull()?.let { pendingActionData[id] = it }
             pendingOutcomes[id] = code
             changed()
             return@synchronized
@@ -501,7 +514,6 @@ internal class DesktopOperationRunner(
             if (!owner.hasRetainedInputs) inputOwners.remove(id)
             else terminalInputOwners.add(id)
         }
-        val actionData = runCatching { DesktopActionResultData.decode(operation.operation, response) }
         val values = if (response.success && retainExportContent) Result.success(mapOf("content" to ControlValue.Text(response.message)))
         else if (response.success && configurationOperation != null) runCatching {
             DesktopConfigurationResultData.decode(configurationOperation, response.message)
@@ -511,15 +523,19 @@ internal class DesktopOperationRunner(
                     (values["id"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value?.isNotBlank() == true)
             }
         } else Result.success(emptyMap())
-        val code = if (values.isFailure) ControlCode.RUNTIME_FAILED else if (response.success) ControlCode.OK else if (response.exitCode == 130) ControlCode.CANCELLED
-            else ControlCode.entries.firstOrNull { it.wireName == response.message && it.exitCode == 1 }
+        val actionValues = actionData.getOrNull()
+        val structuredPostRefreshCode = (actionValues?.get("postRefreshCode") as? ControlValue.Text)?.value
+        val code = if (values.isFailure || actionData.isFailure) ControlCode.RUNTIME_FAILED else if (response.success) ControlCode.OK
+            else ControlCode.entries.firstOrNull { it.wireName == structuredPostRefreshCode && it.exitCode == response.exitCode }
+                ?: if (response.exitCode == 130) ControlCode.CANCELLED
+                else ControlCode.entries.firstOrNull { it.wireName == response.message && it.exitCode == 1 }
                 ?: ControlCode.RUNTIME_FAILED
         // Only validated public settings, committed routing/import results, or exact saved IDs are retained.
         // Never infer data from arbitrary human action messages or private import input.
         val metadata = committedMetadata ?: metadataProvider()
         ledger.complete(id, ControlResult(ledger.controllerId, requestId, code, configurationRevision = metadata.configurationRevision,
             restartRequired = metadata.restartRequired, operationId = id, message = code.wireName,
-            data = actionData.getOrNull() ?: values.getOrDefault(emptyMap()),
+            data = actionValues ?: values.getOrDefault(emptyMap()),
             warnings = DesktopConfigurationResultData.warnings(values.getOrDefault(emptyMap())) +
                 (if (retainExportContent) listOf("METADATA_OBSERVED_AFTER_REPORT") else emptyList()) +
                 (if (actionData.isFailure) listOf("RESULT_DATA_UNAVAILABLE") else emptyList())), now())

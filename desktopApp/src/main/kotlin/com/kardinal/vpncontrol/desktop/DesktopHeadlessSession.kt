@@ -17,6 +17,8 @@ internal class DesktopHeadlessSession(
     private val executeCommand: suspend (DesktopCliCommand) -> DesktopCliResponse,
     refresh: suspend () -> Unit,
     nowMillis: () -> Long = System::currentTimeMillis,
+    private val prepareAutoRefresh: (suspend () -> (suspend () -> DesktopCliResponse)?)? = null,
+    private val hasAutoRefresh: (() -> Boolean)? = null,
     val controllerId: String = java.util.UUID.randomUUID().toString(),
     private val metadataProvider: () -> DesktopControlMetadata = { DesktopControlMetadata(0, false) },
     private val applySettings: ((Map<String, com.kardinal.vpncontrol.model.ControlValue>, Long?) -> DesktopControlWriteResponse)? = null,
@@ -45,7 +47,24 @@ internal class DesktopHeadlessSession(
         operations.snapshot().any { !it.phase.terminal } || scheduler.hasScheduledWork(stateProvider())
     private val scheduler = DesktopAutoRefreshScheduler(
         scope = scope,
-        runAutoRefreshCycle = { mutations.withLock { if (!operations.installBarrier()) refresh() } },
+        runAutoRefreshCycle = {
+            val eligible = mutations.withLock {
+                !operations.installBarrier() && (hasAutoRefresh?.invoke() ?: false)
+            }
+            when {
+                eligible -> operations.execute(
+                    com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_REFRESH,
+                    DesktopCliCommand.SubscriptionRefresh("scheduled"),
+                    requestId = "scheduled-refresh:${java.util.UUID.randomUUID()}",
+                ) {
+                    mutations.withLock {
+                        if (operations.installBarrier()) DesktopCliResponse.failure("BUSY")
+                        else prepareAutoRefresh?.invoke()?.invoke() ?: DesktopCliResponse.failure("CONFLICT")
+                    }
+                }
+                prepareAutoRefresh == null -> mutations.withLock { if (!operations.installBarrier()) refresh() }
+            }
+        },
         nowMillis = nowMillis,
     )
     private var observer: Job? = null

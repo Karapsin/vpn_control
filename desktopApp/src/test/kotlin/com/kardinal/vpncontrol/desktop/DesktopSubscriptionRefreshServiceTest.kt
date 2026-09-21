@@ -32,7 +32,7 @@ class DesktopSubscriptionRefreshServiceTest {
                     mapOf(source.url to "socks://127.0.0.1:1080#New"))),
                 isRuntimeRunning = { state.isVpnRunning },
                 stopConnection = { stops++; state = state.copy(isVpnRunning = false); Result.success(Unit) },
-                findBestAfterRefresh = { error("No selection") },
+            findBestAfterRefresh = { error("No selection") },
                 commitState = { _, _ -> Result.failure(IllegalStateException("PERSISTENCE_FAILED")) },
                 updateState = { state = it(state) },
                 captureRestore = {
@@ -133,7 +133,7 @@ class DesktopSubscriptionRefreshServiceTest {
                 mapOf(subscription.url to "socks://user:pass@127.0.0.1:1080#Auto%20Refresh"),
             ),
             isRuntimeRunning = { true },
-            findBestAfterRefresh = { postRefreshSelections += 1 },
+            findBestAfterRefresh = { postRefreshSelections += 1; Result.success(Unit) },
             commitState = { nextState, nextLocations ->
                 state = nextState
                 locations = nextLocations
@@ -141,7 +141,7 @@ class DesktopSubscriptionRefreshServiceTest {
             updateState = { transform -> state = transform(state) },
         )
 
-        service.runAutoRefreshCycle()
+        service.prepareAutoRefreshCycle()!!.invoke().getOrThrow()
 
         assertEquals(1, postRefreshSelections)
         assertFalse(state.isBusy)
@@ -149,6 +149,68 @@ class DesktopSubscriptionRefreshServiceTest {
         assertEquals(1, state.subscriptions.single().cachedLocations.size)
         assertEquals(1, locations.size)
         assertEquals(SubscriptionStatusMessages.subscriptionRefreshed(), state.statusMessage)
+    }
+
+    @Test
+    fun autoRefreshRetainsRefreshPayloadWhenPostRefreshSelectionFails() = runTest {
+        val subscription = SubscriptionSource(id = "sub", url = "https://example.com/subscription.txt")
+        var state = MainUiState(profileUrl = subscription.url, activeSubscriptionId = subscription.id,
+            subscriptions = listOf(subscription), profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            isVpnRunning = true, subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
+            findBestAfterSubscriptionRefresh = true)
+        var locations = emptyList<DesktopLocationRecord>()
+        val service = service(stateProvider = { state }, locationsProvider = { locations },
+            fetcher = RefreshSubscriptionFetcher(mapOf(subscription.url to "socks://127.0.0.1:1080#Auto")),
+            isRuntimeRunning = { true }, findBestAfterRefresh = { Result.failure(IllegalStateException("ROLLBACK_FAILED")) },
+            commitState = { nextState, nextLocations -> state = nextState; locations = nextLocations },
+            updateState = { transform -> state = transform(state) })
+
+        val result = service.prepareAutoRefreshCycle()!!.invoke().getOrThrow()
+
+        assertEquals("ROLLBACK_FAILED", result.postRefreshFailure?.message)
+        assertEquals(1, result.refreshed.refreshedCount)
+        assertEquals(1, locations.size)
+    }
+
+    @Test
+    fun autoRefreshRetainsCommittedPayloadWhenPostRefreshSelectionIsCancelled() = runTest {
+        val subscription = SubscriptionSource(id = "sub", url = "https://example.com/subscription.txt")
+        var state = MainUiState(profileUrl = subscription.url, activeSubscriptionId = subscription.id,
+            subscriptions = listOf(subscription), profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            isVpnRunning = true, subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
+            findBestAfterSubscriptionRefresh = true)
+        var locations = emptyList<DesktopLocationRecord>()
+        val service = service(stateProvider = { state }, locationsProvider = { locations },
+            fetcher = RefreshSubscriptionFetcher(mapOf(subscription.url to "socks://127.0.0.1:1080#Auto")),
+            isRuntimeRunning = { true }, findBestAfterRefresh = { throw kotlinx.coroutines.CancellationException() },
+            commitState = { nextState, nextLocations -> state = nextState; locations = nextLocations },
+            updateState = { transform -> state = transform(state) })
+
+        val result = service.prepareAutoRefreshCycle()!!.invoke().getOrThrow()
+
+        assertEquals("CANCELLED", result.postRefreshFailure?.message)
+        assertEquals(130, result.postRefreshFailure?.exitCode)
+        assertEquals(1, result.refreshed.refreshedCount)
+        assertEquals(1, locations.size)
+    }
+
+    @Test
+    fun autoRefreshPreservesActualRefreshOutcomeUnknown() = runTest {
+        val subscription = SubscriptionSource(id = "sub", url = "https://example.com/subscription.txt")
+        var state = MainUiState(profileUrl = subscription.url, activeSubscriptionId = subscription.id,
+            subscriptions = listOf(subscription), profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
+            subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM)
+        val service = DesktopSubscriptionRefreshService(stateProvider = { state }, locationsProvider = { emptyList() },
+            subscriptionService = DesktopSubscriptionService(RefreshSubscriptionFetcher(
+                mapOf(subscription.url to "socks://127.0.0.1:1080#Auto"))), isRuntimeRunning = { false },
+            stopConnection = { error("not running") }, findBestAfterRefresh = { Result.success(Unit) },
+            commitState = { _, _ -> Result.failure(IllegalStateException("OUTCOME_UNKNOWN")) },
+            updateState = { transform -> state = transform(state) })
+
+        val response = desktopAutoRefreshResponse(service.prepareAutoRefreshCycle()!!.invoke())
+
+        assertEquals("OUTCOME_UNKNOWN", response.message)
+        assertEquals(2, response.exitCode)
     }
 
     @Test
@@ -263,7 +325,7 @@ class DesktopSubscriptionRefreshServiceTest {
         fetcher: SubscriptionContentFetcher = RefreshSubscriptionFetcher(emptyMap()),
         isRuntimeRunning: () -> Boolean = { false },
         stopConnection: suspend (String?) -> Result<Unit> = { Result.success(Unit) },
-        findBestAfterRefresh: suspend () -> Unit = {},
+        findBestAfterRefresh: suspend () -> Result<Unit> = { Result.success(Unit) },
         commitState: (MainUiState, List<DesktopLocationRecord>) -> Unit = { _, _ -> },
         updateState: ((MainUiState) -> MainUiState) -> Unit,
         isActiveLocation: (DesktopLocationRecord) -> Boolean = { it.matchesSelectedLocation(stateProvider()) },

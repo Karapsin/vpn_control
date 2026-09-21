@@ -27,7 +27,7 @@ class DesktopAppService internal constructor(
     private val connectionLifecycle: DesktopConnectionLifecycleService,
     private val subscriptionService: DesktopSubscriptionService,
     private val autostartManager: DesktopAutostartManager,
-    private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Unit,
+    private val autoRefreshBestSelectionAction: suspend (DesktopAppService) -> Result<Unit>,
     initialWorkspace: DesktopWorkspace,
     private val controlPlatform: ControlPlatform? = currentDesktopControlPlatform(),
     locationBenchmarker: DesktopLocationBenchmarker = { profile, dns, urls, settings ->
@@ -730,9 +730,12 @@ class DesktopAppService internal constructor(
         subscriptionRefreshService.refreshSubscription(subscriptionId)
     }
 
-    suspend fun runAutoRefreshCycle() {
-        subscriptionRefreshService.runAutoRefreshCycle()
+    internal fun prepareAutoRefreshCycle(): (suspend () -> DesktopCliResponse)? {
+        val action = subscriptionRefreshService.prepareAutoRefreshCycle() ?: return null
+        return suspend { desktopAutoRefreshResponse(action()) }
     }
+
+    internal fun hasAutoRefreshCycle(): Boolean = subscriptionRefreshService.hasAutoRefreshCycle()
 
     fun saveLocation(raw: String, index: Int? = null, expectedRaw: String? = null): Result<DesktopLocationRecord> =
         locationService.saveLocation(raw, index, expectedRaw)

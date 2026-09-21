@@ -31,7 +31,9 @@ internal object DesktopActionResultData {
         val values = ControlDocumentCodec.decodeValues(response.message)
         fun text(name: String) = (values.getValue(name) as ControlValue.Text).value
         if (operation == ControlOperationId.SUBSCRIPTIONS_REFRESH) {
-            require(values.keys == setOf("code", "sources"))
+            val postRefreshFailure = "postRefreshCode" in values
+            require(values.keys == if (postRefreshFailure)
+                setOf("code", "refreshCode", "postRefreshCode", "sources") else setOf("code", "sources"))
             val sources = (values.getValue("sources") as ControlValue.ArrayValue).values.map {
                 (it as ControlValue.ObjectValue).values.also { source ->
                     require(source.keys == setOf("id", "ok", "locationCount"))
@@ -45,8 +47,22 @@ internal object DesktopActionResultData {
             require(sources.map { it.getValue("id") }.distinct().size == sources.size)
             val succeeded = sources.count { (it.getValue("ok") as ControlValue.BooleanValue).value }
             val complete = succeeded == sources.size
-            require(text("code") == if (complete) "OK" else if (succeeded > 0) "PARTIAL_FAILURE" else "REFRESH_FAILED")
-            require(response.success == complete && response.exitCode == if (complete) 0 else 1)
+            val refreshCode = if (complete) "OK" else if (succeeded > 0) "PARTIAL_FAILURE" else "REFRESH_FAILED"
+            if (postRefreshFailure) {
+                require(text("refreshCode") == refreshCode)
+                require(text("postRefreshCode") in setOf("CANCELLED", "BUSY", "NOT_RUNNING", "NOT_FOUND",
+                    "INVALID_ARGUMENT", "CONFLICT", "PERMISSION_DENIED", "UNSUPPORTED", "PERSISTENCE_FAILED",
+                    "ROLLBACK_FAILED", "RUNTIME_FAILED", "OUTCOME_UNKNOWN"))
+                require(text("code") == text("postRefreshCode"))
+                require(!response.success && response.exitCode == when (text("postRefreshCode")) {
+                    "CANCELLED" -> 130
+                    "OUTCOME_UNKNOWN" -> 2
+                    else -> 1
+                })
+            } else {
+                require(text("code") == refreshCode)
+                require(response.success == complete && response.exitCode == if (complete) 0 else 1)
+            }
         } else {
             require(values.keys == setOf("id", "committed", "code", "primaryStatus", "secondaryStatus", "primaryTotalMs", "secondaryTotalMs"))
             require(text("id").isNotBlank())

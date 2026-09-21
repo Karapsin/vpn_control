@@ -8,13 +8,18 @@ import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.SubscriptionSource
 
+internal data class DesktopAutoRefreshResult(
+    val refreshed: DesktopSubscriptionRefreshPayload,
+    val postRefreshFailure: DesktopCliResponse? = null,
+)
+
 internal class DesktopSubscriptionRefreshService(
     private val stateProvider: () -> MainUiState,
     private val locationsProvider: () -> List<DesktopLocationRecord>,
     private val subscriptionService: DesktopSubscriptionService,
     private val isRuntimeRunning: () -> Boolean,
     private val stopConnection: suspend (String?) -> Result<Unit>,
-    private val findBestAfterRefresh: suspend () -> Unit,
+    private val findBestAfterRefresh: suspend () -> Result<Unit>,
     private val commitState: (nextState: MainUiState, nextLocations: List<DesktopLocationRecord>) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
     private val isActiveLocation: (DesktopLocationRecord) -> Boolean = { it.matchesSelectedLocation(stateProvider()) },
@@ -56,21 +61,36 @@ internal class DesktopSubscriptionRefreshService(
         )
     }
 
-    suspend fun runAutoRefreshCycle() {
+    /** Captures an eligible auto-refresh plan before owner operation admission. */
+    fun prepareAutoRefreshCycle(): (suspend () -> Result<DesktopAutoRefreshResult>)? {
         val plan = AutoRefreshLogic.plan(
             state = stateProvider(),
             isRuntimeRunning = isRuntimeRunning(),
-        ) ?: return
-        val refreshResult = refresh(
-            subscriptionsToRefresh = plan.subscriptionsToRefresh,
-            statusPrefix = plan.statusPrefix,
-            stopVpnIfSelectedRemoved = plan.stopVpnIfSelectedRemoved,
-        )
-        if (refreshResult.isFailure) return
-        if (plan.shouldFindBestAfterRefresh) {
-            findBestAfterRefresh()
+        ) ?: return null
+        return suspend {
+            refreshDetailed(
+                subscriptionsToRefresh = plan.subscriptionsToRefresh,
+                statusPrefix = plan.statusPrefix,
+                stopVpnIfSelectedRemoved = plan.stopVpnIfSelectedRemoved,
+            ).fold(
+                onSuccess = { refreshed ->
+                    if (plan.shouldFindBestAfterRefresh) runCatching { findBestAfterRefresh() }.getOrElse {
+                        Result.failure(it)
+                    }.fold(
+                        onSuccess = { Result.success(DesktopAutoRefreshResult(refreshed)) },
+                        onFailure = { failure -> Result.success(DesktopAutoRefreshResult(refreshed,
+                            failure.toConnectionFailureResponse())) },
+                    ) else Result.success(DesktopAutoRefreshResult(refreshed))
+                },
+                onFailure = { Result.failure(it) },
+            )
         }
     }
+
+    fun hasAutoRefreshCycle(): Boolean = AutoRefreshLogic.plan(
+        state = stateProvider(),
+        isRuntimeRunning = isRuntimeRunning(),
+    ) != null
 
     suspend fun refresh(
         subscriptionsToRefresh: List<SubscriptionSource>,

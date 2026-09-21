@@ -22,6 +22,70 @@ class RelayUnavailable(RuntimeError):
 STALL_TIMEOUT_SECONDS = 45
 
 
+def socks5_connect_frame(host: str, port: int) -> bytes:
+    """Return the no-auth SOCKS5 greeting and CONNECT request for ``host``."""
+    encoded_host = host.encode("ascii")
+    if not 1 <= len(encoded_host) <= 255:
+        raise ValueError("SOCKS probe host must contain 1 to 255 ASCII bytes")
+    if not 1 <= port <= 65535:
+        raise ValueError("SOCKS probe port must be in 1..65535")
+    return (
+        b"\x05\x01\x00\x05\x01\x00\x03"
+        + bytes((len(encoded_host),))
+        + encoded_host
+        + port.to_bytes(2, "big")
+    )
+
+
+def android_shell_socks_probe_command(
+    host: str,
+    relay_port: int,
+    *,
+    target_port: int = 443,
+    keep_stdin_seconds: int = 2,
+    idle_seconds: int = 3,
+) -> str:
+    """Build a bounded UID 2000 SOCKS probe that retains stdin for its reply.
+
+    ``toybox nc -q`` exits after stdin EOF and can hide a valid SOCKS handshake.
+    Keeping the pipe open explicitly lets the device receive both SOCKS replies.
+    """
+    if not 1 <= relay_port <= 65535:
+        raise ValueError("SOCKS relay port must be in 1..65535")
+    if keep_stdin_seconds < 1 or idle_seconds < 1:
+        raise ValueError("SOCKS probe timeouts must be positive")
+    octal_frame = "".join(f"\\{byte:03o}" for byte in socks5_connect_frame(host, target_port))
+    return (
+        f"{{ printf '{octal_frame}'; sleep {keep_stdin_seconds}; }} | "
+        f"toybox nc -W {idle_seconds} -w {idle_seconds} 127.0.0.1 {relay_port}"
+    )
+
+
+def run_android_shell_socks_probe(
+    adb: str,
+    serial: str,
+    host: str,
+    relay_port: int,
+    *,
+    target_port: int = 443,
+    keep_stdin_seconds: int = 2,
+    idle_seconds: int = 3,
+) -> subprocess.CompletedProcess[bytes]:
+    """Run the retained-stdin SOCKS probe through public ADB shell transport."""
+    command = android_shell_socks_probe_command(
+        host,
+        relay_port,
+        target_port=target_port,
+        keep_stdin_seconds=keep_stdin_seconds,
+        idle_seconds=idle_seconds,
+    )
+    return subprocess.run(
+        [adb, "-s", serial, "exec-out", "sh", "-c", command],
+        capture_output=True,
+        timeout=keep_stdin_seconds + idle_seconds + 2,
+    )
+
+
 class AndroidBenchmarkRelay:
     """Owns a relay process and proves it remains live before device work starts."""
 
@@ -179,7 +243,22 @@ def main() -> int:
     serve_parser.add_argument("--events", type=Path)
     serve_parser.add_argument("--stall-after-handshake", action="store_true")
     serve_parser.add_argument("--exit-after-ready", action="store_true")
+    probe_parser = subcommands.add_parser("shell-probe")
+    probe_parser.add_argument("--host", required=True)
+    probe_parser.add_argument("--port", type=int, required=True, help="loopback SOCKS relay port")
+    probe_parser.add_argument("--target-port", type=int, default=443, help="SOCKS CONNECT destination port")
+    probe_parser.add_argument("--keep-stdin-seconds", type=int, default=2)
+    probe_parser.add_argument("--idle-seconds", type=int, default=3)
     args = parser.parse_args()
+    if args.command == "shell-probe":
+        print(android_shell_socks_probe_command(
+            args.host,
+            args.port,
+            target_port=args.target_port,
+            keep_stdin_seconds=args.keep_stdin_seconds,
+            idle_seconds=args.idle_seconds,
+        ))
+        return 0
     allowed_hosts = tuple(args.allow_host) or ("chatgpt.com", "1.1.1.1")
     return serve(args.port, allowed_hosts, args.events, args.stall_after_handshake, args.exit_after_ready)
 
