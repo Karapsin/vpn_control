@@ -22,6 +22,14 @@ Android builds pin NDK `28.2.13676358` and CMake `3.22.1`. Install them with
 supports x86_64, matching the existing runtime ABI filters. Generated libraries
 belong under ignored `app/build/` outputs; do not commit compiled helpers.
 
+The explicit `:app:assembleNativeFixture` task builds a nondebuggable, release-derived
+x86_64 emulator acceptance APK from the tracked debug x86 runtime. It preserves
+release shrinking and signer selection; production `assembleRelease` remains
+ARM64-only. Use the existing `-PvpnControlVersion=` override for immutable fixture
+pairs. Inspect the resulting APK ABI, debuggable flag, version and signer before
+guest use. Its static build-configuration regression runs in release hygiene;
+that check alone does not establish APK properties or native ARM64 acceptance.
+
 The ordinary `:app:testDebugUnitTest` tier builds the same C implementation for
 the host using the pinned SDK CMake/Ninja, the Gradle JDK JNI headers, and a host
 C compiler. Host-only allocator failure hooks are excluded from Android builds.

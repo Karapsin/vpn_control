@@ -29,6 +29,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <uuid/uuid.h>
+#include "install_launcher_environment.h"
+#include "install_relaunch_plan.h"
 #include "install_watcher_group.h"
 
 enum { MAX_REQUEST = 16384, MAX_PINS = 1024 };
@@ -582,10 +584,11 @@ static void require_absent_protected_job(const struct request *request, struct p
     fail("OUTCOME_UNKNOWN");
 }
 static void relaunch(const struct request *request) {
-    if (request->frontend.pid)
-        execl(request->launcher, request->launcher, "--state-dir", request->workspace, (char *)NULL);
-    else
-        execl(request->launcher, request->launcher, "--state-dir", request->workspace, "serve", (char *)NULL);
+    require(install_launcher_environment() == 0, "RUNTIME_FAILED");
+    struct install_relaunch_plan plan;
+    require(install_relaunch_plan_create(&plan, request->launcher, request->bundle, request->workspace,
+        request->frontend.pid != 0) == 0, "RUNTIME_FAILED");
+    execv(plan.executable, plan.arguments);
     fail("RUNTIME_FAILED");
 }
 static void watcher(const struct request *request) {

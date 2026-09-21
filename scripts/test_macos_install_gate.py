@@ -52,6 +52,84 @@ int main(void) {
             self.assertEqual((session, uid, euid), (current_session, current_uid, current_euid))
 
 
+@unittest.skipUnless(os.name == "posix", "POSIX launcher-environment contract")
+class InstallLauncherEnvironmentTest(unittest.TestCase):
+    def test_return_exec_removes_only_jpackage_launcher_marker(self):
+        # Compile and execute the exact production primitive. This creates no job,
+        # installer, GUI, launchd registration, or privileged process.
+        compiler = shutil.which("cc")
+        self.assertIsNotNone(compiler, "A C compiler is required for the native helper regression")
+        with tempfile.TemporaryDirectory(prefix="vpn-launcher-environment-") as directory:
+            root = Path(directory)
+            header = Path(__file__).resolve().parent / "native/install_launcher_environment.h"
+            child_source = root / "child.c"
+            child_source.write_text(r'''#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(int argc, char **argv) {
+    const char *marker = getenv("_JPACKAGE_LAUNCHER");
+    const char *ordinary = getenv("VPN_CONTROL_ORDINARY_ENV");
+    if (argc != 3 || strcmp(argv[1], "gui") || strcmp(argv[2], "exact-state")) return 2;
+    printf("marker=%s ordinary=%s args=%s,%s\n", marker ? marker : "absent",
+           ordinary ? ordinary : "absent", argv[1], argv[2]);
+    return 0;
+}
+''', encoding="utf-8")
+            parent_source = root / "parent.c"
+            parent_source.write_text('#define _POSIX_C_SOURCE 200809L\n#include <unistd.h>\n#include ' + json.dumps(str(header)) + r'''
+int main(int argc, char **argv) {
+    if (argc != 2 || install_launcher_environment() != 0) return 2;
+    execl(argv[1], argv[1], "gui", "exact-state", (char *)NULL);
+    return 3;
+}
+''', encoding="utf-8")
+            child = root / "child"
+            parent = root / "parent"
+            for source, executable in ((child_source, child), (parent_source, parent)):
+                subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", str(source),
+                                "-o", str(executable)], check=True, capture_output=True)
+            result = subprocess.run([str(parent), str(child)], check=False, capture_output=True, text=True,
+                                    env=dict(os.environ, _JPACKAGE_LAUNCHER="inherited-marker",
+                                             VPN_CONTROL_ORDINARY_ENV="preserved-value"))
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("marker=absent ordinary=preserved-value args=gui,exact-state\n", result.stdout)
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX relaunch-plan contract")
+class InstallRelaunchPlanTest(unittest.TestCase):
+    def test_gui_uses_launch_services_while_headless_keeps_the_captured_launcher(self):
+        compiler = shutil.which("cc")
+        self.assertIsNotNone(compiler, "A C compiler is required for the native helper regression")
+        with tempfile.TemporaryDirectory(prefix="vpn-relaunch-plan-") as directory:
+            root = Path(directory)
+            header = Path(__file__).resolve().parent / "native/install_relaunch_plan.h"
+            source = root / "probe.c"
+            source.write_text('#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n#include ' + json.dumps(str(header)) + r'''
+int main(int argc, char **argv) {
+    struct install_relaunch_plan plan;
+    bool gui = argc == 2 && !strcmp(argv[1], "gui");
+    if ((!gui && (argc != 2 || strcmp(argv[1], "headless"))) ||
+        install_relaunch_plan_create(&plan, "/captured/vpn-control", "/target/vpn-control.app",
+            "/exact workspace", gui) != 0) return 2;
+    printf("executable=%s", plan.executable);
+    for (int index = 0; plan.arguments[index]; ++index) printf("|%s", plan.arguments[index]);
+    puts("");
+    return 0;
+}
+''', encoding="utf-8")
+            probe = root / "probe"
+            subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", str(source),
+                            "-o", str(probe)], check=True, capture_output=True)
+            gui = subprocess.run([str(probe), "gui"], check=False, capture_output=True, text=True)
+            headless = subprocess.run([str(probe), "headless"], check=False, capture_output=True, text=True)
+            self.assertEqual(0, gui.returncode, gui.stderr)
+            self.assertEqual("executable=/usr/bin/open|open|-n|-a|/target/vpn-control.app|--args|--state-dir|/exact workspace\n",
+                             gui.stdout)
+            self.assertEqual(0, headless.returncode, headless.stderr)
+            self.assertEqual("executable=/captured/vpn-control|/captured/vpn-control|--state-dir|/exact workspace|serve\n",
+                             headless.stdout)
+
+
 @unittest.skipUnless(platform.system() == "Darwin" and os.environ.get("VPN_CONTROL_MAC_INSTALL_GATE_TEST_ROOT"),
                      "Requires an explicitly assigned macOS VM temporary directory")
 class MacInstallGateTest(unittest.TestCase):
@@ -64,7 +142,15 @@ class MacInstallGateTest(unittest.TestCase):
         cls.root = Path(cls.fixture.name)
         worker = Path(__file__).resolve().parent / "native/macos_install_worker.c"
         source = cls.root / "gate-probe.c"
-        source.write_text("#define main packaged_worker_main\n#include " + json.dumps(str(worker)) + "\n#undef main\n" + r'''
+        source.write_text("static int gate_probe_execv(const char *, char *const []);\n#define execv gate_probe_execv\n#define main packaged_worker_main\n#include " + json.dumps(str(worker)) + "\n#undef main\n#undef execv\n" + r'''
+static int gate_probe_execv(const char *path, char *const arguments[]) {
+    printf("execv=%s", path);
+    for (int index = 0; arguments[index]; ++index) printf("|%s", arguments[index]);
+    printf(" marker=%s\n", getenv("_JPACKAGE_LAUNCHER") ? "present" : "absent");
+    fflush(stdout);
+    errno = ENOENT;
+    return -1;
+}
 static void report_coordinator_group(const char *message) {
     (void)message;
     printf("%ld %ld %ld %ld %ld\n", (long)getpid(), (long)getpgrp(),
@@ -80,7 +166,8 @@ int main(int argc, char **argv) {
         coordinator(&request, -1); return 3;
     }
     if (argc >= 3 && !strcmp(argv[1], "--state-dir")) {
-        printf("%s:%s\n", argv[2], argc == 4 ? argv[3] : "gui");
+        printf("%s:%s:%s\n", argv[2], argc == 4 ? argv[3] : "gui",
+               getenv("_JPACKAGE_LAUNCHER") ? "present" : "absent");
         return 0;
     }
     require(argc == 2, "INVALID_ARGUMENT");
@@ -99,6 +186,7 @@ int main(int argc, char **argv) {
         struct request request = {0};
         request.frontend.pid = !strcmp(argv[1], "gui-return") ? 1 : 0;
         text_copy(request.launcher, sizeof(request.launcher), argv[0]);
+        text_copy(request.bundle, sizeof(request.bundle), "/Applications/vpn-control-native-test.app");
         text_copy(request.workspace, sizeof(request.workspace), "/private/tmp/isolated-workspace");
         relaunch(&request);
         return 2;
@@ -205,11 +293,26 @@ int main(int argc, char **argv) {
                 self.assertEqual(b"preserve this file", sentinel.read_bytes())
 
     def test_relaunch_preserves_headless_or_gui_intent_and_the_exact_workspace(self):
-        for mode, expected in (("headless-return", "serve"), ("gui-return", "gui")):
+        environment = dict(os.environ)
+        environment.pop("_JPACKAGE_LAUNCHER", None)
+        for mode, expected in (
+            ("headless-return", f"execv={self.probe}|{self.probe}|--state-dir|/private/tmp/isolated-workspace|serve marker=absent\n"),
+            ("gui-return", "execv=/usr/bin/open|open|-n|-a|/Applications/vpn-control-native-test.app|--args|--state-dir|/private/tmp/isolated-workspace marker=absent\n"),
+        ):
             with self.subTest(mode=mode):
-                result = subprocess.run([str(self.probe), mode], capture_output=True, text=True, timeout=20)
-                self.assertEqual(0, result.returncode, result.stderr)
-                self.assertEqual("/private/tmp/isolated-workspace:" + expected + "\n", result.stdout)
+                result = subprocess.run([str(self.probe), mode], capture_output=True, text=True, timeout=20,
+                                        env=environment)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertEqual("RUNTIME_FAILED\n", result.stderr)
+                self.assertEqual(expected, result.stdout)
+
+    def test_relaunch_removes_inherited_jpackage_launcher_marker(self):
+        result = subprocess.run([str(self.probe), "gui-return"], capture_output=True, text=True, timeout=20,
+                                env=dict(os.environ, _JPACKAGE_LAUNCHER="inherited-marker"))
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual("RUNTIME_FAILED\n", result.stderr)
+        self.assertEqual("execv=/usr/bin/open|open|-n|-a|/Applications/vpn-control-native-test.app|--args|--state-dir|/private/tmp/isolated-workspace marker=absent\n",
+                         result.stdout)
 
     def test_original_user_watcher_leaves_the_owners_process_group_before_readiness(self):
         # A UUID without any job/receipt means this real watcher can only wait;

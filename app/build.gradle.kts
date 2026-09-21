@@ -51,10 +51,6 @@ android {
         versionCode = generatedVersionCode.get()
         versionName = generatedVersionName.get()
 
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -81,6 +77,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("stableRelease")
             } else {
@@ -90,6 +89,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        // This is an emulator-only acceptance artifact. Keep production release ARM64-only.
+        create("nativeFixture") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+            ndk {
+                abiFilters.clear()
+                abiFilters += listOf("x86_64")
+            }
         }
     }
 
@@ -117,6 +126,8 @@ android {
     }
 
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("visual-tests"))
+    sourceSets.getByName("nativeFixture").jniLibs.srcDir("src/debug/jniLibs")
+    sourceSets.getByName("nativeFixture").java.srcDir("src/release/java")
 }
 
 dependencies {

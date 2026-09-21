@@ -25,15 +25,57 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint109
+## Current continuation — checkpoint113
+
+The latest native GUI-return diagnosis separates successful replacement from
+failed return. With the jpackage marker absent, direct launch from SSH still
+fails graphical-session admission; Launch Services starts the same installed
+bundle and its authenticated controller in a separate workspace. The native
+worker now uses Launch Services for GUI return and the captured launcher for
+headless serve. Three portable C regressions pass, the actual ARM64 worker
+compiles, and both assigned Darwin component tests pass on the final revision.
+Fresh packaged replacement/return remains open; no component result certifies it.
+
+Windows original-user image-admission RED and GREEN probes have both reached
+terminal expected outcomes under the ordinary-user token. Root is reviewing
+the exported native output and identities before accepting this component gate;
+full MSI replacement and recovery remain open. Neither probe ran an MSI.
+
+Fedora2316 was safely memory-saved and parked after QMP completion and exact
+process/media checks, preserving the unknown CP79 installation and controller.
+The 4,051,683,404-byte memory image is retained under memory-park112 in its owned
+remote root. Available remote RAM is approximately12GiB: sufficient for the
+planned Android allocation, below the14GiB Linux admission threshold. Do not
+restore the saved guest or replay its pending install without a resource review.
+
+Android remote preparation found only an API35 x86_64 image and no suitable
+nondebuggable x86 build route. A bounded worker owns app/build.gradle.kts and
+scripts/test_android_native_fixture_build_type.py to add an explicit test-only route,
+preserving production release ABI and signer behavior. No Gradle or emulator
+operation is assigned to that worker. API29 still needs its system image; existing
+unknown/protected AVDs remain untouched.
+
+The corrected nativeFixture build now passes (checkpoint112/
+android-native-fixture-build2.log). Root independently verified the frozen target
+APK as x86_64-only, nondebuggable, package com.kardinal.vpncontrol, version2.1.14/
+code16680, with signer a43b5330501b02f5558fa381c52e7f7dcdd9db362d6807d449d7bbb5e207c5a0.
+APK SHA256 is1af2a6c40afe47bca10d40344f9a33ab7f71b774f710a41c4fdf8780502d00ca;
+tracked runtime bytes match the merged input, and the AGP-stripped output matches
+the APK runtime entry. Evidence is checkpoint112/android-x86-target. This is
+built-artifact evidence only. android_guest113 owns preparation of a new remote
+API35 AVD with a10GiB free-memory gate and maximum2GiB/2CPU allocation; protected
+and unknown AVDs remain excluded.
 
 Checkpoint `027fcc6a2378a8dabb7f1030c1a47cc804498ecf` (product2.1.14)
 was committed and pushed after the complete managed pre-push tier passed.
 Windows CI35560957259 failed because the new real Unix-socket fixture test used
 its Windows temporary path as an Arch QGA endpoint. The correction keeps payload,
 hash and quoting checks portable and limits the real Unix transport roundtrip to
-Unix hosts. Exact-SHA CI verification is incomplete; do not call this checkpoint
-fully verified. Prior282c937 passed all five required workflows.
+Unix hosts. Correction40307db4121bae3bd307126324615af8d55194ec is pushed after
+the complete managed pre-push tier passed. All five required exact-SHA workflows
+passed; managed watcher81052 completed successfully. Its receipt is
+checkpoint109/commit-result.json. Advisory core VPN Integration also passed.
+Prior282c937 passed all five required workflows.
 The delivered batch includes Windows image admission/pin lifetime fixes, durable
 macOS rollback observation, strict Android installer acceptance, private fixture
 staging, prompt/serial/manifest regressions and their routine wiring.
@@ -41,14 +83,56 @@ Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
-| Delivery109 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed027fcc6 | Correct Windows fixture portability, validate and push again |
+| Delivery111 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed40307db, all five CI passed | Next observer regression batch and native evidence review |
 | Windows image103 | windows_image103 | Coordinator helper image admission, original-user image-pin lifetime and focused tests | No shared Kotlin edits or VM mutation | CP102 read-only evidence | Reviewed fix and RED/GREEN source bundle frozen; native execution pending |
 | macOS native105 | mac_native105 | Private native preparation/evidence | No tracked source edits | Exclusive owned Tart guest | User-local rollback/recovery passed; root verified21 hashes; fixture cleaned |
-| Windows native107 | windows_probe107 | Pure C# RED/GREEN admission evidence | No product/MSI commands | Exclusive CP95 guest | 26 staged files verified; both C# builds pass; ordinary-user probe pending |
+| Windows native112 | windows_native112 | Read-only RED/GREEN evidence export | No product/MSI commands | CP95 guest; probes terminal | Both expected results reached; verify underlying receipts and hashes |
+| macOS return108 | completed | Private GUI-return observer/evidence | No tracked edits | Owned Tart guest now available | Replacement succeeded; causal Launch Services comparison and two component tests passed; fresh package next |
+| macOS observer111 | root | Process observer, completion runner and tests | Root owns hygiene/docs | Local synthetic fixtures only | Five role, seven runner and eleven rollback tests pass |
+| Linux baseline110 | completed | Private native public-launcher evidence | No old-owner changes | Existing owned Fedora2316 | Baseline passed on historical2.1.12; own new controller quit publicly |
+| Linux capacity112 | linux_capacity_plan112 | Read-only parking evidence export | No restore or VM mutation | Fedora2316 saved and parked | Preserve unknown CP79 memory/disk; root receipt review |
+| macOS fix112 | root | Native relaunch environment primitive and regression | Host builds/docs/delivery | Native108 failure; portable native RED/GREEN | Actual worker compiles; fresh package return still required |
 | Manifest104 | manifest_regression104 | Fixture manifest writer and tests | Root owns docs/hygiene | Private temporary fixtures | Manifest/path-safety review and focused checks pass |
 | Certificate scope102 | certificate_scope102 | android_fixture_trust.py and its routine tests | Root owns docs/hygiene | Private temporary OpenSSL fixtures | Causal serial-path regression and helper integration |
-| Android pending | root | Resource allocation and acceptance scheduling | No agent operates AVD | AVD5596 stopped, retained API35 state OFF | Current-pair installed:true acceptance missing on both API levels |
+| Android fixture113 | android_remote_plan113 | app/build.gradle.kts and fixture regression | No Gradle, hygiene, metadata or AVD changes | Remote API35 x86 route; local5596 stopped | Add explicit nondebuggable fixture; root builds after review |
+| Windows receipt113 | windows_empty_output113 | windows_native_fixture.py and its tests | No VM, docs, metadata or other source edits | Local deterministic fixtures | Empty-output causal regression and reusable receipt reader |
+| macOS package113 | mac_package_plan113 | Read-only package recipe | Root owns Gradle and package execution | Fresh immutable ARM64 pair planned | Exact version/runtime/signing inputs and fingerprint recipe |
 | Linux pending | root | Resource allocation and acceptance scheduling | No old guest restore | Remote Arch; Fedora2326 parked | Current packages ready; remote capacity insufficient for another admitted guest |
+
+Checkpoint111 read-only document audit found existing deterministic coverage for
+transfer binding/expiry/integrity, failed spool persistence, retained results and
+no-overwrite export publication. It found no new source defect. Remaining proof
+is the current nondebuggable default Android document path on both APIs, Android
+GUI picker/private export, and current installed desktop export paths. Existing
+unit/process evidence does not replace these native gates.
+
+CP95 reboot invalidated historical process identities: old PID2968 is now a
+Windows service, and old controller6612 is absent. Unknown install records remain
+preserved. A single S4U task registration failed with access denied before task
+creation despite confirmed SYSTEM authority; no probe ran. One protected
+LogonUserW check subsequently succeeded, closed its token and removed its exact
+credential temp. The retained credential is valid; the UI password-entry failure
+does not prove a stale password. Ordinary-user probe launch is being prepared for
+review, without product/MSI commands or persistent policy changes.
+
+Fedora2316 cp79 owner16278 (start ticks652956) remains a disconnected persistent
+controller with no runtime child. Its job6bc79509-a517-40b4-89be-ae3f945a47e9 has
+no protected receipt and remains unknown; do not replay or stop it. A distinct
+workspace can exercise disconnected/public proxy-only behavior without touching
+the pending installation. Package provenance must be recorded before attributing
+that guest's evidence to current source.
+
+Native108 attempt2 uses the exact tracked canonical bundle identity and process
+observer. Its single accepted install operation7fbfc860-4192-4431-ba94-9590cc8f6e42
+reached protected job17a28d33-8097-49cd-b25b-51cb167d9424 SUCCEEDED/OK sequence4.
+This establishes replacement, not automatic GUI return: the observer had not
+seen a returned owner/frontend and terminated after240 seconds with exit1. No
+public command bootstrapped that return. Target version2.1.13, codesign and exact
+canonical target digest passed read-only verification; installed inode957596 is
+distinct from original939688. Preserve the receipt and distinguish successful
+installation from failed automatic return. The native worker now clears the
+inherited jpackage marker before exec, with a causal portable C regression and
+successful root ARM64 compilation; current-package return must be rerun.
 
 Checkpoint106 contained an owned Windows fixture staging failure before any guest
 fixture execution. The staging script ran remotely through `python3 -`, interpreted

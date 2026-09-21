@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -13,12 +14,17 @@ from windows_native_fixture import (
     original_recipient_actor_guard,
     private_task_root,
     FIXTURE_READ_COMMAND,
+    FIXTURE_OUTPUT_RECEIPT_COMMAND,
     fixture_stream_reader,
+    fixture_output_receipt_reader,
     fixture_proxy_port_selector,
     fixture_native_process_capture,
     native_install_helper_fixture_inputs,
     trusted_powershell_file_arguments,
 )
+
+
+WINDOWS_POWERSHELL_AVAILABLE = os.name == "nt" and shutil.which("powershell.exe") is not None
 
 
 class WindowsNativeFixtureTest(unittest.TestCase):
@@ -135,7 +141,7 @@ class WindowsNativeFixtureTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 original_recipient_actor_classifier(sid, invalid_session)
 
-    @unittest.skipUnless(os.name == "nt", "requires Windows PowerShell")
+    @unittest.skipUnless(WINDOWS_POWERSHELL_AVAILABLE, "requires Windows PowerShell")
     def test_proxy_port_selector_distinguishes_public_and_management_listeners(self):
         script = "$ErrorActionPreference='Stop'\n" + fixture_proxy_port_selector() + r'''
 $config = ConvertFrom-Json '{"inbounds":[{"type":"mixed","tag":"vpn-control-management","listen":"127.0.0.1","listen_port":59142},{"type":"mixed","tag":"mixed-in","listen":"127.0.0.1","listen_port":59143}]}'
@@ -151,7 +157,7 @@ if (-not $rejected) { throw 'management listener accepted as public' }
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    @unittest.skipUnless(os.name == "nt", "requires Windows PowerShell")
+    @unittest.skipUnless(WINDOWS_POWERSHELL_AVAILABLE, "requires Windows PowerShell")
     def test_fixture_stream_reader_survives_builtin_aliases_and_rejects_truncation(self):
         script = "$ErrorActionPreference='Stop'\n" + fixture_stream_reader() + f"""
 $stream = [IO.MemoryStream]::new([byte[]](5,1,0))
@@ -169,7 +175,7 @@ try {{
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    @unittest.skipUnless(os.name == "nt", "requires Windows PowerShell")
+    @unittest.skipUnless(WINDOWS_POWERSHELL_AVAILABLE, "requires Windows PowerShell")
     def test_generated_actor_classifier_blocks_wrong_actor_before_installer_sentinel(self):
         sid = "S-1-5-21-2019561193-2770119108-3772073605-1001"
         script = original_recipient_actor_classifier(sid, 1) + r'''
@@ -200,7 +206,68 @@ if(-not $installerSentinel){throw 'expected interactive actor did not reach inst
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    @unittest.skipUnless(os.name == "nt", "requires Windows PowerShell")
+    @unittest.skipUnless(WINDOWS_POWERSHELL_AVAILABLE, "requires Windows PowerShell")
+    def test_output_receipt_reader_preserves_empty_streams_and_direct_child_exit_code(self):
+        script = "$ErrorActionPreference='Stop'\n" + fixture_native_process_capture() + fixture_output_receipt_reader() + rf'''
+$root = Join-Path ([IO.Path]::GetTempPath()) ('vpn output receipt ' + [guid]::NewGuid().ToString())
+[IO.Directory]::CreateDirectory($root) | Out-Null
+try {{
+  $tool = (Get-Command powershell.exe -CommandType Application -ErrorAction Stop).Source
+  $child = Join-Path $root 'receipt child.ps1'
+  [IO.File]::WriteAllText($child, @'
+param(
+  [AllowEmptyString()][string]$Stdout,
+  [AllowEmptyString()][string]$Stderr,
+  [int]$ExitCode
+)
+$utf8 = New-Object Text.UTF8Encoding($false)
+foreach($entry in @(
+  @{{Stream=[Console]::OpenStandardOutput(); Text=$Stdout}},
+  @{{Stream=[Console]::OpenStandardError(); Text=$Stderr}}
+)) {{
+  $bytes = $utf8.GetBytes($entry.Text)
+  $entry.Stream.Write($bytes, 0, $bytes.Length)
+}}
+exit $ExitCode
+'@)
+  $cases = @(
+    @{{stdout=''; stderr=''; exitCode=0}},
+    @{{stdout='stdout only'; stderr=''; exitCode=7}},
+    @{{stdout=''; stderr='stderr only'; exitCode=23}},
+    @{{stdout='stdout and stderr'; stderr='stderr and stdout'; exitCode=31}}
+  )
+  $caseNumber = 0
+  foreach ($case in $cases) {{
+    $stdoutPath = Join-Path $root ("stdout-$caseNumber.txt")
+    $stderrPath = Join-Path $root ("stderr-$caseNumber.txt")
+    $result = Invoke-VpnFixtureNativeProcess -FilePath $tool `
+      -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $child, $case.stdout, $case.stderr, [string]$case.exitCode) `
+      -StandardOutputPath $stdoutPath -StandardErrorPath $stderrPath
+    $receipt = {FIXTURE_OUTPUT_RECEIPT_COMMAND} -StandardOutputPath $stdoutPath `
+      -StandardErrorPath $stderrPath -ExitCode $result.ExitCode
+    if ($null -eq $receipt.Stdout -or $receipt.Stdout -cne $case.stdout) {{ throw "stdout was not preserved for case $caseNumber" }}
+    if ($null -eq $receipt.Stderr -or $receipt.Stderr -cne $case.stderr) {{ throw "stderr was not preserved for case $caseNumber" }}
+    if ($receipt.ExitCode -ne $case.exitCode) {{ throw "exit code was not preserved for case $caseNumber" }}
+    $caseNumber++
+  }}
+
+  # This is the broken pre-fix receipt expression.  Get-Content emits no
+  # pipeline value for an empty file, so calling Trim fails before a receipt
+  # can be created.
+  $oldExpressionRejected = $false
+  try {{ $unused = (Get-Content -LiteralPath (Join-Path $root 'stdout-0.txt') -Raw).Trim() }} catch {{ $oldExpressionRejected = $true }}
+  if (-not $oldExpressionRejected) {{ throw 'pre-fix empty stdout expression unexpectedly succeeded' }}
+}} finally {{
+  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}}
+'''
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    @unittest.skipUnless(WINDOWS_POWERSHELL_AVAILABLE, "requires Windows PowerShell")
     def test_native_process_capture_keeps_native_stderr_nonterminating_and_uses_real_exit_code(self):
         script = "$ErrorActionPreference='Stop'\n" + fixture_native_process_capture() + r'''
 $root = Join-Path ([IO.Path]::GetTempPath()) ('vpn native capture ' + [guid]::NewGuid().ToString())

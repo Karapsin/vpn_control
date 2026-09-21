@@ -8,6 +8,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Reject stale or changed native authorization prompts before fixture credential input.
 - Harden per-user Windows installer admission and verify native installer fixture outcomes.
 - Keep native fixture checks portable and launch trusted Windows test scripts consistently.
+- Prevent native fixture process misidentification and lost completion receipts with shared observers and causal regressions.
+- Clear the inherited jpackage launcher marker before macOS installer relaunch, with a native child-process regression.
+- Restore macOS graphical update return through Launch Services and add nondebuggable Android emulator fixtures with native receipt regressions.
 
 ## 2.1.14 - 2026-09-21
 

@@ -46,6 +46,7 @@ python3 scripts/test_linux_gui_fixture_guard.py
 python3 scripts/test_prepare_linux_install_vm.py
 python3 scripts/test_prepare_android_native_tools.py
 python3 scripts/test_android_update_fixture.py
+python3 scripts/test_android_native_fixture_build_type.py
 python3 -m unittest scripts.test_android_benchmark_fixture
 python3 -m unittest scripts.test_android_public_control_fixture
 python3 scripts/test_android_fixture_preflight.py
@@ -55,6 +56,8 @@ python3 scripts/test_android_no_update_tls_preflight.py
 python3 scripts/test_android_installer_lifecycle.py
 python3 scripts/test_native_python_tests.py
 python3 scripts/test_macos_fixture_owner_launch.py
+python3 scripts/test_macos_fixture_processes.py
+python3 scripts/test_native_fixture_run.py
 python3 scripts/test_macos_packaging_jdk_preflight.py
 python3 scripts/test_macos_install_worker_target.py
 python3 scripts/test_android_routing_evidence.py

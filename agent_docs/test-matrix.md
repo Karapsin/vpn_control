@@ -38,7 +38,10 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 
 | Touched Area | Run |
 | --- | --- |
-| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
+| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py`, `scripts/test_macos_fixture_processes.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
+| Native fixture completion receipts | `scripts/test_native_fixture_run.py` executes real POSIX children, nonzero exits and competing receipt claims in routine hygiene; Windows explicitly skips this POSIX-only runner. |
+| Windows native output receipts | `scripts/test_windows_native_fixture.py` runs real PowerShell children and checks empty/nonempty output plus direct exit codes; Windows behavioral cases explicitly skip where PowerShell is unavailable. |
+| Android nondebuggable x86 fixture | `scripts/test_android_native_fixture_build_type.py` guards release inheritance, ABI replacement and production hook sources in release hygiene. Also build `:app:assembleNativeFixture` and independently inspect APK ABI, debuggable flag, signer and version before native use. |
 | Scheduled-refresh native traffic observer | `python3 scripts/test_desktop_scheduled_refresh_fixture.py` (also included in release hygiene); retain the installed-package scheduled refresh with overlapping traffic evidence. A terminal refresh failure is recorded separately from traffic continuity. |
 | `shared/model/` | `./gradlew :shared:model:desktopTest` |
 | Shared control DTOs, protocol codec, registry or command grammar | `./gradlew :shared:model:desktopTest :shared:core:desktopTest`; add affected desktop/Android adapter tests when wiring dispatch |

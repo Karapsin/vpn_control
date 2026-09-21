@@ -1,9 +1,12 @@
+import hashlib
+import shutil
+import tempfile
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "integration"))
-from macos_rollback_fixture import FixtureError, FixtureSpec, Identity, RollbackFixture, Step
+from macos_rollback_fixture import FixtureError, FixtureSpec, Identity, MacBoundary, RollbackFixture, Step
 
 
 JOB = "11111111-1111-1111-1111-111111111111"
@@ -171,6 +174,31 @@ class RollbackFixtureTest(unittest.TestCase):
         with self.assertRaisesRegex(FixtureError, "not restored"):
             fixture.run()
         self.assertFalse(boundary.cleared)
+
+
+class CanonicalBundleIdentityTest(unittest.TestCase):
+    def test_nested_bundle_digest_is_shared_and_copy_identity_is_distinct(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base = root / "base"
+            (base / "a").mkdir(parents=True)
+            (base / "z").write_bytes(b"root file")
+            (base / "a" / "nested").write_bytes(b"nested file")
+            expected = hashlib.sha256()
+            for name, payload in (("a", None), ("a/nested", b"nested file"), ("z", b"root file")):
+                expected.update(name.encode() + b"\0")
+                if payload is not None:
+                    expected.update(hashlib.sha256(payload).hexdigest().encode())
+            boundary = MacBoundary()
+            original = boundary.identity(base)
+            self.assertEqual(expected.hexdigest(), original.sha256)
+            copied = root / "copy"
+            shutil.copytree(base, copied)
+            replacement = boundary.identity(copied)
+            self.assertNotEqual(original, replacement)
+            self.assertEqual(original.sha256, replacement.sha256)
+            (copied / "a" / "nested").write_bytes(b"changed")
+            self.assertNotEqual(original.sha256, boundary.identity(copied).sha256)
 
 
 if __name__ == "__main__":

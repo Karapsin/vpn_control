@@ -142,6 +142,7 @@ def original_recipient_actor_guard(expected_sid: str, expected_session_id: int) 
 
 
 FIXTURE_READ_COMMAND = "Read-VpnFixtureExact"
+FIXTURE_OUTPUT_RECEIPT_COMMAND = "Read-VpnFixtureOutputReceipt"
 
 
 def fixture_stream_reader() -> str:
@@ -159,6 +160,32 @@ def fixture_stream_reader() -> str:
     return ,$bytes
 }
 """
+
+
+def fixture_output_receipt_reader() -> str:
+    """Read native capture files into a receipt without losing empty output.
+
+    ``Get-Content -Raw`` emits no pipeline value for an empty file.  Native
+    fixtures need an explicit .NET file read so a receipt preserves an empty
+    stdout or stderr value alongside the direct child's exit code.
+    """
+    return f"function {FIXTURE_OUTPUT_RECEIPT_COMMAND} " + r'''{
+    param(
+        [Parameter(Mandatory = $true)][string]$StandardOutputPath,
+        [Parameter(Mandatory = $true)][string]$StandardErrorPath,
+        [Parameter(Mandatory = $true)][int]$ExitCode
+    )
+    foreach ($path in @($StandardOutputPath, $StandardErrorPath)) {
+        if ([string]::IsNullOrWhiteSpace($path)) { throw 'native fixture receipt path is required' }
+        if (-not [IO.File]::Exists($path)) { throw "native fixture receipt file is missing: $path" }
+    }
+    return [pscustomobject]@{
+        Stdout = [IO.File]::ReadAllText($StandardOutputPath)
+        Stderr = [IO.File]::ReadAllText($StandardErrorPath)
+        ExitCode = $ExitCode
+    }
+}
+'''
 
 
 def fixture_proxy_port_selector() -> str:

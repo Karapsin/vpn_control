@@ -444,3 +444,103 @@ without changing persisted policy. Its routine test preserves spaces, Unicode an
 metacharacters as argument values and excludes persistent policy commands. The
 host suite passes12 tests with4 Windows-native skips. This is fixture launch
 coverage, not successful MSI replacement or original-user native admission.
+
+### macOS GUI-return observer confused process roles — checkpoint111
+
+Pre-execution review of the checkpoint108 observer found that its substring
+matcher accepted only an explicit `serve` controller. Automatic GUI return
+starts a `--headless-controller` child, which that matcher missed and could
+misclassify as a frontend. Retained synthetic RED evidence is under
+checkpoint108/macos-gui-return108. The reusable macos_fixture_processes helper
+matches the four actual source-defined argument forms and rejects ambiguous
+matches, unrelated substrings and reused/coarse process generations. Its five
+tests run in release hygiene. It deliberately supports only fixed whitespace-free
+fixture paths because `ps` command text is not an arbitrary argv API. These
+checks validate the observer; automatic GUI return still requires native proof.
+
+The first native observer attempt stopped before sending an install request:
+preflight used per-directory file ordering while the driver used global ordering.
+Both historical digests and the unchanged base inode/signature are retained.
+The corrected attempt imports the existing MacBoundary.identity for preparation
+and execution. CanonicalBundleIdentityTest in test_macos_rollback_fixture.py
+checks the nested-directory digest and proves that copying the same code changes
+filesystem identity while preserving the content digest. Base restoration uses
+full identity; installed target comparison uses code digest plus signature/version,
+not the mounted DMG inode. The suite runs in routine release hygiene.
+
+### Fixture completion marker lost on nonzero exit — checkpoint111
+
+A shell wrapper with `set -e` skipped its exit marker when `wait` returned a
+failure. The routine test_native_fixture_run.py suite executes that failing
+behavior and the reusable native_fixture_run.sh correction with real children.
+The runner preserves literal arguments and exact child exit status, reserves its
+PID receipt before launching, leaves the terminal marker absent while running,
+and refuses existing/symlink receipts. A competing-invocation regression proves
+only one child starts. Seven tests pass on POSIX; Windows explicitly skips this
+POSIX runner suite. It never retries, kills or infers termination from timeout.
+
+### macOS native return inherited the jpackage reentry marker — checkpoint112
+
+Native108 attempt2 reached protected SUCCEEDED/OK and verified target bytes,
+signature and version, but no automatic owner/GUI survived the240-second return
+observation. It issued no post-terminal public bootstrap command. Source review
+found the original-user native worker inherited `_JPACKAGE_LAUNCHER` from its
+packaged parent, unlike the Kotlin and Linux launch paths which already clear it.
+InstallLauncherEnvironmentTest in test_macos_install_gate.py compiles the exact
+portable production primitive and execs a child with the inherited marker,
+ordinary environment and explicit arguments. RED failed on the inherited marker
+before the fix (worker tool transcript only); GREEN passes after clearing only
+that marker. The actual Darwin relaunch now checks sanitization before either
+GUI or headless exec. The ordinary hygiene suite runs two portable native tests;
+seven Darwin gate tests remain explicitly VM-only. Root also compiled the actual
+ARM64 worker without executing an installer. Fresh packaged GUI-return evidence
+is still required; this regression does not establish that every relaunch cause
+is resolved. The current suite has three portable native tests and seven VM-only
+tests after the Launch Services regression below was added.
+
+### macOS GUI return lacked a graphical launch session — checkpoint113
+
+A bounded comparison on the same installed target, with the jpackage marker
+absent in both cases, established a separate cause. Direct launch from SSH exited2
+with the graphical-session error and created no owner. Launch Services opened
+the same bundle in a new isolated workspace and produced a frontend plus its
+authenticated controller; public quit cleaned up only that workspace. The retained
+comparison is checkpoint108/macos-gui-return108/causal-probe-1789967867/
+launchservices-causal-comparison.txt. This is a causal launch comparison, not an
+update transaction or visual acceptance result.
+
+The native worker now uses the fixed /usr/bin/open executable and discrete
+bundle/workspace arguments for GUI return, while headless return retains the
+captured executable and serve argument. InstallRelaunchPlanTest covers both
+branches with the production C plan. The two assigned Darwin component tests
+also intercepted the actual worker exec arguments and passed on the frozen
+revision (gate113-two-tests.txt). Root compiled that ARM64 revision. These checks
+run without launching an installer; fresh immutable packages and a complete
+replacement/automatic-return scenario remain required.
+
+### Windows fixture receipt failed on empty native output — checkpoint113
+
+The CP112 admission RED probe correctly rejected the old image admission, but
+its wrapper called Trim on the null value emitted by Get-Content -Raw for empty
+stdout. This obscured the native result. The corrected attempt retained the same
+native inputs and read output with IO.File.ReadAllText; RED and GREEN wrappers
+then reached their expected terminal outcomes. Original failed records remain.
+
+The reusable Read-VpnFixtureOutputReceipt helper preserves empty/nonempty streams
+and the direct child exit code. Its routine Windows PowerShell regression runs
+real child processes with exit codes0/7/23/31, demonstrates the old empty-file
+expression failing, and checks the new receipt. Child script policy is explicitly
+process-scoped. The test is skipped where Windows PowerShell is unavailable;
+the macOS-host result is not Windows behavioral evidence. New native wrappers
+must use the shared reader rather than copy the broken expression.
+
+### Release-derived Android fixture omitted release sources — checkpoint113
+
+The first assembleNativeFixture build failed Kotlin compilation on ImportTestHooks.
+Gradle initWith inherits build-type options, not the release source directory.
+The static fixture guard was extended and failed before adding the release Java
+source directory to nativeFixture. It also guards clearing inherited ARM64 ABI
+filters before selecting x86_64 and matching release library variants. The fixture
+uses production release hooks, never debug-only import hooks. The guard runs in
+release hygiene, but compilation and APK inspection remain separate gates.
+Retained failed build: checkpoint112/android-native-fixture-build.log.
