@@ -766,3 +766,45 @@ this is exact-body/component evidence rather than Python-launcher execution.
 The Python launcher uses process-only ExecutionPolicy Bypass for its verified
 fixture script, without changing machine policy. Hosted Windows CI must still
 execute that launcher.
+
+### Android fixture mount response loss — checkpoint124
+
+Review of the native TLS fixture cleanup found that an ADB mount command could
+execute before its response was lost. The driver then treated the mount as absent
+and removed the potentially mounted certificate staging tree. Track the mount
+attempt separately from acknowledgment and retain staging with `unknownMount`
+until authoritative reconciliation. Do not infer that a lost response undid a
+device-side effect.
+
+The deterministic fake-ADB regression executes the lifecycle with a mount-response
+failure and checks retained staging, original failure, and restored public adbd.
+Against clean6ee source it failed; fixed source passed the32-test TLS selection.
+Root evidence, hashes and exact exits are in
+`.runtime/parity-evidence/checkpoint124/tls-mount-regression/receipt.json` and its
+RED/GREEN logs. The test runs in release hygiene and therefore routine prepush.
+This was a review-discovered fixture risk, not an intentionally disrupted live
+mount. Keep native certificate trust and cleanup checks separately.
+
+An earlier temporary API29 driver omitted cleanup after a failed certificate
+push. The shared driver already handled that case: its added regression passes
+both old and new shared code. Do not claim a new causal fix for that case. Native
+API29/API35 attempts also used incompatible Mac-local files/server endpoints with
+Arch-local ADB. Colocate fixture inputs, servers and ADB, and keep admission
+evidence; those attempts did not accept a product refresh or installation.
+
+### Android refresh fixture source ownership — checkpoint125
+
+The new refresh driver initially assumed subscription add always created a new
+entry. Product add intentionally upserts an existing URL, so fixture cleanup could
+delete an existing subscription. Before add, inspect subscription identities and
+sources under one controller/revision, reject the fixture URL if present, and bind
+add to that same revision so a concurrent configuration change cannot invalidate
+admission. Do not restore or delete after uncertain mutation outcomes.
+
+The quick CLI-boundary test failed on the pre-fix driver because it attempted a
+mutation despite an existing source. The fixed combined harness selection passed
+92 tests, including revision drift before add. RED/GREEN logs and source hashes are
+in `.runtime/parity-evidence/checkpoint125/refresh-source-admission/`. The new
+`test_android_subscription_refresh_lifecycle.py` is wired into release hygiene.
+This was found during review before native execution; no device subscription was
+deliberately overwritten to reproduce it.

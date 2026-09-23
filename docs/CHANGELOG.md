@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Report interrupted Android CLI streams as cancellation without changing uncertain mutation outcomes.
 - Preflight Windows fixture batch-logon admission and verify native errors, token cleanup, and HRESULT conversion in package checks.
 - Guard native fixture terminal ownership and QMP input admission with causal regressions.
+- Harden Android native fixture trust cleanup and add guarded public subscription refresh acceptance.
 
 ## 2.1.15 - 2026-09-23
 

@@ -57,6 +57,7 @@ python3 scripts/test_android_fixture_transport.py
 python3 scripts/test_android_fixture_trust.py
 python3 scripts/test_android_no_update_tls_preflight.py
 python3 scripts/test_android_installer_lifecycle.py
+python3 scripts/test_android_subscription_refresh_lifecycle.py
 python3 scripts/test_native_python_tests.py
 python3 scripts/test_macos_fixture_owner_launch.py
 python3 scripts/test_macos_fixture_processes.py

@@ -680,38 +680,32 @@ default private spool has native Windows/macOS proof; adversarial temporary-pare
 ancestry/replacement still needs an explicit fail-closed/pinning audit before broad
 adapter use. Domain parsers still materialize Strings independently of spool IO.
 
-## Android Typed Refresh Implementation Gap
+## Android Typed Refresh
 
-`SUBSCRIPTIONS_REFRESH` still lacks SettingsControl admission/executor/progress/
-cancellation and ADB omitted-owner binding. GUI refresh in MainViewModel/
-`AndroidSubscriptionRefreshActionsService` and WorkManager refresh share the
-application lease, but not the typed ledger. Their outer lease cannot remain around
-a newly nested owner command. GUI currently discards busy admission failure.
+`SUBSCRIPTIONS_REFRESH` is implemented by the application owner. GUI and
+`SubscriptionRefreshWorker` call `AndroidApplicationOwner.refreshSubscriptions`,
+which submits the typed request to `AndroidSettingsControl` and its shared
+operation ledger/mutation lease. `AndroidSubscriptionRefreshControl` captures the
+committed target, owner/revision and runtime restore point; it reports ledger
+progress, deduplicates matching requests, and permits cancellation only while
+fetching. Its non-cancellable commit/recovery boundary returns the final revision,
+pending-restart state, opaque per-subscription outcomes, and explicit partial,
+failure, cancellation, scheduling, and recovery warnings without source URLs or
+exception text.
 
-Before exposing the command, reproduce two active-A/pending-B failures:
+The refresh commit policy keeps a running or unknown actual runtime's artifacts and
+telemetry when a pending selected subscription disappears. Refresh loading uses the
+captured actual runtime route and rejects runtime drift; the worker schedules its
+successor through the same owner flow. Focused deterministic coverage includes stale
+owner/revision rejection, request deduplication, mutual exclusion, fetch versus
+commit cancellation, partial and all-source failures, captured route drift,
+pending-B versus active-A removal, and scheduling/recovery results. See
+`AndroidSubscriptionRefreshControlTest` and `AndroidSettingsControl`.
 
-- `ProfileStorage.updateSubscriptionCache` clears a disappeared persisted selection
-  through `clearStoredSelection`, whose default deletes runtime artifacts and clears
-  telemetry. Pending B removal must not affect actual A.
-- `SubscriptionRefreshWorker` recovery uses persisted running/mode flags and
-  `rehydrateSelection(previousState)`, potentially restarting pending B instead of A.
-
-Use an application-owned executor capturing committed target IDs (`id|active|all`),
-epoch/revision and `runtimeObserver.captureRuntime()`. Separate cancellable fetch
-from non-cancellable atomic cache commit and actual-runtime recovery. Preserve
-telemetry/artifacts independently from pending selection. Return immutable counts,
-opaque per-subscription outcomes, exact final revision, pending state and explicit
-partial/all-failure/cancellation results; never source URLs or exception text.
-Route GUI and worker through the same ledger/lease, leaving scheduling outside it.
-
-`RepositoryWorkflowService` is not directly reusable unchanged: `runCatching`
-swallows cancellation, all-source failure loses structured outcomes, and successful
-sources commit individually. Add deterministic tests for either A/B disappearing,
-unknown runtime, partial/all failures, stale admission, fetch-vs-commit cancellation,
-late cancellation against a replacement job, deduplication, GUI recreation,
-worker/GUI/CLI mutual exclusion without nested deadlock, and scheduling/recovery
-failures preserving the actual committed outcome. No implementation of this slice
-is claimed by these design notes.
+This is not native Android acceptance evidence. Public ADB/provider execution,
+WorkManager process recreation, real VPN/proxy recovery, and device-side cancellation
+still require disposable-device coverage; retain those limits in
+[work-in-progress.md](work-in-progress.md).
 
 ## Validation And Handoff
 

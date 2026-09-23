@@ -337,11 +337,13 @@ def parse_args() -> argparse.Namespace:
 
 def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: bool = False,
                           ca_store_target: str = "/system/etc/security/cacerts",
-                          expected_proxy: str = "null") -> dict:
+                          expected_proxy: str = "null", transport_mode: str = "http-proxy") -> dict:
     if not isinstance(target_install, bool):
         raise ValueError("Fixture target-install metadata must be boolean")
     args.target = require_ca_store_target(ca_store_target)
     expected_proxy = require_disconnected_proxy_baseline(expected_proxy)
+    if transport_mode not in ("http-proxy", "reverse-only"):
+        raise ValueError("Fixture transport mode is not approved")
     require_task_staging(args.staging)
     cli_environment = getattr(args, "cli_environment", None)
     if cli_environment is None:
@@ -366,6 +368,7 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
     require_device_time_within_certificates(device_epoch, args.certificate, args.leaf_certificate)
     receipt.update({"deviceEpoch": device_epoch, "expectedLabel": target_label, "targetMode": oct(target_mode)})
     mounted = False
+    mount_attempted = False
     unmounted = False
     transport = False
     reverse_created = False
@@ -396,6 +399,9 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         if device_label(adb, staged_certificate) != target_label:
             raise RuntimeError("Staged Android CA certificate has an unexpected SELinux label")
         argv = zygote_bind_mount_argv(zygote, args.staging, args.target)
+        # An ADB response can be lost after the guest executed this mount.  Do not
+        # delete the source staging tree unless we know no bind was attempted.
+        mount_attempted = True
         adb.shell(*argv)
         mounted = True
         adb.unroot()
@@ -403,14 +409,20 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         adb.wait_for_device()
         if adb.shell_id() != "uid=2000":
             raise RuntimeError("Fixture setup did not restore public adbd")
-        proxy_attempted = True
-        try:
-            establish_owned_transport(adb, args.device_port, args.host_port, previous_proxy)
-        except Exception as error:
-            reverse_created = bool(getattr(error, "fixture_reverse_owned", False))
-            raise
-        reverse_created = True
-        transport = True
+        if transport_mode == "http-proxy":
+            proxy_attempted = True
+            try:
+                establish_owned_transport(adb, args.device_port, args.host_port, previous_proxy)
+            except Exception as error:
+                reverse_created = bool(getattr(error, "fixture_reverse_owned", False))
+                raise
+            reverse_created = True
+            transport = True
+        else:
+            if adb.reverse_mapping(args.device_port) is not None:
+                raise RuntimeError("Fixture target reverse route already exists")
+            adb.reverse(args.device_port, args.host_port)
+            reverse_created = True
         adb.shell("am", "force-stop", "com.kardinal.vpncontrol")
         receipt["probe"] = action(args, adb, receipt)
     except Exception as error:
@@ -460,10 +472,12 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
                 adb.shell("nsenter", "-t", zygote, "-m", "--", "umount", args.target)
                 unmounted = True
             cleanup_attempt("unmount", unmount_original_zygote)
-        if staging_created and (not mounted or unmounted):
+        if staging_created and (not mount_attempted or unmounted):
             cleanup_attempt("staging", lambda: adb.shell("rm", "-r", args.staging))
         elif staging_created:
             receipt["retainedStaging"] = args.staging
+            if mount_attempted and not mounted:
+                receipt["unknownMount"] = True
         if rooted:
             def restore_public_adbd():
                 nonlocal rooted

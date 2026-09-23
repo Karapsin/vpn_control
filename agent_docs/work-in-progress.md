@@ -25,7 +25,99 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint121
+## Current continuation — checkpoint125
+
+At13:52 Moscow September23, HEAD/origin/dev is
+`6ee249ec0aa4a55b0b1eeacd51231693c4c26c89`, product2.1.15. Full prepush
+and all five required exact-SHA workflows passed (managed watcher46274 exited0).
+The delivered regressions cover retained Linux PTY ownership, controlling-terminal
+admission and QMP negotiation/error propagation. Full parity remains incomplete.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration125 | root | Shared files, artifact verification, host builds, delivery and evidence review |
+| Android refresh driver | android_refresh_driver124 | Fixture transport/trust review and quick regressions; no guest operator |
+| Android29 refresh125 | android29_refresh125 | Remote5684 only; current base admission and manual subscription refresh |
+| Android35 installer125 | android35_install125 | Remote5682 only; colocated immutable installer cancellation fixture |
+| Linux current125 | linux_current125 | CP120 guest2327 only; verify normal-close evidence, provision6ee package and repeat continuity |
+| Windows restore125 | windows_restore125 | CP117 only; restore temporary login policy and bounded diagnostics, no MSI retry |
+
+Checkpoint125: target APK transfer is terminal and verified. Shared fixture checks
+pass92 tests after root added causal existing-source/upsert admission protection.
+Windows temporary DontDisplayLastUserName policy is restored to DWORD0; the owned
+base task remains disabled/result1601 with no msiexec. Linux6ee RPM reinstall
+completed after OFF owner quit; normal close and reattach report110/110 ordered
+synthetic frames. Crash replay is in progress. API29/API35 operate independently
+with servers, inputs and ADB colocated on Arch. macOS remains stopped pending
+resource admission; raw free-page measurements alone are not proof of unavailable
+RAM, so do not turn that observation into a permanent platform blocker.
+
+The clean6ee source archive produced nondebuggable x86_64 nativeFixture APKs
+for2.1.14/code16680 and2.1.15/code16700. Root verified package identity, versions,
+matching fixture signer, native libraries and hashes. Immutable inputs and results
+are under `/private/tmp/vpn-android-pair123.ptbx1tze/frozen`, including
+SHA256SUMS.txt, source-receipt.json and verified-artifacts.json. Both builds passed;
+this establishes packaged inputs, not native installer acceptance. The four
+Android installer/trust/update/transport harness selections passed61 tests.
+
+Linux disconnected public serve survived35.00008 seconds without control requests,
+past the30-second idle policy, with the same PID alive; status remained OFF and
+public quit ended that owner cleanly. Evidence: checkpoint121/linux-lifecycle-idle.
+Its sourceProvenance field uses a stale directory prefix; the actual frozen pair
+receipt is `.runtime/checkpoint119/linux/fedora2326-fixture-receipt.json`.
+
+macOS remains stopped. Tart rejected a3072MiB setting because this guest requires
+at least4096MiB; configuration remains2CPU/4096MiB. Repeated4GiB boot attempts
+previously raised host memory pressure before installer submission. No installer
+was started by these attempts, and unknown historical jobs remain preserved.
+
+Windows normal login is still incomplete. Persistent VNC observation has not
+established a reliable ordinary-account selection path. Some reconnect attempts
+returned to the lock screen, but causality is unproven. Do not attribute prior
+navigation failures to QMP key timing or the product. No credential may be entered
+until the ordinary account is visibly selected; no MSI retry before its recipient
+guard passes.
+
+Checkpoint124 continuation: CP120 installed d27-package proxy traffic passed,
+then a minimal Xvfb session proved GUI attach, frontend-only crash and reattach
+with unchanged controller/runtime. One existing SOCKS tunnel echoed93 ordered
+frames without reset/EOF/error across those transitions; the maximum observed
+send interval was1.05144 seconds, so this is connection continuity rather than a
+zero-latency claim. Full envelopes and sampler evidence are under
+checkpoint124/linux-traffic/gui-continuity. A later normal-close run reports110
+ordered frames through WM_DELETE_WINDOW and reattach; independent review and
+repeat on the6ee package are assigned to linux_current125.
+The minimal X11 dependency transaction succeeded after Openbox's optional test
+environment dependency chain encountered an external Cisco repository403.
+
+The6ee CI macOS DMG and Linux package artifacts are retained in
+checkpoint124/macos-ci-6ee and linux-ci-6ee with run/source/hash receipts. The
+DMG-extracted arm64 CLI passes codesign and version checks and is available for
+Android control; this is not macOS installed-package lifecycle acceptance.
+
+Android fixture attempts accepted no installer or subscription operation. API29
+CA push incorrectly used a Mac-local path with remote Arch ADB; API35 prepared
+trust but addressed a Mac-local fixture server through Arch-local ADB reverse.
+Both are cleaned, unrooted and have no remaining owned reverse mapping. API35
+clean public status confirms runtime stopped on the new6ee base APK. Colocating
+the public Linux CLI and fixture drivers on Arch is complete. Both device status
+reads pass through the6ee packaged Linux CLI. The target APK transfer completed
+with SHA1ac2ac0d823bf6f0403f57ea3156c90209a3d91c64ccf4af919132c32af92401;
+checkpoint124/apk-transfer-result.json records verification and the gateway staging
+was removed. Refresh fixture proxy/TLS topology remains under review before native
+execution; artifact transfer alone is not acceptance evidence.
+Do not infer protocol incompatibility or owner loss from a sanitized transport
+UNAVAILABLE response. Use public_cli_environment and retain raw adapter errors.
+
+The Android installer worker accidentally replaced the historical checkpoint117
+adb-capture118-master binary while creating a fixture adapter. Its adjacent C
+source remains SHA280dfb9b6796c9bab492479bfcb5206deb0f5f69c9136c75869e83fe39d08448;
+the rebuilt binary is SHA98b08f32abcd9ada95c9845b36981e16087565f2e9975e035d419ad72f738486,
+not the original7c4b hash. Preserve historical receipts without rewriting their
+hashes. New runs must use separately staged immutable copies and record actual
+inputs; the replacement does not recreate the original binary evidence.
+
+## Prior continuation — checkpoint121
 
 At13:06 Moscow September23, HEAD/origin/dev is
 `fd6eec74ea2f12e7ee500a22aef748a9178f84a9`, product2.1.15, after full

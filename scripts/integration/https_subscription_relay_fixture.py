@@ -34,6 +34,7 @@ class _SubscriptionHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
+        self.server.record_subscription_request()  # type: ignore[attr-defined]
         self.wfile.write(body)
 
     def log_message(self, _format: str, *_args: object) -> None:
@@ -44,6 +45,21 @@ class _TlsThreadingHTTPServer(http.server.ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], handler: type[http.server.BaseHTTPRequestHandler], context: ssl.SSLContext) -> None:
         super().__init__(address, handler)
         self._context = context
+        self._request_lock = threading.Lock()
+        self._subscription_requests = 0
+        self.request_log: Path | None = None
+
+    def record_subscription_request(self) -> None:
+        with self._request_lock:
+            self._subscription_requests += 1
+            count = self._subscription_requests
+            if self.request_log is not None:
+                with self.request_log.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps({"method": "GET", "endpoint": "subscription", "count": count}) + "\n")
+
+    def subscription_request_count(self) -> int:
+        with self._request_lock:
+            return self._subscription_requests
 
     def get_request(self):
         connection, address = self.socket.accept()
@@ -75,7 +91,7 @@ class HttpsSubscriptionRelayFixture:
     """Starts an HTTPS listener and relay whose published endpoints are derived from live sockets."""
 
     def __init__(self, certificate: Path, private_key: Path, readiness_file: Path, token: str,
-                 subscription_path: str = "/subscription") -> None:
+                 subscription_path: str = "/subscription", request_log: Path | None = None) -> None:
         if not subscription_path.startswith("/"):
             raise ValueError("subscription path must start with /")
         self.certificate = certificate
@@ -83,6 +99,7 @@ class HttpsSubscriptionRelayFixture:
         self.readiness_file = readiness_file
         self.token = token
         self.subscription_path = subscription_path
+        self.request_log = request_log
         self.https_server: http.server.ThreadingHTTPServer | None = None
         self.relay_server: FixtureServer | None = None
         self._https_thread: threading.Thread | None = None
@@ -96,6 +113,9 @@ class HttpsSubscriptionRelayFixture:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(self.certificate, self.private_key)
+        if self.request_log is not None:
+            descriptor = os.open(self.request_log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(descriptor)
         https = _localhost_tls_server(context)
         try:
             https_port = https.server_address[1]
@@ -103,6 +123,7 @@ class HttpsSubscriptionRelayFixture:
             relay_port = relay.server_address[1]
             https.subscription_path = self.subscription_path  # type: ignore[attr-defined]
             https.subscription_body = f"socks://127.0.0.1:{relay_port}\n"  # type: ignore[attr-defined]
+            https.request_log = self.request_log
             self.https_server, self.relay_server = https, relay
             self._https_thread = threading.Thread(target=https.serve_forever, daemon=True)
             self._relay_thread = threading.Thread(target=relay.serve_forever, daemon=True)
@@ -134,7 +155,13 @@ class HttpsSubscriptionRelayFixture:
             "relayPort": relay_port,
             "forwardHost": "localhost",
             "forwardPort": https_port,
+            "subscriptionRequests": self.https_server.subscription_request_count(),
         }
+
+    def subscription_request_count(self) -> int:
+        if self.https_server is None:
+            raise RuntimeError("fixture is not running")
+        return self.https_server.subscription_request_count()
 
     def _publish_readiness(self, readiness: dict[str, object]) -> None:
         self.readiness_file.parent.mkdir(parents=True, exist_ok=True)

@@ -250,6 +250,93 @@ class PreflightScriptTest(unittest.TestCase):
         self.assertEqual({}, adb.reverse_map)
         self.assertEqual('null', adb.proxy)
 
+    def test_push_failure_after_owned_staging_removes_stage_and_restores_public_adbd(self):
+        """A failed CA push happens before a mount, but the created stage is still ours."""
+        class PushFailingAdb(FakeAdb):
+            def run(self, *args):
+                self.calls.append(args)
+                if args == ('root',):
+                    self.rooted = True
+                if args and args[0] == 'push':
+                    raise OSError('PUSH_FAILED')
+                return ''
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = root / 'base.apk'; certificate = root / 'ca.pem'; leaf = root / 'leaf.pem'
+            receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); certificate.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root / 'cli.py', certificate=certificate,
+                leaf_certificate=leaf, fixture_parent=root, server_log=root / 'server.log',
+                probe_output=root / 'probe.txt', device_port=45390, host_port=61000,
+                staging='/data/local/tmp/vpn-control-test', receipt=receipt, expected_avd='avd',
+                expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = PushFailingAdb()
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'):
+                with self.assertRaisesRegex(OSError, 'PUSH_FAILED'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {})
+            saved = json.loads(receipt.read_text())
+            self.assertEqual('OSError', saved['failure']['type'])
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'rm', '-r', args.staging), fake.calls)
+            self.assertNotIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'umount',
+                              '/system/etc/security/cacerts'), fake.calls)
+            self.assertFalse(fake.rooted)
+
+    def test_lost_bind_mount_response_preserves_staging_and_records_unknown_mount(self):
+        """A mount may take effect before ADB loses its response, so deletion is unsafe."""
+        class LostMountResponseAdb(FakeAdb):
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                self.calls.append(('shell', *args))
+                if args[:4] == ('nsenter', '-t', '177', '-m') and args[-4:] == (
+                    'mount', '--bind', '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts',
+                ):
+                    raise OSError('MOUNT_RESPONSE_LOST')
+                return super().shell(*args)
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = root / 'base.apk'; certificate = root / 'ca.pem'; leaf = root / 'leaf.pem'
+            receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); certificate.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root / 'cli.py', certificate=certificate,
+                leaf_certificate=leaf, fixture_parent=root, server_log=root / 'server.log',
+                probe_output=root / 'probe.txt', device_port=45390, host_port=61000,
+                staging='/data/local/tmp/vpn-control-test', receipt=receipt, expected_avd='avd',
+                expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = LostMountResponseAdb()
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=[args.staging + '/hash.0']), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'):
+                with self.assertRaisesRegex(OSError, 'MOUNT_RESPONSE_LOST'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: {})
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(args.staging, saved['retainedStaging'])
+            self.assertTrue(saved['unknownMount'])
+            self.assertNotIn(('shell', 'rm', '-r', args.staging), fake.calls)
+            self.assertFalse(fake.rooted)
+
     def test_changed_zygote_cleanup_records_failure_but_restores_public_and_receipt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
@@ -427,6 +514,60 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertFalse(fake.rooted)
             self.assertEqual({}, fake.reverse_map)
             self.assertEqual('null', fake.proxy)
+
+    def test_reverse_only_lifecycle_never_sets_proxy_and_removes_exact_route(self):
+        class StableZygoteAdb(FakeAdb):
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(adb='adb', serial='serial', cli=root/'cli.py', certificate=cert,
+                leaf_certificate=leaf, fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest())
+            fake = StableZygoteAdb(); observed = []
+            def action(_args, adb, _receipt):
+                observed.append((adb.shell_id(), adb.reverse_mapping(45390), adb.global_proxy()))
+                return {}
+            patches = [patch.object(preflight, 'Adb', return_value=fake),
+                patch.object(preflight, 'verify_public_baseline', return_value={}),
+                patch.object(preflight, 'require_device_time_within_certificates'), patch.object(preflight, 'secure_private_fixture_files'),
+                patch.object(preflight, 'device_mode', return_value=0o755), patch.object(preflight, 'device_label', return_value='label'),
+                patch.object(preflight, 'require_android_certificate_store_layout'), patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'),
+                patch.object(preflight, 'require_android_ca_store_entry'), patch.object(preflight, 'relabel_staged_ca_store', return_value=[args.staging + '/hash.0'])]
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9]:
+                preflight.run_fixture_lifecycle(args, action, transport_mode='reverse-only')
+            self.assertEqual([('uid=2000', 61000, 'null')], observed)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertNotIn(('proxy', '127.0.0.1:45390'), fake.calls)
+
+    def test_reverse_only_lifecycle_preserves_preexisting_route(self):
+        class StableZygoteAdb(FakeAdb):
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root/'base.apk'; cert = root/'ca.pem'; leaf = root/'leaf.pem'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt', device_port=45390, host_port=61000,
+                staging='/data/local/tmp/vpn-control-test', receipt=root/'receipt.json', expected_avd='avd', expected_api='29',
+                expected_version='2.2.19', expected_code='17180', base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest())
+            fake = StableZygoteAdb(); fake.reverse_map[45390] = 61001
+            patches = [patch.object(preflight, 'Adb', return_value=fake), patch.object(preflight, 'verify_public_baseline', return_value={}),
+                patch.object(preflight, 'require_device_time_within_certificates'), patch.object(preflight, 'secure_private_fixture_files'),
+                patch.object(preflight, 'device_mode', return_value=0o755), patch.object(preflight, 'device_label', return_value='label'),
+                patch.object(preflight, 'require_android_certificate_store_layout'), patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'),
+                patch.object(preflight, 'require_android_ca_store_entry'), patch.object(preflight, 'relabel_staged_ca_store', return_value=[args.staging + '/hash.0'])]
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9]:
+                with self.assertRaisesRegex(RuntimeError, 'unowned public transport baseline'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: self.fail('action must not run'), transport_mode='reverse-only')
+            self.assertEqual({45390: 61001}, fake.reverse_map)
 
     def test_tls_fixture_cold_action_follows_ca_bind_public_adbd_and_transport(self):
         """The public probe must see the fixture only after its complete cold-start setup."""

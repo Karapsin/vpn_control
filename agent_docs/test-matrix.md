@@ -232,6 +232,8 @@ their provenance. Keep the native Windows launch as a separate acceptance check.
 It exercises the actual disposable-fixture driver: exact APK/OFF baseline,
 Android legacy CA filename, staging-only relabeling, failed setup rollback,
 changed-zygote cleanup retention, and nonzero cleanup failures with evidence.
+It also covers an acknowledged staging push followed by a lost mount response:
+retain the possibly mounted source until authoritative unmount reconciliation.
 These tests do not establish Android trust or installation behavior; retain the
 nondebuggable API29/API35 native scenarios. Relabel only newly created, validated
 staging entries to the captured certificate-store context; never change system
@@ -242,6 +244,12 @@ the real argument-to-action path so `--continue-file` reaches the installer
 callback without falling back to stdin. Keep artifact identity, private callback
 admission and cleanup coverage alongside it. This tests fixture coordination,
 not OS confirmation or installer recovery; retain the API29/API35 native cases.
+
+`scripts/test_android_subscription_refresh_lifecycle.py` runs in release hygiene.
+It checks the public add/refresh/wait/delete sequence, owner binding, an initially
+empty subscription cache, explicit fetch evidence, original source restoration,
+and retention after an uncertain mutation. These fixture regressions do not prove
+device network trust, runtime recovery, or scheduled refresh; retain native cases.
 
 `scripts/test_macos_fixture_owner_launch.py` runs in release hygiene. The actual
 launcher checks the active console identity and GUI bootstrap session before an

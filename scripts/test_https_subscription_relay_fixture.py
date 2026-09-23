@@ -31,10 +31,11 @@ class HttpsSubscriptionRelayFixtureTest(unittest.TestCase):
             root = Path(temporary)
             certificate, private_key = self.create_certificate_pair(root)
             readiness_file = root / "ready.json"
+            request_log = root / "requests.jsonl"
             stale_socket = socket.socket()
             stale_socket.bind(("127.0.0.1", 0))
             retired_port = stale_socket.getsockname()[1]
-            fixture = HttpsSubscriptionRelayFixture(certificate, private_key, readiness_file, "ignored")
+            fixture = HttpsSubscriptionRelayFixture(certificate, private_key, readiness_file, "ignored", request_log=request_log)
             try:
                 readiness = fixture.start()
                 self.assertEqual(readiness, json.loads(readiness_file.read_text(encoding="utf-8")))
@@ -47,6 +48,12 @@ class HttpsSubscriptionRelayFixtureTest(unittest.TestCase):
                 expected = f"socks://{readiness['advertisedSocksHost']}:{readiness['relayPort']}\n".encode()
                 self.assertEqual(expected, self.fetch_tls(certificate, source.hostname, source.port))
                 self.assertEqual(expected, self.fetch_via_socks(certificate, readiness["relayPort"], source.hostname, source.port))
+                self.assertEqual(2, fixture.subscription_request_count())
+                self.assertEqual([
+                    {"method": "GET", "endpoint": "subscription", "count": 1},
+                    {"method": "GET", "endpoint": "subscription", "count": 2},
+                ], [json.loads(line) for line in request_log.read_text().splitlines()])
+                self.assertEqual(0o600, request_log.stat().st_mode & 0o777)
             finally:
                 stale_socket.close()
                 fixture.stop()
