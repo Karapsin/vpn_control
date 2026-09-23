@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import sys
@@ -141,14 +142,15 @@ class SubscriptionRefreshDriverTest(unittest.TestCase):
             "fixtureRequests": {"beforeRefresh": 0, "afterRefresh": 1}}, result)
         mutation_calls = [command for command, _ in calls if "--async" in command]
         self.assertEqual(2, len(mutation_calls))
-        self.assertTrue(all(command[0] == "/opt/vpn-control" for command in mutation_calls))
+        self.assertTrue(all(command[0] == str(args.cli) for command in mutation_calls))
         self.assertTrue(all("--controller-id" in command and "owner-7" in command for command in mutation_calls))
         self.assertIn("subscription-9", mutation_calls[1])
         self.assertTrue(any("subscriptions" in command and "delete" in command and "--async" not in command for command, _ in calls))
         self.assertTrue(all(kwargs["env"] == {"PATH": "/approved"} for _, kwargs in calls))
         saved = json.loads(self.args().probe_output.read_text())
         self.assertEqual(len(calls), len(saved))
-        self.assertEqual(0o600, self.args().probe_output.stat().st_mode & 0o777)
+        if os.name == "posix":
+            self.assertEqual(0o600, self.args().probe_output.stat().st_mode & 0o777)
 
     def test_request_counter_rejects_nonmonotonic_or_non_fixture_events(self):
         with tempfile.TemporaryDirectory() as temporary:

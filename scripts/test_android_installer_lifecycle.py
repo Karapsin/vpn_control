@@ -25,7 +25,7 @@ def record(code, final, operation=None, data=None, ok=None):
     return {"argv": [], "exit": driver.EXIT[code], "response": response, "stderr": ""}
 
 
-def argv(root, output, callback=None, adb=None, expected_terminal=None):
+def argv(root, output, callback=None, adb=None, expected_terminal=None, extra=()):
     values = ["driver", "--adb", str(adb or root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
         "--device-port", "45635", "--cli", str(root / "cli"), "--ca-certificate", str(root / "ca.pem"),
         "--leaf-certificate", str(root / "leaf.pem"), "--private-key", str(root / "leaf.key"),
@@ -34,6 +34,7 @@ def argv(root, output, callback=None, adb=None, expected_terminal=None):
         "--target-sha256", "target-hash", "--target-version", "2.1.14", "--target-code", "16680"]
     if callback is not None: values.extend(["--continue-file", str(callback)])
     if expected_terminal is not None: values.extend(["--expected-terminal", expected_terminal])
+    values.extend(extra)
     return values
 
 
@@ -138,6 +139,8 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual("operation", json.loads((output / "probe.json").read_text())["callbackReceipt"]["installerLifecycle"]["operationId"])
             self.assertEqual(callback, observed["args"].continue_file)
             self.assertEqual("target-hash", observed["args"].target_sha256)
+            self.assertEqual(120.0, observed["args"].reconciliation_timeout_seconds)
+            self.assertEqual(1.0, observed["args"].reconciliation_poll_seconds)
             self.assertEqual("2.1.13", observed["args"].expected_version)
             self.assertEqual("16660", observed["args"].expected_code)
             self.assertEqual((root / "target.apk", "2.1.14", 16680), observed["launch"][:3])
@@ -154,6 +157,17 @@ class InstallerLifecycleTest(unittest.TestCase):
                  patch.object(driver.tls, "require_interactive_stdin"), \
                  patch.object(driver.fixture, "launch_supervised_fixture") as launched:
                 with self.assertRaisesRegex(RuntimeError, "hash does not match"):
+                    driver.main()
+            launched.assert_not_called()
+
+    def test_nonfinite_reconciliation_flags_reject_before_fixture_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "output"; adb = root / "adb"
+            adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
+            with patch.object(sys, "argv", argv(root, output, adb=adb,
+                extra=("--reconciliation-timeout-seconds", "nan"))), \
+                 patch.object(driver.fixture, "launch_supervised_fixture") as launched:
+                with self.assertRaisesRegex(SystemExit, "finite positive"):
                     driver.main()
             launched.assert_not_called()
 
@@ -215,8 +229,9 @@ class InstallerLifecycleTest(unittest.TestCase):
 
     @staticmethod
     def accepted_replies(terminal, operation="operation"):
-        terminal_data = {"installPhase": "installed", "installed": True}
-        if terminal == "CANCELLED": terminal_data = {"installPhase": "cancelled", "installed": False}
+        terminal_data = {"availableVersion": "2.1.14", "installReceiptId": "receipt", "installSessionId": 17,
+                         "installPhase": "installed", "installed": True}
+        if terminal == "CANCELLED": terminal_data["installPhase"] = "cancelled"; terminal_data["installed"] = False
         return [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
                 record("ACCEPTED", False, operation), record(terminal, True, operation, terminal_data),
                 record(terminal, True, operation, terminal_data)]
@@ -255,6 +270,95 @@ class InstallerLifecycleTest(unittest.TestCase):
                 result = driver.action(args, self.InstalledAdb(), {})
             self.assertEqual("terminal-confirmed", result["acceptance"])
             hashed.assert_not_called()
+
+    def test_cancelled_acceptance_reconciles_later_receipt_after_historical_handoff(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary, "cancelled")
+            args.reconciliation_timeout_seconds = 1
+            args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None,
+                       "availableVersion": "2.1.14", "installReceiptId": "receipt",
+                       "installSessionId": 17, "installPhase": "handed_off"}
+            pending = {"phase": "installing", "availableVersion": "2.1.14",
+                       "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                          "installPhase": "handed_off", "installed": None}}
+            cancelled = {"phase": "idle", "availableVersion": None,
+                         "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                            "installPhase": "cancelled", "installed": False}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, "operation", handoff), record("OK", True, data=pending),
+                       record("OK", True, data=cancelled)]
+            with portable_checkpoint_privacy(args.probe_output), \
+                 patch.object(driver, "invoke", side_effect=replies), patch("builtins.input"), \
+                 patch.object(driver.time, "sleep"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+            self.assertEqual("handed_off", result["originalOperation"]["stage"])
+            self.assertEqual("cancelled", result["reconciliation"]["terminal"]["response"]["data"]["installReceipt"]["installPhase"])
+
+    def test_reconciliation_timeout_retains_handoff_identity_without_another_install_or_cancel(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary, "cancelled")
+            args.reconciliation_timeout_seconds = 1
+            args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None,
+                       "availableVersion": "2.1.14", "installReceiptId": "receipt",
+                       "installSessionId": 17, "installPhase": "handed_off"}
+            pending = {"phase": "installing", "availableVersion": "2.1.14",
+                       "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                          "installPhase": "handed_off", "installed": None}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, "operation", handoff), record("OK", True, data=pending)]
+            receipt, calls = {}, []
+            def invoke(*values, **kwargs):
+                calls.append(values)
+                return replies.pop(0)
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
+                 patch("builtins.input"), patch.object(driver.time, "monotonic", side_effect=[0, 0, 2]):
+                with self.assertRaisesRegex(RuntimeError, "outcome unknown"):
+                    driver.action(args, self.InstalledAdb(), receipt)
+            lifecycle = receipt["installerLifecycle"]
+            self.assertEqual("handed_off", lifecycle["originalOperation"]["stage"])
+            self.assertEqual("receipt", lifecycle["reconciliation"]["identity"]["receiptId"])
+            self.assertEqual("OUTCOME_UNKNOWN", lifecycle["reconciliation"]["outcome"])
+            self.assertEqual(2, sum(values[2:] == ("updates", "install") for values in calls))
+            self.assertEqual(1, sum(values[2:] == ("updates", "status") for values in calls))
+
+    def test_reconciliation_timeout_retains_partial_subprocess_output(self):
+        args = SimpleNamespace(cli=Path("cli"), serial="serial", reconciliation_timeout_seconds=1,
+                               reconciliation_poll_seconds=0.01)
+        identity = {"operationId": "operation", "receiptId": "receipt", "sessionId": 17,
+                    "version": "2.1.14", "targetSha256": "target-hash"}
+        partial = {"argv": ["cli", "updates", "status"], "exit": None,
+                   "stdout": "partial-json", "stderr": "partial-error", "timeoutSeconds": 1}
+        with patch.object(driver, "invoke", side_effect=driver.InvocationFailure("timed out", partial)), \
+             patch.object(driver.time, "monotonic", side_effect=[0, 0, 2]):
+            result = driver.await_reconciled_terminal(args, identity, "cancelled")
+        self.assertEqual("OUTCOME_UNKNOWN", result["outcome"])
+        self.assertEqual([partial], result["rawErrors"])
+
+    def test_historical_status_and_wait_must_retain_the_same_receipt_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = self.acceptance_args(temporary, "cancelled")
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            changed = handoff | {"installReceiptId": "other-receipt"}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, "operation", changed)]
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+                 patch("builtins.input"):
+                with self.assertRaisesRegex(RuntimeError, "identity changed"):
+                    driver.action(args, self.InstalledAdb(), {})
+
+    def test_handoff_identity_rejects_boolean_session_id(self):
+        record_with_boolean = record("OK", True, "operation", {"installerStarted": True, "installed": None,
+            "availableVersion": "2.1.14", "installReceiptId": "receipt", "installSessionId": True,
+            "installPhase": "handed_off"})
+        with self.assertRaisesRegex(RuntimeError, "historical installer handoff"):
+            driver.handoff_identity(record_with_boolean, "operation", "2.1.14", "target-hash")
 
     def test_terminal_rejects_wrong_operation_and_unknown_outcome(self):
         installed = {"installPhase": "installed", "installed": True}

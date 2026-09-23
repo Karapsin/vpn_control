@@ -2,6 +2,7 @@
 """Exercise one Android self-update installer interaction on an admitted AVD."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -20,18 +21,30 @@ EXIT = {"OK": 0, "ACCEPTED": 0, "INTERACTION_REQUIRED": 1,
         "OUTCOME_UNKNOWN": 2}
 
 
-def invoke(cli, serial, *words, interactive=False, asynchronous=False, environment=None):
+class InvocationFailure(RuntimeError):
+    def __init__(self, message, record):
+        super().__init__(message)
+        self.record = record
+
+
+def invoke(cli, serial, *words, interactive=False, asynchronous=False, environment=None, timeout_seconds=None):
     argv = [str(cli), "--json", "--android", "--serial", serial]
     if asynchronous:
         argv.append("--async")
     if interactive:
         argv.append("--interactive")
     argv.extend(words)
-    done = subprocess.run(argv, text=True, capture_output=True, env=environment)
+    try:
+        done = subprocess.run(argv, text=True, capture_output=True, env=environment, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        def text(value): return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+        raise InvocationFailure("CLI invocation timed out", {"argv": argv, "exit": None,
+            "stdout": text(error.stdout), "stderr": text(error.stderr), "timeoutSeconds": timeout_seconds}) from error
     try:
         body = json.loads(done.stdout)
     except json.JSONDecodeError as error:
-        raise RuntimeError("CLI did not return JSON") from error
+        raise InvocationFailure("CLI did not return JSON", {"argv": argv, "exit": done.returncode,
+            "stdout": done.stdout, "stderr": done.stderr}) from error
     return {"argv": argv, "exit": done.returncode, "response": body, "stderr": done.stderr}
 
 
@@ -59,6 +72,83 @@ def correlated_terminal(record, operation, expected):
             raise RuntimeError(f"expected confirmed cancelled terminal: {record}")
     else:
         raise ValueError("terminal expectation must be installed or cancelled")
+
+
+def handoff_identity(record, operation, target_version, target_sha256):
+    response = record["response"]
+    data = response.get("data") or {}
+    if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
+            or response.get("final") is not True or response.get("operationId") != operation
+            or data.get("installerStarted") is not True or data.get("installed") is not None
+            or data.get("installPhase") != "handed_off" or data.get("availableVersion") != target_version
+            or not isinstance(data.get("installReceiptId"), str) or not data["installReceiptId"]
+            or not valid_session_id(data.get("installSessionId"))):
+        raise RuntimeError(f"expected immutable historical installer handoff: {record}")
+    return {"operationId": operation, "receiptId": data["installReceiptId"],
+            "sessionId": data["installSessionId"], "version": target_version,
+            "targetSha256": target_sha256}
+
+
+def terminal_identity(record, operation, expected, target_version, target_sha256):
+    correlated_terminal(record, operation, expected)
+    data = record["response"].get("data") or {}
+    if (data.get("availableVersion") != target_version or not isinstance(data.get("installReceiptId"), str)
+            or not data["installReceiptId"] or not valid_session_id(data.get("installSessionId"))):
+        raise RuntimeError(f"expected exact terminal installer identity: {record}")
+    return {"operationId": operation, "receiptId": data["installReceiptId"],
+            "sessionId": data["installSessionId"], "version": target_version,
+            "targetSha256": target_sha256}
+
+
+def reconciled_terminal(record, identity, expected):
+    response = record["response"]
+    data = response.get("data") or {}
+    current = data.get("installReceipt")
+    if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
+            or response.get("final") is not True
+            or not isinstance(current, dict) or current.get("installReceiptId") != identity["receiptId"]
+            or current.get("installSessionId") != identity["sessionId"]):
+        return False
+    if expected == "installed":
+        return current.get("installPhase") == "installed" and current.get("installed") is True
+    if expected == "cancelled":
+        return current.get("installPhase") == "cancelled" and current.get("installed") is False
+    raise ValueError("terminal expectation must be installed or cancelled")
+
+
+def valid_session_id(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def await_reconciled_terminal(args, identity, expected):
+    timeout = getattr(args, "reconciliation_timeout_seconds", 120.0)
+    interval = getattr(args, "reconciliation_poll_seconds", 1.0)
+    if timeout <= 0 or interval <= 0:
+        raise ValueError("reconciliation timeout and poll interval must be positive")
+    deadline = time.monotonic() + timeout
+    stages = {"identity": identity, "updatesStatus": [], "rawErrors": []}
+    environment = getattr(args, "cli_environment", None)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stages["outcome"] = "OUTCOME_UNKNOWN"
+            return stages
+        try:
+            status = invoke(args.cli, args.serial, "updates", "status", environment=environment,
+                            timeout_seconds=remaining)
+            stages["updatesStatus"].append(status)
+            if reconciled_terminal(status, identity, expected):
+                stages["terminal"] = status
+                return stages
+        except InvocationFailure as error:
+            stages["rawErrors"].append(error.record)
+        except Exception as error:
+            stages["rawErrors"].append(str(error))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stages["outcome"] = "OUTCOME_UNKNOWN"
+            return stages
+        time.sleep(min(interval, remaining))
 
 
 def verify_installed_target(args, adb):
@@ -164,8 +254,25 @@ def action(args, adb, receipt):
     if expected_terminal == "capture":
         receipt["installerLifecycle"]["acceptance"] = "capture-only-nonacceptance"
         return receipt["installerLifecycle"]
-    correlated_terminal(status, operation, expected_terminal)
-    correlated_terminal(waited, operation, expected_terminal)
+    try:
+        identity = handoff_identity(status, operation, args.target_version, args.target_sha256)
+    except RuntimeError:
+        # A cancellation can win before handoff. It is valid only when the exact
+        # original operation already carries the requested terminal result.
+        identity = terminal_identity(status, operation, expected_terminal, args.target_version, args.target_sha256)
+        if terminal_identity(waited, operation, expected_terminal, args.target_version, args.target_sha256) != identity:
+            raise RuntimeError("terminal installer identity changed between status and wait")
+        receipt["installerLifecycle"]["originalOperation"] = {"stage": expected_terminal, "identity": identity,
+                                                                   "status": status, "wait": waited}
+    else:
+        if handoff_identity(waited, operation, args.target_version, args.target_sha256) != identity:
+            raise RuntimeError("historical installer handoff identity changed between status and wait")
+        receipt["installerLifecycle"]["originalOperation"] = {"stage": "handed_off", "identity": identity,
+                                                                   "status": status, "wait": waited}
+        reconciliation = await_reconciled_terminal(args, identity, expected_terminal)
+        receipt["installerLifecycle"]["reconciliation"] = reconciliation
+        if reconciliation.get("outcome") == "OUTCOME_UNKNOWN":
+            raise RuntimeError(f"installer reconciliation outcome unknown: {reconciliation}")
     if expected_terminal == "installed":
         receipt["installerLifecycle"]["installedBaseSha256"] = verify_installed_target(args, adb)
     receipt["installerLifecycle"]["acceptance"] = "terminal-confirmed"
@@ -184,6 +291,8 @@ def parse_args():
     parser.add_argument("--continue-file", type=Path)
     parser.add_argument("--expected-terminal", choices=("capture", "installed", "cancelled"), default="capture",
                         help="capture records an observation only and is not acceptance evidence")
+    parser.add_argument("--reconciliation-timeout-seconds", type=float, default=120.0)
+    parser.add_argument("--reconciliation-poll-seconds", type=float, default=1.0)
     for prefix in ("base", "target"):
         parser.add_argument(f"--{prefix}-apk", type=Path, required=True)
         parser.add_argument(f"--{prefix}-sha256", required=True)
@@ -197,6 +306,9 @@ def main():
     args.device_port = int(args.device_port)
     if args.api not in ("29", "35") or args.output.exists():
         raise SystemExit("API must be 29/35 and output must be new")
+    if (not math.isfinite(args.reconciliation_timeout_seconds) or not math.isfinite(args.reconciliation_poll_seconds)
+            or args.reconciliation_timeout_seconds <= 0 or args.reconciliation_poll_seconds <= 0):
+        raise SystemExit("reconciliation timeout and poll interval must be finite positive values")
     args.cli_environment = tls.public_cli_environment(args.adb, args.cli)
     args.output.mkdir(mode=0o700, parents=True)
     if args.continue_file is None:
@@ -221,6 +333,8 @@ def main():
             target_sha256=args.target_sha256, continue_file=args.continue_file,
             target_version=args.target_version, target_code=args.target_code,
             expected_terminal=args.expected_terminal,
+            reconciliation_timeout_seconds=args.reconciliation_timeout_seconds,
+            reconciliation_poll_seconds=args.reconciliation_poll_seconds,
             cli_environment=args.cli_environment)
         target = "/apex/com.android.conscrypt/cacerts" if args.api == "35" else "/system/etc/security/cacerts"
         tls.run_fixture_lifecycle(lifecycle, action, target_install=True, ca_store_target=target,

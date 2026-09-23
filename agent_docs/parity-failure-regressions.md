@@ -808,3 +808,35 @@ in `.runtime/parity-evidence/checkpoint125/refresh-source-admission/`. The new
 `test_android_subscription_refresh_lifecycle.py` is wired into release hygiene.
 This was found during review before native execution; no device subscription was
 deliberately overwritten to reproduce it.
+
+### Native installer handoff versus final receipt — checkpoint125
+
+The API35 cancellation harness incorrectly required the original install operation
+to change from successful handoff to CANCELLED. The operation intentionally retains
+its immutable handoff result; subsequent installation outcomes are exposed through
+the correlated receipt in `updates status`. Native operation
+`b58f0a38-153d-46dd-8e37-9e76960ab043` retained OK/handed_off while receipt
+`2d502ff6-5969-443e-892a-6193c7f6830c`, session1320681568, reconciled to
+cancelled/installed=false after the OS Cancel action. This is a fixture expectation
+defect, not proof of a product cancellation defect. Earlier queries inspected only
+the historical operation, so they do not establish when the callback arrived.
+
+Keep the original operation and independently inspect the same receipt/session
+until its authoritative outcome is known; a timeout must retain identity and never
+start another installer. The deterministic lifecycle test reproduces rejection of
+valid handoff followed by a cancelled receipt before the harness repair. Its tests
+remain in release hygiene. Native redacted evidence is under
+`.runtime/parity-evidence/checkpoint125/android35-cancel/`; repeat the corrected
+harness natively before claiming that complete driver path passed.
+
+### Windows test metadata portability — checkpoint125
+
+Windows workflow35862222810 for fd927ecc failed because a new relay test compared
+Windows `stat` attributes with POSIX0600 bits (actual0666). Keep the live relay and
+request-content checks on Windows; assert POSIX permission bits only on POSIX.
+The refresh command test likewise compares the executable with `str(args.cli)` so
+the assertion follows the host path representation. These are test portability
+fixes, not Windows ACL validation or product changes. The existing failing tests
+are the reproducer and remain in routine hygiene; exact-SHA Windows CI must prove
+the repaired Windows branch. The bounded failure log is retained under
+`.runtime/parity-evidence/checkpoint125/windows-ci-failed.log`.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import ssl
 import subprocess
@@ -53,7 +54,9 @@ class HttpsSubscriptionRelayFixtureTest(unittest.TestCase):
                     {"method": "GET", "endpoint": "subscription", "count": 1},
                     {"method": "GET", "endpoint": "subscription", "count": 2},
                 ], [json.loads(line) for line in request_log.read_text().splitlines()])
-                self.assertEqual(0o600, request_log.stat().st_mode & 0o777)
+                # Windows stat exposes DOS attributes, not POSIX permission bits.
+                if os.name == "posix":
+                    self.assertEqual(0o600, request_log.stat().st_mode & 0o777)
             finally:
                 stale_socket.close()
                 fixture.stop()

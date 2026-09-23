@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preflight Windows fixture batch-logon admission and verify native errors, token cleanup, and HRESULT conversion in package checks.
 - Guard native fixture terminal ownership and QMP input admission with causal regressions.
 - Harden Android native fixture trust cleanup and add guarded public subscription refresh acceptance.
+- Reconcile Android installer fixture receipts after handoff and make fixture tests portable to Windows.
 
 ## 2.1.15 - 2026-09-23
 

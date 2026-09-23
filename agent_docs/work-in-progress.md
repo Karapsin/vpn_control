@@ -27,6 +27,22 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current continuation — checkpoint125
 
+Checkpoint125 delivery `fd927ecc37f039b345c1776fcbda94521ab9ddd5` is pushed.
+Its full local prepush passed, but Windows CI35862222810 failed a new POSIX-mode
+test assertion on Windows. The portability correction and installer-harness
+receipt reconciliation are the next coherent slice; exact-SHA CI is not complete.
+Root owns these integration/doc changes. android_cancel_review125 owns only the
+installer lifecycle harness and tests. API29 current6ee manual refresh passed
+through the packaged CLI with one real HTTPS GET, cache0→1, exact cleanup and one
+owner epoch throughout commands; root reviewed the15 envelopes. Linux current6ee
+normal-close and guarded-frontend-crash scenarios both passed110 ordered frames,
+unchanged controller/runtime and clean off/quit; root verified receipts/hashes.
+API35 OS cancellation reconciled its exact receipt to cancelled/installed=false;
+the original operation correctly remains historical handoff. A corrected driver
+rerun remains required. Evidence is in checkpoint125/android29-refresh,
+linux-current125/root-review.json and android35-cancel. Windows ordinary account
+is now visibly selected via one RFB pointer action; login admission continues.
+
 At13:52 Moscow September23, HEAD/origin/dev is
 `6ee249ec0aa4a55b0b1eeacd51231693c4c26c89`, product2.1.15. Full prepush
 and all five required exact-SHA workflows passed (managed watcher46274 exited0).
